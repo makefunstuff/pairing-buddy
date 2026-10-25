@@ -1,0 +1,68 @@
+import assert from 'node:assert/strict';
+import {test} from 'node:test';
+import {Budget, BUDGETS} from '../src/budget.mjs';
+import {initialState} from '../src/fold.mjs';
+import {decide} from '../src/gate.mjs';
+
+const MIN = 60_000;
+const trigger = {kind: 'failed_command', key: 'k', detail: 'npm test failed'};
+
+function gate({score = 9, lastKeyAt = 0, budget = new Budget('normal'), now = 10 * MIN} = {}) {
+  const asked = [];
+  const scorer = async t => { asked.push(t); return {value: score, reason: 'test'}; };
+  return {asked, run: () => decide({trigger, state: {...initialState(), lastKeyAt}, now, budget, score: scorer, typingPauseMs: 2000})};
+}
+
+test('the budget allows one remark per minimum gap', () => {
+  const budget = new Budget('normal');
+  assert.equal(budget.allows(0).ok, true);
+  budget.spend(0);
+  assert.equal(budget.allows(BUDGETS.normal.minGapMs - 1).ok, false);
+  assert.equal(budget.allows(BUDGETS.normal.minGapMs).ok, true);
+});
+
+test('the budget caps remarks per hour, and frees them an hour later', () => {
+  const budget = new Budget('chatty');
+  const {minGapMs, perHour} = BUDGETS.chatty;
+  for (let i = 0; i < perHour; i++) budget.spend(i * minGapMs);
+  const after = perHour * minGapMs;
+  assert.deepEqual(budget.allows(after), {ok: false, reason: `${perHour} remarks in the last hour`});
+  assert.equal(budget.allows(60 * MIN + minGapMs).ok, true);
+});
+
+test('levels order from quiet to chatty', () => {
+  assert.ok(BUDGETS.quiet.minGapMs > BUDGETS.normal.minGapMs && BUDGETS.normal.minGapMs > BUDGETS.chatty.minGapMs);
+  assert.ok(BUDGETS.quiet.perHour < BUDGETS.normal.perHour && BUDGETS.normal.perHour < BUDGETS.chatty.perHour);
+  assert.ok(BUDGETS.quiet.bar > BUDGETS.normal.bar && BUDGETS.normal.bar > BUDGETS.chatty.bar);
+  assert.throws(() => new Budget('loud'));
+});
+
+test('the gate waits while the user types, without asking the Watcher', async () => {
+  const now = 10 * MIN;
+  const {asked, run} = gate({lastKeyAt: now - 500, now});
+  assert.deepEqual(await run(), {verdict: 'wait', reason: 'typing'});
+  assert.equal(asked.length, 0);
+});
+
+test('the gate drops a remark when the budget is spent, without asking the Watcher', async () => {
+  const budget = new Budget('normal');
+  budget.spend(10 * MIN - 1000);
+  const {asked, run} = gate({budget});
+  assert.equal((await run()).verdict, 'drop');
+  assert.equal(asked.length, 0);
+});
+
+test('the gate speaks only above the level bar', async () => {
+  assert.equal((await gate({score: BUDGETS.normal.bar}).run()).verdict, 'speak');
+  const low = await gate({score: BUDGETS.normal.bar - 1}).run();
+  assert.equal(low.verdict, 'drop');
+  assert.match(low.reason, /score 5 < 6/);
+  assert.equal((await gate({score: 7, budget: new Budget('quiet')}).run()).verdict, 'drop');
+  assert.equal((await gate({score: 4, budget: new Budget('chatty')}).run()).verdict, 'speak');
+});
+
+test('the gate does not spend the budget; delivering the remark does', async () => {
+  const budget = new Budget('normal');
+  await gate({budget}).run();
+  assert.equal(budget.allows(10 * MIN).ok, true);
+});

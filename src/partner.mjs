@@ -1,0 +1,61 @@
+// The Partner: one durable pi-durable conversation per pairing session, stored in SQLite.
+import {BACKGROUND_CONTEXT as C} from '@earendil-works/chord/context';
+import {createRegistry, Harness} from '@earendil-works/pi-durable';
+import {openNodeSqliteStorage} from '@earendil-works/pi-durable/storage/sqlite/node';
+import {navigatorExtension} from './tools.mjs';
+
+// Small local context windows need smaller margins than the library's cloud-sized defaults.
+function compactionFor(contextWindow) {
+  return {
+    reserveTokens: Math.min(16384, Math.floor(contextWindow / 4)),
+    keepRecentTokens: Math.min(20000, Math.floor(contextWindow / 4)),
+    backgroundTokens: Math.floor(contextWindow / 8),
+  };
+}
+
+function answerText(entry) {
+  return (entry?.model ?? [])
+    .flatMap(message => (Array.isArray(message.content) ? message.content : []))
+    .filter(block => block.type === 'text')
+    .map(block => block.text)
+    .join('')
+    .trim();
+}
+
+/**
+ * Opens the Partner over `storage` (a SQLite file path, or a pi-durable Storage for tests).
+ * `hands` carries out the tools; see tools.mjs.
+ */
+export async function openPartner({storage, models, model, thinking = 'off', hands}) {
+  const extension = navigatorExtension(hands);
+  const registry = createRegistry();
+  registry.install(extension);
+  const opened = typeof storage === 'string' ? await openNodeSqliteStorage(storage) : storage;
+  const harness = await Harness.open(opened, {
+    models,
+    registry,
+    identity: {attribution: null},
+    settings: {extensions: [extension], compaction: compactionFor(model.contextWindow), afterFailedRun: 'continue'},
+  }, C);
+  harness.resume();
+
+  return {
+    async createConversation() {
+      const agent = {model: {provider: model.provider, modelId: model.id}, thinkingLevel: thinking};
+      const conversation = await harness.createConversation({ownership: {kind: 'ownerless'}, agent}, C);
+      return conversation.id;
+    },
+
+    /** Sends one input and resolves with the Partner's final text (tool calls happen on the way). */
+    async ask(conversationId, content) {
+      const conversation = await harness.conversation(conversationId, C);
+      if (!conversation) throw new Error(`No conversation ${conversationId}`);
+      const settled = await (await conversation.submit({type: 'input', content}, C)).wait(C);
+      if (settled.status !== 'done') throw new Error(`The Partner did not answer (${settled.reason}${settled.detail ? `: ${settled.detail}` : ''})`);
+      const page = await conversation.entries({maxEntryId: settled.answer}, 1, undefined, C);
+      return answerText(page.items[0]);
+    },
+
+    close: () => harness.close(C),
+  };
+}

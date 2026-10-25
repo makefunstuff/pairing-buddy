@@ -1,0 +1,262 @@
+-- pairing-buddy for Neovim: sends what you do to the pair daemon and shows what Pair points at.
+-- Pair never edits or saves a buffer: the daemon can only ask this plugin to highlight, open or read.
+local M = {}
+
+local ns = vim.api.nvim_create_namespace('pair')
+local config = {socket = nil, debounce_ms = 2000, max_points = 5}
+local state = {channel = nil, partial = '', attached = {}, pending = {}, points = {}, open_request = nil, level = nil}
+
+local function default_socket()
+  if vim.env.PAIR_SOCKET then return vim.env.PAIR_SOCKET end
+  if vim.env.XDG_RUNTIME_DIR then return vim.env.XDG_RUNTIME_DIR .. '/pairing-buddy.sock' end
+  return '/tmp/pairing-buddy-' .. vim.uv.getuid() .. '.sock'
+end
+
+local function now_ms()
+  return math.floor(vim.uv.now())
+end
+
+local function send(message)
+  if not state.channel then return end
+  pcall(vim.fn.chansend, state.channel, vim.json.encode(message) .. '\n')
+end
+
+local function event(fields)
+  send({type = 'event', event = fields})
+end
+
+local function project_path(buf)
+  local name = vim.api.nvim_buf_get_name(buf)
+  if name == '' or vim.bo[buf].buftype ~= '' then return nil end
+  return vim.fn.fnamemodify(name, ':p') -- the daemon makes it relative to the project root
+end
+
+-- Edits: collected per buffer, sent once typing has paused for debounce_ms.
+
+local function flush(buf)
+  local pending = state.pending[buf]
+  state.pending[buf] = nil
+  local file = vim.api.nvim_buf_is_valid(buf) and project_path(buf)
+  if not pending or not file then return end
+  local last = math.min(pending.to, vim.api.nvim_buf_line_count(buf))
+  local lines = vim.api.nvim_buf_get_lines(buf, pending.from - 1, math.min(last, pending.from + 39), false)
+  event({kind = 'edit', file = file, from = pending.from, to = last, text = table.concat(lines, '\n')})
+  local cursor = vim.api.nvim_win_get_cursor(0)
+  event({kind = 'cursor', file = file, line = cursor[1], col = cursor[2]})
+end
+
+local typing_sent = 0
+local function on_lines(_, buf, _, first, _, new_last)
+  local pending = state.pending[buf] or {from = first + 1, to = new_last}
+  pending.from = math.min(pending.from, first + 1)
+  pending.to = math.max(pending.to, new_last)
+  pending.timer = pending.timer or vim.uv.new_timer()
+  state.pending[buf] = pending
+  pending.timer:start(config.debounce_ms, 0, vim.schedule_wrap(function()
+    pending.timer:close()
+    flush(buf)
+  end))
+  -- A cheap "still typing" signal, at most every half second, so Pair never interrupts mid-thought.
+  if now_ms() - typing_sent > 500 then
+    typing_sent = now_ms()
+    vim.schedule(function() event({kind = 'typing'}) end)
+  end
+end
+
+local function attach(buf)
+  if state.attached[buf] or not project_path(buf) then return end
+  state.attached[buf] = true
+  vim.api.nvim_buf_attach(buf, false, {
+    on_lines = on_lines,
+    on_detach = function() state.attached[buf] = nil end,
+  })
+end
+
+local function send_diagnostics(buf)
+  local file = project_path(buf)
+  if not file then return end
+  local items = {}
+  for _, d in ipairs(vim.diagnostic.get(buf, {severity = {min = vim.diagnostic.severity.WARN}})) do
+    table.insert(items, {
+      line = d.lnum + 1,
+      severity = d.severity == vim.diagnostic.severity.ERROR and 'error' or 'warning',
+      message = d.message:gsub('\n.*', ''),
+    })
+  end
+  event({kind = 'diagnostics', file = file, items = items})
+end
+
+local function send_cursor()
+  local file = project_path(0)
+  if not file then return end
+  local cursor = vim.api.nvim_win_get_cursor(0)
+  local message = {kind = 'cursor', file = file, line = cursor[1], col = cursor[2]}
+  local mode = vim.fn.mode()
+  if mode == 'v' or mode == 'V' then
+    local from, to = vim.fn.line('v'), cursor[1]
+    message.selection = {from = math.min(from, to), to = math.max(from, to)}
+  end
+  event(message)
+end
+
+-- What the daemon asks for.
+
+local function clear_points()
+  for _, point in ipairs(state.points) do
+    if vim.api.nvim_buf_is_valid(point.buf) then pcall(vim.api.nvim_buf_del_extmark, point.buf, ns, point.id) end
+  end
+  state.points = {}
+end
+
+local function point(message)
+  local buf = vim.fn.bufadd(message.file)
+  vim.fn.bufload(buf)
+  local count = vim.api.nvim_buf_line_count(buf)
+  local line = math.min(message.line, count) - 1
+  local end_line = math.min(message.endLine or message.line, count) - 1
+  local id = vim.api.nvim_buf_set_extmark(buf, ns, line, 0, {
+    end_row = end_line,
+    end_col = #vim.api.nvim_buf_get_lines(buf, end_line, end_line + 1, false)[1],
+    hl_group = 'PairPoint',
+    virt_text = {{'  ◆ ' .. message.note, 'PairNote'}},
+    virt_text_pos = 'eol',
+  })
+  table.insert(state.points, {buf = buf, id = id})
+  while #state.points > config.max_points do
+    local old = table.remove(state.points, 1)
+    pcall(vim.api.nvim_buf_del_extmark, old.buf, ns, old.id)
+  end
+end
+
+local function open_split(file, line)
+  local window = vim.api.nvim_get_current_win()
+  vim.cmd('belowright split ' .. vim.fn.fnameescape(file))
+  pcall(vim.api.nvim_win_set_cursor, 0, {line, 0})
+  vim.api.nvim_set_current_win(window) -- the split is for looking; your cursor stays where it was
+end
+
+local function open(message)
+  if message.ask then
+    state.open_request = message
+    vim.notify(('Pair wants to show %s:%d. :Pair open to look'):format(vim.fn.fnamemodify(message.file, ':.'), message.line))
+  else
+    open_split(message.file, message.line)
+  end
+end
+
+local function read(message)
+  local buf = vim.fn.bufnr(message.file)
+  local text = nil
+  if buf ~= -1 and vim.api.nvim_buf_is_loaded(buf) then
+    text = table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), '\n')
+  end
+  send({type = 'reply', id = message.id, result = {text = text}})
+end
+
+local function hello()
+  send({type = 'hello', role = 'editor', cwd = vim.fn.getcwd()})
+end
+
+local handlers = {
+  point = point,
+  open = open,
+  read = read,
+  clear = clear_points,
+  welcome = function(message) state.level = message.level end,
+  message = function(message)
+    if message.sender == 'system' then vim.notify('Pair: ' .. message.text) end
+  end,
+  ended = hello,
+}
+
+local function on_data(_, data)
+  -- Neovim splits channel data on newlines; the last item is the start of the next line.
+  data[1] = state.partial .. data[1]
+  state.partial = table.remove(data)
+  for _, line in ipairs(data) do
+    local ok, message = pcall(vim.json.decode, line)
+    if ok and handlers[message.type] then handlers[message.type](message) end
+  end
+end
+
+function M.connect()
+  if state.channel then return true end
+  local ok, channel = pcall(vim.fn.sockconnect, 'pipe', config.socket or default_socket(), {
+    on_data = vim.schedule_wrap(on_data),
+  })
+  if not ok or channel == 0 then
+    vim.notify('Pair: no daemon at ' .. (config.socket or default_socket()) .. ' (start it with `pair`)', vim.log.levels.WARN)
+    return false
+  end
+  state.channel = channel
+  hello()
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_loaded(buf) then attach(buf) end
+  end
+  return true
+end
+
+function M.disconnect()
+  if state.channel then vim.fn.chanclose(state.channel) end
+  state.channel = nil
+  clear_points()
+end
+
+function M.status()
+  if not state.channel then return '' end
+  return 'Pair: navigator' .. (state.level and (' · ' .. state.level) or '')
+end
+
+local commands = {
+  start = function(arg)
+    if M.connect() and arg ~= '' then send({type = 'goal', text = arg}) end
+  end,
+  goal = function(arg) send({type = 'goal', text = arg}) end,
+  ask = function(arg) send({type = 'ask', text = arg}) end,
+  level = function(arg)
+    state.level = arg
+    send({type = 'level', level = arg})
+  end,
+  ['end'] = function() send({type = 'end'}) end,
+  open = function()
+    if state.open_request then open_split(state.open_request.file, state.open_request.line) end
+    state.open_request = nil
+  end,
+  clear = clear_points,
+  stop = M.disconnect,
+}
+
+function M.command(opts)
+  local name, arg = opts.args:match('^(%S+)%s*(.*)$')
+  local run = commands[name or 'start']
+  if not run then return vim.notify('Pair: unknown command ' .. name, vim.log.levels.ERROR) end
+  run(arg or '')
+end
+
+function M.complete()
+  return vim.tbl_keys(commands)
+end
+
+function M.setup(opts)
+  config = vim.tbl_extend('force', config, opts or {})
+  vim.api.nvim_set_hl(0, 'PairPoint', {default = true, link = 'Visual'})
+  vim.api.nvim_set_hl(0, 'PairNote', {default = true, link = 'DiagnosticVirtualTextInfo'})
+  local group = vim.api.nvim_create_augroup('pair', {clear = true})
+  vim.api.nvim_create_autocmd('BufEnter', {group = group, callback = function(args)
+    if not state.channel then return end
+    attach(args.buf)
+    local file = project_path(args.buf)
+    if file then event({kind = 'enter', file = file}) end
+  end})
+  vim.api.nvim_create_autocmd('CursorHold', {group = group, callback = send_cursor})
+  local diagnostic_timers = {}
+  vim.api.nvim_create_autocmd('DiagnosticChanged', {group = group, callback = function(args)
+    if not state.channel then return end
+    local timer = diagnostic_timers[args.buf] or vim.uv.new_timer()
+    diagnostic_timers[args.buf] = timer
+    timer:start(config.debounce_ms, 0, vim.schedule_wrap(function() send_diagnostics(args.buf) end))
+  end})
+  if config.auto_connect then M.connect() end
+end
+
+return M

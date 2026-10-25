@@ -1,0 +1,4 @@
+node_modules/
+*.local.json
+.env
+test/live/config.json

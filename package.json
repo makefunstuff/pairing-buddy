@@ -1,0 +1,19 @@
+{
+  "name": "pairing-buddy",
+  "version": "0.1.0",
+  "description": "An AI pairing partner for Neovim and herdr that never writes your files",
+  "type": "module",
+  "license": "MIT",
+  "bin": { "pair": "./bin/pair.mjs" },
+  "engines": { "node": ">=22.19.0" },
+  "scripts": {
+    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.mjs",
+    "test:live": "node --disable-warning=ExperimentalWarning --test --test-concurrency=1 test/live/*.test.mjs",
+    "check": "npm test"
+  },
+  "dependencies": {
+    "@earendil-works/chord": "1.4.0",
+    "@earendil-works/pi-ai": "1.4.0",
+    "@earendil-works/pi-durable": "1.4.0"
+  }
+}
