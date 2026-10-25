@@ -1,8 +1,8 @@
 // The Watcher: a small fast model that scores whether a remark is worth interrupting for.
-import {describeState} from './describe.mjs';
+import {describeBriefly} from './describe.mjs';
 
 const SYSTEM = `You help a pair programmer decide when to speak up.
-You get the session state and one thing that just happened.
+You get a short session state and one thing that just happened.
 Score from 0 to 10 how much the programmer would want a short remark about it right now.
 0-3: noise, obvious, or they are already on it. 4-6: maybe useful. 7-10: they will lose time without it.
 Answer with one line of JSON and nothing else: {"score": <0-10>, "reason": "<at most 8 words>"}`;
@@ -27,7 +27,7 @@ export function parseScore(text) {
  */
 export function createWatcher({models, model, now = Date.now, timeoutMs = 10_000}) {
   return async function score(trigger, state) {
-    const prompt = `Session state:\n${describeState(state, now())}\n\nWhat just happened (${trigger.kind}): ${trigger.detail}`;
+    const prompt = `${describeBriefly(state, now())}\n\nWhat just happened (${trigger.kind}): ${trigger.detail}`;
     const message = await models.completeSimple(
       model,
       {systemPrompt: SYSTEM, messages: [{role: 'user', content: prompt, timestamp: now()}]},

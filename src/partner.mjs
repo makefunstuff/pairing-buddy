@@ -19,6 +19,8 @@ function answerText(entry) {
     .filter(block => block.type === 'text')
     .map(block => block.text)
     .join('')
+    // Local servers sometimes pass a malformed tool call through as text; it is not meant for the user.
+    .replace(/<tool_call>[\s\S]*$/, '')
     .trim();
 }
 

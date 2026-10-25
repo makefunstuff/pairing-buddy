@@ -146,9 +146,11 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
   }
 
   async function handle(client, message) {
-    if (message.type === 'hello') return hello(client, message);
+    if (message.type === 'hello') return (client.ready = hello(client, message));
     if (message.type === 'command') return shellCommand(message);
     if (message.type === 'reply') return replies.get(message.id)?.(message.result);
+    // A client may send right after its hello; wait until the hello has found its session.
+    await client.ready;
     const {session} = client;
     if (!session) return sendMessage(client.socket, {type: 'message', sender: 'system', text: 'No active session; send hello first', at: Date.now()});
     if (message.type === 'event') return receive(session, message.event);
@@ -159,7 +161,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
   }
 
   const server = createServer(socket => {
-    const client = {socket, role: null, session: null};
+    const client = {socket, role: null, session: null, ready: Promise.resolve()};
     clients.add(client);
     socket.on('close', () => clients.delete(client));
     socket.on('error', () => {});

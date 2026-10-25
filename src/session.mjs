@@ -9,6 +9,20 @@ import {detectTriggers} from './triggers.mjs';
 
 const SILENT = /^\W*silent\W*$/i;
 
+// What the Partner should check for each kind of trigger. Small models follow an instruction in the
+// message far better than a general rule in the system prompt.
+const CHECKS = {
+  failed_command: 'Find the cause of the failure, point at it and say it in one sentence.',
+  repeated_error: 'The same error came back. Find the cause, point at it and say it in one sentence.',
+  new_code_diagnostic: 'Point at the line and say the fix in a few words.',
+  stall: 'The user seems stuck on this failure. Give one concrete next step.',
+  drift: 'Do not help with the goal itself. Only answer this: are the recently edited files and the branch unrelated to the goal? If they are related, answer SILENT. If not, say in one sentence what drifted.',
+};
+
+export function watchInput(trigger, description) {
+  return `[watch] ${trigger.kind}: ${trigger.detail}\n\nNow:\n${description}\n\n${CHECKS[trigger.kind]} If no remark would help, answer exactly SILENT.`;
+}
+
 const NOTE_REQUEST = `[end] The session is over. Write a short session note in plain text, at most 6 lines:
 the goal, what changed, and loose ends. No tool calls.`;
 
@@ -23,7 +37,8 @@ export class PairSession {
     this.budget = new Budget(record.level);
     this.fired = new Set();
     this.busy = false;
-    this.spoke = false;
+    this.spoke = false; // anything reached the user this turn
+    this.said = false; // the say tool was used this turn
   }
 
   get id() { return this.record.id; }
@@ -49,7 +64,7 @@ export class PairSession {
   }
 
   async remark(trigger) {
-    const spoke = await this.talk(`[watch] ${trigger.kind}: ${trigger.detail}\n\nNow:\n${describeState(this.state, this.now())}`);
+    const spoke = await this.talk(watchInput(trigger, describeState(this.state, this.now())));
     if (spoke) this.budget.spend(this.now());
   }
 
@@ -65,9 +80,14 @@ export class PairSession {
   async talk(input) {
     this.busy = true;
     this.spoke = false;
+    this.said = false;
     try {
       const answer = await this.partner.ask(this.conversationId, input);
-      if (answer && !SILENT.test(answer)) this.say(answer);
+      // After a say, local models tend to end with filler or a repeat; the say already was the answer.
+      if (answer && !SILENT.test(answer) && !this.said) {
+        this.message('pair', answer);
+        this.spoke = true;
+      }
     } catch (error) {
       this.message('system', `Pair could not answer: ${error.message}`);
     } finally {
@@ -111,6 +131,7 @@ export class PairSession {
 
   say(text) {
     this.spoke = true;
+    this.said = true;
     this.message('pair', text);
     return 'shown';
   }

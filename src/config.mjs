@@ -29,6 +29,7 @@ export function modelConfig(role, entry) {
     baseUrl: entry.api === 'anthropic' ? 'https://api.anthropic.com' : undefined,
     contextWindow: 32768,
     maxTokens: role === 'watcher' ? 200 : 2048,
+    reasoning: false,
     thinking: 'off',
     ...entry,
   };

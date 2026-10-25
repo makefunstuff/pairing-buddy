@@ -15,7 +15,8 @@ function modelOf(providerId, entry) {
     api: anthropic ? 'anthropic-messages' : 'openai-completions',
     provider: providerId,
     baseUrl: entry.baseUrl,
-    reasoning: entry.thinking !== 'off',
+    // A model that thinks by default must be marked `reasoning`, or pi-ai cannot switch its thinking off.
+    reasoning: entry.reasoning,
     input: ['text'],
     cost: {input: 0, output: 0, cacheRead: 0, cacheWrite: 0},
     contextWindow: entry.contextWindow,
