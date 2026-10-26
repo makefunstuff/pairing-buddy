@@ -100,7 +100,7 @@ Scout runs commands only when you ask: for a remark nobody asked for, it may rea
 - Neovim 0.11 or newer
 - [herdr](https://herdr.dev) for the chat pane, terminal watching and Scout's pane (Pair also works without it, with the chat in any terminal, as Navigator only)
 - For Scout: `bash` and [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg`)
-- Two models with an OpenAI-compatible or Anthropic API: any OpenAI-compatible local server (for example llama.cpp or Ollama), or a cloud provider. One model can serve both roles.
+- A model with an OpenAI-compatible or Anthropic API, on any OpenAI-compatible local server (for example llama.cpp or Ollama) or a cloud provider: [one model](#one-model) for both roles, or one for each.
 
 ## Install
 
@@ -143,6 +143,15 @@ Pair reads one file: `~/.config/pairing-buddy/config.json` (or the path in `$PAI
 ```jsonc
 {
   "level": "normal",
+  // One model for both roles (see "One model" below)
+  "model": {"api": "openai", "baseUrl": "http://localhost:8080/v1", "model": "your-model", "contextWindow": 32768}
+}
+```
+
+Or a model for each role, in place of `model`; `"watcher": "same as partner"` is the same as one `model`:
+
+```jsonc
+{
   "models": {
     // The Watcher scores every candidate remark with one number: it must be fast
     "watcher": {"api": "openai", "baseUrl": "http://localhost:8080/v1", "model": "your-small-model"},
@@ -159,8 +168,8 @@ Each model entry:
 | `baseUrl` | The server's base URL, usually ending in `/v1`. Required for `openai`; `anthropic` defaults to the Anthropic API |
 | `model` | The model id the server expects |
 | `apiKey`, `apiKeyFile`, `apiKeyEnv` | Where the key comes from: inline, a file, or an environment variable. A local server without a key needs none. The service does not see your shell's variables: with `apiKeyEnv`, add it with `systemctl --user edit pairing-buddy` (`[Service]` and `Environment=NAME=value`), or use `apiKeyFile` |
-| `contextWindow` | Tokens the server serves for this model (default 32768); Pair compacts the conversation before it fills up |
-| `maxTokens` | The Partner's longest answer, its thinking included (default 2048 plus room for its most thinking: 10240 with the default levels); the Watcher always answers with one number |
+| `contextWindow` | Tokens the server serves for this model (default 32768, at least 16384 for the Partner); Pair compacts the conversation before it crowds out the reply |
+| `maxTokens` | The Partner's longest answer, its thinking included (default 2048 plus room for its most thinking: 10240 with the default levels, and at most a third of `contextWindow`); the Watcher always answers with one number |
 | `reasoning` | Whether Pair sets the model's thinking. The Partner's default is `true`, so it thinks as `thinking` says; set `false` for a model that cannot think. The Watcher's default is `false`: set `true` for a model that thinks by default, so Pair can switch its thinking off |
 | `thinking` | The Partner only: how much it thinks, `off`, `minimal`, `low`, `medium`, `high` or `xhigh`. One level for every turn, or levels by kind of turn: `navigator` (answers to your questions), `scout`, `driver` and `remark` (what it says unasked). Default `{"navigator": "medium", "scout": "medium", "driver": "medium", "remark": "low"}`. On an OpenAI-compatible server a level is sent only with `compat.supportsReasoningEffort` or `compat.thinkingTokenBudgetField`; without them it only switches thinking on |
 | `samplingParams` | Extra sampling fields sent with each request to an OpenAI-compatible server, for example `{"temperature": 0.3}` when the server's default is high |
@@ -177,9 +186,37 @@ Other settings: `level` (`quiet`, `normal` or `chatty`), `autoTune` (your feedba
 Tips for local models:
 
 - The Watcher runs on every candidate remark and should answer in under a second: it gets a few lines (under 200 tokens) and answers with one number, so a mid-sized model is fast enough on a fast server. A server with a high fixed cost per request may still take close to a second; `pair doctor` shows the time. Keep `reasoning: true` for models that think by default, so thinking gets switched off.
-- A server that keeps only one model loaded at a time (llama.cpp's router mode, for example) reloads on every switch between two models. There, give both roles the same model. With two models on such a server, the Watcher uses the Partner's model while only that one is loaded, if the server says which models are loaded; otherwise it swaps on every remark.
+- A server that keeps only one model loaded at a time (llama.cpp's router mode, for example) reloads on every switch between two models. There, use [one model](#one-model) for both roles. With two models on such a server, the Watcher uses the Partner's model while only that one is loaded, if the server says which models are loaded; otherwise it swaps on every remark.
 - If the server's default temperature is high, give the Partner `"samplingParams": {"temperature": 0.3}`: its yes-or-no calls (speak or stay SILENT) get much steadier. The Watcher always runs at temperature 0.
 - The prompts and tools are deliberately simple (five tools as Navigator, seven as Scout, nine as Driver, flat arguments, one instruction per message), so mid-sized local models handle them. The command policy, the limit of four commands per question and the one edit per hand-over are in code, so a model that loops or asks for too much cannot do harm. A model that has a thinking switch in its chat template needs `compat.thinkingFormat` on an OpenAI-compatible server, or Pair cannot set it; that switch is only on or off, unless the server also takes a level (`supportsReasoningEffort`, `thinkingTokenBudgetField`). `pair doctor` says when the Partner answers without thinking, when its levels are only on or off, and when the Watcher thinks anyway.
+
+## One model
+
+One model can serve both roles, for example the one model a local server has room for. Set `model` in place of
+`models` (or `"watcher": "same as partner"`). Pair asks it in two ways:
+
+- **As the Watcher**, without thinking, at temperature 0, for at most 8 tokens: one number. The entry's `thinking`
+  and `samplingParams` are the Partner's only.
+- **As the Partner**, with thinking at the levels of `thinking`, as with a Partner of its own.
+
+The server never switches models, so it never reloads. Many local servers answer one request at a time, so when both
+roles share a server (one model, or two models on one `baseUrl`), Pair puts the requests in order:
+
+- **The Watcher waits while the Partner works.** A score never queues behind a long answer that thinks: the moment is
+  looked at again once the answer is done, and then scored at once. A remark nobody asked for can wait.
+- **Your question goes first.** A question, a hand-over or `/end` cancels the Watcher's score and the unasked remark
+  still being written, in every project. A remark that showed nothing yet is dropped, and a cancel never counts as
+  the model failing.
+- **No work behind your back.** The conversation is compacted only between turns, never alongside them, and
+  keep-warm pings pause while the Partner works (it keeps the model loaded anyway).
+- **It fits the context.** The Partner's reply (thinking and answer) takes at most a third of `contextWindow`, and
+  compaction keeps that room free; the session note it carries is at most 1200 characters. Below 16384 tokens Pair
+  refuses the config. Below 32768, or when the reply has less room than its thinking level wants, `pair doctor`
+  warns.
+
+`pair doctor` shows a `roles` line for it, with how many scores the Watcher made, how long they took, and what your
+questions cancelled since the daemon started. `pair stats` shows how many remarks waited for the model, and for how
+long, next to how they turned out.
 
 ## Tests on save
 
@@ -301,6 +338,9 @@ Other commands: `pair stats` shows how often Pair spoke unasked and what you mad
 | neovim | How many Neovims are connected, in which projects |
 | herdr | herdr answers on its socket (only checked when run inside herdr) |
 | watcher, partner | The server answers and lists the model, one short completion works, and how long it took (about 1 s is the aim for the Watcher). One line, `models`, when both use the same model |
+| thinking | The Partner thinks when asked to, and its levels reach the server |
+| roles | When both roles share a server: how [one model](#one-model) serves both, and how the Watcher fared since the daemon started |
+| context | The Partner's reply has the room its thinking needs, and the window is not so small that compaction comes every few turns |
 
 It exits with 1 when a check fails, so scripts can use it too.
 
@@ -343,7 +383,7 @@ Everything lives in the data directory (default `~/.local/state/pairing-buddy`, 
 npm test
 ```
 
-runs the model-free tests: event folding, triggers, the budget and speak gate, the tool policy per role (including with file-writing tools installed by mistake, and an edit after the wheel was taken back), the command policy, the test-output parsers (on real output of each runner), Pair's pane and role switching against a fake herdr, hand-over and take-back, `type` (only after a yes, only into your terminal pane, never Enter), the daemon end to end with scripted models, the Neovim plugin in a headless Neovim (suggestions accepted and ignored and struck from their first character, a Driver edit undone with one `u` and never saved, a key taking the wheel back, the hand-over end to end: the edit typed as ghost text with only whole lines ever in the buffer, the tests run on a copy of the project with the buffer's text, the hand-back line with `✓` and `u undoes it`, and a key halfway leaving no change and doing nothing else, the wrong turn end to end: Pair's words under your line, `Alt-j` to the cause, your next edit counting as seen; tests on save end to end: the spinner, the failing test named, signs on the test functions and the failure after its line, `Alt-j` to Pair's suggestion and `Alt-y`, and the passing run; a note moving under its line when the window narrows, and a question about selected lines), and the bash hook. Also the install and daily use: the config with comments and the first run's example, the systemd unit, `pair doctor` against a fake model server (fast, slow, dead, a wrong model name), model health (one notice, no remarks while down, back after a probe), several projects and Neovims at once, and Neovim and the chat pane reconnecting after a daemon restart. And memory and feedback: the note the next session starts from (in the chat and the Partner's instructions, per project, never a failed note), remarks stored with their verdicts (`+`, `Alt-n`, an accepted suggestion), ignored remarks counting as noise and seen ones as neither, the tuning and its bounds, active time, and `pair stats`. And the Watcher's speed: the prefilter's rules, the one-number answer, drift checked once per file, keep-warm, and the Watcher following the model a one-model server has loaded. And the wrong turn's trigger: raised once per red run and file, never for the code the failure names, its test, notes, or a run that passed since. And tests on save: the JSON reports of go test (subtests, panics, build failures), jest and vitest, each test placed at its line, runs in Pair's pane one at a time, and the regression trigger raised once per run with new failures. And the tests on unsaved text: a real `go test -overlay` passing on the buffer's fix while the file on disk fails, a copy of the project for other runners (git's files and ignored files copied, dependency folders linked at any depth without their caches, builds into ignored folders staying in the copy, a file in a dependency folder refused), and the Driver hearing the result.
+runs the model-free tests: event folding, triggers, the budget and speak gate, the tool policy per role (including with file-writing tools installed by mistake, and an edit after the wheel was taken back), the command policy, the test-output parsers (on real output of each runner), Pair's pane and role switching against a fake herdr, hand-over and take-back, `type` (only after a yes, only into your terminal pane, never Enter), the daemon end to end with scripted models, the Neovim plugin in a headless Neovim (suggestions accepted and ignored and struck from their first character, a Driver edit undone with one `u` and never saved, a key taking the wheel back, the hand-over end to end: the edit typed as ghost text with only whole lines ever in the buffer, the tests run on a copy of the project with the buffer's text, the hand-back line with `✓` and `u undoes it`, and a key halfway leaving no change and doing nothing else, the wrong turn end to end: Pair's words under your line, `Alt-j` to the cause, your next edit counting as seen; tests on save end to end: the spinner, the failing test named, signs on the test functions and the failure after its line, `Alt-j` to Pair's suggestion and `Alt-y`, and the passing run; a note moving under its line when the window narrows, and a question about selected lines), and the bash hook. Also the install and daily use: the config with comments and the first run's example, the systemd unit, `pair doctor` against a fake model server (fast, slow, dead, a wrong model name), model health (one notice, no remarks while down, back after a probe), several projects and Neovims at once, and Neovim and the chat pane reconnecting after a daemon restart. And memory and feedback: the note the next session starts from (in the chat and the Partner's instructions, per project, never a failed note), remarks stored with their verdicts (`+`, `Alt-n`, an accepted suggestion), ignored remarks counting as noise and seen ones as neither, the tuning and its bounds, active time, and `pair stats`. And the Watcher's speed: the prefilter's rules, the one-number answer, drift checked once per file, keep-warm, and the Watcher following the model a one-model server has loaded. And the wrong turn's trigger: raised once per red run and file, never for the code the failure names, its test, notes, or a run that passed since. And tests on save: the JSON reports of go test (subtests, panics, build failures), jest and vitest, each test placed at its line, runs in Pair's pane one at a time, and the regression trigger raised once per run with new failures. And the tests on unsaved text: a real `go test -overlay` passing on the buffer's fix while the file on disk fails, a copy of the project for other runners (git's files and ignored files copied, dependency folders linked at any depth without their caches, builds into ignored folders staying in the copy, a file in a dependency folder refused), and the Driver hearing the result. And [one model](#one-model): each role's request to it (no thinking and 8 tokens for the Watcher, thinking for the Partner), the Watcher waiting while the Partner works in another project and its remark saying how long it waited, a question cancelling the remark still being written (dropped, and no failure of the model), and the context budget: the reply's room, compaction, and the instructions, tools and longest note fitting the smallest window.
 
 ```sh
 PAIR_LIVE_CONFIG=/path/to/stacks.json npm run test:live
@@ -354,6 +394,8 @@ runs the same decisions against real models: Watcher scores for worth-it and noi
 ```json
 {"stacks": [{"name": "local", "watcher": {"api": "openai", "baseUrl": "http://localhost:8080/v1", "model": "your-small-model"}, "partner": {"api": "openai", "baseUrl": "http://localhost:8080/v1", "model": "your-larger-model"}}]}
 ```
+
+A stack with `"model"` in place of `watcher` and `partner` runs every test with one model in both roles, and also `test/live/one-model.test.mjs`: the daemon end to end behind a local proxy that lets one request through at a time, as many local servers do. It checks that a question cancels the remark still being written and is answered, and that while the Partner answers in one project the Watcher of another waits instead of queueing behind it; it prints when each request queued and ran.
 
 Without `PAIR_LIVE_CONFIG` (or a gitignored `test/live/config.json`) the live tests are skipped. The Anthropic path has a test of its own, run when `ANTHROPIC_API_KEY` and `PAIR_LIVE_ANTHROPIC_MODEL` are set: the cloud model answers the probe as both roles, scores a repeated failure above the bar, and answers a short question as Partner.
 

@@ -20,7 +20,7 @@ import {client} from './daemon-client.mjs';
 const LONG = Array(60).fill('word').join(' '); // streams for about three seconds
 
 test('one model, two ways of asking: the Watcher without thinking for 8 tokens at temperature 0, the Partner with thinking', async () => {
-  const config = parseConfig({model: {api: 'openai', baseUrl: 'http://box/v1', model: 'm', compat: {thinkingFormat: 'deepseek', supportsReasoningEffort: true}}});
+  const config = parseConfig({model: {api: 'openai', baseUrl: 'http://box/v1', model: 'm', compat: {thinkingFormat: 'zai', supportsReasoningEffort: true}}});
   const pairModels = createPairModels(config);
   const bodies = [];
   const fetch = async (_url, init) => { bodies.push(JSON.parse(init.body)); throw new Error('not sent'); };
@@ -31,7 +31,7 @@ test('one model, two ways of asking: the Watcher without thinking for 8 tokens a
   const [watcher, partner] = bodies;
   assert.equal(watcher.model, partner.model, 'one model: the server never switches');
   assert.deepEqual([watcher.max_tokens, watcher.temperature, watcher.thinking, watcher.reasoning_effort], [8, 0, {type: 'disabled'}, undefined]);
-  assert.deepEqual([partner.max_tokens, partner.thinking, partner.reasoning_effort], [10240, {type: 'enabled'}, 'medium']);
+  assert.deepEqual([partner.max_tokens, partner.thinking?.type, partner.reasoning_effort], [10240, 'enabled', 'medium']);
 });
 
 test('a cancelled turn resolves null, and the conversation answers the next input as usual', async () => {
