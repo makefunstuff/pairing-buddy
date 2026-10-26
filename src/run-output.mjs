@@ -15,27 +15,37 @@ const SIGNAL_NAMES = {
   SIGILL: 'Illegal instruction', SIGTRAP: 'Trace/breakpoint trap', SIGABRT: 'Aborted', SIGBUS: 'Bus error',
   SIGFPE: 'Floating point exception', SIGSEGV: 'Segmentation fault',
 };
-// How bash, zsh and make say a program died of a signal, lowercased.
+// How bash and make (bash's words) and zsh (its own, lowercased) say a program died of a signal.
 const SIGNAL_WORDS = {
-  'segmentation fault': 'SIGSEGV', 'aborted': 'SIGABRT', 'abort': 'SIGABRT', 'bus error': 'SIGBUS',
-  'floating point exception': 'SIGFPE', 'illegal instruction': 'SIGILL', 'illegal hardware instruction': 'SIGILL',
-  'trace/breakpoint trap': 'SIGTRAP', 'trace trap': 'SIGTRAP',
+  'Segmentation fault': 'SIGSEGV', 'Aborted': 'SIGABRT', 'Bus error': 'SIGBUS', 'Floating point exception': 'SIGFPE',
+  'Illegal instruction': 'SIGILL', 'Trace/breakpoint trap': 'SIGTRAP',
+  'segmentation fault': 'SIGSEGV', 'abort': 'SIGABRT', 'bus error': 'SIGBUS', 'floating point exception': 'SIGFPE',
+  'illegal hardware instruction': 'SIGILL', 'trace trap': 'SIGTRAP',
 };
-const WORDS = Object.keys(SIGNAL_WORDS).map(word => word.replace('/', '\\/')).join('|');
-// "Segmentation fault (core dumped)" alone (bash at the prompt), "zsh: abort (core dumped)  ./probe", bash in a
-// script ("bash: line 1: 4242 Segmentation fault  (core dumped) ./probe"), make ("make: *** [Makefile:2: run]
-// Segmentation fault (core dumped)") and Zig's "Segmentation fault at address 0x0".
-const SIGNAL_LINE = new RegExp(String.raw`^(?:\S*sh: |.*: line \d+: +\d+ |make(?:\[\d+\])?: \*\*\* \[.*\] )?(${WORDS})(?: +\(core dumped\))?(?: at address \S+)?(?:\s*$|\s{2,}|\s+\S+$)`, 'i');
+const words = names => names.map(word => word.replace('/', '\\/')).join('|');
+const BASH = words(Object.keys(SIGNAL_WORDS).filter(word => /^[A-Z]/.test(word)));
+const ZSH = words(Object.keys(SIGNAL_WORDS).filter(word => /^[a-z]/.test(word)));
+const CORE = String.raw`(?: +\(core dumped\))?`;
+// Only whole lines in the form each prints, so a program's own "Aborted transaction" is no crash.
+const SIGNAL_LINES = [
+  new RegExp(`^(${BASH})${CORE}$`), // bash at the prompt: "Segmentation fault (core dumped)"
+  new RegExp(String.raw`^.*: line \d+: +\d+ (${BASH})${CORE}(?: .*)?$`), // bash in a script: "bash: line 1: 4242 Segmentation fault  (core dumped) ./probe"
+  new RegExp(String.raw`^make(?:\[\d+\])?: \*\*\* \[.*\] (${BASH})${CORE}$`), // "make: *** [Makefile:2: run] Segmentation fault (core dumped)"
+  new RegExp(String.raw`^\S*zsh: (${ZSH})${CORE}(?:\s{2,}.*)?$`), // "zsh: abort (core dumped)  ./probe"
+  /^(Segmentation fault) at address \S+$/, // Zig
+];
 // make's "Error 139" when the shell it started ended with the program's signal.
 const MAKE_ERROR = /^make(?:\[\d+\])?: \*\*\* \[.*\] Error (\d+)$/;
 
 /** The signal of exit code `exit` (128 + its number, as shells give it), if it is one a program crashes of. */
 export const exitSignal = exit => (Number.isInteger(exit) && exit > 128 ? SIGNALS[exit - 128] ?? null : null);
 
+/** The signal a run died of. A run known to have ended with exit 0 died of none, whatever it printed. */
 function signalOf(lines, exit) {
+  if (exit === 0) return null;
   for (const line of lines) {
-    const word = SIGNAL_LINE.exec(line.trim())?.[1];
-    if (word) return SIGNAL_WORDS[word.toLowerCase()];
+    const word = SIGNAL_LINES.map(pattern => pattern.exec(line.trim())?.[1]).find(Boolean);
+    if (word) return SIGNAL_WORDS[word];
     const made = MAKE_ERROR.exec(line.trim());
     if (made && exitSignal(Number(made[1]))) return exitSignal(Number(made[1]));
   }
@@ -81,24 +91,25 @@ const REPORTS = [
  * there is a report, else the signal's name. `frames` are the places of its first stack, innermost first, as
  * printed; a blank line ends it (a sanitizer's next stack is where the memory was allocated or freed).
  */
-function crashOf(lines, exit) {
-  const signal = signalOf(lines, exit);
+function crashOf(entries, exit) {
+  const signal = signalOf(entries.map(entry => entry.text), exit);
   let report = null;
   const frames = [];
   let stackDone = false;
-  for (const line of lines) {
+  for (const {text: line, dir} of entries) {
     if (!line.trim() && frames.length) stackDone = true;
     if (!report) {
       for (const {pattern, read} of REPORTS) {
         const match = pattern.exec(line.trimEnd());
         if (match) {
           report = read(match);
-          if (report.place) frames.push(report.place);
+          if (report.place) frames.push({...report.place, dir});
           break;
         }
       }
     }
-    const frame = !stackDone && frameOf(line);
+    const found = !stackDone && frameOf(line);
+    const frame = found && {...found, dir};
     if (frame && !frames.some(other => other.file === frame.file && other.line === frame.line)) frames.push(frame);
   }
   if (!signal && !report) return null;
@@ -112,30 +123,45 @@ const DIAGNOSTICS = [
   /^(\S+\.odin)\((\d+):(\d+)\) (Error|Warning|Syntax Error|Syntax Warning): (.+)$/, // odin
   /^\((\S+?):(\d+):(\d+)\) (Error|Warning): (.+)$/, // c3c
 ];
-// The linker names no line, only what is missing: "/usr/bin/ld: cannot find -lm", "link.c:(.text+0x5): undefined reference to `foo'".
-const LINKER = /^(?:(?:\S*\/)?(?:ld|ld\.\w+|lld): (?:error: )?|[^\s:]+:\(\.[\w.]+\+0x[0-9a-f]+\): )(.*(?:undefined reference|cannot find|multiple definition).*)$/;
+// The linker names no line, only what is missing: "/usr/bin/ld: cannot find -lm", "link.c:(.text+0x5): undefined
+// reference to `foo'", and lld's "ld.lld: error: undefined symbol: foo".
+const LINKER = /^(?:(?:\S*\/)?(?:ld|ld\.\w+|lld): (?:error: )?|[^\s:]+:\(\.[\w.]+\+0x[0-9a-f]+\): )(.*(?:undefined reference|undefined symbol|cannot find|multiple definition|duplicate symbol).*)$/;
 
-function diagnosticsOf(lines) {
+function diagnosticsOf(entries) {
   const found = [];
   const seen = new Set();
-  for (const line of lines) {
+  for (const {text: line, dir} of entries) {
     const text = line.trimEnd();
     let diagnostic = null;
     for (const pattern of DIAGNOSTICS) {
       const match = pattern.exec(text);
       if (!match) continue;
       const [, file, at, col, severity, message] = match;
-      diagnostic = {file, line: Number(at), col: col ? Number(col) : null, severity: /warning/i.test(severity) ? 'warning' : 'error', message: message.trim()};
+      diagnostic = {file, line: Number(at), col: col ? Number(col) : null, severity: /warning/i.test(severity) ? 'warning' : 'error', message: message.trim(), dir};
       break;
     }
     const linker = !diagnostic && LINKER.exec(text);
-    if (linker) diagnostic = {file: null, line: null, col: null, severity: 'error', message: linker[1].trim()};
-    const key = diagnostic && `${diagnostic.file}:${diagnostic.line}:${diagnostic.message}`;
+    if (linker) diagnostic = {file: null, line: null, col: null, severity: 'error', message: linker[1].trim(), dir};
+    const key = diagnostic && `${diagnostic.dir}/${diagnostic.file}:${diagnostic.line}:${diagnostic.message}`;
     if (!diagnostic || seen.has(key)) continue; // make -j and headers included twice print the same one again
     seen.add(key);
     found.push(diagnostic);
   }
   return found.slice(0, MAX_DIAGNOSTICS);
+}
+
+// make, before and after it runs in another folder (`make -C src`, a sub-make): its compilers name files from there.
+const MAKE_DIRECTORY = /^\S*make(?:\[\d+\])?: (Entering|Leaving) directory ['‘`](.+)['’]$/;
+
+/** Each line with the folder make said it works in for it, or null outside any. */
+function withDirectories(lines) {
+  const stack = [];
+  return lines.map(text => {
+    const move = MAKE_DIRECTORY.exec(text.trim());
+    if (move?.[1] === 'Entering') stack.push(move[2]);
+    if (move?.[1] === 'Leaving') stack.pop();
+    return {text, dir: stack.at(-1) ?? null};
+  });
 }
 
 /**
@@ -144,17 +170,17 @@ function diagnosticsOf(lines) {
  * libc's or the runtime's. `errors` and `warnings` are the compiler's, each `{file, line, col, severity, message}`,
  * with a null file and line for the linker's. `exit` is the run's exit code, when known. With the project's
  * `root`, and the `cwd` the run started in (by default the root), files in the project are given relative to its
- * root and others as absolute paths; without, as printed.
+ * root and others as absolute paths; without, as printed. A file make named from another folder is taken from there.
  */
 export function readRun(output = '', {exit = null, root = null, cwd = root} = {}) {
-  const lines = output.replace(/\x1b\[[0-9;]*m/g, '').split('\n');
-  const inRoot = item => {
+  const entries = withDirectories(output.replace(/\x1b\[[0-9;]*m/g, '').split('\n'));
+  const inRoot = ({dir, ...item}) => {
     if (!root || !item.file) return item;
-    const path = resolve(cwd ?? root, item.file);
+    const path = resolve(cwd ?? root, dir ?? '.', item.file);
     return {...item, file: path.startsWith(root + sep) ? relative(root, path) : path};
   };
-  const diagnostics = diagnosticsOf(lines).map(inRoot);
-  const crash = crashOf(lines, exit);
+  const diagnostics = diagnosticsOf(entries).map(inRoot);
+  const crash = crashOf(entries, exit);
   const frames = crash?.frames.map(inRoot);
   return {
     crash: crash && {...crash, frames, at: frames.find(frame => !isAbsolute(frame.file) && !frame.file.startsWith('../')) ?? null},

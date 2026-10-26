@@ -3,7 +3,7 @@
 import {hasNews, readingSummary, readRun, warningKey} from './run-output.mjs';
 import {namedFiles, parseTestOutput, testSummary} from './test-output.mjs';
 
-const KEEP = {edits: 20, commands: 10, outputChars: 2000, diagnostics: 30, buildCommands: 20, warnings: 200};
+const KEEP = {edits: 20, commands: 10, outputChars: 2000, diagnostics: 30, buildCommands: 20, warnings: 200, edited: 200};
 
 export function initialState({root = null, goal = null} = {}) {
   return {
@@ -25,6 +25,7 @@ export function initialState({root = null, goal = null} = {}) {
     savedRunFailed: null, // the tests that failed in the last run on save; null before the session's first
     run: null, // the last build or run that crashed or printed compiler errors or warnings, or ran clean after one: see afterRun
     builds: {cmds: [], warnings: []}, // the commands run so far, and the warnings their output printed (warningKey)
+    edited: [], // the files the user edited in this session
   };
 }
 
@@ -76,13 +77,16 @@ function testsAfter(state, tests, event, by) {
 /**
  * The state after a build or run of `cmd` that run-output.mjs read. It becomes the state's `run` when it found
  * something, or when it is the command of the last such run, which now ran clean. Its `newWarnings` are the
- * warnings no output since the session began printed; the first run of each command is its baseline, so
- * warnings already there when the session starts are never new.
+ * warnings in files the user edited in this session that no output since the session began printed. The first
+ * run of each command is its baseline, so warnings already there when the session starts are never new; nor is
+ * a warning in a file the user did not touch, which an incremental build prints only when it compiles that file
+ * again (after a header changed, say).
  */
 function afterRun(state, {cmd, by, at, reading}) {
-  const {builds} = state;
+  const {builds, edited} = state;
   const known = builds.cmds.includes(cmd);
-  const newWarnings = known ? reading.warnings.filter(warning => !builds.warnings.includes(warningKey(warning))) : [];
+  const fresh = warning => edited.includes(warning.file) && !builds.warnings.includes(warningKey(warning));
+  const newWarnings = known ? reading.warnings.filter(fresh) : [];
   const next = {
     ...state,
     builds: {
@@ -128,6 +132,7 @@ const handlers = {
     lastKeyAt: Math.max(state.lastKeyAt, event.at),
     lastEditAt: event.at,
     edits: keepLast(state.edits, {file: event.file, from: event.from, to: event.to, text: event.text ?? '', at: event.at}, KEEP.edits),
+    edited: state.edited.includes(event.file) ? state.edited : keepLast(state.edited, event.file, KEEP.edited),
   }),
 
   enter: (state, event) => ({...state, file: event.file}),

@@ -763,10 +763,11 @@ test('a run on save that crashes: the signal from the exit code, the frame in th
 });
 
 test('a build on save with a new warning says so in the statusline; a warning the first build printed is no news', async () => {
-  const {save} = buildSession();
+  const {pair, root, save} = buildSession();
   const warning = 'probe.c:9:7: warning: unused variable ‘unused’ [-Wunused-variable]\n';
   let {tests, run} = await save(warning, 0);
   assert.deepEqual([tests.state, tests.text, run.places[0].new], ['pass', 'passed', false]);
+  pair.receive({kind: 'edit', file: join(root, 'probe.c'), from: 21, to: 21});
   ({tests, run} = await save(`${warning}probe.c:21:14: warning: comparison of integers of different signs [-Wsign-compare]\n`, 0));
   assert.deepEqual([tests.state, tests.text], ['pass', '1 new warning']);
   assert.deepEqual(run.places.map(place => [place.line, place.new]), [[9, false], [21, true]]);
@@ -784,4 +785,12 @@ test('a crash in the user\'s terminal shows on its line in the editors, with pat
 test('Scout\'s report of a command says how a build or run went', () => {
   assert.equal(runReport({exit: 139, output: 'avg probe 23.7\n'}), 'exit 139\nCrashed: Segmentation fault\navg probe 23.7\n');
   assert.equal(runReport({exit: 2, output: 'bad.c:3:11: error: x undeclared\n'}).split('\n')[1], 'Build: 1 error: bad.c:3: x undeclared');
+});
+
+test('recursive make: an error in a sub-make\'s folder is placed on its file there', async () => {
+  const {root, save} = buildSession();
+  const output = `make -C src all\nmake[1]: Entering directory '/home/dev/probe/src'\ntable.c:5:3: error: expected ‘;’ before ‘}’ token\nmake[1]: Leaving directory '/home/dev/probe/src'\nmake: *** [Makefile:2: run] Error 2\n`;
+  const {tests, run} = await save(output, 2);
+  assert.equal(tests.text, 'does not build · table.c:5');
+  assert.deepEqual(run.places.map(place => [place.file, place.line, place.kind]), [[join(root, 'src/table.c'), 5, 'error']]);
 });

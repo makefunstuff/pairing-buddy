@@ -90,8 +90,10 @@ when there is no stack), and points at the line with the characters that are wro
 segfault of a hash table whose mask you just removed scored 7 or 8, and the Partner pointed at the unmasked hash or
 the index it gives in every run.
 
-`new_warning` is raised once per build when it printed a warning no build before it in the session printed (each
-command's first run is its baseline; the line is not part of a warning's identity, since it moves as you edit). The
+`new_warning` is raised once per build when it printed a warning in a file you edited in this session that no build
+before it in the session printed (each command's first run is its baseline; a file you did not touch, which an
+incremental build compiles again after a header changed, brings no news; the line is not part of a warning's
+identity, since it moves as you edit). The
 Watcher is asked how likely it is a real bug worth a word now: 0 for something untidy while exploring (an unused
 variable or parameter), 10 for a likely bug (an uninitialised value, a wrong format, an overflow, a missing return).
 The Partner reads the line and speaks only for a bug; otherwise it answers SILENT. Live: a `-Wformat` warning (`%d`

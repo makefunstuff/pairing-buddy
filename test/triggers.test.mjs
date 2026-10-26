@@ -206,7 +206,7 @@ test('a crash in a run on save is a trigger too', () => {
 
 test('a new warning is raised once per build; a warning that was there before is no news', () => {
   const warn = 'probe.c:21:14: warning: comparison of integers of different signs [-Wsign-compare]';
-  const baseline = foldAll([run(1000, 'probe.c:9:7: warning: unused variable \'unused\'', {cmd: 'make', exit: 0})]);
+  const baseline = foldAll([{kind: 'edit', file: 'probe.c', from: 21, to: 21, at: 500}, run(1000, 'probe.c:9:7: warning: unused variable \'unused\'', {cmd: 'make', exit: 0})]);
   assert.deepEqual(kinds(baseline, 1500), []);
   const state = fold(baseline, run(2000, `probe.c:9:7: warning: unused variable 'unused'\n${warn}`, {cmd: 'make', exit: 0}));
   const [trigger] = detectTriggers(state, 2500);

@@ -648,9 +648,12 @@ test('a build or run on save: crashes and compiler errors on their lines, the ju
     keys('gg<M-j>');
     await until(() => remote('line(".")') === '10', 'the jump to the frame in the project\'s code');
 
-    // The command ran before in this session, so a warning it prints now is news; printed again, it is not.
+    // The command ran before in this session and you edit probe.c, so a warning it prints there now is news;
+    // printed again, it is not.
     const warning = 'probe.c:21:7: warning: unused variable \'spare\'\n';
     printing(warning, 0);
+    keys('21GA // spare<Esc>');
+    await sleep(400); // the edit reaches the daemon after debounce_ms
     keys(':w<CR>');
     await until(() => status() === '✓ cat run.out; exit $(cat run.exit) · 1 new warning', 'the new warning in the statusline');
     await until(() => signs().length === 1 && signs()[0][0] === 21, 'the warning on its line');

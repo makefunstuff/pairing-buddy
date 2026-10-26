@@ -28,6 +28,15 @@ test('the linker names what is missing, without a line', () => {
   assert.deepEqual(read('gcc-link').errors, [{file: null, line: null, col: null, severity: 'error', message: 'undefined reference to `foo\''}]);
   assert.equal(readRun('/usr/bin/ld: cannot find -lraylib: No such file or directory').errors[0].message, 'cannot find -lraylib: No such file or directory');
   assert.equal(readingSummary(read('gcc-link')), '1 error: undefined reference to `foo\'');
+  assert.deepEqual(read('lld-link').errors.map(error => error.message), ['undefined symbol: foo'], 'lld, as clang and zig use it');
+});
+
+test('recursive make: files are taken from the folder make says it entered', () => {
+  const run = read('make-recursive');
+  assert.deepEqual(run.errors.map(error => [error.file, error.line, error.col]), [['src/b.h', 1, 47]]);
+  assert.deepEqual(run.warnings.map(warning => warning.file), ['src/b.h']);
+  const back = readRun('make: Entering directory \'/home/dev/probe/src\'\nmake: Leaving directory \'/home/dev/probe/src\'\nprobe.c:3:1: error: x', {root: ROOT});
+  assert.equal(back.errors[0].file, 'probe.c', 'after make left the folder, files are from where the command ran again');
 });
 
 test('zig, odin and c3c compile errors', () => {
@@ -75,8 +84,12 @@ test('a segfault through herdr alone: the shell\'s or make\'s words say it, with
     'make[1]: *** [Makefile:4: run] Aborted (core dumped)': 'SIGABRT',
   };
   for (const [line, signal] of Object.entries(words)) assert.equal(readRun(`avg probe 23.7\n${line}`).crash?.signal, signal, line);
-  for (const line of ['Aborted the import: file is busy', 'segmentation fault handling is described in docs/faults.md', 'make: *** [Makefile:4: run] Error 2']) {
-    assert.equal(readRun(line).crash, null, line);
+  for (const line of ['Aborted the import: file is busy', 'Aborted transaction', 'abort requested', 'ok\nabort', 'Bus error rate: 0',
+    'segmentation fault handling is described in docs/faults.md', 'make: *** [Makefile:4: run] Error 2']) {
+    assert.equal(readRun(line, {exit: 1}).crash, null, line);
+  }
+  for (const line of ['Segmentation fault (core dumped)', 'Aborted', 'Bus error']) {
+    assert.equal(readRun(line, {exit: 0}).crash, null, `${line}, but the run ended with exit 0`);
   }
 });
 

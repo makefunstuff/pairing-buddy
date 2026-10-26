@@ -190,8 +190,10 @@ test('compiler paths are relative to where the command ran: the run keeps them r
   assert.equal(state.run.errors[0].file, 'src/probe.c');
 });
 
-test('a new warning: one no build in the session printed before; each command\'s first run is its baseline', () => {
-  let state = foldAll([build(1, WARN.unused)]);
+const editing = (file, at) => ({kind: 'edit', file, from: 1, to: 1, at});
+
+test('a new warning: in a file the user edited, and no build in the session printed it before; each command\'s first run is its baseline', () => {
+  let state = foldAll([editing('probe.c', 0), build(1, WARN.unused)]);
   assert.deepEqual(state.run.newWarnings, [], 'there when the session started: no news');
   state = fold(state, build(2, `${WARN.unused}\n${WARN.sign}`));
   assert.deepEqual(state.run.newWarnings.map(warning => warning.line), [21]);
@@ -200,8 +202,19 @@ test('a new warning: one no build in the session printed before; each command\'s
   state = fold(state, build(4, '', {cmd: 'make run'}));
   state = fold(state, build(5, WARN.sign, {cmd: 'make run'}));
   assert.deepEqual(state.run.newWarnings, [], 'make rebuilt only some files: a warning another build printed is still old');
-  const clean = foldAll([build(1, 'cc -o probe probe.c'), build(2, WARN.unused)]);
+  const clean = foldAll([build(1, 'cc -o probe probe.c'), editing('probe.c', 2), build(3, WARN.unused)]);
   assert.equal(clean.run.newWarnings.length, 1, 'after a clean first build, the first warning is news');
+});
+
+test('incremental make: a warning in a file the user did not edit is no news when a header change compiles it again', () => {
+  // The first build compiles only a.c; then common.h changes, and make compiles both.
+  const a = 'cc -Wall -c a.c\na.c:2:19: warning: unused variable ‘unused_a’ [-Wunused-variable]';
+  const b = 'cc -Wall -c b.c\nb.c:3:22: warning: unused variable ‘unused_b’ [-Wunused-variable]';
+  let state = foldAll([build(1, `${a}\ncc -o app a.o b.o`, {cmd: 'make'}), editing('common.h', 2)]);
+  state = fold(state, build(3, `${a}\n${b}\ncc -o app a.o b.o`, {cmd: 'make'}));
+  assert.deepEqual(state.run.newWarnings, []);
+  state = fold(fold(state, editing('b.c', 4)), build(5, `${a}\n${b}\nb.c:4:7: warning: unused variable ‘spare’ [-Wunused-variable]`, {cmd: 'make'}));
+  assert.deepEqual(state.run.newWarnings.map(warning => warning.message), ['unused variable ‘spare’ [-Wunused-variable]'], 'a warning the user\'s edit brought is news');
 });
 
 test('a build on save is read like the user\'s: Pair\'s run is the state\'s run', () => {

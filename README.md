@@ -309,15 +309,19 @@ Most runs are no test runs: `make run`, `./build.sh`, `zig build run`, `odin run
 whole):
 
 - **Crashes.** The signal in the exit code (139 is `SIGSEGV`, 134 `SIGABRT`; Ctrl-C, a kill or a closed pipe are no
-  crash) or in the words of bash, zsh or make (`Segmentation fault (core dumped)`), so a segfault counts as a failure
-  also through herdr alone, without an exit code. Reports name what went wrong and where: AddressSanitizer and
+  crash) or in the line bash, zsh or make prints for it (`Segmentation fault (core dumped)`), so a segfault counts as
+  a failure also through herdr alone, without an exit code. Only those whole lines count, and never in a run that
+  ended with exit 0: a program's own `Aborted transaction` is no crash. Reports name what went wrong and where: AddressSanitizer and
   UBSan, glibc's failed `assert`, Zig's panic and its stack, Odin's runtime assertions and bounds checks, C3's
   runtime errors and a gdb backtrace. The place is the innermost frame in your project's code, not libc's.
 - **Compiler errors and warnings** with file, line and column: `file:line:col: error:` (gcc, clang, zig, odin's unix
-  style), odin's `file(line:col) Error:`, c3c's `(file:line:col) Error:`, and the linker's `undefined reference`.
-  Paths are taken from where the command ran, so `make -C src` or a run in a subfolder lands on the right file.
-- **New warnings.** A warning is news when no build in this session printed it before (the first run of each
-  command is its baseline). The line is left out, so a warning that moved with your edit above it is the same one.
+  style), odin's `file(line:col) Error:`, c3c's `(file:line:col) Error:`, and the linker's `undefined reference` (GNU ld) or `undefined symbol` (lld). Paths are taken from where the command
+  ran and from the folder make says it entered, so a run in a subfolder, `make -C src` or a sub-make lands on the
+  right file.
+- **New warnings.** A warning is news when it is in a file you edited in this session and no build in this session
+  printed it before (the first run of each command is its baseline). An incremental build that compiles a file you
+  did not touch again, after a header changed, brings no news. The line is left out, so a warning that moved with
+  your edit above it is the same one.
 
 In Neovim, the last build or run that crashed or printed diagnostics shows on its lines until the same command runs
 clean: `✗` and the crash's or error's words after the line, `△` and the words for a new warning, a quiet `△` for an
@@ -497,7 +501,7 @@ Without `PAIR_LIVE_CONFIG` (or a gitignored `test/live/config.json`) the live te
 - While the Driver types, you can scroll and watch but not press a key without stopping it; a long edit types faster, to take about four seconds.
 - Tests on save need herdr (they run in Pair's pane), run the whole command each time, and one at a time: saves during a run start one more run after it. A run that takes over two minutes is stopped.
 - A test's line comes from the JSON reports of `go test`, jest and vitest only. Other runners still show in the statusline and raise regressions, without signs. A jest or vitest test is found by its title in quotes; a title built at run time (`test.each`) is not.
-- Builds and crashes: only the formats above are read (no MSVC, rustc or Go build errors outside `go test`), a crash without a report or stack (a bare segfault) has no line to show, and Odin's and C3's formats are written from their compilers' sources, not yet checked against their real output. Only the last build or run that crashed or printed diagnostics shows in Neovim. A warning is new against this session's builds only, so after a daemon restart the first build is the baseline again.
+- Builds and crashes: only the formats above are read (no MSVC, rustc or Go build errors outside `go test`), a crash without a report or stack (a bare segfault) has no line to show, and Odin's and C3's formats are written from their compilers' sources, not yet checked against their real output. Only the last build or run that crashed or printed diagnostics shows in Neovim. A warning is new against this session's builds and edits only, so after a daemon restart the first build is the baseline again; and a warning a header change causes in a file you did not edit is not news.
 - Test output is parsed from what the pane shows: a user's command's output is read from the last 400 lines of its pane.
 - Memory is the last session's note only, per project; the conversations before it are not searched.
 - Feedback goes to the last unasked remark (or the one whose suggestion you accept or dismiss); an older one cannot be rated. The chat's `+`/`-` after a daemon restart has no last remark until Pair makes a new one.
