@@ -38,7 +38,7 @@ Then:
 3. A second `edit` in the same answer is refused: one change per hand-over. An edit Neovim could not apply (a line past the end of the buffer), or that you stopped halfway, does not count.
 4. If the project has a test command (`testOnSave`), Pair runs it on the unsaved buffer and tells the model the result (below). It says in one sentence what it changed and, when the tests ran, whether they pass. It is told not to run the tests itself: they would read the file on disk, which changes only when you save.
 5. When the answer ends, Pair is Navigator again by itself, also when it answered without an edit, for example with a question.
-6. The hand-back line: its words under the last line it changed, `✓` or `✗` in the sign column there when the tests ran, `▎` on the lines it changed, and `u undoes it`. They go with your next edit.
+6. The hand-back line: its words under the last line it changed, `✓` or `✗` in the sign column there when the tests ran, `▎` on the lines it changed, and `u undoes it`. They go with your next edit. After that, `u` on the edit's line in `:Pair today` still undoes it: Neovim merges the undo into the buffer as it is then, and keeps your later edits, or changes nothing when you edited the same lines ([the ledger](neovim.md#the-ledger)).
 
 A hand-over needs Neovim connected (`:Pair start`), and is refused while Pair is still answering something else. No remark nobody asked for starts while Pair has the wheel.
 
@@ -49,7 +49,7 @@ After the Driver's edit, when the project has a command in `testOnSave`, Pair ru
 - **Go**: a command with `go test` in it gets `-overlay`: Go reads the edited file from the buffer's text, and nothing else changes. `go test -json ./...` runs as `go test -overlay <file> -json ./...`.
 - **Other runners** (jest, vitest, pytest, cargo, ...): the command runs in a scratch copy of the project, with the buffer's text in the edited file. The copy has the files git knows (tracked, or untracked and not ignored) and the files git ignores, such as `.env`. Folders git ignores are left out, so what a run builds or caches there (`dist`, `coverage`, `target`, `.pytest_cache`) is made in the copy and never reaches your project; a Rust or TypeScript build starts from scratch. Only dependency folders are linked from the project, at any depth (a workspace package's own `node_modules` too): `.venv` and `venv` as they are, and `node_modules` package by package, without its caches (`.cache`, `.vite`), so a cache a run writes stays in the copy. A project that is not a git repository, has more than 5000 files to copy, or whose edited file is in a dependency folder is not tested; the model is told why. The copy is removed after the run.
 - The statusline shows `⠹ go test ./... (unsaved)`, then `✓ go test ./... (unsaved) · 4 tests, 3 packages` or `✗ 1 failing · TestX`, and the signs on your test functions show this run's results, at the lines your buffer has them on. The chat gets one line about it.
-- The run is not a baseline for the [tests on save](../README.md#tests-on-save): a test that fails on the buffer and then on save still counts as newly failing against the last run on save.
+- The run is not a baseline for the [tests on save](tests-on-save.md): a test that fails on the buffer and then on save still counts as newly failing against the last run on save.
 - Without a `testOnSave` command, or without Pair's pane, nothing runs and the model is told to leave the tests to you.
 
 ## Taking the wheel back

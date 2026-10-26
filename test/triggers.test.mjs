@@ -215,3 +215,10 @@ test('a new warning is raised once per build; a warning that was there before is
   assert.equal(trigger.detail, '`make` (the user ran it) printed a new warning, not in the builds before: probe.c:21: comparison of integers of different signs [-Wsign-compare]');
   assert.deepEqual(kinds(state, 2500, new Set([trigger.key])), []);
 });
+
+test('a hidden terminal raises no crash or warning from the user\'s runs; Pair\'s run on save still does', () => {
+  const mine = foldAll([run(1000, 'Segmentation fault (core dumped)'), {kind: 'hide', source: 'terminal', hidden: true, at: 1100}]);
+  assert.deepEqual(kinds(mine, 1500), []);
+  const onSave = fold(mine, {kind: 'test_run', cmd: 'make run', saved: 'probe.c', tests: null, reading: readRun('', {exit: 139}), at: 2000});
+  assert.deepEqual(kinds(onSave, 2500), ['crash']);
+});

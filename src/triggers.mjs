@@ -174,7 +174,7 @@ function warningTriggers(state, now) {
 export function failingNow(state, now) {
   const {tests} = state;
   if (tests?.failedCount && now - tests.at <= TIMING.redMs) return `\`${tests.cmd}\`: ${testSummary(tests)}`;
-  const command = state.commands.at(-1);
+  const command = !state.hidden?.includes('terminal') && state.commands.at(-1); // a hidden terminal sends no command
   if (command && failed(command) && now - command.endedAt <= TIMING.redMs) return `\`${command.cmd}\` failed: ${failureLine(command)}`;
   return null;
 }
@@ -201,8 +201,16 @@ function trailTriggers(state, now) {
   }];
 }
 
-/** The candidate remarks for this moment whose keys have not fired yet. */
+/**
+ * The candidate remarks for this moment whose keys have not fired yet. A source the user hid on the context card
+ * raises none: a remark about a command, or about the searches, would send them.
+ */
 export function detectTriggers(state, now, fired = new Set()) {
-  return [...crashTriggers(state, now), ...commandTriggers(state, now), ...diagnosticTriggers(state), ...regressionTriggers(state, now), ...redTriggers(state, now), ...warningTriggers(state, now), ...driftTriggers(state, now), ...trailTriggers(state, now)]
+  const hidden = source => state.hidden?.includes(source);
+  const commands = hidden('terminal') ? [] : commandTriggers(state, now);
+  const trail = hidden('editor') ? [] : trailTriggers(state, now);
+  // A run in the user's terminal is the terminal's: a hidden terminal sends none. Pair's own runs on save are Pair's.
+  const runs = hidden('terminal') && state.run?.by === 'you' ? {crashes: [], warnings: []} : {crashes: crashTriggers(state, now), warnings: warningTriggers(state, now)};
+  return [...runs.crashes, ...commands, ...diagnosticTriggers(state), ...regressionTriggers(state, now), ...redTriggers(state, now), ...runs.warnings, ...driftTriggers(state, now), ...trail]
     .filter(trigger => !fired.has(trigger.key));
 }

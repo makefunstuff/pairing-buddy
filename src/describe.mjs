@@ -1,14 +1,7 @@
 // The session state as a few short lines of text: what both models see instead of raw events.
-import {failed, failureLine} from './fold.mjs';
+import {ago, commandLine, contextLines, RECENT_COMMANDS} from './context-card.mjs';
 import {readingSummary} from './run-output.mjs';
 import {testSummary} from './test-output.mjs';
-
-const ago = (now, at) => `${Math.max(0, Math.round((now - at) / 1000))} s ago`;
-
-function commandLine(command, now) {
-  const result = failed(command) ? `failed${command.exit ? ` (exit ${command.exit})` : ''}: ${failureLine(command)}` : 'ok';
-  return `\`${command.cmd}\` ${result}, ${ago(now, command.endedAt)}`;
-}
 
 function currentFile(state) {
   const selection = state.selection ? `, selected lines ${state.selection.from}-${state.selection.to}` : '';
@@ -31,7 +24,7 @@ const lastKey = (state, now) => `Last keystroke: ${state.lastKeyAt ? ago(now, st
 export function describeState(state, now) {
   const lines = [];
   lines.push(`Goal: ${state.goal ?? '(not set)'}`);
-  if (state.branch) lines.push(`Branch: ${state.branch}`);
+  lines.push(...contextLines(state)); // the board, git and where the user has been: what the context card shows
   if (state.file) lines.push(currentFile(state));
   const edits = state.edits.slice(-5).map(edit => `${edit.file}:${edit.from}-${edit.to} (${ago(now, edit.at)})`);
   if (edits.length) lines.push(`Recent edits: ${edits.join('; ')}`);
@@ -39,10 +32,10 @@ export function describeState(state, now) {
     .flatMap(([file, items]) => items.map(item => `${file}:${item.line} ${item.severity}: ${item.message}`))
     .slice(0, 8);
   if (diagnostics.length) lines.push(`Diagnostics:\n${diagnostics.map(line => `- ${line}`).join('\n')}`);
-  const commands = state.commands.slice(-3).map(command => `- ${commandLine(command, now)}`);
+  const commands = state.hidden.includes('terminal') ? [] : state.commands.slice(-RECENT_COMMANDS).map(command => `- ${commandLine(command, now)}`);
   if (commands.length) lines.push(`Recent commands:\n${commands.join('\n')}`);
   if (state.tests) lines.push(testsLine(state.tests, now));
-  if (state.run) lines.push(buildLine(state.run, now));
+  if (state.run && !(state.run.by === 'you' && state.hidden.includes('terminal'))) lines.push(buildLine(state.run, now));
   if (state.focus.target !== 'unknown') lines.push(looking(state));
   lines.push(lastKey(state, now));
   return lines.join('\n');

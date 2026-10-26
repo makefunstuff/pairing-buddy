@@ -1,9 +1,10 @@
 // Folds raw editor, terminal and chat events into one small session state.
 // Pure: `fold(state, event)` returns a new state and never looks at the clock.
+import {boardLaunch} from './board.mjs';
 import {hasNews, readingSummary, readRun, warningKey} from './run-output.mjs';
 import {namedFiles, parseTestOutput, testSummary} from './test-output.mjs';
 
-const KEEP = {edits: 20, commands: 10, outputChars: 2000, diagnostics: 30, searches: 12, buildCommands: 20, warnings: 200, edited: 200};
+const KEEP = {edits: 20, commands: 10, outputChars: 2000, diagnostics: 30, searches: 12, places: 20, buildCommands: 20, warnings: 200, edited: 200};
 
 export function initialState({root = null, goal = null} = {}) {
   return {
@@ -27,6 +28,14 @@ export function initialState({root = null, goal = null} = {}) {
     run: null, // the last build or run that crashed or printed compiler errors or warnings, or ran clean after one: see afterRun
     builds: {cmds: [], warnings: []}, // the commands run so far, and the warnings their output printed (warningKey)
     edited: [], // the files the user edited in this session
+    // The context card's sources (see context-card.mjs): git and the board as last read, where the user has been in the
+    // editor (with the searches above), the sources they hid, and how many of the board's agent launches were left out of the commands.
+    git: null,
+    board: null,
+    buffers: [],
+    jumps: [],
+    hidden: [],
+    launches: 0,
   };
 }
 
@@ -99,6 +108,7 @@ function afterRun(state, {cmd, by, at, reading}) {
 }
 
 function foldCommandEnd(state, event) {
+  if (boardLaunch(event.cmd ?? '')) return {...state, launches: state.launches + 1};
   // Parsed from the whole output: the failed tests' names are often far above the kept tail.
   const tests = parseTestOutput(event.output);
   const command = {
@@ -196,6 +206,13 @@ const handlers = {
   forget_searches: state => ({...state, searches: []}),
 
   branch: (state, event) => ({...state, branch: event.name}),
+
+  context: (state, event) => ({...state, branch: event.branch ?? state.branch, git: event.git, board: event.board}),
+
+  // The editor's listed buffers, most recent first, and its jumplist, newest first: absolute paths.
+  places: (state, event) => ({...state, buffers: (event.buffers ?? []).slice(0, KEEP.places), jumps: (event.jumps ?? []).slice(0, KEEP.places)}),
+
+  hide: (state, event) => ({...state, hidden: event.hidden ? [...new Set([...state.hidden, event.source])] : state.hidden.filter(source => source !== event.source)}),
 };
 
 export function fold(state, event) {

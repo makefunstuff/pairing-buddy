@@ -53,4 +53,5 @@ if vim.uv.fs_stat(cap .. '/telescope.nvim') then
   vim.keymap.set('n', '<leader>sg', require('telescope.builtin').live_grep)
   vim.keymap.set('n', '<leader>sf', require('telescope.builtin').find_files)
 end
-require('pair').setup({socket = cap .. '/pair.sock', debounce_ms = 400, auto_connect = true})
+require('pair').setup({socket = cap .. '/pair.sock', debounce_ms = 400})
+require('pair').connect() -- asked for by name: auto_connect leaves out projects in the temp folder, as this one is
