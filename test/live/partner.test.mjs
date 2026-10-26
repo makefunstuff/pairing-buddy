@@ -47,6 +47,7 @@ function recordingHands(root) {
     say: record('say', 'shown'),
     point: record('point', 'highlighted'),
     open: record('open', 'opened in a split'),
+    suggest: record('suggest', 'Shown in the editor. The user accepts it with one key or ignores it.'),
     read: async (_conversation, {file, from, to}) => {
       calls.push({name: 'read', args: {file}});
       const source = await readProjectPath(root, file);
