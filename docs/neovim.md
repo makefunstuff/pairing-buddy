@@ -21,6 +21,7 @@ run is real `go test`; only the models' words are scripted. It is recorded from 
 | `◎` | the statusline | it has the wheel (the Driver); any key takes it back |
 | a block after ghost text | where it types | its cursor, while it types the change you handed over |
 | `◌` | the statusline | it is not there: reconnecting, or a model is down |
+| `◉` and a meter | under your line, and the statusline | it listens while you hold `Alt-t` ([push-to-talk](voice.md)) |
 | `⠹` | the statusline | it thinks before it answers, or runs your tests |
 | `✓` `✗` | the statusline, and the sign column of your tests | tests it ran for you when you saved |
 
@@ -270,6 +271,7 @@ held, `● pair · held thought · M-j`, the `●` in the accent.
 require('pair').setup({
   auto_connect = true,
   jump_key = '<M-j>',  -- false for none; :Pair jump works either way
+  listen_key = '<M-t>', -- hold it to speak to Pair (docs/voice.md); false for none
   motion = true,       -- false: no fades, the gaze lights one line at a time without its trail, and the Driver's edit lands at once
   glyphs = {},         -- for example {voice = '\u{f444}', wheel = '\u{f030c}'} with a Nerd Font
   searches = true,     -- false: your Telescope and snacks.picker searches stay in Neovim, and there is no search trail
@@ -277,8 +279,8 @@ require('pair').setup({
 ```
 
 The keys (`jump_key`, `accept_key`, `useful_key`, `noise_key`) are mapped only while there is something for them
-to act on, and only where you have no mapping of your own. The glyphs are plain Unicode, so they show in any font:
-`voice` `●`, `mark` `▎`, `held` `•`, `away` `◌`, `wheel` `◎`, `pass` `✓` and `fail` `✗`. The spinner is braille, `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`.
+to act on, and only where you have no mapping of your own; `listen_key` is mapped from the start, also only where it is free. The glyphs are plain Unicode, so they show in any font:
+`voice` `●`, `mark` `▎`, `held` `•`, `away` `◌`, `wheel` `◎`, `listen` `◉`, `pass` `✓` and `fail` `✗`. The spinner is braille, `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`.
 
 For the statusline, `require('pair').status()` is plain text and `require('pair').statusline()` the same with
 Pair's highlight groups, for the `statusline` option or a statusline plugin's section:
@@ -311,6 +313,7 @@ to standard ones and does not fade.
 | `PairPass` | `✓` on a passing test | the "ok" colour, faded toward the background |
 | `PairFail` | `✗` on a failing test, and in the statusline | your colorscheme's error colour (`DiagnosticError`) |
 | `PairFailNote` | why a test failed, after its line | your foreground toward the error colour |
+| `PairHeard` | your words as Pair heard them, in italics | between background and foreground |
 
 ## Ask about lines
 

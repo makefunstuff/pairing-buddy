@@ -30,6 +30,7 @@ recording comes out the same each time.
 | [take-back](tapes/take-back.tape) | a key while Pair drives takes the wheel back |
 | [search-trail](tapes/search-trail.tape) | the search trail: three Telescope searches, the cue, `:Pair trail` |
 | [held-thought](tapes/held-thought.tape) | the held thought, and one look on a grey palette |
+| [push-to-talk](tapes/push-to-talk.tape) | hold `Alt-t`, ask aloud, and Pair answers under your line |
 
 ## Recording
 
@@ -40,6 +41,13 @@ and the JetBrainsMono Nerd Font.
 npm ci                                  # in the repo root
 docs/captures/record.sh                 # all six scenes into docs/captures/out/, or name some
 docs/captures/encode.sh                 # out/ -> site/media/ and docs/images/
+```
+
+The push-to-talk scene is not in the default four: it also needs [whisper.cpp](../voice.md#1-build-whispercpp-cpu-only),
+espeak-ng and FFmpeg. espeak-ng says the scene's question into the recorder, and whisper.cpp hears it for real:
+
+```sh
+CAP_WHISPER_MODEL=/path/to/ggml-base.en.bin CAP_WHISPER=/path/to/whisper-cli docs/captures/record.sh push-to-talk
 ```
 
 Each scene runs in its own scratch directory under `/tmp/paircap.*`, which holds:

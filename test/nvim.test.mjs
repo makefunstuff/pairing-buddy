@@ -37,9 +37,9 @@ const runIn = cwd => command => new Promise(resolve => {
 /**
  * The daemon with scripted models, a fake herdr, a headless Neovim with the plugin editing a.js and running
  * `:Pair start <goal>`, and a chat client. With `testOnSave`, saving runs that command in the project, for real,
- * in the fake herdr's pane. With `thinks`, the Partner's model can think. `stop()` ends them all.
+ * in the fake herdr's pane. With `thinks`, the Partner's model can think. `voice` is the config's. `stop()` ends them all.
  */
-async function pairInNvim(goal, {testOnSave, thinks = false, rtp = []} = {}) {
+async function pairInNvim(goal, {testOnSave, thinks = false, voice, rtp = []} = {}) {
   const project = realpathSync(mkdtempSync(join(tmpdir(), 'pair-nvim-')));
   writeFileSync(join(project, 'a.js'), 'const x = 1\nconst y = 2\nconst z = 3\n');
   const dataDir = mkdtempSync(join(tmpdir(), 'pair-data-'));
@@ -47,6 +47,7 @@ async function pairInNvim(goal, {testOnSave, thinks = false, rtp = []} = {}) {
     dataDir,
     socket: join(dataDir, 'pair.sock'),
     testOnSave: testOnSave ? {[project]: testOnSave} : undefined,
+    voice,
     models: {watcher: {api: 'openai', baseUrl: 'http://unused', model: 'w'}, partner: {api: 'openai', baseUrl: 'http://unused', model: 'p'}},
   });
   const watcher = fauxProvider({provider: 'faux-watcher'});
@@ -613,6 +614,63 @@ test('another remark leaves a held thought\'s dot and Alt-j alone; its own remar
   } finally {
     nvim.kill();
     server.close();
+  }
+});
+
+test('push-to-talk: hold Alt-t, a meter under your line; let go, your words, then Pair\'s answer in their place; a tap listens until the next one', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
+  // The microphone is a loud tone, and whisper a script that hears one question.
+  const bin = mkdtempSync(join(tmpdir(), 'pair-whisper-'));
+  writeFileSync(join(bin, 'whisper-cli'), '#!/bin/sh\nprintf " Why does attempt 5 give up?\\n"\n', {mode: 0o755});
+  const record = `node -e 'const b = Buffer.alloc(3200); for (let i = 0; i < 1600; i++) b.writeInt16LE(i % 8 < 4 ? 9000 : -9000, i * 2); setInterval(() => process.stdout.write(b), 100)'`;
+  const voice = {model: 'unused.bin', whisper: join(bin, 'whisper-cli'), record};
+  const {partner, messages, remote, status, stop} = await pairInNvim('retries pass', {voice});
+  const listenLine = () => {
+    const marks = JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, require('pair.listen').ns, 0, -1, {details = true}))")`));
+    const line = marks.find(([, , , details]) => details.virt_lines)?.[3].virt_lines[0];
+    return line ? line.map(chunk => chunk[0]).join('').trim() : null;
+  };
+  const words = () => JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('pair'), 0, -1, {details = true}))")`))
+    .filter(([, , , details]) => details.virt_lines).map(([, row, , details]) => [row, details.virt_lines.map(line => line.map(chunk => chunk[0]).join('').trim())]);
+  // A held key: pressed, then repeated every 40 ms, as a terminal sends it.
+  const hold = ms => remote(`luaeval("(function() local n = 0; local t = vim.uv.new_timer(); t:start(0, 40, vim.schedule_wrap(function() n = n + 1; vim.api.nvim_input('<M-t>'); if n * 40 >= ${ms} then t:close() end end)) end)() or 0")`);
+  try {
+    let answer;
+    partner.setResponses([
+      () => new Promise(resolve => { answer = resolve; }),
+      fauxAssistantMessage([fauxText('Attempt 5 lands at exactly 15, and `worker.js:2` gives up on `>=`.')]),
+    ]);
+    remote('cursor(2, 1)');
+    hold(1200);
+    await until(() => /^◉ [▁▂▃▄▅▆▇█]{10}  listening   let go to ask$/.test(listenLine() ?? ''), 'the meter under the line');
+    await until(() => /[▅▆▇█]/.test(listenLine() ?? ''), 'the meter to move');
+    assert.equal(status(), '◉ pair · listening');
+    await until(() => listenLine() === '› Why does attempt 5 give up?', 'the words Pair heard, after you let go');
+    await until(() => messages.some(message => message.sender === 'user' && message.text === 'Why does attempt 5 give up?'), 'the question in the chat');
+    answer(fauxAssistantMessage([fauxToolCall('point', {file: 'a.js', line: 3, note: 'here'})], {stopReason: 'toolUse'}));
+    await until(() => words().length, 'the answer');
+    assert.deepEqual(words(), [[1, ['● Attempt 5 lands at exactly 15, and worker.js:2 gives up on >=.   M-j']]], 'under the line you asked on, with the key to where it pointed');
+    assert.equal(listenLine(), null, 'in place of your words');
+    await until(() => status() === '● pair', 'the statusline at rest');
+
+    // A tap: Pair listens until the next press.
+    partner.setResponses([fauxAssistantMessage([fauxText('Five.')])]);
+    remote(`luaeval("vim.api.nvim_input('<M-t>') or 0")`);
+    await until(() => /listening   M-t again to ask$/.test(listenLine() ?? ''), 'the tap hint');
+    await sleep(300);
+    assert.match(listenLine(), /M-t again to ask$/, 'still listening without the key');
+    remote(`luaeval("vim.api.nvim_input('<M-t>') or 0")`);
+    await until(() => words().some(([, lines]) => lines[0] === '● Five.'), 'the answer to the tapped question');
+
+    // The model fails: the line says there is no answer, a moment, and the chat says why.
+    partner.setResponses([() => { throw new Error('401 bad key'); }]);
+    await until(() => status() === '● pair', 'the statusline at rest');
+    await sleep(300); // a key pressed again within 0.22 s of the last one counts as still held
+    hold(600);
+    await until(() => listenLine() === '◌ no answer · the chat says why', 'no answer, said under the line');
+    await until(() => messages.some(message => /Pair could not answer/.test(message.text ?? '')), 'why, in the chat');
+    await until(() => listenLine() === null, 'the line to go after a moment');
+  } finally {
+    await stop();
   }
 });
 
