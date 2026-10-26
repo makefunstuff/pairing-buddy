@@ -46,7 +46,7 @@ Pair has one role at a time. It shows in the chat pane's prompt and in Neovim's 
 | Scout | Also searches and runs commands in its own herdr pane: tests, builds, `git log`, `git diff` | `/scout` in the chat, `:Pair scout` |
 | Driver | Makes one change in your buffer while you watch, then hands back by itself | You hand over: `:Pair drive`, `/drive`, or say "you take it" or "your turn" in the chat |
 
-Switching to Scout opens Pair's pane below the chat pane; switching back closes it. The role is kept with the session, also across a daemon restart. The Driver role never is: it lasts one turn.
+Switching to Scout opens Pair's pane below the chat pane; switching back closes it. The role is kept with the session, also across a daemon restart; the Driver role is not, since it lasts one answer.
 
 In every role Pair can **suggest** a change: the old lines are marked in your buffer and the new ones appear below them as ghost text, with a note. `<Tab>` (or `:Pair accept`) applies it as your own change; editing those lines yourself, `:Pair dismiss`, or the next suggestion drops it. Nothing changes until you accept.
 
