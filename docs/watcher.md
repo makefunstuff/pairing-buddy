@@ -63,7 +63,7 @@ line, and `Alt-j` goes to the suggestion, where `Alt-y` takes it.
 ## The search trail
 
 `search_trail` is raised from your picker searches in Neovim ([docs/neovim.md](neovim.md#the-search-trail)): three
-or more since your last edit, within four minutes, one of them closed with nothing opened or the same words twice,
+or more since your last edit, within four minutes, one of them closed with nothing opened or the same words again that opened another file,
 once you have paused three seconds after the last. Each new search in the trail raises it again; an edit ends the
 trail. It is judged after the others.
 

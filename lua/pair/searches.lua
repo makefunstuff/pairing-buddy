@@ -10,15 +10,16 @@ local function absolute(path, cwd)
   return vim.fn.fnamemodify(path, ':p')
 end
 
---- Where window `win` is: {file, line}, or nil when it is gone.
+--- Where window `win` is: {win, file, line}, or nil when it is gone.
 local function place(win)
   if not (win and vim.api.nvim_win_is_valid(win)) then return nil end
   local name = vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(win))
-  return {file = name ~= '' and vim.fn.fnamemodify(name, ':p') or nil, line = vim.api.nvim_win_get_cursor(win)[1]}
+  return {win = win, file = name ~= '' and vim.fn.fnamemodify(name, ':p') or nil, line = vim.api.nvim_win_get_cursor(win)[1]}
 end
 
 --- Reports a search once the picker's own action is done: you opened `file` if the current window went there from
---- `before`, where it was when the picker closed. Staying where you were is closing with nothing opened.
+--- `before`, where you were before its action; a new split on the same place counts. Staying where you were is
+--- closing with nothing opened.
 local function closed(report, search, file, before)
   if vim.trim(search.query or '') == '' then return end
   vim.schedule(function()
@@ -46,26 +47,27 @@ local function telescope(buf, report)
   end})
 end
 
--- snacks.picker leaves its input for its list window too: only a closed picker is a finished search.
+-- snacks.picker: its input window closes however the picker ends, from the input or from its list, and only after
+-- the picker's own action; where you were is taken as it opens, since that action may already have moved you.
 local function snacks(buf, report)
-  local picker
   vim.schedule(function()
     local ok, pickers = pcall(function() return Snacks.picker.get({tab = false}) end)
+    local picker
     for _, candidate in ipairs(ok and pickers or {}) do
       if candidate.input and candidate.input.win.buf == buf then picker = candidate end
     end
+    if not picker then return end
+    local before = place(picker.main)
+    vim.api.nvim_create_autocmd('WinClosed', {pattern = tostring(picker.input.win.win), once = true, callback = function()
+      local filter = picker.input.filter
+      local item = picker:current({resolve = false})
+      closed(report, {
+        picker = picker.title or 'Snacks',
+        query = filter.search ~= '' and filter.search or filter.pattern,
+        results = picker.list:count(),
+      }, item and absolute(item.file, item.cwd), before)
+    end})
   end)
-  vim.api.nvim_create_autocmd('BufLeave', {buffer = buf, callback = function()
-    if not picker or not picker.closed then return end
-    local filter = picker.input.filter
-    local item = picker:current()
-    closed(report, {
-      picker = picker.title or 'Snacks',
-      query = filter.search ~= '' and filter.search or filter.pattern,
-      results = picker.list:count(),
-    }, item and absolute(item.file, item.cwd), place(picker.main))
-    return true -- done with this picker
-  end})
 end
 
 --- Calls `report({picker, query, results, file, line})` for each search made in a picker; `file` and `line` are

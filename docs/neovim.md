@@ -181,7 +181,8 @@ closes the panel.
 
 **When it speaks.** A trail is the searches since your last edit, within four minutes. It is looked at once you
 pause after the last one, when there are three or more and one of them closed with nothing opened, or you searched
-the same words twice. Three searches that each opened a file are you finding your way, and stay quiet. An edit
+the same words again and landed somewhere else. Three searches that each opened a file are you finding your way,
+and the same words opening the same file each time are your way back to it: both stay quiet. An edit
 ends a trail: what you searched before it, you found. Each new search in a trail is a new look, within the budget
 of your talk level.
 
@@ -192,8 +193,8 @@ else the last failed command, from the last ten minutes. With nothing failing, t
 your words are in the code.
 
 **How the searches are read.** Telescope (`FileType TelescopePrompt`, then the prompt's `BufLeave`, as Telescope
-closes it) and snacks.picker (its input's `BufLeave` once the picker is closed): the picker's title, your words,
-the result count and the selected entry, then whether that file is where you are now. No mapping, action or
+closes it) and snacks.picker (as its input window closes, whether you confirm from the input or the list): the picker's title, your words,
+the result count and the selected entry, then whether that file is where you are now (in a new split too). No mapping, action or
 picker setting of yours changes, and nothing is written to the picker's own history; Telescope's history keeps
 only searches that ended in a selection, and the ones you gave up on are the telling ones. A picker closed with an
 empty prompt is no search. fzf-lua has no hook for its close, so its searches are not read. `searches = false` in

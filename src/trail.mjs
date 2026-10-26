@@ -19,19 +19,24 @@ export function currentTrail(state, now) {
 
 const sameWords = query => query.trim().toLowerCase().replace(/\s+/g, ' ');
 
-/** The queries searched more than once in `trail`. */
-export function repeats(trail) {
+/** The queries searched more than once in `trail`, each with the files opened from it (null for none). */
+function repeated(trail) {
   const seen = new Map();
-  for (const search of trail) seen.set(sameWords(search.query), (seen.get(sameWords(search.query)) ?? 0) + 1);
-  return [...seen].filter(([, times]) => times > 1).map(([query]) => query);
+  for (const search of trail) seen.set(sameWords(search.query), [...(seen.get(sameWords(search.query)) ?? []), search.file]);
+  return [...seen].filter(([, files]) => files.length > 1);
 }
+
+/** The queries searched more than once in `trail`. */
+export const repeats = trail => repeated(trail).map(([query]) => query);
 
 /**
  * Whether `trail` looks lost: at least TRAIL.min searches, and one closed with nothing opened or the same words
- * searched again. Three searches that each opened a file are the user finding their way, not losing it.
+ * searched again to land somewhere else. Searches that each opened a file are the user finding their way, and the
+ * same words that open the same file each time are a way back to it ("init" six times), not a hunt.
  */
 export function lost(trail) {
-  return trail.length >= TRAIL.min && (trail.some(search => !search.file) || repeats(trail).length > 0);
+  return trail.length >= TRAIL.min
+    && (trail.some(search => !search.file) || repeated(trail).some(([, files]) => new Set(files).size > 1));
 }
 
 const plural = (n, noun) => `${n} ${noun}${n === 1 ? '' : noun.endsWith('h') ? 'es' : 's'}`;

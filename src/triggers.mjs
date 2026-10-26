@@ -141,7 +141,7 @@ export function failingNow(state, now) {
 
 /**
  * The search trail: three or more searches since the last edit, one of them closed with nothing opened or the same
- * words twice (see trail.mjs). Looked at once the user pauses after the last one; each new search is a new look.
+ * words again landing elsewhere (see trail.mjs). Looked at once the user pauses after the last one; each new search is a new look.
  * What fails now goes with it: without it, a cue from the trail alone guesses what the user is after.
  */
 function trailTriggers(state, now) {

@@ -33,8 +33,10 @@ test('three searches since the last edit, one closed with nothing opened, are a 
   assert.ok(!lost(currentTrail(foldAll(LOST.slice(0, 2)), 18_000)), 'two searches are not yet a trail');
   const found = foldAll(['worker', 'queue', 'backoff'].map((query, i) => search(query, 10_000 + i * 2000, {picker: 'Find Files', results: 1, file: `${query}.go`})));
   assert.ok(!lost(currentTrail(found, 18_000)), 'three searches that each opened a file: finding the way, not losing it');
-  const again = foldAll(['retry', 'backoff', 'Retry'].map((query, i) => search(query, 10_000 + i * 2000, {results: 2, file: 'backoff.go'})));
-  assert.ok(lost(currentTrail(again, 18_000)), 'the same words again count, whatever their case');
+  const back = foldAll(['init', 'init', 'Init'].map((query, i) => search(query, 10_000 + i * 2000, {results: 2, file: 'init.lua'})));
+  assert.ok(!lost(currentTrail(back, 18_000)), 'the same words opening the same file each time: a way back, not a hunt');
+  const again = foldAll([['retry', 'worker.go'], ['backoff', 'backoff.go'], ['Retry', 'queue.go']].map(([query, file], i) => search(query, 10_000 + i * 2000, {results: 2, file})));
+  assert.ok(lost(currentTrail(again, 18_000)), 'the same words again, landing elsewhere, count, whatever their case');
 });
 
 test('an edit ends a trail, and so does the window', () => {
