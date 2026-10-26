@@ -41,7 +41,7 @@ Switching to Scout opens a pane below the chat pane, labelled `pair scout`. It r
   - `sort -o|--output|--compress-program`, `tree -o`, `file -C`, `date -s`, `git diff --output`;
   - a second file name for `uniq` and `xxd` (`uniq IN OUT` writes OUT).
 
-  A short flag counts in every spelling: alone (`-o out`), with its value attached (`-oout`), or inside a cluster (`-ro`). A long flag also counts when it is shortened, the way GNU tools accept (`--out=x`).
+  A short flag counts in every spelling: alone (`-o out`), with its value attached (`-oout`), or inside a cluster (`-ro`). A long flag also counts when it is shortened the way GNU tools accept, down to one letter (`--out=x`, `--o=x`).
 - Tests and builds that change files or run something else: `cargo fmt`, `cargo clippy --fix`, `eslint --fix`, snapshot updates (`jest -u`, `vitest -u`, also passed through as in `npm test -- -u`), `cargo doc --open`, `go env -w|-u`, `go test -exec`, `go vet -vettool`, and `make` with no target, since the default target can be anything.
 - Git that changes your working tree: `checkout`, `switch`, `restore`, `add`, `stash`, `clean`, a new `branch`; and any git command with global options other than `-C` and `--no-pager` (`git -c core.pager=sh log`).
 - Writing to a file with `>` or `>>`.

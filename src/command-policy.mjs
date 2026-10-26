@@ -127,7 +127,7 @@ function hasFlag(args, flag) {
   return args.some(arg => {
     const name = arg.split('=')[0];
     if (name === flag) return true;
-    if (flag.startsWith('--')) return name.length > 3 && flag.startsWith(name);
+    if (flag.startsWith('--')) return name.length > 2 && flag.startsWith(name);
     return short && /^-\w/.test(arg) && arg.slice(1).includes(flag[1]);
   });
 }

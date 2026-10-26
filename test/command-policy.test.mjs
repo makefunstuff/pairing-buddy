@@ -37,7 +37,7 @@ test('commands that write, delete or install ask first', () => {
 test('read-only programs ask when a flag or operand makes them write or run a program', () => {
   expectAll('ask', [
     'fd . -x rm {}', 'fd precious -x rm', 'fd -e js --exec-batch rm', 'fd . -X rm', 'fd -HX rm', 'fd . --exec=rm',
-    'sort -onew.txt package.json', 'sort -ro out.txt list.txt', 'sort --out=x list.txt', 'sort --compress-program=sh list.txt',
+    'sort -onew.txt package.json', 'sort -ro out.txt list.txt', 'sort --out=x list.txt', 'sort --o=x list.txt', 'sort --o x list.txt', 'sort --compress-program=sh list.txt',
     'tree -ofile.txt', 'uniq in.txt out.txt', 'uniq -c in.txt out.txt', 'uniq - out.txt', 'xxd in.bin out.hex', 'xxd -l 64 in.bin out.hex',
     'file -C -m magic', 'go env -w GOFLAGS=-mod=mod', 'go env -u GOFLAGS', 'go test -exec rm ./...', 'go test --exec=rm ./...',
     'go vet -vettool=./x ./...',
