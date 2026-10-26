@@ -221,7 +221,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
   function watchHerdr(session, herdr) {
     if (watches.has(session.root) || !herdr?.socket) return;
     const sessionLog = line => log(`[${basename(session.root)}] ${line}`);
-    session.scout = new ScoutPane({socketPath: herdr.socket, workspaceId: herdr.workspace, besidePane: herdr.pane, cwd: session.root, log: sessionLog});
+    session.scout = new ScoutPane({socketPath: herdr.socket, workspaceId: herdr.workspace, besidePane: herdr.pane, cwd: session.root, runsDir: join(config.dataDir, 'panes'), log: sessionLog});
     const watch = new PaneWatch({
       socketPath: herdr.socket,
       workspaceId: herdr.workspace,

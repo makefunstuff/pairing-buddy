@@ -1,22 +1,27 @@
 import assert from 'node:assert/strict';
+import {spawnSync} from 'node:child_process';
 import {mkdtempSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {test} from 'node:test';
-import {commandResult, promptNumber, ScoutPane, shellQuote} from '../src/scout-pane.mjs';
+import {PaneRuns} from '../src/pane-runs.mjs';
+import {ScoutPane, shellQuote} from '../src/scout-pane.mjs';
 import {fakeHerdr} from './fake-herdr.mjs';
 
-test('promptNumber reads the prompt on the last line only', () => {
-  assert.equal(promptNumber('scout[1] exit 0 $ ls\na.js\nscout[2] exit 0 $ '), 2);
-  assert.equal(promptNumber('scout[2] exit 0 $ npm test\nrunning...'), null);
-  assert.equal(promptNumber('[you@host project]$ '), null);
-});
+const hasBash = spawnSync('bash', ['--version']).status === 0;
 
-test('commandResult cuts out one command\'s output and its exit code', () => {
-  const text = 'scout[3] exit 0 $ npm test\nFAIL ws.test.js\nTests: 1 failed, 1 total\nscout[4] exit 1 $ ';
-  assert.deepEqual(commandResult(text, 3), {exit: 1, output: 'FAIL ws.test.js\nTests: 1 failed, 1 total'});
-  assert.equal(commandResult('scout[3] exit 0 $ npm test\nstill running', 3), null);
-  assert.deepEqual(commandResult('line 900\nline 901\nscout[4] exit 0 $ ', 3), {exit: 0, output: '(earlier output cut)\nline 900\nline 901'});
+test('the pane\'s shell writes each command\'s whole output and exit code, not the rest of its rc file', {skip: hasBash ? false : 'bash not installed'}, async () => {
+  const runs = new PaneRuns(join(mkdtempSync(join(tmpdir(), 'pair-runs-')), 'w1-p3'));
+  const line = await runs.shellLine();
+  const typed = ['echo out; echo err >&2; false', '', 'cd / && pwd', 'seq 1 2500', 'pwd', ''].join('\n');
+  spawnSync('bash', ['-c', line], {input: typed, env: {PATH: process.env.PATH, HOME: runs.dir}});
+  assert.deepEqual(await runs.result(1), {exit: 1, output: 'out\nerr'});
+  assert.deepEqual(await runs.result(2), {exit: 0, output: '/'});
+  const long = await runs.result(3);
+  assert.equal(long.output.split('\n').length, 2500, 'more than herdr\'s 1000 lines, from the first');
+  assert.equal(long.output.split('\n')[0], '1');
+  assert.deepEqual(await runs.result(4), {exit: 0, output: '/'}, 'a cd stays: commands run in the pane\'s own shell');
+  assert.equal(await runs.next(), 5, 'empty lines are no commands');
 });
 
 test('shellQuote makes one word of anything', () => {
@@ -24,9 +29,10 @@ test('shellQuote makes one word of anything', () => {
 });
 
 test('the pane opens beside the chat, runs commands one at a time and types only into itself', async () => {
-  const socketPath = join(mkdtempSync(join(tmpdir(), 'pair-herdr-')), 'herdr.sock');
+  const dir = mkdtempSync(join(tmpdir(), 'pair-herdr-'));
+  const socketPath = join(dir, 'herdr.sock');
   const herdr = await fakeHerdr(socketPath, {commands: {'npm test': {output: 'Tests: 1 failed, 1 total', exit: 1}, 'echo two': {output: 'two'}}});
-  const pane = new ScoutPane({socketPath, workspaceId: 'w1', besidePane: 'w1:p2', cwd: '/project'});
+  const pane = new ScoutPane({socketPath, workspaceId: 'w1', besidePane: 'w1:p2', cwd: '/project', runsDir: join(dir, 'panes')});
   try {
     const [first, second] = await Promise.all([pane.run('npm test'), pane.run('echo two')]);
     assert.deepEqual(first, {exit: 1, output: 'Tests: 1 failed, 1 total', timedOut: false});
@@ -35,7 +41,7 @@ test('the pane opens beside the chat, runs commands one at a time and types only
     assert.ok(herdr.sent.every(([target]) => target === pane.paneId), 'nothing is typed into the user\'s or the chat pane');
 
     // A later daemon finds the pane by its label instead of opening another.
-    const again = new ScoutPane({socketPath, workspaceId: 'w1', besidePane: 'w1:p2', cwd: '/project'});
+    const again = new ScoutPane({socketPath, workspaceId: 'w1', besidePane: 'w1:p2', cwd: '/project', runsDir: join(dir, 'panes')});
     await again.run('echo two');
     assert.equal(again.paneId, pane.paneId);
     assert.equal(herdr.panes.size, 3);

@@ -1,6 +1,9 @@
 // A stand-in for herdr's socket API, just enough for Pair: panes to list, split, close and read, and a
-// shell in each new pane that runs scripted commands and shows the prompt Scout's bash would show.
+// shell in each new pane that runs scripted commands, shows the prompt Scout's bash would show and writes the
+// files its rc file would (see pane-runs.mjs).
+import {mkdirSync, writeFileSync} from 'node:fs';
 import {createServer} from 'node:net';
+import {join} from 'node:path';
 import {readMessages, sendMessage} from '../src/protocol.mjs';
 
 /**
@@ -15,17 +18,24 @@ export async function fakeHerdr(socketPath, {commands = {}} = {}) {
 
   async function type(pane, text) {
     const shell = panes.get(pane);
-    if (text.startsWith('exec env HISTFILE=')) {
-      shell.count = 1;
+    const runs = /^exec env PAIR_RUNS='([^']+)'/.exec(text)?.[1];
+    if (runs) {
+      Object.assign(shell, {count: 1, runs});
+      mkdirSync(runs, {recursive: true});
+      writeFileSync(join(runs, 'next'), '1\n');
       shell.lines.push('scout[1] exit 0 $ ');
       return;
     }
     if (text === '\x03' || shell.count === undefined) return;
     const command = text.replace(/^\x15/, '').replace(/\r$/, '');
     shell.lines[shell.lines.length - 1] += command;
+    writeFileSync(join(shell.runs, 'next'), `running ${shell.count}\n`);
     const {output = '', exit = 0} = (typeof commands === 'function' ? await commands(command) : commands[command]) ?? {};
     if (output) shell.lines.push(...output.split('\n'));
-    shell.lines.push(`scout[${++shell.count}] exit ${exit} $ `);
+    writeFileSync(join(shell.runs, `${shell.count}.out`), output ? `${output}\n` : '');
+    writeFileSync(join(shell.runs, `${shell.count}.exit`), `${exit}\n`);
+    writeFileSync(join(shell.runs, 'next'), `${++shell.count}\n`);
+    shell.lines.push(`scout[${shell.count}] exit ${exit} $ `);
   }
 
   const lastLines = (pane, lines = 1000) => panes.get(pane).lines.slice(-lines).join('\n');
