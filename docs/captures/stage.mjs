@@ -1,4 +1,4 @@
-// Sets the stage for one capture in a scratch directory: the sample project at the scene's starting point, the
+// Sets the stage for one capture in a scratch directory: the scene's sample project at its starting point, the
 // fake model server, the herdr stand-in, the real daemon (`pair daemon`, as the service runs it) with a config
 // that points at them, and a chat client, as the chat pane would be. Writes `ready` when Neovim may start.
 // usage: node stage.mjs <scene> <scratch dir under /tmp/paircap.*>
@@ -32,6 +32,7 @@ const git = (...args) => execFileSync('git', ['-c', 'user.name=dev', '-c', 'user
 git('init', '-q');
 git('add', '-A');
 git('commit', '-qm', 'hookd');
+if (scene.branch) git('checkout', '-qb', scene.branch);
 if (scene.build) execFileSync(scene.build[0], scene.build.slice(1), {cwd: project, stdio: 'ignore'});
 else if (existsSync(join(project, 'go.mod'))) execFileSync('go', ['test', '-count=1', '-run', '^$', './...'], {cwd: project, stdio: 'ignore'});
 
@@ -59,6 +60,7 @@ writeFileSync(join(dir, 'config.json'), JSON.stringify({
   keepWarm: false,
   ...(scene.testOnSave ? {testOnSave: {[project]: scene.testOnSave}} : {}),
   ...voice(),
+  board: scene.board ? join(HERE, 'board.mjs') : null, // the stand-in board, or none: not yours
   models: {watcher: model('watcher'), partner: model('partner')},
 }, null, 2));
 const out = openSync(join(dir, 'daemon.log'), 'a');
@@ -71,7 +73,7 @@ const chat = connect(socket);
 readMessages(chat, message => { if (message.type === 'message') log(`chat: ${message.sender}: ${message.text}`); });
 await new Promise(resolve => chat.on('connect', resolve));
 sendMessage(chat, {type: 'hello', role: 'chat', cwd: project, herdr: {socket: herdrSocket, workspace: 'w1', pane: 'w1:p2'}});
-sendMessage(chat, {type: 'goal', text: scene.goal});
+if (scene.goal) sendMessage(chat, {type: 'goal', text: scene.goal}); // else the session takes the board task's
 
 async function stop() {
   chat.destroy();

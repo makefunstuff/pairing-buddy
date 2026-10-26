@@ -1,6 +1,6 @@
 # The captures
 
-The clips and stills of the three moments ([docs/neovim.md](../neovim.md) and the site) are recorded
+The clips and stills of the three moments and the ledger ([docs/neovim.md](../neovim.md) and the site) are recorded
 from the tapes here. They show the plugin and the daemon of this checkout as they ship. Only the models are scripted, so a
 recording comes out the same each time.
 
@@ -9,15 +9,19 @@ recording comes out the same each time.
   trigger it is asked about. The Partner's turns (tool calls or words, each after its own pause) come in order
   from [scenes.mjs](scenes.mjs). The tools those calls reach are real: they read the files, check the line and the
   code they point at, and type the edit.
+- **The board:** [board.mjs](board.mjs) stands in for herdr's work board in the context-card scene, which also
+  fetches Telescope and plenary at pinned commits for its searches.
 - **herdr:** [herdr.mjs](herdr.mjs) stands in for herdr's socket, because the captures show Neovim alone.
   - Pair's own pane runs its commands for real, with bash in the project: the tests on save, and
     `go test -overlay` on the unsaved buffer.
   - The user's shell is Neovim's `:terminal`, with Pair's shell hook.
 - **The project** is [hookd/](hookd/), a small Go webhook service with a retry bug. Each scene starts it at its
   own point. The held thought is in C instead: [ringbuf/](ringbuf/), a ring buffer with a Makefile, and `clangd`
-  gives its diagnostics. Teach on request is in the C program the live tone tests use
-  ([test/live/probe](../../test/live/probe/)), whose `make run` fails its check with exit 1. Commands run with core
-  dumps off ([test/no-cores.mjs](../../test/no-cores.mjs)).
+  gives its diagnostics; so is the crash scene: [probe/](probe/), a small C hash table built and run with `make run`
+  and AddressSanitizer. Teach on request is in the C program the live tone tests use
+  ([test/live/probe](../../test/live/probe/)), whose `make run` fails its check with exit 1.
+- **No core dumps.** The crash scene crashes a program on purpose. `record.sh` sets the core limit to 1 byte for
+  everything it starts, so nothing reaches the machine's crash reporter (see [test/no-core.mjs](../../test/no-core.mjs)).
 - **Neovim** is clean: [init.lua](init.lua), the ayu colorscheme (fetched at a pinned commit), and scratch XDG
   directories. The search-trail scene also fetches Telescope and plenary at pinned commits; Telescope's history goes
   to the scratch directories too.
@@ -30,19 +34,22 @@ recording comes out the same each time.
 | [tests-on-save](tapes/tests-on-save.tape) | 02 · it runs what you'd skip |
 | [hand-over](tapes/hand-over.tape) | 03 · the visible hand-over |
 | [take-back](tapes/take-back.tape) | a key while Pair drives takes the wheel back |
+| [ledger](tapes/ledger.tape) | `:Pair today` after a morning of 02 and 03; `u` undoes the six cases after your own edit |
 | [search-trail](tapes/search-trail.tape) | the search trail: three Telescope searches, the cue, `:Pair trail` |
 | [held-thought](tapes/held-thought.tape) | the held thought, and one look on a grey palette |
 | [push-to-talk](tapes/push-to-talk.tape) | hold `Alt-t`, ask aloud, and Pair answers under your line |
+| [context-card](tapes/context-card.tape) | `:Pair context`, with the goal from the board task, and `x` on a source |
+| [crash](tapes/crash.tape) | a compiler error, a crash and its frame, and a new warning, from `make run` on save |
 | [teach](tapes/teach.tape) | Alt-? on a remark: the idea worth keeping behind it, and its link |
 
 ## Recording
 
-Needs [VHS](https://github.com/charmbracelet/vhs) 0.11 with ttyd, Neovim 0.11+, Go, clangd, make and a C compiler,
-Node.js, curl, FFmpeg and the JetBrainsMono Nerd Font.
+Needs [VHS](https://github.com/charmbracelet/vhs) 0.11 with ttyd, Neovim 0.11+, Go, clangd, a C compiler with
+AddressSanitizer, make, Node.js, curl, FFmpeg, util-linux's `prlimit` and the JetBrainsMono Nerd Font.
 
 ```sh
 npm ci                                  # in the repo root
-docs/captures/record.sh                 # all scenes into docs/captures/out/, or name some
+docs/captures/record.sh                 # all the scenes into docs/captures/out/, or name some
 docs/captures/encode.sh                 # out/ -> site/media/ and docs/images/
 ```
 

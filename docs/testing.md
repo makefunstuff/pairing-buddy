@@ -25,6 +25,8 @@ Runs every test that needs no model, in under a minute, with scripted models and
   - tests on save end to end: the spinner, the failing test named, signs on the test functions and the failure after
     its line, `Alt-j` to Pair's suggestion and `Alt-y`, and the passing run;
   - a note moving under its line when the window narrows, and a question about selected lines;
+  - the ledger: `:Pair today` listing what Pair read, typed, ran and said, `u` undoing its edit after a later edit of
+    yours and `u` again making it again, nothing changing when you edited its lines, and `⏎` showing a run's output;
   - a held thought end to end: the `•` where it points and the statusline while you type in Insert mode, nothing in
     the chat, and `Alt-j` showing it at once;
   - push-to-talk: the held key's meter, the words heard and the answer in their place, and a tap;
@@ -55,16 +57,37 @@ Runs every test that needs no model, in under a minute, with scripted models and
 - **The search trail.** Three searches with one closed empty make a trail, an edit or the time window ends it; the
   trigger waits for a pause and carries what fails now; the Watcher's question; what the project has for each query;
   a trail remark and `:Pair trail` showing the same searches; a held trail remark dropped once you edit.
+- **The context card and no ceremony.** The board task matched by repo and number (never another repo's task of the
+  same number, nor a version branch), the board's agent launches left out of your commands, each source's rows and
+  budget, a hidden source left out of what the Partner gets and raising no remark (no failed command with a hidden
+  terminal, no search trail with a hidden editor), the goal from the board task or the branch with nothing asked,
+  "later" skipping the question, `:Pair context` in a headless Neovim (buffers and jumps on the card, `x` hiding git
+  and bringing it back, and a word when not connected), and sessions ending by themselves: after the idle time, and
+  once the last Neovim closed, with a note only for a session that was used.
+- **Builds and crashes.** The crash and diagnostic readers on real output of gcc, clang, zig, lld, glibc, the
+  sanitizers, bash and make, recursive make included (and Odin's and C3's formats); signals from exit codes, never a
+  program's own words in a run that ended with exit 0; the frame in the project; paths from where a command ran; new
+  warnings only in files you edited; the crash and new-warning triggers; and in Neovim the `✗` and `△` on their lines,
+  `Alt-j` to the crash or first error at its column, and a clean run clearing them.
 - **Tests on save.** The JSON reports of go test (subtests, panics, build failures), jest and vitest, each test placed
   at its line; runs in Pair's pane one at a time; the regression trigger raised once per run with new failures.
 - **Tests on unsaved text.** A real `go test -overlay` passing on the buffer's fix while the file on disk fails; a copy
   of the project for other runners (git's files and ignored files copied, dependency folders linked at any depth
   without their caches, builds into ignored folders staying in the copy, a file in a dependency folder refused); the
   Driver hearing the result.
+- **The ledger.** What a session books (reads in a row as one line, the place a remark pointed at, its verdict,
+  commands with their output, what it asked and was refused, the moments it stayed quiet and why), today from local
+  midnight, the three-way merge that undoes an edit, details forgotten after a week, and `/today` in the chat.
 - **[One model](config.md#one-model).** Each role's request to it (no thinking and 8 tokens for the Watcher, thinking
   for the Partner); the Watcher waiting while the Partner works in another project, and its remark saying how long it
   waited; a question cancelling the remark still being written (dropped, and no failure of the model); the context
   budget: the reply's room, compaction, and the instructions, tools and longest note fitting the smallest window.
+
+**No core dumps.** Tests that crash a program on purpose (and the captures' crash scene) run it through
+[test/no-core.mjs](../test/no-core.mjs), which sets the core limit to 1 byte. With systemd-coredump in
+`/proc/sys/kernel/core_pattern`, `ulimit -c 0` is not enough: the kernel still hands the crash to it, and it logs the
+crash and shows a notification. At 1 byte the kernel gives up before the pipe. A new test that crashes something on
+purpose should run it the same way (`bashWithoutCores(command)`).
 
 ## Live tests against real models
 
@@ -94,6 +117,8 @@ Stacks can name a `provider` too, with its login or key from `pair auth`. Withou
   the Navigator suggesting instead of editing.
 - **Memory:** a session note that names the goal, the change and the loose end; the next session answering "what did
   we leave open?" from it; the note not turning a noise moment into a remark.
+- **Builds and runs** (`test/live/runs.test.mjs`): a C program built and run for real with `cc`. A segfault gets a
+  point at its cause, a `-Wformat` warning a point at the `printf`, and an unused variable silence.
 - **The probe** `pair doctor` and the daemon's health check use, and the Watcher answering it within 3 s.
 - **A scripted session** (`test/live/dogfood.test.mjs`): twelve minutes of edits, failing tests, a stall, a question
   and drift, played through a real Pair session on a simulated clock and printed like a transcript. It checks that
@@ -105,6 +130,10 @@ editor is played by buffers in memory, and the files on disk must stay as they w
 **The search trail.** `test/live/trail.test.mjs` plays the captures' Go project with a red test and three searches;
 the cue has to name the real cause in the code's own words. The trail alone, without the failing test, is run too,
 for the record.
+
+**The context card.** `test/live/context.test.mjs` gives the Partner a board task, buffers and a search: it has to
+name the task, know nothing of the search while the editor source is hidden, and name the file the search opened once
+it is back.
 
 **The tone.** `test/live/tone.test.mjs` runs a real Pair session on a small C program with a Makefile
 ([test/live/probe](../test/live/probe/)), built and run for real: a remark on a failed `make run` names `file:line` in
@@ -130,10 +159,3 @@ it needs a browser and your account.
 **The Anthropic API.** Run when `ANTHROPIC_API_KEY` and `PAIR_LIVE_ANTHROPIC_MODEL` are set: the cloud model answers
 the probe as both roles, scores a repeated failure above the bar, and answers a short question as Partner. It has not
 been run against the real API yet ([#44](https://github.com/makefunstuff/pairing-buddy/issues/44)).
-
-## Programs that crash
-
-Commands that tests and captures run go through [`test/no-cores.mjs`](../test/no-cores.mjs), which turns core dumps
-off (`ulimit -c 0`), so a program a test crashes on purpose leaves no core file. Where the kernel pipes crashes to
-systemd-coredump, it still logs the crash (without a core) and the desktop may say so: a test that only needs a failing
-program, like the tone tests' C project, fails with an exit code instead of a crash.

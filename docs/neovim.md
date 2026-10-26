@@ -1,7 +1,8 @@
 # The pair in Neovim
 
 Pair sits in the second chair. In Neovim it has a small visual language: a few marks in one colour, all in your
-own font, and no windows, boxes, borders or field labels (the one panel, `:Pair trail`, opens only when you ask).
+own font, and no windows, boxes, borders or field labels (the three panels, `:Pair trail`, `:Pair context` and
+`:Pair today`, open only when you ask).
 Everything it shows follows one test: would you keep it on screen for an eight-hour day?
 
 ![Pair stops a wrong turn: it reads, says why under your edit, and Alt-j goes to the real cause](images/wrong-turn.gif)
@@ -25,6 +26,7 @@ run is real `go test`; only the models' words are scripted. It is recorded from 
 | `◉` and a meter | under your line, and the statusline | it listens while you hold `Alt-t` ([push-to-talk](voice.md)) |
 | `⠹` | the statusline | it thinks before it answers, or runs your tests |
 | `✓` `✗` | the statusline, and the sign column of your tests | tests it ran for you when you saved |
+| `✗` `△` | the sign column, and the words after the line | a crash or a compiler error, and a new warning, from your last build or run |
 
 **One accent, from your colorscheme.** Pair takes its colour from the colorscheme you use, so it fits in light and
 dark: of the colorscheme's own colours for regular expressions, its terminal cyan, its hints and its specials, it
@@ -122,6 +124,44 @@ can. Details in [docs/watcher.md](watcher.md#regressions).
 
 ![A failing test in Neovim's own light colorscheme](images/tests-light.png)
 
+## A crash and a compiler error
+
+Most days have no test suite: you build and run, `make run`, and read what it prints. Pair reads it too, from your
+terminal or from its run on save (`"testOnSave": {"~/src/probe": "make run"}`).
+
+![On save, Pair runs make: a missing semicolon marks its line; the fix crashes, Alt-j goes to the frame, and Pair says why; a new warning gets a note](images/crash.gif)
+
+*The plugin and the daemon as shipped, in a clean Neovim with ayu. The builds and runs are real (`make run` with gcc
+and AddressSanitizer); only the models' words are scripted.*
+
+1. You take the mask out of `hash()` and forget the semicolon. You save: the statusline spins `⠹ make run`, then
+   says `✗ does not build · probe.c:11`, and line 11 gets `✗` with gcc's words after it.
+2. You add the semicolon and save. It builds, and crashes: `✗ AddressSanitizer: SEGV · probe.c:19`. The frame in
+   your code, `keys[i] = key;` on line 19, gets the `✗` and the words; libc's frames are left out. `Alt-j` goes
+   there.
+3. Pair reads, points at `key * 31` on line 11 and says under your line why it crashes there. `Alt-j` now goes to
+   its point, the newer of the two.
+4. You undo, and add `unsigned worst = 0;` for later. It builds clean but for one warning no build before printed:
+   `✓ make run · 1 new warning`, `△` on its line and the words after it. Pair says nothing: an unused variable
+   while exploring is no bug. Built again, the same warning is no news: a quiet `△`, no words.
+
+![The build error on line 11](images/build-error.png)
+
+![The crash on line 19, after Alt-j](images/crash-jump.png)
+
+![Pair's words under the crash, pointing at the hash](images/crash.png)
+
+![A new warning: △ and its words, and the statusline](images/new-warning.png)
+
+**What shows.** The last build or run that crashed or printed compiler errors or warnings shows until the same
+command runs clean, in every buffer of a file it names, and in files you open later. A crash's or error's place gets
+`✗` (`PairFail`) and its words after the line, or under it when the line is too long for the window; a new warning
+`△` (`PairWarn`) and its words; an old warning only a quiet `△` (`PairWarnQuiet`). A place that is new since the
+last run fades in. A crash with no stack in your code (a bare segfault without a sanitizer) has no line: the
+statusline still names it. `Alt-j` goes to the crash, else the first error, else the first new warning, at its
+column; a newer point or suggestion of Pair's takes the key over, as usual. A run in your terminal shows the same
+marks; the statusline speaks only for the run on save.
+
 ## The visible hand-over
 
 The third moment: you write the first case of a table test and hand over the boring part with
@@ -145,7 +185,7 @@ unsaved buffer; only the models' words are scripted.*
    statusline, the `▎` still on the lines it changed, and `u undoes it`. Like any of its words, they go with your
    next edit.
 5. Everything it typed is one undo step: one `u` takes it all away, `Ctrl-R` brings it back. Nothing is saved
-   until you `:w`.
+   until you `:w`. After your next edits, the [ledger](#the-ledger) still undoes it.
 
 ![While it drives: the ghost text and Pair's cursor, a bar on each line it entered, the wheel in the statusline](images/driving.png)
 
@@ -268,6 +308,51 @@ replayed unedited; the point's note too.*
 It works on any words of Pair's under your line: a remark, or the hand-back line after the Driver's edit. In the
 chat, `?` or `/why` asks about what Pair said last. Asking about a remark counts as having seen it.
 
+## The ledger
+
+At the end of a morning, what did the pair actually do? `:Pair today` (or `/today` in the chat) opens a quiet list
+at the bottom: everything Pair did in this project today, oldest first, one line each. The time, what it did in
+the accent, what it did it to, and on the right the key that acts on it.
+
+![:Pair today lists the morning; u on the six typed cases takes them back while your comment above them stays, and u again brings them back](images/ledger.gif)
+
+*The plugin and the daemon as shipped, in a clean Neovim with ayu. Off screen, a morning of the two moments above:
+the tests on save find a regression and `Alt-y` takes Pair's fix; you hand over the edge cases, then write a comment
+above them and save. Every line in the list is what the daemon booked as it happened; only the models' words are
+scripted.*
+
+| It | When | On the right |
+| --- | --- | --- |
+| `read` | it read a file; reads in a row are one line (`queue_test.go 24-37, queue.go 1-29`) | `⏎ go` |
+| `said` | its words, unasked or answering you | your verdict on a remark (`+ useful`, `- noise`), or `⏎ all` |
+| `pointed`, `showed` | it pointed at a line, or opened one in a split | `⏎ go` |
+| `suggested` | it suggested a change | `⏎ go`; once you accept it, `accepted · u undo` |
+| `typed` | the Driver's edit (`6 lines in backoff_test.go · one undo step`), or one line it typed into your terminal | `u undo`, for the edit |
+| `ran`, `searched` | a command in its pane, or the tests it ran on save or on the unsaved buffer, with `✓` or `✗`; the same run in a row is one line (`· 3 times`) | `⏎ output` |
+| `asked`, `refused` | what it asked before running or typing, and what its policy refused, with the reason | `you said no` |
+| `stayed quiet` | the moments it let pass: `3 moments under the bar`, or held back by the budget | `⏎ why` |
+
+The last one shows that the gate works: Pair noticed, judged, and chose not to talk.
+
+**Keys in the list.** `⏎` goes to the place in the window you came from, or opens what the entry holds in the
+list's window (a command's output, why Pair stayed quiet, all it said; `q` comes back). `+` and `-` rate a remark.
+`q` closes the list. While it is open, it follows along.
+
+**`u` undoes Pair's edit, later.** In the buffer, Pair's edit is one undo step, but only until your next edit
+buries it. In the ledger, `u` on a `typed` line takes that edit back whenever you like, after other edits too: the
+daemon kept the buffer's text before and after it, and Neovim merges the undo into the buffer as it is now. Your
+changes since stay; the line is struck through and says `undone · u again redoes`; `u` again makes the edit again.
+An accepted suggestion works the same way. If you changed the very lines Pair's edit touched, undoing it would undo
+yours too, so nothing changes and Pair says why. The undo is one undo step in that buffer, and unsaved, like the
+edit was: the disk changes when you `:w`.
+
+![The six cases undone: your comment above them stays, and the ledger line is struck through](images/ledger-undone.png)
+
+The list is today's, from local midnight, across the sessions of this project; the line at the bottom sums it up:
+`11 things · 1 remark, 1 useful · 2 h 10 min` (the active pairing time today). The entries are kept in
+`sessions.sqlite`; what they open to (the output of each command, its last 20 000 characters, and the text before
+and after each edit) for a week.
+
 ## What each thing looks like
 
 **Words.** One or two lines under the line you are on, indented with your code, with `●` before them. At most
@@ -298,6 +383,46 @@ held, `● pair · held thought · M-j`, the `●` in the accent.
 
 ![A model down, then the daemon away](images/statusline.png)
 
+## What it knows: the context card
+
+`:Pair context` shows everything the pair uses, as it is this second, on one card you can read and trim: the goal,
+the board task of your branch, git, the commands you ran, and where you have been in the editor. It is the same
+text the Partner gets with every remark and question, so what is not on the card is not sent. It is read again every
+two seconds while it is open.
+
+![:Pair context: the goal from the board task, the board, git, the failing run, and the buffers, jumps and searches](images/context.png)
+
+*The card in the capture, made by the daemon and plugin as shipped: no goal was typed, it came from the board task
+of the branch. The test run and the two Telescope searches are real; the board is a stand-in for
+herdr's work board ([captures/board.mjs](captures/board.mjs)).*
+
+| Source | Rows | Read from |
+| --- | --- | --- |
+| goal | what the session is for, and where it came from | the board task, else the branch name, else what you typed |
+| board | the task, its state, and how many of the repo's other tasks are working or need you | the herdr work board: the task whose number is in the branch name, in this repo |
+| git | branch, last commit, how many files changed, the pull request | `git`, and `gh pr view` at most every five minutes |
+| terminal | the last three commands, how they ended and how long ago | the herdr panes and the shell hook |
+| editor | your buffers, the jumplist, and your searches with what you opened from them | Neovim, and the searches the [search trail](#the-search-trail) reads from Telescope and snacks.picker |
+
+- **`x` hides a source** for the rest of the session: it is struck through on the card and no longer sent. `x` on
+  it again brings it back. `q` or `Esc` closes the card. A hidden terminal also means no remark about a failed
+  command (nothing to say it with); the last test run still goes, with what you do now. Hiding works from then on:
+  what went with earlier questions stays in the session's conversation.
+- **A budget per source.** Six buffers, four jumps and three searches go; the card says how many more were cut.
+- **The board's own launches are not yours.** A command that launches one of the board's agents (it hands the agent
+  a file from one of the board's task folders) is left out of the commands, and the card counts it as not sent, so
+  Pair never thinks you ran it. Your own `herdr-projects` commands are yours.
+- **Matched by repo and number.** The branch `work/7-retries` belongs to task 7 of this repo only: another repo's
+  task 7 is never taken for it. The repo is the folder of the main checkout (also from a worktree) or the name in
+  `origin`'s URL.
+- The searches are the search trail's: a search you leave with `Esc` shows without "opened", since nothing was.
+  Hiding the editor also keeps the search trail from raising a remark, which would send the searches.
+- A branch is read as a task number only when the number stands alone in a part of its name (`work/7-retries`,
+  `7-fix`), so `release/2.0` is no task.
+- `:Pair context` needs a connection; before one, it says so.
+
+![x on the terminal: its rows are struck through and no longer go to the Partner](images/context-trimmed.png)
+
 ## Setup
 
 The lazy.nvim spec is in [install.md](install.md#install). Without a plugin manager:
@@ -316,7 +441,7 @@ require('pair').setup({
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `auto_connect` | `false` | Connect to the daemon at startup (the lazy.nvim spec sets it) |
+| `auto_connect` | `false` | Connect to the daemon at startup (the lazy.nvim spec sets it). A Neovim without a screen (`nvim --headless`, an agent's or a script's) or one started in the temp folder does not, so it never starts a session; `:Pair start` connects it anyway |
 | `socket` | the daemon's default | The daemon's socket |
 | `debounce_ms` | `2000` | How long after you stop typing an edit is sent |
 | `max_points` | `5` | Points kept at once |
@@ -333,7 +458,7 @@ Every key option takes `false` for none; the commands work either way. The keys 
 mapping of your own, and all but `listen_key` only while there is something for them to act on. Each says what it does
 until you have used it once (`M-j goes there`); the keys you have used are kept in `stdpath('state')/pair/keys.json`.
 The glyphs are plain Unicode, so they show in any font: `voice` `●`, `idea` `◇`, `mark` `▎`, `held` `•`, `away` `◌`, `wheel` `◎`, `listen` `◉`, `pass`
-`✓` and `fail` `✗`. The
+`✓`, `fail` `✗` and `warn` `△`. The
 spinner is braille, `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`.
 
 Once connected, the plugin stays connected: when the daemon restarts (an upgrade, `systemctl --user restart`, a
@@ -362,8 +487,10 @@ to standard ones and does not fade.
 | `:Pair noise` | It was not (same as `Alt-n`) |
 | `:Pair why` | The idea worth keeping behind Pair's words under your line (same as `Alt-?`); again, it opens the link that came with it |
 | `:Pair open` | Open the place Pair asked to show while you were typing |
+| `:Pair today` | The [ledger](#the-ledger): everything Pair did in this project today; `⏎` goes there or shows the output, `u` undoes one of its edits later |
 | `:Pair clear` | Remove Pair's points and words |
-| `:Pair end` | End the session; Pair writes a short session note, which the next session in this project starts from |
+| `:Pair context` | Show what Pair knows right now: the goal, the board task, git, your commands, buffers, jumps and searches; `x` hides a source for the session, `q` closes |
+| `:Pair end` | End the session now; Pair writes a short session note, which the next session in this project starts from (it also [ends by itself](memory.md#no-ceremony-a-session-starts-and-ends-by-itself)) |
 | `:Pair listen [cancel]` | Push-to-talk without the key: works as a tap of `Alt-t`; `cancel` drops what is being recorded ([voice.md](voice.md)) |
 | `:Pair stop` | Disconnect this Neovim, and stop reconnecting |
 
@@ -408,7 +535,10 @@ vim.o.statusline = "%f %m%=%{%v:lua.require'pair'.statusline()%}  %l:%c "
 | `PairStatusPass` | `✓` in the statusline after a passing run | your colorscheme's "ok" colour (`DiagnosticOk`) |
 | `PairPass` | `✓` on a passing test | the "ok" colour, faded toward the background |
 | `PairFail` | `✗` on a failing test, and in the statusline | your colorscheme's error colour (`DiagnosticError`) |
-| `PairFailNote` | why a test failed, after its line | your foreground toward the error colour |
+| `PairFailNote` | why a test failed, after its line; a crash's or compiler error's words | your foreground toward the error colour |
+| `PairWarn` | `△` on a warning no build before printed | your colorscheme's warning colour (`DiagnosticWarn`) |
+| `PairWarnQuiet` | `△` on a warning the builds before printed too | the warning colour, faded toward the background |
+| `PairWarnNote` | a new warning's words, after its line | your foreground toward the warning colour |
 | `PairHeard` | your words as Pair heard them, in italics | between background and foreground |
 
 ## Ask about lines

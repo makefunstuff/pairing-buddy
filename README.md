@@ -50,8 +50,9 @@ Add the plugin with lazy.nvim:
 }
 ```
 
-Then set your model ([below](#configure-models)), open Neovim, run `pair` in the herdr pane next to it, and type the
-session's goal in the chat pane. `pair doctor` checks every part and says how to fix what is wrong.
+Then set your model ([below](#configure-models)), open Neovim, run `pair` in the herdr pane next to it, and work: the
+session takes its goal from the herdr board task of your branch, or the branch name, and asks only when there is
+neither. `pair doctor` checks every part and says how to fix what is wrong.
 
 Upgrading, installing from a clone, running without systemd, and the chat commands are in
 [docs/install.md](docs/install.md).
@@ -90,7 +91,8 @@ to do:
 | `Alt-?` | The one idea worth keeping behind Pair's words under your line; again, open its link to the docs |
 | any key | Take the wheel back while Pair drives |
 
-The main commands are `:Pair ask <question>`, `:Pair drive [what]`, `:Pair scout`, `:Pair navigate` and `:Pair end`.
+The main commands are `:Pair ask <question>`, `:Pair drive [what]`, `:Pair scout`, `:Pair navigate`, `:Pair context`, `:Pair today`
+and `:Pair end`.
 All options, commands, the statusline segment and the highlight groups are in [docs/neovim.md](docs/neovim.md), with
 captures of each moment.
 
@@ -125,8 +127,25 @@ without a result you opened), Pair says where the thing is, in the code's own wo
 **Runs your tests on save.** Set a test command per project, and each save runs it in Pair's pane; a test your change
 broke gets a remark and a suggested fix. [docs/tests-on-save.md](docs/tests-on-save.md)
 
+**Sees a crash and a compiler error.** Builds and runs are read like test runs, from your terminal or a `make run` on
+save: a segfault, a sanitizer report, a failed assert or a panic on the line of its frame in your code, and gcc, clang,
+zig, odin and c3c errors and warnings on theirs, with `Alt-j` to the first. A warning your edit brought gets a word,
+an old one stays quiet. [docs/builds.md](docs/builds.md)
+
 **Holds a thought.** A remark that can wait waits for your next save or pause, with a `•` in the margin meanwhile.
 [docs/neovim.md](docs/neovim.md#the-held-thought)
+
+**Shows what it knows.** `:Pair context` shows, on one card, everything that goes with a remark or a question: the
+goal, the board task of your branch (matched by repo and number), git, the commands you ran, your buffers, jumps and
+searches. `x` takes a source out for the session. [docs/neovim.md](docs/neovim.md#what-it-knows-the-context-card)
+
+**No ceremony.** A session starts with the goal of its board task or branch instead of asking, and ends by itself, with
+its note, after 45 minutes without you or once its last Neovim closes. [docs/memory.md](docs/memory.md#no-ceremony-a-session-starts-and-ends-by-itself)
+
+**Keeps a ledger.** `:Pair today` lists everything Pair did here today, one quiet line each: what it read, said,
+pointed at, suggested, ran and typed, what it asked, and the moments it stayed quiet. `⏎` goes there or shows the
+output, and `u` undoes one of its edits later, after your own edits too, which stay.
+[docs/neovim.md](docs/neovim.md#the-ledger)
 
 **Talks like a colleague.** The fact and its `file:line` first, the numbers, no praise, filler or emoji, and at most
 30 words for a remark. Ask why (`Alt-?`, or `?` in the chat) and it gives the one idea worth keeping behind what it
@@ -149,6 +168,7 @@ Off until you set `"voice"` in the config. [docs/voice.md](docs/voice.md)
 - [Scout](docs/scout.md): Pair's pane, the command policy, test output parsing
 - [Driver and suggestions](docs/driver.md): handing over, tests on the unsaved buffer, taking the wheel back
 - [Tests on save](docs/tests-on-save.md)
+- [Builds and crashes](docs/builds.md): crashes, compiler errors and new warnings, read from your runs
 - [Tone](docs/tone.md): how Pair's words read, teaching on request, and the live tests that hold them
 - [Push-to-talk](docs/voice.md): asking aloud, whisper.cpp, answers read aloud
 - [The Watcher](docs/watcher.md): the speak gate, held thoughts, thinking, keep-warm

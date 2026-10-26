@@ -1,0 +1,14 @@
+thread 2359401 panic: index out of bounds: index 4, len 3
+/home/dev/probe/z/main.zig:4:16: 0x113fb8d in probe (main.zig)
+    return keys[i * 4];
+               ^
+/home/dev/probe/z/main.zig:11:47: 0x113e8a4 in main (main.zig)
+    std.debug.print("avg probe {d}\n", .{probe(&keys, i)});
+                                              ^
+/usr/lib/zig/std/start.zig:618:22: 0x113dabd in posixCallMainAndExit (std.zig)
+            root.main();
+                     ^
+/usr/lib/zig/std/start.zig:232:5: 0x113d351 in _start (std.zig)
+    asm volatile (switch (native_arch) {
+    ^
+???:?:?: 0x0 in ??? (???)

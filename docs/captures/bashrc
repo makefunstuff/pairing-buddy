@@ -1,6 +1,4 @@
-# The :terminal's shell in the captures: a short prompt, no history file, no core dumps (a crash on purpose stays
-# off the desktop) and Pair's shell hook.
+# The :terminal's shell in the captures: a short prompt, no history file, and Pair's shell hook.
 HISTFILE=
-ulimit -c 0
 PS1='\W $ '
 eval "$(node "$CAP_REPO/bin/pair.mjs" shell-hook bash)"

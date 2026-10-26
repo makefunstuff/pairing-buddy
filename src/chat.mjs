@@ -3,6 +3,7 @@ import {connect} from 'node:net';
 import {clearLine, createInterface, cursorTo} from 'node:readline';
 import {dim, formatMessage} from './chat-style.mjs';
 import {LEVELS} from './config.mjs';
+import {ledgerText} from './ledger.mjs';
 import {readMessages, sendMessage} from './protocol.mjs';
 
 const HELP = `/goal <text>   set the session goal
@@ -12,8 +13,9 @@ const HELP = `/goal <text>   set the session goal
 /drive [what]  hand Pair the wheel for one change (or say "you take it" or "your turn")
 +  or /useful  Pair's last remark was useful
 -  or /noise   it was not (a remark you never see counts as not useful too)
+/today         what Pair did here today
 ?  or /why     the one idea worth keeping behind what Pair said last
-/end           end the session and write a session note
+/end           end the session now and write a session note (it also ends by itself)
 /quit          close this pane (the session goes on)
 anything else  ask Pair`;
 
@@ -33,6 +35,7 @@ export function parseInput(line) {
   if (command === '/navigate') return {type: 'role', role: 'navigator'};
   if (command === '/drive') return {type: 'drive', text: arg};
   if (command === '/end') return {type: 'end'};
+  if (command === '/today') return {type: 'today'};
   if (text === '+' || command === '/useful') return {type: 'feedback', useful: true};
   if (text === '-' || command === '/noise') return {type: 'feedback', useful: false};
   if (text === '?' || command === '/why') return {type: 'teach'};
@@ -113,13 +116,14 @@ export function runChat(socketPath) {
       say('pair', `${message.text} [y/N]`);
     }
     if (message.type === 'confirmed' && message.id === confirming) confirming = null; // answered, or timed out
+    if (message.type === 'ledger') print(ledgerText(message).map(line => dim(`·· ${line}`, look)).join('\n'));
     if (message.type === 'accent') look.accent = message.color;
     if (message.type === 'remark') print(dim('·· + useful  - noise', look));
     // What you type is already on screen; your own lines come back only as history.
     const echo = message.sender === 'user' && !message.history;
     if (message.type === 'message' && !echo) say(message.sender, message.text);
     if (message.type === 'ended') {
-      say('system', 'session ended');
+      say('system', `session ended${message.why ? ` by itself: ${message.why}` : ''}`);
       hello(false); // starts the next session, which asks for its goal
     }
   }

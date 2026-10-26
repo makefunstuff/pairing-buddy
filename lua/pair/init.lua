@@ -4,10 +4,14 @@
 -- buffer only while you hand it the wheel (the Driver role): one edit, typed while you watch (drive.lua) as one
 -- undo step, and refused or undone as soon as you press any key. Once connected, it stays connected: when the
 -- daemon restarts, it reconnects by itself.
+local card = require('pair.card')
 local draw = require('pair.draw')
 local drive = require('pair.drive')
 local hints = require('pair.hints')
+local ledger = require('pair.ledger')
 local listen = require('pair.listen')
+local merge = require('pair.merge')
+local places = require('pair.places')
 local searches = require('pair.searches')
 local style = require('pair.style')
 local trail = require('pair.trail')
@@ -28,7 +32,7 @@ local config = {
 local state = {
   channel = nil, partial = '', attached = {}, pending = {}, open_request = nil, level = nil, role = nil,
   points = {}, -- the lines Pair points at: {buf, ids (see draw.point), note, code}, oldest first
-  target = nil, -- where the jump key goes: {buf, ns, id, code} of Pair's last point, or of its suggestion
+  target = nil, -- where the jump key goes: {buf, ns, id, code, col} of Pair's last point, its suggestion, or a run's crash or error
   words = nil, -- Pair's words under your line: {buf, row, id, remark, text, key, sign, span, teaching}, until your next edit
   reading = nil, -- the file Pair reads now, for the statusline: {name, till}
   suggestion = nil, -- the change Pair suggested: {buf, ids, old, new, remark}
@@ -41,6 +45,8 @@ local state = {
   run = nil, -- the test run on save, for the statusline: {state = 'run'|'pass'|'fail'|'error'|'idle', label, text, till}
   thinking = false, -- a Partner turn that thinks is running, for the statusline
   results = {}, -- what the last finished run found: {name, file, line, ok, failure}, absolute paths
+  places = {}, -- where the last build or run crashed or printed errors and warnings: {file, line, col, kind, text, new}
+  place_mark = nil, -- {buf, id}: the place of those the jump key goes to
   typing = nil, -- while the Driver's edit is being typed: the function that stops it and undoes what it typed
 }
 local RETRY_MS = {1000, 2000, 5000, 10000, 30000} -- then every 30 s
@@ -197,7 +203,8 @@ function M.jump()
   local ok, err = pcall(vim.api.nvim_win_set_buf, 0, target.buf)
   if not ok then return vim.notify('Pair: ' .. err, vim.log.levels.ERROR) end
   vim.bo[target.buf].buflisted = true
-  vim.api.nvim_win_set_cursor(0, {row + 1, draw.column(target.buf, row, target.code)})
+  local col = target.col and math.min(target.col - 1, #vim.api.nvim_buf_get_lines(target.buf, row, row + 1, false)[1])
+  vim.api.nvim_win_set_cursor(0, {row + 1, col or draw.column(target.buf, row, target.code)})
   vim.cmd('normal! zz')
 end
 
@@ -216,10 +223,12 @@ local function point(message)
 end
 
 local show_all_tests -- defined with the tests below
+local show_all_places -- and the builds and runs
 
 --- Places notes and words again for the windows' new widths.
 local function relayout()
   show_all_tests()
+  show_all_places()
   for _, p in ipairs(state.points) do
     local mark = vim.api.nvim_buf_is_valid(p.buf) and vim.api.nvim_buf_get_extmark_by_id(p.buf, ns, p.ids.mark, {details = true})
     if mark and mark[1] then
@@ -368,8 +377,13 @@ function M.accept()
   clear_suggestion()
   hints.used(label(config.accept_key))
   if not unchanged then return vim.notify('Pair: those lines changed, so the suggestion was dropped') end
+  local before = vim.api.nvim_buf_get_lines(suggestion.buf, 0, -1, false)
   vim.api.nvim_buf_set_lines(suggestion.buf, first, last, false, suggestion.new)
   if suggestion.remark then feedback(true, suggestion.remark, true) end
+  -- With the text before and after, the ledger can undo it later.
+  if suggestion.action then
+    send({type = 'applied', action = suggestion.action, before = before, after = vim.api.nvim_buf_get_lines(suggestion.buf, 0, -1, false)})
+  end
 end
 
 function M.dismiss()
@@ -395,7 +409,7 @@ local function suggest(message)
   -- JSON null arrives as vim.NIL: a suggestion in an answer to you is no remark.
   local remark = message.remark ~= vim.NIL and message.remark or nil
   local ids = draw.suggestion(buf, first, old, new, message.note, key)
-  state.suggestion = {buf = buf, ids = ids, old = old, new = new, remark = remark, target = {buf = buf, ns = draw.suggest_ns, id = ids[1]}}
+  state.suggestion = {buf = buf, ids = ids, old = old, new = new, remark = remark, action = message.action, target = {buf = buf, ns = draw.suggest_ns, id = ids[1]}}
   aim(state.suggestion.target) -- the jump key goes there: where the accept key works
   map_keys('jump', {{config.jump_key, M.jump, 'Go where Pair points'}})
   state.reading = nil
@@ -543,6 +557,50 @@ local function on_tests(message)
   redraw_status()
 end
 
+-- Builds and runs: where the last one that crashed or printed compiler errors or warnings says (yours in the
+-- terminal, or Pair's on save), until the next run of the same command. The jump key goes to the crash, else the
+-- first error, else the first new warning.
+
+local function show_places(buf)
+  if not vim.api.nvim_buf_is_loaded(buf) then return end
+  local name = vim.api.nvim_buf_get_name(buf)
+  local here = vim.tbl_filter(function(place) return place.file == name end, state.places)
+  draw.runs(buf, here)
+  for _, place in ipairs(here) do place.changed = false end -- it rises once, where it first shows
+end
+
+show_all_places = function()
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do show_places(buf) end
+end
+
+--- The jump key goes to `place`, which an invisible mark follows through your edits. Nil: back to Pair's last
+--- point, if the jump key went to the last run's place.
+local function aim_at_place(place)
+  local old = state.place_mark
+  state.place_mark = nil
+  if old then draw.erase(old.buf, {old.id}) end
+  if state.target and state.target.place then aim(nil) end
+  if not place then return end
+  local buf = load(place.file)
+  local row = math.min(place.line, vim.api.nvim_buf_line_count(buf)) - 1
+  state.place_mark = {buf = buf, id = vim.api.nvim_buf_set_extmark(buf, ns, row, 0, {})}
+  state.target = {buf = buf, ns = ns, id = state.place_mark.id, col = place.col ~= vim.NIL and place.col or nil, place = true}
+  map_keys('jump', {{config.jump_key, M.jump, 'Go where Pair points'}})
+end
+
+local function on_run(message)
+  local before = {}
+  for _, place in ipairs(state.places) do before[place.file .. ':' .. place.line .. ':' .. place.text] = true end
+  state.places = message.places or {}
+  local news
+  for _, place in ipairs(state.places) do
+    place.changed = not before[place.file .. ':' .. place.line .. ':' .. place.text]
+    if not news and (place.kind ~= 'warning' or place.new) then news = place end
+  end
+  aim_at_place(news)
+  show_all_places()
+end
+
 local function open_split(file, line)
   local window = vim.api.nvim_get_current_win()
   vim.cmd('belowright split ' .. vim.fn.fnameescape(file))
@@ -616,9 +674,12 @@ local function edit(message)
   local count = vim.api.nvim_buf_line_count(buf)
   if message.line > count then return reply({error = ('line %d is past the end of the buffer (%d lines)'):format(message.line, count)}) end
   if not in_view(buf, message.line) then open_split(message.file, message.line) end
+  -- The buffer before and after goes to the ledger, which can undo the edit later.
+  local before = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
   state.typing = drive.type(buf, message.line - 1, math.min(message.endLine, count) - 1, text_lines(message.text), function(typed, from, to)
     state.typing = nil
-    reply(typed and {ok = true, from = from + 1, to = to + 1} or {error = 'the user has taken the wheel back'})
+    local after = typed and vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+    reply(typed and {ok = true, from = from + 1, to = to + 1, before = before, after = after} or {error = 'the user has taken the wheel back'})
   end)
 end
 
@@ -638,6 +699,14 @@ local function handback(message)
   }
   draw_words(state.words)
   redraw_status()
+end
+
+-- The ledger undoes one of Pair's edits, or makes it again: merged into the buffer as it is now.
+local function revert(message)
+  local buf = load(message.file)
+  local why = merge.apply(buf, message.base, message.other)
+  if vim.fn.bufwinid(buf) ~= -1 then vim.cmd.redraw() end -- a change made here shows only at the next event
+  send({type = 'reply', id = message.id, result = why and {error = why} or {ok = true}})
 end
 
 -- The chat pane prints Pair in the same accent as here, once Neovim has true colours to give.
@@ -668,11 +737,17 @@ local handlers = {
   suggest = suggest,
   edit = edit,
   handback = handback,
+  revert = revert,
+  ledger = ledger.show,
+  ledger_detail = ledger.detail,
+  ledger_changed = ledger.changed,
   remark = on_remark,
   held = on_held,
   unheld = forget_held,
   teaching = on_teaching,
   tests = on_tests,
+  run = on_run,
+  context = card.update,
   trail = function(message) trail.show(message, function() send({type = 'forget_trail'}) end) end,
   thinking = function(message)
     state.thinking = message.on
@@ -740,6 +815,7 @@ local function try_connect()
   end
   local file = project_path(0)
   if file then event({kind = 'enter', file = file}) end
+  places.send(true)
   return true
 end
 
@@ -790,6 +866,7 @@ function M.disconnect()
   state.results, state.run, state.thinking = {}, nil, false
   spin()
   show_all_tests()
+  on_run({places = {}})
 end
 
 -- The statusline: one quiet segment. The voice glyph lights up in the accent while Pair's words show; the role
@@ -865,10 +942,15 @@ local commands = {
   trail = function() send({type = 'trail'}) end,
   accept = M.accept,
   dismiss = M.dismiss,
+  today = function() if M.connect() then ledger.open() end end,
   useful = function() feedback(true, state.remark) end,
   noise = function() feedback(false, state.remark) end,
   why = function() M.teach() end,
   ['end'] = function() send({type = 'end'}) end,
+  context = function()
+    if not state.channel then return vim.notify('Pair: not connected, so there is no card; :Pair start connects', vim.log.levels.WARN) end
+    card.open(send)
+  end,
   open = function()
     if state.open_request then open_split(state.open_request.file, state.open_request.line) end
     state.open_request = nil
@@ -902,6 +984,8 @@ function M.setup(opts)
   style.glyphs = vim.tbl_extend('force', style.glyphs, config.glyphs)
   draw.motion = config.motion
   drive.motion = config.motion
+  ledger.send = send
+  ledger.rate = feedback
   style.apply()
   local group = vim.api.nvim_create_augroup('pair', {clear = true})
   local function restyle()
@@ -945,8 +1029,11 @@ function M.setup(opts)
     local file = state.channel and project_path(args.buf)
     if file then event({kind = 'save', file = file}) end
   end})
-  -- A test file you open after a run shows its results too.
-  vim.api.nvim_create_autocmd('BufReadPost', {group = group, callback = function(args) show_tests(args.buf) end})
+  -- A file you open after a run shows its results too.
+  vim.api.nvim_create_autocmd('BufReadPost', {group = group, callback = function(args)
+    show_tests(args.buf)
+    show_places(args.buf)
+  end})
   -- CursorHold never fires in Visual mode, so a selection is sent once it stops changing.
   local selection_timer = vim.uv.new_timer()
   vim.api.nvim_create_autocmd({'CursorMoved', 'ModeChanged'}, {group = group, callback = function()
@@ -963,7 +1050,10 @@ function M.setup(opts)
     timer:start(config.debounce_ms, 0, vim.schedule_wrap(function() send_diagnostics(args.buf) end))
   end})
   if config.searches then searches.watch(group, function(search) event(vim.tbl_extend('force', {kind = 'search'}, search)) end) end
-  if config.auto_connect then M.connect() end
+  places.setup(group, event)
+  -- Sessions only where you work: not for a Neovim without a screen (an agent's or a script's), nor in the temp folder.
+  local scratch = vim.startswith(vim.fn.getcwd() .. '/', vim.fs.normalize(vim.uv.os_tmpdir()) .. '/')
+  if config.auto_connect and #vim.api.nvim_list_uis() > 0 and not scratch then M.connect() end
 end
 
 return M

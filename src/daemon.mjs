@@ -5,15 +5,18 @@ import {realpath} from 'node:fs/promises';
 import {createServer} from 'node:net';
 import {basename, join, sep} from 'node:path';
 import {sameServer} from './config.mjs';
-import {gitBranch, gitRoot} from './git.mjs';
+import {goalFromContext, SOURCES} from './context-card.mjs';
+import {gitRoot} from './git.mjs';
 import {ModelHealth} from './health.mjs';
 import {PaneWatch} from './herdr.mjs';
 import {followLoaded, shareServer} from './loaded-model.mjs';
+import {DETAIL_KEPT_MS} from './ledger.mjs';
 import {Listener} from './listen.mjs';
 import {createPairModels} from './models.mjs';
 import {acquireOwner} from './owner.mjs';
 import {openPartner} from './partner.mjs';
 import {probeModel} from './probe.mjs';
+import {projectContext} from './project-context.mjs';
 import {readMessages, sendMessage} from './protocol.mjs';
 import {ScoutPane} from './scout-pane.mjs';
 import {PairSession} from './session.mjs';
@@ -30,6 +33,12 @@ const TICK_MS = 1000;
 // (often after 5 min) still has it loaded when a remark is worth scoring.
 const KEEP_WARM_MS = 4 * 60_000;
 const MODEL_NAMES = {watcher: 'Watcher', partner: 'Partner'};
+// A session ends by itself, with its note, after this long without the user, or once its last Neovim and chat pane
+// have been closed this long (a Neovim restarted at once keeps it).
+const IDLE_END_MS = 45 * 60_000;
+const ALONE_END_MS = 60_000;
+const CONTEXT_EVERY_MS = 60_000; // git and the board are read again this often, and when a command ends
+const CONTEXT_FRESH_MS = 5000; // the context card reads them again when they are older than this
 
 /** What the chat says when a model goes down (`reason`) or answers again (null). */
 export function healthNote(role, reason) {
@@ -42,11 +51,12 @@ const timestamp = () => new Date().toTimeString().slice(0, 8);
 const defaultLog = line => process.stderr.write(`${timestamp()} ${line}\n`);
 
 /** `probe(role)` checks that a model answers (see probe.mjs); tests pass their own, and a short `keepWarmMs`. */
-export async function startDaemon(config, {pairModels = createPairModels(config), probe, log = defaultLog, keepWarmMs = KEEP_WARM_MS} = {}) {
+export async function startDaemon(config, {pairModels = createPairModels(config), probe, log = defaultLog, keepWarmMs = KEEP_WARM_MS, idleEndMs = IDLE_END_MS, aloneEndMs = ALONE_END_MS} = {}) {
   mkdirSync(config.dataDir, {recursive: true, mode: 0o700});
   mkdirSync(join(config.dataDir, 'runs'), {recursive: true}); // the output of the tests run on save, one file per session
   const owner = acquireOwner(config.dataDir);
   const store = openStore(join(config.dataDir, 'sessions.sqlite'));
+  store.forgetActionDetails(Date.now() - DETAIL_KEPT_MS);
   const sessions = new Map(); // root -> Promise<PairSession>
   const live = new Map(); // root -> PairSession, once loaded
   const watches = new Map(); // root -> PaneWatch
@@ -154,9 +164,18 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     return {text: null};
   }
 
-  async function refreshBranch(session) {
-    const name = await gitBranch(session.root);
-    if (name) session.receive({kind: 'branch', name});
+  const readContext = projectContext({board: config.board});
+  const contextReads = new Map(); // session -> {at, reading}: the last read of its git and board, or the one under way
+
+  /** Reads the project's git and board into the session state, unless a read is under way or `freshMs` old. */
+  function refreshContext(session, freshMs = 0) {
+    const last = contextReads.get(session);
+    if (last && (last.reading || Date.now() - last.at < freshMs)) return last.reading ?? Promise.resolve();
+    const reading = readContext(session.root)
+      .then(event => session.receive(event), error => log(`[${basename(session.root)}] context: ${error.message}`))
+      .finally(() => contextReads.set(session, {at: Date.now(), reading: null}));
+    contextReads.set(session, {at: last?.at ?? 0, reading});
+    return reading;
   }
 
   /** The project a working directory belongs to: an open session containing it, else its git root, else itself. */
@@ -184,7 +203,10 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
       // A stored conversation gets the model now in the config, and one from v0.1, which had no roles, its role's tools.
       await session.configurePartner(session.role);
       live.set(root, session);
-      refreshBranch(session);
+      await refreshContext(session);
+      // No ceremony: a session starts with the goal of its board task, or of its branch, instead of asking.
+      const goal = !session.state.goal && goalFromContext(session.state);
+      if (goal) session.setGoal(goal.text, goal.from);
       return session;
     })();
     sessions.set(root, loading);
@@ -193,7 +215,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
 
   function receive(session, event) {
     session.receive(event);
-    if (event.kind === 'command_end') refreshBranch(session);
+    if (event.kind === 'command_end') refreshContext(session);
   }
 
   function watchHerdr(session, herdr) {
@@ -235,8 +257,15 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     if (message.action === 'cancel') return listener.cancel();
   }
 
-  async function endSession(session) {
-    await session.end();
+  const ending = new Set();
+
+  /** Ends `session`; `why` says it ended by itself, in the chat, and then only a used session gets a note. */
+  async function endSession(session, why = null) {
+    if (ending.has(session)) return;
+    ending.add(session);
+    if (why) log(`[${basename(session.root)}] session ends by itself: ${why}`);
+    await session.end({withNote: !why || session.usedAt !== null}).finally(() => ending.delete(session));
+    contextReads.delete(session);
     listeners.get(session.root)?.close();
     listeners.delete(session.root);
     watches.get(session.root)?.stop();
@@ -245,7 +274,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     live.delete(session.root);
     for (const client of clients) {
       if (client.session !== session) continue;
-      sendMessage(client.socket, {type: 'ended'});
+      sendMessage(client.socket, {type: 'ended', why});
       client.session = null;
     }
   }
@@ -261,6 +290,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     });
     // A Neovim that connects (or reconnects) after a test run shows its result too.
     if (client.role === 'editor' && session.testsShown) sendMessage(client.socket, session.testsShown);
+    if (client.role === 'editor' && session.runShown) sendMessage(client.socket, session.runShown);
     if (client.role !== 'chat') return;
     watchHerdr(session, message.herdr);
     // A chat pane that reconnects after a daemon restart already shows the history.
@@ -297,7 +327,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     const watch = watches.get(session.root);
     watch?.markHooked(message.pane);
     const output = watch && message.pane ? await watch.output(message.pane, message.cmd).catch(() => '') : '';
-    receive(session, {kind: 'command_end', pane: message.pane ?? null, cmd: message.cmd, exit: message.exit, output});
+    receive(session, {kind: 'command_end', pane: message.pane ?? null, cmd: message.cmd, exit: message.exit, output, cwd: message.cwd});
   }
 
   async function handle(client, message) {
@@ -321,6 +351,10 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     if (message.type === 'confirm') return session.answer(message.id, message.ok === true);
     if (message.type === 'feedback') return session.feedback({useful: message.useful === true, id: message.remark ?? undefined, implicit: message.implicit === true});
     if (message.type === 'seen') return session.seen(message.remark);
+    if (message.type === 'today') return sendMessage(client.socket, {type: 'ledger', ...session.today()});
+    if (message.type === 'ledger_detail') return sendMessage(client.socket, {type: 'ledger_detail', ids: message.ids, detail: session.ledgerDetail(message.ids ?? [])});
+    if (message.type === 'undo') return session.undo(message.action);
+    if (message.type === 'applied') return session.applied(message.action, message.before, message.after);
     if (message.type === 'trail') return sendMessage(client.socket, session.trail());
     if (message.type === 'forget_trail') return session.forgetTrail();
     if (message.type === 'release') return session.release();
@@ -329,6 +363,26 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     if (message.type === 'end') return endSession(session);
     if (message.type === 'listen') return listen(client, session, message);
     if (message.type === 'focus') return listenerOf(session)?.focus(message.on === true);
+    if (message.type === 'context') return sendCard(client, session);
+    if (message.type === 'hide' && SOURCES.includes(message.source)) {
+      session.receive({kind: 'hide', source: message.source, hidden: message.hidden !== false});
+      return sendCard(client, session);
+    }
+  }
+
+  /** The context card for the Neovim that asked, with git and the board read again when they are not fresh. */
+  async function sendCard(client, session) {
+    await refreshContext(session, CONTEXT_FRESH_MS);
+    sendMessage(client.socket, session.card());
+  }
+
+  /** Once the last Neovim and chat pane of `session` closed and none came back for `aloneEndMs`, it ends. */
+  function endWhenAlone(session) {
+    if (!session || clientsOf(session, 'editor').length || clientsOf(session, 'chat').length) return;
+    setTimeout(() => {
+      const back = [...clients].some(client => client.session === session);
+      if (!back && live.get(session.root) === session) endSession(session, 'its last Neovim closed').catch(error => log(`end failed: ${error.stack ?? error}`));
+    }, aloneEndMs).unref();
   }
 
   const server = createServer(socket => {
@@ -337,6 +391,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     socket.on('close', () => {
       clients.delete(client);
       if (client.session) listeners.get(client.session.root)?.drop(client); // no microphone stays open for a gone editor
+      endWhenAlone(client.session);
     });
     socket.on('error', () => {});
     readMessages(socket, message => handle(client, message).catch(error => {
@@ -363,7 +418,14 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
   }
 
   const ticker = setInterval(() => {
-    for (const session of live.values()) session.tick().catch(error => log(`tick failed: ${error.stack ?? error}`));
+    for (const session of live.values()) {
+      if (session.idle(idleEndMs)) {
+        endSession(session, `nothing happened for ${Math.round(idleEndMs / 60_000)} min`).catch(error => log(`end failed: ${error.stack ?? error}`));
+        continue;
+      }
+      session.tick().catch(error => log(`tick failed: ${error.stack ?? error}`));
+      refreshContext(session, CONTEXT_EVERY_MS);
+    }
     keepWarm();
   }, TICK_MS);
 

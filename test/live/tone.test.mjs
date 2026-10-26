@@ -1,7 +1,7 @@
 // Pair's tone against real models, through a real PairSession: what the user reads under their line and in the
 // chat leads with file:line, stays within its words, and has no praise, apology, filler, emoji or "!". The project
 // is a small C program with a Makefile (probe/), run for real: a table that never grows, since `len / cap` is
-// integer division, so the average probe count fails its check (with exit 1: no crash, see no-cores.mjs).
+// integer division, so the average probe count fails its check (with exit 1, no crash).
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {cpSync, mkdtempSync, readFileSync, writeFileSync} from 'node:fs';
@@ -15,7 +15,7 @@ import {PairSession} from '../../src/session.mjs';
 import {ROLE_TOOLS} from '../../src/tools.mjs';
 import {detectTriggers} from '../../src/triggers.mjs';
 import {toneProblems, WORDS} from '../../src/tone.mjs';
-import {withoutCores} from '../no-cores.mjs';
+import {bashWithoutCores} from '../no-core.mjs';
 import {liveStacks, SKIP_REASON} from './stacks.mjs';
 
 const PROBE = fileURLToPath(new URL('./probe', import.meta.url));
@@ -30,7 +30,7 @@ function probe({fixed = false} = {}) {
     const table = join(root, 'table.c');
     writeFileSync(table, readFileSync(table, 'utf8').replace('t->len / t->cap > 0.7', '(double)t->len / (double)t->cap > 0.7'));
   }
-  const run = spawnSync('bash', ['-c', withoutCores('make --no-print-directory run')], {cwd: root, encoding: 'utf8'});
+  const run = spawnSync(...bashWithoutCores('make --no-print-directory run'), {cwd: root, encoding: 'utf8'});
   return {root, exit: run.status, output: `${run.stdout}${run.stderr}`.trim()};
 }
 

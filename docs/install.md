@@ -7,6 +7,8 @@
 - [herdr](https://herdr.dev) for the chat pane, terminal watching, Scout's pane and tests on save. Pair also works
   without it, with the chat in any terminal, as Navigator only.
 - For Scout: `bash` and [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg`)
+- Optional, for the [context card](neovim.md#what-it-knows-the-context-card) and the goal: herdr's work board
+  (`herdr-projects`) and GitHub's `gh` for the pull request
 - A model: any OpenAI-compatible local server (for example llama.cpp or Ollama), an Anthropic-compatible API, or any
   provider [pi-ai](https://www.npmjs.com/package/@earendil-works/pi-ai) supports, with an API key or a subscription
   login ([config.md](config.md)).
@@ -94,15 +96,20 @@ It exits with 1 when a check fails, so scripts can use it too.
 1. In the herdr pane next to your Neovim, run `pair`. It opens a narrow chat pane on the right (and starts the daemon
    if it is not running).
 2. Neovim is connected already with `auto_connect`; otherwise run `:Pair start` there.
-3. Pair shows the note of the last session in this project, if there was one ("Last time: …"), and asks for the
-   session goal. Type it (or use `/goal <text>`).
+3. Pair shows the note of the last session in this project, if there was one ("Last time: …"), and the goal: the
+   title of the herdr work board's task for this branch, else the words of the branch name. Only without either does
+   it ask; type the goal, or `later` to skip it (`/goal <text>` sets one any time).
 4. Work as usual. Pair stays quiet unless a remark clears the bar. Tell it whether a remark helped: `+` or `-` in the
    chat, `Alt-u` or `Alt-n` in Neovim.
-5. `/end` in the chat (or `:Pair end`) closes the session with a short note, kept for the next one.
+5. Stop when you are done. The session ends by itself, with a short note kept for the next one, after 45 minutes
+   without you or a minute after its last Neovim and chat pane closed. `/end` in the chat (or `:Pair end`) ends it at
+   once ([memory.md](memory.md#no-ceremony-a-session-starts-and-ends-by-itself)).
+
+The chat pane is optional: a Neovim alone is a whole session.
 
 **Chat commands.** `/goal <text>`, `/level quiet|normal|chatty`, `/scout`, `/navigate`, `/drive [what]`, `+` or
-`/useful` and `-` or `/noise` (your verdict on Pair's last unasked remark), `?` or `/why` (the idea worth keeping
-behind what Pair said last), `/end`, and `/quit` (closes the pane; the
+`/useful` and `-` or `/noise` (your verdict on Pair's last unasked remark), `/today` (what Pair did here today, as in
+`:Pair today`, without the keys), `?` or `/why` (the idea worth keeping behind what Pair said last), `/end`, and `/quit` (closes the pane; the
 session goes on). A line that starts with "you take it" or "your turn" hands Pair the wheel too; anything else is a
 question for Pair. When Pair asks before running or typing a command, your next line is the answer: `y` or `yes`
 allows it, anything else declines.

@@ -13,7 +13,7 @@ import {startDaemon} from '../src/daemon.mjs';
 import {readMessages, sendMessage} from '../src/protocol.mjs';
 import {openStore} from '../src/store.mjs';
 import {fakeHerdr} from './fake-herdr.mjs';
-import {withoutCores} from './no-cores.mjs';
+import {bashWithoutCores} from './no-core.mjs';
 
 const REPO = fileURLToPath(new URL('..', import.meta.url));
 const hasNvim = (() => { try { execFileSync('nvim', ['--version']); return true; } catch { return false; } })();
@@ -30,9 +30,9 @@ async function until(check, what, timeoutMs = 8000) {
   throw new Error(`timed out waiting for ${what}`);
 }
 
-/** Runs a command line in `cwd` with bash, as Pair's pane would: its output and exit code. */
+/** Runs a command line in `cwd` with bash, as Pair's pane would (without core dumps): its output and exit code. */
 const runIn = cwd => command => new Promise(resolve => {
-  execFile('bash', ['-c', withoutCores(command)], {cwd}, (error, stdout, stderr) => resolve({output: stdout + stderr, exit: error ? error.code ?? 1 : 0}));
+  execFile(...bashWithoutCores(command), {cwd}, (error, stdout, stderr) => resolve({output: stdout + stderr, exit: error ? error.code ?? 1 : 0}));
 });
 
 /**
@@ -595,6 +595,71 @@ test('saving runs the tests: the statusline spins, then names what fails; signs 
   }
 });
 
+test('the ledger: :Pair today lists what Pair did; u undoes its edit after your later edits, and again makes it again; a clash changes nothing; <CR> shows output', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
+  const {project, partner, messages, remote, keys, send, lines, stop} = await pairInNvim('tune the numbers', {testOnSave: 'cat a.js'});
+  const ledgerLines = () => JSON.parse(remote('luaeval("vim.json.encode(vim.api.nvim_buf_get_lines(vim.fn.bufnr(\'pair://today\'), 0, -1, false))")'));
+  const hints = () => JSON.parse(remote('luaeval("vim.json.encode(vim.tbl_map(function(m) return m[4].virt_text[1][1] end, vim.api.nvim_buf_get_extmarks(vim.fn.bufnr(\'pair://today\'), vim.api.nvim_create_namespace(\'pair_ledger\'), 0, -1, {details = true, type = \'virt_text\'})))")'));
+  const row = text => ledgerLines().findIndex(line => line.includes(text)) + 1;
+  const a = () => JSON.parse(remote('json_encode(getbufline(bufnr("a.js"), 1, "$"))'));
+  try {
+    execFileSync('git', ['init', '-q'], {cwd: project});
+    execFileSync('git', ['add', '.'], {cwd: project});
+    partner.setResponses([
+      fauxAssistantMessage([fauxToolCall('read', {file: 'a.js'})], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxToolCall('edit', {file: 'a.js', line: 1, new_text: 'const x = 100\nconst w = 5'})], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxText('x is 100, and w is new.')]),
+    ]);
+    send({type: 'drive', text: 'your turn'});
+    await until(() => messages.some(message => message.text === 'x is 100, and w is new.'), 'the hand-back');
+    keys('Gccconst z = 30<Esc>'); // your own edit, after Pair's
+    assert.deepEqual(lines(), ['const x = 100', 'const w = 5', 'const y = 2', 'const z = 30']);
+
+    keys(':Pair today<CR>');
+    await until(() => row('typed'), 'the ledger');
+    const [read, typed, ran, said] = ['read', 'typed', 'ran', 'said'].map(row);
+    assert.ok(read < typed && typed < ran && ran < said, ledgerLines().join('\n'));
+    assert.match(ledgerLines()[read - 1], /^\d\d:\d\d {2}read {10}a\.js 1-3$/);
+    assert.match(ledgerLines()[typed - 1], /typed {9}2 lines in a\.js {3}one undo step$/);
+    assert.match(ledgerLines()[ran - 1], /ran {11}cat a\.js {3}✓ passed · unsaved$/);
+    assert.deepEqual(hints(), ['⏎ go', 'u undo', '⏎ output', '⏎ all'], 'the key that acts on each');
+    assert.equal(remote('&buftype'), 'nofile', 'the cursor is in the ledger');
+    assert.match(remote('&statusline'), /pair · today%=\d things · 0 remarks, 0 useful · \d+ min$/);
+
+    // u on Pair's edit: its lines go, yours stay, and nothing is saved.
+    keys(`${typed}Gu`);
+    await until(() => a().length === 3, 'the undo, merged with your edit');
+    assert.deepEqual(a(), ['const x = 1', 'const y = 2', 'const z = 30']);
+    assert.equal(readFileSync(join(project, 'a.js'), 'utf8'), 'const x = 1\nconst y = 2\nconst z = 3\n', 'nothing was saved');
+    await until(() => hints()[typed - 1] === 'undone · u again redoes', 'the entry to say so');
+    // u again makes it again.
+    keys('u');
+    await until(() => a().length === 4, 'the edit made again');
+    assert.deepEqual(a(), ['const x = 100', 'const w = 5', 'const y = 2', 'const z = 30']);
+    await until(() => hints()[typed - 1] === 'u undo', 'the entry back to undoable');
+
+    // You change one of Pair's lines: undoing it would undo yours, so nothing changes, and Pair says why.
+    remote('execute("call setbufline(bufnr(\'a.js\'), 2, \'const w = 6\')")');
+    keys('u');
+    await until(() => messages.some(message => message.text === 'Pair\'s change in a.js was not undone: you changed those lines since.'), 'why not');
+    assert.deepEqual(a(), ['const x = 100', 'const w = 6', 'const y = 2', 'const z = 30']);
+
+    // <CR> on a run shows its output in the ledger's window; q goes back to the list, and q again closes it.
+    keys(`${ran}G<CR>`);
+    await until(() => remote('bufname()').startsWith('pair://today/'), 'the output');
+    assert.deepEqual(JSON.parse(remote('json_encode(getline(1, "$"))')), ['const x = 100', 'const w = 5', 'const y = 2', 'const z = 3'], 'what cat printed on the unsaved buffer');
+    keys('q');
+    await until(() => remote('bufname()') === 'pair://today', 'back to the list');
+    keys(`${read}G<CR>`);
+    await until(() => remote('bufname()') === 'a.js', '<CR> going to what Pair read');
+    keys(':Pair today<CR>');
+    await until(() => remote('bufname()') === 'pair://today', 'the ledger again');
+    keys('q');
+    await until(() => remote('winnr("$")') === '1', 'q to close it');
+  } finally {
+    await stop();
+  }
+});
+
 test('a thought that can wait: a dot where it points and a word in the statusline while you type; Alt-j shows it at once', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
   const {watcher, partner, messages, remote, keys, status, stop} = await pairInNvim('count the lines');
   const marks = () => JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('pair'), 0, -1, {details = true}))")`));
@@ -765,6 +830,62 @@ test('Telescope searches reach the trail with what you opened; :Pair trail shows
     assert.deepEqual(panel(), ['What the pair saw you look for, oldest first', '', 'No searches since your last edit.', 'q closes']);
     keys('q');
     await until(() => remote('win_gettype()') === '', 'q to close it');
+  } finally {
+    await stop();
+  }
+});
+
+test('a build or run on save: crashes and compiler errors on their lines, the jump key goes there, new warnings speak and old ones stay quiet', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
+  const {project, watcher, remote, keys, status, stop} = await pairInNvim('spread the keys', {testOnSave: 'cat run.out; exit $(cat run.exit)'});
+  const marks = () => JSON.parse(remote('luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace(\'pair_runs\'), 0, -1, {details = true}))")'));
+  const signs = () => marks().filter(([, , , details]) => details.sign_text).map(([, row, , details]) => [row + 1, details.sign_text.trim(), details.sign_hl_group]);
+  const notes = () => marks().filter(([, , , details]) => details.virt_text).map(([, row, , details]) => [row + 1, details.virt_text.map(chunk => chunk[0]).join('')]);
+  const printing = (output, exit) => {
+    writeFileSync(join(project, 'run.out'), output.replaceAll('/home/dev/probe', project));
+    writeFileSync(join(project, 'run.exit'), String(exit));
+  };
+  const fixture = name => readFileSync(new URL(`./fixtures/runs/${name}.txt`, import.meta.url), 'utf8');
+  try {
+    writeFileSync(join(project, 'probe.c'), Array.from({length: 24}, (_, i) => `  int line${i + 1} = ${i + 1};`).join('\n') + '\n');
+    watcher.setResponses(Array.from({length: 10}, () => fauxAssistantMessage([fauxText('0')])));
+
+    printing(fixture('clang-errors').replaceAll('bad.c', 'probe.c'), 1);
+    keys(':edit probe.c<CR>:w<CR>');
+    await until(() => status() === '✗ does not build · probe.c:3 +1', 'the build error in the statusline');
+    await until(() => signs().length === 2, 'the signs');
+    assert.deepEqual(signs(), [[3, '✗', 'PairFail'], [4, '✗', 'PairFail']]);
+    assert.deepEqual(notes(), [[3, '   ✗ use of undeclared identifier \'undefined_thing\''], [4, '   ✗ expected \';\' after expression']]);
+    keys('gg<M-j>');
+    await until(() => remote('line(".")') === '3' && remote('col(".")') === '11', 'the jump to the first error, at its column');
+
+    printing(fixture('asan-segv'), 1);
+    keys(':w<CR>');
+    await until(() => status() === '✗ AddressSanitizer: SEGV · probe.c:10', 'the crash in the statusline');
+    await until(() => signs().length === 1, 'the crash on its line');
+    assert.deepEqual(notes(), [[10, '   ✗ AddressSanitizer: SEGV']]);
+    keys('gg<M-j>');
+    await until(() => remote('line(".")') === '10', 'the jump to the frame in the project\'s code');
+
+    // The command ran before in this session and you edit probe.c, so a warning it prints there now is news;
+    // printed again, it is not.
+    const warning = 'probe.c:21:7: warning: unused variable \'spare\'\n';
+    printing(warning, 0);
+    keys('21GA // spare<Esc>');
+    await sleep(400); // the edit reaches the daemon after debounce_ms
+    keys(':w<CR>');
+    await until(() => status() === '✓ cat run.out; exit $(cat run.exit) · 1 new warning', 'the new warning in the statusline');
+    await until(() => signs().length === 1 && signs()[0][0] === 21, 'the warning on its line');
+    assert.deepEqual(signs(), [[21, '△', 'PairWarn']]);
+    assert.deepEqual(notes(), [[21, '   △ unused variable \'spare\'']]);
+    printing(warning, 0);
+    keys(':w<CR>');
+    await until(() => signs()[0]?.[2] === 'PairWarnQuiet', 'the same warning again: quiet');
+    assert.deepEqual(notes(), [], 'no words for a warning that is no news');
+
+    printing('190000 keys  load 0.72  avg probe 1.3\n', 0);
+    keys(':w<CR>');
+    await until(() => signs().length === 0, 'a clean run to clear the marks');
+    assert.equal(remote('maparg("<M-j>", "n")'), '', 'the jump key went with the run\'s places');
   } finally {
     await stop();
   }

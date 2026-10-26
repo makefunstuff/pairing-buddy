@@ -79,6 +79,7 @@ the Watcher does not. Details in [watcher.md](watcher.md#thinking-the-partner-no
 | `typingPauseMs` | How long after a keystroke you count as typing, default 2000 |
 | `testOnSave` | A test command per project, run when you save ([tests-on-save.md](tests-on-save.md)) |
 | `voice` | Push-to-talk with whisper.cpp; off until set ([voice.md](voice.md)) |
+| `board` | The herdr work board's command, default `"herdr-projects"`: the goal and the [context card](neovim.md#what-it-knows-the-context-card) read the board task of your branch. `null` turns it off |
 | `socket` | The daemon's socket path |
 | `dataDir` | Where Pair keeps its data ([data.md](data.md)) |
 
