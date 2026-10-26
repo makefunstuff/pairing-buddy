@@ -176,7 +176,8 @@ const MOVED = 0.25; // a number that moves at least this much is worth a look; a
 
 /**
  * The exploration loop: the last run of a command printed the same numbers as the run before although the code
- * changed (the change did nothing, and why is the question), or a number moved for real. Raised once per run.
+ * changed (the change did nothing, and why is the question), or a change of the code moved a number for real.
+ * Raised once per run.
  */
 function loopTriggers(state, now) {
   const run = state.runs.at(-1);
@@ -190,12 +191,13 @@ function loopTriggers(state, now) {
       detail: `\`${run.cmd}\` (${runBy(run)}) printed the same ${verdict.numbers ? 'numbers' : 'output'} as run ${verdict.as}, although the code changed since.\n${runsDetail(state.runs, run.cmd)}`,
     }];
   }
-  const moved = verdict.kind === 'moved' && verdict.moves.filter(move => move.time || (move.way && Math.abs(move.change) >= MOVED));
+  const moved = verdict.kind === 'moved' && verdict.changed && verdict.moves.filter(move => move.time || (move.way && Math.abs(move.change) >= MOVED));
   if (!moved?.length) return [];
   const said = moved.slice(0, 3).map(moveText).join(', ');
+  const hunt = verdict.held >= 2 ? ` That ends a hunt: the ${verdict.held} runs before printed the same numbers, whatever the user changed.` : '';
   return [{
-    kind: 'number_moved', key: `moved:${run.n}`, run: run.n, moves: moved, ...where,
-    detail: `\`${run.cmd}\` (${runBy(run)}): next to run ${verdict.as}, ${said}.\n${runsDetail(state.runs, run.cmd)}`,
+    kind: 'number_moved', key: `moved:${run.n}`, run: run.n, moves: moved, held: verdict.held, ...where,
+    detail: `\`${run.cmd}\` (${runBy(run)}): next to run ${verdict.as}, ${said}.${hunt}\n${runsDetail(state.runs, run.cmd)}`,
   }];
 }
 

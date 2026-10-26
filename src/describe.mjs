@@ -37,8 +37,8 @@ export function describeState(state, now) {
   if (commands.length) lines.push(`Recent commands:\n${commands.join('\n')}`);
   if (state.tests) lines.push(testsLine(state.tests, now));
   if (state.run && !(state.run.by === 'you' && state.hidden.includes('terminal'))) lines.push(buildLine(state.run, now));
-  const run = state.runs.findLast(other => !(other.by === 'you' && state.hidden.includes('terminal')));
-  if (run) lines.push(`Recent runs of \`${run.cmd}\`:\n${runLines(state.runs, run.cmd, 3).map(line => `- ${line}`).join('\n')}`);
+  const runs = state.runs.filter(run => !(run.by === 'you' && state.hidden.includes('terminal'))); // a hidden terminal sends none of yours
+  if (runs.length) lines.push(`Recent runs of \`${runs.at(-1).cmd}\`:\n${runLines(runs, runs.at(-1).cmd, 3).map(line => `- ${line}`).join('\n')}`);
   if (state.focus.target !== 'unknown') lines.push(looking(state));
   lines.push(lastKey(state, now));
   return lines.join('\n');

@@ -35,7 +35,8 @@ const WHAT_HAPPENED = {
   same_result: trigger => `${trigger.detail}\n`
     + 'Score how much hearing why the change made no difference would save them: 0 if the change plainly could not touch these numbers (a print, a rename), 10 if they meant it to change them and will try more changes blindly.',
   number_moved: trigger => `${trigger.detail}\n`
-    + 'Score how much one sentence on why the numbers moved would help: 0 if the change plainly explains it, 10 if the move is surprising (much larger or smaller than expected, or a regression they did not mean).',
+    + 'Score how much one sentence on what is now true would help: 0 for the plain result of a first try, 10 when it ends a hunt '
+    + '(earlier changes did not move the numbers and this one did, so why this one worked is worth knowing) or when it got much worse.',
   ...PROSE_WATCH,
 };
 

@@ -97,8 +97,9 @@ export function changesCode(edit) {
 /**
  * What run `run` says next to `earlier` (oldest first): `{kind, ...}`. 'crash' and 'error' (it did not build) come
  * first. Else, next to the last run of the same command that got that far: 'same' (`as`, its number) when the code
- * changed since and the numbers (or, with none, the output) did not; 'moved' with its `moves`; 'again' for a rerun
- * that printed the same; 'first' for the first run of its command.
+ * changed since and the numbers (or, with none, the output) did not; 'moved' with its `moves`, and `held`, how many
+ * runs before it printed the numbers it moved from; 'again' for a rerun that printed the same (a time is noise
+ * there); 'first' for the first run of its command.
  */
 export function verdict(run, earlier) {
   if (run.crash) return {kind: 'crash', text: run.crash};
@@ -106,10 +107,14 @@ export function verdict(run, earlier) {
   const before = earlier.findLast(other => other.cmd === run.cmd && !other.crash && !other.errors);
   if (!before) return {kind: 'first'};
   const changed = earlier.filter(other => other.n > before.n).concat(run).some(other => other.changes.some(changesCode));
-  const moved = moves(before.numbers, run.numbers);
+  const moved = moves(before.numbers, run.numbers).filter(move => changed || !move.time);
   const same = Object.keys(run.numbers).length ? sameNumbers(before.numbers, run.numbers) && !moved.length : plain(before.output) === plain(run.output) && !!plain(run.output);
   if (same) return changed ? {kind: 'same', as: before.n, numbers: Object.keys(run.numbers).length > 0} : {kind: 'again', as: before.n};
-  if (moved.length) return {kind: 'moved', as: before.n, moves: moved};
+  if (moved.length) {
+    const streak = earlier.filter(other => other.cmd === run.cmd && !other.crash && !other.errors).reverse();
+    const held = streak.findIndex(other => !sameNumbers(other.numbers, before.numbers));
+    return {kind: 'moved', as: before.n, moves: moved, changed, held: held < 0 ? streak.length : held};
+  }
   return {kind: 'changed', as: before.n};
 }
 

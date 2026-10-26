@@ -64,8 +64,9 @@ const CHECKS = {
     + 'through, and find why the change makes no difference, with the real numbers from the runs. Point at the line that '
     + 'explains it and say why in one or two short sentences; if it is clear, add the next thing to try. If you cannot tell why, answer exactly SILENT.',
   number_moved: 'A number in the run\'s output moved. Read the change before this run and the code it touches, and say in one or two '
-    + 'short sentences what is now true and why the change did it, with the numbers before and after. If it got worse, point at '
-    + 'what in the change made it worse. If the change plainly explains it, answer exactly SILENT.',
+    + 'short sentences what is now true and why this change did it where the earlier runs\' changes did not, with the numbers '
+    + 'before and after. If it got worse, point at what in the change made it worse. If nothing in the earlier runs makes it '
+    + 'worth a word (it is the plain result of a first try), answer exactly SILENT.',
   ...PROSE_CHECKS,
 };
 
