@@ -20,23 +20,24 @@ function pairSession(turns = []) {
   const clock = {now: 1_000_000};
   const sent = [];
   const asked = [];
+  const options = []; // what each turn asked of the Partner besides its input
   const pair = new PairSession({
     record: store.createSession({root, conversationId: 'c1', goal: 'retries pass', level: 'normal', at: clock.now}),
     store,
-    partner: {ask: async (_id, input) => { asked.push(input); return turns.shift()?.(pair) ?? 'SILENT'; }, setRole: async () => {}},
+    partner: {ask: async (_id, input, opts) => { asked.push(input); options.push(opts); return turns.shift()?.(pair) ?? 'SILENT'; }, setRole: async () => {}},
     score: async () => ({value: 9, reason: 'test'}),
     typingPauseMs: 2000,
     notify: (to, message) => { sent.push({via: to, ...message}); return 1; },
     requestEditor: async () => null,
     now: () => clock.now,
   });
-  return {root, pair, store, clock, sent, asked};
+  return {root, pair, store, clock, sent, asked, options};
 }
 
 const RED = '--- FAIL: TestRetries (0.00s)\n    worker_test.go:35: attempts = 4, want 5\nFAIL\texample.com/delivery\t0.001s';
 
 test('the wrong turn: Pair reads, says why under your line, and points at the real cause for the jump key', async () => {
-  const {root, pair, store, clock, sent, asked} = pairSession([async pair => {
+  const {root, pair, store, clock, sent, asked, options} = pairSession([async pair => {
     await pair.read({file: 'backoff.go'});
     await pair.read({file: 'worker.go', from: 3, to: 5});
     await pair.point({file: 'worker.go', line: 4, endLine: 4, note: '7s + 8s = 15s: still inside the budget', code: '>='});
@@ -48,7 +49,8 @@ test('the wrong turn: Pair reads, says why under your line, and points at the re
   await pair.tick();
 
   assert.match(asked[0], /^\[watch\] edit_while_red: The user edits backoff\.go:4-4 while `go test \.\/\.\.\.` is red/);
-  assert.match(asked[0], /If their change is or may be the fix, answer exactly SILENT/);
+  assert.match(asked[0], /trace the test through the code as it is now/);
+  assert.deepEqual(options[0], {thinking: 'low'}, 'the trace needs a Partner that thinks first');
   const editor = sent.filter(message => message.via === 'editor');
   assert.deepEqual(editor.map(message => message.type), ['look', 'look', 'point', 'remark']);
   assert.deepEqual(editor.slice(0, 2).map(({file, from, to}) => [file, from, to]), [[join(root, 'backoff.go'), 1, 6], [join(root, 'worker.go'), 3, 5]],
@@ -70,7 +72,7 @@ test('the wrong turn: Pair reads, says why under your line, and points at the re
 });
 
 test('the words of a remark are what Pair said, also through say; a turn starts with no words and no target', async () => {
-  const {pair, clock, sent} = pairSession([
+  const {pair, clock, sent, options} = pairSession([
     async pair => { pair.say('Two places changed.'); return ''; },
   ]);
   pair.receive({kind: 'command_end', cmd: 'npm test', exit: 1, output: 'Error: boom', at: clock.now - 10_000});
@@ -78,6 +80,7 @@ test('the words of a remark are what Pair said, also through say; a turn starts 
   await pair.tick();
   const remark = sent.find(message => message.via === 'editor' && message.type === 'remark');
   assert.deepEqual([remark.text, remark.target], ['Two places changed.', null]);
+  assert.deepEqual(options[0], {thinking: undefined}, 'other remarks think as configured');
 });
 
 test('a question about selected lines gives the Partner those lines, as the editor has them', async () => {

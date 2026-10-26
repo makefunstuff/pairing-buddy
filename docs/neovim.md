@@ -50,8 +50,8 @@ The moment this language was made for: a test is red, and you start fixing it in
 
 The trigger behind it, `edit_while_red`, goes through the speak gate like the others: the Watcher scores whether a
 check of that file would save you time, and the Partner reads your change, the failing test and the code it tests.
-If your change is or may be the fix, it stays silent; only when the failure clearly comes from elsewhere does it
-point there. Details in [docs/watcher.md](watcher.md).
+It traces the test through the code as it is now, thinking first if its model can: if your change is the fix, or it is not
+sure, it stays silent; only when the failure still comes from elsewhere does it point there. Details in [docs/watcher.md](watcher.md).
 
 ## What each thing looks like
 
@@ -85,7 +85,7 @@ the talk level show only when they are not the usual ones (`● pair · scout`, 
 require('pair').setup({
   auto_connect = true,
   jump_key = '<M-j>',  -- false for none; :Pair jump works either way
-  motion = true,       -- false: no fades and no sweeping gaze
+  motion = true,       -- false: no fades, and the gaze lights one line at a time, without its trail
   glyphs = {},         -- for example {voice = '\u{f444}', wheel = '\u{f030c}'} with a Nerd Font
 })
 ```

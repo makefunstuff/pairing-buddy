@@ -164,3 +164,23 @@ test('numberedLines numbers the lines and says how to read on', () => {
   assert.equal(first.length, 301);
   assert.equal(first.at(-1), '(200 more lines; ask for start_line 301)');
 });
+
+test('an input can ask a model that thinks to think at least so much, for that input only; one that cannot is left alone', async () => {
+  const thinking = async reasoning => {
+    const faux = fauxProvider({models: [{id: 'm', reasoning}]});
+    const models = createModels();
+    models.setProvider(faux.provider);
+    const seen = [];
+    const answer = (_context, options) => { seen.push(options?.reasoning ?? 'off'); return fauxAssistantMessage([fauxText('ok')]); };
+    faux.setResponses([answer, answer, answer]);
+    const partner = await openPartner({storage: new MemoryStorage(), models, model: faux.getModel(), hands: recordingHands().hands});
+    const id = await partner.createConversation();
+    await partner.ask(id, 'a');
+    await partner.ask(id, 'b', {thinking: 'low'});
+    await partner.ask(id, 'c');
+    await partner.close();
+    return seen;
+  };
+  assert.deepEqual(await thinking(true), ['off', 'low', 'off']);
+  assert.deepEqual(await thinking(false), ['off', 'off', 'off']);
+});

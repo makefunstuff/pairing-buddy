@@ -36,7 +36,9 @@ Paths are split into words at slashes, dots, underscores and camelCase. A path w
 
 `edit_while_red` is raised when the last test run (yours, or Scout's) failed in the last ten minutes, its output names source files, and you then edit a source file it does not name. A test file and the code it tests count as one name: `worker_test.go` and `worker.go`, `test/ws.test.ts` and `src/ws.ts`, `test_ws.py` and `ws.py`. It is raised once per run and file, and not at all once a newer run passed. It is judged before drift, since it is the more specific moment.
 
-The Partner gets the failure and your change, and is asked to read your lines, the failing test and the code it tests. If your change is or may be the fix, it answers SILENT. Only when the failure clearly comes from somewhere else does it point there, with the few characters it means as `code` (an operator, a name), and say why in one or two sentences. In Neovim its words show under your edit and `Alt-j` goes to the point ([docs/neovim.md](neovim.md#the-wrong-turn)).
+The Partner gets the failure and your change, and is told the red run is older than your change. It reads your lines, the failing test and the code it tests, and traces the test through the code as it is now, with the real numbers. If the trace passes (your change was the fix), or it is not sure, it answers SILENT. Only when the trace still fails somewhere else does it point there, with the few characters it means as `code` (an operator, a name), and say why in one or two sentences.
+
+For this check the Partner thinks first: if its model can think (`"reasoning": true`), the turn runs with thinking at least `low`, whatever `thinking` says, and as configured again afterwards. Without it, a fast model traced the test wrongly and told users to change code that already passed; with it, it stayed silent in every live run where the edit was the fix, and still found the real cause when it was not. In Neovim its words show under your edit and `Alt-j` goes to the point ([docs/neovim.md](neovim.md#the-wrong-turn)).
 
 ## Keep-warm
 

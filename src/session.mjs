@@ -27,11 +27,16 @@ const CHECKS = {
   stall: 'The user seems stuck on this failure. Give one concrete next step.',
   drift: 'Do not help with the goal itself: the only question is whether the file the user now edits belongs to the goal. '
     + 'If it could, answer exactly SILENT. If it is unrelated, that drift is the problem: say in one sentence what drifted.',
-  edit_while_red: 'Check whether the lines the user just changed can cause this failure: read them, the failing test and the code it tests. '
-    + 'The red run is from before their change: if the code as it is now would pass, their change was the fix. '
-    + 'If their change is or may be the fix, answer exactly SILENT. Only if the failure clearly comes from somewhere else, point at that '
-    + 'place (file, line, and as code the few characters that are wrong, such as an operator) and say in one or two short sentences why.',
+  edit_while_red: 'The test run is older than the user\'s change. Read the lines they changed, the failing test and the code it tests, '
+    + 'then trace the test through the code as it is now, step by step with the real numbers. If the trace passes, their change '
+    + 'fixed it; if you are not sure, say nothing: in both cases answer exactly SILENT. Only if the trace still fails, somewhere other '
+    + 'than their change, point at that place (file, line, and as code the few characters that are wrong, such as an operator) '
+    + 'and say why in one or two short sentences, without the trace.',
 };
+
+// Triggers whose check needs the Partner to work something out before it may speak: it thinks at least this
+// much for them, if its model can think. Without it, fast models trace a test through code wrongly, and remark.
+export const THINKING = {edit_while_red: 'low'};
 
 export function watchInput(trigger, description) {
   return `[watch] ${trigger.kind}: ${trigger.detail}\n\nNow:\n${description}\n\n${CHECKS[trigger.kind]} If no remark would help, answer exactly SILENT.`;
@@ -217,7 +222,8 @@ export class PairSession {
     this.unasked = true;
     const id = this.remarkId = this.store.addRemark({sessionId: this.id, trigger: trigger.kind, score, at: this.now()});
     try {
-      if (!(await this.talk(watchInput(trigger, describeState(this.state, this.now()))))) return this.store.dropRemark(id);
+      const input = watchInput(trigger, describeState(this.state, this.now()));
+      if (!(await this.talk(input, {thinking: THINKING[trigger.kind]}))) return this.store.dropRemark(id);
       this.budget.spend(this.now());
       this.lastRemark = id;
       // After the remark's own words, also when they wait for a pause in the user's typing. The editor shows
@@ -266,8 +272,8 @@ export class PairSession {
     return selectionInput({...selection, file: relative(this.root, path)}, await this.bufferText(path));
   }
 
-  /** Runs one Partner turn; true when anything reached the user. */
-  async talk(input) {
+  /** Runs one Partner turn (`options` as for the Partner's ask); true when anything reached the user. */
+  async talk(input, options = {}) {
     this.busy = true;
     this.spoke = false;
     this.said = false;
@@ -275,7 +281,7 @@ export class PairSession {
     this.words = [];
     this.target = null;
     try {
-      const answer = await this.partner.ask(this.conversationId, input);
+      const answer = await this.partner.ask(this.conversationId, input, options);
       // After a say, local models tend to end with filler or a repeat; the say already was the answer.
       if (answer && !silent(answer) && !this.said) {
         this.show(() => this.message('pair', answer));

@@ -93,7 +93,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     health.report('watcher', result.error);
     return result;
   };
-  const sessionPartner = {...partner, ask: (conversationId, content) => reported('partner', partner.ask(conversationId, content))};
+  const sessionPartner = {...partner, ask: (conversationId, content, options) => reported('partner', partner.ask(conversationId, content, options))};
 
   const clientsOf = (session, role) => [...clients].filter(client => client.session === session && client.role === role);
   /** The Neovims attached to `session`, the one the user used last first. */

@@ -5,6 +5,7 @@ import {openNodeSqliteStorage} from '@earendil-works/pi-durable/storage/sqlite/n
 import {pairExtension, ROLE_PROMPTS, ROLE_TOOLS} from './tools.mjs';
 
 const STREAM_TIMEOUT_MS = 90_000;
+const THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'];
 
 // Small local context windows need smaller margins than the library's cloud-sized defaults.
 function compactionFor(contextWindow) {
@@ -60,6 +61,7 @@ export async function openPartner({storage, models, model, thinking = 'off', han
   harness.resume();
   // The model is offered only its role's tools; the policy hook refuses the others anyway.
   // Always with the configured model: a conversation stored under a model since renamed in the config gets the new one.
+  const agents = new Map(); // conversation id -> the agent it was last configured with
   const roleAgent = (role, previousNote) => ({
     model: {provider: model.provider, modelId: model.id},
     thinkingLevel: thinking,
@@ -70,7 +72,9 @@ export async function openPartner({storage, models, model, thinking = 'off', han
   return {
     /** A new conversation, in the Navigator role. */
     async createConversation() {
-      const conversation = await harness.createConversation({ownership: {kind: 'ownerless'}, agent: roleAgent('navigator')}, C);
+      const agent = roleAgent('navigator');
+      const conversation = await harness.createConversation({ownership: {kind: 'ownerless'}, agent}, C);
+      agents.set(conversation.id, agent);
       return conversation.id;
     },
 
@@ -80,17 +84,29 @@ export async function openPartner({storage, models, model, thinking = 'off', han
      */
     async setRole(conversationId, role, previousNote = null) {
       const conversation = await harness.conversation(conversationId, C);
-      await conversation.configure(roleAgent(role, previousNote), C);
+      const agent = roleAgent(role, previousNote);
+      await conversation.configure(agent, C);
+      agents.set(conversationId, agent);
     },
 
-    /** Sends one input and resolves with the Partner's final text (tool calls happen on the way). */
-    async ask(conversationId, content) {
+    /**
+     * Sends one input and resolves with the Partner's final text (tool calls happen on the way). With `thinking`,
+     * a model that can think does so at least that much for this input, and as configured again afterwards.
+     */
+    async ask(conversationId, content, {thinking: atLeast = 'off'} = {}) {
       const conversation = await harness.conversation(conversationId, C);
       if (!conversation) throw new Error(`No conversation ${conversationId}`);
-      const settled = await (await conversation.submit({type: 'input', content}, C)).wait(C);
-      if (settled.status !== 'done') throw new Error(`The Partner did not answer (${settled.reason}${settled.detail ? `: ${settled.detail}` : ''})`);
-      const page = await conversation.entries({maxEntryId: settled.answer}, 1, undefined, C);
-      return answerText(page.items[0]);
+      const agent = agents.get(conversationId);
+      const raise = model.reasoning && agent && THINKING_LEVELS.indexOf(atLeast) > THINKING_LEVELS.indexOf(agent.thinkingLevel);
+      if (raise) await conversation.configure({...agent, thinkingLevel: atLeast}, C);
+      try {
+        const settled = await (await conversation.submit({type: 'input', content}, C)).wait(C);
+        if (settled.status !== 'done') throw new Error(`The Partner did not answer (${settled.reason}${settled.detail ? `: ${settled.detail}` : ''})`);
+        const page = await conversation.entries({maxEntryId: settled.answer}, 1, undefined, C);
+        return answerText(page.items[0]);
+      } finally {
+        if (raise) await conversation.configure(agent, C);
+      }
     },
 
     close: () => harness.close(C),

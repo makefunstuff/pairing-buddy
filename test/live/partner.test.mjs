@@ -10,7 +10,7 @@ import {numberedLines, readProjectPath} from '../../src/files.mjs';
 import {openPartner} from '../../src/partner.mjs';
 import {describeState} from '../../src/describe.mjs';
 import {fold, initialState} from '../../src/fold.mjs';
-import {watchInput} from '../../src/session.mjs';
+import {THINKING, watchInput} from '../../src/session.mjs';
 import {detectTriggers} from '../../src/triggers.mjs';
 import {liveStacks, SKIP_REASON} from './stacks.mjs';
 
@@ -84,17 +84,18 @@ Current file: src/billing/tax.ts, cursor at line 30
 Recent edits: src/billing/invoice.ts:10-40 (300 s ago); src/billing/tax.ts:20-31 (30 s ago)`,
 );
 
-// The wrong turn: a retry test is red because the worker gives up on >=, and the user edits the backoff instead.
+// The wrong turn: a retry test is red. With a 15 s budget the worker gives up on >= after 1+2+4+8 = 15 s, so the
+// worker is the cause; with a 20 s budget the worker is fine, and the cause can only have been the backoff.
 const BACKOFF = `// The wait after the given attempt (1-based): base, 2·base, 4·base, ... up to max.
 export function nextWait(attempt, {base = 1000, max = 120_000} = {}) {
   if (attempt < 1) return 0;
   return Math.min(base * 2 ** (attempt - 1), max);
 }
 `;
-const WORKER = `import {nextWait} from './backoff.js';
+const worker = budget => `import {nextWait} from './backoff.js';
 
 // Sends a webhook, retrying with backoff until it succeeds or runs out of attempts or budget.
-export async function deliver(send, {maxAttempts = 5, budgetMs = 15_000, sleep}) {
+export async function deliver(send, {maxAttempts = 5, budgetMs = ${budget}_000, sleep}) {
   let elapsed = 0;
   for (let attempt = 1; ; attempt++) {
     if (await send()) return attempt;
@@ -106,33 +107,32 @@ export async function deliver(send, {maxAttempts = 5, budgetMs = 15_000, sleep})
   }
 }
 `;
-const WORKER_TEST = `import assert from 'node:assert/strict';
+const workerTest = budget => `import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {deliver} from '../src/worker.js';
 
-test('retries five times within the 15 s budget', async () => {
+test('retries five times within the ${budget} s budget', async () => {
   const attempts = await deliver(async () => false, {sleep: async () => {}});
-  assert.equal(attempts, 5); // 1 s + 2 s + 4 s + 8 s = 15 s fits the budget
+  assert.equal(attempts, 5); // 1 s + 2 s + 4 s + 8 s = 15 s fits the ${budget} s budget
 });
 `;
-const RED = '✖ retries five times within the 15 s budget (1.2ms)\n  AssertionError [ERR_ASSERTION]: 4 !== 5\n      at test/worker.test.js:7:10\nℹ tests 1\nℹ fail 1';
+const red = budget => `✖ retries five times within the ${budget} s budget (1.2ms)\n  AssertionError [ERR_ASSERTION]: 4 !== 5\n      at test/worker.test.js:7:10\nℹ tests 1\nℹ fail 1`;
 
 /**
- * The retry project as the user's buffers have it after their edit of `edited` at `line`, and the watch input of
- * the wrong-turn trigger that edit raises. `fixed`: the worker has room to spare (a 20 s budget), so the backoff
- * was the only thing that could fail the test, and the user's edit there fixed it.
+ * The retry project with a `budget` of 15 or 20 s, as the user's buffers have it after their edit of `edited` at
+ * `line`, and the watch input of the wrong-turn trigger that edit raises. The test run is red from before the edit.
  */
-function wrongTurn({edited, line, fixed = false}) {
+function wrongTurn({budget, edited, line}) {
   const root = mkdtempSync(join(tmpdir(), 'pair-live-'));
   mkdirSync(join(root, 'src'));
   mkdirSync(join(root, 'test'));
   writeFileSync(join(root, 'src', 'backoff.js'), BACKOFF);
-  writeFileSync(join(root, 'src', 'worker.js'), fixed ? WORKER.replace('budgetMs = 15_000', 'budgetMs = 20_000') : WORKER);
-  writeFileSync(join(root, 'test', 'worker.test.js'), WORKER_TEST);
+  writeFileSync(join(root, 'src', 'worker.js'), worker(budget));
+  writeFileSync(join(root, 'test', 'worker.test.js'), workerTest(budget));
   const now = 1_000_000;
   const state = [
     {kind: 'focus', target: 'terminal', pane: 'w1:p2', at: now - 90_000},
-    {kind: 'command_end', pane: 'w1:p2', cmd: 'npm test', exit: 1, output: RED, at: now - 60_000},
+    {kind: 'command_end', pane: 'w1:p2', cmd: 'npm test', exit: 1, output: red(budget), at: now - 60_000},
     {kind: 'edit', file: edited, from: line, to: line, at: now - 5000},
     {kind: 'cursor', file: edited, line, at: now - 4000},
   ].reduce(fold, initialState({root, goal: 'retries use the whole budget'}));
@@ -167,9 +167,10 @@ describe('Partner on live models', {skip: stacks.length ? false : SKIP_REASON}, 
     });
 
     test(`${stack.name}: a wrong turn gets a point at the real cause, with the code`, {timeout: 180_000}, async t => {
-      const {root, input} = wrongTurn({edited: 'src/backoff.js', line: 2});
+      // The user raises the backoff's cap; the worker's >= is what fails the test.
+      const {root, input} = wrongTurn({budget: 15, edited: 'src/backoff.js', line: 2});
       const {calls, partner, conversation} = await partnerFor(root);
-      const answer = await partner.ask(conversation, input);
+      const answer = await partner.ask(conversation, input, {thinking: THINKING.edit_while_red}); // as the session asks it
       await partner.close();
       t.diagnostic(`tools: ${calls.map(call => `${call.name}(${JSON.stringify(call.args)})`).join(', ')}`);
       t.diagnostic(`answer: ${answer}`);
@@ -179,14 +180,15 @@ describe('Partner on live models', {skip: stacks.length ? false : SKIP_REASON}, 
     });
 
     test(`${stack.name}: an edit in the right place gets SILENT`, {timeout: 180_000}, async t => {
-      // The shift in the backoff was the bug, and the user's edit there fixed it; the worker has room to spare.
-      const {root, input} = wrongTurn({edited: 'src/backoff.js', line: 4, fixed: true});
+      // The shift in the backoff was the bug (2 ** attempt: 2+4+8 s, then 16 s ran past the budget), and the user
+      // has just fixed it; with 20 s of budget nothing else can fail the test.
+      const {root, input} = wrongTurn({budget: 20, edited: 'src/backoff.js', line: 4});
       const {calls, partner, conversation} = await partnerFor(root);
-      const answer = await partner.ask(conversation, input);
+      const answer = await partner.ask(conversation, input, {thinking: THINKING.edit_while_red});
       await partner.close();
       t.diagnostic(`answer: ${answer} · tools: ${calls.map(call => `${call.name}(${JSON.stringify(call.args)})`).join(', ')}`);
       assert.match(answer, /^\W*silent\W*$/i);
-      assert.deepEqual(calls.filter(call => call.name !== 'read' && !(call.name === 'say' && /^\W*silent\W*$/i.test(call.args.text))).map(call => call.name), [],
+      assert.deepEqual(calls.filter(call => call.name !== 'read' && !(call.name === 'say' && /^\W*silent\W*$/i.test(call.args))).map(call => call.name), [],
         'nothing else reached the user');
     });
 
