@@ -7,6 +7,10 @@ only through the same tools you use: it never writes files on its own. Edits
 land unsaved in your buffer as a single undo step; the disk changes only when
 you save.
 
+**Watch the three-minute tour**: the three moments in Neovim, the roles, install in two commands and the keys, with captions.
+
+https://github.com/user-attachments/assets/1a189e13-ff42-4710-a731-d5c493238cf9
+
 ![In Neovim: Pair reads, says why under your edit, and Alt-j goes to the real cause](docs/images/wrong-turn.gif)
 
 *Pair in Neovim, as shipped: a test is red and you start fixing the wrong file. Pair reads (its gaze crosses the
@@ -27,7 +31,7 @@ It is one undo step, and any key halfway leaves no change at all. [Details](docs
 
 **Website:** [makefunstuff.github.io/pairing-buddy](https://makefunstuff.github.io/pairing-buddy/): the concept, three moments in Neovim, roles, and install (source in [`site/`](site/)).
 
-**Video tutorial** (3 min 25 s): [how to use pairing-buddy day to day](docs/video/pairing-buddy-tutorial.mp4): install and `pair doctor`, the Neovim plugin, the chat pane in herdr, a question answered with a suggestion, the Watcher's remarks, a model going down, and the config.
+**Video** (3 min): the tour above, with its captures, script and how to render it again, is in [docs/video](docs/video/).
 
 Roles:
 
