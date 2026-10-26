@@ -1,0 +1,46 @@
+[
+  {
+    "id": "intro",
+    "text": "This is pairing buddy: an AI pair programmer that works inside your Neovim and your herdr terminal. Here is how to use it, day to day."
+  },
+  {
+    "id": "install",
+    "text": "Install it once. npm install, dash g, from GitHub, puts the pair command on your path. Then run pair setup. It writes a config file, installs the daemon as a systemd user service, and starts it. From then on, it runs at every login."
+  },
+  {
+    "id": "config",
+    "text": "Next, set your models in the config file. There are two. The Watcher scores every moment with a single number, so give it a fast model. The Partner writes the words and calls the tools. Any OpenAI-compatible server works, or Anthropic, and one model can play both roles. After a change, restart the service."
+  },
+  {
+    "id": "plugin",
+    "text": "Add the Neovim plugin with lazy. With auto connect on, every Neovim connects by itself. For your statusline, call pair dot status: it shows Pair's role and talk level."
+  },
+  {
+    "id": "start",
+    "text": "Now, every day, it goes like this. Open herdr in your project, and run pair in a pane. The chat pane opens on the right and asks for the session goal. Type it in. Neovim sits next to it, already connected."
+  },
+  {
+    "id": "doctor",
+    "text": "If anything seems off, run pair doctor. It checks the config, the service, the daemon, the plugin, Neovim, herdr, and both models. One line each, with the fix when something is wrong."
+  },
+  {
+    "id": "ask",
+    "text": "Ask Pair anything in the chat. Here, a discount test fails, so ask why, and for a fix. Pair reads the code and answers. The fix shows up in Neovim as a suggestion: the old line is marked, and the new one appears below it as ghost text. Nothing changes until you press Alt Y. It lands as your own unsaved edit. Save, run the tests, and they pass."
+  },
+  {
+    "id": "watcher",
+    "text": "You don't always have to ask. Slash level sets how often Pair speaks up: quiet, normal, or chatty. The Watcher looks at each moment, and only what's worth it gets through. Run the same failing test again, and it points at the repeated failure. Sit still for a minute and a half after a failure, and it offers a hand. Start editing a file that has nothing to do with your goal, and it asks whether you've drifted."
+  },
+  {
+    "id": "feedback",
+    "text": "Rate each remark: plus if it helped, minus if it was noise, or Alt U and Alt N in Neovim. Your verdicts tune when Pair talks, and pair stats shows the numbers."
+  },
+  {
+    "id": "down",
+    "text": "When a model stops answering, Pair doesn't flood you with errors. You get one note in the chat and a warning in the statusline, and Pair stays quiet. It checks again every thirty seconds, and tells you when the model is back."
+  },
+  {
+    "id": "outro",
+    "text": "That's the daily loop. Set a goal, work, rate the remarks, and accept suggestions with Alt Y. Say your turn to hand Pair the wheel for one change. Use slash scout to let it run tests in its own pane. And finish with slash end: Pair writes a short note, and the next session starts from it."
+  }
+]

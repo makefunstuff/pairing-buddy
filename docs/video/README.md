@@ -1,0 +1,1 @@
+Render with `node build.mjs && npx hyperframes@0.8.61 render . --quality delivery --output out.mp4` (Node.js 22+, FFmpeg); scenes in `build.mjs`, voiceover script in `narration.json` (`node tts.mjs`), recordings from `tapes/`.
