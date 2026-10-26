@@ -65,13 +65,12 @@ test('diagnostics keep the time they first appeared', () => {
   assert.deepEqual(state.diagnostics['a.js'].map(d => [d.line, d.at]), [[7, 100], [9, 300]]);
 });
 
-test('cursor, focus, goal, branch and chat are folded as given', () => {
+test('cursor, focus, goal and branch are folded as given', () => {
   const state = foldAll([
     {kind: 'cursor', file: 'b.js', line: 4, col: 2, selection: {from: 4, to: 6}, at: 1},
     {kind: 'focus', target: 'terminal', pane: 'w1:p2', scrolled: true, at: 2},
     {kind: 'goal', text: 'fix reconnect', at: 3},
     {kind: 'branch', name: 'fix/reconnect', at: 4},
-    {kind: 'chat', from: 'user', text: 'hi', at: 5},
   ]);
   assert.equal(state.file, 'b.js');
   assert.deepEqual(state.cursor, {line: 4, col: 2});
@@ -79,7 +78,6 @@ test('cursor, focus, goal, branch and chat are folded as given', () => {
   assert.deepEqual(state.focus, {target: 'terminal', pane: 'w1:p2', scrolled: true, at: 2});
   assert.equal(state.goal, 'fix reconnect');
   assert.equal(state.branch, 'fix/reconnect');
-  assert.equal(state.chat[0].text, 'hi');
 });
 
 test('unknown events leave the state alone', () => {

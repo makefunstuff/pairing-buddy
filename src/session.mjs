@@ -77,7 +77,6 @@ export class PairSession {
   /** A message from the user in the chat pane: always answered, outside the budget. */
   async ask(text) {
     this.message('user', text);
-    this.receive({kind: 'chat', from: 'user', text});
     if (!this.state.goal) return this.setGoal(text);
     await this.talk(`[user] ${text}\n\nNow:\n${describeState(this.state, this.now())}`);
   }
@@ -119,7 +118,6 @@ export class PairSession {
     this.store.endSession(this.id, note, this.now());
     this.message('pair', `Session note:\n${note}`);
     this.notify('editor', {type: 'clear'});
-    return note;
   }
 
   greet() {

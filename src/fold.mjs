@@ -1,7 +1,7 @@
 // Folds raw editor, terminal and chat events into one small session state.
 // Pure: `fold(state, event)` returns a new state and never looks at the clock.
 
-const KEEP = {edits: 20, commands: 10, chat: 10, outputChars: 2000, diagnostics: 30};
+const KEEP = {edits: 20, commands: 10, outputChars: 2000, diagnostics: 30};
 
 export function initialState({root = null, goal = null} = {}) {
   return {
@@ -18,7 +18,6 @@ export function initialState({root = null, goal = null} = {}) {
     commands: [],
     errors: {},
     focus: {target: 'unknown', pane: null, scrolled: false, at: 0},
-    chat: [],
   };
 }
 
@@ -99,8 +98,6 @@ const handlers = {
     const commands = last && !last.seen && lookingAt(focus, last) ? [...state.commands.slice(0, -1), {...last, seen: true}] : state.commands;
     return {...state, focus, commands};
   },
-
-  chat: (state, event) => ({...state, chat: keepLast(state.chat, {from: event.from, text: event.text, at: event.at}, KEEP.chat)}),
 
   goal: (state, event) => ({...state, goal: event.text}),
 
