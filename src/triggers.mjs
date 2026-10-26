@@ -1,8 +1,9 @@
 // Finds the moments where a remark might help. Pure: the caller passes the clock and the keys already fired.
 import {errorSignature, failed, failureLine} from './fold.mjs';
 import {isSourceFile, testSummary} from './test-output.mjs';
+import {currentTrail, lost, TRAIL, trailLines} from './trail.mjs';
 
-export const TRIGGER_KINDS = ['failed_command', 'repeated_error', 'new_code_diagnostic', 'stall', 'drift', 'edit_while_red', 'regression'];
+export const TRIGGER_KINDS = ['failed_command', 'repeated_error', 'new_code_diagnostic', 'stall', 'drift', 'edit_while_red', 'regression', 'search_trail'];
 
 export const TIMING = {
   lookGraceMs: 4_000, // a failure gets this long to be noticed before Pair counts it as missed
@@ -129,8 +130,39 @@ function regressionTriggers(state, now) {
   }];
 }
 
+/** What fails now, in one line: a red test run, else a failed command, both while recent; null when nothing does. */
+export function failingNow(state, now) {
+  const {tests} = state;
+  if (tests?.failedCount && now - tests.at <= TIMING.redMs) return `\`${tests.cmd}\`: ${testSummary(tests)}`;
+  const command = state.commands.at(-1);
+  if (command && failed(command) && now - command.endedAt <= TIMING.redMs) return `\`${command.cmd}\` failed: ${failureLine(command)}`;
+  return null;
+}
+
+/**
+ * The search trail: three or more searches since the last edit, one of them closed with nothing opened or the same
+ * words twice (see trail.mjs). Looked at once the user pauses after the last one; each new search is a new look.
+ * What fails now goes with it: without it, a cue from the trail alone guesses what the user is after.
+ */
+function trailTriggers(state, now) {
+  const trail = currentTrail(state, now);
+  const last = trail.at(-1);
+  if (!last || now - last.at < TRAIL.settleMs || !lost(trail)) return [];
+  const seconds = Math.round((last.at - trail[0].at) / 1000);
+  const failing = failingNow(state, now);
+  return [{
+    kind: 'search_trail',
+    key: `trail:${trail[0].at}:${trail.length}`,
+    detail: `The user searched ${trail.length} times in ${seconds} s for what looks like one thing, and has not edited since:\n`
+      + `${trailLines(trail)}\n${failing ? `Failing now: ${failing}` : 'Nothing is failing now.'}`,
+    searches: trail,
+    failing,
+    file: last.file ?? state.file,
+  }];
+}
+
 /** The candidate remarks for this moment whose keys have not fired yet. */
 export function detectTriggers(state, now, fired = new Set()) {
-  return [...commandTriggers(state, now), ...diagnosticTriggers(state), ...regressionTriggers(state, now), ...redTriggers(state, now), ...driftTriggers(state, now)]
+  return [...commandTriggers(state, now), ...diagnosticTriggers(state), ...regressionTriggers(state, now), ...redTriggers(state, now), ...driftTriggers(state, now), ...trailTriggers(state, now)]
     .filter(trigger => !fired.has(trigger.key));
 }

@@ -295,6 +295,8 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     if (message.type === 'confirm') return session.answer(message.id, message.ok === true);
     if (message.type === 'feedback') return session.feedback({useful: message.useful === true, id: message.remark ?? undefined, implicit: message.implicit === true});
     if (message.type === 'seen') return session.seen(message.remark);
+    if (message.type === 'trail') return sendMessage(client.socket, session.trail());
+    if (message.type === 'forget_trail') return session.forgetTrail();
     if (message.type === 'end') return endSession(session);
   }
 
