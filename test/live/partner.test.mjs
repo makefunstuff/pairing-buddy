@@ -119,14 +119,15 @@ const RED = '✖ retries five times within the 15 s budget (1.2ms)\n  AssertionE
 
 /**
  * The retry project as the user's buffers have it after their edit of `edited` at `line`, and the watch input of
- * the wrong-turn trigger that edit raises. `fixed` puts > in the worker, so nothing is wrong any more.
+ * the wrong-turn trigger that edit raises. `fixed`: the worker has room to spare (a 20 s budget), so the backoff
+ * was the only thing that could fail the test, and the user's edit there fixed it.
  */
 function wrongTurn({edited, line, fixed = false}) {
   const root = mkdtempSync(join(tmpdir(), 'pair-live-'));
   mkdirSync(join(root, 'src'));
   mkdirSync(join(root, 'test'));
   writeFileSync(join(root, 'src', 'backoff.js'), BACKOFF);
-  writeFileSync(join(root, 'src', 'worker.js'), fixed ? WORKER.replace('>= budgetMs', '> budgetMs') : WORKER);
+  writeFileSync(join(root, 'src', 'worker.js'), fixed ? WORKER.replace('budgetMs = 15_000', 'budgetMs = 20_000') : WORKER);
   writeFileSync(join(root, 'test', 'worker.test.js'), WORKER_TEST);
   const now = 1_000_000;
   const state = [
@@ -178,7 +179,7 @@ describe('Partner on live models', {skip: stacks.length ? false : SKIP_REASON}, 
     });
 
     test(`${stack.name}: an edit in the right place gets SILENT`, {timeout: 180_000}, async t => {
-      // The shift in the backoff was the bug, and the user's edit there fixed it: the worker is right too.
+      // The shift in the backoff was the bug, and the user's edit there fixed it; the worker has room to spare.
       const {root, input} = wrongTurn({edited: 'src/backoff.js', line: 4, fixed: true});
       const {calls, partner, conversation} = await partnerFor(root);
       const answer = await partner.ask(conversation, input);

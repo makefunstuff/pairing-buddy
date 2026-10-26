@@ -28,6 +28,7 @@ const CHECKS = {
   drift: 'Do not help with the goal itself: the only question is whether the file the user now edits belongs to the goal. '
     + 'If it could, answer exactly SILENT. If it is unrelated, that drift is the problem: say in one sentence what drifted.',
   edit_while_red: 'Check whether the lines the user just changed can cause this failure: read them, the failing test and the code it tests. '
+    + 'The red run is from before their change: if the code as it is now would pass, their change was the fix. '
     + 'If their change is or may be the fix, answer exactly SILENT. Only if the failure clearly comes from somewhere else, point at that '
     + 'place (file, line, and as code the few characters that are wrong, such as an operator) and say in one or two short sentences why.',
 };
