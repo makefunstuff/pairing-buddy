@@ -4,8 +4,20 @@
   "description": "An AI pairing partner for Neovim and herdr that never writes your files",
   "type": "module",
   "license": "MIT",
-  "bin": { "pair": "./bin/pair.mjs" },
-  "engines": { "node": ">=22.19.0" },
+  "bin": {
+    "pair": "./bin/pair.mjs"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "lua/",
+    "plugin/",
+    "docs/",
+    "config.example.json"
+  ],
+  "engines": {
+    "node": ">=22.19.0"
+  },
   "scripts": {
     "test": "node --disable-warning=ExperimentalWarning --test test/*.test.mjs",
     "test:live": "node --disable-warning=ExperimentalWarning --test --test-concurrency=1 test/live/*.test.mjs",
