@@ -457,25 +457,29 @@ test('drift the budget holds back is judged once the budget allows, if the user 
   assert.deepEqual(scored, ['drift'], 'and only once');
 });
 
-test('after a new goal, a file judged under the old one is judged again', async () => {
+test('drift is judged by what the file is about, and again after a new goal', async () => {
   let clock = 100_000;
   const scored = [];
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'pair-drift-')));
+  mkdirSync(join(root, 'src/billing'), {recursive: true});
+  writeFileSync(join(root, 'src/billing/ranking.ts'), '// Ranks overdue invoices for the dunning run.\nexport function rankOverdue(invoices) {}\n');
   const pair = new PairSession({
-    record: {id: 1, root: '/project', conversation_id: 7, goal: 'fix rounding in billing totals', level: 'normal'},
+    record: {id: 1, root, conversation_id: 7, goal: 'better search ranking', level: 'normal'},
     store: {addMessage() {}, addAction: () => 1, updateAction() {}, setGoal() {}, addRemark: () => 1, dropRemark() {}},
     partner: {thinkingOf: () => 'off', ask: async () => 'SILENT'},
-    score: async trigger => { scored.push(trigger.kind); return {value: 2}; },
+    score: async trigger => { scored.push([trigger.kind, trigger.gist]); return {value: 2}; },
     typingPauseMs: 2000, notify: () => 1, requestEditor: async () => null, now: () => clock,
   });
-  pair.receive({kind: 'edit', file: 'src/billing/totals.ts', from: 1, to: 1, text: 'x', at: clock});
+  pair.receive({kind: 'edit', file: 'src/billing/ranking.ts', from: 1, to: 1, text: 'x', at: clock});
   clock += 5000;
   await pair.tick();
-  assert.deepEqual(scored, [], 'on-goal by its path: dropped without the Watcher');
+  const gist = 'Ranks overdue invoices for the dunning run. It defines rankOverdue.';
+  assert.deepEqual(scored, [['drift', gist]], 'a path word in common with the goal no longer skips the Watcher; it is told what the file does');
   pair.setGoal('reconnect waits 30 s after the phone sleeps');
-  pair.receive({kind: 'edit', file: 'src/billing/totals.ts', from: 2, to: 2, text: 'y', at: clock});
+  pair.receive({kind: 'edit', file: 'src/billing/ranking.ts', from: 2, to: 2, text: 'y', at: clock});
   clock += 5000;
   await pair.tick();
-  assert.deepEqual(scored, ['drift'], 'judged again under the new goal');
+  assert.deepEqual(scored.map(([kind]) => kind), ['drift', 'drift'], 'judged again under the new goal');
 });
 
 /**

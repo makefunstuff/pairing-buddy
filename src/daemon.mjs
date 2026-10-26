@@ -18,13 +18,14 @@ import {openPartner} from './partner.mjs';
 import {probeModel} from './probe.mjs';
 import {projectContext} from './project-context.mjs';
 import {readMessages, sendMessage} from './protocol.mjs';
+import {rememberScores} from './score-memory.mjs';
 import {ScoutPane} from './scout-pane.mjs';
 import {PairSession} from './session.mjs';
 import {ModelSlot} from './slot.mjs';
 import {openStore} from './store.mjs';
 import {ROLE_TOOLS, ROLES} from './tools.mjs';
 import {VERSION} from './version.mjs';
-import {createWatcher} from './watcher.mjs';
+import {createWatcher, momentOf} from './watcher.mjs';
 
 const EDITOR_REPLY_MS = 2000;
 const EDIT_REPLY_MS = 30_000; // Neovim replies to the Driver's edit once it has typed it
@@ -108,12 +109,17 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     },
   });
   const scoreRemark = createWatcher({models: pairModels.models, model: pairModels.watcher, chooseModel: chooseWatcherModel});
-  const score = async (trigger, state) => {
+  let partnerAsked = false; // since the Watcher's last call: its next call may find the Partner's model loaded
+  const score = rememberScores(async (trigger, state) => {
+    const afterPartner = partnerAsked;
+    const started = Date.now();
     const result = await slot.watch(signal => scoreRemark(trigger, state, {signal}));
     if (!result) return {deferred: true, reason: 'the Partner has the model'};
+    partnerAsked = false;
+    chooseWatcherModel.timed?.(Date.now() - started, afterPartner);
     health.report('watcher', result.error);
     return result;
-  };
+  }, {momentOf});
   const sessionPartner = {
     ...partner,
     cancel: conversationId => slot.cancel(conversationId),
@@ -123,7 +129,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
         asked: options?.kind !== 'remark',
         cancel: () => partner.cancel(conversationId).catch(error => log(`cancelling a remark failed: ${error.message}`)),
       },
-      () => reported('partner', partner.ask(conversationId, content, options)),
+      () => { partnerAsked = true; return reported('partner', partner.ask(conversationId, content, options)); },
     ),
   };
 

@@ -4,11 +4,12 @@ import {existsSync, mkdtempSync, rmSync} from 'node:fs';
 import {homedir, tmpdir} from 'node:os';
 import {basename, delimiter, join} from 'node:path';
 import {credentialState} from './auth.mjs';
-import {authPath, configPath, loadConfig, mostThinking, replyTokens, sameModel, sameServer, whereIs} from './config.mjs';
+import {authPath, configPath, mostThinking, replyTokens, sameModel, sameServer, whereIs} from './config.mjs';
 import {SMALL_CONTEXT} from './context.mjs';
+import {loadSizedConfig} from './context-window.mjs';
 import {fileCredentialStore, readableByOthers} from './credentials.mjs';
 import {herdrRequest} from './herdr.mjs';
-import {listModels} from './loaded-model.mjs';
+import {listModels, shareServer, SWAP_FACTOR, SWAP_MS} from './loaded-model.mjs';
 import {createPairModels} from './models.mjs';
 import {levelGroups, probeModel, probeThinking} from './probe.mjs';
 import {requestDaemon} from './protocol.mjs';
@@ -36,7 +37,7 @@ export async function* doctor({
 } = {}) {
   let config;
   try {
-    config = loadConfig(path);
+    config = await loadSizedConfig(path);
   } catch (error) {
     yield fail('config', error.message);
     return;
@@ -188,6 +189,7 @@ async function* modelChecks(config, status, credentials) {
   }
   const {watcher, partner} = config.models;
   const shared = sameModel(watcher, partner);
+  const answered = new Set();
   for (const role of shared ? ['watcher'] : ['watcher', 'partner']) {
     const name = shared ? 'models' : role;
     const entry = config.models[role];
@@ -204,6 +206,7 @@ async function* modelChecks(config, status, credentials) {
     if (login.error) { yield fail(name, `${where}: ${login.error}`); continue; }
     const probe = await probeModel(pairModels.models, pairModels[role]);
     if (!probe.ok) { yield fail(name, `${where} fails: ${probe.error}`); continue; }
+    answered.add(role);
     const limit = role === 'watcher' ? WATCHER_MS : PARTNER_MS;
     if (probe.ms > limit) {
       yield warn(name, role === 'watcher'
@@ -214,7 +217,7 @@ async function* modelChecks(config, status, credentials) {
     }
     if (role === 'watcher' && probe.thought) {
       yield warn(name, `${where} thinks although the Watcher's thinking is off, so it is slow and may give no score: set "reasoning": true `
-        + 'and, on an OpenAI-compatible server, "compat": {"thinkingFormat": ...} for its thinking switch, or use a model that does not think');
+        + 'and, on an OpenAI-compatible server, its thinking switch (`pair doctor --thinking` finds it), or use a model that does not think');
     }
     for (const seen of shared ? ['watcher', 'partner'] : [role]) {
       if (status?.models?.[seen]) yield warn(name, `the daemon still has the ${seen} as down (${status.models[seen]}); it checks again within 30 s`);
@@ -222,6 +225,7 @@ async function* modelChecks(config, status, credentials) {
     if (role === 'partner' || shared) yield* thinkingChecks(pairModels, partner);
   }
   if (sameServer(watcher, partner)) yield rolesCheck(config.models, status?.slot);
+  if (shareServer(watcher, partner) && answered.size === 2) yield await swapCheck(pairModels);
   yield contextCheck(partner);
 }
 
@@ -242,10 +246,29 @@ export function rolesCheck({watcher, partner}, slot) {
     + `give both roles one model ("model" in the config), so it never reloads${measured}`);
 }
 
-/** Whether the Partner's context window leaves its reply the room its thinking needs. */
+/**
+ * Two models on one server: whether it reloads when the roles switch. The Watcher is asked right after the
+ * Partner (the models checks asked it last), then again: a first answer far slower than the second is a reload.
+ */
+export async function swapCheck({models, watcher}, probe = probeModel) {
+  const after = await probe(models, watcher, {timeoutMs: 120_000});
+  const again = await probe(models, watcher);
+  if (!after.ok || !again.ok) return warn('swap', 'not measured: the Watcher failed when asked again');
+  if (after.ms > SWAP_MS && after.ms > SWAP_FACTOR * again.ms) {
+    return warn('swap', `the server reloads when the roles switch: the Watcher took ${seconds(after.ms)} right after the Partner and ${seconds(again.ms)} `
+      + 'next. Give both roles one model ("model" in the config); until then the daemon sees the reloads and the Watcher uses the Partner\'s model');
+  }
+  return ok('swap', `no reload when the roles switch: the Watcher took ${seconds(after.ms)} right after the Partner, ${seconds(again.ms)} next`);
+}
+
+/** Whether the Partner's context window leaves its reply the room its thinking needs, and where the window comes from. */
 export function contextCheck(entry) {
   const most = entry.reasoning ? mostThinking(entry.thinking) : 'off';
   const needs = replyTokens(most);
+  if (entry.servedWindow && entry.contextWindow > entry.servedWindow) {
+    return warn('context', `"contextWindow" is ${entry.contextWindow}, but the server serves ${entry.servedWindow}: requests fail once the conversation `
+      + 'outgrows the server\'s window. Set it to what the server serves, or remove it so Pair asks the server');
+  }
   if (needs > entry.maxTokens) {
     return warn('context', `the Partner's reply has room for ${entry.maxTokens} tokens, and thinking at "${most}" takes up to ${needs} with the answer, `
       + 'so its thinking is cut short: give the model more context ("contextWindow", and the server\'s own), or set "thinking" lower');
@@ -253,7 +276,8 @@ export function contextCheck(entry) {
   if (entry.contextWindow < SMALL_CONTEXT) {
     return warn('context', `${entry.contextWindow} tokens: the Partner's conversation is compacted every few turns; ${SMALL_CONTEXT} or more works better`);
   }
-  return ok('context', `${entry.contextWindow} tokens: ${entry.maxTokens} for the Partner's reply, the rest for its conversation`);
+  const from = {config: 'from the config', default: 'the default: neither the config nor the server says'}[entry.windowFrom] ?? `from ${entry.windowFrom}`;
+  return ok('context', `${entry.contextWindow} tokens (${from}): ${entry.maxTokens} for the Partner's reply, the rest for its conversation`);
 }
 
 /**
@@ -277,7 +301,7 @@ async function* thinkingChecks(pairModels, entry) {
         : warn('thinking', `"reasoning" is false and ${entry.model} answered without thinking: the Partner does not think. If the model can, remove "reasoning": false`);
     } else {
       yield probe.thought
-        ? warn('thinking', `${entry.model} thinks although "thinking" is off: set its server's thinking switch ("compat": {"thinkingFormat": ...}), or let it think`)
+        ? warn('thinking', `${entry.model} thinks although "thinking" is off: set its server's thinking switch (\`pair doctor --thinking\` finds it), or let it think`)
         : ok('thinking', 'off for every kind of turn, as configured');
     }
     return;
@@ -290,7 +314,7 @@ async function* thinkingChecks(pairModels, entry) {
   }
   if (!probe.thought) {
     yield warn('thinking', `${entry.model} answered with no thinking at "${level}": if it can think, set its server's thinking switch `
-      + '("compat": {"thinkingFormat": ...}); if it cannot, set "reasoning": false');
+      + '(`pair doctor --thinking` finds it); if it cannot, set "reasoning": false');
     return;
   }
   yield ok('thinking', `the Partner thinks (up to "${level}"), ${seconds(probe.ms)} for a short sum`);
@@ -300,7 +324,6 @@ async function* thinkingChecks(pairModels, entry) {
     yield entry.provider
       ? ok('thinking', `${names} are one level for ${entry.model} (pi-ai's catalog maps them so)`)
       : warn('thinking', `${names} send ${entry.model} the same request, so thinking is only on or off: `
-        + 'if its server takes a level, set "compat": {"supportsReasoningEffort": true} (it is then sent as reasoning_effort) '
-        + 'or {"thinkingTokenBudgetField": "<the server\'s field>"} (a token budget)');
+        + '`pair doctor --thinking` finds the field its server takes a level in, and prints the "compat" to paste');
   }
 }

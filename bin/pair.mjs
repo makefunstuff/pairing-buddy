@@ -9,6 +9,7 @@ import {parseArgs} from 'node:util';
 import {authStates, login, logout, providerModels} from '../src/auth.mjs';
 import {runChat} from '../src/chat.mjs';
 import {authPath, configPath, createConfig, defaultSocketPath, loadConfig, rolesText, sameModel} from '../src/config.mjs';
+import {loadSizedConfig} from '../src/context-window.mjs';
 import {deviceId, fileCredentialStore} from '../src/credentials.mjs';
 import {startDaemon} from '../src/daemon.mjs';
 import {doctor, tilde} from '../src/doctor.mjs';
@@ -19,6 +20,7 @@ import {installService, removeService, systemctl, UNIT, unitPath} from '../src/s
 import {shellHook} from '../src/shell-hook.mjs';
 import {statsReport} from '../src/stats.mjs';
 import {openStore} from '../src/store.mjs';
+import {probeThinkingSettings} from '../src/thinking-probe.mjs';
 import {WINDOW_MS} from '../src/tuning.mjs';
 
 const SCRIPT = realpathSync(fileURLToPath(import.meta.url));
@@ -28,6 +30,7 @@ const USAGE = `usage:
   pair chat         run the chat pane here
   pair setup        create the config if there is none, install and start the daemon as a systemd user service
   pair doctor       check the daemon, Neovim, herdr and the models, and say what is wrong
+  pair doctor --thinking   find the thinking settings the Partner's OpenAI-compatible server takes (asks it a dozen times)
   pair auth login PROVIDER    log in with a subscription or store an API key (also \`pair login PROVIDER\`)
   pair auth logout PROVIDER   remove that login or key (also \`pair logout PROVIDER\`)
   pair auth list              every provider and whether a login or key is set (never the secrets)
@@ -167,9 +170,11 @@ async function uninstall() {
   console.log(`Removed ${UNIT}. The config (${tilde(configPath())}) and the data directory are kept.`);
 }
 
-async function runDoctor() {
+async function runDoctor(args) {
+  const {values} = parseArgs({args, options: {thinking: {type: 'boolean'}}});
   let failed = false;
-  for await (const check of doctor()) {
+  const checks = values.thinking ? probeThinkingSettings(await loadSizedConfig()) : doctor();
+  for await (const check of checks) {
     console.log(`${SYMBOLS[check.level]} ${check.name.padEnd(8)} ${check.text}`);
     failed ||= check.level === 'fail';
   }
@@ -241,7 +246,7 @@ try {
   } else if (command === 'login' || command === 'logout') {
     await auth([command, ...args]);
   } else if (command === 'doctor') {
-    await runDoctor();
+    await runDoctor(args);
   } else if (command === 'stats') {
     stats(args);
   } else if ([undefined, 'chat', 'daemon'].includes(command)) {
@@ -249,7 +254,7 @@ try {
     const config = loadConfig();
     if (command === undefined) await openChatPane(config);
     else if (command === 'chat') { await ensureDaemon(config); runChat(config.socket); }
-    else await daemon(config);
+    else await daemon(await loadSizedConfig()); // each model's window, from its server or catalog (see context-window.mjs)
   } else {
     console.log(USAGE);
     process.exitCode = command === 'help' || command === '--help' ? 0 : 2;

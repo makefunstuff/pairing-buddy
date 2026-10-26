@@ -39,3 +39,25 @@ test('the Watcher uses the Partner\'s model while only that one is loaded, and i
   const down = followLoaded({entries, watcher: 'W', partner: 'P', list: async () => { throw new Error('ECONNREFUSED'); }});
   assert.equal(await down(), 'W', 'a server that does not answer: the call itself reports it');
 });
+
+test('on a server that does not say, two reload-slow calls after Partner turns move the Watcher to the Partner\'s model', async () => {
+  const logged = [];
+  const choose = followLoaded({entries, watcher: 'W', partner: 'P', list: async () => [{id: 'small'}, {id: 'large'}], log: line => logged.push(line)});
+  for (const ms of [400, 500, 450]) choose.timed(ms, false);
+  choose.timed(6000, true);
+  assert.equal(await choose(), 'W', 'one slow call may be anything');
+  choose.timed(500, true);
+  choose.timed(6000, true);
+  assert.equal(await choose(), 'W', 'not two in a row');
+  choose.timed(7000, true);
+  assert.equal(await choose(), 'P');
+  assert.match(logged.at(-1), /seems to reload on each switch/);
+  choose.timed(300, false);
+  assert.equal(await choose(), 'P', 'for good');
+
+  const slow = followLoaded({entries, watcher: 'W', partner: 'P', list: async () => null});
+  for (const ms of [3000, 3500, 3200]) slow.timed(ms, false);
+  slow.timed(4000, true);
+  slow.timed(4200, true);
+  assert.equal(await slow(), 'W', 'a server that is slow every time does not swap');
+});

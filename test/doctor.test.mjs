@@ -10,7 +10,7 @@ import {createModels, fauxProvider, InMemoryCredentialStore, ModelsError} from '
 import {loadConfig, parseConfig} from '../src/config.mjs';
 import {startDaemon} from '../src/daemon.mjs';
 import {fileCredentialStore} from '../src/credentials.mjs';
-import {contextCheck, daemonCheck, doctor, loginCheck, loginsCheck, rolesCheck, serviceCheck} from '../src/doctor.mjs';
+import {contextCheck, daemonCheck, doctor, loginCheck, loginsCheck, rolesCheck, serviceCheck, swapCheck} from '../src/doctor.mjs';
 import {sendMessage} from '../src/protocol.mjs';
 import {VERSION} from '../src/version.mjs';
 
@@ -128,8 +128,8 @@ test('thinking: a model that thinks anyway, one that does not, and levels the se
 
     const [thinks, same] = (await doctorFor({model: 'thinker'})).thinking;
     assert.equal(thinks[0], 'ok');
-    assert.deepEqual(same, ['warn', '"medium", "low" send thinker the same request, so thinking is only on or off: if its server takes a level, '
-      + 'set "compat": {"supportsReasoningEffort": true} (it is then sent as reasoning_effort) or {"thinkingTokenBudgetField": "<the server\'s field>"} (a token budget)']);
+    assert.deepEqual(same, ['warn', '"medium", "low" send thinker the same request, so thinking is only on or off: '
+      + '`pair doctor --thinking` finds the field its server takes a level in, and prints the "compat" to paste']);
 
     assert.deepEqual((await doctorFor({model: 'plain', thinking: 'off'})).thinking, [['ok', 'off for every kind of turn, as configured']]);
     assert.match((await doctorFor({model: 'thinker', thinking: 'off'})).thinking[0][1], /^thinker thinks although "thinking" is off/);
@@ -154,7 +154,7 @@ test('one model: one line checks it, the roles line explains how it serves both,
     assert.equal(checks.roles.level, 'ok');
     assert.match(checks.roles.text, /^one model serves both: the Watcher asks it for one number without thinking, the Partner thinks/);
     assert.equal(checks.thinking[0].level, 'ok');
-    assert.equal(checks.context.text, '32768 tokens: 10240 for the Partner\'s reply, the rest for its conversation');
+    assert.equal(checks.context.text, '32768 tokens (the default: neither the config nor the server says): 10240 for the Partner\'s reply, the rest for its conversation');
   } finally {
     server.close();
   }
@@ -228,4 +228,13 @@ test('a logins file others can read fails, with the chmod', () => {
   writeFileSync(path, '{}', {mode: 0o644});
   assert.equal(loginsCheck(path).level, 'fail');
   assert.match(loginsCheck(path).text, /others can read it: chmod 600 /);
+});
+
+test('two models on one server: the swap check tells a reload from a server that is just slow', async () => {
+  const timed = (...ms) => { const left = [...ms]; return async () => ({ok: true, ms: left.shift()}); };
+  const reloads = await swapCheck({}, timed(9000, 400));
+  assert.equal(reloads.level, 'warn');
+  assert.match(reloads.text, /^the server reloads when the roles switch: the Watcher took 9\.0 s right after the Partner and 0\.4 s next\. Give both roles one model/);
+  assert.equal((await swapCheck({}, timed(600, 500))).level, 'ok');
+  assert.equal((await swapCheck({}, timed(3000, 2800))).level, 'ok', 'slow each time is no reload');
 });
