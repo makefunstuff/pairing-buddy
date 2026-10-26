@@ -15,6 +15,7 @@ M.glyphs = {
   fail = '✗', -- a test failed, a build failed, a run crashed
   warn = '△', -- a compiler warning
   listen = '◉', -- it listens while you hold the listen key
+  agents = '◇', -- another agent's news, after Pair's own part of the statusline
 }
 
 -- The statusline while Pair runs your tests or thinks.

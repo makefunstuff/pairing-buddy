@@ -51,7 +51,7 @@ test('all well: each check says ok, and a slow Watcher gets advice', {timeout: 2
   const path = join(dir, 'config.json');
   const entry = (url, model) => ({api: 'openai', baseUrl: url, model});
   const partner = {...entry(fast.url, 'small'), compat: {supportsReasoningEffort: true}}; // each level reaches it
-  writeFileSync(path, JSON.stringify({dataDir: dir, socket: join(dir, 'pair.sock'), models: {watcher: entry(slow.url, 'big'), partner}}));
+  writeFileSync(path, JSON.stringify({dataDir: dir, socket: join(dir, 'pair.sock'), agents: false, models: {watcher: entry(slow.url, 'big'), partner}}));
   const config = loadConfig(path);
   const faux = fauxProvider();
   const models = createModels();
