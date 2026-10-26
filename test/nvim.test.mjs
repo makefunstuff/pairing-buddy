@@ -535,7 +535,7 @@ test('saving runs the tests: the statusline spins, then names what fails; signs 
 test('a thought that can wait: a dot where it points and a word in the statusline while you type; Alt-j shows it at once', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
   const {watcher, partner, messages, remote, keys, status, stop} = await pairInNvim('count the lines');
   const marks = () => JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('pair'), 0, -1, {details = true}))")`));
-  const dot = () => marks().filter(([, , , details]) => details.sign_text?.trim() === '·').map(([, row]) => row);
+  const dot = () => marks().filter(([, , , details]) => details.sign_text?.trim() === '•').map(([, row]) => row);
   try {
     watcher.setResponses([fauxAssistantMessage([fauxText('9')]), ...Array.from({length: 10}, () => fauxAssistantMessage([fauxText('0')]))]);
     partner.setResponses([

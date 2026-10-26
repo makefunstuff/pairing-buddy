@@ -68,6 +68,18 @@ export const scenes = {
       {wait: 300, say: 'six cases, one undo step, and they pass. `64` shifts past the top bit: `Next` already caps it, so that one is a guard.'},
     ],
   },
+  // The held thought, in C: you write ring_pop and go on; the error in a line you left can wait, so Pair holds
+  // its remark (a dot in the margin) until you save. The colorscheme is greys with one warm red.
+  'held-thought': {
+    project: 'ringbuf',
+    goal: 'ring_pop hands back the oldest value',
+    watcher: prompt => (prompt.includes('(new_code_diagnostic)') && prompt.includes('capacity') ? '9' : '0'),
+    partner: [
+      {when: /new_code_diagnostic/, wait: 300, call: ['read', {file: 'ring.h'}]},
+      {wait: 900, call: ['point', {file: 'ring.c', line: 26, note: 'the ring keeps its size in `r->cap`', code: 'capacity'}]},
+      {wait: 200, say: 'line 26 wraps the head with `capacity`, which nothing declares: the ring keeps its size in `r->cap`'},
+    ],
+  },
   // The same hand-over, taken back with a key while Pair types.
   'take-back': {
     goal: 'retries reach the budget',

@@ -9,13 +9,14 @@ on screen for an eight-hour day?
 *The capture above is the plugin and the daemon as shipped, in a clean Neovim with the ayu colorscheme. The test
 run is real `go test`; only the models' words are scripted. It is recorded from a tape in [captures/](captures/).*
 
-## Six marks, one accent
+## A few marks, one accent
 
 | Mark | Where | What it means |
 | --- | --- | --- |
 | `●` and a line or two | under the line you are on | Pair's voice: what it says unasked, in your font, indented with your code |
 | a lit line number | the number column | its gaze: the lines it is reading, one after another, with a short trail |
 | `▎` | the sign column | a line it points at, or the line its words are about |
+| `•` | the sign column, and `held thought` in the statusline | a remark that waits for your next break, about this line ([below](#the-held-thought)) |
 | `M-j` | after its words | go where it points; your cursor never moves by itself |
 | `◎` | the statusline | it has the wheel (the Driver); any key takes it back |
 | a block after ghost text | where it types | its cursor, while it types the change you handed over |
@@ -26,12 +27,23 @@ run is real `go test`; only the models' words are scripted. It is recorded from 
 **One accent, from your colorscheme.** Pair takes its colour from the colorscheme you use, so it fits in light and
 dark: of the colorscheme's own colours for regular expressions, its terminal cyan, its hints and its specials, it
 picks the one whose hue is furthest from every colour your code is drawn in, and makes sure it reads on your
-background. So Pair is never mistaken for syntax. With ayu that is its regexp teal; with Neovim's own colorscheme,
-its cyan. Pair's words are your foreground tinted toward the accent, and `code` in them is the accent.
+background. So Pair is never mistaken for syntax. It also keeps at least 30° of hue away from the colorscheme's
+error colour, so Pair is never mistaken for an error. With ayu that is its regexp teal; with Neovim's own
+colorscheme, its cyan. Pair's words are your foreground tinted toward the accent, and `code` in them is the accent.
+
+**On a grey palette.** Many desktop themes are greys with one signal colour, often a warm red. When your code is
+drawn in greys, with at most that one colour, Pair takes a quiet teal instead: the one other colour on screen, so
+when it speaks, you see it, and it never reads as an error. Before, such a palette gave Pair its red.
+
+**The chat pane in the same colour.** Neovim sends the accent to the daemon, and the chat pane prints Pair's name and
+the `code` in its words in it, in true colour, with long lines wrapped under the words. Before a Neovim with
+`termguicolors` connects it uses the terminal's cyan; with `NO_COLOR` set it prints no colours.
+
+![One look: Neovim on a grey palette with one warm red; Pair's teal under the code, in the statusline and in the chat pane](images/held-shown.png)
 
 Every highlight group is defined with `default = true`, and only when the colorscheme has not defined it: a
 colorscheme or your config can set any of them and keeps its own. Pair sets them again when you change the
-colorscheme or `background`.
+colorscheme, `background` or `termguicolors`.
 
 ## The wrong turn
 
@@ -147,6 +159,31 @@ a key still takes the wheel back, and leaves the one change.
 A long edit types faster, to take about four seconds; with `motion = false` it lands at once, as one undo step.
 If no window shows the lines it changes, they open in a split first, so you can watch; your cursor stays where it was.
 
+## The held thought
+
+Most of what Pair has to say is not urgent. A remark about drift, a stall, or an error in a line you wrote and left
+is held for your next natural break: a save, a run or a commit that ended, leaving Insert mode for a few seconds, or
+a quiet stretch. A wrong turn, a regression or a failure you missed still speak at your next pause in typing.
+
+![The held thought: you write ring_pop in C and go on; a dot waits by the line, and the remark shows when you save](images/held-thought.gif)
+
+*The plugin and the daemon as shipped, in a clean Neovim on mini.base16 with a grey palette, `clangd` for the
+diagnostics, and the real chat pane on the right. Only the models' words are scripted.*
+
+1. You write `ring_pop` in C and go on typing. `clangd` marks `capacity` on line 26: nothing declares it.
+2. You stop for a moment to think; Pair looks, reads `ring.h`, and has its remark ready. It does not say it: you are
+   still in Insert mode, still writing. A `•` appears in the margin at line 26, and the statusline says
+   `● pair · held thought · M-j`. The chat stays as it was.
+3. You finish the function and save. Now the remark shows: line 26 tinted with `capacity` underlined and its note,
+   the words under your line, and the same words in the chat, in the same teal.
+
+![While you type: the dot by line 26, and the statusline](images/held.png)
+
+![At the save: the point, the note, the words under your line, and the chat](images/held-shown.png)
+
+`Alt-j` shows a held thought at once, and goes where it points once it shows. If you fix the line yourself before
+your break, the dot goes and Pair says nothing. The rules are in [docs/watcher.md](watcher.md#the-held-thought).
+
 ## What each thing looks like
 
 **Words.** One or two lines under the line you are on, indented with your code, with `●` before them. At most
@@ -170,7 +207,8 @@ lines sit right under them on a faint tint, and the note follows with `M-y`.
 **The statusline.** One quiet segment: `● pair` at rest, the `●` in the accent while Pair's words are on screen,
 `● reading worker.go` while it reads, `◎ pair has the wheel · any key takes it back` while it drives, and the
 tests on save as above (`(unsaved)` after the label for the run on the Driver's edit). The role and
-the talk level show only when they are not the usual ones (`● pair · scout`, `● pair · quiet`).
+the talk level show only when they are not the usual ones (`● pair · scout`, `● pair · quiet`). While a thought is
+held, `● pair · held thought · M-j`, the `●` in the accent.
 
 ![A model down, then the daemon away](images/statusline.png)
 
@@ -187,7 +225,7 @@ require('pair').setup({
 
 The keys (`jump_key`, `accept_key`, `useful_key`, `noise_key`) are mapped only while there is something for them
 to act on, and only where you have no mapping of your own. The glyphs are plain Unicode, so they show in any font:
-`voice` `●`, `mark` `▎`, `away` `◌`, `wheel` `◎`, `pass` `✓` and `fail` `✗`. The spinner is braille, `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`.
+`voice` `●`, `mark` `▎`, `held` `•`, `away` `◌`, `wheel` `◎`, `pass` `✓` and `fail` `✗`. The spinner is braille, `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`.
 
 For the statusline, `require('pair').status()` is plain text and `require('pair').statusline()` the same with
 Pair's highlight groups, for the `statusline` option or a statusline plugin's section:
@@ -208,7 +246,7 @@ to standard ones and does not fade.
 | `PairNote` | Pair's words and notes | your foreground toward the accent |
 | `PairCode` | `code` in its words | the accent |
 | `PairKey` | the key after its words | between background and foreground |
-| `PairSign` | `▎` in the sign column | the accent |
+| `PairSign` | `▎` and `•` in the sign column | the accent |
 | `PairPoint` | a line Pair points at | the background, faintly toward the accent |
 | `PairSpan` | the code it means there, underlined | the background toward the accent |
 | `PairGaze` | a line number it reads | the accent, bold |

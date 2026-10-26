@@ -11,6 +11,19 @@ Every candidate remark (a failed command you missed, the same error again, a new
 
 Each trigger is looked at once: a dropped trigger does not come back. Drift is the exception for the budget: it lasts as long as you stay in that file, so when the budget holds it back it is looked at again on each tick (logged once) until the budget allows, and then judged.
 
+## The held thought
+
+Once the Partner has written a remark, it shows at your next pause if it is about what you are doing right now: a wrong turn, a regression, the same failure again, a failure you did not look at. Everything else (drift, a stall, an error in code you wrote and moved on from) can wait, and is held until your next **breakpoint**:
+
+- a save;
+- a command or test run that ended (a commit is one too);
+- out of Insert mode for 3 s without an edit: you stopped to look;
+- no key or edit for 15 s, in any mode or editor.
+
+Meanwhile Neovim shows a `•` in the sign column at the line it is about (where it points, else where its trigger is) and the statusline says `● pair · held thought · M-j`; nothing goes to the chat. `Alt-j` (or `:Pair jump`) shows it at once. A breakpoint that came while the Partner was still writing counts, so a remark that is ready while you already rest shows at once, without a dot.
+
+A held thought is dropped, without a word, when what it saw is gone by then: the error is no longer in your code, or you left the file that drifted. It is not stored as a remark, so it counts neither as useful nor as noise. While a thought is held, other triggers that can wait are not judged; urgent ones still are.
+
 ## The prefilter
 
 The rules only ever drop; anything they are unsure of goes to the Watcher.
