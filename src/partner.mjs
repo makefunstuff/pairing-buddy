@@ -31,6 +31,17 @@ function answerText(entry) {
     .trim();
 }
 
+/** The text of a user input entry. */
+function inputText(entry) {
+  return (entry?.model ?? [])
+    .flatMap(message => (typeof message.content === 'string' ? [{type: 'text', text: message.content}] : message.content ?? []))
+    .filter(block => block.type === 'text')
+    .map(block => block.text)
+    .join('');
+}
+
+const QUESTION = /^\[user\] ([\s\S]*?)(?:\n\n|$)/; // the user's own words in an asked turn's input (see session.mjs)
+
 /**
  * Opens the Partner over `storage` (a SQLite file path, or a pi-durable Storage for tests).
  * `thinking` is its level for each kind of turn (see THINKING_DEFAULTS); `hands` carries out the tools, see tools.mjs.
@@ -56,7 +67,6 @@ export async function openPartner({storage, models, model, thinking = THINKING_D
       retry: {maxRetries: 2},
     },
   }, C);
-  harness.resume();
   // The model is offered only its role's tools; the policy hook refuses the others anyway.
   // Always with the configured model: a conversation stored under a model since renamed in the config gets the new one.
   const agents = new Map(); // conversation id -> the agent it was last configured with
@@ -70,7 +80,55 @@ export async function openPartner({storage, models, model, thinking = THINKING_D
   const thinkingOf = (conversationId, kind) => (kind ? levelOf(kind) : (agents.get(conversationId)?.thinkingLevel ?? 'off'));
   const cancelled = new Set(); // conversations whose running turn was cancelled
 
+  /** The text of the answer a settled submission got, or null when it was cancelled; throws when it got none. */
+  async function answerOf(conversation, settled) {
+    if (cancelled.delete(conversation.id)) return null; // what it wrote before is not for the user
+    if (settled.status !== 'done') throw new Error(`The Partner did not answer (${settled.reason}${settled.detail ? `: ${settled.detail}` : ''})`);
+    const page = await conversation.entries({maxEntryId: settled.answer}, 1, undefined, C);
+    return answerText(page.items[0]);
+  }
+
+  /**
+   * The turns the daemon left running when it stopped: `questions`, the user's, as `{conversationId, submissionId,
+   * question}`, and `stale`, the conversations of the others (a remark nobody asked for, a hand-over the restart
+   * ended). Read before scheduling starts, so nothing runs yet.
+   */
+  async function interruptedTurns() {
+    const questions = [];
+    const stale = new Set();
+    for (const submission of (await harness.inspect(C)).submissions) {
+      if (submission.type !== 'input') continue;
+      const conversation = await harness.conversation(submission.conversationId, C);
+      const entry = submission.status === 'placed' && (await conversation.entries({maxEntryId: submission.entry}, 1, undefined, C)).items[0];
+      const question = QUESTION.exec(inputText(entry))?.[1];
+      if (question) questions.push({conversationId: submission.conversationId, submissionId: submission.id, question});
+      else stale.add(submission.conversationId);
+    }
+    return {questions, stale};
+  }
+
+  const {questions: interrupted, stale} = await interruptedTurns();
+
   return {
+    /** The user's questions the daemon was answering when it stopped; `finish` gives each one's answer. */
+    interrupted,
+
+    /**
+     * Lets the Partner go on with its stored work: the interrupted questions, and compactions. The stale turns are
+     * aborted: a late remark or hand-over would only confuse. Call it once their sessions can take tool calls.
+     */
+    async resume() {
+      for (const id of stale) await (await harness.conversation(id, C)).abort(C);
+      harness.resume();
+    },
+
+    /** The answer to interrupted submission `submissionId`, as `ask` resolves it. */
+    async finish(conversationId, submissionId) {
+      const conversation = await harness.conversation(conversationId, C);
+      cancelled.delete(conversationId);
+      return answerOf(conversation, await (await harness.submission(submissionId, C)).wait(C));
+    },
+
     /** A new conversation, in the Navigator role. */
     async createConversation() {
       const agent = roleAgent('navigator');
@@ -105,11 +163,7 @@ export async function openPartner({storage, models, model, thinking = THINKING_D
       const switched = agent && level !== agent.thinkingLevel;
       if (switched) await conversation.configure({...agent, thinkingLevel: level}, C);
       try {
-        const settled = await (await conversation.submit({type: 'input', content}, C)).wait(C);
-        if (cancelled.delete(conversationId)) return null; // what it wrote before is not for the user
-        if (settled.status !== 'done') throw new Error(`The Partner did not answer (${settled.reason}${settled.detail ? `: ${settled.detail}` : ''})`);
-        const page = await conversation.entries({maxEntryId: settled.answer}, 1, undefined, C);
-        return answerText(page.items[0]);
+        return await answerOf(conversation, await (await conversation.submit({type: 'input', content}, C)).wait(C));
       } finally {
         if (switched) await conversation.configure(agent, C);
       }

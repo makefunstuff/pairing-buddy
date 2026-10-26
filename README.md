@@ -54,7 +54,7 @@ Then set your model ([below](#configure-models)), open Neovim, run `pair` in the
 session takes its goal from the herdr board task of your branch, or the branch name, and asks only when there is
 neither. `pair doctor` checks every part and says how to fix what is wrong.
 
-Upgrading, installing from a clone, running without systemd, and the chat commands are in
+Upgrading, installing from a clone, running without systemd or launchd, and the chat commands are in
 [docs/install.md](docs/install.md).
 
 ## Configure models
@@ -73,7 +73,7 @@ and the **Partner**, which thinks and writes what Pair says. One model can do bo
 }
 ```
 
-Restart the daemon after a change (`systemctl --user restart pairing-buddy`) and run `pair doctor`. Every field, two
+The daemon takes a change as you save it, without a restart; run `pair doctor` to check the models. Every field, two
 models, logins and keys, tips for local models and the talk levels are in [docs/config.md](docs/config.md).
 
 ## The Neovim plugin

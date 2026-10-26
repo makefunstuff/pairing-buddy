@@ -14,7 +14,8 @@ Runs every test that needs no model, in under a minute, with scripted models and
 - **Panes and roles.** Pair's pane and role switching against a fake herdr; hand-over and take-back; `type` (only after
   a yes, only into your terminal pane, never Enter); the bash hook.
 - **The daemon end to end** with scripted models; several projects and Neovims at once; Neovim and the chat pane
-  reconnecting after a daemon restart.
+  reconnecting after a daemon restart; a question the restart cut off answered late, a remark dropped; a saved config
+  taken without a restart (a new model between turns, one with an error refused).
 - **The Neovim plugin** in a headless Neovim:
   - suggestions accepted and ignored, struck from their first character;
   - a Driver edit undone with one `u` and never saved, and a key taking the wheel back;
@@ -43,7 +44,8 @@ Runs every test that needs no model, in under a minute, with scripted models and
 - **Install and daily use.** The config with comments and the first run's example; model entries that name a provider
   or a stored key; the credential store (owner-only, a token renewed once when two processes need it at the same
   time, a lock left by a dead process); `pair auth` with fake providers (subscription or key, a key for your own
-  server, logout, the list without secrets, a typed key not echoed); the systemd unit; `pair doctor` against a fake
+  server, logout, the list without secrets, a typed key not echoed); the systemd unit, the launchd agent and the
+  supervisor that restarts the daemon without either; keys from environment variables stored for the service; `pair doctor` against a fake
   model server (fast, slow, dead, a wrong model name, a stored key it needs, a login that no longer renews); model
   health (one notice, no remarks while down, back after a probe).
 - **Memory and feedback.** The note the next session starts from (in the chat and the Partner's instructions, per
