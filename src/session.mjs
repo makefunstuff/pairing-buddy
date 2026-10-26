@@ -278,6 +278,7 @@ export class PairSession {
     const {run, runs} = this.state;
     const folded = {at: this.now(), ...event, ...(file ? {file} : {})};
     this.state = fold(this.state, folded);
+    if (event.kind === 'enter' && file && !file.startsWith('..')) this.debugLines.opened(file);
     if (event.kind === 'edit' && file && !file.startsWith('..')) {
       this.debugLines.edited(file, event.text ?? '', (runs.at(-1)?.n ?? 0) + 1).catch(error => this.log(`debug lines: ${error.message}`));
     }

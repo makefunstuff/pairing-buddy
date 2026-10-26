@@ -47,7 +47,8 @@ export function printedBy(text, output) {
 export class DebugLines {
   /**
    * `read(path)` is the text of a file of the project at `root` as the user sees it (the editor's buffer, else the
-   * disk). Each file's baseline is read from the disk when the user first edits it: its lines then are not theirs.
+   * disk). Each file's baseline is read from the disk when the user opens it, or else first edits it: its lines then
+   * are not theirs. (An edit can reach the daemon only with its save, when the disk has it already.)
    */
   constructor({root, read}) {
     Object.assign(this, {root, read});
@@ -55,12 +56,15 @@ export class DebugLines {
     this.added = []; // {file, text, run}: the debug lines the user typed, with the run they came before
   }
 
+  /** The user opened `file` (relative to the root): its lines as they are now are no debug lines of theirs. */
+  opened(file) {
+    if (!this.baselines.has(file)) this.baselines.set(file, readFile(join(this.root, file), 'utf8').then(lines, () => new Set()));
+    return this.baselines.get(file);
+  }
+
   /** The user's edit of `file` (relative to the root) put `text` there, before run number `run`. */
   async edited(file, text, run) {
-    if (!this.baselines.has(file)) {
-      this.baselines.set(file, readFile(join(this.root, file), 'utf8').then(lines, () => new Set()));
-    }
-    const before = await this.baselines.get(file);
+    const before = await this.opened(file);
     for (const line of text.split('\n')) {
       const trimmed = line.trim();
       if (!isDebugLine(file, line) || before.has(trimmed) || this.added.some(added => added.file === file && added.text === trimmed)) continue;
