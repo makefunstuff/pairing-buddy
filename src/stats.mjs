@@ -8,9 +8,15 @@ const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 
 const percent = share => (share === null ? '-' : `${Math.round(share * 100)}%`);
-const rate = (count, hours) => (hours > 0 ? (count / hours).toFixed(1) : '-');
+const MIN_RATE_HOURS = 0.1; // a rate over a few minutes of pairing says nothing
+const rate = (count, hours) => (hours >= MIN_RATE_HOURS ? (count / hours).toFixed(1) : '-');
+const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
 const signed = offset => (offset > 0 ? `+${offset}` : `${offset}`);
-const gap = ms => (ms >= MINUTE ? `${Math.round(ms / MINUTE)} min` : `${Math.round(ms / 1000)} s`);
+function gap(ms) {
+  const seconds = Math.round(ms / 1000);
+  const [minutes, rest] = [Math.floor(seconds / 60), seconds % 60];
+  return [minutes && `${minutes} min`, (rest || !minutes) && `${rest} s`].filter(Boolean).join(' ');
+}
 
 function table(rows) {
   const widths = rows[0].map((_, column) => Math.max(...rows.map(row => String(row[column]).length)));
@@ -26,7 +32,7 @@ export function statsReport({remarks, activeMs, now, days, level, autoTune}) {
   const hours = activeMs / HOUR;
   const total = tally(recent, now);
   const lines = [
-    `Last ${days} days, all projects: ${hours.toFixed(1)} h of active pairing, ${total.remarks} unasked remarks (${rate(total.remarks, hours)} per hour)`,
+    `Last ${days} days, all projects: ${hours.toFixed(1)} h of active pairing, ${plural(total.remarks, 'unasked remark')} (${rate(total.remarks, hours)} per hour)`,
     `useful ${total.useful} · dismissed ${total.dismissed} · ignored ${total.ignored}${total.waiting ? ` · waiting ${total.waiting}` : ''} · kept ${percent(keptShare(total))}`,
     '',
   ];

@@ -38,9 +38,11 @@ test('the stats view shows remarks per hour, kept vs dismissed per trigger, and 
 
 test('without autoTune the stats show the level\'s own bars', () => {
   const lines = statsReport({remarks: REMARKS, activeMs: 0, now: NOW, days: 7, level: 'quiet', autoTune: false});
-  assert.match(lines[0], /0\.0 h of active pairing, 10 unasked remarks \(- per hour\)/);
+  assert.match(lines[0], /0\.0 h of active pairing, 10 unasked remarks \(- per hour\)/, 'no rate over too little time');
   assert.match(lines.find(line => line.startsWith('drift')), / 8$/);
   assert.match(lines.at(-1), /Tuning is off/);
+  const chatty = statsReport({remarks: [], activeMs: 0, now: NOW, days: 7, level: 'chatty', autoTune: true});
+  assert.equal(chatty.at(-2), 'Budget at level chatty: at most 15 remarks per hour, 1 min 30 s apart (the level\'s default: 15, 1 min 30 s)');
 });
 
 test('`pair stats` reads the data directory, also while no daemon runs', () => {
@@ -57,7 +59,7 @@ test('`pair stats` reads the data directory, also while no daemon runs', () => {
   store.addRemark({sessionId: session.id, trigger: 'stall', score: 7, at: Date.now() - 10 * 24 * HOUR}); // outside 7 days
   store.close();
   const shown = run(['--days', '7']);
-  assert.match(shown, /^Last 7 days, all projects: 2\.0 h of active pairing, 1 unasked remarks \(0\.5 per hour\)$/m);
+  assert.match(shown, /^Last 7 days, all projects: 2\.0 h of active pairing, 1 unasked remark \(0\.5 per hour\)$/m);
   assert.match(shown, /^stall +1 +0\.5 +1 +0 +0 +100% +6$/m);
   assert.match(run(['--days', '30']), /2 unasked remarks/);
 });

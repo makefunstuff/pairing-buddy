@@ -72,10 +72,16 @@ export function noteInput(state, changes) {
   const lines = changes ? changes.split('\n') : [];
   const shown = lines.length > NOTE_CHANGES ? [...lines.slice(0, NOTE_CHANGES), `(${lines.length - NOTE_CHANGES} more)`] : lines;
   return `[end] The session is over. Write a short session note in plain text, at most 6 lines, for the next session in this project:
-the goal, what changed, and loose ends. No tool calls.
+the goal, what changed, and loose ends. No heading and no tool calls.
 
 Goal: ${state.goal ?? '(not set)'}
 Uncommitted changes (git status): ${shown.length ? `\n${shown.join('\n')}` : 'none'}`;
+}
+
+/** The Partner's note, without a heading of its own (the chat adds one) and without SILENT; null when nothing is left. */
+export function cleanNote(text) {
+  const note = text?.replace(/^\W*session note\W*(\n|$)/i, '').trim();
+  return note && !SILENT.test(note) ? note : null;
 }
 
 const IDLE_AFTER_MS = 5 * 60_000; // no key, edit or command for this long: the user is away, and active time stops
@@ -339,7 +345,7 @@ export class PairSession {
     await this.scout?.close();
     this.storeActive();
     const input = noteInput(this.state, await gitStatus(this.root));
-    const note = await this.partner.ask(this.conversationId, input).then(text => (text && !SILENT.test(text) ? text : null), error => {
+    const note = await this.partner.ask(this.conversationId, input).then(cleanNote, error => {
       this.message('system', `No session note: ${error.message}`);
       return null;
     });

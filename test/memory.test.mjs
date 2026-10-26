@@ -7,7 +7,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {BUDGETS} from '../src/budget.mjs';
-import {PairSession} from '../src/session.mjs';
+import {cleanNote, PairSession} from '../src/session.mjs';
 import {openStore} from '../src/store.mjs';
 
 const MIN = 60_000;
@@ -141,6 +141,15 @@ test('the session note is written from the goal and the uncommitted changes, and
   assert.equal(next.pair.previousNote, 'Goal: fix reconnect. Changed: ws.ts timeout. Loose end: test on a phone.');
   next.pair.greet();
   assert.deepEqual(chatTexts(next.sent), ['Last time:\nGoal: fix reconnect. Changed: ws.ts timeout. Loose end: test on a phone.', 'Goal: fix reconnect']);
+});
+
+test('a note loses a heading of its own, and SILENT or nothing is no note', () => {
+  assert.equal(cleanNote('Session note:\nGoal: fix it.\nLoose end: tests.'), 'Goal: fix it.\nLoose end: tests.');
+  assert.equal(cleanNote('**Session note**\nGoal: fix it.'), 'Goal: fix it.');
+  assert.equal(cleanNote('Goal: the session note format.'), 'Goal: the session note format.');
+  assert.equal(cleanNote('SILENT'), null);
+  assert.equal(cleanNote(''), null);
+  assert.equal(cleanNote('Session note:'), null);
 });
 
 test('a session whose note failed leaves no memory: the next one starts from the last good note', async () => {
