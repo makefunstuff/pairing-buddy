@@ -120,7 +120,8 @@ in `setup` (`false` for none; `:Pair listen` works either way).
 ## Limits
 
 - The key is held as long as the terminal repeats it. If your terminal waits longer than about 0.65 s before it
-  repeats a held key, a hold counts as a tap: press the key again to ask.
+  repeats a held key, a hold counts as a tap: press the key again to ask
+  ([#55](https://github.com/makefunstuff/pairing-buddy/issues/55)).
 - Voice is off until `voice` is in the config. Pair records only while you hold the key (or between two taps). When
   the Neovim that started a recording goes away (it quits or crashes), the recording stops at once and nothing is
   asked.
