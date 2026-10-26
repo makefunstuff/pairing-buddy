@@ -121,11 +121,21 @@ pair auth logout anthropic  # also `pair logout anthropic`
 
 ### Before you use a subscription
 
-- **Terms.** Whether a subscription may be used from a tool like Pair is up to the provider's terms, and they change.
-  Anthropic's Claude Pro/Max plans are meant for Anthropic's own apps and Claude Code; pi-ai's login sends requests the
-  way Claude Code does (its identity line and tool names), which Anthropic may not allow for other tools and may
-  block. The OpenAI Codex login does the same for the Codex CLI, while Sign in with ChatGPT is OpenAI's sign-in for
-  other agents. Read the current terms first; an API key is the route every provider supports.
+- **Terms.** Whether a subscription may be used from a tool like Pair is up to the provider, and terms change. An API
+  key is the route every provider supports. `pair auth login` shows the provider's line below before a subscription
+  login, and `pair doctor` warns when the Watcher runs on one. What the terms said in October 2026:
+
+  | Login | What the provider's terms say | Read |
+  | --- | --- | --- |
+  | `anthropic` (Claude Pro/Max) | Not allowed. A Claude Free, Pro or Max login is for Claude Code and Anthropic's own apps; other tools must use an API key, and Anthropic may enforce this without notice. pi-ai's login sends requests the way Claude Code does. Use an API key. | [Claude Code: legal and compliance](https://code.claude.com/docs/en/legal-and-compliance#authentication-and-credential-use), [Consumer Terms](https://www.anthropic.com/legal/consumer-terms) |
+  | `openai` (Sign in with ChatGPT) | Allowed in the apps you let use your plan: a Plus or Pro plan, up to a weekly limit you set per app in ChatGPT under Settings > Usage. | [Sign in with ChatGPT](https://learn.chatgpt.com/docs/sign-in-with-chatgpt), [Using your plan in other apps](https://help.openai.com/en/articles/20001542-using-your-chatgpt-plan-in-other-apps-and-sites) |
+  | `openai-codex` (ChatGPT Plus/Pro, legacy) | Unclear. The plan covers Codex itself; this login sends requests as the Codex CLI. Prefer `openai` above. | [Codex and your ChatGPT plan](https://help.openai.com/en/articles/11369540-codex-product-information) |
+  | `github-copilot` | Not offered. GitHub has no Copilot API for other tools; this login sends requests as Copilot Chat in an editor. Copilot's terms and the Acceptable Use Policies apply, and scripted or heavy use can get Copilot suspended. | [GitHub Generative AI Services Terms](https://gh.io/terms), [Acceptable Use Policies](https://docs.github.com/en/site-policy/acceptable-use-policies/github-acceptable-use-policies) |
+  | `kimi-coding` (Kimi Code) | Allowed for your own programming: the membership works in third-party coding agents. Changing the client identifier (User-Agent) is a violation and can suspend it. | [Kimi Code membership guide](https://www.kimi.ai/help/kimi-code/membership-guide) |
+  | `xai` (SuperGrok, X Premium) | Not stated. xAI publishes no terms on using these plans from other tools, and its servers refuse some plans. | [xAI terms of service](https://x.ai/legal/terms-of-service) |
+  | `meta` (Muse) | Not stated. Meta publishes no terms on using a Muse plan from other tools. | [Meta legal](https://www.meta.com/legal/) |
+
+  `openrouter` and `radius` sign in to a pay-per-use account, not a subscription.
 - **Limits.** Requests count against your plan's usage limits, shared with the provider's own apps, and the plan's rate
   limits apply. The Watcher asks its model about every candidate remark, which adds up fast on a subscription. Keep
   the Watcher on a small local or pay-per-use model and give the subscription to the Partner.

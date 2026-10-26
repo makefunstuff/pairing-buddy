@@ -142,9 +142,16 @@ answered, and that while the Partner answers in one project the Watcher of anoth
 it. It prints when each request queued and ran.
 
 **Logins.** Run when `PAIR_LIVE_LOGIN="provider/model"` is set and that provider is logged in with `pair auth login`:
-the model answers as both roles, and a subscription's token renews and is kept. No test makes a subscription login:
-it needs a browser and your account.
+the model answers as both roles, and a subscription's token renews and is kept. No automatic test makes a
+subscription login, since it needs a browser and your account. To check one by hand:
+
+```sh
+test/live/check-login.sh PROVIDER MODEL
+```
+
+It runs `pair auth login PROVIDER` into a credential file of its own (your logins stay as they are), you sign in in
+the browser, and then it runs the login test against it and removes the file. Read the provider's terms first
+([config.md](config.md#before-you-use-a-subscription)).
 
 **The Anthropic API.** Run when `ANTHROPIC_API_KEY` and `PAIR_LIVE_ANTHROPIC_MODEL` are set: the cloud model answers
-the probe as both roles, scores a repeated failure above the bar, and answers a short question as Partner. It has not
-been run against the real API yet ([#44](https://github.com/makefunstuff/pairing-buddy/issues/44)).
+the probe as both roles, scores a repeated failure above the bar, and answers a short question as Partner.
