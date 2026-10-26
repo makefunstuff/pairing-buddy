@@ -43,7 +43,7 @@ const AGENTS = {
   tasks: TASKS,
   files: Object.fromEntries([21, 22, 24, 25].map(n => [`hashtab/${n}`, {worktree: `/work/hashtab-${n}`, link: {pane: `w${n}:p1`}}])),
   herdr: [
-    ...[21, 22, 24].map(n => ({pane_id: `w${n}:p1`, cwd: `/work/probe-${n}`, agent: 'claude', agent_status: 'working'})),
+    ...[21, 22, 24].map(n => ({pane_id: `w${n}:p1`, cwd: `/work/hashtab-${n}`, agent: 'claude', agent_status: 'working'})),
     {pane_id: 'w3:p1', cwd: '/work/notes', agent: 'pi', agent_status: 'working', terminal_title_stripped: 'tidy the design notes'},
   ],
   // While you type: #21 asks you a question, #22 passed its review, and the notes agent finishes.
