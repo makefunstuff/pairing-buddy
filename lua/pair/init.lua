@@ -730,9 +730,10 @@ local function send_accent()
 end
 
 local function hello()
-  -- herdr's socket lets the daemon see your other agents, also when no chat pane runs.
+  -- herdr's socket lets the daemon see your other agents, also when no chat pane runs; the herdr pane this Neovim
+  -- runs in, if any, lets Pair show things in the Neovim whose pane has focus.
   local herdr = vim.env.HERDR_SOCKET_PATH and {socket = vim.env.HERDR_SOCKET_PATH} or nil
-  send({type = 'hello', role = 'editor', cwd = vim.fn.getcwd(), herdr = herdr})
+  send({type = 'hello', role = 'editor', cwd = vim.fn.getcwd(), herdr = herdr, pane = vim.env.HERDR_PANE_ID})
   send_accent()
 end
 
