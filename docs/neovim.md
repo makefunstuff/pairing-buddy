@@ -74,7 +74,7 @@ sure, it stays silent; only when the failure still comes from elsewhere does it 
 
 The second moment: you save a fix, the tests you ran pass, and you would push. Pair runs the whole suite as you
 save, in its own pane, and finds what your fix broke somewhere you were not looking. You set the command per project
-(`testOnSave` in the config, see the [README](../README.md#tests-on-save)); the model never starts a run.
+(`testOnSave` in the config, see [tests-on-save.md](tests-on-save.md)); the model never starts a run.
 
 ![On save: the spinner, the failing test, the remark, the suggestion, Alt-y, and green](images/tests-on-save.gif)
 
@@ -211,8 +211,10 @@ closes it) and snacks.picker (as its input window closes, whether you confirm fr
 the result count and the selected entry, then whether that file is where you are now (in a new split too). No mapping, action or
 picker setting of yours changes, and nothing is written to the picker's own history; Telescope's history keeps
 only searches that ended in a selection, and the ones you gave up on are the telling ones. A picker closed with an
-empty prompt is no search. fzf-lua has no hook for its close, so its searches are not read. `searches = false` in
+empty prompt is no search. fzf-lua has no hook for its close, so its searches are not read
+([#56](https://github.com/makefunstuff/pairing-buddy/issues/56)). `searches = false` in
 `setup` turns all of this off.
+
 ## The held thought
 
 Most of what Pair has to say is not urgent. A remark about drift, a stall, or an error in a line you wrote and left
@@ -298,6 +300,9 @@ held, `● pair · held thought · M-j`, the `●` in the accent.
 
 ## Setup
 
+The lazy.nvim spec is in [install.md](install.md#install). Without a plugin manager:
+`vim.opt.rtp:append('/path/to/pairing-buddy')` and `require('pair').setup({auto_connect = true})`.
+
 ```lua
 require('pair').setup({
   auto_connect = true,
@@ -309,21 +314,80 @@ require('pair').setup({
 })
 ```
 
-The keys (`jump_key`, `accept_key`, `useful_key`, `noise_key`, `teach_key`) are mapped only while there is something for them
-to act on, and only where you have no mapping of your own; `listen_key` is mapped from the start, also only where it is free. The keys you have used are kept in
-`stdpath('state')/pair/keys.json`, so their first-use hints stop for good. The glyphs are plain Unicode, so they show in any font:
-`voice` `●`, `idea` `◇`, `mark` `▎`, `held` `•`, `away` `◌`, `wheel` `◎`, `listen` `◉`, `pass` `✓` and `fail` `✗`. The spinner is braille, `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`.
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `auto_connect` | `false` | Connect to the daemon at startup (the lazy.nvim spec sets it) |
+| `socket` | the daemon's default | The daemon's socket |
+| `debounce_ms` | `2000` | How long after you stop typing an edit is sent |
+| `max_points` | `5` | Points kept at once |
+| `jump_key` | `'<M-j>'` | Goes where Pair pointed last, or shows a held thought. Mapped in Normal mode while it points somewhere or holds a thought |
+| `accept_key` | `'<M-y>'` | Accepts a suggestion. Mapped in Normal mode, only in that buffer and only while a suggestion shows. Avoid `<Tab>`: terminals send it for Ctrl-I, the jumplist's forward jump |
+| `listen_key` | `'<M-t>'` | Hold it to speak to Pair ([voice.md](voice.md)). Mapped in Normal and Visual mode from the start |
+| `useful_key`, `noise_key` | `'<M-u>'`, `'<M-n>'` | Your verdict on Pair's last unasked remark. Mapped in Normal mode only while a remark waits for one |
+| `teach_key` | `'<M-?>'` | Asks for the idea behind Pair's words under your line, then opens its link ([below](#the-idea-behind-it)). Mapped in Normal mode while they show |
+| `motion` | `true` | Fades, and the trail behind the gaze; without it the gaze still steps line by line |
+| `searches` | `true` | Read your Telescope and snacks.picker searches for the [search trail](#the-search-trail) |
+| `glyphs` | plain Unicode | Pair's marks (below) |
 
-For the statusline, `require('pair').status()` is plain text and `require('pair').statusline()` the same with
-Pair's highlight groups, for the `statusline` option or a statusline plugin's section:
+Every key option takes `false` for none; the commands work either way. The keys are mapped only where you have no
+mapping of your own, and all but `listen_key` only while there is something for them to act on. Each says what it does
+until you have used it once (`M-j goes there`); the keys you have used are kept in `stdpath('state')/pair/keys.json`.
+The glyphs are plain Unicode, so they show in any font: `voice` `●`, `idea` `◇`, `mark` `▎`, `held` `•`, `away` `◌`, `wheel` `◎`, `listen` `◉`, `pass`
+`✓` and `fail` `✗`. The
+spinner is braille, `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`.
+
+Once connected, the plugin stays connected: when the daemon restarts (an upgrade, `systemctl --user restart`, a
+crash), it reconnects by itself, after 1, 2, 5, 10 and then every 30 seconds, and sends the current file again.
+`:Pair stop` disconnects for good.
+
+Colours need `termguicolors`, which Neovim turns on by itself in most terminals. Without it Pair links its groups
+to standard ones and does not fade.
+
+## Commands
+
+| Command | What it does |
+| --- | --- |
+| `:Pair start [goal]` | Connect to the daemon (not needed with `auto_connect`), optionally setting the session goal |
+| `:Pair goal <text>` | Set the session goal |
+| `:Pair ask <text>` | Ask Pair something (the answer appears in the chat pane); with a range (`:'<,'>Pair ask ...`), about those lines |
+| `:Pair level quiet\|normal\|chatty` | How often Pair speaks unasked |
+| `:Pair scout` | Switch to Scout: Pair may search and run commands in its own pane |
+| `:Pair navigate` | Switch back to Navigator (the default) |
+| `:Pair drive [what]` | Hand Pair the wheel for one change; any key takes it back. With a range, for those lines |
+| `:Pair jump` | Go where Pair pointed last (same as `Alt-j`); `Ctrl-O` comes back. While Pair holds a thought, show it now |
+| `:Pair trail` | Show your searches since your last edit, as Pair saw them; `x` forgets them |
+| `:Pair accept` | Accept Pair's suggestion (same as `Alt-y`); for a suggestion in an unasked remark, that rates the remark useful |
+| `:Pair dismiss` | Drop Pair's suggestion; for a suggestion in an unasked remark, that rates the remark not useful |
+| `:Pair useful` | Pair's last unasked remark was useful (same as `Alt-u`) |
+| `:Pair noise` | It was not (same as `Alt-n`) |
+| `:Pair why` | The idea worth keeping behind Pair's words under your line (same as `Alt-?`); again, it opens the link that came with it |
+| `:Pair open` | Open the place Pair asked to show while you were typing |
+| `:Pair clear` | Remove Pair's points and words |
+| `:Pair end` | End the session; Pair writes a short session note, which the next session in this project starts from |
+| `:Pair listen [cancel]` | Push-to-talk without the key: works as a tap of `Alt-t`; `cancel` drops what is being recorded ([voice.md](voice.md)) |
+| `:Pair stop` | Disconnect this Neovim, and stop reconnecting |
+
+## Statusline
+
+`require('pair').status()` returns one quiet segment while connected, and is empty when the plugin is not connected.
+`require('pair').statusline()` is the same with Pair's highlight groups, for the `statusline` option or a statusline
+plugin's section:
 
 ```lua
 vim.o.statusline = "%f %m%=%{%v:lua.require'pair'.statusline()%}  %l:%c "
 -- lualine: sections = {lualine_x = {function() return require('pair').status() end}}
 ```
 
-Colours need `termguicolors`, which Neovim turns on by itself in most terminals. Without it Pair links its groups
-to standard ones and does not fade.
+| Segment | When |
+| --- | --- |
+| `● pair` | At rest. The role and talk level show only when they are not the usual ones: `● pair · scout`, `● pair · quiet` |
+| `● reading worker.go` | While Pair reads |
+| `⠹ pair · thinking` | While its model thinks |
+| `● pair · held thought · M-j` | While a remark waits for your next break |
+| `⠹ go test ./...`, `✗ 1 failing · TestX`, `✓ go test ./... · 4 tests, 3 packages` | [Tests on save](tests-on-save.md); `(unsaved)` after the command for the run on the Driver's edit |
+| `◎ pair has the wheel · any key takes it back` | While it drives (`· thinking` while its model thinks, the hint again while it types) |
+| `◌ pair · partner down` (or `models down`) | While a model is down |
+| `◌ pair · reconnecting` | While the daemon is away |
 
 ## Highlight groups
 

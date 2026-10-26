@@ -44,7 +44,7 @@ it ends with one link to the official documentation, which `Alt-?` then opens. H
 ## The tests that hold it
 
 [test/live/tone.test.mjs](../test/live/tone.test.mjs) runs a real Pair session against your live model stacks
-(see the [README](../README.md#tests)) on a small C program with a Makefile, [test/live/probe](../test/live/probe/):
+(see [testing.md](testing.md#live-tests-against-real-models)) on a small C program with a Makefile, [test/live/probe](../test/live/probe/):
 an open-addressing table that never grows, since `t->len / t->cap` is integer division, so `make run` reports an
 average probe of 12.6 and fails its check. The program is built and run for real.
 
