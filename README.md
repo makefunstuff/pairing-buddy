@@ -90,7 +90,7 @@ to do:
 | `Alt-u` / `Alt-n` | Tell Pair its last remark was useful / noise |
 | any key | Take the wheel back while Pair drives |
 
-The main commands are `:Pair ask <question>`, `:Pair drive [what]`, `:Pair scout`, `:Pair navigate`, `:Pair context`
+The main commands are `:Pair ask <question>`, `:Pair drive [what]`, `:Pair scout`, `:Pair navigate`, `:Pair context`, `:Pair today`
 and `:Pair end`.
 All options, commands, the statusline segment and the highlight groups are in [docs/neovim.md](docs/neovim.md), with
 captures of each moment.
@@ -135,6 +135,11 @@ searches. `x` takes a source out for the session. [docs/neovim.md](docs/neovim.m
 
 **No ceremony.** A session starts with the goal of its board task or branch instead of asking, and ends by itself, with
 its note, after 45 minutes without you or once its last Neovim closes. [docs/memory.md](docs/memory.md#no-ceremony-a-session-starts-and-ends-by-itself)
+
+**Keeps a ledger.** `:Pair today` lists everything Pair did here today, one quiet line each: what it read, said,
+pointed at, suggested, ran and typed, what it asked, and the moments it stayed quiet. `⏎` goes there or shows the
+output, and `u` undoes one of its edits later, after your own edits too, which stay.
+[docs/neovim.md](docs/neovim.md#the-ledger)
 
 **Remembers and learns.** Each session ends with a short note the next one starts from, and your useful/noise verdicts
 tune when Pair talks. `pair stats` shows the numbers. [docs/memory.md](docs/memory.md)

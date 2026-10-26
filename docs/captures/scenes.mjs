@@ -68,6 +68,22 @@ export const scenes = {
       {wait: 300, say: 'six cases, one undo step, and they pass. `64` shifts past the top bit: `Next` already caps it, so that one is a guard.'},
     ],
   },
+  // The ledger: a morning of 02 and 03, then :Pair today, and u undoes the six cases after your own edit above them.
+  'ledger': {
+    goal: 'retries reach the budget',
+    testOnSave: 'go test -json ./...',
+    watcher: score('regression'),
+    partner: [
+      {when: /TestNoDoubleDelivery/, wait: 300, call: ['read', {file: 'internal/queue/queue_test.go', start_line: 24, end_line: 37}]},
+      {wait: 600, call: ['read', {file: 'internal/queue/queue.go'}]},
+      {wait: 600, call: ['suggest', {file: 'internal/queue/queue.go', line: 18, new_text: '\treturn &Queue{ttl: cfg.Budget + cfg.AttemptTimeout, leased: map[string]time.Duration{}}', note: 'the lease has to outlive the last attempt'}]},
+      {wait: 150, say: 'delivery passes now, queue doesn\'t: attempt 5 starts at 15s, the moment evt_42\'s lease runs out, so a second worker takes the job `queue.go:18`'},
+      {when: /edge cases/, wait: 500, call: ['read', {file: TABLE}]},
+      {wait: 500, call: ['read', {file: 'internal/retry/backoff.go'}]},
+      {wait: 600, call: ['edit', {file: TABLE, line: 15, new_text: CASES}]},
+      {wait: 300, say: 'six cases, one undo step, and they pass. `64` shifts past the top bit: `Next` already caps it, so that one is a guard.'},
+    ],
+  },
   // 04: the delivery test is red; you grep "give up", then "dead letter", and find-file "retry". Pair says where it
   // is, in the code's own word. The Watcher's score and the Partner's words are a live model's, from test/live/trail.test.mjs.
   'search-trail': {

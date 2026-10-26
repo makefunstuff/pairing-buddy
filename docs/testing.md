@@ -25,6 +25,8 @@ Runs every test that needs no model, in under a minute, with scripted models and
   - tests on save end to end: the spinner, the failing test named, signs on the test functions and the failure after
     its line, `Alt-j` to Pair's suggestion and `Alt-y`, and the passing run;
   - a note moving under its line when the window narrows, and a question about selected lines;
+  - the ledger: `:Pair today` listing what Pair read, typed, ran and said, `u` undoing its edit after a later edit of
+    yours and `u` again making it again, nothing changing when you edited its lines, and `⏎` showing a run's output;
   - a held thought end to end: the `•` where it points and the statusline while you type in Insert mode, nothing in
     the chat, and `Alt-j` showing it at once;
   - push-to-talk: the held key's meter, the words heard and the answer in their place, and a tap;
@@ -63,6 +65,9 @@ Runs every test that needs no model, in under a minute, with scripted models and
   of the project for other runners (git's files and ignored files copied, dependency folders linked at any depth
   without their caches, builds into ignored folders staying in the copy, a file in a dependency folder refused); the
   Driver hearing the result.
+- **The ledger.** What a session books (reads in a row as one line, the place a remark pointed at, its verdict,
+  commands with their output, what it asked and was refused, the moments it stayed quiet and why), today from local
+  midnight, the three-way merge that undoes an edit, details forgotten after a week, and `/today` in the chat.
 - **[One model](config.md#one-model).** Each role's request to it (no thinking and 8 tokens for the Watcher, thinking
   for the Partner); the Watcher waiting while the Partner works in another project, and its remark saying how long it
   waited; a question cancelling the remark still being written (dropped, and no failure of the model); the context

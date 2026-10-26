@@ -87,3 +87,8 @@ Each project gets one long-lived Partner conversation, stored in SQLite by pi-du
 keeps the session, its chat and its context. When a session ends, Pair writes a short note (goal, what changed, loose
 ends), and the next session in that project starts from it. Every unasked remark can get your verdict, and the
 verdicts tune when Pair talks. Both are in [memory.md](memory.md).
+
+Everything Pair does is also booked as it happens, in a ledger: what it read, said, pointed at, suggested, searched,
+ran, typed and asked, what its policy refused, and the moments it chose to stay quiet, with why. `:Pair today` lists
+the day's; the Driver's edit and an accepted suggestion keep the buffer's text before and after them, so one can be
+undone later, merged into the buffer as it is now ([neovim.md](neovim.md#the-ledger)).

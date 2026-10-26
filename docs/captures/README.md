@@ -1,6 +1,6 @@
 # The captures
 
-The clips and stills of the three moments ([docs/neovim.md](../neovim.md) and the site) are recorded
+The clips and stills of the three moments and the ledger ([docs/neovim.md](../neovim.md) and the site) are recorded
 from the tapes here. They show the plugin and the daemon of this checkout as they ship. Only the models are scripted, so a
 recording comes out the same each time.
 
@@ -30,6 +30,7 @@ recording comes out the same each time.
 | [tests-on-save](tapes/tests-on-save.tape) | 02 · it runs what you'd skip |
 | [hand-over](tapes/hand-over.tape) | 03 · the visible hand-over |
 | [take-back](tapes/take-back.tape) | a key while Pair drives takes the wheel back |
+| [ledger](tapes/ledger.tape) | `:Pair today` after a morning of 02 and 03; `u` undoes the six cases after your own edit |
 | [search-trail](tapes/search-trail.tape) | the search trail: three Telescope searches, the cue, `:Pair trail` |
 | [held-thought](tapes/held-thought.tape) | the held thought, and one look on a grey palette |
 | [push-to-talk](tapes/push-to-talk.tape) | hold `Alt-t`, ask aloud, and Pair answers under your line |
@@ -42,7 +43,7 @@ and the JetBrainsMono Nerd Font.
 
 ```sh
 npm ci                                  # in the repo root
-docs/captures/record.sh                 # all six scenes into docs/captures/out/, or name some
+docs/captures/record.sh                 # all the scenes into docs/captures/out/, or name some
 docs/captures/encode.sh                 # out/ -> site/media/ and docs/images/
 ```
 

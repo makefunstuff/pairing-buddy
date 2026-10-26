@@ -7,7 +7,9 @@
 local card = require('pair.card')
 local draw = require('pair.draw')
 local drive = require('pair.drive')
+local ledger = require('pair.ledger')
 local listen = require('pair.listen')
+local merge = require('pair.merge')
 local places = require('pair.places')
 local searches = require('pair.searches')
 local style = require('pair.style')
@@ -307,8 +309,13 @@ function M.accept()
   local first, last = suggested_range(suggestion)
   clear_suggestion()
   if not unchanged then return vim.notify('Pair: those lines changed, so the suggestion was dropped') end
+  local before = vim.api.nvim_buf_get_lines(suggestion.buf, 0, -1, false)
   vim.api.nvim_buf_set_lines(suggestion.buf, first, last, false, suggestion.new)
   if suggestion.remark then feedback(true, suggestion.remark, true) end
+  -- With the text before and after, the ledger can undo it later.
+  if suggestion.action then
+    send({type = 'applied', action = suggestion.action, before = before, after = vim.api.nvim_buf_get_lines(suggestion.buf, 0, -1, false)})
+  end
 end
 
 function M.dismiss()
@@ -334,7 +341,7 @@ local function suggest(message)
   -- JSON null arrives as vim.NIL: a suggestion in an answer to you is no remark.
   local remark = message.remark ~= vim.NIL and message.remark or nil
   local ids = draw.suggestion(buf, first, old, new, message.note, key)
-  state.suggestion = {buf = buf, ids = ids, old = old, new = new, remark = remark, target = {buf = buf, ns = draw.suggest_ns, id = ids[1]}}
+  state.suggestion = {buf = buf, ids = ids, old = old, new = new, remark = remark, action = message.action, target = {buf = buf, ns = draw.suggest_ns, id = ids[1]}}
   aim(state.suggestion.target) -- the jump key goes there: where the accept key works
   map_keys('jump', {{config.jump_key, M.jump, 'Go where Pair points'}})
   state.reading = nil
@@ -555,9 +562,12 @@ local function edit(message)
   local count = vim.api.nvim_buf_line_count(buf)
   if message.line > count then return reply({error = ('line %d is past the end of the buffer (%d lines)'):format(message.line, count)}) end
   if not in_view(buf, message.line) then open_split(message.file, message.line) end
+  -- The buffer before and after goes to the ledger, which can undo the edit later.
+  local before = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
   state.typing = drive.type(buf, message.line - 1, math.min(message.endLine, count) - 1, text_lines(message.text), function(typed, from, to)
     state.typing = nil
-    reply(typed and {ok = true, from = from + 1, to = to + 1} or {error = 'the user has taken the wheel back'})
+    local after = typed and vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+    reply(typed and {ok = true, from = from + 1, to = to + 1, before = before, after = after} or {error = 'the user has taken the wheel back'})
   end)
 end
 
@@ -576,6 +586,14 @@ local function handback(message)
   }
   draw_words(state.words)
   redraw_status()
+end
+
+-- The ledger undoes one of Pair's edits, or makes it again: merged into the buffer as it is now.
+local function revert(message)
+  local buf = load(message.file)
+  local why = merge.apply(buf, message.base, message.other)
+  if vim.fn.bufwinid(buf) ~= -1 then vim.cmd.redraw() end -- a change made here shows only at the next event
+  send({type = 'reply', id = message.id, result = why and {error = why} or {ok = true}})
 end
 
 -- The chat pane prints Pair in the same accent as here, once Neovim has true colours to give.
@@ -606,6 +624,10 @@ local handlers = {
   suggest = suggest,
   edit = edit,
   handback = handback,
+  revert = revert,
+  ledger = ledger.show,
+  ledger_detail = ledger.detail,
+  ledger_changed = ledger.changed,
   remark = on_remark,
   held = on_held,
   unheld = forget_held,
@@ -803,6 +825,7 @@ local commands = {
   trail = function() send({type = 'trail'}) end,
   accept = M.accept,
   dismiss = M.dismiss,
+  today = function() if M.connect() then ledger.open() end end,
   useful = function() feedback(true, state.remark) end,
   noise = function() feedback(false, state.remark) end,
   ['end'] = function() send({type = 'end'}) end,
@@ -843,6 +866,8 @@ function M.setup(opts)
   style.glyphs = vim.tbl_extend('force', style.glyphs, config.glyphs)
   draw.motion = config.motion
   drive.motion = config.motion
+  ledger.send = send
+  ledger.rate = feedback
   style.apply()
   local group = vim.api.nvim_create_augroup('pair', {clear = true})
   local function restyle()
