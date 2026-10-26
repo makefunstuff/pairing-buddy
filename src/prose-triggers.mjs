@@ -20,8 +20,8 @@ export const PROSE_CHECKS = {
     + 'Ask one short question (at most 18 words) that helps them answer it themselves, about the note or the code it names. '
     + 'If they plainly do not need one, answer exactly SILENT.',
   note_drift: 'Do not help with the section itself. Read the note: its title and the new section. If the section serves '
-    + 'the title or the goal, answer exactly SILENT. If it has left them, ask once, as one short question that names the note, '
-    + 'for example "is this still the <title> note?".',
+    + 'the title or the goal, answer exactly SILENT. If it has left them, your whole answer is one short question that names '
+    + 'the note, for example "is this still the <title> note?". Do not point at lines.',
 };
 
 // What the Watcher is asked to score for each of them (see WHAT_HAPPENED in watcher.mjs). Asked whether a remark
