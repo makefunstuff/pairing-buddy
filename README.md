@@ -88,10 +88,11 @@ to do:
 | `Alt-y` | Take Pair's suggested change, as your own edit |
 | `Alt-t` (hold) | Ask aloud: [push-to-talk](docs/voice.md), when voice is set up |
 | `Alt-u` / `Alt-n` | Tell Pair its last remark was useful / noise |
+| `Alt-a` | Go to the agent whose news Pair relayed ([your other agents](docs/agents.md)) |
 | any key | Take the wheel back while Pair drives |
 
-The main commands are `:Pair ask <question>`, `:Pair new [idea]`, `:Pair drive [what]`, `:Pair scout`, `:Pair navigate`, `:Pair context`, `:Pair today`
-and `:Pair end`.
+The main commands are `:Pair ask <question>`, `:Pair new [idea]`, `:Pair drive [what]`, `:Pair scout`, `:Pair navigate`,
+`:Pair context`, `:Pair today`, `:Pair agents` and `:Pair end`.
 All options, commands, the statusline segment and the highlight groups are in [docs/neovim.md](docs/neovim.md), with
 captures of each moment.
 
@@ -151,6 +152,14 @@ glows. After a long red or a regression, or when a number in your benchmark fina
 says what is now true, then goes. Off by default: short sounds for the same moments, only while you are away from
 Neovim. [docs/neovim.md](docs/neovim.md#when-it-goes-green)
 
+**Keeps your other agents in one place.** When another herdr agent or a task on the
+[Herdr Projects](https://github.com/eliasstravik/herdr-projects) board needs you, is ready to approve, failed or is
+done, Pair says so in one line after its own in the statusline, at your next break and never while you type. `Alt-a`
+brings that agent's pane to the front; `:Pair agents` (or `/agents`) lists them all, the ones that need you first. It
+only reads the board and herdr. [docs/agents.md](docs/agents.md)
+
+![While you type, the other agents move on; you save, and one line comes in the statusline: #21 needs you, and M-a goes there](docs/images/agents.gif)
+
 **Starts from a blank page.** In an empty folder, `:Pair new` and one sentence: Pair asks three short questions in
 `NOTES.md`, one at a time, then suggests a first slice that runs: two files (a `Makefile` and `main.c`, `go.mod` and
 `main.go`, ...), what to poke at, when the first test is worth writing, and what to leave out. No scaffolding, no
@@ -177,6 +186,7 @@ Off until you set `"voice"` in the config. [docs/voice.md](docs/voice.md)
 - [Push-to-talk](docs/voice.md): asking aloud, whisper.cpp, answers read aloud
 - [The Watcher](docs/watcher.md): the speak gate, held thoughts, thinking, keep-warm
 - [Memory and feedback](docs/memory.md): session notes, verdicts, tuning, `pair stats`
+- [Your other agents](docs/agents.md): other agents' news at your breaks, `Alt-a`, `:Pair agents`
 - [herdr](docs/herdr.md): what Pair gets from herdr and what is missing
 - [Data and privacy](docs/data.md): what is stored where, and what leaves your machine
 - [Tests](docs/testing.md): `npm test` and the live tests against real models
