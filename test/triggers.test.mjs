@@ -99,3 +99,8 @@ test('fired keys are not raised again', () => {
   const [trigger] = detectTriggers(state, 10_000);
   assert.deepEqual(detectTriggers(state, 11_000, new Set([trigger.key])), []);
 });
+
+test('a failure while the user is in another workspace is missed', () => {
+  const state = foldAll([{kind: 'focus', target: 'elsewhere', pane: null, at: 0}, failure(1000)]);
+  assert.deepEqual(kinds(state, 1000 + TIMING.lookGraceMs), ['failed_command']);
+});

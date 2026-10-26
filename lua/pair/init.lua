@@ -86,13 +86,17 @@ local function send_diagnostics(buf)
   event({kind = 'diagnostics', file = file, items = items})
 end
 
+local function visual()
+  local mode = vim.fn.mode()
+  return mode == 'v' or mode == 'V' or mode == '\22'
+end
+
 local function send_cursor()
   local file = project_path(0)
   if not file then return end
   local cursor = vim.api.nvim_win_get_cursor(0)
   local message = {kind = 'cursor', file = file, line = cursor[1], col = cursor[2]}
-  local mode = vim.fn.mode()
-  if mode == 'v' or mode == 'V' then
+  if visual() then
     local from, to = vim.fn.line('v'), cursor[1]
     message.selection = {from = math.min(from, to), to = math.max(from, to)}
   end
@@ -249,6 +253,14 @@ function M.setup(opts)
     if file then event({kind = 'enter', file = file}) end
   end})
   vim.api.nvim_create_autocmd('CursorHold', {group = group, callback = send_cursor})
+  -- CursorHold never fires in Visual mode, so a selection is sent once it stops changing.
+  local selection_timer = vim.uv.new_timer()
+  vim.api.nvim_create_autocmd({'CursorMoved', 'ModeChanged'}, {group = group, callback = function()
+    if not state.channel or not visual() then return end
+    selection_timer:start(300, 0, vim.schedule_wrap(function()
+      if visual() then send_cursor() end
+    end))
+  end})
   local diagnostic_timers = {}
   vim.api.nvim_create_autocmd('DiagnosticChanged', {group = group, callback = function(args)
     if not state.channel then return end

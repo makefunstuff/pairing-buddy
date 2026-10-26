@@ -26,9 +26,9 @@ async function until(check, what, timeoutMs = 8000) {
   throw new Error(`timed out waiting for ${what}`);
 }
 
-test('the plugin reports edits and diagnostics, shows points and serves unsaved text to read', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
+test('the plugin reports edits, diagnostics and the selection, shows points and serves unsaved text to read', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
   const project = mkdtempSync(join(tmpdir(), 'pair-nvim-'));
-  writeFileSync(join(project, 'a.js'), 'const x = 1\n');
+  writeFileSync(join(project, 'a.js'), 'const x = 1\nconst y = 2\nconst z = 3\n');
   const dataDir = mkdtempSync(join(tmpdir(), 'pair-data-'));
   const config = parseConfig({
     dataDir,
@@ -64,6 +64,8 @@ test('the plugin reports edits and diagnostics, shows points and serves unsaved 
     execFileSync('nvim', ['--server', server, '--remote-send', 'ccconst x = 2<Esc>']);
     remote(`luaeval("vim.diagnostic.set(vim.api.nvim_create_namespace('lsp'), 0, {{lnum = 0, col = 6, severity = 1, message = 'x is never read'}}) or 0")`);
     await sleep(500); // the plugin's 100 ms debounce, then the daemon folds the edit and the diagnostic
+    execFileSync('nvim', ['--server', server, '--remote-send', 'Vj']);
+    await sleep(600); // the selection is sent once it has been still for 300 ms, while still in Visual mode
 
     let seen;
     partner.setResponses([
@@ -81,8 +83,9 @@ test('the plugin reports edits and diagnostics, shows points and serves unsaved 
 
     assert.match(seen, /Recent edits: a\.js:1-1/, 'the edit reached the session state');
     assert.match(seen, /a\.js:1 error: x is never read/, 'the diagnostic reached the session state');
+    assert.match(seen, /cursor at line 2, selected lines 1-2/, 'the visual selection reached the session state');
     assert.match(seen, /1: const x = 2/, 'read returned the unsaved buffer text');
-    assert.equal(readFileSync(join(project, 'a.js'), 'utf8'), 'const x = 1\n', 'nothing was written to disk');
+    assert.equal(readFileSync(join(project, 'a.js'), 'utf8'), 'const x = 1\nconst y = 2\nconst z = 3\n', 'nothing was written to disk');
     const marks = await until(() => Number(remote(`luaeval("#vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('pair'), 0, -1, {})")`)), 'the point extmark');
     assert.equal(marks, 1);
   } finally {

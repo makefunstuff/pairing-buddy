@@ -30,7 +30,7 @@ herdr panes ────┘   → triggers → speak gate + budget
 
 - **Senses.** The Neovim plugin sends edits (about 2 s after you stop typing), the current file, cursor, selection and LSP diagnostics. The daemon watches your herdr panes for focus, commands and their output. The optional shell hook adds exit codes.
 - **When it speaks.** A remark can come from: a failed command you are not looking at, the same error a second time, an error diagnostic in code you just wrote after you moved on, a stall after a failure, or work that drifts from the session goal. A direct question in the chat is always answered.
-- **The gate.** For anything unasked, the Watcher scores the moment from 0 to 10. Only scores above the talk level's bar reach the Partner, the budget limits how often Pair speaks, and Pair never speaks while you type.
+- **The gate.** For anything unasked, the Watcher scores the moment from 0 to 10. Only scores above the talk level's bar reach the Partner, and the budget limits how often Pair speaks. Pair never speaks while you type in Neovim or the chat pane: a remark that is ready while you type waits for your next pause.
 - **Hands.** The Partner has exactly four tools: `say` (chat message), `point` (highlight lines with a short note in Neovim), `open` (show a file in a split, asking first while you type) and `read` (read a file as the editor has it, or list a directory). That list is enforced in code: only these tools are registered, and a `beforeTool` policy refuses any other name. Nothing in the daemon writes your files, runs commands for the model or saves buffers.
 - **Memory.** Each project gets one long-lived Partner conversation, stored in SQLite by pi-durable, so a restart of the daemon keeps the session, its chat and its context.
 
@@ -179,3 +179,4 @@ Without `PAIR_LIVE_CONFIG` (or a gitignored `test/live/config.json`) the live te
 - herdr exposes no command boundaries or exit codes; see [docs/herdr.md](docs/herdr.md) for what Pair does instead and what herdr would need.
 - A Partner answer that is running when the daemon stops is finished by pi-durable on restart, but is not shown in the chat.
 - One session per project (git root); Pair works with one Neovim per session.
+- Typing in a shell pane does not count as typing: herdr does not report keystrokes.

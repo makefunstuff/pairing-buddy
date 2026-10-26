@@ -40,6 +40,8 @@ export class PairSession {
     this.ticking = false;
     this.spoke = false; // anything reached the user this turn
     this.said = false; // the say tool was used this turn
+    this.unasked = false; // the running turn is a remark nobody asked for
+    this.held = []; // parts of an unasked remark that came while the user was typing
   }
 
   get id() { return this.record.id; }
@@ -51,8 +53,19 @@ export class PairSession {
     this.state = fold(this.state, {at: this.now(), ...event, ...(file ? {file} : {})});
   }
 
+  typing() {
+    return this.now() - this.state.lastKeyAt < this.typingPauseMs;
+  }
+
+  /** Shows `action` now, or, for an unasked remark while the user types, at their next pause. */
+  show(action) {
+    if (this.unasked && this.typing()) this.held.push(action);
+    else action();
+  }
+
   /** Looks for a trigger worth a remark; called about once a second. Ticks never overlap. */
   async tick() {
+    if (this.held.length && !this.typing()) this.held.splice(0).forEach(action => action());
     if (this.ticking || this.busy) return;
     this.ticking = true;
     try {
@@ -70,7 +83,9 @@ export class PairSession {
   }
 
   async remark(trigger) {
-    const spoke = await this.talk(watchInput(trigger, describeState(this.state, this.now())));
+    // The gate saw a pause, but a Partner turn takes seconds: the user may be typing again by the time it answers.
+    this.unasked = true;
+    const spoke = await this.talk(watchInput(trigger, describeState(this.state, this.now()))).finally(() => { this.unasked = false; });
     if (spoke) this.budget.spend(this.now());
   }
 
@@ -90,7 +105,7 @@ export class PairSession {
       const answer = await this.partner.ask(this.conversationId, input);
       // After a say, local models tend to end with filler or a repeat; the say already was the answer.
       if (answer && !SILENT.test(answer) && !this.said) {
-        this.message('pair', answer);
+        this.show(() => this.message('pair', answer));
         this.spoke = true;
       }
     } catch (error) {
@@ -137,7 +152,7 @@ export class PairSession {
     if (SILENT.test(text)) return 'shown'; // some models say their SILENT instead of answering it
     this.spoke = true;
     this.said = true;
-    this.message('pair', text);
+    this.show(() => this.message('pair', text));
     return 'shown';
   }
 
@@ -145,8 +160,10 @@ export class PairSession {
     const path = await projectFile(this.root, file);
     if (!path) return `No file ${file} in the project`;
     this.spoke = true;
-    this.notify('editor', {type: 'point', file: path, line, endLine, note});
-    this.message('pair', `${file}:${line} ${note}`);
+    this.show(() => {
+      this.notify('editor', {type: 'point', file: path, line, endLine, note});
+      this.message('pair', `${file}:${line} ${note}`);
+    });
     return 'highlighted';
   }
 

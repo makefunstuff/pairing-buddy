@@ -66,6 +66,13 @@ export function runChat(socketPath) {
     else if (input) sendMessage(socket, input);
     rl.prompt();
   });
+  // Typing here counts as typing too, so Pair does not speak up in the middle of your question.
+  let typingSent = 0;
+  process.stdin.on('keypress', () => {
+    if (Date.now() - typingSent < 500) return;
+    typingSent = Date.now();
+    sendMessage(socket, {type: 'event', event: {kind: 'typing'}});
+  });
   rl.on('close', () => { socket.end(); process.exit(0); });
   rl.prompt();
 }

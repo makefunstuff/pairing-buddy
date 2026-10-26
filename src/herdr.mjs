@@ -92,13 +92,19 @@ export class PaneWatch {
     }
   }
 
+  /** `pane` is the focused pane of the workspace; none means the user is in another workspace. */
   updateFocus(pane) {
-    if (!pane) return;
-    const target = pane.pane_id === this.chatPane ? 'chat' : this.editors.has(pane.pane_id) ? 'editor' : 'terminal';
-    const scrolled = (pane.scroll?.offset_from_bottom ?? 0) > 0;
-    const key = `${pane.pane_id}:${target}:${scrolled}`;
+    const event = pane
+      ? {kind: 'focus', target: this.targetOf(pane.pane_id), pane: pane.pane_id, scrolled: (pane.scroll?.offset_from_bottom ?? 0) > 0}
+      : {kind: 'focus', target: 'elsewhere', pane: null, scrolled: false};
+    const key = `${event.pane}:${event.target}:${event.scrolled}`;
     if (key === this.focus) return;
     this.focus = key;
-    this.emit({kind: 'focus', target, pane: pane.pane_id, scrolled});
+    this.emit(event);
+  }
+
+  targetOf(pane) {
+    if (pane === this.chatPane) return 'chat';
+    return this.editors.has(pane) ? 'editor' : 'terminal';
   }
 }
