@@ -327,8 +327,9 @@ seconds start when you come back. With `motion = false` nothing glows; the line 
 
 ## Sounds while you are away
 
-When you are reading docs in the browser and the tests finish, a sound tells you without pulling you back. While
-Neovim has the focus there is no sound at all: the screen already says it. They are off until you turn them on:
+When you are reading docs in the browser and the tests turn green, or a test breaks, a sound tells you without
+pulling you back. A run that stays as it was makes no sound. While Neovim has the focus there is no sound at all:
+the screen already says it. They are off until you turn them on:
 
 ```lua
 require('pair').setup({sounds = true, sound_volume = 0.5})

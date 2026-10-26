@@ -23,13 +23,13 @@ function passing(names) {
 
 // Which way is better, from the number's unit or the words before it. Lower first: "miss rate" is lower-better.
 const LOWER_UNITS = /\/op$|^(ns|µs|us|ms|s|sec|secs|seconds?|min|cycles?|b|kb|kib|mb|mib|gb|gib|bytes?)$/i;
-const LOWER_WORDS = /\b(time|latency|elapsed|took|duration|wait|miss(es)?|errors?|warnings?|fail(s|ures?)?|leaks?|allocs?|allocations?|collisions?|probes?|size|bytes|cycles|stalls?|retries)\b/i;
+const LOWER_WORDS = /\b(time|latency|elapsed|took|duration|wait|miss(es)?|errors?|warnings?|fail(s|ed|ures?)?|leaks?|allocs?|allocations?|collisions?|probes?|size|bytes|cycles|stalls?|retries)\b/i;
 const HIGHER_UNITS = /\/s$|^(ops|fps|hz|x)$/i; // per second, or a speedup
 const HIGHER_WORDS = /\b(throughput|ops|fps|hits?|score|speedup|passed|per sec(ond)?)\b/i;
 
-/** -1 when lower is better, 1 when higher is, 0 when the number says nothing about it. */
-export function betterWay(label, unit) {
-  const words = `${label} ${unit}`;
+/** -1 when lower is better, 1 when higher is, 0 when the number says nothing about it. `after` is the word after it. */
+export function betterWay(label, unit, after = '') {
+  const words = `${label} ${unit} ${after}`;
   if (HIGHER_UNITS.test(unit)) return 1;
   if (LOWER_UNITS.test(unit) || LOWER_WORDS.test(words)) return -1;
   if (HIGHER_WORDS.test(words)) return 1;
@@ -43,7 +43,9 @@ const LABEL_END = /[(),;|[\]{}]/; // what starts a new label on a line: "avg 23.
 
 /**
  * The labelled numbers of a command's output, by where they stand: the line with its numbers blanked out, and
- * which number of the line. A number with no words before it, or none that tell which way is better, is left out.
+ * which number of the line. A number is labelled by the words before it, back to the last ( , ; and the like; else,
+ * with only numbers between, by the line's first word ("BenchmarkLookup-8   1000000   1043 ns/op"); else by the word
+ * after it ("5 passed, 2 failed"). One with no label, or none that tells which way is better, is left out.
  */
 export function numbersOf(output = '') {
   const found = new Map();
@@ -52,12 +54,13 @@ export function numbersOf(output = '') {
     const shape = line.replace(NUMBER, '#').trim();
     let from = 0;
     [...line.matchAll(NUMBER)].forEach((match, index) => {
-      const before = line.slice(from, match.index).split(LABEL_END).at(-1);
+      const before = line.slice(from, match.index).split(LABEL_END);
       from = match.index + match[0].length;
-      // Else the line's first word: "BenchmarkLookup-8   1000000   1043 ns/op".
-      const label = wordsOf(before).slice(-3).join(' ') || (wordsOf(line)[0] ?? '');
+      const after = wordsOf(line.slice(from).split(LABEL_END)[0])[0] ?? '';
+      const first = before.length === 1 ? wordsOf(line.slice(0, match.index))[0] : '';
+      const label = wordsOf(before.at(-1)).slice(-3).join(' ') || first || after;
       const unit = match[2] ?? match[3] ?? '';
-      const way = label ? betterWay(label, unit) : 0;
+      const way = label ? betterWay(label, unit, after) : 0;
       if (way) found.set(`${shape}#${index}`, {label, value: Number(match[1]), text: match[1], unit, way});
     });
   }

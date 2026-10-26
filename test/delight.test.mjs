@@ -73,6 +73,16 @@ test('a number that moved the wrong way, jitters, or says nothing about which wa
   assert.equal(faster.numbers('./bench', 'throughput: 240 MB/s').text, 'throughput 121 → 240 MB/s, after 2 runs at 121.');
 });
 
+test('a failure count after a comma is a count of failures: more of them is worse, and fewer is better', () => {
+  const found = [...numbersOf('5 passed, 2 failed').values()].map(({label, way}) => [label, way]);
+  assert.deepEqual(found, [['passed', 1], ['failed', -1]]);
+  const more = new Delight();
+  for (const failing of ['2', '2', '4']) assert.equal(more.command({cmd: 'make -s run', failed: false, output: `5 passed, ${failing} failed`}, 0), null);
+  const fewer = new Delight();
+  for (const failing of ['4', '4']) fewer.command({cmd: 'make -s run', failed: false, output: `5 passed, ${failing} failed`}, 0);
+  assert.equal(fewer.command({cmd: 'make -s run', failed: false, output: '7 passed, 2 failed'}, 0).text, 'failed 4 → 2, after 2 runs at 4.');
+});
+
 test('numbers are read with their label and unit; times of day and unlabelled numbers are left out', () => {
   const found = [...numbersOf([
     'lookup: n=1000 avg probe 23.7 (max 40)',
