@@ -45,11 +45,11 @@ test('a chat template with an enable_thinking switch and a budget field: the pro
   });
   try {
     const lines = await probe(configAt(server.url, {compat: {maxTokensField: 'max_tokens'}}));
-    assert.match(lines[0].text, /^nothing sent: thinks with thinking off, thinks when on \(900 tokens\)$/);
+    assert.match(lines[0].text, /^Pair's default request: thinks with thinking off, thinks when on \(900 tokens\)$/);
     assert.match(lines[1].text, /^the chat template's enable_thinking: no thinking when off, thinks when on/);
     assert.equal(lines.length, 5, 'the switch found, then levels: reasoning_effort shows no difference, the budget field does');
     assert.match(lines[2].text, /^levels as reasoning_effort: 900 tokens at "low", 900 tokens at "high", no clear difference$/);
-    assert.match(lines[3].text, /^levels as thinking_budget_tokens: 256 tokens at "low", 900 tokens at "high"$/);
+    assert.match(lines[3].text, /^levels as thinking_budget_tokens: 32 tokens at "low", 900 tokens at "high"$/);
     const last = lines.at(-1);
     assert.equal(last.level, 'ok');
     const paste = JSON.parse(`{${/Put this in the Partner's entry: (.*)$/.exec(last.text)[1]}}`);
@@ -61,14 +61,14 @@ test('a chat template with an enable_thinking switch and a budget field: the pro
   }
 });
 
-test('a server that thinks only when given reasoning_effort, and rejects "minimal": a level map for it', {timeout: 30_000}, async () => {
-  const tokens = {minimal: 50, low: 200, medium: 500, high: 1200};
+test('a server that thinks only when given reasoning_effort, and checks its value: it reads the field; "minimal" gets a level map', {timeout: 30_000}, async () => {
   const server = await fakeServer({
-    thinkingOf: body => tokens[body.reasoning_effort] ?? 0,
-    rejects: body => body.reasoning_effort === 'minimal',
+    thinkingOf: body => (body.reasoning_effort ? 300 : 0), // about as long at each level, as with a short question
+    rejects: body => body.reasoning_effort !== undefined && !['low', 'medium', 'high'].includes(body.reasoning_effort),
   });
   try {
     const lines = await probe(configAt(server.url, {thinking: {remark: 'minimal'}}));
+    assert.ok(lines.some(line => /^levels as reasoning_effort: the server reads it \(it rejects a level it does not have\); 300 tokens at "low", 300 tokens at "high"$/.test(line.text)));
     const last = lines.at(-1);
     assert.equal(last.level, 'ok');
     assert.match(last.text, /^thinking switches with reasoning_effort; levels reach it as reasoning_effort\. Put this in the Partner's entry: "compat": \{"supportsReasoningEffort":true\}, "thinkingLevelMap": \{"minimal":"low"\}$/);
