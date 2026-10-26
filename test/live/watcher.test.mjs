@@ -65,7 +65,7 @@ describe('Watcher on live models', {skip: stacks.length ? false : SKIP_REASON}, 
         const trigger = triggerOf(state);
         const started = Date.now();
         const result = await score(trigger, state);
-        t.diagnostic(`${trigger.kind} scored ${result.value} in ${Date.now() - started} ms (${result.reason})`);
+        t.diagnostic(`${trigger.kind} scored ${result.value} in ${Date.now() - started} ms`);
         assert.ok(result.value >= BUDGETS.normal.bar, `score ${result.value} below the normal bar`);
       });
     }
@@ -74,10 +74,18 @@ describe('Watcher on live models', {skip: stacks.length ? false : SKIP_REASON}, 
       test(`${stack.name}: not worth a remark: ${name}`, async t => {
         const trigger = triggerOf(state);
         const result = await score(trigger, state);
-        t.diagnostic(`${trigger.kind} scored ${result.value} (${result.reason})`);
+        t.diagnostic(`${trigger.kind} scored ${result.value}`);
         assert.ok(result.value < BUDGETS.normal.bar, `score ${result.value} reaches the normal bar`);
       });
     }
+
+    test(`${stack.name}: the keep-warm ping answers, within 3 s`, async t => {
+      const started = Date.now();
+      const result = await score.warm();
+      t.diagnostic(`warm-up in ${Date.now() - started} ms`);
+      assert.equal(result.ok, true, result.error);
+      assert.ok(Date.now() - started < 3000);
+    });
 
     test(`${stack.name}: the speak gate speaks for a repeated failure and stays quiet for noise`, async () => {
       const worth = SCENARIOS.worth['the same test failure twice in a row'];
