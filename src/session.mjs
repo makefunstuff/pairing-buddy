@@ -124,10 +124,18 @@ Uncommitted changes (git status): ${shown.length ? `\n${shown.join('\n')}` : 'no
 // "Session note:", "# Session Notes", "**Session note**" and the like, alone on the first line or before the text.
 const HEADING = /^[\s#*_]*session notes?[*_]*[ \t]*(:[*_]*[ \t]*|\n|$)/i;
 
-/** The Partner's note, without a heading of its own (the chat adds one) and without SILENT; null when nothing is left. */
+export const NOTE_CHARS = 1200; // six lines and some: the next session's instructions carry it on every turn
+
+/**
+ * The Partner's note, without a heading of its own (the chat adds one) and without SILENT, cut to whole lines
+ * within NOTE_CHARS; null when nothing is left.
+ */
 export function cleanNote(text) {
   const note = text?.replace(HEADING, '').trim();
-  return note && !SILENT.test(note) ? note : null;
+  if (!note || SILENT.test(note)) return null;
+  if (note.length <= NOTE_CHARS) return note;
+  const cut = note.slice(0, NOTE_CHARS);
+  return cut.slice(0, cut.lastIndexOf('\n') > 0 ? cut.lastIndexOf('\n') : NOTE_CHARS).trim();
 }
 
 const IDLE_AFTER_MS = 5 * 60_000; // no key, edit or command for this long: the user is away, and active time stops
@@ -153,7 +161,10 @@ export class PairSession {
     this.paneUses = 0; // searches and commands in the running turn
     this.fired = new Set();
     this.deferred = new Set(); // keys of lasting triggers the budget holds back
+    this.waitReason = null; // why the last tick waited, logged once
+    this.waits = new Map(); // trigger key -> {since} while it waits for the model, then {ms} it waited
     this.busy = false; // a Partner turn is running
+    this.remarking = null; // the unasked remark being made, which the user's question cancels
     this.thinks = false; // that turn thinks
     this.ticking = false;
     this.spoke = false; // anything reached the user this turn
@@ -246,26 +257,53 @@ export class PairSession {
   async tick() {
     this.countActive();
     if (this.held.length && !this.typing()) this.held.splice(0).forEach(action => action());
-    if (this.ticking || this.busy || this.role === 'driver' || !this.health.ok()) return;
+    if (this.ticking || this.role === 'driver' || !this.health.ok()) return;
+    const now = this.now();
+    const triggers = detectTriggers(this.state, now, this.fired);
+    this.waits = new Map([...this.waits].filter(([key]) => triggers.some(trigger => trigger.key === key)));
+    // While the Partner is at work, what comes up waits for the model; how long goes with the remark it becomes.
+    if (this.busy) return triggers.forEach(trigger => this.waitFor(trigger, now));
     this.ticking = true;
     try {
-      const now = this.now();
-      const triggers = detectTriggers(this.state, now, this.fired);
       if (triggers.length && this.autoTune) this.budget.tune(tuning(this.store.remarks(now - WINDOW_MS), now));
       for (const trigger of triggers) {
         const decision = await decide({trigger, state: this.state, now, budget: this.budget, score: this.score, typingPauseMs: this.typingPauseMs});
-        if (decision.verdict !== 'later' || !this.deferred.has(trigger.key)) this.log(`${trigger.kind}: ${decision.verdict} (${decision.reason})`);
+        if (!this.repeats(trigger, decision)) this.log(`${trigger.kind}: ${decision.verdict} (${decision.reason})`);
+        if (decision.held) this.waitFor(trigger, now);
+        else this.waited(trigger, now);
         if (decision.verdict === 'wait') return;
         if (decision.verdict === 'later') {
           this.deferred.add(trigger.key); // logged once, looked at again each tick until the budget allows
           continue;
         }
         this.fired.add(trigger.key);
-        if (decision.verdict === 'speak') return await this.remark(trigger, decision.score);
+        if (decision.verdict === 'speak') return await (this.remarking = this.remark(trigger, decision.score, this.waits.get(trigger.key)?.ms));
       }
     } finally {
       this.ticking = false;
     }
+  }
+
+  /** `trigger` waits for the model, from `now` unless it already did. */
+  waitFor(trigger, now) {
+    if (!this.waits.has(trigger.key)) this.waits.set(trigger.key, {since: now});
+  }
+
+  /** The model is free for `trigger`: how long it waited is kept for its remark. */
+  waited(trigger, now) {
+    const wait = this.waits.get(trigger.key);
+    if (wait?.since !== undefined) this.waits.set(trigger.key, {ms: now - wait.since});
+  }
+
+  /**
+   * Whether `decision` repeats what an earlier tick logged: a wait for the same reason (typing, or the Partner has
+   * the model), or a lasting trigger the budget still holds back.
+   */
+  repeats(trigger, decision) {
+    if (decision.verdict === 'later') return this.deferred.has(trigger.key);
+    const repeated = decision.verdict === 'wait' && this.waitReason === decision.reason;
+    this.waitReason = decision.verdict === 'wait' ? decision.reason : null;
+    return repeated;
   }
 
   /** Whether the user typed, edited or ran a command in the last few minutes. */
@@ -292,11 +330,14 @@ export class PairSession {
     this.activeMs = 0;
   }
 
-  /** One unasked remark. It is stored so the user can rate it (dropped again if Pair stays silent), and costs budget. */
-  async remark(trigger, score) {
+  /**
+   * One unasked remark. It is stored so the user can rate it (dropped again if Pair stays silent), with how long
+   * its trigger `waitedMs` for the model, and costs budget.
+   */
+  async remark(trigger, score, waitedMs = null) {
     // The gate saw a pause, but a Partner turn takes seconds: the user may be typing again by the time it answers.
     this.unasked = true;
-    const id = this.remarkId = this.store.addRemark({sessionId: this.id, trigger: trigger.kind, score, at: this.now()});
+    const id = this.remarkId = this.store.addRemark({sessionId: this.id, trigger: trigger.kind, score, at: this.now(), waitedMs});
     try {
       const input = watchInput(trigger, describeState(this.state, this.now()));
       if (!(await this.talk(input, {kind: 'remark'}))) return this.store.dropRemark(id);
@@ -312,7 +353,20 @@ export class PairSession {
     } finally {
       this.unasked = false;
       this.remarkId = null;
+      this.remarking = null;
     }
+  }
+
+  /**
+   * The user goes first: an unasked remark the Partner is still making is cancelled, and its turn ends before
+   * theirs starts. What it already showed stays.
+   */
+  async yieldRemark() {
+    const remark = this.remarking;
+    if (!remark) return;
+    this.log('remark cancelled: the user asked');
+    await this.partner.cancel(this.conversationId);
+    await remark;
   }
 
   /**
@@ -338,6 +392,7 @@ export class PairSession {
   async ask(text, selection = null) {
     this.message('user', selection ? `${text} (${relative(this.root, selection.file)}:${selection.from}-${selection.to})` : text);
     if (!this.state.goal && !selection) return this.setGoal(text);
+    await this.yieldRemark();
     await this.talk(`[user] ${text}${await this.selected(selection)}\n\nNow:\n${describeState(this.state, this.now())}`);
   }
 
@@ -455,6 +510,7 @@ export class PairSession {
    */
   async drive(words = '', selection = null) {
     if (words) this.message('user', words);
+    await this.yieldRemark();
     if (this.busy) return this.message('system', 'Pair is still answering; hand over again once it is done.');
     if (!(await this.setRole('driver'))) return;
     this.edited = false;
@@ -513,6 +569,7 @@ export class PairSession {
   async end() {
     await this.scout?.close();
     this.storeActive();
+    await this.yieldRemark();
     const input = noteInput(this.state, await gitStatus(this.root));
     const note = await this.partner.ask(this.conversationId, input).then(cleanNote, error => {
       this.message('system', `No session note: ${error.message}`);

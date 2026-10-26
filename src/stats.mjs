@@ -18,6 +18,19 @@ function gap(ms) {
   return [minutes && `${minutes} min`, (rest || !minutes) && `${rest} s`].filter(Boolean).join(' ');
 }
 
+const median = values => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
+
+/**
+ * How long remarks waited for the model while the Partner was at work (with one model, or one server, for both
+ * roles); null when none did.
+ */
+function waitLine(remarks) {
+  const waits = remarks.map(remark => remark.waitedMs).filter(ms => ms > 0);
+  if (!waits.length) return null;
+  return `${waits.length} of ${plural(remarks.length, 'remark')} waited for the model while the Partner was at work: `
+    + `${gap(median(waits))} (median), at most ${gap(Math.max(...waits))}`;
+}
+
 function table(rows) {
   const widths = rows[0].map((_, column) => Math.max(...rows.map(row => String(row[column]).length)));
   return rows.map(row => row.map((cell, column) => (column ? String(cell).padStart(widths[column]) : String(cell).padEnd(widths[column]))).join('  ').trimEnd());
@@ -34,6 +47,7 @@ export function statsReport({remarks, activeMs, now, days, level, autoTune}) {
   const lines = [
     `Last ${plural(days, 'day')}, all projects: ${hours.toFixed(1)} h of active pairing, ${plural(total.remarks, 'unasked remark')} (${rate(total.remarks, hours)} per hour)`,
     `useful ${total.useful} · dismissed ${total.dismissed} · ignored ${total.ignored}${total.seen ? ` · seen ${total.seen}` : ''}${total.waiting ? ` · waiting ${total.waiting}` : ''} · kept ${percent(keptShare(total))}`,
+    ...[waitLine(recent)].filter(Boolean),
     '',
   ];
   const budget = new Budget(level, autoTune ? tuning(remarks, now) : NO_TUNING);

@@ -1,7 +1,7 @@
 // What an OpenAI-compatible server lists and has loaded. A server that keeps one model in memory reloads on
 // every switch between two models (seconds to minutes each), so when the Watcher and the Partner are two
 // models on such a server, the Watcher scores with the Partner's model while only that one is loaded.
-import {apiKeyOf} from './config.mjs';
+import {apiKeyOf, sameServer} from './config.mjs';
 
 const LIST_TIMEOUT_MS = 2000;
 
@@ -25,7 +25,7 @@ export function loadedIds(listed) {
 
 /** Whether two model entries are different models on one OpenAI-compatible server. */
 export function shareServer(a, b) {
-  return a.api === 'openai' && b.api === 'openai' && a.baseUrl === b.baseUrl && a.model !== b.model;
+  return a.api === 'openai' && sameServer(a, b) && a.model !== b.model;
 }
 
 /**

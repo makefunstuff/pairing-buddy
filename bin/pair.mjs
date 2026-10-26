@@ -8,7 +8,7 @@ import {fileURLToPath} from 'node:url';
 import {parseArgs} from 'node:util';
 import {authStates, login, logout, providerModels} from '../src/auth.mjs';
 import {runChat} from '../src/chat.mjs';
-import {authPath, configPath, createConfig, defaultSocketPath, loadConfig} from '../src/config.mjs';
+import {authPath, configPath, createConfig, defaultSocketPath, loadConfig, rolesText, sameModel} from '../src/config.mjs';
 import {deviceId, fileCredentialStore} from '../src/credentials.mjs';
 import {startDaemon} from '../src/daemon.mjs';
 import {doctor, tilde} from '../src/doctor.mjs';
@@ -38,6 +38,8 @@ const USAGE = `usage:
   pair shell-hook bash|zsh   print the shell hook that reports exit codes
   pair report --exit N --cmd TEXT   (used by the shell hook)`;
 
+const ONE_MODEL = 'The Watcher asks it for one number without thinking, the Partner thinks; on its server the Watcher waits while the Partner works.';
+const TWO_MODELS = 'On a server that holds one model at a time, give both roles one model instead: "model" in the config (see the README, "One model").';
 const LAZY_SPEC = `  {
     'makefunstuff/pairing-buddy',
     main = 'pair',
@@ -151,6 +153,7 @@ async function setup() {
   if (!(await waitFor(() => reachable(config.socket)))) throw new Error(`The service did not start; see \`journalctl --user -u ${UNIT} -n 20\``);
   console.log(`The daemon runs as ${UNIT}: it starts at login and restarts when it fails.
 Config: ${tilde(configPath())} (after a change: systemctl --user restart ${UNIT})
+Models: ${rolesText(config.models)}. ${sameModel(config.models.watcher, config.models.partner) ? ONE_MODEL : TWO_MODELS}
 
 Next:
   1. Add the Neovim plugin with lazy.nvim:

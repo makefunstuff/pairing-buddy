@@ -45,6 +45,12 @@ test('without autoTune the stats show the level\'s own bars', () => {
   assert.equal(chatty.at(-2), 'Budget at level chatty: at most 15 remarks per hour, 1 min 30 s apart (the level\'s default: 15, 1 min 30 s)');
 });
 
+test('remarks that waited for the model while the Partner was at work say how long', () => {
+  const waited = [{...REMARKS[0], waitedMs: 4000}, {...REMARKS[1], waitedMs: 21_000}, {...REMARKS[2], waitedMs: 0}, {...REMARKS[3], waitedMs: 6000}, ...REMARKS.slice(4)];
+  const lines = statsReport({remarks: waited, activeMs: 5 * HOUR, now: NOW, days: 7, level: 'normal', autoTune: true});
+  assert.equal(lines[2], '3 of 10 remarks waited for the model while the Partner was at work: 6 s (median), at most 21 s');
+});
+
 test('`pair stats` reads the data directory, also while no daemon runs, and counts active time when it happened', () => {
   const dir = mkdtempSync(join(tmpdir(), 'pair-stats-'));
   const config = join(dir, 'config.json');

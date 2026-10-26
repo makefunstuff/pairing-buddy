@@ -1,10 +1,11 @@
-// One config file for the daemon: the two models, the talk level and where things live.
+// One config file for the daemon: the models (one for both roles, or one each), the talk level and where things live.
 // It is JSON with // and /* */ comments; the first run writes the commented example there.
 import {copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync} from 'node:fs';
 import {homedir} from 'node:os';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {thinkingBudgetForLevel} from '@earendil-works/pi-ai/api/simple-options';
+import {MIN_CONTEXT, replyRoom} from './context.mjs';
 import {storedKey} from './credentials.mjs';
 
 const EXAMPLE = fileURLToPath(new URL('../config.example.json', import.meta.url));
@@ -31,20 +32,21 @@ export function authPath() {
 }
 
 /**
- * Where a model entry's requests go: a pi-ai `provider` (its own API, catalog and login), or an `api` at a `baseUrl`.
- * Its key comes from one of `auth` (a key stored by `pair auth login`), `apiKey`, `apiKeyFile` and `apiKeyEnv`.
+ * Where the model entry at `name` sends its requests: a pi-ai `provider` (its own API, catalog and login), or an `api`
+ * at a `baseUrl`. Its key comes from one of `auth` (a key stored by `pair auth login`), `apiKey`, `apiKeyFile` and
+ * `apiKeyEnv`.
  */
-function checkSource(role, entry) {
-  const keys = ['auth', 'apiKey', 'apiKeyFile', 'apiKeyEnv'].filter(name => entry[name] !== undefined);
-  if (keys.length > 1) throw new Error(`config: models.${role} takes one of ${keys.join(', ')}`);
+function checkSource(name, entry) {
+  const keys = ['auth', 'apiKey', 'apiKeyFile', 'apiKeyEnv'].filter(field => entry[field] !== undefined);
+  if (keys.length > 1) throw new Error(`config: ${name} takes one of ${keys.join(', ')}`);
   if (entry.provider === undefined) {
-    if (!['openai', 'anthropic'].includes(entry.api)) throw new Error(`config: models.${role} needs a "provider", or an "api": "openai" or "anthropic"`);
-    if (entry.auth !== undefined && (typeof entry.auth !== 'string' || !entry.auth)) throw new Error(`config: models.${role}.auth must name a key stored by \`pair auth login\``);
+    if (!['openai', 'anthropic'].includes(entry.api)) throw new Error(`config: ${name} needs a "provider", or an "api": "openai" or "anthropic"`);
+    if (entry.auth !== undefined && (typeof entry.auth !== 'string' || !entry.auth)) throw new Error(`config: ${name}.auth must name a key stored by \`pair auth login\``);
     return;
   }
-  if (typeof entry.provider !== 'string' || !entry.provider) throw new Error(`config: models.${role}.provider must be a provider id (see \`pair auth list\`)`);
-  if (entry.api !== undefined || entry.baseUrl !== undefined) throw new Error(`config: models.${role} names a provider, which brings its own api and baseUrl`);
-  if (keys.length) throw new Error(`config: models.${role} names a provider: log in with \`pair auth login ${entry.provider}\` instead of ${keys[0]}`);
+  if (typeof entry.provider !== 'string' || !entry.provider) throw new Error(`config: ${name}.provider must be a provider id (see \`pair auth list\`)`);
+  if (entry.api !== undefined || entry.baseUrl !== undefined) throw new Error(`config: ${name} names a provider, which brings its own api and baseUrl`);
+  if (keys.length) throw new Error(`config: ${name} names a provider: log in with \`pair auth login ${entry.provider}\` instead of ${keys[0]}`);
 }
 
 const THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'];
@@ -53,15 +55,18 @@ const THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'];
 // nobody asked for. A remark may come a few seconds later; a wrong one costs the user more than the wait.
 export const THINKING_DEFAULTS = {navigator: 'medium', scout: 'medium', driver: 'medium', remark: 'low'};
 
-const ANSWER_TOKENS = 2048; // the Partner's words and tool calls, on top of its thinking
+export const ANSWER_TOKENS = 2048; // the Partner's words and tool calls, on top of its thinking
 
-/** The Partner's `thinking`: one level for every kind of turn, or some kinds' levels with the defaults for the rest. */
-export function thinkingConfig(raw = {}) {
+/**
+ * The Partner's `thinking`: one level for every kind of turn, or some kinds' levels with the defaults for the rest.
+ * `name` is where the config has it.
+ */
+export function thinkingConfig(raw = {}, name = 'models.partner.thinking') {
   const levels = typeof raw === 'string' ? Object.fromEntries(Object.keys(THINKING_DEFAULTS).map(kind => [kind, raw])) : raw;
-  if (!levels || typeof levels !== 'object' || Array.isArray(levels)) throw new Error('config: models.partner.thinking must be a level or map kinds to levels');
+  if (!levels || typeof levels !== 'object' || Array.isArray(levels)) throw new Error(`config: ${name} must be a level or map kinds to levels`);
   for (const [kind, level] of Object.entries(levels)) {
-    if (!(kind in THINKING_DEFAULTS)) throw new Error(`config: models.partner.thinking.${kind}: the kinds are ${Object.keys(THINKING_DEFAULTS).join(', ')}`);
-    if (!THINKING_LEVELS.includes(level)) throw new Error(`config: models.partner.thinking: "${level}" is not one of ${THINKING_LEVELS.join(', ')}`);
+    if (!(kind in THINKING_DEFAULTS)) throw new Error(`config: ${name}.${kind}: the kinds are ${Object.keys(THINKING_DEFAULTS).join(', ')}`);
+    if (!THINKING_LEVELS.includes(level)) throw new Error(`config: ${name}: "${level}" is not one of ${THINKING_LEVELS.join(', ')}`);
   }
   return {...THINKING_DEFAULTS, ...levels};
 }
@@ -71,27 +76,77 @@ export function mostThinking(thinking) {
   return Object.values(thinking).reduce((most, level) => (THINKING_LEVELS.indexOf(level) > THINKING_LEVELS.indexOf(most) ? level : most), 'off');
 }
 
+/** Tokens the Partner's reply needs at `level`: its thinking budget and the answer after it. */
+export const replyTokens = level => ANSWER_TOKENS + (level === 'off' ? 0 : thinkingBudgetForLevel(level));
+
 /**
- * Checks one model entry and fills its defaults. The Partner thinks (`reasoning`, so Pair can set its level); the
- * Watcher never does, and answers with one number whatever its `maxTokens` (see watcher.mjs).
+ * Checks one model entry and fills its defaults; `name` is where the config has it. The Partner thinks
+ * (`reasoning`, so Pair can set its level); the Watcher never does, and answers with one number whatever its
+ * `maxTokens` (see watcher.mjs).
  */
-export function modelConfig(role, entry) {
-  if (!entry || typeof entry !== 'object') throw new Error(`config: models.${role} is missing`);
-  checkSource(role, entry);
-  if (typeof entry.model !== 'string' || !entry.model) throw new Error(`config: models.${role}.model is missing`);
-  if (entry.api === 'openai' && !entry.baseUrl) throw new Error(`config: models.${role}.baseUrl is missing`);
+export function modelConfig(role, entry, name = `models.${role}`) {
+  if (!entry || typeof entry !== 'object') throw new Error(`config: ${name} is missing`);
+  checkSource(name, entry);
+  if (typeof entry.model !== 'string' || !entry.model) throw new Error(`config: ${name}.model is missing`);
+  if (entry.api === 'openai' && !entry.baseUrl) throw new Error(`config: ${name}.baseUrl is missing`);
   const base = {baseUrl: entry.api === 'anthropic' ? 'https://api.anthropic.com' : undefined, contextWindow: 32768};
   if (role !== 'partner') return {...base, maxTokens: ANSWER_TOKENS, reasoning: false, ...entry};
-  const thinking = thinkingConfig(entry.thinking);
-  const most = mostThinking(thinking);
+  const contextWindow = entry.contextWindow ?? base.contextWindow;
+  if (contextWindow < MIN_CONTEXT) {
+    throw new Error(`config: ${name}.contextWindow is ${contextWindow}: the Partner needs at least ${MIN_CONTEXT} tokens, for its tools, a file it reads and its reply`);
+  }
+  const thinking = thinkingConfig(entry.thinking, `${name}.thinking`);
   return {
     ...base,
-    // Thinking counts toward it: room for the most thinking any turn does, and the answer after it.
-    maxTokens: ANSWER_TOKENS + (most === 'off' ? 0 : thinkingBudgetForLevel(most)),
+    // Thinking counts toward it: room for the most thinking any turn does and the answer after it, as far as the
+    // context window leaves room for the conversation too.
+    maxTokens: Math.min(replyTokens(mostThinking(thinking)), replyRoom(contextWindow)),
     reasoning: true,
     ...entry,
     thinking,
   };
+}
+
+export const SAME_AS_PARTNER = 'same as partner';
+
+/**
+ * The Watcher's entry when one model serves both roles: the Partner's model, asked as the Watcher asks. It can
+ * think whenever the Partner can (`reasoning`), so Pair switches its thinking off; it always runs at temperature 0.
+ */
+function watcherOn(partner) {
+  const {thinking, maxTokens, samplingParams, ...model} = partner;
+  return {...model, reasoning: partner.reasoning ?? true};
+}
+
+/** Whether two model entries send their requests to the same server (or provider), which may answer one at a time. */
+export const sameServer = (a, b) => a.provider === b.provider && a.api === b.api && a.baseUrl === b.baseUrl;
+
+/** Whether two model entries name the same model on the same server. */
+export const sameModel = (a, b) => sameServer(a, b) && a.model === b.model;
+
+/** Where a model entry's model is, for people: "m at http://host/v1" or "m on provider". */
+export const whereIs = entry => (entry.provider ? `${entry.model} on ${entry.provider}` : `${entry.model} at ${entry.baseUrl}`);
+
+/**
+ * `{watcher, partner}`: one `model` for both roles, or `models` with an entry for each, where the Watcher's may be
+ * "same as partner".
+ */
+function parseModels(raw) {
+  if (raw.model !== undefined && raw.models !== undefined) throw new Error('config: set "model" (one model for both roles) or "models", not both');
+  if (raw.model !== undefined) {
+    const partner = modelConfig('partner', raw.model, 'model');
+    return {watcher: modelConfig('watcher', watcherOn(raw.model), 'model'), partner};
+  }
+  const watcher = raw.models?.watcher;
+  if (typeof watcher === 'string' && watcher !== SAME_AS_PARTNER) throw new Error(`config: models.watcher is a model entry, or "${SAME_AS_PARTNER}"`);
+  const partner = modelConfig('partner', raw.models?.partner);
+  return {watcher: watcher === SAME_AS_PARTNER ? modelConfig('watcher', watcherOn(raw.models.partner)) : modelConfig('watcher', watcher), partner};
+}
+
+/** One line on which models serve the two roles, for `pair setup`. */
+export function rolesText({watcher, partner}) {
+  if (sameModel(watcher, partner)) return `one model for both roles: ${whereIs(partner)}`;
+  return `the Watcher ${whereIs(watcher)}, the Partner ${whereIs(partner)}`;
 }
 
 /** The API key of a model entry: the stored key `auth`, `apiKey`, the file `apiKeyFile` or the env var `apiKeyEnv`. */
@@ -121,7 +176,7 @@ function testCommands(raw = {}) {
 export function parseConfig(raw) {
   const level = raw.level ?? 'normal';
   if (!LEVELS.includes(level)) throw new Error(`config: level must be one of ${LEVELS.join(', ')}`);
-  const models = {watcher: modelConfig('watcher', raw.models?.watcher), partner: modelConfig('partner', raw.models?.partner)};
+  const models = parseModels(raw);
   return {
     level,
     typingPauseMs: raw.typingPauseMs ?? 2000,

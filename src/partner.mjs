@@ -3,21 +3,13 @@ import {BACKGROUND_CONTEXT as C} from '@earendil-works/chord/context';
 import {createRegistry, Harness} from '@earendil-works/pi-durable';
 import {openNodeSqliteStorage} from '@earendil-works/pi-durable/storage/sqlite/node';
 import {mostThinking, THINKING_DEFAULTS} from './config.mjs';
+import {compactionFor} from './context.mjs';
 import {pairExtension, ROLE_PROMPTS, ROLE_TOOLS} from './tools.mjs';
 
 // How long the model may take to start its answer. A server that holds its reply until the thinking is done
 // (some proxies do) needs longer when the Partner thinks.
 const STREAM_TIMEOUT_MS = 90_000;
 const THINKING_STREAM_TIMEOUT_MS = 240_000;
-
-// Small local context windows need smaller margins than the library's cloud-sized defaults.
-function compactionFor(contextWindow) {
-  return {
-    reserveTokens: Math.min(16384, Math.floor(contextWindow / 4)),
-    keepRecentTokens: Math.min(20000, Math.floor(contextWindow / 4)),
-    backgroundTokens: Math.floor(contextWindow / 8),
-  };
-}
 
 /** The last session's note, as the instructions carry it into a new session in the same project. */
 export function memoryPrompt(note) {
@@ -42,8 +34,9 @@ function answerText(entry) {
 /**
  * Opens the Partner over `storage` (a SQLite file path, or a pi-durable Storage for tests).
  * `thinking` is its level for each kind of turn (see THINKING_DEFAULTS); `hands` carries out the tools, see tools.mjs.
+ * Without `backgroundCompaction`, a conversation is compacted only between its turns (see context.mjs).
  */
-export async function openPartner({storage, models, model, thinking = THINKING_DEFAULTS, hands}) {
+export async function openPartner({storage, models, model, thinking = THINKING_DEFAULTS, hands, backgroundCompaction = true}) {
   // A model without `reasoning` thinks as it always does: pi-ai sends it no thinking level.
   const levelOf = kind => (model.reasoning ? thinking[kind] : 'off');
   const extension = pairExtension(hands);
@@ -56,7 +49,7 @@ export async function openPartner({storage, models, model, thinking = THINKING_D
     identity: {attribution: null},
     settings: {
       extensions: [extension],
-      compaction: compactionFor(model.contextWindow),
+      compaction: compactionFor(model.contextWindow, model.maxTokens, {background: backgroundCompaction}),
       afterFailedRun: 'continue',
       // A model that does not answer fails the turn within minutes, not the SDK's default of hours.
       stream: {timeoutMs: model.reasoning && mostThinking(thinking) !== 'off' ? THINKING_STREAM_TIMEOUT_MS : STREAM_TIMEOUT_MS, maxRetries: 0},
@@ -75,6 +68,7 @@ export async function openPartner({storage, models, model, thinking = THINKING_D
   });
   /** The thinking level of a turn of `kind` ("remark", or by default the conversation's role). */
   const thinkingOf = (conversationId, kind) => (kind ? levelOf(kind) : (agents.get(conversationId)?.thinkingLevel ?? 'off'));
+  const cancelled = new Set(); // conversations whose running turn was cancelled
 
   return {
     /** A new conversation, in the Navigator role. */
@@ -99,24 +93,33 @@ export async function openPartner({storage, models, model, thinking = THINKING_D
     thinkingOf,
 
     /**
-     * Sends one input and resolves with the Partner's final text (tool calls happen on the way). It thinks as a
-     * turn of `kind` does, and from the next input on as its role does again.
+     * Sends one input and resolves with the Partner's final text (tool calls happen on the way), or null when the
+     * turn was cancelled. It thinks as a turn of `kind` does, and from the next input on as its role does again.
      */
     async ask(conversationId, content, {kind} = {}) {
       const conversation = await harness.conversation(conversationId, C);
       if (!conversation) throw new Error(`No conversation ${conversationId}`);
+      cancelled.delete(conversationId); // a cancel that came after the last turn was done
       const agent = agents.get(conversationId);
       const level = thinkingOf(conversationId, kind);
       const switched = agent && level !== agent.thinkingLevel;
       if (switched) await conversation.configure({...agent, thinkingLevel: level}, C);
       try {
         const settled = await (await conversation.submit({type: 'input', content}, C)).wait(C);
+        if (cancelled.delete(conversationId)) return null; // what it wrote before is not for the user
         if (settled.status !== 'done') throw new Error(`The Partner did not answer (${settled.reason}${settled.detail ? `: ${settled.detail}` : ''})`);
         const page = await conversation.entries({maxEntryId: settled.answer}, 1, undefined, C);
         return answerText(page.items[0]);
       } finally {
         if (switched) await conversation.configure(agent, C);
       }
+    },
+
+    /** Stops the conversation's running turn: its ask resolves null, and it is no failure of the model. */
+    async cancel(conversationId) {
+      const conversation = await harness.conversation(conversationId, C);
+      cancelled.add(conversationId);
+      await conversation?.abort(C);
     },
 
     close: () => harness.close(C),

@@ -4,7 +4,8 @@ import {existsSync} from 'node:fs';
 import {homedir} from 'node:os';
 import {basename, delimiter, join} from 'node:path';
 import {credentialState} from './auth.mjs';
-import {authPath, configPath, loadConfig, mostThinking} from './config.mjs';
+import {authPath, configPath, loadConfig, mostThinking, replyTokens, sameModel, sameServer, whereIs} from './config.mjs';
+import {SMALL_CONTEXT} from './context.mjs';
 import {fileCredentialStore, readableByOthers} from './credentials.mjs';
 import {herdrRequest} from './herdr.mjs';
 import {listModels} from './loaded-model.mjs';
@@ -17,7 +18,7 @@ import {VERSION} from './version.mjs';
 const WATCHER_MS = 1500; // the Watcher scores every candidate remark: about a second is the aim
 const PARTNER_MS = 20_000;
 const NVIM_MS = 10_000;
-const EXAMPLE_MODELS = ['your-small-model', 'your-larger-model'];
+const EXAMPLE_MODELS = ['your-model', 'your-small-model', 'your-larger-model'];
 
 const ok = (name, text) => ({level: 'ok', name, text});
 const warn = (name, text) => ({level: 'warn', name, text});
@@ -25,6 +26,7 @@ const fail = (name, text) => ({level: 'fail', name, text});
 
 export const tilde = path => (path.startsWith(homedir()) ? `~${path.slice(homedir().length)}` : path);
 const seconds = ms => `${(ms / 1000).toFixed(1)} s`;
+const count = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`;
 const onPath = (name, env) => (env.PATH ?? '').split(delimiter).some(dir => existsSync(join(dir, name)));
 
 /** Every check, in order, as `{level: ok|warn|fail, name, text}`; yields each as soon as it is known. */
@@ -158,11 +160,11 @@ async function* modelChecks(config, status, credentials) {
     return;
   }
   const {watcher, partner} = config.models;
-  const shared = ['provider', 'api', 'baseUrl', 'model'].every(field => watcher[field] === partner[field]);
+  const shared = sameModel(watcher, partner);
   for (const role of shared ? ['watcher'] : ['watcher', 'partner']) {
     const name = shared ? 'models' : role;
     const entry = config.models[role];
-    const where = entry.provider ? `${entry.model} on ${entry.provider}` : `${entry.model} at ${entry.baseUrl}`;
+    const where = whereIs(entry);
     if (entry.api === 'openai') {
       const listed = await listedModels(entry);
       if (listed.error) { yield fail(name, `nothing answers at ${entry.baseUrl} (${listed.error}): is the server running?`); continue; }
@@ -192,6 +194,39 @@ async function* modelChecks(config, status, credentials) {
     }
     if (role === 'partner' || shared) yield* thinkingChecks(pairModels, partner);
   }
+  if (sameServer(watcher, partner)) yield rolesCheck(config.models, status?.slot);
+  yield contextCheck(partner);
+}
+
+/**
+ * How the two roles share one server, and, from the daemon's `slot` (see slot.mjs), how the Watcher fared since
+ * it started.
+ */
+export function rolesCheck({watcher, partner}, slot) {
+  const measured = slot?.scores
+    ? `. Since the daemon started: ${count(slot.scores, 'score')}, ${seconds(slot.scoreMedianMs)} each (median); your questions cancelled `
+      + `${count(slot.cancelled.scores, 'score')} and ${count(slot.cancelled.remarks, 'remark')} still at work`
+    : '';
+  if (sameModel(watcher, partner)) {
+    return ok('roles', 'one model serves both: the Watcher asks it for one number without thinking, the Partner thinks. '
+      + `The Watcher waits while the Partner works, and your questions go first${measured}`);
+  }
+  return ok('roles', `two models on one server: the Watcher waits while the Partner works. If the server holds one model at a time, `
+    + `give both roles one model ("model" in the config), so it never reloads${measured}`);
+}
+
+/** Whether the Partner's context window leaves its reply the room its thinking needs. */
+export function contextCheck(entry) {
+  const most = entry.reasoning ? mostThinking(entry.thinking) : 'off';
+  const needs = replyTokens(most);
+  if (needs > entry.maxTokens) {
+    return warn('context', `the Partner's reply has room for ${entry.maxTokens} tokens, and thinking at "${most}" takes up to ${needs} with the answer, `
+      + 'so its thinking is cut short: give the model more context ("contextWindow", and the server\'s own), or set "thinking" lower');
+  }
+  if (entry.contextWindow < SMALL_CONTEXT) {
+    return warn('context', `${entry.contextWindow} tokens: the Partner's conversation is compacted every few turns; ${SMALL_CONTEXT} or more works better`);
+  }
+  return ok('context', `${entry.contextWindow} tokens: ${entry.maxTokens} for the Partner's reply, the rest for its conversation`);
 }
 
 /**

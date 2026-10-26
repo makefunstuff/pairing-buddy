@@ -26,7 +26,8 @@ CREATE TABLE IF NOT EXISTS remarks (
   trigger TEXT NOT NULL,
   score REAL,
   at INTEGER NOT NULL,
-  verdict TEXT
+  verdict TEXT,
+  waited_ms INTEGER -- how long its trigger waited for the model while the Partner was at work
 );
 -- Active pairing time per clock hour (hour = ms since the epoch / 3600000), counted when it happened, so a
 -- session left open for days adds to each day it was used.
@@ -37,18 +38,21 @@ CREATE TABLE IF NOT EXISTS activity (
 
 const HOUR = 60 * 60_000;
 
-/** Columns added since v0.1, with their definitions. */
+/** Columns added since v0.1, by table, with their definitions. */
 const ADDED_COLUMNS = {
-  role: 'TEXT NOT NULL DEFAULT \'navigator\'',
+  sessions: {role: 'TEXT NOT NULL DEFAULT \'navigator\''},
+  remarks: {waited_ms: 'INTEGER'},
 };
 
 export function openStore(path) {
   const db = new DatabaseSync(path);
   db.exec('PRAGMA journal_mode = WAL');
   db.exec(SCHEMA);
-  for (const [column, definition] of Object.entries(ADDED_COLUMNS)) {
-    if (!db.prepare('SELECT 1 FROM pragma_table_info(\'sessions\') WHERE name = ?').get(column)) {
-      db.exec(`ALTER TABLE sessions ADD COLUMN ${column} ${definition}`);
+  for (const [table, columns] of Object.entries(ADDED_COLUMNS)) {
+    for (const [column, definition] of Object.entries(columns)) {
+      if (!db.prepare('SELECT 1 FROM pragma_table_info(?) WHERE name = ?').get(table, column)) {
+        db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+      }
     }
   }
   const toSession = row => row && {...row, conversation_id: JSON.parse(row.conversation_id)};
@@ -74,15 +78,15 @@ export function openStore(path) {
     addMessage: (sessionId, sender, text, at) => db.prepare('INSERT INTO messages (session_id, at, sender, text) VALUES (?, ?, ?, ?)').run(sessionId, at, sender, text),
     messages: (sessionId, limit = 50) => db.prepare('SELECT at, sender, text FROM (SELECT rowid, * FROM messages WHERE session_id = ? ORDER BY rowid DESC LIMIT ?) ORDER BY rowid').all(sessionId, limit),
 
-    addRemark: ({sessionId, trigger, score, at}) => Number(db.prepare('INSERT INTO remarks (session_id, trigger, score, at) VALUES (?, ?, ?, ?)')
-      .run(sessionId, trigger, score ?? null, at).lastInsertRowid),
+    addRemark: ({sessionId, trigger, score, at, waitedMs}) => Number(db.prepare('INSERT INTO remarks (session_id, trigger, score, at, waited_ms) VALUES (?, ?, ?, ?, ?)')
+      .run(sessionId, trigger, score ?? null, at, waitedMs ?? null).lastInsertRowid),
     dropRemark: id => db.prepare('DELETE FROM remarks WHERE id = ?').run(id),
     /** Records the user's verdict on remark `id`, "useful" or "dismissed"; false when there is no such remark. */
     rateRemark: (id, verdict) => db.prepare('UPDATE remarks SET verdict = ? WHERE id = ?').run(verdict, id).changes > 0,
     /** Records that the user saw remark `id` (they edited after it showed), unless it has a verdict already. */
     seeRemark: id => db.prepare('UPDATE remarks SET verdict = \'seen\' WHERE id = ? AND verdict IS NULL').run(id),
     /** Every remark since `since`, newest first. */
-    remarks: since => db.prepare('SELECT id, trigger, score, at, verdict FROM remarks WHERE at >= ? ORDER BY id DESC').all(since),
+    remarks: since => db.prepare('SELECT id, trigger, score, at, verdict, waited_ms AS waitedMs FROM remarks WHERE at >= ? ORDER BY id DESC').all(since),
     /** Adds `ms` of active pairing, just before `at`, to its hour. */
     addActive: (at, ms) => db.prepare('INSERT INTO activity (hour, ms) VALUES (?, ?) ON CONFLICT (hour) DO UPDATE SET ms = ms + excluded.ms')
       .run(Math.floor(at / HOUR), ms),

@@ -652,3 +652,41 @@ test('when the tests cannot run on the buffer, the Partner is told why, and the 
   assert.deepEqual(tests().map(message => message.state), ['run', 'idle']);
   assert.equal(sent.find(message => message.type === 'handback').tests, null);
 });
+
+test('a moment that comes up while the Partner answers waits for it; its remark says how long. A question cancels a remark', async () => {
+  let clock = 100_000;
+  const remarks = [];
+  const finish = [];
+  const cancelled = [];
+  const partner = {
+    thinkingOf: () => 'off',
+    ask: (_id, input) => new Promise(resolve => finish.push(() => resolve(input.startsWith('[user]') ? 'The timeout is 5 s.' : 'Line 2 is off.'))),
+    cancel: async () => { cancelled.push(true); finish.shift()(null); },
+  };
+  const store = {addMessage() {}, setGoal() {}, addRemark: remark => remarks.push(remark), dropRemark() {}};
+  const pair = new PairSession({
+    record: {id: 1, root: '/project', conversation_id: 7, goal: 'fix it', level: 'normal'},
+    store, partner, score: async () => ({value: 9, reason: 'worth it'}), typingPauseMs: 2000,
+    notify: () => 1, requestEditor: async () => null, now: () => clock,
+  });
+  const question = pair.ask('where is the timeout?');
+  await new Promise(setImmediate);
+  failTwice(pair);
+  await pair.tick();
+  clock += 4000;
+  await pair.tick();
+  finish.shift()();
+  await question;
+  clock += 1000;
+  const tick = pair.tick();
+  await new Promise(setImmediate);
+  assert.deepEqual(remarks.map(remark => [remark.trigger, remark.waitedMs]), [['repeated_error', 5000]]);
+
+  const next = pair.ask('and the test?'); // the remark is still being written
+  await tick;
+  assert.equal(cancelled.length, 1);
+  assert.equal(pair.unasked, false, 'the remark ended before the question started');
+  await new Promise(setImmediate);
+  finish.shift()();
+  await next;
+});
