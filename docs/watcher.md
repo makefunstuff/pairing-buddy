@@ -32,15 +32,23 @@ The rules only ever drop; anything they are unsure of goes to the Watcher.
 | --- | --- |
 | Exit 1 of a command whose exit 1 is an answer, not a failure | `grep`, `rg`, `ag`, `diff`, `cmp`, `test`, `[`, `which`, `pgrep`, `git diff`, `git grep` finding nothing or a difference |
 | A command you stopped yourself | exit 130 (Ctrl-C) or 143 |
-| Drift into a file whose path shares a word with the goal | goal "reconnect waits 30 s after the phone sleeps", editing `src/power/sleepWatch.ts` or `src/net/reconnecting.ts` |
 
-Paths are split into words at slashes, dots, underscores and camelCase. A path word must be a goal word, give or take a plural or verb ending ("sleep" matches "sleeps", "cache" matches "caches"), never just share a prefix ("form" does not match "formatted"). Goal words shorter than four letters, common ones like "test", "code", "file" or "error", and words found in the paths of most projects ("index", "main", "server", "users", "utils", "config" and the like) do not count. What you typed in the file is not looked at: code is full of ordinary words ("wait", "user", "index") that any goal may share.
+Drift has no rule here. Whether a file is part of the goal depends on what it does, and the words of its path do not
+say that: `src/billing/ranking.ts` shares "ranking" with a goal about search ranking and is unrelated, and
+`src/net/backoff.ts` shares no word with "reconnect waits 30 s after the phone sleeps" and is the heart of it. The
+Watcher judges drift (below), told what the file is about.
+
+## Scores remembered
+
+The same moment twice gets the same score without a second request: the same failure under the same goal, the same
+file you moved into again. The Watcher answers at temperature 0, so it would give the same number. A score is kept for
+half an hour; a call that failed, gave no number or had to wait for the Partner is not kept.
 
 ## A short question, a short answer
 
 - The Watcher sees a few lines: the goal, the current file and cursor, where you are looking, your last keystroke, and what just happened. The Partner gets the full picture only once the gate lets the remark through.
 - It answers with the score alone, a single number, and may write at most 8 tokens. A JSON answer with a reason took about ten times as many tokens, and on a local server every token written adds to the wait.
-- Drift gets a question of its own: how clearly the file you now edit is unrelated to the goal, with the goal named in the question. Asked whether you would want a remark, models score how important the work is instead.
+- Drift gets a question of its own: how clearly the file you now edit is unrelated to the goal, by what it does, with the goal named in the question. Asked whether you would want a remark, models score how important the work is instead. With the path comes the file's gist: its leading comment (a licence does not count) and the first names it defines, at most 240 characters, read from your buffer when the Watcher is asked. Live, a fast cloud model scored `src/billing/ranking.ts` ("ranks overdue invoices for the dunning run") 10 under a goal about search ranking, the catalog's BM25 scoring 0, a backoff file 3 under a reconnect goal and a sheep counter in `src/sleep/` 10.
 - The wrong turn (`edit_while_red`: you edit, while a test run is red, a source file the failure does not name) gets one too: the Watcher cannot see the code, so it is asked how much a quick check of whether that file can cause the failure would save you, with the files the failure names next to it. Asked how likely the cause is elsewhere, models hedge in the middle of the scale.
 - A smaller Watcher model than the Partner's is faster, but small models tend to judge drift badly (scoring it 0 or 1), and on a server that keeps one model loaded every swap costs far more than it saves. One mid-sized model for both roles is the tested setup.
 - Drift is checked once for each file you move into, right when you start editing it, and again on another branch or after a new goal (`/goal`), not once every ten minutes.
@@ -129,7 +137,11 @@ Many local servers unload a model that has not been asked for a few minutes, and
 
 Some servers keep only one model in memory and swap on request (a llama.cpp router with one model at a time, or a model switcher in front of a single-model server). With two different models for the Watcher and the Partner on such a server, every remark would swap twice: once for the Watcher's score and once for the Partner's words.
 
-The simple fix is one model for both roles (`"model"` in the config; see [config.md](config.md#one-model)): a mid-sized model answers the Watcher's short question fast enough, without thinking, and the Partner asks it with thinking. On a shared server the Watcher also waits while the Partner works, so a score never queues behind a long answer, and your question cancels a remark still being written. If you configure two models on one server anyway, Pair avoids the swaps where the server says which models it has loaded (its `/models` list then marks each one loaded or not): while only the Partner's model is loaded, the Watcher scores with that one. When the Watcher's own model is loaded, or none is, or the server does not say, the Watcher uses its own. The daemon's log says when the Watcher switches. The health probe follows the same choice, so it does not swap models either.
+The simple fix is one model for both roles (`"model"` in the config; see [config.md](config.md#one-model)): a mid-sized model answers the Watcher's short question fast enough, without thinking, and the Partner asks it with thinking. On a shared server the Watcher also waits while the Partner works, so a score never queues behind a long answer, and your question cancels a remark still being written. If you configure two models on one server anyway, Pair avoids the swaps where the server says which models it has loaded (its `/models` list then marks each one loaded or not): while only the Partner's model is loaded, the Watcher scores with that one. When the Watcher's own model is loaded, or none is, the Watcher uses its own.
+
+A server that does not say what it has loaded shows it in the time it takes. The daemon times each Watcher call and notes whether a Partner turn came before it. When two calls in a row after a Partner turn take over 2 s and over four times the Watcher's usual call, the server is reloading on each switch, and from then on the Watcher scores with the Partner's model. A server that is slow every time is not taken for one that swaps. `pair doctor` measures it too: it asks the Watcher right after the Partner and then again, and a `swap` line says whether the first took far longer. The daemon's log says when the Watcher switches. The health probe follows the same choice, so it does not swap models either.
+
+What Pair cannot change is a server that is slow on every request: each new moment (one not remembered, above) waits for one Watcher call, and `pair doctor` warns when that takes over 1.5 s.
 
 ## Thinking: the Partner, not the Watcher
 
@@ -158,19 +170,29 @@ the default. Off, the wrong turn and the regression checks trace the code badly 
   the answer and Pair says nothing.
 - **Time for it.** While the Partner thinks, the model may take up to four minutes to start its reply instead of 90
   seconds, for servers that send nothing until the thinking is done.
-- **Levels, or only on and off.** With the `anthropic` API each level is a thinking budget of its own. An
-  OpenAI-compatible server gets a level only if it says it takes one: `"compat": {"supportsReasoningEffort": true}`
-  sends it as `reasoning_effort` (OpenAI's API and many cloud servers take it), and
-  `"compat": {"thinkingTokenBudgetField": "<field>"}` sends the level's token budget in the field the server names.
-  Pair leaves both off for an OpenAI-compatible server, since most local servers reject or ignore them. Then
-  `compat.thinkingFormat` (the thinking switch of the model's chat template; see pi-ai's "OpenAI Compatibility
-  Settings") only switches thinking on or off, and `low`, `medium` and `high` are the same request.
+- **Levels, or only on and off.** With the `anthropic` API each level is a thinking budget of its own, and a
+  provider's levels come from pi-ai's catalog. An OpenAI-compatible server gets a level only if its entry says how:
+  `"compat": {"supportsReasoningEffort": true}` sends it as `reasoning_effort` (OpenAI's API and many cloud servers
+  take it), and `"compat": {"thinkingTokenBudgetField": "<field>"}` sends the level's token budget in the field the
+  server names (`thinking_budget_tokens` for llama.cpp, `thinking_token_budget` for vLLM, `thinking_budget` for
+  SGLang). `compat.thinkingFormat` sets the thinking switch of the model's chat template (see pi-ai's "OpenAI
+  Compatibility Settings"), and `compat.chatTemplateKwargs` the values the template gets. `"thinkingLevelMap"` on the
+  entry sends a level by the server's own name for it, for example `{"minimal": "low", "xhigh": "high"}` for a
+  server that has only three. Pair sends none of this by default, since most local servers reject or ignore it.
+- **`pair doctor --thinking` finds them.** There is no way to ask a server which fields it takes, so the probe
+  tries them on the Partner's model, one request at a time (a dozen or two in all, a minute or so on a local
+  server): first how thinking switches (as Pair asks by default, the chat template's `enable_thinking` or
+  `thinking`, a `thinking` field, `reasoning_effort`), thinking off must not think and `high` must; then how levels
+  get through. A server that rejects a `reasoning_effort` it does not have reads the field; otherwise a level counts
+  when `high` thinks clearly more than `low` held to a 32-token budget. It keeps the other keys of your `compat`, and
+  ends with the line to paste, a level map included when the server rejects `minimal` or `xhigh` and your
+  `thinking` uses them. Against a cloud API that takes `reasoning_effort` it found that in five requests.
 - **Models that cannot switch it.** With `"reasoning": false` Pair sends no thinking level, and the model thinks as
-  it always does. A model with a thinking switch in its chat template needs `compat.thinkingFormat`, or Pair cannot
-  switch it at all.
+  it always does. A model with a thinking switch in its chat template needs it set, or Pair cannot switch it at all.
 - **`pair doctor` checks it.** It asks the Partner a short sum with thinking on and says whether it failed (the model
   cannot think) or answered without thinking. It also says whether your levels send the model different requests,
   or only switch thinking on. With thinking off, or `"reasoning": false`, it says whether the model thinks anyway.
+  Where something is off, it points to `pair doctor --thinking`.
 - **What it bought.** Against a fast cloud model that takes the level as `reasoning_effort`, three runs each of the
   live suite and the scripted session, with thinking off and then with these defaults: real drift was named in 0 of
   3 runs without thinking and 3 of 3 with it; the regression's fix landed in the right file 2 of 3 times without and

@@ -4,9 +4,10 @@
 import {createPairModels} from './models.mjs';
 import {probeEffort} from './probe.mjs';
 
-// How thinking is switched on and off: the server's default (nothing sent), a chat template's switch, or a field.
+// How thinking is switched on and off: as Pair asks by default (nothing, for most servers), a chat template's
+// switch, or a field.
 const SWITCHES = [
-  {name: 'nothing sent', compat: {}},
+  {name: 'Pair\'s default request', compat: {}},
   {name: 'the chat template\'s enable_thinking', compat: {thinkingFormat: 'chat-template', chatTemplateKwargs: {enable_thinking: {$var: 'thinking.enabled'}}}},
   {name: 'the chat template\'s thinking', compat: {thinkingFormat: 'chat-template', chatTemplateKwargs: {thinking: {$var: 'thinking.enabled'}}}},
   {name: 'a "thinking" field', compat: {thinkingFormat: 'deepseek'}},
@@ -30,19 +31,23 @@ const THINKING_KEYS = ['thinkingFormat', 'chatTemplateKwargs', 'supportsReasonin
 // Levels the OpenAI API does not have; a server that takes reasoning_effort may reject them.
 const NEAREST = {minimal: 'low', xhigh: 'high'};
 
+// A level no server has: one that reads reasoning_effort rejects it, one that ignores the field takes it.
+const NO_SUCH_LEVEL = 'pair-probe-no-such-level';
+const SMALL_BUDGET = 32; // the budget at "low": a budget field the server reads holds the thinking to about this
+
 /** `level` thinks clearly more than `less`: half again as many tokens, and at least a hundred more. */
 const moreThan = (level, less) => level.tokens >= 1.5 * less.tokens && level.tokens - less.tokens >= 100;
 
 /**
  * What the Partner's model does with `compat` at each of `levels` ("off" for thinking off), by level; `{error}` when
- * the server rejects one. At "low" the budget is held small, so a budget field that is sent shows.
+ * the server rejects one. At "low" the thinking budget is SMALL_BUDGET; `levelMap` sends levels by other names.
  */
-async function measure(config, compat, levels) {
-  const entry = {...config.models.partner, reasoning: true, compat};
+async function measure(config, compat, levels, {levelMap} = {}) {
+  const entry = {...config.models.partner, reasoning: true, compat, thinkingLevelMap: levelMap};
   const {models, partner} = createPairModels({...config, models: {watcher: entry, partner: entry}});
   const found = {};
   for (const level of levels) {
-    const result = await probeEffort(models, partner, level === 'off' ? null : level, level === 'low' ? {thinkingBudgets: {low: 256}} : {});
+    const result = await probeEffort(models, partner, level === 'off' ? null : level, level === 'low' ? {thinkingBudgets: {low: SMALL_BUDGET}} : {});
     if (!result.ok) return {error: result.error};
     found[level] = result;
   }
@@ -78,8 +83,11 @@ export async function* probeThinkingSettings(config, {measureWith = measure} = {
     const compat = {...kept, ...chosen.compat, ...field.add(chosen.compat)};
     const result = await measureWith(config, compat, ['low', 'high']);
     if (result.error) { yield {level: 'warn', name: 'thinking', text: `levels as ${field.name}: the server rejects it (${result.error})`}; continue; }
-    const distinct = result.low.thought && moreThan(result.high, result.low);
-    yield {level: distinct ? 'ok' : 'warn', name: 'thinking', text: `levels as ${field.name}: ${tokens(result.low)} at "low", ${tokens(result.high)} at "high"${distinct ? '' : ', no clear difference'}`};
+    // Thinking that varies a little from one answer to the next says less than a server that checks the field.
+    const read = field.name === 'reasoning_effort' && Boolean((await measureWith(config, compat, ['low'], {levelMap: {low: NO_SUCH_LEVEL}})).error);
+    const distinct = read || (result.low.thought && moreThan(result.high, result.low));
+    const measured = `${tokens(result.low)} at "low", ${tokens(result.high)} at "high"`;
+    yield {level: distinct ? 'ok' : 'warn', name: 'thinking', text: `levels as ${field.name}: ${read ? `the server reads it (it rejects a level it does not have); ${measured}` : `${measured}${distinct ? '' : ', no clear difference'}`}`};
     if (distinct) { levels = {field, compat}; break; }
   }
   const compat = levels?.compat ?? {...kept, ...chosen.compat};
