@@ -7,11 +7,12 @@ const SYSTEM = `Score 0-10 how much a pair programmer would want a short remark 
 0-3: noise, obvious, or they are already on it. 7-10: they will lose time without it.
 Answer with one number.`;
 
-// What to score, for triggers where "would they want a remark" is the wrong question: models then score how
-// important the work is, not whether it drifted.
-// The question names the goal again: right next to it, mid-sized models judge the file far more reliably.
-const QUESTIONS = {
-  drift: state => `Score how clearly this file is unrelated to the goal "${state.goal}": 0 if it could be part of it, 10 if it is plainly other work.`,
+// What happened, for triggers whose detail is written for the Partner. Drift: the file alone, and a question
+// with the goal right next to it. Asked whether you would want a remark, models score how important the work
+// is, not whether it drifted; and the Partner's longer detail costs tokens without helping the score.
+const WHAT_HAPPENED = {
+  drift: (trigger, state) => `The user now edits ${trigger.file}.\n`
+    + `Score how clearly this file is unrelated to the goal "${state.goal}": 0 if it could be part of it, 10 if it is plainly other work.`,
 };
 
 const MAX_TOKENS = 8; // a number, with room for a model that wraps it in a word or two
@@ -48,8 +49,8 @@ export function createWatcher({models, model, chooseModel = async () => model, n
   };
 
   async function score(trigger, state) {
-    const question = QUESTIONS[trigger.kind] ? `\n${QUESTIONS[trigger.kind](state)}` : '';
-    const message = await ask(`${describeBriefly(state, now())}\n\nWhat just happened (${trigger.kind}): ${trigger.detail}${question}`, MAX_TOKENS);
+    const happened = WHAT_HAPPENED[trigger.kind]?.(trigger, state) ?? trigger.detail;
+    const message = await ask(`${describeBriefly(state, now())}\n\nWhat just happened (${trigger.kind}): ${happened}`, MAX_TOKENS);
     const text = message.content.filter(block => block.type === 'text').map(block => block.text).join('');
     const parsed = parseScore(text);
     if (parsed) return parsed;

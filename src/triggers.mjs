@@ -71,8 +71,10 @@ function diagnosticTriggers(state) {
 function driftTriggers(state, now) {
   const latest = state.edits.at(-1);
   if (!state.goal || !latest || now - latest.at > TIMING.driftWindowMs) return [];
-  // Short: the goal is in the state both models get, and the file now edited is the news.
-  const detail = `Possible drift from the goal: the user now edits ${latest.file}${state.branch ? ` on branch ${state.branch}` : ''}.`;
+  const recent = state.edits.filter(edit => now - edit.at <= TIMING.driftWindowMs);
+  const others = [...new Set(recent.map(edit => edit.file))].filter(file => file !== latest.file);
+  const detail = `Possible drift from the goal "${state.goal}": the user now edits ${latest.file}`
+    + `${others.length ? ` (recently also ${others.join(', ')})` : ''}${state.branch ? ` on branch ${state.branch}` : ''}.`;
   // Judged once per file and branch: moving into a file is when work drifts, and staying in it is no news.
   // It lasts while the user stays in that file, so a budget that holds it back does not lose it.
   return [{kind: 'drift', key: `drift:${state.branch}:${latest.file}`, detail, file: latest.file, lasting: true}];

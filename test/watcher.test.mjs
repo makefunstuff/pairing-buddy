@@ -55,10 +55,11 @@ test('the Watcher asks for a short answer, a drift question of its own, and the 
   let chosen = 0;
   const score = createWatcher({models, model: faux.getModel(), chooseModel: async () => { chosen += 1; return faux.getModel(); }, now: () => 5000});
   await score({kind: 'stall', detail: 'nothing for 90 s'}, initialState());
-  await score({kind: 'drift', detail: 'now edits src/billing.mjs'}, initialState({goal: 'fix reconnect'}));
+  await score({kind: 'drift', detail: 'Possible drift … (recently also src/ws.ts)', file: 'src/billing.mjs'}, initialState({goal: 'fix reconnect'}));
   assert.ok(seen[0].maxTokens <= 8);
   assert.doesNotMatch(seen[0].prompt, /unrelated/);
-  assert.match(seen[1].prompt, /src\/billing\.mjs\nScore how clearly this file is unrelated to the goal "fix reconnect"/);
+  assert.match(seen[1].prompt, /\(drift\): The user now edits src\/billing\.mjs\.\nScore how clearly this file is unrelated to the goal "fix reconnect"/);
+  assert.doesNotMatch(seen[1].prompt, /recently also/, "the Partner's detail stays out");
   assert.equal(chosen, 2);
 
   assert.equal(score.lastCallAt, 5000);

@@ -15,6 +15,8 @@ import {detectTriggers} from './triggers.mjs';
 import {tuning, WINDOW_MS} from './tuning.mjs';
 
 const SILENT = /^\W*silent\W*$/i;
+// "…so no drift here — SILENT.": a model that explains its SILENT still means silence.
+const silent = text => SILENT.test(text) || /\bSILENT\W*$/.test(text);
 
 // What the Partner should check for each kind of trigger. Small models follow an instruction in the
 // message far better than a general rule in the system prompt.
@@ -242,7 +244,7 @@ export class PairSession {
     try {
       const answer = await this.partner.ask(this.conversationId, input);
       // After a say, local models tend to end with filler or a repeat; the say already was the answer.
-      if (answer && !SILENT.test(answer) && !this.said) {
+      if (answer && !silent(answer) && !this.said) {
         this.show(() => this.message('pair', answer));
         this.spoke = true;
       }
@@ -389,7 +391,7 @@ export class PairSession {
   // The Partner's tools (see tools.mjs). Each returns what the model is told.
 
   say(text) {
-    if (SILENT.test(text)) return 'shown'; // some models say their SILENT instead of answering it
+    if (silent(text)) return 'shown'; // some models say their SILENT instead of answering it
     this.spoke = true;
     this.said = true;
     this.show(() => this.message('pair', text));

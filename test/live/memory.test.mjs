@@ -81,7 +81,7 @@ describe('Session memory on live models', {skip: stacks.length ? false : SKIP_RE
       const {session, partner, shown, tools} = await pairSession({root, store: openStore(':memory:'), previousNote: NOTE});
       session.unasked = true; // as PairSession.remark runs it
       const spoke = await session.talk(watchInput(
-        {kind: 'drift', detail: 'Possible drift from the goal: the user now edits src/ws.mjs on branch fix/reconnect.'},
+        {kind: 'drift', detail: `Possible drift from the goal "${GOAL}": the user now edits src/ws.mjs on branch fix/reconnect.`},
         `Goal: ${GOAL}\nBranch: fix/reconnect\nCurrent file: src/ws.mjs, cursor at line 1\nRecent edits: src/ws.mjs:1-1 (20 s ago)`,
       ));
       await partner.close();

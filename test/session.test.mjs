@@ -52,9 +52,10 @@ test('a delivered remark spends the budget', async () => {
   assert.equal(pair.budget.allows(100_000).ok, false);
 });
 
-test('a say of SILENT is silence', async () => {
+test('a say of SILENT is silence, also with an explanation before it', async () => {
   const {pair, sent} = session();
   assert.equal(pair.say('SILENT'), 'shown');
+  assert.equal(pair.say('src/ws.mjs is the goal\'s own file, so no drift — SILENT.'), 'shown');
   assert.deepEqual(sent, []);
 });
 
