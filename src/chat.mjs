@@ -1,6 +1,7 @@
 // The chat pane: where the user talks to Pair and reads what it says.
 import {connect} from 'node:net';
 import {clearLine, createInterface, cursorTo} from 'node:readline';
+import {agentListLines} from './agent-relay.mjs';
 import {dim, formatMessage} from './chat-style.mjs';
 import {LEVELS} from './config.mjs';
 import {ledgerText} from './ledger.mjs';
@@ -15,6 +16,7 @@ const HELP = `/goal <text>   set the session goal
 -  or /noise   it was not (a remark you never see counts as not useful too)
 /today         what Pair did here today
 ?  or /why     the one idea worth keeping behind what Pair said last
+/agents        your other agents and board tasks, the ones that need you first
 /end           end the session now and write a session note (it also ends by itself)
 /quit          close this pane (the session goes on)
 anything else  ask Pair`;
@@ -36,6 +38,7 @@ export function parseInput(line) {
   if (command === '/drive') return {type: 'drive', text: arg};
   if (command === '/end') return {type: 'end'};
   if (command === '/today') return {type: 'today'};
+  if (command === '/agents') return {type: 'agents'};
   if (text === '+' || command === '/useful') return {type: 'feedback', useful: true};
   if (text === '-' || command === '/noise') return {type: 'feedback', useful: false};
   if (text === '?' || command === '/why') return {type: 'teach'};
@@ -117,6 +120,9 @@ export function runChat(socketPath) {
     }
     if (message.type === 'confirmed' && message.id === confirming) confirming = null; // answered, or timed out
     if (message.type === 'ledger') print(ledgerText(message).map(line => dim(`·· ${line}`, look)).join('\n'));
+    // Another agent's news, at your breakpoint: one line, like the pane's own notes.
+    if (message.type === 'agents' && message.item) say('system', `◇ ${message.text}${message.more ? ` (+${message.more} more · /agents)` : ''}`);
+    if (message.type === 'agent_list') print(agentListLines(message).join('\n'));
     if (message.type === 'accent') look.accent = message.color;
     if (message.type === 'remark') print(dim('·· + useful  - noise', look));
     // What you type is already on screen; your own lines come back only as history.

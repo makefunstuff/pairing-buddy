@@ -51,6 +51,7 @@ async function pairInNvim(goal, {testOnSave, thinks = false, voice, rtp = [], kn
     socket: join(dataDir, 'pair.sock'),
     testOnSave: testOnSave ? {[project]: testOnSave} : undefined,
     voice,
+    agents: false, // never the real board of the machine running the tests
     models: {watcher: {api: 'openai', baseUrl: 'http://unused', model: 'w'}, partner: {api: 'openai', baseUrl: 'http://unused', model: 'p'}},
   });
   const watcher = fauxProvider({provider: 'faux-watcher'});
@@ -455,10 +456,10 @@ test('Alt-? on Pair\'s words asks for the idea behind them, shows it under them 
     keys('<M-?>');
     await until(() => input, 'the teach request reaching the Partner');
     assert.match(input, /^\[teach\] The user asks for the idea behind what you said: "`len \/ cap` is integer division in `table.c:2`/);
-    const taught = await until(() => words().some(line => line.startsWith('◇ C divides')) && words(), 'the idea under the words');
+    const taught = await until(() => words().some(line => line.startsWith('∴ C divides')) && words(), 'the idea under the words');
     assert.deepEqual(taught.slice(-4), [
       'table is full, so it never grows.   M-j goes there',
-      '◇ C divides two ints as ints, before any',
+      '∴ C divides two ints as ints, before any',
       'compare with a double: scale instead, as',
       'len * 10 > cap * 7.   M-? opens en.cppreference.com',
     ], 'after the words, without the hint it no longer needs; the link apart, as the key that opens it');

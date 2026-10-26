@@ -58,7 +58,7 @@ function project() {
 async function daemonFor(board, options = {}) {
   const dataDir = mkdtempSync(join(tmpdir(), 'pair-data-'));
   const config = parseConfig({
-    dataDir, socket: join(dataDir, 'pair.sock'), board,
+    dataDir, socket: join(dataDir, 'pair.sock'), board, agents: false,
     models: {watcher: {api: 'openai', baseUrl: 'http://unused', model: 'w'}, partner: {api: 'openai', baseUrl: 'http://unused', model: 'p'}},
   });
   const watcher = fauxProvider({provider: 'faux-watcher'});
