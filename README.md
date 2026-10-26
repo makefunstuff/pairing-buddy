@@ -76,6 +76,7 @@ Each model entry:
 | `maxTokens` | Longest answer (default 200 for the Watcher, 2048 for the Partner) |
 | `reasoning` | `true` for a model that thinks by default, so Pair can switch its thinking off (default `false`) |
 | `thinking` | The Partner's thinking level when `reasoning` is on: `off` (default), `low`, `medium`, `high` |
+| `samplingParams` | Extra sampling fields sent with each request to an OpenAI-compatible server, for example `{"temperature": 0.3}` when the server's default is high |
 | `compat` | OpenAI-compatibility flags passed to pi-ai (see its "OpenAI Compatibility Settings"), for example `thinkingFormat` for a model whose chat template has a thinking switch |
 
 Other settings: `level` (`quiet`, `normal` or `chatty`), `typingPauseMs` (how long after a keystroke you count as typing, default 2000), `socket` and `dataDir`.

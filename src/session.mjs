@@ -16,7 +16,7 @@ const CHECKS = {
   repeated_error: 'The same error came back. Find the cause, point at it and say it in one sentence.',
   new_code_diagnostic: 'Point at the line and say the fix in a few words.',
   stall: 'The user seems stuck on this failure. Give one concrete next step.',
-  drift: 'Do not help with the goal itself. Only answer this: are the recently edited files and the branch unrelated to the goal? If they are related, answer SILENT. If not, say in one sentence what drifted.',
+  drift: 'Do not help with the goal itself. If the recent work is related to the goal, answer exactly SILENT. If it is unrelated, say in one sentence what drifted.',
 };
 
 export function watchInput(trigger, description) {
@@ -134,6 +134,7 @@ export class PairSession {
   // The Partner's tools (see tools.mjs). Each returns what the model is told.
 
   say(text) {
+    if (SILENT.test(text)) return 'shown'; // some models say their SILENT instead of answering it
     this.spoke = true;
     this.said = true;
     this.message('pair', text);

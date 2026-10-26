@@ -64,7 +64,7 @@ The user is looking at: editor`,
 );
 
 const NOISE = watchInput(
-  {kind: 'drift', detail: 'Goal: "reconnect drops after the phone sleeps". Recently edited: src/ws.ts. Branch: fix/reconnect.'},
+  {kind: 'drift', detail: 'Possible drift from the goal "reconnect drops after the phone sleeps": recently edited src/ws.ts on branch fix/reconnect. A remark helps only if this work is unrelated to the goal.'},
   `Goal: reconnect drops after the phone sleeps
 Branch: fix/reconnect
 Current file: src/ws.ts, cursor at line 4
@@ -72,7 +72,7 @@ Recent edits: src/ws.ts:3-5 (20 s ago)`,
 );
 
 const DRIFT = watchInput(
-  {kind: 'drift', detail: 'Goal: "reconnect drops after the phone sleeps". Recently edited: src/billing/invoice.ts, src/billing/tax.ts. Branch: feature/invoices.'},
+  {kind: 'drift', detail: 'Possible drift from the goal "reconnect drops after the phone sleeps": recently edited src/billing/invoice.ts, src/billing/tax.ts on branch feature/invoices. A remark helps only if this work is unrelated to the goal.'},
   `Goal: reconnect drops after the phone sleeps
 Branch: feature/invoices
 Current file: src/billing/tax.ts, cursor at line 30
@@ -109,16 +109,20 @@ describe('Partner on live models', {skip: stacks.length ? false : SKIP_REASON}, 
       await partner.close();
       t.diagnostic(`answer: ${answer} · tools: ${calls.map(call => call.name).join(', ') || 'none'}`);
       assert.match(answer, /^\W*silent\W*$/i);
-      assert.equal(calls.filter(call => call.name !== 'read').length, 0);
+      // A say of SILENT is silence too (the session drops it).
+      assert.equal(calls.filter(call => call.name !== 'read' && !(call.name === 'say' && /^\W*silent\W*$/i.test(call.args))).length, 0);
     });
 
     test(`${stack.name}: real drift from the goal is named`, {timeout: 180_000}, async t => {
-      const {partner, conversation} = await partnerFor(project());
+      const {calls, partner, conversation} = await partnerFor(project());
       const answer = await partner.ask(conversation, DRIFT);
       await partner.close();
-      t.diagnostic(`answer: ${answer}`);
-      assert.doesNotMatch(answer, /^\W*silent\W*$/i);
-      assert.match(answer, /billing|invoice|tax|goal|reconnect/i);
+      // What the user sees: the say if there was one, else the final answer (see PairSession.talk).
+      const said = calls.filter(call => call.name === 'say').map(call => call.args);
+      const shown = said.length ? said.join(' ') : answer;
+      t.diagnostic(`shown: ${shown} · answer: ${answer}`);
+      assert.doesNotMatch(shown, /^\W*silent\W*$/i);
+      assert.match(shown, /billing|invoice|tax|goal|reconnect/i);
     });
 
     test(`${stack.name}: a question is answered from the code it reads`, {timeout: 180_000}, async t => {

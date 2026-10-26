@@ -50,3 +50,9 @@ test('a delivered remark spends the budget', async () => {
   assert.ok(sent.some(message => message.text === 'Line 2 is off.'));
   assert.equal(pair.budget.allows(100_000).ok, false);
 });
+
+test('a say of SILENT is silence', async () => {
+  const {pair, sent} = session();
+  assert.equal(pair.say('SILENT'), 'shown');
+  assert.deepEqual(sent, []);
+});

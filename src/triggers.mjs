@@ -71,7 +71,10 @@ function driftTriggers(state, now) {
   const recent = state.edits.filter(edit => now - edit.at <= TIMING.driftEveryMs);
   if (!recent.length) return [];
   const files = [...new Set(recent.map(edit => edit.file))].join(', ');
-  return [{kind: 'drift', key: `drift:${Math.floor(now / TIMING.driftEveryMs)}`, detail: `Goal: "${state.goal}". Recently edited: ${files}. Branch: ${state.branch ?? 'unknown'}.`}];
+  // Says what a remark would be for: models otherwise judge how important the work is, not whether it drifted.
+  const detail = `Possible drift from the goal "${state.goal}": recently edited ${files} on branch ${state.branch ?? 'unknown'}. `
+    + 'A remark helps only if this work is unrelated to the goal.';
+  return [{kind: 'drift', key: `drift:${Math.floor(now / TIMING.driftEveryMs)}`, detail}];
 }
 
 /** The candidate remarks for this moment whose keys have not fired yet. */

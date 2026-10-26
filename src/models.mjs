@@ -21,7 +21,7 @@ function modelOf(providerId, entry) {
     cost: {input: 0, output: 0, cacheRead: 0, cacheWrite: 0},
     contextWindow: entry.contextWindow,
     maxTokens: entry.maxTokens,
-    ...(anthropic ? {} : {compat: {...LOCAL_COMPAT, ...entry.compat}}),
+    ...(anthropic ? {} : {compat: {...LOCAL_COMPAT, ...entry.compat}, samplingParams: entry.samplingParams}),
   };
 }
 
