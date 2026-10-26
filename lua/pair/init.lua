@@ -21,7 +21,7 @@ local state = {
   channel = nil, partial = '', attached = {}, pending = {}, open_request = nil, level = nil, role = nil,
   points = {}, -- the lines Pair points at: {buf, ids (see draw.point), note, code}, oldest first
   target = nil, -- where the jump key goes: {buf, ns, id, code} of Pair's last point, or of its suggestion
-  words = nil, -- Pair's words under your line: {buf, row, id, remark, text, key}, until your next edit
+  words = nil, -- Pair's words under your line: {buf, row, id, remark, text, key, sign, span}, until your next edit
   reading = nil, -- the file Pair reads now, for the statusline: {name, till}
   suggestion = nil, -- the change Pair suggested: {buf, ids, old, new, remark}
   remark = nil, -- the id of Pair's last unasked remark, until you rate it
@@ -115,7 +115,7 @@ local function forget_words(seen)
   local words = state.words
   state.words = nil
   if not words then return end
-  draw.erase(words.buf, {words.id})
+  draw.erase(words.buf, {words.id, words.span})
   if seen and words.remark then send({type = 'seen', remark = words.remark}) end
   redraw_status()
 end
@@ -514,23 +514,24 @@ local function edit(message)
   local count = vim.api.nvim_buf_line_count(buf)
   if message.line > count then return reply({error = ('line %d is past the end of the buffer (%d lines)'):format(message.line, count)}) end
   if not in_view(buf, message.line) then open_split(message.file, message.line) end
-  state.typing = drive.type(buf, message.line - 1, math.min(message.endLine, count) - 1, text_lines(message.text), function(typed)
+  state.typing = drive.type(buf, message.line - 1, math.min(message.endLine, count) - 1, text_lines(message.text), function(typed, from, to)
     state.typing = nil
-    reply(typed and {ok = true} or {error = 'the user has taken the wheel back'})
+    reply(typed and {ok = true, from = from + 1, to = to + 1} or {error = 'the user has taken the wheel back'})
   end)
 end
 
--- The hand-back line: Pair's words under the lines it changed, how the tests went on them in the sign column,
--- and the key that undoes it all. Like any words of Pair's, they go with your next edit.
+-- The hand-back line: Pair's words under the lines it changed, which keep its mark, how the tests went on them in
+-- the sign column, and the key that undoes it all. Like any words of Pair's, they go with your next edit.
 local function handback(message)
   local buf = vim.fn.bufnr(message.file)
   if buf == -1 or not vim.api.nvim_buf_is_loaded(buf) then return end
   local signs = {pass = {style.glyphs.pass, 'PairStatusPass'}, fail = {style.glyphs.fail, 'PairFail'}}
   forget_words(false)
+  local last = math.min(message.endLine, vim.api.nvim_buf_line_count(buf)) - 1
   state.words = {
-    buf = buf, row = math.min(message.endLine, vim.api.nvim_buf_line_count(buf)) - 1, key = 'u undoes it',
+    buf = buf, row = last, key = 'u undoes it',
     text = message.text ~= '' and message.text or ('changed lines %d to %d'):format(message.line, message.endLine),
-    sign = signs[message.tests],
+    sign = signs[message.tests], span = draw.span(buf, math.min(message.line - 1, last), last),
   }
   draw_words(state.words)
   redraw_status()

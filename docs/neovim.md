@@ -18,6 +18,7 @@ run is real `go test`; only the models' words are scripted.*
 | `▎` | the sign column | a line it points at, or the line its words are about |
 | `M-j` | after its words | go where it points; your cursor never moves by itself |
 | `◎` | the statusline | it has the wheel (the Driver); any key takes it back |
+| a block after ghost text | where it types | its cursor, while it types the change you handed over |
 | `◌` | the statusline | it is not there: reconnecting, or a model is down |
 | `⠹` `✓` `✗` | the statusline, and the sign column of your tests | tests it ran for you when you saved |
 
@@ -106,6 +107,45 @@ can. Details in [docs/watcher.md](watcher.md#regressions).
 
 ![A failing test in Neovim's own light colorscheme](images/tests-light.png)
 
+## The visible hand-over
+
+The third moment: you write the first case of a table test and hand over the boring part with
+`:Pair drive the edge cases`. You watch Pair type, it tests what it typed before anything is saved, and it gives the
+keyboard back.
+
+![The hand-over: Pair types six cases as ghost text, tests the unsaved buffer, and hands back; u takes all six away, Ctrl-R brings them back](images/hand-over.gif)
+
+*The plugin and the daemon as shipped, in a clean Neovim with ayu. The test run is a real `go test -overlay` on the
+unsaved buffer; only the models' words are scripted.*
+
+1. The statusline says `◎ pair has the wheel · any key takes it back`. Pair reads the test and the code it tests;
+   its gaze crosses the line numbers.
+2. It types. The new text arrives as ghost text with Pair's cursor at its end; the indent comes at once, as your
+   editor would put it. A line enters the buffer only when it is whole, so your buffer and your language server
+   never see half a line, and nothing goes red while it types. Each line it entered gets `▎` in the sign column.
+   Text it replaces is struck through for a moment first; within a line, only the part that changes is.
+3. It runs your project's test command on the **unsaved** buffer: `⠹ go test ./... (unsaved)` (see
+   [docs/driver.md](driver.md#tests-on-the-unsaved-buffer)).
+4. It hands back: its words under the last line it changed, `✓` (or `✗`) in the sign column there and in the
+   statusline, the `▎` still on the lines it changed, and `u undoes it`. Like any of its words, they go with your
+   next edit.
+5. Everything it typed is one undo step: one `u` takes it all away, `Ctrl-R` brings it back. Nothing is saved
+   until you `:w`.
+
+![While it drives: the ghost text and Pair's cursor, a bar on each line it entered, the wheel in the statusline](images/driving.png)
+
+![Handed back: six cases, ✓ in the margin and the statusline, and its note on the case you would have skipped](images/hand-back.png)
+
+**Taking it back halfway.** Any key you press while Pair types ends it at once, and leaves **no change**: the
+lines it already entered are undone, and that key, and any you press until they are, does nothing else, so it
+cannot change the buffer under a half-typed edit. Scrolling and clicking to watch are not keys. After the typing,
+a key still takes the wheel back, and leaves the one change.
+
+![A key halfway: the lines Pair typed go, and the statusline is back at ● pair](images/take-back.gif)
+
+A long edit types faster, to take about four seconds; with `motion = false` it lands at once, as one undo step.
+If no window shows the lines it changes, they open in a split first, so you can watch; your cursor stays where it was.
+
 ## What each thing looks like
 
 **Words.** One or two lines under the line you are on, indented with your code, with `●` before them. At most
@@ -128,7 +168,7 @@ lines sit right under them on a faint tint, and the note follows with `M-y`.
 
 **The statusline.** One quiet segment: `● pair` at rest, the `●` in the accent while Pair's words are on screen,
 `● reading worker.go` while it reads, `◎ pair has the wheel · any key takes it back` while it drives, and the
-tests on save as above. The role and
+tests on save as above (`(unsaved)` after the label for the run on the Driver's edit). The role and
 the talk level show only when they are not the usual ones (`● pair · scout`, `● pair · quiet`).
 
 ![A model down, then the daemon away](images/statusline.png)
@@ -139,7 +179,7 @@ the talk level show only when they are not the usual ones (`● pair · scout`, 
 require('pair').setup({
   auto_connect = true,
   jump_key = '<M-j>',  -- false for none; :Pair jump works either way
-  motion = true,       -- false: no fades, and the gaze lights one line at a time, without its trail
+  motion = true,       -- false: no fades, the gaze lights one line at a time without its trail, and the Driver's edit lands at once
   glyphs = {},         -- for example {voice = '\u{f444}', wheel = '\u{f030c}'} with a Nerd Font
 })
 ```
@@ -172,7 +212,8 @@ to standard ones and does not fade.
 | `PairSpan` | the code it means there, underlined | the background toward the accent |
 | `PairGaze` | a line number it reads | the accent, bold |
 | `PairSuggestDelete` | the lines a suggestion replaces, struck through | between background and foreground |
-| `PairSuggestAdd` | a suggestion's new lines | your foreground on a faint tint |
+| `PairSuggestAdd` | a suggestion's new lines, and the text the Driver is typing | your foreground on a faint tint |
+| `PairCursor` | the Driver's cursor | the background on the accent |
 | `PairStatus`, `PairStatusDim`, `PairStatusWarn` | the statusline segment | the accent, the statusline's own colours, your colorscheme's warning colour |
 | `PairStatusPass` | `✓` in the statusline after a passing run | your colorscheme's "ok" colour (`DiagnosticOk`) |
 | `PairPass` | `✓` on a passing test | the "ok" colour, faded toward the background |

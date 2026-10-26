@@ -622,7 +622,8 @@ test('after the Driver\'s edit, the tests run on the unsaved buffer: the Partner
     setRole: async () => {},
     ask: async () => { reply = await pair.edit({file: 'cart/cart_test.go', line: 6, endLine: 6, text: '\t// a case\n}'}); return 'Added a case; the tests pass.'; },
   };
-  const requestEditor = async message => (message.type === 'read' ? {text: buffer} : {ok: true});
+  // The edit keeps line 6 as it was: the editor says it changed line 7 only.
+  const requestEditor = async message => (message.type === 'read' ? {text: buffer} : {ok: true, from: 7, to: 7});
   const {pair, root, ran, sent, setReport, tests} = saveSession({partner, requestEditor});
   setReport('go-test-pass');
   await pair.drive('your turn');
@@ -634,7 +635,7 @@ test('after the Driver\'s edit, the tests run on the unsaved buffer: the Partner
   assert.deepEqual([end.state, end.label, end.text], ['pass', 'go test ./... (unsaved)', '4 tests, 2 packages']);
   assert.ok(sent.some(message => message.to === 'chat' && message.text === '`go test ./... (unsaved)` after Pair\'s edit: 4 passed'));
   const handback = sent.find(message => message.type === 'handback');
-  assert.deepEqual([handback.line, handback.endLine, handback.tests, handback.text], [6, 7, 'pass', 'Added a case; the tests pass.']);
+  assert.deepEqual([handback.line, handback.endLine, handback.tests, handback.text], [7, 7, 'pass', 'Added a case; the tests pass.']);
   assert.equal(pair.state.tests, null, 'a run on the buffer is no baseline for the next run on save');
 });
 

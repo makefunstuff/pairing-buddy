@@ -96,13 +96,15 @@ const NAME_CHARS = 32; // of a failing test's name in the statusline
 /** Whether a finished test run failed: its exit code, a timeout or a failing test say so. */
 const isRed = ({exit, timedOut, tests}) => exit !== 0 || timedOut || !!tests?.failedCount;
 
+const count = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`;
+
 /** One short line for the statusline about a finished run: "4 tests, 3 packages" or "1 failing · TestX". */
 export function runText({exit, timedOut, tests}) {
   if (timedOut) return 'stopped after 2 min';
   if (!tests?.failedCount) {
     if (exit !== 0) return `exit ${exit}`;
-    const scope = tests?.packages ? `, ${tests.packages} packages` : tests?.files ? `, ${tests.files} files` : '';
-    return tests?.passed ? `${tests.passed} tests${scope}` : 'passed';
+    const scope = tests?.packages ? `, ${count(tests.packages, 'package')}` : tests?.files ? `, ${count(tests.files, 'file')}` : '';
+    return tests?.passed ? `${count(tests.passed, 'test')}${scope}` : 'passed';
   }
   const [first] = tests.failed;
   if (!first) return tests.runner === 'go' ? 'does not build' : `${tests.failedCount} failing`;
@@ -641,8 +643,9 @@ export class PairSession {
       return `Not changed: ${reply.error}.`;
     }
     this.message('pair', `Changed ${file}:${line}${endLine > line ? `-${endLine}` : ''} (u undoes it).`);
+    // The editor says which lines it changed: lines the edit kept as they were are not Pair's.
     const count = text === '' ? 0 : text.replace(/\n$/, '').split('\n').length;
-    this.handback = {file: path, line, endLine: line + Math.max(count, 1) - 1, tests: null};
+    this.handback = {file: path, line: reply.from ?? line, endLine: reply.to ?? line + Math.max(count, 1) - 1, tests: null};
     const done = 'Changed, as one undo step. That was your one edit: say in one sentence what you changed';
     // The tests on save read the saved file, so a check there would see the old code and send small models in circles.
     if (!this.testRuns) return `${done}. The file on disk changes only when the user saves, so do not run the tests now.`;

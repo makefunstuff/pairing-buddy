@@ -9,10 +9,11 @@ local M = {}
 M.ns = vim.api.nvim_create_namespace('pair_drive')
 M.motion = true -- setup's `motion` option: without it, the edit lands at once
 
-local FRAME_MS = 24 -- a character per frame at most: about 40 a second
-local TYPING_MS = 4000 -- a longer edit types more characters per frame, to take about this long
-local STRIKE_FRAMES = 14 -- what goes shows struck through this long before the typing starts
-local LINE_FRAMES = 5 -- the pause after each line
+local FRAME_MS = 24 -- the slowest typing: a character a frame, about 40 a second
+local TYPING_MS = 4000 -- a longer edit types faster, to take about this long
+local MIN_FRAME_MS = 10 -- the fastest frame; after that, more characters a frame
+local STRIKE_MS = 350 -- what goes shows struck through this long before the typing starts
+local LINE_MS = 120 -- the pause after each line, unless there are many
 
 --- The lines `old` and `new` keep at the start (a count) and the ones between that differ, in each.
 local function hunk(old, new)
@@ -66,7 +67,8 @@ local function undo_seq(buf)
 end
 
 --- Replaces rows `first`..`last` (0-based, inclusive) of `buf` with `new`, typed as ghost text, then calls
---- `done(true)`. Returns a function that stops it halfway: it undoes what was entered and calls `done(false)`.
+--- `done(true, from, to)` with the rows it changed (0-based; a deletion's is the row above it). Returns a function
+--- that stops it halfway: it undoes what was entered and calls `done(false)`.
 function M.type(buf, first, last, new, done)
   local old = vim.api.nvim_buf_get_lines(buf, first, last + 1, false)
   local head, gone, come = hunk(old, new)
@@ -87,7 +89,9 @@ function M.type(buf, first, last, new, done)
     return vim.api.nvim_buf_set_extmark(buf, M.ns, row, col, spec)
   end
 
+  local from, to = nil, math.max(first + head - 1, 0) -- the rows it changed, so far
   local function edited(row)
+    from, to = from or row, row
     vim.api.nvim_buf_clear_namespace(buf, M.ns, row, row + 1)
     mark(row, 0, {sign_text = style.glyphs.mark, sign_hl_group = 'PairSign', priority = 20})
   end
@@ -96,24 +100,29 @@ function M.type(buf, first, last, new, done)
   local function ghost_at(row, col, spec)
     ghost = vim.api.nvim_buf_set_extmark(buf, M.ns, row, col, vim.tbl_extend('force', spec, {id = ghost, priority = 300}))
   end
-  local function chunks(text) return {{(text:gsub('\t', tab)), 'PairSuggestAdd'}, {' ', 'PairCursor'}} end
+  local function chunks(text)
+    local indent, rest = text:gsub('\t', tab):match('^(%s*)(.*)$')
+    return {{indent}, {rest, 'PairSuggestAdd'}, {' ', 'PairCursor'}}
+  end
 
-  local step = math.max(1, math.ceil(chars(come) * FRAME_MS / TYPING_MS))
-  local pause = #come > 12 and 1 or LINE_FRAMES
+  local total = math.max(1, chars(come))
+  local frame = math.max(MIN_FRAME_MS, math.min(FRAME_MS, math.floor(TYPING_MS / total)))
+  local step = math.max(1, math.ceil(total * frame / TYPING_MS))
+  local pause = #come > 12 and 1 or math.floor(LINE_MS / frame)
 
   local function script()
     local row = first + head
     -- What goes: the changed part of each line that becomes another, and whole lines that go.
     for i, text in ipairs(gone) do
-      local from, to = #text:match('^%s*'), #text
+      local strike_from, strike_to = #text:match('^%s*'), #text
       if come[i] then
         local keep_head, keep_tail = kept(text, come[i])
-        from, to = keep_head, #text - keep_tail
+        strike_from, strike_to = keep_head, #text - keep_tail
       end
       mark(row + i - 1, 0, {sign_text = style.glyphs.mark, sign_hl_group = 'PairSign', line_hl_group = 'PairPoint', priority = 20})
-      if to > from then mark(row + i - 1, from, {end_col = to, hl_group = 'PairSuggestDelete', priority = 210}) end
+      if strike_to > strike_from then mark(row + i - 1, strike_from, {end_col = strike_to, hl_group = 'PairSuggestDelete', priority = 210}) end
     end
-    if #gone > 0 then coroutine.yield(STRIKE_FRAMES) end
+    if #gone > 0 then coroutine.yield(math.floor(STRIKE_MS / frame)) end
     for i = 1, math.max(#gone, #come) do
       local old_line, new_line = gone[i], come[i]
       if old_line and new_line then
@@ -139,19 +148,19 @@ function M.type(buf, first, last, new, done)
           coroutine.yield(0)
         end
         if ghost then vim.api.nvim_buf_del_extmark(buf, M.ns, ghost) end
-        ghost = nil
         change(function() vim.api.nvim_buf_set_lines(buf, row, row, false, {new_line}) end)
         edited(row)
         row = row + 1
       end
-      ghost = nil
+      ghost = nil -- the next line's ghost is a new extmark
       coroutine.yield(pause)
     end
   end
 
   if not M.motion or (#gone == 0 and #come == 0) then
     if #gone + #come > 0 then change(function() vim.api.nvim_buf_set_lines(buf, first, last + 1, false, new) end) end
-    done(true)
+    if #come > 0 then from, to = first + head, first + head + #come - 1 end
+    done(true, from or to, to)
     return function() end
   end
 
@@ -170,9 +179,9 @@ function M.type(buf, first, last, new, done)
       for win, cursor in pairs(cursors) do pcall(vim.api.nvim_win_set_cursor, win, {math.min(cursor[1], count), cursor[2]}) end
     end
     show(buf)
-    done(finished)
+    done(finished, from or to, to)
   end
-  timer:start(0, FRAME_MS, vim.schedule_wrap(function()
+  timer:start(0, frame, vim.schedule_wrap(function()
     if timer:is_closing() then return end
     if wait > 0 then wait = wait - 1 return end
     if not vim.api.nvim_buf_is_valid(buf) then return finish(false) end

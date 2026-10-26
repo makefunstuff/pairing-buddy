@@ -172,6 +172,11 @@ function M.remark(buf, row, text, key, opts)
   return place(buf, M.ns, row, 0, spec)
 end
 
+--- The mark in the sign column of rows `first`..`last`, under any other mark of the pair. Returns the extmark id.
+function M.span(buf, first, last)
+  return vim.api.nvim_buf_set_extmark(buf, M.ns, first, 0, {end_row = last, sign_text = style.glyphs.mark, sign_hl_group = 'PairSign', priority = 15})
+end
+
 --- A note about row `row`: after the line when it fits in the window, else under it. Returns the extmark id.
 function M.note(buf, row, note, opts)
   local after = {{'   ' .. style.glyphs.voice .. ' ', 'PairAccent'}}

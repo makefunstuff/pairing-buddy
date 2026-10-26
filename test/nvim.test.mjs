@@ -355,7 +355,8 @@ console.log(JSON.stringify({testResults: [{name: process.cwd() + '/a.test.js', a
     assert.equal(words[1], 1, 'under the last line it changed');
     assert.deepEqual([words[3].sign_text.trim(), words[3].sign_hl_group], ['✓', 'PairStatusPass']);
     assert.equal(words[3].virt_lines.map(text).join('|').trim(), '● x is 100 now, and w is new; the test passes.   u undoes it');
-    await until(() => status() === '✓ node report.mjs (unsaved) · 1 tests, 1 files', 'the run on the buffer in the statusline');
+    assert.ok(marks('pair').some(([, row, , details]) => row === 0 && details.end_row === 1 && details.sign_text.trim() === '▎'), 'the lines it changed keep its mark');
+    await until(() => status() === '✓ node report.mjs (unsaved) · 1 test, 1 file', 'the run on the buffer in the statusline');
     keys('u');
     await until(() => lines().length === 3, 'one undo for the whole edit');
     assert.deepEqual(lines(), ['const x = 1', 'const y = 2', 'const z = 3']);
