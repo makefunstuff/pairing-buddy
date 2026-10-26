@@ -6,7 +6,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {describe, test} from 'node:test';
 import {MemoryStorage} from '@earendil-works/pi-durable';
-import {numberedLines, readProjectFile} from '../../src/files.mjs';
+import {numberedLines, readProjectPath} from '../../src/files.mjs';
 import {openPartner} from '../../src/partner.mjs';
 import {watchInput} from '../../src/session.mjs';
 import {liveStacks, SKIP_REASON} from './stacks.mjs';
@@ -48,8 +48,8 @@ function recordingHands(root) {
     open: record('open', 'opened in a split'),
     read: async (_conversation, {file, from, to}) => {
       calls.push({name: 'read', args: {file}});
-      const source = await readProjectFile(root, file);
-      return source.error ?? numberedLines(source.text, from, to);
+      const source = await readProjectPath(root, file);
+      return source.error ?? source.listing ?? numberedLines(source.text, from, to);
     },
   }};
 }

@@ -29,7 +29,7 @@ async function ensureDaemon(config) {
   if (await reachable(config.socket)) return;
   mkdirSync(config.dataDir, {recursive: true, mode: 0o700});
   const log = openSync(join(config.dataDir, 'daemon.log'), 'a');
-  spawn(process.execPath, [process.argv[1], 'daemon'], {detached: true, stdio: ['ignore', log, log]}).unref();
+  spawn(process.execPath, ['--disable-warning=ExperimentalWarning', process.argv[1], 'daemon'], {detached: true, stdio: ['ignore', log, log]}).unref();
   for (let i = 0; i < 50; i++) {
     if (await reachable(config.socket)) return;
     await new Promise(resolve => setTimeout(resolve, 100));
@@ -47,8 +47,9 @@ async function daemon(config) {
 async function openChatPane(config) {
   await ensureDaemon(config);
   if (!process.env.HERDR_ENV) return runChat(config.socket);
+  const env = Object.fromEntries(['PAIR_CONFIG', 'PAIR_SOCKET'].filter(name => process.env[name]).map(name => [name, process.env[name]]));
   const {pane} = await herdrRequest(process.env.HERDR_SOCKET_PATH, 'pane.split', {
-    target_pane_id: process.env.HERDR_PANE_ID, direction: 'right', ratio: 0.7, cwd: process.cwd(), focus: false,
+    target_pane_id: process.env.HERDR_PANE_ID, direction: 'right', ratio: 0.7, cwd: process.cwd(), env, focus: false,
   });
   await herdrRequest(process.env.HERDR_SOCKET_PATH, 'pane.send_text', {pane_id: pane.pane_id, text: `${process.argv[1]} chat\r`});
 }

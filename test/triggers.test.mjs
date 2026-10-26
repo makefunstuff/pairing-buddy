@@ -20,6 +20,25 @@ test('no trigger while the user looks at the failing pane, unless they scrolled 
   assert.deepEqual(kinds(scrolled, 10_000), ['failed_command']);
 });
 
+test('a failure seen when it happened stays seen after the user looks away', () => {
+  const state = foldAll([
+    {kind: 'focus', target: 'terminal', pane: 'w1:p2', at: 0},
+    failure(1000),
+    {kind: 'focus', target: 'editor', pane: 'w1:p1', at: 2000},
+  ]);
+  assert.deepEqual(kinds(state, 10_000), []);
+});
+
+test('a failure the user turns to within the grace period counts as seen', () => {
+  const state = foldAll([
+    {kind: 'focus', target: 'editor', pane: 'w1:p1', at: 0},
+    failure(1000),
+    {kind: 'focus', target: 'terminal', pane: 'w1:p2', at: 2000},
+    {kind: 'focus', target: 'editor', pane: 'w1:p1', at: 3000},
+  ]);
+  assert.deepEqual(kinds(state, 10_000), []);
+});
+
 test('old failures are not news', () => {
   const state = foldAll([failure(1000)]);
   assert.deepEqual(kinds(state, 1000 + TIMING.recentMs + 1), []);

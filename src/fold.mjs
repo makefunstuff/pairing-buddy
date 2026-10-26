@@ -27,7 +27,7 @@ const keepLast = (list, item, max) => [...list, item].slice(-max);
 /** Whether a finished command failed. Without an exit code (herdr alone gives none), its output decides. */
 export function failed(command) {
   if (command.exit !== null && command.exit !== undefined) return command.exit !== 0;
-  return /\b(error|failed|failure|panic|traceback|exception)\b/i.test(command.output ?? '');
+  return /(error|exception)\b|\bfail(ed|ure)?\b|\bpanic|\btraceback/i.test(command.output ?? '');
 }
 
 /** The line that best names a failure: the first one that says error or fail, else the last one. */
@@ -41,6 +41,11 @@ export function errorSignature(output) {
   return errorLine(output).toLowerCase().replace(/0x[0-9a-f]+|\d+/g, '#').replace(/\s+/g, ' ').slice(0, 120);
 }
 
+/** Whether the user's eyes are on the pane of `command`, at its bottom. */
+export function lookingAt(focus, command) {
+  return focus.target === 'terminal' && focus.pane === command.pane && !focus.scrolled;
+}
+
 function foldCommandEnd(state, event) {
   const command = {
     pane: event.pane ?? null,
@@ -49,11 +54,12 @@ function foldCommandEnd(state, event) {
     output: (event.output ?? '').slice(-KEEP.outputChars),
     endedAt: event.at,
   };
+  command.seen = lookingAt(state.focus, command);
   const next = {...state, commands: keepLast(state.commands, command, KEEP.commands)};
   if (!failed(command)) return next;
   const signature = errorSignature(command.output) || `exit ${command.exit} ${command.cmd}`;
-  const seen = state.errors[signature];
-  return {...next, errors: {...state.errors, [signature]: {count: (seen?.count ?? 0) + 1, text: errorLine(command.output), lastAt: event.at}}};
+  const known = state.errors[signature];
+  return {...next, errors: {...state.errors, [signature]: {count: (known?.count ?? 0) + 1, text: errorLine(command.output), lastAt: event.at}}};
 }
 
 const handlers = {
@@ -86,7 +92,13 @@ const handlers = {
 
   command_end: foldCommandEnd,
 
-  focus: (state, event) => ({...state, focus: {target: event.target, pane: event.pane ?? null, scrolled: !!event.scrolled, at: event.at}}),
+  focus: (state, event) => {
+    const focus = {target: event.target, pane: event.pane ?? null, scrolled: !!event.scrolled, at: event.at};
+    // A failure the user looked at once stays seen when they look away again.
+    const last = state.commands.at(-1);
+    const commands = last && !last.seen && lookingAt(focus, last) ? [...state.commands.slice(0, -1), {...last, seen: true}] : state.commands;
+    return {...state, focus, commands};
+  },
 
   chat: (state, event) => ({...state, chat: keepLast(state.chat, {from: event.from, text: event.text, at: event.at}, KEEP.chat)}),
 

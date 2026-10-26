@@ -9,9 +9,9 @@ export const TIMING = {
   driftEveryMs: 10 * 60_000,
 };
 
-function lookingAt(state, command) {
-  const {focus} = state;
-  return focus.target === 'terminal' && focus.pane === command.pane && !focus.scrolled;
+/** Not looked at: never seen at the bottom of its pane, or the user scrolled away from it since (scrolled past). */
+function missed(state, command) {
+  return !command.seen || (state.focus.pane === command.pane && state.focus.scrolled);
 }
 
 function lastFailure(state, now) {
@@ -29,7 +29,7 @@ function commandTriggers(state, now) {
   const found = [];
   if (count >= 2) {
     found.push({kind: 'repeated_error', key: `repeat:${signature}:${count}`, detail: `\`${command.cmd}\` failed again (${count} times) with: ${error}`});
-  } else if (now - command.endedAt >= TIMING.lookGraceMs && !lookingAt(state, command)) {
+  } else if (now - command.endedAt >= TIMING.lookGraceMs && missed(state, command)) {
     found.push({kind: 'failed_command', key: `failed:${command.endedAt}`, detail: `\`${command.cmd}\` failed${command.exit ? ` (exit ${command.exit})` : ''} and you are not looking at it: ${error}`});
   }
   const quietSince = Math.max(state.lastKeyAt, state.lastEditAt, command.endedAt);

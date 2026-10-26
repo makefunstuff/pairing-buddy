@@ -23,7 +23,7 @@ Messages starting with [user] are the user talking to you. Always answer them.
 How to answer:
 - Your reply is shown in the chat pane. Keep it to one or two short sentences.
 - To mark code, call point with the file, the line and a note of a few words.
-- Before you talk about code, call read. Never guess what a file says.
+- Before you talk about code, call read. Never guess what a file says. read(".") lists the project.
 - Call open only when the user asks to see a place.
 - You cannot edit files, save or run commands. Say what to change and let the user do it.`;
 
@@ -56,9 +56,9 @@ function tools(hands) {
     }),
     defineTool({
       name: 'read',
-      description: 'Read lines of a file, as the editor has it (unsaved changes included). Read-only.',
+      description: 'Read lines of a file as the editor has it (unsaved changes included), or list a directory. Read-only.',
       parameters: Type.Object({
-        file: Type.String({description: 'Path relative to the project root'}),
+        file: Type.String({description: 'Path relative to the project root; "." lists the root'}),
         start_line: Type.Optional(Type.Integer({minimum: 1})),
         end_line: Type.Optional(Type.Integer({minimum: 1})),
       }),

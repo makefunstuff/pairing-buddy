@@ -50,7 +50,9 @@ export function runChat(socketPath) {
 
   readMessages(socket, message => {
     if (message.type === 'welcome') print(`${STYLE.system} pairing on ${message.root} (${message.level}) · /help`);
-    if (message.type === 'message') print(`${STYLE[message.sender] ?? message.sender} ${message.text}`);
+    // What you type is already on screen; your own lines come back only as history.
+    const echo = message.sender === 'user' && !message.history;
+    if (message.type === 'message' && !echo) print(`${STYLE[message.sender] ?? message.sender} ${message.text}`);
     if (message.type === 'ended') {
       print(`${STYLE.system} session ended`);
       hello(); // starts the next session, which asks for its goal

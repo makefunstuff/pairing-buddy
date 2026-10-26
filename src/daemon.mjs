@@ -16,7 +16,7 @@ import {createWatcher} from './watcher.mjs';
 const EDITOR_REPLY_MS = 2000;
 const TICK_MS = 1000;
 
-const timestamp = () => new Date().toISOString().slice(11, 19);
+const timestamp = () => new Date().toTimeString().slice(0, 8);
 const defaultLog = line => process.stderr.write(`${timestamp()} ${line}\n`);
 
 export async function startDaemon(config, {pairModels = createPairModels(config), log = defaultLog} = {}) {
@@ -108,6 +108,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     });
     watches.set(session.root, watch);
     watch.start();
+    log(`[${basename(session.root)}] watching herdr workspace ${herdr.workspace}`);
   }
 
   async function endSession(session) {
@@ -131,7 +132,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     if (client.role !== 'chat') return;
     watchHerdr(session, message.herdr);
     const history = store.messages(session.id);
-    for (const old of history) sendMessage(client.socket, {type: 'message', ...old});
+    for (const old of history) sendMessage(client.socket, {type: 'message', history: true, ...old});
     if (!history.length) session.greet();
   }
 

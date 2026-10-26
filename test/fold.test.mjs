@@ -45,6 +45,8 @@ test('successful commands add no error', () => {
 
 test('without an exit code the output decides whether a command failed', () => {
   assert.equal(failed({exit: null, output: 'FAILED tests/a.py::test_x'}), true);
+  assert.equal(failed({exit: null, output: 'AssertionError: expected 30000, got 5000'}), true);
+  assert.equal(failed({exit: null, output: 'thread main panicked at src/lib.rs:3'}), true);
   assert.equal(failed({exit: null, output: 'all good'}), false);
   assert.equal(failed({exit: 0, output: 'Error: but exit code wins'}), false);
   assert.equal(failed({exit: 2, output: ''}), true);

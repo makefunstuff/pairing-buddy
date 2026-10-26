@@ -8,7 +8,7 @@ import {createModels, fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall
 import {createRegistry, Harness, MemoryStorage} from '@earendil-works/pi-durable';
 import {NodeExecutionEnv} from '@earendil-works/pi-durable/env/node';
 import {CodingTools} from '@earendil-works/pi-durable/tools';
-import {insideRoot, numberedLines} from '../src/files.mjs';
+import {insideRoot, numberedLines, readProjectPath} from '../src/files.mjs';
 import {openPartner} from '../src/partner.mjs';
 import {ALLOWED_TOOLS, navigatorExtension, toolPolicy} from '../src/tools.mjs';
 
@@ -101,8 +101,17 @@ test('read is confined to the project root, symlinks included', async () => {
   assert.equal(await insideRoot(root, join(outside, 'secret.txt')), null);
   assert.equal(await insideRoot(root, 'link.txt'), null);
   assert.equal(await insideRoot(root, 'missing.js'), null);
-  assert.equal(await insideRoot(root, '.'), null);
+  assert.deepEqual(await readProjectPath(root, 'link.txt'), {error: 'Cannot read link.txt: not inside the project'});
   assert.equal(readFileSync(join(outside, 'secret.txt'), 'utf8'), 'secret');
+});
+
+test('read lists a directory, "." being the project root', async () => {
+  const root = project();
+  mkdirSync(join(root, 'src'));
+  writeFileSync(join(root, 'src', 'a.js'), '');
+  writeFileSync(join(root, 'README.md'), '');
+  assert.deepEqual(await readProjectPath(root, '.'), {listing: 'README.md\nsrc/'});
+  assert.deepEqual(await readProjectPath(root, 'src'), {listing: 'a.js'});
 });
 
 test('numberedLines numbers the lines and says how to read on', () => {

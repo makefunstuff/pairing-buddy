@@ -28,7 +28,11 @@ _pair_precmd() {
 }
 _pair_arm() { _pair_armed=1; }
 trap '_pair_preexec' DEBUG
-PROMPT_COMMAND="_pair_precmd\${PROMPT_COMMAND:+;$PROMPT_COMMAND};_pair_arm"
+if (( BASH_VERSINFO[0] * 100 + BASH_VERSINFO[1] >= 501 )); then
+  PROMPT_COMMAND=(_pair_precmd "\${PROMPT_COMMAND[@]}" _pair_arm)  # bash 5.1+ runs every element
+else
+  PROMPT_COMMAND="_pair_precmd\${PROMPT_COMMAND:+;$PROMPT_COMMAND};_pair_arm"
+fi
 `;
 
 export function shellHook(shell, bin) {

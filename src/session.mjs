@@ -2,7 +2,7 @@
 import {isAbsolute, relative} from 'node:path';
 import {Budget} from './budget.mjs';
 import {describeState} from './describe.mjs';
-import {insideRoot, numberedLines, readProjectFile} from './files.mjs';
+import {numberedLines, projectFile, readProjectPath} from './files.mjs';
 import {fold, initialState} from './fold.mjs';
 import {decide} from './gate.mjs';
 import {detectTriggers} from './triggers.mjs';
@@ -36,7 +36,8 @@ export class PairSession {
     this.state = initialState({root: record.root, goal: record.goal});
     this.budget = new Budget(record.level);
     this.fired = new Set();
-    this.busy = false;
+    this.busy = false; // a Partner turn is running
+    this.ticking = false;
     this.spoke = false; // anything reached the user this turn
     this.said = false; // the say tool was used this turn
   }
@@ -50,16 +51,21 @@ export class PairSession {
     this.state = fold(this.state, {at: this.now(), ...event, ...(file ? {file} : {})});
   }
 
-  /** Looks for a trigger worth a remark; called about once a second. */
+  /** Looks for a trigger worth a remark; called about once a second. Ticks never overlap. */
   async tick() {
-    if (this.busy) return;
-    const now = this.now();
-    for (const trigger of detectTriggers(this.state, now, this.fired)) {
-      const decision = await decide({trigger, state: this.state, now, budget: this.budget, score: this.score, typingPauseMs: this.typingPauseMs});
-      this.log(`${trigger.kind}: ${decision.verdict} (${decision.reason})`);
-      if (decision.verdict === 'wait') return;
-      this.fired.add(trigger.key);
-      if (decision.verdict === 'speak') return this.remark(trigger);
+    if (this.ticking || this.busy) return;
+    this.ticking = true;
+    try {
+      const now = this.now();
+      for (const trigger of detectTriggers(this.state, now, this.fired)) {
+        const decision = await decide({trigger, state: this.state, now, budget: this.budget, score: this.score, typingPauseMs: this.typingPauseMs});
+        this.log(`${trigger.kind}: ${decision.verdict} (${decision.reason})`);
+        if (decision.verdict === 'wait') return;
+        this.fired.add(trigger.key);
+        if (decision.verdict === 'speak') return await this.remark(trigger);
+      }
+    } finally {
+      this.ticking = false;
     }
   }
 
@@ -137,7 +143,7 @@ export class PairSession {
   }
 
   async point({file, line, endLine, note}) {
-    const path = await insideRoot(this.root, file);
+    const path = await projectFile(this.root, file);
     if (!path) return `No file ${file} in the project`;
     this.spoke = true;
     this.notify('editor', {type: 'point', file: path, line, endLine, note});
@@ -146,7 +152,7 @@ export class PairSession {
   }
 
   async open({file, line}) {
-    const path = await insideRoot(this.root, file);
+    const path = await projectFile(this.root, file);
     if (!path) return `No file ${file} in the project`;
     const typing = this.now() - this.state.lastKeyAt < this.typingPauseMs;
     this.notify('editor', {type: 'open', file: path, line, ask: typing});
@@ -154,10 +160,10 @@ export class PairSession {
   }
 
   async read({file, from, to}) {
-    const path = await insideRoot(this.root, file);
-    if (!path) return `Cannot read ${file}: not a file inside the project`;
-    const buffer = await this.requestEditor({type: 'read', file: path}).catch(() => null);
-    const source = typeof buffer?.text === 'string' ? {text: buffer.text} : await readProjectFile(this.root, file);
-    return source.error ?? numberedLines(source.text, from, to);
+    const source = await readProjectPath(this.root, file);
+    if (source.error || source.listing !== undefined) return source.error ?? source.listing;
+    // The editor's buffer wins over the disk: it holds what the user sees, unsaved changes included.
+    const buffer = await this.requestEditor({type: 'read', file: await projectFile(this.root, file)}).catch(() => null);
+    return numberedLines(typeof buffer?.text === 'string' ? buffer.text : source.text, from, to);
   }
 }
