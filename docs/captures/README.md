@@ -7,7 +7,7 @@ recording comes out the same each time.
 - **The daemon** is the real one: `pair daemon`, with a config that points both models at a local stand-in server.
 - **The models:** [model.mjs](model.mjs) is a small OpenAI-compatible server. The Watcher's score depends on the
   trigger it is asked about. The Partner's turns (tool calls or words, each after its own pause) come in order
-  from [scenes.mjs](scenes.mjs). The tools those calls reach are real: they read the files, check the line and the
+  from [scenes.mjs](scenes.mjs), and so do its readings of a note: the marks, and the tasks. The tools those calls reach are real: they read the files, check the line and the
   code they point at, and type the edit.
 - **The board:** [board.mjs](board.mjs) stands in for herdr's work board in the context-card scene, which also
   fetches Telescope and plenary at pinned commits for its searches.
@@ -20,8 +20,9 @@ recording comes out the same each time.
   gives its diagnostics; so is the crash scene: [probe/](probe/), a small C hash table built and run with `make run`
   and AddressSanitizer. Delight is in C too: [intern/](intern/), a string-interning table and its benchmark; and the
   agents scene: [hashtab/](hashtab/), another C hash table, timed with `make`. Teach on request is in the C
-  program the live tone tests use ([test/live/probe](../../test/live/probe/)), whose `make run` fails its check with exit 1. The blank page's scenes
-  start in an empty folder, `ticks`, with no git yet.
+  program the live tone tests use ([test/live/probe](../../test/live/probe/)), whose `make run` fails its check with exit 1. The notes scene adds its
+  design note, [notes/dead-letters.md](notes/dead-letters.md), which the tests read too. The blank page's scenes start in an
+  empty folder, `ticks`, with no git yet.
 - **The blank page's words** are not written for the capture: [ticks.json](ticks.json) holds a real `:Pair new`
   with a cloud model, unedited. It has the three questions (each asked after the answer before it), the slice and the
   two files the Driver typed. Its first slice broke the 90-character rule, so the daemon asked again; the slice
@@ -53,6 +54,7 @@ recording comes out the same each time.
 | [context-card](tapes/context-card.tape) | `:Pair context`, with the goal from the board task, and `x` on a source |
 | [crash](tapes/crash.tape) | a compiler error, a crash and its frame, and a new warning, from `make run` on save |
 | [agents](tapes/agents.tape) | your other agents' news, one line at your next breakpoint, and `:Pair agents` |
+| [notes](tapes/notes.tape) | notes in the margin: the marks, a fixed line, a decision logged, the tasks panel |
 | [teach](tapes/teach.tape) | Alt-? on a remark: the idea worth keeping behind it, and its link |
 
 ## Recording

@@ -88,12 +88,13 @@ to do:
 | `Alt-y` | Take Pair's suggested change, as your own edit |
 | `Alt-t` (hold) | Ask aloud: [push-to-talk](docs/voice.md), when voice is set up |
 | `Alt-u` / `Alt-n` | Tell Pair its last remark was useful / noise |
+| `Alt-l` / `Alt-d` | In a Markdown note: open the code a mark names / log the decision on your line |
 | `Alt-?` | The one idea worth keeping behind Pair's words under your line; again, open its link to the docs |
 | `Alt-a` | Go to the agent whose news Pair relayed ([your other agents](docs/agents.md)) |
 | any key | Take the wheel back while Pair drives |
 
 The main commands are `:Pair ask <question>`, `:Pair new [idea]`, `:Pair drive [what]`, `:Pair scout`, `:Pair navigate`,
-`:Pair context`, `:Pair today`, `:Pair agents` and `:Pair end`.
+`:Pair context`, `:Pair today`, `:Pair agents`, `:Pair tasks` and `:Pair end`.
 All options, commands, the statusline segment and the highlight groups are in [docs/neovim.md](docs/neovim.md), with
 captures of each moment.
 
@@ -124,6 +125,14 @@ only if the cause is elsewhere, says so under your edit. [docs/neovim.md](docs/n
 
 **Follows your search trail.** When you search in circles (three Telescope or snacks.picker searches, one of them
 without a result you opened), Pair says where the thing is, in the code's own word. `:Pair trail` shows the searches it saw. [docs/neovim.md](docs/neovim.md#the-search-trail)
+
+**Thinks in Markdown with you, never for you.** In a note, Pair puts at most five marks in the margin: `?` a question
+the note leaves open, `≠` two lines that cannot both hold, `→` what the code it names really does, `◆` a decision,
+and `≈` a paragraph that repeats an earlier one (a rule finds that one, not the model). A changed line loses its mark.
+`Alt-d` logs a decision in `decisions.md` next to the note, as a buffer you save; `:Pair tasks` lists the note's work
+and adds nothing until you press `y`. [docs/notes.md](docs/notes.md)
+
+![Five marks in a design note's margin, a fixed line losing its marks, a decision logged with Alt-d, and the tasks panel](docs/images/notes.gif)
 
 **Runs your tests on save.** Set a test command per project, and each save runs it in Pair's pane; a test your change
 broke gets a remark and a suggested fix. [docs/tests-on-save.md](docs/tests-on-save.md)
@@ -189,6 +198,7 @@ Off until you set `"voice"` in the config. [docs/voice.md](docs/voice.md)
 - [Driver and suggestions](docs/driver.md): handing over, tests on the unsaved buffer, taking the wheel back
 - [Tests on save](docs/tests-on-save.md)
 - [Builds and crashes](docs/builds.md): crashes, compiler errors and new warnings, read from your runs
+- [Notes in the margin](docs/notes.md): marks in a Markdown note, the decision log, tasks when asked
 - [Tone](docs/tone.md): how Pair's words read, teaching on request, and the live tests that hold them
 - [Push-to-talk](docs/voice.md): asking aloud, whisper.cpp, answers read aloud
 - [The Watcher](docs/watcher.md): the speak gate, held thoughts, thinking, keep-warm

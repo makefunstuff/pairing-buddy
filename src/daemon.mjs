@@ -11,6 +11,8 @@ import {goalFromContext, SOURCES} from './context-card.mjs';
 import {byUse, herdrFocus, noteEditor} from './editors.mjs';
 import {gitRoot} from './git.mjs';
 import {ModelHealth} from './health.mjs';
+import {NoteMargin} from './margin.mjs';
+import {oneAnswer} from './note-reading.mjs';
 import {PaneWatch} from './herdr.mjs';
 import {followLoaded, shareServer} from './loaded-model.mjs';
 import {DETAIL_KEPT_MS} from './ledger.mjs';
@@ -66,6 +68,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
   store.forgetActionDetails(Date.now() - DETAIL_KEPT_MS);
   const sessions = new Map(); // root -> Promise<PairSession>
   const live = new Map(); // root -> PairSession, once loaded
+  const margins = new Map(); // root -> its NoteMargin
   const watches = new Map(); // root -> PaneWatch
   const listeners = new Map(); // root -> Listener, once someone holds the listen key there
   const relays = new Map(); // root -> AgentRelay
@@ -139,6 +142,19 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
       () => reported('partner', partner.ask(conversationId, content, options)),
     ),
   };
+
+  /**
+   * The Partner's model reads a note, outside its conversation, in the slot like a turn: a reading nobody `asked`
+   * for gives way to the user's questions, and its cancel is no sign that the model is down.
+   */
+  function askNoteModel(systemPrompt, content, {asked = false} = {}) {
+    const controller = new AbortController();
+    const read = () => oneAnswer({models: pairModels.models, model: pairModels.partner, signal: controller.signal}, systemPrompt, content).then(
+      text => { health.report('partner'); return text; },
+      error => { if (!controller.signal.aborted) health.report('partner', error.message); throw error; },
+    );
+    return slot.turn({conversation: null, asked, cancel: async () => controller.abort()}, read);
+  }
 
   const clientsOf = (session, role) => [...clients].filter(client => client.session === session && client.role === role);
   /** The Neovims attached to `session`, the one the user is in first (see editors.mjs). */
@@ -216,6 +232,19 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
         requestEditor: message => requestEditor(session, message),
         log: line => log(`[${basename(root)}] ${line}`),
       });
+      margins.set(root, new NoteMargin({
+        root,
+        state: () => session.state,
+        receive: event => session.receive(event),
+        read: path => session.bufferText(path).catch(() => ''),
+        ask: askNoteModel,
+        notify: (role, message) => notify(session, role, message),
+        message: (sender, text) => session.message(sender, text),
+        typingPauseMs: config.typingPauseMs,
+        ready: () => health.ok('partner') && !(slot.exclusive && slot.busy()),
+        taskCommand: config.taskCommand,
+        log: line => log(`[${basename(root)}] ${line}`),
+      }));
       // A stored conversation gets the model now in the config, and one from v0.1, which had no roles, its role's tools.
       await session.configurePartner(session.role);
       live.set(root, session);
@@ -295,6 +324,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     watches.delete(session.root);
     sessions.delete(session.root);
     live.delete(session.root);
+    margins.delete(session.root);
     relays.delete(session.root);
     for (const client of clients) {
       if (client.session !== session) continue;
@@ -415,6 +445,9 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     if (message.type === 'forget_trail') return session.forgetTrail();
     if (message.type === 'release') return session.release();
     if (message.type === 'accent') return session.setAccent(message.color);
+    if (message.type === 'decision') return margins.get(session.root).decide(message.file, message.line);
+    if (message.type === 'tasks') return margins.get(session.root).tasks(message.file);
+    if (message.type === 'tasks_add') return margins.get(session.root).addTasks(message.file, message.tasks ?? []);
     if (message.type === 'teach') return session.teach(message.text || undefined, message.remark ?? null);
     if (message.type === 'end') return endSession(session);
     if (message.type === 'listen') return listen(client, session, message);
@@ -483,6 +516,8 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
       }
       session.tick().catch(error => log(`tick failed: ${error.stack ?? error}`));
       refreshContext(session, CONTEXT_EVERY_MS);
+      // While :Pair new asks its questions, the note is theirs: no marks in its margin until they end.
+      if (!session.blankPage?.open) margins.get(session.root)?.tick().catch(error => log(`margin failed: ${error.stack ?? error}`));
     }
     for (const relay of relays.values()) relay.tick();
     keepWarm();

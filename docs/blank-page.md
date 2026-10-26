@@ -28,6 +28,8 @@ the answer before it.*
 
 While a question waits, Pair makes no remarks about the note. Its remarks about everything else go on: a question
 you leave unanswered does not silence it. `:Pair clear` ends the questions; `:Pair new` starts again.
+The note's margin stays empty while the questions run; once they end, `NOTES.md` is a note like any other, and
+Pair marks its margin as it does elsewhere ([notes](notes.md)).
 
 ![The third question under the second answer: should we cap steps per frame?](images/blank-question.png)
 

@@ -17,6 +17,11 @@ M.glyphs = {
   warn = '△', -- a compiler warning
   listen = '◉', -- it listens while you hold the listen key
   agents = '◇', -- another agent's news, after Pair's own part of the statusline
+  question = '?', -- in a note's margin: a question the note does not answer
+  contradiction = '≠', -- two lines that cannot both be true
+  code = '→', -- a claim that depends on code: the link goes there
+  decision = '◆', -- a decision worth logging, and the log
+  ['repeat'] = '≈', -- a paragraph that says again what an earlier one said
 }
 
 -- The statusline while Pair runs your tests or thinks.

@@ -27,6 +27,7 @@ run is real `go test`; only the models' words are scripted. It is recorded from 
 | `⠹` | the statusline | it thinks before it answers, or runs your tests |
 | `✓` `✗` | the statusline, and the sign column of your tests | tests it ran for you when you saved |
 | `✗` `△` | the sign column, and the words after the line | a crash or a compiler error, and a new warning, from your last build or run |
+| `?` `≠` `→` `◆` `≈` | the sign column of a Markdown note, and its words under the line | [notes in the margin](notes.md): a question, a contradiction, a link to the code, a decision, a repeat |
 | a glow, and one line | the statusline, a `✓`, under your line | it went green after a red, or a number finally moved ([below](#when-it-goes-green)) |
 | `◇` and `M-a` | the statusline, after Pair's own part | another agent's news, at your breakpoint; `M-a` goes to that agent ([your other agents](agents.md)) |
 
@@ -291,6 +292,17 @@ diagnostics, and the real chat pane on the right. Only the models' words are scr
 `Alt-j` shows a held thought at once, and goes where it points once it shows. If you fix the line yourself before
 your break, the dot goes and Pair says nothing. The rules are in [docs/watcher.md](watcher.md#the-held-thought).
 
+## Notes in the margin
+
+In a Markdown note, Pair asks and points but never writes: at most five marks in the margin, each a glyph in the
+sign column and one line of its words under the line it is about. `Alt-l` opens the code a `→` mark names, `Alt-d`
+logs a `Decision:` line in `decisions.md` next to the note (in its buffer, which you save), and `:Pair tasks` lists
+the note's work, adding nothing until you press `y`. You change a marked line, and its mark goes.
+
+![Five marks in a design note's margin](images/notes-margin.png)
+
+Everything about it is in [docs/notes.md](notes.md).
+
 ## The idea behind it
 
 Teaching on request: a remark says what is wrong; `Alt-?` asks what to keep from it. Learning is part of the
@@ -449,6 +461,7 @@ lines sit right under them on a faint tint, and the note follows with `M-y`.
 ![A suggestion in Neovim's own light colorscheme](images/suggestion.png)
 
 **The statusline.** One quiet segment: `● pair` at rest, the `●` in the accent while Pair's words are on screen,
+`● pair · 5 notes in the margin` in a note with marks, `◆ logged · docs/decisions.md` for a moment after a decision,
 `● reading worker.go` while it reads, `◎ pair has the wheel · any key takes it back` while it drives, and the
 tests on save as above (`(unsaved)` after the label for the run on the Driver's edit). The role and
 the talk level show only when they are not the usual ones (`● pair · scout`, `● pair · quiet`). While a thought is
@@ -529,6 +542,7 @@ require('pair').setup({
 | `teach_key` | `'<M-?>'` | Asks for the idea behind Pair's words under your line, then opens its link ([below](#the-idea-behind-it)). Mapped in Normal mode while they show |
 | `agents_key` | `'<M-a>'` | Goes to the agent whose news Pair relayed, or puts the line away when it has no pane ([agents.md](agents.md)). Mapped in Normal mode while such a line shows |
 | `motion` | `true` | Fades, the glow of a green, and the trail behind the gaze; without it the gaze still steps line by line |
+| `decide_key`, `link_key` | `'<M-d>'`, `'<M-l>'` | In a note's margin: log the decision on your line, open the code a mark names. Mapped in Normal mode only in a note with such a mark ([notes.md](notes.md)) |
 | `searches` | `true` | Read your Telescope and snacks.picker searches for the [search trail](#the-search-trail) |
 | `sounds` | `false` | Short [sounds](#sounds-while-you-are-away) for a green, a regression, a remark and the hand-back, only while Neovim does not have the focus |
 | `sound_volume` | `0.5` | Their volume, 0 to 1 |
@@ -538,8 +552,8 @@ Every key option takes `false` for none; the commands work either way. The keys 
 mapping of your own, and all but `listen_key` only while there is something for them to act on. Each says what it does
 until you have used it once (`M-j goes there`); the keys you have used are kept in `stdpath('state')/pair/keys.json`.
 The glyphs are plain Unicode, so they show in any font: `voice` `●`, `idea` `∴`, `mark` `▎`, `held` `•`, `away` `◌`, `wheel` `◎`, `listen` `◉`, `pass`
-`✓`, `fail` `✗`, `warn` `△` and `agents` `◇`. The
-spinner is braille, `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`.
+`✓`, `fail` `✗`, `warn` `△` and `agents` `◇`, and in a note's margin `question` `?`, `contradiction` `≠`, `code` `→`,
+`decision` `◆` and `repeat` `≈`. The spinner is braille, `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`.
 
 Once connected, the plugin stays connected: when the daemon restarts (an upgrade, `systemctl --user restart`, a
 crash), it reconnects by itself, after 1, 2, 5, 10 and then every 30 seconds, and sends the current file again.
@@ -570,7 +584,9 @@ to standard ones and does not fade.
 | `:Pair open` | Open the place Pair asked to show while you were typing |
 | `:Pair agents` | Your other agents and board tasks, the ones that need you first; `⏎` goes to one ([agents.md](agents.md)) |
 | `:Pair today` | The [ledger](#the-ledger): everything Pair did in this project today; `⏎` goes there or shows the output, `u` undoes one of its edits later |
-| `:Pair clear` | Remove Pair's points and words, and end the questions of `:Pair new` |
+| `:Pair decide` | Log the decision on the cursor's line of a note in `decisions.md` next to it (same as `Alt-d`; [notes.md](notes.md#the-decision-log)) |
+| `:Pair tasks` | List the work in the current note as tasks; nothing is added until `y` ([notes.md](notes.md#tasks-only-when-you-ask)) |
+| `:Pair clear` | Remove Pair's points and words and the marks in a note's margin, and end the questions of `:Pair new` |
 | `:Pair context` | Show what Pair knows right now: the goal, the board task, git, your commands, buffers, jumps and searches; `x` hides a source for the session, `q` closes |
 | `:Pair end` | End the session now; Pair writes a short session note, which the next session in this project starts from (it also [ends by itself](memory.md#no-ceremony-a-session-starts-and-ends-by-itself)) |
 | `:Pair listen [cancel]` | Push-to-talk without the key: works as a tap of `Alt-t`; `cancel` drops what is being recorded ([voice.md](voice.md)) |
@@ -593,6 +609,7 @@ vim.o.statusline = "%f %m%=%{%v:lua.require'pair'.statusline()%}  %l:%c "
 | `● reading worker.go` | While Pair reads |
 | `⠹ pair · thinking` | While its model thinks |
 | `● pair · held thought · M-j` | While a remark waits for your next break |
+| `● pair · 5 notes in the margin`, `◆ logged · docs/decisions.md` | In a note with [marks](notes.md), and for a moment after a decision is logged |
 | `⠹ go test ./...`, `✗ 1 failing · TestX`, `✓ go test ./... · 4 tests, 3 packages` | [Tests on save](tests-on-save.md); `(unsaved)` after the command for the run on the Driver's edit |
 | `◎ pair has the wheel · any key takes it back` | While it drives (`· thinking` while its model thinks, the hint again while it types) |
 | `◌ pair · partner down` (or `models down`) | While a model is down |
