@@ -4,11 +4,13 @@
 -- buffer only while you hand it the wheel (the Driver role): one edit, typed while you watch (drive.lua) as one
 -- undo step, and refused or undone as soon as you press any key. Once connected, it stays connected: when the
 -- daemon restarts, it reconnects by itself.
+local card = require('pair.card')
 local draw = require('pair.draw')
 local drive = require('pair.drive')
 local ledger = require('pair.ledger')
 local listen = require('pair.listen')
 local merge = require('pair.merge')
+local places = require('pair.places')
 local searches = require('pair.searches')
 local style = require('pair.style')
 local trail = require('pair.trail')
@@ -630,6 +632,7 @@ local handlers = {
   held = on_held,
   unheld = forget_held,
   tests = on_tests,
+  context = card.update,
   trail = function(message) trail.show(message, function() send({type = 'forget_trail'}) end) end,
   thinking = function(message)
     state.thinking = message.on
@@ -696,6 +699,7 @@ local function try_connect()
   end
   local file = project_path(0)
   if file then event({kind = 'enter', file = file}) end
+  places.send(true)
   return true
 end
 
@@ -825,6 +829,10 @@ local commands = {
   useful = function() feedback(true, state.remark) end,
   noise = function() feedback(false, state.remark) end,
   ['end'] = function() send({type = 'end'}) end,
+  context = function()
+    if not state.channel then return vim.notify('Pair: not connected, so there is no card; :Pair start connects', vim.log.levels.WARN) end
+    card.open(send)
+  end,
   open = function()
     if state.open_request then open_split(state.open_request.file, state.open_request.line) end
     state.open_request = nil
@@ -921,7 +929,10 @@ function M.setup(opts)
     timer:start(config.debounce_ms, 0, vim.schedule_wrap(function() send_diagnostics(args.buf) end))
   end})
   if config.searches then searches.watch(group, function(search) event(vim.tbl_extend('force', {kind = 'search'}, search)) end) end
-  if config.auto_connect then M.connect() end
+  places.setup(group, event)
+  -- Sessions only where you work: not for a Neovim without a screen (an agent's or a script's), nor in the temp folder.
+  local scratch = vim.startswith(vim.fn.getcwd() .. '/', vim.fs.normalize(vim.uv.os_tmpdir()) .. '/')
+  if config.auto_connect and #vim.api.nvim_list_uis() > 0 and not scratch then M.connect() end
 end
 
 return M

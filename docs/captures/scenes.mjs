@@ -120,6 +120,14 @@ export const scenes = {
       {wait: 200, say: 'attempt 5 would wait 8s after 7s: exactly the 15s budget, and `>=` gives up on it. `>` lets it run.'},
     ],
   },
+  // :Pair context: no goal typed (it comes from the board task of the branch), a failing run, two Telescope searches,
+  // then the card, and x on a source. No model words: the card is what the daemon reads.
+  'context-card': {
+    branch: 'work/7-retries-reach-the-budget',
+    board: true,
+    watcher: score(),
+    partner: [],
+  },
   // The same hand-over, taken back with a key while Pair types.
   'take-back': {
     goal: 'retries reach the budget',
