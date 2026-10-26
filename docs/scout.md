@@ -59,7 +59,7 @@ Without a chat pane to ask in, the answer is no.
 - Interactive programs that would wait for keys: `less`, `more`, `vim`, `nano`, `top`, `man`, `watch`.
 - More than one line, and an empty command.
 
-The pane is not a sandbox. An allowed test run can write what tests write, and a read-only program can still read any file inside the project.
+The pane is not a sandbox ([#28](https://github.com/makefunstuff/pairing-buddy/issues/28)). An allowed test run can write what tests write, and a read-only program can still read any file inside the project.
 
 ## Test results
 
@@ -80,7 +80,7 @@ The session keeps the last test run (who ran it, when, what failed) and shows it
 
 ## Tests on save
 
-With a command for the project in `testOnSave` (see the [README](../README.md#tests-on-save)), Pair runs it in this
+With a command for the project in `testOnSave` (see [tests-on-save.md](tests-on-save.md)), Pair runs it in this
 pane each time you save a source file there (not notes or docs, and not files outside the project). It is typed as
 `cd <project> && <command> > <data dir>/runs/<session>.out 2>&1` (from the root, whatever a Scout command's `cd`
 did to the pane's shell): the pane shows the command line and its exit code in the prompt, and

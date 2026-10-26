@@ -1,6 +1,6 @@
 # The captures
 
-The clips and stills of the three moments (the README, [docs/neovim.md](../neovim.md) and the site) are recorded
+The clips and stills of the three moments ([docs/neovim.md](../neovim.md) and the site) are recorded
 from the tapes here. They show the plugin and the daemon of this checkout as they ship. Only the models are scripted, so a
 recording comes out the same each time.
 
