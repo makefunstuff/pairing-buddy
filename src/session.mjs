@@ -110,6 +110,7 @@ export function selectionInput({file, from, to}, text) {
 }
 
 const NAME_CHARS = 32; // of a failing test's name in the statusline
+const LATE_QUESTION_CHARS = 60; // of the question a late answer names
 
 /** Whether a finished test run failed: its exit code, a timeout, a failing test or a crash (a sanitizer's, also with exit 0) say so. */
 const isRed = ({exit, timedOut, tests, reading}) => exit !== 0 || timedOut || !!tests?.failedCount || !!reading?.crash;
@@ -571,10 +572,11 @@ export class PairSession {
    * resolves with its answer), and it shows as late, in the chat and the editors, also those that reconnect after it.
    */
   async lateAnswer(question, answering) {
-    this.message('system', `The daemon restarted while Pair was answering "${question}"; its answer comes late.`);
+    const asked = question.length > LATE_QUESTION_CHARS ? `${question.slice(0, LATE_QUESTION_CHARS - 1)}…` : question;
+    this.message('system', `The daemon restarted while Pair was answering "${asked}"; its answer comes late.`);
     await this.talk(null, {}, answering);
     if (!this.words.length) return;
-    const message = {type: 'message', sender: 'system', text: `Late answer to "${question}": ${this.words.join('\n')}`, at: this.now()};
+    const message = {type: 'message', sender: 'system', text: `Late answer to "${asked}": ${this.words.join('\n')}`, at: this.now()};
     if (!this.notify('editors', message)) this.lateForEditors = message;
   }
 
