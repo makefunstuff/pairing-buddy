@@ -38,9 +38,11 @@ const runIn = cwd => command => new Promise(resolve => {
 /**
  * The daemon with scripted models, a fake herdr, a headless Neovim with the plugin editing a.js and running
  * `:Pair start <goal>`, and a chat client. With `testOnSave`, saving runs that command in the project, for real,
- * in the fake herdr's pane. With `thinks`, the Partner's model can think. `voice` is the config's. `stop()` ends them all.
+ * in the fake herdr's pane. With `thinks`, the Partner's model can think. `voice` is the config's. `knownKeys`
+ * (labels such as M-j) are the keys the plugin remembers you have used, which show without their first-use hints.
+ * `stop()` ends them all.
  */
-async function pairInNvim(goal, {testOnSave, thinks = false, voice, rtp = []} = {}) {
+async function pairInNvim(goal, {testOnSave, thinks = false, voice, rtp = [], knownKeys = []} = {}) {
   const project = realpathSync(mkdtempSync(join(tmpdir(), 'pair-nvim-')));
   writeFileSync(join(project, 'a.js'), 'const x = 1\nconst y = 2\nconst z = 3\n');
   const dataDir = mkdtempSync(join(tmpdir(), 'pair-data-'));
@@ -49,6 +51,7 @@ async function pairInNvim(goal, {testOnSave, thinks = false, voice, rtp = []} = 
     socket: join(dataDir, 'pair.sock'),
     testOnSave: testOnSave ? {[project]: testOnSave} : undefined,
     voice,
+    agents: false, // never the real board of the machine running the tests
     models: {watcher: {api: 'openai', baseUrl: 'http://unused', model: 'w'}, partner: {api: 'openai', baseUrl: 'http://unused', model: 'p'}},
   });
   const watcher = fauxProvider({provider: 'faux-watcher'});
@@ -62,6 +65,12 @@ async function pairInNvim(goal, {testOnSave, thinks = false, voice, rtp = []} = 
   const herdr = await fakeHerdr(herdrSocket, {commands: testOnSave ? runIn(project) : {}});
 
   const server = join(mkdtempSync('/tmp/pair-'), 'nvim.sock'); // short: socket paths max out near 100 bytes
+  // Its own state directory, where the plugin keeps the keys you have used (lua/pair/hints.lua).
+  const state = mkdtempSync(join(tmpdir(), 'pair-state-'));
+  if (knownKeys.length) {
+    mkdirSync(join(state, 'nvim', 'pair'), {recursive: true});
+    writeFileSync(join(state, 'nvim', 'pair', 'keys.json'), JSON.stringify(Object.fromEntries(knownKeys.map(key => [key, true]))));
+  }
   const nvim = spawn('nvim', [
     '--headless', '--clean', '--listen', server,
     '--cmd', `set rtp+=${[REPO, ...rtp].join(',')}`,
@@ -69,7 +78,7 @@ async function pairInNvim(goal, {testOnSave, thinks = false, voice, rtp = []} = 
     '-c', `cd ${project}`,
     '-c', 'edit a.js',
     '-c', `Pair start ${goal}`,
-  ], {stdio: 'ignore'});
+  ], {stdio: 'ignore', env: {...process.env, XDG_STATE_HOME: state}});
   const remote = expr => execFileSync('nvim', ['--server', server, '--remote-expr', expr], {encoding: 'utf8'}).trim();
   const keys = text => execFileSync('nvim', ['--server', server, '--remote-send', text]);
 
@@ -81,7 +90,7 @@ async function pairInNvim(goal, {testOnSave, thinks = false, voice, rtp = []} = 
   await until(() => messages.some(message => message.text === `Goal: ${goal}`), 'the goal from :Pair start');
 
   return {
-    project, dataDir, watcher, partner, messages, remote, keys,
+    project, dataDir, state, watcher, partner, messages, remote, keys,
     send: message => sendMessage(chat, message),
     lines: () => JSON.parse(remote('json_encode(getline(1, "$"))')),
     status: () => remote('luaeval("require(\'pair\').status()")'),
@@ -167,8 +176,8 @@ test('the wrong turn: Pair\'s words show under your line, the jump key goes to t
     await sleep(200);
     keys('3Gccconst z = 4<Esc>'); // a wrong turn in a.js
     const shown = await until(() => words().length && words(), 'Pair\'s words under the line');
-    assert.deepEqual(shown, [[2, ['● The shift is fine.', 'Attempt 5 lands at exactly 15, and worker.js:2 gives up on >=.   M-j']]],
-      'under the line you are on, the code without backticks, the jump key at the end');
+    assert.deepEqual(shown, [[2, ['● The shift is fine.', 'Attempt 5 lands at exactly 15, and worker.js:2', 'gives up on >=.   M-j goes there · M-? why']]],
+      'under the line you are on, the code without backticks, the keys at the end, with what they do the first time');
     assert.equal(remote('mode()'), 'n', 'nothing moved you');
     assert.equal(remote('expand("%:t")'), 'a.js');
 
@@ -313,7 +322,7 @@ test('suggestions show as a ghost diff that one key accepts; handing over gives 
 });
 
 test('the hand-over in plain sight: the edit is typed as ghost text, whole lines at a time; the tests run on the unsaved buffer; the hand-back line; a key halfway leaves no change', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
-  const {project, partner, messages, remote, keys, send, lines, status, stop} = await pairInNvim('tune the numbers', {testOnSave: 'node report.mjs'});
+  const {project, partner, messages, remote, keys, send, lines, status, stop} = await pairInNvim('tune the numbers', {testOnSave: 'node report.mjs', knownKeys: ['M-?']});
   const marks = namespace => JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('${namespace}'), 0, -1, {details = true}))")`));
   const text = chunks => chunks.map(chunk => chunk[0]).join('');
   const answered = reply => until(() => messages.some(message => message.text === reply), `the answer "${reply}"`);
@@ -415,6 +424,59 @@ test('Alt-n rates an unasked remark as noise; accepting its suggestion rates it 
   }
 });
 
+test('Alt-? on Pair\'s words asks for the idea behind them, shows it under them and then opens its link; a key says what it does until you use it', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
+  const {project, dataDir, state, watcher, partner, messages, remote, keys, send, stop} = await pairInNvim('grow the table');
+  const extmarks = () => JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('pair'), 0, -1, {details = true}))")`));
+  // Every virtual line under the line, in the order Neovim draws them: by extmark.
+  const words = () => extmarks().filter(([, , , details]) => details.virt_lines).sort(([a], [b]) => a - b)
+    .flatMap(([, , , details]) => details.virt_lines.map(line => line.map(chunk => chunk[0]).join('').trim()));
+  const verdicts = () => {
+    const store = openStore(join(dataDir, 'sessions.sqlite'));
+    try { return store.remarks(0).map(remark => remark.verdict); } finally { store.close(); }
+  };
+  try {
+    writeFileSync(join(project, 'table.c'), 'int should_grow(int len, int cap) {\n    return len / cap > 0.7;\n}\n');
+    watcher.setResponses([fauxAssistantMessage([fauxText('9')])]);
+    partner.setResponses([
+      fauxAssistantMessage([fauxToolCall('point', {file: 'table.c', line: 2, note: 'always 0 below a full table', code: 'len / cap'})], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxText('`len / cap` is integer division in `table.c:2`: 0 until the table is full, so it never grows.')]),
+    ]);
+    const failure = {type: 'command', cwd: project, pane: null, cmd: 'make run', exit: 134};
+    send(failure);
+    send(failure);
+    await until(() => words().length, 'the remark under the line');
+    assert.match(words().at(-1), /\.   M-j goes there · M-\? why$/, 'the first time, each key says what it does');
+
+    let input;
+    partner.setResponses([context => {
+      input = context.messages.at(-1).content;
+      return fauxAssistantMessage([fauxText('C divides two ints as ints, before any compare with a double: scale instead, as `len * 10 > cap * 7`.\nhttps://en.cppreference.com/w/c/language/operator_arithmetic')]);
+    }]);
+    remote(`luaeval("(function() vim.ui.open = function(url) vim.g.opened = url end end)() or 0")`); // no browser here
+    keys('<M-?>');
+    await until(() => input, 'the teach request reaching the Partner');
+    assert.match(input, /^\[teach\] The user asks for the idea behind what you said: "`len \/ cap` is integer division in `table.c:2`/);
+    const taught = await until(() => words().some(line => line.startsWith('∴ C divides')) && words(), 'the idea under the words');
+    assert.deepEqual(taught.slice(-4), [
+      'table is full, so it never grows.   M-j goes there',
+      '∴ C divides two ints as ints, before any',
+      'compare with a double: scale instead, as',
+      'len * 10 > cap * 7.   M-? opens en.cppreference.com',
+    ], 'after the words, without the hint it no longer needs; the link apart, as the key that opens it');
+    assert.ok(messages.some(message => message.sender === 'pair' && message.text.startsWith('C divides')), 'the chat has it too, link and all');
+    await until(() => verdicts()[0] === 'seen', 'asking about a remark to count as having seen it');
+    assert.deepEqual(JSON.parse(readFileSync(join(state, 'nvim', 'pair', 'keys.json'), 'utf8')), {'M-?': true}, 'the plugin remembers the key you used');
+
+    keys('<M-?>');
+    await until(() => remote('get(g:, "opened", "")') === 'https://en.cppreference.com/w/c/language/operator_arithmetic', 'the link opened');
+
+    keys('3Go<Esc>');
+    await until(() => words().length === 0, 'your edit taking the words and the idea away');
+  } finally {
+    await stop();
+  }
+});
+
 test('while the Partner thinks, the statusline says so, and lets it go with the answer', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
   const {partner, messages, send, status, stop} = await pairInNvim('make x two', {thinks: true});
   try {
@@ -484,7 +546,7 @@ test('after a daemon restart the plugin reconnects by itself; a model that is do
 
 test('saving runs the tests: the statusline spins, then names what fails; signs on the tests; Pair\'s fix is one jump and one key away', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
   const command = 'sleep 0.6 && cat report.json';
-  const {project, watcher, partner, remote, keys, status, stop} = await pairInNvim('totals', {testOnSave: command});
+  const {project, watcher, partner, remote, keys, status, stop} = await pairInNvim('totals', {testOnSave: command, knownKeys: ['M-j', 'M-?', 'M-y']});
   const marks = namespace => JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('${namespace}'), 0, -1, {details = true}))")`));
   const signs = () => marks('pair_tests').filter(([, , , details]) => details.sign_text).map(([, row, , details]) => [row + 1, details.sign_text.trim(), details.sign_hl_group]);
   const notes = () => marks('pair_tests').filter(([, , , details]) => details.virt_text).map(([, row, , details]) => [row + 1, details.virt_text.map(chunk => chunk[0]).join('')]);
@@ -740,7 +802,7 @@ test('push-to-talk: hold Alt-t, a meter under your line; let go, your words, the
   writeFileSync(join(bin, 'whisper-cli'), '#!/bin/sh\nprintf " Why does attempt 5 give up?\\n"\n', {mode: 0o755});
   const record = `node -e 'const b = Buffer.alloc(3200); for (let i = 0; i < 1600; i++) b.writeInt16LE(i % 8 < 4 ? 9000 : -9000, i * 2); setInterval(() => process.stdout.write(b), 100)'`;
   const voice = {model: 'unused.bin', whisper: join(bin, 'whisper-cli'), record};
-  const {partner, messages, remote, status, stop} = await pairInNvim('retries pass', {voice});
+  const {partner, messages, remote, status, stop} = await pairInNvim('retries pass', {voice, knownKeys: ['M-j', 'M-?']});
   const listenLine = () => {
     const marks = JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, require('pair.listen').ns, 0, -1, {details = true}))")`));
     const line = marks.find(([, , , details]) => details.virt_lines)?.[3].virt_lines[0];
@@ -876,6 +938,82 @@ test('a build or run on save: crashes and compiler errors on their lines, the ju
     keys(':w<CR>');
     await until(() => signs().length === 0, 'a clean run to clear the marks');
     assert.equal(remote('maparg("<M-j>", "n")'), '', 'the jump key went with the run\'s places');
+  } finally {
+    await stop();
+  }
+});
+
+test('notes in the margin: five marks in a note, a fixed line loses its mark, a decision goes to the log and tasks only on a yes', {skip: hasNvim ? false : 'nvim not installed', timeout: 60_000}, async () => {
+  const {project, watcher, partner, remote, keys, status, stop} = await pairInNvim('dead letters');
+  const note = readFileSync(new URL('../docs/captures/notes/dead-letters.md', import.meta.url), 'utf8');
+  const marks = () => JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('pair_margin'), 0, -1, {details = true}))")`))
+    .filter(([, , , details]) => details.virt_lines)
+    .map(([, row, , details]) => [row + 1, details.sign_text.trim(), details.virt_lines.map(line => line.map(chunk => chunk[0]).join('')).join('|')]);
+  const reply = (system, text) => context => fauxAssistantMessage([fauxText(context.messages[0].content.includes(system) ? text : '[]')]);
+  try {
+    mkdirSync(join(project, 'docs'));
+    writeFileSync(join(project, 'docs', 'dead-letters.md'), note.replace('still gets the webhook.', 'still gets the webhoo'));
+    watcher.setResponses(Array.from({length: 20}, () => fauxAssistantMessage([fauxText('0')])));
+    partner.setResponses([reply('in its margin', JSON.stringify([
+      {kind: 'code', line: 4, text: 'Deliver returns ErrBudget and the caller drops it.', file: 'a.js', file_line: 2},
+      {kind: 'contradiction', line: 14, text: 'Line 14 says 5 attempts, line 20 says 6.', other_line: 20},
+      {kind: 'question', line: 17, text: 'Replay as attempt 1 with full budget: does the 5-attempt cap apply again?'},
+      {kind: 'question', line: 20, text: 'Does a receiver down for a minute reach 6 attempts inside 15 s?'},
+    ]))]);
+    keys(':edit docs/dead-letters.md<CR>21GAk.<Esc>');
+
+    // At the pause, the rule's repeat; once you stop writing, the model's marks: five, the most there are.
+    await until(() => marks().length === 1, 'the repeat the rule finds');
+    assert.deepEqual(marks()[0], [26, '≈', '≈ Says again what line 9 says.   line 9']);
+    await until(() => marks().length === 5, 'the model\'s marks', 20_000);
+    assert.deepEqual(marks().map(([line, sign]) => [line, sign]), [[4, '→'], [14, '≠'], [17, '?'], [20, '?'], [26, '≈']]);
+    assert.equal(marks()[0][2], '→ Deliver returns ErrBudget and the caller drops it.   M-l a.js');
+    assert.equal(marks()[1][2], '≠ Line 14 says 5 attempts, line 20 says 6.   line 20');
+    assert.equal(status(), '● pair · 5 notes in the margin');
+
+    // The link key opens the code the mark names, in a split.
+    keys('4G<M-l>');
+    await until(() => remote('expand("%:t")') === 'a.js' && remote('line(".")') === '2', 'the code the mark links to');
+    keys(':close<CR>');
+
+    // You fix line 20: its own mark goes, and so does the contradiction that names it.
+    keys('20G0f6r5');
+    await until(() => marks().length === 3, 'the marks of the fixed line to go');
+    assert.deepEqual(marks().map(([line]) => line), [4, 17, 26]);
+
+    // A decision: the rule marks it, and the decide key logs it with the question it answers.
+    partner.setResponses(Array.from({length: 4}, () => reply('as tasks', JSON.stringify([
+      {title: 'Park failed webhooks in dead_letters after the last attempt', lines: 'lines 3-4, line 8'},
+      {title: 'Decide how long dead letters are kept', lines: 'line 26', open: true},
+    ]))));
+    keys('19GoDecision: replay keeps the attempt cap; it gets the budget back, not new attempts<Esc>');
+    await until(() => marks().some(([line, sign]) => line === 20 && sign === '◆'), 'the decision\'s mark');
+    assert.equal(marks().find(([line]) => line === 20)[2], '◆ A decision for the log.   M-d logs it');
+    keys('<M-d>');
+    await until(() => status() === '◆ logged · docs/decisions.md', 'the log in the statusline');
+    const log = JSON.parse(remote('json_encode(getbufline(bufnr("docs/decisions.md"), 1, "$"))'));
+    assert.match(log[2], /^## \d{4}-\d\d-\d\d · replay keeps the attempt cap; it gets the budget back, not new attempts$/);
+    assert.deepEqual(log.slice(3), ['', '- Status: decided', '- Where: docs/dead-letters.md:20 (## How)', '- Asked: "Replay as attempt 1 with full budget: does the 5-attempt cap apply again?"', '- Consequences:']);
+    assert.equal(remote('expand("%:t")'), 'dead-letters.md', 'your cursor stays in the note');
+    assert.throws(() => readFileSync(join(project, 'docs', 'decisions.md')), 'the log is a buffer you save, not a file Pair wrote');
+    await until(() => !marks().some(([line]) => line === 17 || line === 20), 'the answered question\'s mark and the decision\'s to go');
+
+    // Tasks only when asked, and nothing happens until the yes.
+    keys(':Pair tasks<CR>');
+    await until(() => remote('&filetype') === '' && remote('expand("%")') === '', 'the tasks panel');
+    const panel = JSON.parse(remote('json_encode(getline(1, "$"))'));
+    assert.deepEqual(panel, [
+      'From docs/dead-letters.md, as you asked. Nothing is added until you say so.', '',
+      '1  Park failed webhooks in dead_letters after the last attempt', '   lines 3-4, line 8',
+      '2  Decide how long dead letters are kept', '   open question, line 26', '',
+      'y copies them as a checklist · e edits the list · q cancels',
+    ]);
+    keys('y');
+    await until(() => remote('expand("%:t")') === 'dead-letters.md', 'the panel to close');
+    assert.deepEqual(JSON.parse(remote('json_encode(getreg(\'"\', 1, 1))')), [
+      '- [ ] Park failed webhooks in dead_letters after the last attempt (lines 3-4, line 8)',
+      '- [ ] Decide how long dead letters are kept (open question, line 26)',
+    ]);
   } finally {
     await stop();
   }

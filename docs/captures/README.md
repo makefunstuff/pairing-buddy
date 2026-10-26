@@ -7,7 +7,7 @@ recording comes out the same each time.
 - **The daemon** is the real one: `pair daemon`, with a config that points both models at a local stand-in server.
 - **The models:** [model.mjs](model.mjs) is a small OpenAI-compatible server. The Watcher's score depends on the
   trigger it is asked about. The Partner's turns (tool calls or words, each after its own pause) come in order
-  from [scenes.mjs](scenes.mjs). The tools those calls reach are real: they read the files, check the line and the
+  from [scenes.mjs](scenes.mjs), and so do its readings of a note: the marks, and the tasks. The tools those calls reach are real: they read the files, check the line and the
   code they point at, and type the edit.
 - **The board:** [board.mjs](board.mjs) stands in for herdr's work board in the context-card scene, which also
   fetches Telescope and plenary at pinned commits for its searches.
@@ -21,9 +21,15 @@ recording comes out the same each time.
 - **The project** is [hookd/](hookd/), a small Go webhook service with a retry bug. Each scene starts it at its
   own point. The held thought is in C instead: [ringbuf/](ringbuf/), a ring buffer with a Makefile, and `clangd`
   gives its diagnostics; so is the crash scene: [probe/](probe/), a small C hash table built and run with `make run`
-  and AddressSanitizer. Delight is in C too: [intern/](intern/), a string-interning table and its benchmark.
+  and AddressSanitizer. Delight is in C too: [intern/](intern/), a string-interning table and its benchmark; and the
+  agents scene: [hashtab/](hashtab/), another C hash table, timed with `make`. Teach on request is in the C
+  program the live tone tests use ([test/live/probe](../../test/live/probe/)), whose `make run` fails its check with exit 1. The notes scene adds its
+  design note, [notes/dead-letters.md](notes/dead-letters.md), which the tests read too.
 - **No core dumps.** The crash scene crashes a program on purpose. `record.sh` sets the core limit to 1 byte for
   everything it starts, so nothing reaches the machine's crash reporter (see [test/no-core.mjs](../../test/no-core.mjs)).
+- **Your other agents** (the agents scene only): a stand-in board, a script that prints the board's list, with its
+  task files in the scratch directory, and the herdr stand-in's `agent.list`. They move on once you start typing.
+  The other scenes read no board.
 - **Neovim** is clean: [init.lua](init.lua), the ayu colorscheme (fetched at a pinned commit), and scratch XDG
   directories. The search-trail scene also fetches Telescope and plenary at pinned commits; Telescope's history goes
   to the scratch directories too.
@@ -45,6 +51,9 @@ recording comes out the same each time.
 | [pickup](tapes/pickup.tape) | the morning pick-up: an empty Neovim lands where yesterday's debrief said, one line, `Alt-j` to the failing test |
 | [debrief](tapes/debrief.tape) | the day's end: the lease fix goes green, `/end` in the chat pane, and `e` on tomorrow's first step |
 | [crash](tapes/crash.tape) | a compiler error, a crash and its frame, and a new warning, from `make run` on save |
+| [agents](tapes/agents.tape) | your other agents' news, one line at your next breakpoint, and `:Pair agents` |
+| [notes](tapes/notes.tape) | notes in the margin: the marks, a fixed line, a decision logged, the tasks panel |
+| [teach](tapes/teach.tape) | Alt-? on a remark: the idea worth keeping behind it, and its link |
 
 ## Recording
 

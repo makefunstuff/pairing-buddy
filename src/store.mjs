@@ -76,6 +76,12 @@ export function openStore(path) {
     /** The session of `root` that has not ended, if any. */
     activeSession: root => toSession(db.prepare('SELECT * FROM sessions WHERE root = ? AND ended_at IS NULL ORDER BY id DESC LIMIT 1').get(root)),
 
+    /** The session of conversation `conversationId` that has not ended, if any. */
+    activeSessionOf: conversationId => toSession(db.prepare('SELECT * FROM sessions WHERE conversation_id = ? AND ended_at IS NULL').get(JSON.stringify(conversationId))),
+
+    /** The messages of session `id` since `since`, oldest first. */
+    messagesSince: (id, since) => db.prepare('SELECT at, sender, text FROM messages WHERE session_id = ? AND at >= ? ORDER BY rowid').all(id, since),
+
     createSession({root, conversationId, goal, level, at}) {
       const {lastInsertRowid} = db.prepare('INSERT INTO sessions (root, conversation_id, goal, level, started_at) VALUES (?, ?, ?, ?, ?)')
         .run(root, JSON.stringify(conversationId), goal ?? null, level, at);

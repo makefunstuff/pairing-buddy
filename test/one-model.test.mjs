@@ -77,7 +77,7 @@ function oneModel(partnerAnswers) {
 
 function oneModelConfig() {
   const dataDir = mkdtempSync(join(tmpdir(), 'pair-data-'));
-  return parseConfig({dataDir, socket: join(dataDir, 'pair.sock'), typingPauseMs: 50, model: {api: 'openai', baseUrl: 'http://unused', model: 'm'}});
+  return parseConfig({dataDir, socket: join(dataDir, 'pair.sock'), typingPauseMs: 50, agents: false /* never the real board of the machine running the tests */, model: {api: 'openai', baseUrl: 'http://unused', model: 'm'}});
 }
 
 const failTwice = (editor, project) => {

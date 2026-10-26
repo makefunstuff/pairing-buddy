@@ -1,8 +1,9 @@
 // The scenes: where the project starts, the session's goal and settings, and the models' words and timing.
 // Everything else in a capture is the real plugin and daemon at work: the triggers, the tools reading and checking
 // the files, the tests on save and on the unsaved buffer (go test, for real), and what Neovim draws.
-import {readFileSync, writeFileSync} from 'node:fs';
+import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
+import {fileURLToPath} from 'node:url';
 
 const score = (...kinds) => prompt => (kinds.some(kind => prompt.includes(`(${kind})`)) ? '9' : '0');
 
@@ -39,6 +40,33 @@ const CASES = [
   '\t\t{"negative attempt", -1, 0},',
   '\t\t{"shift past 63 bits", 64, time.Minute},',
 ].join('\n');
+
+// The teach scene's words are a real model's, from one run of the live tone test on the same project, unedited.
+const REMARK = 'table.c:35 divides size_t by size_t, so `t->len / t->cap` is always 0 and the table never grows; at load 0.98 linear probing blows past 3 probes.';
+const TEACHING = 'When both operands of `/` are integers, C truncates the result, so a ratio test like that is 0 or 1 — cast to `double` to get the intended fraction.\nhttps://en.cppreference.com/w/c/language/operator_arithmetic';
+
+// The board of a day of exploring: four tasks of this project at work and a notes agent, all in their own panes.
+const task = (n, title, state, stage, msg) => ({id: `hashtab/${n}`, title, state, stage, msg});
+const TASKS = [
+  task(21, 'See crashes and compiler errors', 'working', 'working', 'Parsing clang diagnostics'),
+  task(22, 'The exploration loop: read every run', 'working', 'reviewing', 'Under review'),
+  task(24, 'The search trail from Telescope', 'working', 'working', 'Reading the docs'),
+  task(25, 'Context card and no ceremony', 'working', 'after', 'queued after #21'),
+];
+const AGENTS = {
+  tasks: TASKS,
+  files: Object.fromEntries([21, 22, 24, 25].map(n => [`hashtab/${n}`, {worktree: `/work/hashtab-${n}`, link: {pane: `w${n}:p1`}}])),
+  herdr: [
+    ...[21, 22, 24].map(n => ({pane_id: `w${n}:p1`, cwd: `/work/hashtab-${n}`, agent: 'claude', agent_status: 'working'})),
+    {pane_id: 'w3:p1', cwd: '/work/notes', agent: 'pi', agent_status: 'working', terminal_title_stripped: 'tidy the design notes'},
+  ],
+  // While you type: #21 asks you a question, #22 passed its review, and the notes agent finishes.
+  later(herdr, show) {
+    show(TASKS.map(t => (t.id === 'hashtab/21' ? {...t, state: 'blocked', stage: 'asks', msg: 'Should a segfault also name its signal number?'}
+      : t.id === 'hashtab/22' ? {...t, state: 'blocked', stage: 'approval', msg: 'Review: Pass'} : t)));
+    herdr[3].agent_status = 'idle';
+  },
+};
 
 export const scenes = {
   // 01: the delivery test is red; you open backoff.go and change the shift. Pair reads, and says why not.
@@ -194,6 +222,28 @@ export const scenes = {
       {when: /^\[end\]/, wait: 1600, say: '✓ delivery makes all 5 attempts\n✓ leases outlast the last attempt: `TestNoDoubleDelivery` passes\n○ open: `AttemptTimeout` is set, but nothing enforces it yet\nTomorrow, first: give `send()` a context with that timeout, in worker.go:27.'},
     ],
   },
+  // Your other agents: their news waits while you type, and comes as one line when you save; :Pair agents has them all.
+  'agents': {
+    project: 'hashtab',
+    goal: 'a faster probe',
+    watcher: score(),
+    partner: [],
+    agents: AGENTS,
+  },
+  // Teach on request, in a C project with a Makefile: make run fails twice, Pair says why under your line, and
+  // Alt-? asks for the idea behind it. The keys say what they do, since this Neovim has never used them.
+  teach: {
+    project: '../../test/live/probe',
+    build: ['make', '-s', 'probe'],
+    goal: 'the table keeps the average probe under 3',
+    watcher: score('repeated_error'),
+    partner: [
+      {when: /make run/, wait: 1200, call: ['read', {file: 'table.c'}]},
+      {wait: 1300, call: ['point', {file: 'table.c', line: 35, note: 'size_t/size_t: always 0, never grows', code: 't->len / t->cap > 0.7'}]},
+      {wait: 200, say: REMARK},
+      {when: /\[teach\]/, wait: 2200, say: TEACHING},
+    ],
+  },
   // The same hand-over, taken back with a key while Pair types.
   'take-back': {
     goal: 'retries reach the budget',
@@ -204,5 +254,40 @@ export const scenes = {
       {when: /edge cases/, wait: 600, call: ['edit', {file: TABLE, line: 15, new_text: CASES}]},
       {say: 'Okay, yours.'},
     ],
+  },
+  // Notes in the margin: you finish a sentence in the dead-letters design note. At the pause the rule marks the
+  // paragraph that repeats line 9; when you stop, the model's four marks join it. You fix line 20, write a decision
+  // and log it with Alt-d, then ask for tasks.
+  notes: {
+    goal: 'dead letters for webhooks',
+    setup(project) {
+      const note = readFileSync(fileURLToPath(new URL('notes/dead-letters.md', import.meta.url)), 'utf8');
+      mkdirSync(join(project, 'docs'));
+      writeFileSync(join(project, 'docs', 'dead-letters.md'), note.replace('still gets the webhook.', 'still gets the webhoo'));
+    },
+    watcher: score(),
+    partner: [],
+    // The note's readings, in order (the last one again for any after it), and the tasks.
+    notes: {
+      wait: 900,
+      marks: [
+        [
+          {kind: 'code', line: 4, text: 'Deliver returns ErrBudget at worker.go:36 and the caller drops it; parking must happen in the caller, not here.', file: 'internal/delivery/worker.go', file_line: 36},
+          {kind: 'contradiction', line: 14, text: 'Line 14 says 5 attempts, line 20 says 6; the test config sets MaxAttempts: 5.', other_line: 20},
+          {kind: 'question', line: 17, text: 'Replay as attempt 1 with full budget: does the 5-attempt cap then apply again, so a dead receiver loops forever?'},
+          {kind: 'question', line: 20, text: 'Budget is 15s in the test config; does a down receiver for a minute even reach 6 attempts before ErrBudget?'},
+        ],
+        [
+          {kind: 'code', line: 4, text: 'Deliver returns ErrBudget at worker.go:36 and the caller drops it; parking must happen in the caller, not here.', file: 'internal/delivery/worker.go', file_line: 36},
+        ],
+      ],
+      tasks: [
+        {title: 'Park failed webhooks in dead_letters after last attempt', lines: 'lines 3-4, line 8, line 14'},
+        {title: 'List parked dead letters newest first on admin page', lines: 'lines 9, 15'},
+        {title: 'Replay dead letter with same payload and id', lines: 'lines 10, 17-18'},
+        {title: 'Decide dead letter retention period', lines: 'line 26', open: true},
+        {title: 'Confirm operator visibility and replay scope on admin page', lines: 'line 27', open: true},
+      ],
+    },
   },
 };

@@ -40,7 +40,7 @@ A heading the model adds itself (`Session note:`, `# Debrief`, …) is dropped, 
 
 ## The next session starts from it
 
-The next session in the same project (the same git root) starts from the last note, in two ways:
+The next session in the same project (the same git root, or [session root](config.md#session-roots)) starts from the last note, in two ways:
 
 - The chat shows it before the new goal (or before asking for one), unless the last session ended less than 30 minutes ago and its debrief is still on screen:
 

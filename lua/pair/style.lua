@@ -7,6 +7,7 @@ local M = {}
 
 M.glyphs = {
   voice = '●', -- the pair speaks: one or two lines under the line they are about
+  idea = '∴', -- the idea behind its words, when you ask for it
   mark = '▎', -- in the sign column, where it points
   held = '•', -- in the sign column, where a thought waits for your next break
   away = '◌', -- not connected, or a model is down
@@ -15,6 +16,12 @@ M.glyphs = {
   fail = '✗', -- a test failed, a build failed, a run crashed
   warn = '△', -- a compiler warning
   listen = '◉', -- it listens while you hold the listen key
+  agents = '◇', -- another agent's news, after Pair's own part of the statusline
+  question = '?', -- in a note's margin: a question the note does not answer
+  contradiction = '≠', -- two lines that cannot both be true
+  code = '→', -- a claim that depends on code: the link goes there
+  decision = '◆', -- a decision worth logging, and the log
+  ['repeat'] = '≈', -- a paragraph that says again what an earlier one said
 }
 
 -- The statusline while Pair runs your tests or thinks.
