@@ -1,7 +1,7 @@
 // The systemd user unit that `pair setup` installs.
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {unitFile} from '../src/service.mjs';
+import {unitFile} from '../src/systemd.mjs';
 
 test('the unit starts the daemon at login and restarts it when it fails', () => {
   const unit = unitFile({node: '/opt/node/bin/node', script: '/opt/pair/bin/pair.mjs'});

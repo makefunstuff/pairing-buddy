@@ -29,9 +29,12 @@ pair setup
    ([config.md](config.md)).
 2. In a terminal, offers to log in to a model provider (a subscription or an API key; see
    [Logins and keys](config.md#logins-and-keys)). Enter skips it.
-3. Installs the daemon as a systemd user service, `pairing-buddy.service`: it starts at login and restarts when it
-   fails.
-4. Starts it, and prints the next steps.
+3. Stores the environment variables your model entries take keys from (`apiKeyEnv`) for the service, which does not
+   get your shell's environment ([config.md](config.md#logins-and-keys)).
+4. Installs the daemon as a service that starts at login and restarts when it fails: a systemd user service,
+   `pairing-buddy.service`, on Linux, and a launchd agent, `io.github.makefunstuff.pairing-buddy`, on macOS. Without
+   either, see below.
+5. Starts it, and prints the next steps.
 
 Then add the plugin to your lazy.nvim specs:
 
@@ -49,16 +52,19 @@ With `auto_connect`, every Neovim connects to the daemon at startup. Without a p
 The plugin's options are in [neovim.md](neovim.md#setup).
 
 **Upgrading.** Run `npm install -g github:makefunstuff/pairing-buddy` and `pair setup` again, also after upgrading
-Node.js: the unit names the Node.js binary it runs, and setup rewrites it and restarts the daemon.
+Node.js: the service names the Node.js binary it runs, and setup rewrites it and restarts the daemon.
 
 **Uninstalling.** `pair uninstall` stops and removes the service, and keeps the config and data.
 
 **From a clone.** `npm ci && npm link` in it, then `pair setup` (the service then runs the clone's code), and
 `dir = '/path/to/clone'` in place of the GitHub name in the lazy.nvim spec.
 
-**Without systemd.** Skip `pair setup`: `pair` then starts the daemon in the background when it is not running, and
-`pair daemon` runs it in the foreground. Nothing restarts it after a crash
-([#31](https://github.com/makefunstuff/pairing-buddy/issues/31)).
+**Without systemd or launchd.** `pair setup` then installs no service: `pair` starts the daemon in the background
+when it is not running, under a supervisor (`pair supervise`) that restarts it 2 s after it crashes or fails, and
+gives up after 5 failures in a minute. A clean stop (`kill` with SIGTERM) stops both. Nothing starts it at login; to
+have that, run `pair supervise` from your init system as your user, or `pair daemon` under a supervisor of its own
+that restarts it on failure, for example a runit user service (`exec pair daemon` in its `run` file) or an OpenRC
+user service with `supervisor=supervise-daemon`. Set `PAIR_CONFIG` there if your config is not in the default place.
 
 ## Check it: `pair doctor`
 
@@ -78,7 +84,7 @@ Node.js: the unit names the Node.js binary it runs, and setup rewrites it and re
 | Check | What it looks at |
 | --- | --- |
 | config | The file parses, and its models are not still the example's |
-| service | The unit is installed, enabled, running, and its Node.js still exists |
+| service | The systemd unit or launchd agent is installed, starts at login, runs, and its Node.js still exists |
 | daemon | It answers on its socket, with the same version as `pair` |
 | plugin | Neovim, started headless with your config, loads the plugin |
 | neovim | How many Neovims are connected, in which projects |
@@ -109,7 +115,7 @@ The chat pane is optional: a Neovim alone is a whole session.
 
 **Chat commands.** `/goal <text>`, `/level quiet|normal|chatty`, `/scout`, `/navigate`, `/drive [what]`, `+` or
 `/useful` and `-` or `/noise` (your verdict on Pair's last unasked remark), `/today` (what Pair did here today, as in
-`:Pair today`, without the keys), `/end`, and `/quit` (closes the pane; the
+`:Pair today`, without the keys), `/agents` (your other agents and board tasks), `?` or `/why` (the idea worth keeping behind what Pair said last), `/end`, and `/quit` (closes the pane; the
 session goes on). A line that starts with "you take it" or "your turn" hands Pair the wheel too; anything else is a
 question for Pair. When Pair asks before running or typing a command, your next line is the answer: `y` or `yes`
 allows it, anything else declines.
@@ -126,13 +132,21 @@ It also emits OSC 133 marks (prompt, output, end with the exit code) for a termi
 **Without herdr**, run `pair chat` in any terminal. Pair then sees your editor and, with the shell hook, your
 commands' exit codes, but no terminal output.
 
-**Several projects** work at once: each project (git root) has its own session, chat pane and goal, and the daemon
-serves them all. Several Neovims in one project share its session; Pair shows points, suggestions and edits in the
-Neovim you used last (the one that last sent an edit, a cursor move or a file change), and reads a file from
-whichever Neovim has it loaded.
+**Several projects** work at once: each project has its own session, chat pane and goal, and the daemon serves them
+all. A project is the git root of the folder Neovim and `pair` start in, so each git worktree is a project of its
+own: two pieces of work in one repository each get their own session in their own worktree. In a monorepo, where
+the git root is too coarse, [`sessionRoots`](config.md#session-roots) makes smaller folders projects.
+
+**Several Neovims** in one project share its session. Pair shows points, suggestions and edits in the Neovim you are
+in: the one with focus, which Neovim learns from the terminal's focus reports and Pair from herdr's focused pane;
+when none has it (you are in the chat pane, or the browser), the one you were in last. A Neovim's own doings, such
+as its LSP's diagnostics or a file it reloads while you are elsewhere, never make it the one. Pair reads a file from
+whichever Neovim has it loaded, the one you are in first.
 
 **Restarts.** If the daemon restarts, the chat pane says so, waits for it and carries on, without printing the
-history again. Neovim reconnects by itself too ([neovim.md](neovim.md#setup)).
+history again. Neovim reconnects by itself too ([neovim.md](neovim.md#setup)). If you had asked something the
+restart cut off, Pair finishes that answer and shows it marked as late, in the chat and in Neovim, also when they
+reconnect after it. A remark Pair was making unasked, or a hand-over, is dropped instead.
 
 **The chat pane's colours.** It prints Pair's name and the `code` in its words in Pair's accent from Neovim, in true
 colour, so the two read as one; long lines wrap under the words. Until a Neovim with `termguicolors` connects it uses
@@ -142,6 +156,6 @@ the terminal's cyan, and with `NO_COLOR` set it prints no colours.
 
 - `pair auth` logs in to model providers and lists what is set ([config.md](config.md#logins-and-keys)).
 - `pair stats` shows how often Pair spoke unasked and what you made of it ([memory.md](memory.md#pair-stats)).
-- `pair daemon` runs the daemon in the foreground.
-- The daemon's log goes to the journal under the service (`journalctl --user -u pairing-buddy`), and to `daemon.log`
-  in the data directory when `pair` started it.
+- `pair daemon` runs the daemon in the foreground; `pair supervise` too, restarting it when it fails.
+- The daemon's log goes to the journal under systemd (`journalctl --user -u pairing-buddy`), to
+  `~/Library/Logs/pairing-buddy.log` under launchd, and to `daemon.log` in the data directory when `pair` started it.

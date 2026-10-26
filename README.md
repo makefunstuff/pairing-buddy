@@ -54,7 +54,7 @@ Then set your model ([below](#configure-models)), open Neovim, run `pair` in the
 session takes its goal from the herdr board task of your branch, or the branch name, and asks only when there is
 neither. `pair doctor` checks every part and says how to fix what is wrong.
 
-Upgrading, installing from a clone, running without systemd, and the chat commands are in
+Upgrading, installing from a clone, running without systemd or launchd, and the chat commands are in
 [docs/install.md](docs/install.md).
 
 ## Configure models
@@ -73,7 +73,7 @@ and the **Partner**, which thinks and writes what Pair says. One model can do bo
 }
 ```
 
-Restart the daemon after a change (`systemctl --user restart pairing-buddy`) and run `pair doctor`. Every field, two
+The daemon takes a change as you save it, without a restart; run `pair doctor` to check the models. Every field, two
 models, logins and keys, tips for local models and the talk levels are in [docs/config.md](docs/config.md).
 
 ## The Neovim plugin
@@ -88,10 +88,13 @@ to do:
 | `Alt-y` | Take Pair's suggested change, as your own edit |
 | `Alt-t` (hold) | Ask aloud: [push-to-talk](docs/voice.md), when voice is set up |
 | `Alt-u` / `Alt-n` | Tell Pair its last remark was useful / noise |
+| `Alt-l` / `Alt-d` | In a Markdown note: open the code a mark names / log the decision on your line |
+| `Alt-?` | The one idea worth keeping behind Pair's words under your line; again, open its link to the docs |
+| `Alt-a` | Go to the agent whose news Pair relayed ([your other agents](docs/agents.md)) |
 | any key | Take the wheel back while Pair drives |
 
-The main commands are `:Pair ask <question>`, `:Pair drive [what]`, `:Pair scout`, `:Pair navigate`, `:Pair context`, `:Pair today`
-and `:Pair end`.
+The main commands are `:Pair ask <question>`, `:Pair drive [what]`, `:Pair scout`, `:Pair navigate`, `:Pair context`,
+`:Pair today`, `:Pair agents`, `:Pair tasks` and `:Pair end`.
 All options, commands, the statusline segment and the highlight groups are in [docs/neovim.md](docs/neovim.md), with
 captures of each moment.
 
@@ -123,6 +126,14 @@ only if the cause is elsewhere, says so under your edit. [docs/neovim.md](docs/n
 **Follows your search trail.** When you search in circles (three Telescope or snacks.picker searches, one of them
 without a result you opened), Pair says where the thing is, in the code's own word. `:Pair trail` shows the searches it saw. [docs/neovim.md](docs/neovim.md#the-search-trail)
 
+**Thinks in Markdown with you, never for you.** In a note, Pair puts at most five marks in the margin: `?` a question
+the note leaves open, `≠` two lines that cannot both hold, `→` what the code it names really does, `◆` a decision,
+and `≈` a paragraph that repeats an earlier one (a rule finds that one, not the model). A changed line loses its mark.
+`Alt-d` logs a decision in `decisions.md` next to the note, as a buffer you save; `:Pair tasks` lists the note's work
+and adds nothing until you press `y`. [docs/notes.md](docs/notes.md)
+
+![Five marks in a design note's margin, a fixed line losing its marks, a decision logged with Alt-d, and the tasks panel](docs/images/notes.gif)
+
 **Runs your tests on save.** Set a test command per project, and each save runs it in Pair's pane; a test your change
 broke gets a remark and a suggested fix. [docs/tests-on-save.md](docs/tests-on-save.md)
 
@@ -151,6 +162,19 @@ glows. After a long red or a regression, or when a number in your benchmark fina
 says what is now true, then goes. Off by default: short sounds for the same moments, only while you are away from
 Neovim. [docs/neovim.md](docs/neovim.md#when-it-goes-green)
 
+**Keeps your other agents in one place.** When another herdr agent or a task on the
+[Herdr Projects](https://github.com/eliasstravik/herdr-projects) board needs you, is ready to approve, failed or is
+done, Pair says so in one line after its own in the statusline, at your next break and never while you type. `Alt-a`
+brings that agent's pane to the front; `:Pair agents` (or `/agents`) lists them all, the ones that need you first. It
+only reads the board and herdr. [docs/agents.md](docs/agents.md)
+
+![While you type, the other agents move on; you save, and one line comes in the statusline: #21 needs you, and M-a goes there](docs/images/agents.gif)
+
+**Talks like a colleague.** The fact and its `file:line` first, the numbers, no praise, filler or emoji, and at most
+30 words for a remark. Ask why (`Alt-?`, or `?` in the chat) and it gives the one idea worth keeping behind what it
+said, with a link to the docs when it is sure of one. [docs/tone.md](docs/tone.md),
+[docs/neovim.md](docs/neovim.md#the-idea-behind-it)
+
 **Remembers and learns.** Each session ends with a short note the next one starts from, and your useful/noise verdicts
 tune when Pair talks. `pair stats` shows the numbers. [docs/memory.md](docs/memory.md)
 
@@ -168,9 +192,12 @@ Off until you set `"voice"` in the config. [docs/voice.md](docs/voice.md)
 - [Driver and suggestions](docs/driver.md): handing over, tests on the unsaved buffer, taking the wheel back
 - [Tests on save](docs/tests-on-save.md)
 - [Builds and crashes](docs/builds.md): crashes, compiler errors and new warnings, read from your runs
+- [Notes in the margin](docs/notes.md): marks in a Markdown note, the decision log, tasks when asked
+- [Tone](docs/tone.md): how Pair's words read, teaching on request, and the live tests that hold them
 - [Push-to-talk](docs/voice.md): asking aloud, whisper.cpp, answers read aloud
 - [The Watcher](docs/watcher.md): the speak gate, held thoughts, thinking, keep-warm
 - [Memory and feedback](docs/memory.md): session notes, verdicts, tuning, `pair stats`
+- [Your other agents](docs/agents.md): other agents' news at your breaks, `Alt-a`, `:Pair agents`
 - [herdr](docs/herdr.md): what Pair gets from herdr and what is missing
 - [Data and privacy](docs/data.md): what is stored where, and what leaves your machine
 - [Tests](docs/testing.md): `npm test` and the live tests against real models

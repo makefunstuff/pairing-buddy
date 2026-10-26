@@ -16,11 +16,13 @@ import {keptOutput, Ledger, ledgerDetail, today} from './ledger.mjs';
 import {placeRun} from './run-places.mjs';
 import {crashText, hasNews, readingSummary, readRun} from './run-output.mjs';
 import {RUN_TIMEOUT_MS, shellQuote} from './scout-pane.mjs';
+import {asksBack, oneQuestion, PROSE_CHECKS} from './prose-triggers.mjs';
 import {parseTestOutput, testSummary} from './test-output.mjs';
 import {TestRuns} from './test-runs.mjs';
 import {currentTrail, trailMatches, trailSummary} from './trail.mjs';
 import {detectTriggers} from './triggers.mjs';
 import {tuning, WINDOW_MS} from './tuning.mjs';
+import {KEEP, splitTeaching, teachInput} from './tone.mjs';
 
 const SILENT = /^\W*silent\W*$/i;
 // "…so no drift here — SILENT.": a model that explains its SILENT still means silence.
@@ -55,10 +57,11 @@ const CHECKS = {
   new_warning: 'A build printed a warning that was not there before. Read its line. Only if it points at a real bug, point '
     + 'at it and say why in one sentence; if it is harmless while exploring (an unused variable, a parameter not used yet), '
     + 'answer exactly SILENT.',
+  ...PROSE_CHECKS,
 };
 
 export function watchInput(trigger, description) {
-  return `[watch] ${trigger.kind}: ${trigger.detail}\n\nNow:\n${description}\n\n${CHECKS[trigger.kind]} If no remark would help, answer exactly SILENT.`;
+  return `[watch] ${trigger.kind}: ${trigger.detail}\n\nNow:\n${description}\n\n${CHECKS[trigger.kind]} ${KEEP.remark} If no remark would help, answer exactly SILENT.`;
 }
 
 /**
@@ -107,6 +110,7 @@ export function selectionInput({file, from, to}, text) {
 }
 
 const NAME_CHARS = 32; // of a failing test's name in the statusline
+const LATE_QUESTION_CHARS = 60; // of the question a late answer names
 
 /** Whether a finished test run failed: its exit code, a timeout, a failing test or a crash (a sanitizer's, also with exit 0) say so. */
 const isRed = ({exit, timedOut, tests, reading}) => exit !== 0 || timedOut || !!tests?.failedCount || !!reading?.crash;
@@ -212,6 +216,7 @@ export class PairSession {
     this.spoke = false; // anything reached the user this turn
     this.said = false; // the say tool was used this turn
     this.unasked = false; // the running turn is a remark nobody asked for
+    this.asksBack = false; // that remark is one question back, and nothing else (see prose-triggers.mjs)
     this.words = []; // what Pair said this turn: an unasked remark shows it under the user's line too
     this.target = null; // where the user's jump key goes: Pair's suggestion this turn, else where it pointed last
     this.held = []; // parts of an urgent unasked remark that came while the user was typing
@@ -224,13 +229,16 @@ export class PairSession {
     this.handback = null; // that edit's lines and how the tests went on them: {file, line, endLine, tests}
     this.remarkId = null; // the stored remark of the running unasked turn
     this.lastRemark = null; // the last remark that reached the user: what feedback without an id rates
+    this.lastWords = null; // what Pair said in its last turn that said anything: what a teach request without words is about
     this.tickedAt = null;
     this.activeMs = 0; // active time not yet stored
     this.activeAt = 0; // when active time was last counted: what it is stored under
     // The tests run on save, with `testOnSave` ({command, outputFile}); what the editors last heard of them.
-    this.testRuns = testOnSave && new TestRuns({...testOnSave, root: record.root, pane: () => this.scout, report: run => this.testRun(run)});
+    this.testRuns = null;
+    this.setTestOnSave(testOnSave);
     this.testsShown = null;
     this.runShown = null; // the places of the last build or run that the editors show (see showRun)
+    this.lateForEditors = null; // a late answer no editor was there for, shown to the next one that connects
     this.runError = null; // the last run that could not run, said once in the chat
     this.wasRed = false; // the last run failed
     this.usedAt = null; // when the user last did something in this session (see USER_EVENTS), since the daemon loaded it
@@ -239,6 +247,12 @@ export class PairSession {
     this.ledger = new Ledger({store, sessionId: record.id, changed: () => this.notify('editors', {type: 'ledger_changed'}), now});
     this.trailVerdict = null; // what the gate decided on the search trail last: {start, verdict, reason, score, bar}
     this.delight = new Delight(); // the moments worth a glow, and the sounds while the user is away
+  }
+
+  /** Runs the tests on each save with `testOnSave` ({command, outputFile}) from now on, or none when it is null. */
+  setTestOnSave(testOnSave) {
+    if (testOnSave?.command === this.testRuns?.command) return;
+    this.testRuns = testOnSave && new TestRuns({...testOnSave, root: this.record.root, pane: () => this.scout, report: run => this.testRun(run)});
   }
 
   get id() { return this.record.id; }
@@ -472,6 +486,7 @@ export class PairSession {
   async remark(trigger, score, waitedMs = null) {
     // The gate saw a pause, but a Partner turn takes seconds: the user may be typing again by the time it answers.
     this.unasked = true;
+    this.asksBack = asksBack(trigger.kind);
     this.holding = urgent(trigger.kind) ? null : [];
     const since = this.now(); // a breakpoint from here on is the one it waits for
     const id = this.remarkId = this.store.addRemark({sessionId: this.id, trigger: trigger.kind, score, at: this.now(), waitedMs});
@@ -497,6 +512,7 @@ export class PairSession {
       if (this.holding) this.hold({id, trigger, since, parts: this.holding}, target);
     } finally {
       this.unasked = false;
+      this.asksBack = false;
       this.holding = null;
       this.remarkId = null;
       this.remarking = null;
@@ -549,8 +565,21 @@ export class PairSession {
       return '';
     }
     await this.yieldRemark();
-    await this.talk(`[user] ${text}${await this.selected(selection)}\n\nNow:\n${describeState(this.state, this.now())}`);
+    await this.talk(`[user] ${text}${await this.selected(selection)}\n\nNow:\n${describeState(this.state, this.now())}\n\n${KEEP.answer}`);
     return this.words.join('\n');
+  }
+
+  /**
+   * The user's `question` the daemon was answering when it stopped: the Partner finishes it on restart (`answering`
+   * resolves with its answer), and it shows as late, in the chat and the editors, also those that reconnect after it.
+   */
+  async lateAnswer(question, answering) {
+    const asked = question.length > LATE_QUESTION_CHARS ? `${question.slice(0, LATE_QUESTION_CHARS - 1)}…` : question;
+    this.message('system', `The daemon restarted while Pair was answering "${asked}"; its answer comes late.`);
+    await this.talk(null, {}, answering);
+    if (!this.words.length) return;
+    const message = {type: 'message', sender: 'system', text: `Late answer to "${asked}": ${this.words.join('\n')}`, at: this.now()};
+    if (!this.notify('editors', message)) this.lateForEditors = message;
   }
 
   /** The lines the user selected, for the Partner's input; '' without a selection. */
@@ -564,8 +593,9 @@ export class PairSession {
    * Runs one Partner turn (`options` as for the Partner's ask); true when anything reached the user. While the model
    * of a turn that thinks is at work, the statusline says so: thinking takes seconds, and the user should not take
    * it for silence. While one of its tools runs (it types an edit, reads, runs a command) it says what that does.
+   * `answering` resolves with the answer, as the Partner's ask does: by default, it asks.
    */
-  async talk(input, options = {}) {
+  async talk(input, options = {}, answering = () => this.partner.ask(this.conversationId, input, options)) {
     this.busy = true;
     this.spoke = false;
     this.said = false;
@@ -575,14 +605,17 @@ export class PairSession {
     this.thinks = this.partner.thinkingOf(this.conversationId, options.kind) !== 'off';
     this.showThinking(true);
     try {
-      const answer = await this.partner.ask(this.conversationId, input, options);
+      const answer = this.voiced(await answering());
       // After a say, local models tend to end with filler or a repeat; the say already was the answer.
       if (answer && !silent(answer) && !this.said) {
         this.show(() => this.message('pair', answer));
         this.words.push(answer);
         this.spoke = true;
       }
-      if (this.words.length) this.bookWords();
+      if (this.words.length) {
+        this.lastWords = this.words.join('\n');
+        this.bookWords();
+      }
     } catch (error) {
       // A remark nobody asked for fails quietly: the statusline already says that the model is down.
       if (this.unasked) this.log(`remark failed: ${error.message}`);
@@ -702,6 +735,29 @@ export class PairSession {
     // the call as plain text, and the user sees nothing.
     await this.configurePartner(this.role);
   }
+
+  /**
+   * The user asks for the idea behind Pair's words (the teach key in Neovim, ? in the chat): `said` is what showed
+   * under their line, else what Pair said last. The answer goes to the chat, and to the editor to show under those
+   * words, with its link apart; an editor that asked always hears back, with no text when there is none.
+   */
+  async teach(said = this.lastWords, remark = null) {
+    if (remark) this.seen(remark); // asking about a remark answers it, like going where it points
+    // Why there is no teaching, for the chat and the editor that asked.
+    const unable = note => {
+      this.message('system', note);
+      this.notify('editor', {type: 'teaching', text: '', link: null, note});
+    };
+    if (!said) return unable('Pair has said nothing yet to explain.');
+    await this.yieldRemark();
+    if (this.busy) return unable('Pair is still answering; ask again once it is done.');
+    this.message('user', 'why?');
+    const lastWords = this.lastWords;
+    await this.talk(teachInput(said));
+    this.lastWords = lastWords; // asking again is about the same words, not about this answer
+    this.notify('editor', {type: 'teaching', ...splitTeaching(this.words.join('\n'))});
+  }
+
 
   /** Gives the Partner `role`'s tools and instructions, with the last session's note to start from. */
   configurePartner(role) {
@@ -839,8 +895,18 @@ export class PairSession {
 
   // The Partner's tools (see tools.mjs). Each returns what the model is told.
 
-  say(text) {
-    if (silent(text)) return 'shown'; // some models say their SILENT instead of answering it
+  /**
+   * What of `text` Pair shows: all of it, but in a remark that is one question back, that question alone, once.
+   * Null when nothing of it shows.
+   */
+  voiced(text) {
+    if (!this.asksBack || !text) return text;
+    return this.said ? null : oneQuestion(text);
+  }
+
+  say(words) {
+    const text = this.voiced(words);
+    if (!text || silent(text)) return 'shown'; // some models say their SILENT instead of answering it
     this.spoke = true;
     this.said = true;
     this.words.push(text);
@@ -850,6 +916,7 @@ export class PairSession {
 
   /** Marks lines in the editor, with `code` on the first one underlined; the last point of a turn is where the jump key goes. */
   async point({file, line, endLine, note, code}) {
+    if (this.asksBack) return 'Not in this remark: ask your one question in words.';
     const path = await projectFile(this.root, file);
     if (!path) return `No file ${file} in the project`;
     this.spoke = true;

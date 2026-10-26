@@ -2,6 +2,7 @@
 // llama.cpp or vLLM, and it answers from a scene's script. The Watcher's answer is a function of the prompt;
 // the Partner's answers are taken in order, each after its own pause. Health probes get "OK".
 import {createServer} from 'node:http';
+import {MARKS_PROMPT, TASKS_PROMPT} from '../../src/note-reading.mjs';
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const textOf = content => (typeof content === 'string' ? content : (content ?? []).map(part => part.text ?? '').join(''));
@@ -9,7 +10,8 @@ const textOf = content => (typeof content === 'string' ? content : (content ?? [
 /**
  * Starts the server on 127.0.0.1 and a free port. `scene.watcher(prompt)` is the Watcher's answer; `scene.partner`
  * lists the Partner's turns as `{wait, say}` or `{wait, call: [name, args]}` (or `calls: [[name, args], ...]`),
- * each with an optional `when` regex the input must match.
+ * each with an optional `when` regex the input must match. `scene.notes` answers a note's readings: `marks`, one
+ * list per reading (the last again after them), and `tasks`, each after `wait`.
  * `log` hears each request. Resolves with `{baseUrl, close()}`.
  */
 export async function startModelServer(scene, {log = () => {}} = {}) {
@@ -20,6 +22,13 @@ export async function startModelServer(scene, {log = () => {}} = {}) {
     const system = textOf(body.messages.find(message => message.role === 'system')?.content);
     const last = textOf(body.messages.at(-1)?.content);
     if (system === 'Answer with one word.') return {text: 'OK'};
+    if (scene.notes && (system === MARKS_PROMPT || system === TASKS_PROMPT)) {
+      const {marks, tasks, wait} = scene.notes;
+      const list = system === TASKS_PROMPT ? tasks : marks.length > 1 ? marks.shift() : marks[0];
+      log(`partner -> ${list.length} ${system === TASKS_PROMPT ? 'tasks' : 'marks'}`);
+      await sleep(wait ?? 0);
+      return {text: JSON.stringify(list)};
+    }
     if (body.model === 'watcher') {
       const text = scene.watcher(last);
       log(`watcher -> ${text}: ${last.replace(/\s+/g, ' ').slice(0, 160)}`);

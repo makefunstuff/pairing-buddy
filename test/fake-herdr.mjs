@@ -10,17 +10,21 @@ import {readMessages, sendMessage} from '../src/protocol.mjs';
 /**
  * `commands` maps a command line to `{output, exit}`; others print nothing and exit 0. It may instead be a
  * function of the command line that resolves with them, to really run commands. The workspace starts
- * with the user's pane `w1:p1`, which has focus, and the chat pane `w1:p2`. `sent` records every send_text as
- * [pane, text], `calls` the method of every request. `processes` maps a pane to its foreground processes other than the shell (none by default);
- * `focus(pane)` and `scroll(pane, offset)` change what pane.list says and push the event to subscribers.
+ * with the user's pane `w1:p1` and the chat pane `w1:p2`; `w1:p1` has focus until `focus(pane)` moves it, which
+ * pushes the event to subscribers, as `scroll(pane, offset)` does. The panes in `nvims` run Neovim; `processes`
+ * maps a pane to more foreground processes other than the shell. `sent` records every send_text as [pane, text],
+ * `calls` the method of every request. `agents` is what agent.list answers (change it in place); `focused`
+ * records the targets of agent.focus.
  */
-export async function fakeHerdr(socketPath, {commands = {}} = {}) {
+export async function fakeHerdr(socketPath, {commands = {}, agents = [], nvims = []} = {}) {
   const panes = new Map([['w1:p1', {label: null, lines: ['$ ']}], ['w1:p2', {label: null, lines: ['› ']}]]);
+  for (const pane of nvims) if (!panes.has(pane)) panes.set(pane, {label: null, lines: ['']});
+  let focusedPane = 'w1:p1';
   const sent = [];
+  const focused = [];
   const calls = []; // the method of every request
   const processes = new Map();
   const subscribers = new Set(); // {socket, subscriptions}
-  let focused = 'w1:p1';
   let next = 3;
 
   function push(event, data, wanted = ({type}) => type.replace('.', '_') === event) {
@@ -54,7 +58,7 @@ export async function fakeHerdr(socketPath, {commands = {}} = {}) {
   const lastLines = (pane, lines = 1000) => panes.get(pane).lines.slice(-lines).join('\n');
 
   const methods = {
-    'pane.list': () => ({panes: [...panes].map(([pane_id, pane]) => ({pane_id, label: pane.label, focused: pane_id === focused, scroll: {offset_from_bottom: pane.offset ?? 0}}))}),
+    'pane.list': () => ({panes: [...panes].map(([pane_id, pane]) => ({pane_id, label: pane.label, focused: pane_id === focusedPane, scroll: {offset_from_bottom: pane.offset ?? 0}}))}),
     'pane.split': () => {
       const pane_id = `w1:p${next++}`;
       panes.set(pane_id, {label: null, lines: ['$ ']});
@@ -73,7 +77,16 @@ export async function fakeHerdr(socketPath, {commands = {}} = {}) {
       }
       return {};
     },
-    'pane.process_info': ({pane_id}) => ({process_info: {pane_id, shell_pid: 1, foreground_processes: [{pid: 1, name: 'bash'}, ...(processes.get(pane_id) ?? [])]}}),
+    'agent.list': () => ({type: 'agent_list', agents}),
+    'agent.focus': ({target}) => {
+      if (!agents.some(agent => agent.pane_id === target)) throw new Error(`agent target ${target} not found`);
+      focused.push(target);
+      return {};
+    },
+    'pane.process_info': ({pane_id}) => ({process_info: {
+      pane_id, shell_pid: 1,
+      foreground_processes: [{pid: 1, name: 'bash'}, ...(nvims.includes(pane_id) ? [{pid: 2, name: 'nvim', argv: ['nvim']}] : []), ...(processes.get(pane_id) ?? [])],
+    }}),
   };
 
   const server = createServer(socket => readMessages(socket, async ({id, method, params}) => {
@@ -92,9 +105,9 @@ export async function fakeHerdr(socketPath, {commands = {}} = {}) {
   }));
   await new Promise(resolve => server.listen(socketPath, resolve));
   return {
-    panes, sent, calls, processes, subscribers,
+    panes, sent, calls, processes, subscribers, agents, focused,
     focus(pane) {
-      focused = pane;
+      focusedPane = pane;
       push('pane_focused', {pane_id: pane, workspace_id: 'w1'});
     },
     scroll(pane, offset) {

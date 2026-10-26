@@ -91,17 +91,18 @@ local function width_of(chunks)
   return width
 end
 
---- The pair's voice: `text` as virtual lines indented by `indent`, the voice glyph before the first line and
---- `key` (the key that acts on it) dimmed after the last; at most MAX_LINES, cut with an ellipsis.
-local function voice(text, indent, width, key)
+--- The pair's voice: `text` as virtual lines indented by `indent`, `glyph` (the voice's by default) before the first
+--- line and `key` (the key that acts on it) dimmed after the last; at most `max` lines (MAX_LINES), cut with an ellipsis.
+local function voice(text, indent, width, key, glyph, max)
+  max = max or MAX_LINES
   local room = key and vim.fn.strdisplaywidth(key) + 3 or 0 -- the key goes after the last line, so no line takes its place
   local lines = wrap(text, math.max(20, width - indent - 2 - room), 'PairNote')
-  if #lines > MAX_LINES then
-    lines = vim.list_slice(lines, 1, MAX_LINES)
-    table.insert(lines[MAX_LINES], {' …', 'PairNote'})
+  if #lines > max then
+    lines = vim.list_slice(lines, 1, max)
+    table.insert(lines[max], {' …', 'PairNote'})
   end
   for i, line in ipairs(lines) do
-    table.insert(line, 1, i == 1 and {style.glyphs.voice .. ' ', 'PairAccent'} or {'  '})
+    table.insert(line, 1, i == 1 and {(glyph or style.glyphs.voice) .. ' ', 'PairAccent'} or {'  '})
     table.insert(line, 1, {string.rep(' ', indent)})
   end
   if key and lines[1] then table.insert(lines[#lines], {'   ' .. key, 'PairKey'}) end
@@ -120,7 +121,8 @@ local function ease(p) return p * p * (3 - 2 * p) end
 
 local GROUP_FIELDS = {'hl_group', 'line_hl_group', 'sign_hl_group', 'number_hl_group'}
 
-local function painted(opts, t)
+--- `opts` at step `t` of the fade; the first `steady` virtual lines are already there and do not fade.
+local function painted(opts, t, steady)
   if t >= 1 then return opts end
   local out = vim.deepcopy(opts)
   local function paint(chunks)
@@ -129,24 +131,27 @@ local function painted(opts, t)
     end
   end
   if out.virt_text then paint(out.virt_text) end
-  for _, line in ipairs(out.virt_lines or {}) do paint(line) end
+  for i, line in ipairs(out.virt_lines or {}) do
+    if i > (steady or 0) then paint(line) end
+  end
   for _, field in ipairs(GROUP_FIELDS) do
     if out[field] then out[field] = style.fade(out[field], t) end
   end
   return out
 end
 
---- Sets an extmark that rises from the background; returns its id. One that is deleted meanwhile stays deleted.
-local function place(buf, ns, row, col, opts)
+--- Sets an extmark that rises from the background, but for its first `steady` virtual lines; returns its id. One
+--- that is deleted meanwhile stays deleted.
+local function place(buf, ns, row, col, opts, steady)
   if not (M.motion and style.can_move()) then return vim.api.nvim_buf_set_extmark(buf, ns, row, col, opts) end
-  local id = vim.api.nvim_buf_set_extmark(buf, ns, row, col, painted(opts, ease(1 / FADE_FRAMES)))
+  local id = vim.api.nvim_buf_set_extmark(buf, ns, row, col, painted(opts, ease(1 / FADE_FRAMES), steady))
   local frame, timer = 1, vim.uv.new_timer()
   timer:start(FRAME_MS, FRAME_MS, vim.schedule_wrap(function()
     if timer:is_closing() then return end
     frame = frame + 1
     local at = vim.api.nvim_buf_is_valid(buf) and vim.api.nvim_buf_get_extmark_by_id(buf, ns, id, {}) or {}
     if at[1] then
-      pcall(vim.api.nvim_buf_set_extmark, buf, ns, at[1], at[2], vim.tbl_extend('force', painted(opts, ease(frame / FADE_FRAMES)), {id = id}))
+      pcall(vim.api.nvim_buf_set_extmark, buf, ns, at[1], at[2], vim.tbl_extend('force', painted(opts, ease(frame / FADE_FRAMES), steady), {id = id}))
       show(buf)
     end
     if not at[1] or frame >= FADE_FRAMES then timer:close() end
@@ -166,14 +171,28 @@ function M.row(buf, id, ns)
   return vim.api.nvim_buf_get_extmark_by_id(buf, ns or M.ns, id, {})[1]
 end
 
+local TEACH_LINES = 4 -- of the idea behind its words
+
 --- The pair's words under row `row` of `buf`, indented with the code, the mark in the sign column or `opts.sign`
---- ({glyph, group}). Returns the extmark id.
+--- ({glyph, group}). With `opts.teaching`, the idea behind them follows under them: {text, key}, or {} while it is
+--- asked, shown as a dimmed ellipsis. Only what is new rises from the background: all of it, or with `opts.still`
+--- nothing, or with `opts.teaching_rises` only the idea. `opts.glyph` goes before them instead of the voice glyph,
+--- and the extmark is in namespace `opts.ns`, by default the pair's. Returns the extmark id.
 function M.remark(buf, row, text, key, opts)
-  local lines = voice(text, indent_of(buf, row), text_width(window_of(buf)), key)
-  local sign = opts and opts.sign or {style.glyphs.mark, 'PairSign'}
+  opts = opts or {}
+  local indent, width = indent_of(buf, row), text_width(window_of(buf))
+  local lines = voice(text, indent, width, key, opts.glyph)
+  local said = #lines
+  local teaching = opts.teaching
+  if teaching and teaching.text then
+    vim.list_extend(lines, voice(teaching.text, indent, width, teaching.key, style.glyphs.idea, TEACH_LINES))
+  elseif teaching then
+    table.insert(lines, {{string.rep(' ', indent)}, {style.glyphs.idea .. ' …', 'PairKey'}})
+  end
+  local sign = opts.sign or {style.glyphs.mark, 'PairSign'}
   local spec = {virt_lines = lines, sign_text = sign[1], sign_hl_group = sign[2], priority = 20}
-  if opts and opts.still then return vim.api.nvim_buf_set_extmark(buf, M.ns, row, 0, spec) end
-  return place(buf, M.ns, row, 0, spec)
+  if opts.still then return vim.api.nvim_buf_set_extmark(buf, opts.ns or M.ns, row, 0, spec) end
+  return place(buf, opts.ns or M.ns, row, 0, spec, opts.teaching_rises and said or 0)
 end
 
 --- The mark in the sign column of rows `first`..`last`, under any other mark of the pair. Returns the extmark id.
