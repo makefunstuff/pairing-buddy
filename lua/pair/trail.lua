@@ -18,7 +18,7 @@ local function columns(search)
   return {
     {('+ %2ds'):format(math.floor(search.after / 1000 + 0.5)), 'PairKey'},
     {search.picker, 'PairNote'},
-    {('"%s"'):format(search.query), 'Normal'},
+    {('"%s"'):format(search.query)}, -- in the panel's own colour
     {results, 'PairKey'},
     where,
   }

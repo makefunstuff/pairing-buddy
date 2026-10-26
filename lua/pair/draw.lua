@@ -91,7 +91,8 @@ end
 --- The pair's voice: `text` as virtual lines indented by `indent`, the voice glyph before the first line and
 --- `key` (the key that acts on it) dimmed after the last; at most MAX_LINES, cut with an ellipsis.
 local function voice(text, indent, width, key)
-  local lines = wrap(text, math.max(20, width - indent - 2), 'PairNote')
+  local room = key and vim.fn.strdisplaywidth(key) + 3 or 0 -- the key goes after the last line, so no line takes its place
+  local lines = wrap(text, math.max(20, width - indent - 2 - room), 'PairNote')
   if #lines > MAX_LINES then
     lines = vim.list_slice(lines, 1, MAX_LINES)
     table.insert(lines[MAX_LINES], {' …', 'PairNote'})

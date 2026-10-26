@@ -23,3 +23,6 @@ clip hand-over m3; still driving m3-still1; still hand-back m3-still2
 for name in wrong-turn tests-on-save hand-over take-back; do gif "$name"; done
 for name in gaze remark jump regression regression-fix driving hand-back; do cp "$OUT/$name.png" "$IMAGES/$name.png"; done
 ls -l "$SITE"/m?.* "$SITE"/m?-still* "$IMAGES"/*.gif
+# The search trail: the README's GIF and the docs' stills.
+gif search-trail
+for name in trail-cue trail-panel trail-jump; do cp "$OUT/$name.png" "$IMAGES/$name.png"; done

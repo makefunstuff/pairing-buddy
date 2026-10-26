@@ -16,7 +16,8 @@ recording comes out the same each time.
 - **The project** is [hookd/](hookd/), a small Go webhook service with a retry bug. Each scene starts it at its
   own point.
 - **Neovim** is clean: [init.lua](init.lua), the ayu colorscheme (fetched at a pinned commit), and scratch XDG
-  directories.
+  directories. The search-trail scene also fetches Telescope and plenary at pinned commits; Telescope's history goes
+  to the scratch directories too.
 
 | Tape | Shows |
 | --- | --- |
@@ -24,6 +25,7 @@ recording comes out the same each time.
 | [tests-on-save](tapes/tests-on-save.tape) | 02 · it runs what you'd skip |
 | [hand-over](tapes/hand-over.tape) | 03 · the visible hand-over |
 | [take-back](tapes/take-back.tape) | a key while Pair drives takes the wheel back |
+| [search-trail](tapes/search-trail.tape) | the search trail: three Telescope searches, the cue, `:Pair trail` |
 
 ## Recording
 
@@ -32,7 +34,7 @@ the JetBrainsMono Nerd Font.
 
 ```sh
 npm ci                                  # in the repo root
-docs/captures/record.sh                 # all four scenes into docs/captures/out/, or name some
+docs/captures/record.sh                 # all five scenes into docs/captures/out/, or name some
 docs/captures/encode.sh                 # out/ -> site/media/ and docs/images/
 ```
 
