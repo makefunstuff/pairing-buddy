@@ -8,6 +8,7 @@ import {insideRoot, MAX_LINES, numberedLines, projectFile, readProjectPath} from
 import {fold, initialState} from './fold.mjs';
 import {decide} from './gate.mjs';
 import {gitStatus} from './git.mjs';
+import {Breakpoints, placeOf, stillTrue, urgent} from './held.mjs';
 import {plainLine} from './herdr.mjs';
 import {RUN_TIMEOUT_MS, shellQuote} from './scout-pane.mjs';
 import {parseTestOutput, testSummary} from './test-output.mjs';
@@ -183,7 +184,11 @@ export class PairSession {
     this.unasked = false; // the running turn is a remark nobody asked for
     this.words = []; // what Pair said this turn: an unasked remark shows it under the user's line too
     this.target = null; // where the user's jump key goes: Pair's suggestion this turn, else where it pointed last
-    this.held = []; // parts of an unasked remark that came while the user was typing
+    this.held = []; // parts of an urgent unasked remark that came while the user was typing
+    this.holding = null; // the parts of the running remark, when it can wait for the user's next breakpoint (see held.mjs)
+    this.thought = null; // the held thought, {id, trigger, since, parts}: a remark ready, waiting for that breakpoint
+    this.breakpoints = new Breakpoints();
+    this.accent = null; // the editor's accent (see style.lua) as #rrggbb, for the chat pane
     this.panes = null; // the user's herdr panes (a PaneWatch), for the Driver's type
     this.edited = false; // the Driver made its one edit in this hand-over
     this.handback = null; // that edit's lines and how the tests went on them: {file, line, endLine, tests}
@@ -206,7 +211,9 @@ export class PairSession {
 
   receive(event) {
     const file = event.file && isAbsolute(event.file) ? relative(this.root, event.file) : event.file;
-    this.state = fold(this.state, {at: this.now(), ...event, ...(file ? {file} : {})});
+    const folded = {at: this.now(), ...event, ...(file ? {file} : {})};
+    this.state = fold(this.state, folded);
+    this.breakpoints.see(folded);
     if (event.kind === 'save' && file && !file.startsWith('..')) this.testRuns?.saved(file);
   }
 
@@ -249,6 +256,13 @@ export class PairSession {
     this.message('system', `\`${label}\` after Pair's edit: ${run.tests ? testSummary(run.tests) : text}`);
   }
 
+  /** The editor's accent (see style.lua), which the chat pane prints Pair in too; one that is no #rrggbb is ignored. */
+  setAccent(color) {
+    if (typeof color !== 'string' || !/^#[0-9a-f]{6}$/i.test(color)) return;
+    this.accent = color;
+    this.notify('chat', {type: 'accent', color});
+  }
+
   /** Sends a test run's state to every editor, and keeps it for editors that connect later. */
   showTests(message) {
     this.testsShown = message;
@@ -259,16 +273,45 @@ export class PairSession {
     return this.now() - this.state.lastKeyAt < this.typingPauseMs;
   }
 
-  /** Shows `action` now, or, for an unasked remark while the user types, at their next pause. */
+  /**
+   * Shows `action` now or, for an unasked remark, when it is due: at the user's next pause in typing, or, for a
+   * remark that can wait, at their next breakpoint.
+   */
   show(action) {
-    if (this.unasked && this.typing()) this.held.push(action);
+    if (this.unasked && this.holding) this.holding.push(action);
+    else if (this.unasked && this.typing()) this.held.push(action);
     else action();
+  }
+
+  /** Shows what waits once it is due: the held thought at the user's next breakpoint, other parts at a pause. */
+  showDue() {
+    if (this.thought && this.breakpoints.last(this.state, this.now()) >= this.thought.since) this.release();
+    if (this.held.length && !this.typing()) this.held.splice(0).forEach(action => action());
+  }
+
+  /** Holds a finished remark that can wait: the editor shows a dot where it is about until it is due. */
+  hold(thought, target) {
+    this.thought = thought;
+    if (this.breakpoints.last(this.state, this.now()) >= thought.since) return this.release();
+    this.log(`${thought.trigger.kind}: held for the next breakpoint`);
+    this.notify('editor', {type: 'held', id: thought.id, ...placeOf(target, thought.trigger, this.root)});
+  }
+
+  /** Shows the held thought: at a breakpoint, or early when the user asks. One no longer true is dropped. */
+  release() {
+    const {thought} = this;
+    if (!thought) return;
+    this.thought = null;
+    if (stillTrue(thought.trigger, this.state)) return thought.parts.forEach(action => action());
+    this.log(`${thought.trigger.kind}: held thought dropped, no longer true`);
+    this.store.dropRemark(thought.id);
+    this.notify('editors', {type: 'unheld', id: thought.id});
   }
 
   /** Looks for a trigger worth a remark; called about once a second. Ticks never overlap. */
   async tick() {
     this.countActive();
-    if (this.held.length && !this.typing()) this.held.splice(0).forEach(action => action());
+    this.showDue();
     if (this.ticking || this.role === 'driver' || !this.health.ok()) return;
     const now = this.now();
     const triggers = detectTriggers(this.state, now, this.fired);
@@ -279,6 +322,7 @@ export class PairSession {
     try {
       if (triggers.length && this.autoTune) this.budget.tune(tuning(this.store.remarks(now - WINDOW_MS), now));
       for (const trigger of triggers) {
+        if (this.thought && !urgent(trigger.kind)) continue; // one held thought at a time
         const decision = await decide({trigger, state: this.state, now, budget: this.budget, score: this.score, typingPauseMs: this.typingPauseMs});
         if (!this.repeats(trigger, decision)) this.log(`${trigger.kind}: ${decision.verdict} (${decision.reason})`);
         if (decision.held) this.waitFor(trigger, now);
@@ -350,23 +394,28 @@ export class PairSession {
   async remark(trigger, score, waitedMs = null) {
     // The gate saw a pause, but a Partner turn takes seconds: the user may be typing again by the time it answers.
     this.unasked = true;
+    this.holding = urgent(trigger.kind) ? null : [];
+    const since = this.now(); // a breakpoint from here on is the one it waits for
     const id = this.remarkId = this.store.addRemark({sessionId: this.id, trigger: trigger.kind, score, at: this.now(), waitedMs});
     try {
       // The trail's queries, searched in the project: which of the user's words the code has, and where.
       const seen = trigger.kind === 'search_trail' ? {...trigger, detail: `${trigger.detail}\n${await trailMatches(this.root, trigger.searches)}`} : trigger;
       const input = watchInput(seen, describeState(this.state, this.now()));
       if (!(await this.talk(input, {kind: 'remark'}))) return this.store.dropRemark(id);
-      this.budget.spend(this.now());
-      this.lastRemark = id;
       // After the remark's own words, also when they wait for a pause in the user's typing. The editor shows
       // the words under the line the user is on, with a way to the place Pair pointed at.
       const {words, target} = this;
+      // The budget pays for a remark the user gets to see, when they see it.
       this.show(() => {
+        this.budget.spend(this.now());
+        this.lastRemark = id;
         this.notify('chat', {type: 'remark', id});
         this.notify('editor', {type: 'remark', id, text: words.join('\n'), target});
       });
+      if (this.holding) this.hold({id, trigger, since, parts: this.holding}, target);
     } finally {
       this.unasked = false;
+      this.holding = null;
       this.remarkId = null;
       this.remarking = null;
     }

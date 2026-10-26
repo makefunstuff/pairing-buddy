@@ -28,6 +28,7 @@ local state = {
   reading = nil, -- the file Pair reads now, for the statusline: {name, till}
   suggestion = nil, -- the change Pair suggested: {buf, ids, old, new, remark}
   remark = nil, -- the id of Pair's last unasked remark, until you rate it
+  held = nil, -- a remark Pair holds for your next break: {remark, buf, id} (buf and id: its dot in the margin)
   keys = {}, -- the keys this plugin mapped while something waits for them, by purpose
   wanted = false, -- connect was asked for (:Pair start or auto_connect) and not undone by :Pair stop
   retry = nil, -- the reconnect timer
@@ -134,10 +135,11 @@ local function point_target(point)
   return point and {buf = point.buf, ns = ns, id = point.ids.mark, code = point.code, point = point}
 end
 
---- The jump key goes to `target`, or to Pair's last point when it is nil, or nowhere when there is none.
+--- The jump key goes to `target`, or to Pair's last point when it is nil, or nowhere when there is none (unless a
+--- held thought waits for it).
 local function aim(target)
   state.target = target or point_target(state.points[#state.points])
-  if not state.target then unmap_keys('jump') end
+  if not state.target and not state.held then unmap_keys('jump') end -- a held thought keeps it: it shows the thought
 end
 
 local function forget_point(point)
@@ -153,7 +155,9 @@ local function clear_points()
 end
 
 --- Goes to the place Pair pointed at last, or to its suggestion, leaving a mark in the jumplist: Ctrl-O comes back.
+--- While Pair holds a thought, shows that first: the place it is about comes with it.
 function M.jump()
+  if state.held then return send({type = 'release'}) end
   local target = state.target
   local row = target and draw.row(target.buf, target.id, target.ns)
   if not row then return vim.notify('Pair: it points at nothing now') end
@@ -215,8 +219,35 @@ local function feedback(useful, id, implicit)
   end
 end
 
+-- A held thought: a remark that can wait for your next break (a save, a run, a stop to look). Meanwhile a dot
+-- in the margin says where it is about, and the jump key shows it now.
+
+local function forget_held()
+  local held = state.held
+  state.held = nil
+  if not held then return end
+  if held.id then draw.erase(held.buf, {held.id}) end
+  if not state.target then unmap_keys('jump') end
+  redraw_status()
+end
+
+local function on_held(message)
+  forget_held()
+  local file = type(message.file) == 'string' and message.file or nil
+  local buf = file and load(file) or vim.api.nvim_get_current_buf()
+  state.held = {remark = message.id}
+  if project_path(buf) then
+    local here = buf == vim.api.nvim_get_current_buf() and vim.api.nvim_win_get_cursor(0)[1] or 1
+    local line = type(message.line) == 'number' and message.line or here
+    state.held.buf, state.held.id = buf, draw.held(buf, math.min(line, vim.api.nvim_buf_line_count(buf)) - 1)
+  end
+  map_keys('jump', {{config.jump_key, M.jump, 'Show what Pair holds'}})
+  redraw_status()
+end
+
 -- An unasked remark: its words go under the line you are on, and the feedback keys wait for your verdict.
 local function on_remark(message)
+  if state.held and state.held.remark == message.id then forget_held() end -- another remark leaves a held one waiting
   state.remark = message.id
   map_keys('feedback', {
     {config.useful_key, function() feedback(true, state.remark) end, 'Pair\'s remark was useful'},
@@ -543,8 +574,15 @@ local function handback(message)
   redraw_status()
 end
 
+-- The chat pane prints Pair in the same accent as here, once Neovim has true colours to give.
+local function send_accent()
+  local color = vim.o.termguicolors and vim.api.nvim_get_hl(0, {name = 'PairAccent', link = false}).fg
+  if color then send({type = 'accent', color = style.hex(color)}) end
+end
+
 local function hello()
   send({type = 'hello', role = 'editor', cwd = vim.fn.getcwd()})
+  send_accent()
 end
 
 -- `models` maps each role to why its model is down, or to null (vim.NIL here) when it answers.
@@ -565,6 +603,8 @@ local handlers = {
   edit = edit,
   handback = handback,
   remark = on_remark,
+  held = on_held,
+  unheld = forget_held,
   tests = on_tests,
   trail = function(message) trail.show(message, function() send({type = 'forget_trail'}) end) end,
   thinking = function(message)
@@ -573,6 +613,7 @@ local handlers = {
     redraw_status()
   end,
   clear = function()
+    forget_held()
     clear_points()
     clear_suggestion()
     forget_words(false)
@@ -660,6 +701,7 @@ function M.disconnect()
   if state.channel then vim.fn.chanclose(state.channel) end
   state.channel = nil
   set_role(nil)
+  forget_held()
   clear_points()
   clear_suggestion()
   forget_words(false)
@@ -703,7 +745,9 @@ local function status_parts()
   local parts = {'pair'}
   if state.role and state.role ~= 'navigator' then table.insert(parts, state.role) end
   if state.level and state.level ~= 'normal' then table.insert(parts, state.level) end
-  return {glyph = g.voice, text = table.concat(parts, ' · '), hl = state.words and 'PairStatus' or 'PairStatusDim', text_hl = 'PairStatusDim'}
+  if state.held then table.insert(parts, 'held thought · ' .. (key_label('jump', config.jump_key) or ':Pair jump')) end
+  local lit = state.words or state.held
+  return {glyph = g.voice, text = table.concat(parts, ' · '), hl = lit and 'PairStatus' or 'PairStatusDim', text_hl = 'PairStatusDim'}
 end
 
 --- The statusline's text, for example `● pair`, `● reading worker.go`, `⠹ go test ./...`, `⠹ pair · thinking`, `✗ 1 failing · TestX` or
@@ -771,8 +815,16 @@ function M.setup(opts)
   drive.motion = config.motion
   style.apply()
   local group = vim.api.nvim_create_augroup('pair', {clear = true})
-  vim.api.nvim_create_autocmd('ColorScheme', {group = group, callback = style.apply})
-  vim.api.nvim_create_autocmd('OptionSet', {group = group, pattern = {'termguicolors', 'background'}, callback = style.apply})
+  local function restyle()
+    style.apply()
+    send_accent()
+  end
+  vim.api.nvim_create_autocmd('ColorScheme', {group = group, callback = restyle})
+  vim.api.nvim_create_autocmd('OptionSet', {group = group, pattern = {'termguicolors', 'background'}, callback = restyle})
+  -- Leaving Insert mode for a while is a natural break, where a held thought shows.
+  vim.api.nvim_create_autocmd({'InsertEnter', 'InsertLeave'}, {group = group, callback = function(args)
+    if state.channel then event({kind = 'mode', insert = args.event == 'InsertEnter'}) end
+  end})
   -- A note's place depends on the width of the window that shows it.
   vim.api.nvim_create_autocmd({'WinResized', 'VimResized', 'BufWinEnter'}, {group = group, callback = relayout})
   vim.api.nvim_create_autocmd('BufEnter', {group = group, callback = function(args)

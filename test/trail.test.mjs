@@ -9,6 +9,7 @@ import {test} from 'node:test';
 import {fold, initialState} from '../src/fold.mjs';
 import {PairSession} from '../src/session.mjs';
 import {openStore} from '../src/store.mjs';
+import {stillTrue} from '../src/held.mjs';
 import {currentTrail, lost, TRAIL, trailMatches, trailSummary} from '../src/trail.mjs';
 import {detectTriggers} from '../src/triggers.mjs';
 import {createWatcher} from '../src/watcher.mjs';
@@ -136,4 +137,11 @@ test('a trail remark gets the trail, what fails and the matches; :Pair trail sho
 test('the summary names repeats', () => {
   const state = foldAll(['retry', 'backoff', 'retry'].map((query, i) => search(query, 1000 * (i + 1), {results: 2, file: 'b.go'})));
   assert.equal(trailSummary(currentTrail(state, 4000)), '3 searches in 2 s since your last edit; "retry" more than once.');
+});
+
+test('a trail remark held for your next break is dropped once you edit: you found it', () => {
+  const state = foldAll(LOST);
+  const [trigger] = trails(state, 21_000);
+  assert.ok(stillTrue(trigger, state));
+  assert.ok(!stillTrue(trigger, fold(state, {kind: 'edit', file: 'worker.go', from: 35, to: 35, at: 22_000})));
 });

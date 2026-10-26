@@ -1,12 +1,29 @@
--- The captures' Neovim: the plugin from this repo, ayu, and nothing of your own config (record.sh also gives
--- Neovim scratch XDG directories). The :terminal's shell has the shell hook and stands for the herdr pane w1:p3.
+-- The captures' Neovim: the plugin from this repo, ayu (or with CAP_SCHEME=greys, mini.base16 on a grey palette
+-- with one warm red), clangd for C, and nothing of your own config (record.sh also gives Neovim scratch XDG
+-- directories). The :terminal's shell has the shell hook and stands for the herdr pane w1:p3.
 local cap, repo = vim.env.CAP, vim.env.CAP_REPO
 assert(cap and cap:find('^/tmp/paircap%.'), 'run this through record.sh')
 vim.opt.rtp:prepend(repo)
 vim.opt.rtp:append(cap .. '/ayu')
+vim.opt.rtp:append(cap .. '/mini')
 vim.o.termguicolors = true
 vim.o.background = 'dark'
-vim.cmd.colorscheme('ayu')
+if vim.env.CAP_SCHEME == 'greys' then
+  -- The editor on the desktop's palette, as many desktop themes ship it: greys, and one warm red.
+  require('mini.base16').setup({palette = {
+    base00 = '#131517', base01 = '#1b1e20', base02 = '#2a2f32', base03 = '#5a6064',
+    base04 = '#7d8488', base05 = '#c8cacb', base06 = '#d6d7d8', base07 = '#e4e4e4',
+    base08 = '#9aa1a5', base09 = '#d9694a', base0A = '#b5b9bb', base0B = '#a3a9ad',
+    base0C = '#8f969a', base0D = '#bfc3c5', base0E = '#868d91', base0F = '#d9694a',
+  }})
+else
+  vim.cmd.colorscheme('ayu')
+end
+vim.api.nvim_create_autocmd('FileType', {pattern = 'c', callback = function()
+  vim.lsp.start({name = 'clangd', cmd = {'clangd'}, root_dir = vim.fn.getcwd()})
+  vim.schedule(function() vim.opt_local.formatoptions:remove({'r', 'o'}) end) -- after the ftplugin: no comment leaders typed for you
+end})
+vim.diagnostic.config({signs = false, virtual_text = false}) -- an error shows as its underline
 vim.o.number = true
 vim.o.signcolumn = 'yes'
 vim.o.cursorline = true

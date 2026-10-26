@@ -65,6 +65,7 @@ function diagnosticTriggers(state) {
         detail: `${file}:${diagnostic.line}: ${diagnostic.message} (in code you just wrote; you moved on)`,
         file,
         line: diagnostic.line,
+        message: diagnostic.message,
       });
     }
   }

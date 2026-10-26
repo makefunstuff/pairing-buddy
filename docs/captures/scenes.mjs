@@ -80,6 +80,18 @@ export const scenes = {
       {wait: 200, say: 'The word you\'re looking for is `ErrBudget` ("retry budget spent"), and it fires here: `if elapsed+wait >= cfg.Budget` treats a wait that lands exactly on 15s as over budget, so it returns after attempt 4 instead of 5 — change `>=` to `>`.'},
     ],
   },
+  // The held thought, in C: you write ring_pop and go on; the error in a line you left can wait, so Pair holds
+  // its remark (a dot in the margin) until you save. The colorscheme is greys with one warm red.
+  'held-thought': {
+    project: 'ringbuf',
+    goal: 'ring_pop hands back the oldest value',
+    watcher: prompt => (prompt.includes('(new_code_diagnostic)') && prompt.includes('capacity') ? '9' : '0'),
+    partner: [
+      {when: /new_code_diagnostic/, wait: 300, call: ['read', {file: 'ring.h'}]},
+      {wait: 900, call: ['point', {file: 'ring.c', line: 26, note: 'the ring keeps its size in `r->cap`', code: 'capacity'}]},
+      {wait: 200, say: 'line 26 wraps the head with `capacity`, which nothing declares: the ring keeps its size in `r->cap`'},
+    ],
+  },
   // The same hand-over, taken back with a key while Pair types.
   'take-back': {
     goal: 'retries reach the budget',

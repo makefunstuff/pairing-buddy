@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {execFile, execFileSync, spawn} from 'node:child_process';
 import {mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync} from 'node:fs';
-import {connect} from 'node:net';
+import {connect, createServer} from 'node:net';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -529,6 +529,90 @@ test('saving runs the tests: the statusline spins, then names what fails; signs 
     assert.deepEqual(notes(), []);
   } finally {
     await stop();
+  }
+});
+
+test('a thought that can wait: a dot where it points and a word in the statusline while you type; Alt-j shows it at once', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
+  const {watcher, partner, messages, remote, keys, status, stop} = await pairInNvim('count the lines');
+  const marks = () => JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('pair'), 0, -1, {details = true}))")`));
+  const dot = () => marks().filter(([, , , details]) => details.sign_text?.trim() === '•').map(([, row]) => row);
+  try {
+    watcher.setResponses([fauxAssistantMessage([fauxText('9')]), ...Array.from({length: 10}, () => fauxAssistantMessage([fauxText('0')]))]);
+    partner.setResponses([
+      fauxAssistantMessage([fauxToolCall('point', {file: 'a.js', line: 1, note: '`n` is not declared', code: 'n'})], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxText('Line 1 reads `n` before anything sets it.')]),
+    ]);
+    keys('ccconst x = n<Esc>');
+    await sleep(300);
+    remote(`luaeval("vim.diagnostic.set(vim.api.nvim_create_namespace('lsp'), 0, {{lnum = 0, col = 10, severity = 1, message = 'n is not defined'}}) or 0")`);
+    keys('Go// and on'); // on down the file, still in Insert mode
+    await until(() => dot().length, 'the dot in the margin', 12_000);
+    assert.deepEqual(dot(), [0], 'on the line it points at');
+    assert.equal(status(), '● pair · held thought · M-j');
+    assert.ok(!messages.some(message => message.sender === 'pair'), 'nothing in the chat yet');
+    assert.equal(remote('mode()'), 'i', 'nothing took you out of Insert mode');
+
+    keys('<Esc><M-j>');
+    await until(() => messages.some(message => message.text === 'Line 1 reads `n` before anything sets it.'), 'the thought, at once', 2000);
+    await until(() => !dot().length && marks().some(([, , , details]) => details.virt_lines), 'its words under your line, and no dot');
+    assert.equal(status(), '● pair');
+  } finally {
+    await stop();
+  }
+});
+
+test('the chat pane gets the accent Neovim derived, and a new one when the colorscheme changes', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
+  const {messages, remote, stop} = await pairInNvim('one look');
+  const accent = () => remote(`luaeval("require('pair.style').hex(vim.api.nvim_get_hl(0, {name = 'PairAccent', link = false}).fg)")`);
+  // What the chat pane would print Pair in: the accent it was welcomed with, or the last one sent since.
+  const chatAccent = () => messages.filter(message => message.type === 'accent' || message.accent).map(message => message.color ?? message.accent).at(-1);
+  try {
+    remote('execute("set termguicolors")');
+    await until(() => chatAccent() === accent(), 'the accent');
+    const first = accent();
+    remote('execute("colorscheme shine")');
+    await until(() => chatAccent() === accent() && accent() !== first, 'the new accent');
+  } finally {
+    await stop();
+  }
+});
+
+test('another remark leaves a held thought\'s dot and Alt-j alone; its own remark takes them away', {skip: hasNvim ? false : 'nvim not installed', timeout: 20_000}, async () => {
+  // A stand-in daemon: it greets Neovim and sends what the test says.
+  const dir = mkdtempSync('/tmp/pair-');
+  let editor;
+  const received = [];
+  const server = createServer(socket => {
+    editor = socket;
+    readMessages(socket, message => received.push(message));
+  });
+  await new Promise(resolve => server.listen(join(dir, 'pair.sock'), resolve));
+  const project = realpathSync(mkdtempSync(join(tmpdir(), 'pair-nvim-')));
+  writeFileSync(join(project, 'a.c'), 'int a;\nint b;\nint c;\nint d;\n');
+  const nvimSocket = join(dir, 'nvim.sock');
+  const nvim = spawn('nvim', ['--headless', '--clean', '--listen', nvimSocket, '--cmd', `set rtp+=${REPO}`,
+    '-c', `lua require('pair').setup({socket = '${join(dir, 'pair.sock')}'})`, '-c', `cd ${project}`, '-c', 'edit a.c', '-c', 'Pair start'], {stdio: 'ignore'});
+  const remote = expr => execFileSync('nvim', ['--server', nvimSocket, '--remote-expr', expr], {encoding: 'utf8'}).trim();
+  const dot = () => JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('pair'), 0, -1, {details = true}))")`))
+    .filter(([, , , details]) => details.sign_text?.trim() === '•').map(([, row]) => row);
+  const mapped = () => remote(`maparg('<M-j>', 'n')`) !== '';
+  try {
+    await until(() => editor && received.some(message => message.type === 'hello'), 'the plugin to connect');
+    sendMessage(editor, {type: 'welcome', root: project, level: 'normal', role: 'navigator', models: {}});
+    sendMessage(editor, {type: 'held', id: 1, file: join(project, 'a.c'), line: 3});
+    await until(() => dot().length, 'the dot');
+    sendMessage(editor, {type: 'remark', id: 2, text: 'The failure is elsewhere.', target: null});
+    await until(() => remote('luaeval("require(\'pair\').status()")').includes('held thought'), 'the statusline');
+    await sleep(300);
+    assert.deepEqual(dot(), [2], 'the dot stays');
+    assert.equal(mapped(), true, 'and Alt-j with it');
+    remote('execute("Pair jump")');
+    await until(() => received.some(message => message.type === 'release'), 'Alt-j to ask for the held thought');
+    sendMessage(editor, {type: 'remark', id: 1, text: 'Line 3 is the one.', target: null});
+    await until(() => !dot().length, 'its own remark to take the dot');
+  } finally {
+    nvim.kill();
+    server.close();
   }
 });
 
