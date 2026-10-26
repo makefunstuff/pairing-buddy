@@ -11,6 +11,19 @@ Every candidate remark (a failed command you missed, the same error again, a new
 
 Each trigger is looked at once: a dropped trigger does not come back. Drift is the exception for the budget: it lasts as long as you stay in that file, so when the budget holds it back it is looked at again on each tick (logged once) until the budget allows, and then judged.
 
+## The held thought
+
+Once the Partner has written a remark, it shows at your next pause if it is about what you are doing right now: a wrong turn, a regression, the same failure again, a failure you did not look at. Everything else (drift, a stall, an error in code you wrote and moved on from) can wait, and is held until your next **breakpoint**:
+
+- a save;
+- a command or test run that ended (a commit is one too);
+- out of Insert mode for 3 s without an edit: you stopped to look;
+- no key or edit for 15 s, in any mode or editor.
+
+Meanwhile Neovim shows a `•` in the sign column at the line it is about (where it points, else where its trigger is) and the statusline says `● pair · held thought · M-j`; nothing goes to the chat. `Alt-j` (or `:Pair jump`) shows it at once. A breakpoint that came while the Partner was still writing counts, so a remark that is ready while you already rest shows at once, without a dot.
+
+A held thought is dropped, without a word, when what it saw is gone by then: the error is no longer in your code (on any line: lines added above it only move it), or you left the file that drifted. It is not stored as a remark, so it counts neither as useful nor as noise. It costs the talk budget only when it shows, so a thought you have not seen never holds back another remark. While a thought is held, other triggers that can wait are not judged; urgent ones still are, and show at your next pause as usual, while the held one keeps waiting for its breakpoint.
+
 ## The prefilter
 
 The rules only ever drop; anything they are unsure of goes to the Watcher.
@@ -60,6 +73,25 @@ user's fix about one time in three. Like every remark, the check thinks first. T
 live test accepts any fix that makes all the project's tests pass, and checks that by running them. In Neovim the words show under your
 line, and `Alt-j` goes to the suggestion, where `Alt-y` takes it.
 
+## The search trail
+
+`search_trail` is raised from your picker searches in Neovim ([docs/neovim.md](neovim.md#the-search-trail)): three
+or more since your last edit, within four minutes, one of them closed with nothing opened or the same words again that opened another file,
+once you have paused three seconds after the last. Each new search in the trail raises it again; an edit ends the
+trail. It is judged after the others.
+
+The Watcher gets a question of its own, with the trail a line per search and what fails now: how much being told
+where it is in the code would save you, 0 if the last search plainly found it, 10 if your words are not the code's
+and you go in circles. In the live test the trail scored 7 each time, above the bar at `normal`.
+
+The Partner gets the trail, what fails now (the last red test run, else the last failed command, from the last ten
+minutes), and what ripgrep finds in the project for each query, any case: the files whose path has it and the first
+lines that do. As Navigator it cannot search, and that a query is nowhere in the project is half the story. It is
+asked to work out what you look for, read the code, point at the place with the code's own word for it, and say in
+one sentence where it is and, if something fails, how that place causes it. The live test runs the captures' Go
+project with and without the failing test: with it, the cue named `ErrBudget` and the `>=` at `worker.go:35` in
+every run; from the trail alone it pointed at the attempt limit, line 31, which is why the failure always goes
+with it.
 
 ## Keep-warm
 

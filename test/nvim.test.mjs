@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {execFile, execFileSync, spawn} from 'node:child_process';
 import {existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync} from 'node:fs';
-import {connect} from 'node:net';
+import {connect, createServer} from 'node:net';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -37,9 +37,9 @@ const runIn = cwd => command => new Promise(resolve => {
 /**
  * The daemon with scripted models, a fake herdr, a headless Neovim with the plugin editing a.js and running
  * `:Pair start <goal>`, and a chat client. With `testOnSave`, saving runs that command in the project, for real,
- * in the fake herdr's pane. With `thinks`, the Partner's model can think. `stop()` ends them all.
+ * in the fake herdr's pane. With `thinks`, the Partner's model can think. `voice` is the config's. `stop()` ends them all.
  */
-async function pairInNvim(goal, {testOnSave, thinks = false} = {}) {
+async function pairInNvim(goal, {testOnSave, thinks = false, voice, rtp = []} = {}) {
   const project = realpathSync(mkdtempSync(join(tmpdir(), 'pair-nvim-')));
   writeFileSync(join(project, 'a.js'), 'const x = 1\nconst y = 2\nconst z = 3\n');
   const dataDir = mkdtempSync(join(tmpdir(), 'pair-data-'));
@@ -47,6 +47,7 @@ async function pairInNvim(goal, {testOnSave, thinks = false} = {}) {
     dataDir,
     socket: join(dataDir, 'pair.sock'),
     testOnSave: testOnSave ? {[project]: testOnSave} : undefined,
+    voice,
     models: {watcher: {api: 'openai', baseUrl: 'http://unused', model: 'w'}, partner: {api: 'openai', baseUrl: 'http://unused', model: 'p'}},
   });
   const watcher = fauxProvider({provider: 'faux-watcher'});
@@ -62,7 +63,7 @@ async function pairInNvim(goal, {testOnSave, thinks = false} = {}) {
   const server = join(mkdtempSync('/tmp/pair-'), 'nvim.sock'); // short: socket paths max out near 100 bytes
   const nvim = spawn('nvim', [
     '--headless', '--clean', '--listen', server,
-    '--cmd', `set rtp+=${REPO}`,
+    '--cmd', `set rtp+=${[REPO, ...rtp].join(',')}`,
     '-c', `lua require('pair').setup({socket = '${config.socket}', debounce_ms = 100})`,
     '-c', `cd ${project}`,
     '-c', 'edit a.js',
@@ -556,8 +557,6 @@ test(':Pair new opens the note unsaved, asks one question at a time under your l
     let answered;
     partner.setResponses([
       context => { answered = context.messages.at(-1).content; return fauxAssistantMessage([fauxText('Sim steps or wall clock?')]); },
-      fauxAssistantMessage([fauxText('What do you want to learn from it?')]),
-      fauxAssistantMessage([fauxText(JSON.stringify(slice))]),
     ]);
     keys('o- two countres<Esc>');
     await sleep(300);
@@ -565,15 +564,24 @@ test(':Pair new opens the note unsaved, asks one question at a time under your l
     await until(() => status() === '● pair · question 2 of a few', 'the second question');
     assert.match(answered, /A1: two counters and a dot\n/, 'the answer as fixed, not the half before the first Esc');
     assert.deepEqual(virtual('pair'), [[3, ['● Sim steps or wall clock?']]], 'under the answer, and the first one gone');
+    // You type on before the next question comes: it still goes under the answer it follows.
+    partner.setResponses([
+      () => new Promise(resolve => setTimeout(() => resolve(fauxAssistantMessage([fauxText('What do you want to learn from it?')])), 2500)),
+      fauxAssistantMessage([fauxText(JSON.stringify(slice))]),
+    ]);
     keys('o- sim steps<Esc>');
+    await sleep(2000); // the answer has settled and gone; the question is on its way
+    keys('o- the accum');
     await until(() => status() === '● pair · question 3 of a few', 'the third question');
-    keys('o- the accumulator<Esc>');
+    assert.deepEqual(virtual('pair'), [[4, ['● What do you want to learn from it?']]], 'under "sim steps", above what you type now');
+    keys('ulator<Esc>');
     await until(() => status() === '● pair · a suggestion', 'the slice');
     assert.deepEqual(virtual('pair'), [], 'no question left');
     const [[row, shown]] = virtual('pair_suggest');
     assert.equal(row, 5, 'under the last answer');
     assert.deepEqual(shown.slice(0, 4), ['', '## First run', '- `Makefile`: make run builds and runs it', '- `main.c`: the loop and two counters']);
-    assert.equal(shown.at(-1), '● Your three answers as a first slice. Two files, nothing written yet.   M-y takes it into the note');
+    const voice = shown.slice(shown.findIndex(line => line.startsWith('●'))).join(' ');
+    assert.equal(voice, '● Your three answers as a first slice. Two files, nothing written yet.   M-y takes it into the note');
 
     keys('<M-y>');
     await until(() => lines().length > 6, 'the slice in the note');
@@ -582,6 +590,181 @@ test(':Pair new opens the note unsaved, asks one question at a time under your l
     assert.equal(status(), '● pair');
     assert.equal(remote('&modified'), '1', 'the note is not saved');
     assert.ok(!existsSync(join(project, 'NOTES.md')), 'and not on disk');
+  } finally {
+    await stop();
+  }
+});
+
+test('a thought that can wait: a dot where it points and a word in the statusline while you type; Alt-j shows it at once', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
+  const {watcher, partner, messages, remote, keys, status, stop} = await pairInNvim('count the lines');
+  const marks = () => JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('pair'), 0, -1, {details = true}))")`));
+  const dot = () => marks().filter(([, , , details]) => details.sign_text?.trim() === '•').map(([, row]) => row);
+  try {
+    watcher.setResponses([fauxAssistantMessage([fauxText('9')]), ...Array.from({length: 10}, () => fauxAssistantMessage([fauxText('0')]))]);
+    partner.setResponses([
+      fauxAssistantMessage([fauxToolCall('point', {file: 'a.js', line: 1, note: '`n` is not declared', code: 'n'})], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxText('Line 1 reads `n` before anything sets it.')]),
+    ]);
+    keys('ccconst x = n<Esc>');
+    await sleep(300);
+    remote(`luaeval("vim.diagnostic.set(vim.api.nvim_create_namespace('lsp'), 0, {{lnum = 0, col = 10, severity = 1, message = 'n is not defined'}}) or 0")`);
+    keys('Go// and on'); // on down the file, still in Insert mode
+    await until(() => dot().length, 'the dot in the margin', 12_000);
+    assert.deepEqual(dot(), [0], 'on the line it points at');
+    assert.equal(status(), '● pair · held thought · M-j');
+    assert.ok(!messages.some(message => message.sender === 'pair'), 'nothing in the chat yet');
+    assert.equal(remote('mode()'), 'i', 'nothing took you out of Insert mode');
+
+    keys('<Esc><M-j>');
+    await until(() => messages.some(message => message.text === 'Line 1 reads `n` before anything sets it.'), 'the thought, at once', 2000);
+    await until(() => !dot().length && marks().some(([, , , details]) => details.virt_lines), 'its words under your line, and no dot');
+    assert.equal(status(), '● pair');
+  } finally {
+    await stop();
+  }
+});
+
+test('the chat pane gets the accent Neovim derived, and a new one when the colorscheme changes', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
+  const {messages, remote, stop} = await pairInNvim('one look');
+  const accent = () => remote(`luaeval("require('pair.style').hex(vim.api.nvim_get_hl(0, {name = 'PairAccent', link = false}).fg)")`);
+  // What the chat pane would print Pair in: the accent it was welcomed with, or the last one sent since.
+  const chatAccent = () => messages.filter(message => message.type === 'accent' || message.accent).map(message => message.color ?? message.accent).at(-1);
+  try {
+    remote('execute("set termguicolors")');
+    await until(() => chatAccent() === accent(), 'the accent');
+    const first = accent();
+    remote('execute("colorscheme shine")');
+    await until(() => chatAccent() === accent() && accent() !== first, 'the new accent');
+  } finally {
+    await stop();
+  }
+});
+
+test('another remark leaves a held thought\'s dot and Alt-j alone; its own remark takes them away', {skip: hasNvim ? false : 'nvim not installed', timeout: 20_000}, async () => {
+  // A stand-in daemon: it greets Neovim and sends what the test says.
+  const dir = mkdtempSync('/tmp/pair-');
+  let editor;
+  const received = [];
+  const server = createServer(socket => {
+    editor = socket;
+    readMessages(socket, message => received.push(message));
+  });
+  await new Promise(resolve => server.listen(join(dir, 'pair.sock'), resolve));
+  const project = realpathSync(mkdtempSync(join(tmpdir(), 'pair-nvim-')));
+  writeFileSync(join(project, 'a.c'), 'int a;\nint b;\nint c;\nint d;\n');
+  const nvimSocket = join(dir, 'nvim.sock');
+  const nvim = spawn('nvim', ['--headless', '--clean', '--listen', nvimSocket, '--cmd', `set rtp+=${REPO}`,
+    '-c', `lua require('pair').setup({socket = '${join(dir, 'pair.sock')}'})`, '-c', `cd ${project}`, '-c', 'edit a.c', '-c', 'Pair start'], {stdio: 'ignore'});
+  const remote = expr => execFileSync('nvim', ['--server', nvimSocket, '--remote-expr', expr], {encoding: 'utf8'}).trim();
+  const dot = () => JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('pair'), 0, -1, {details = true}))")`))
+    .filter(([, , , details]) => details.sign_text?.trim() === '•').map(([, row]) => row);
+  const mapped = () => remote(`maparg('<M-j>', 'n')`) !== '';
+  try {
+    await until(() => editor && received.some(message => message.type === 'hello'), 'the plugin to connect');
+    sendMessage(editor, {type: 'welcome', root: project, level: 'normal', role: 'navigator', models: {}});
+    sendMessage(editor, {type: 'held', id: 1, file: join(project, 'a.c'), line: 3});
+    await until(() => dot().length, 'the dot');
+    sendMessage(editor, {type: 'remark', id: 2, text: 'The failure is elsewhere.', target: null});
+    await until(() => remote('luaeval("require(\'pair\').status()")').includes('held thought'), 'the statusline');
+    await sleep(300);
+    assert.deepEqual(dot(), [2], 'the dot stays');
+    assert.equal(mapped(), true, 'and Alt-j with it');
+    remote('execute("Pair jump")');
+    await until(() => received.some(message => message.type === 'release'), 'Alt-j to ask for the held thought');
+    sendMessage(editor, {type: 'remark', id: 1, text: 'Line 3 is the one.', target: null});
+    await until(() => !dot().length, 'its own remark to take the dot');
+  } finally {
+    nvim.kill();
+    server.close();
+  }
+});
+
+test('push-to-talk: hold Alt-t, a meter under your line; let go, your words, then Pair\'s answer in their place; a tap listens until the next one', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
+  // The microphone is a loud tone, and whisper a script that hears one question.
+  const bin = mkdtempSync(join(tmpdir(), 'pair-whisper-'));
+  writeFileSync(join(bin, 'whisper-cli'), '#!/bin/sh\nprintf " Why does attempt 5 give up?\\n"\n', {mode: 0o755});
+  const record = `node -e 'const b = Buffer.alloc(3200); for (let i = 0; i < 1600; i++) b.writeInt16LE(i % 8 < 4 ? 9000 : -9000, i * 2); setInterval(() => process.stdout.write(b), 100)'`;
+  const voice = {model: 'unused.bin', whisper: join(bin, 'whisper-cli'), record};
+  const {partner, messages, remote, status, stop} = await pairInNvim('retries pass', {voice});
+  const listenLine = () => {
+    const marks = JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, require('pair.listen').ns, 0, -1, {details = true}))")`));
+    const line = marks.find(([, , , details]) => details.virt_lines)?.[3].virt_lines[0];
+    return line ? line.map(chunk => chunk[0]).join('').trim() : null;
+  };
+  const words = () => JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('pair'), 0, -1, {details = true}))")`))
+    .filter(([, , , details]) => details.virt_lines).map(([, row, , details]) => [row, details.virt_lines.map(line => line.map(chunk => chunk[0]).join('').trim())]);
+  // A held key: pressed, then repeated every 40 ms, as a terminal sends it.
+  const hold = ms => remote(`luaeval("(function() local n = 0; local t = vim.uv.new_timer(); t:start(0, 40, vim.schedule_wrap(function() n = n + 1; vim.api.nvim_input('<M-t>'); if n * 40 >= ${ms} then t:close() end end)) end)() or 0")`);
+  try {
+    let answer;
+    partner.setResponses([
+      () => new Promise(resolve => { answer = resolve; }),
+      fauxAssistantMessage([fauxText('Attempt 5 lands at exactly 15, and `worker.js:2` gives up on `>=`.')]),
+    ]);
+    remote('cursor(2, 1)');
+    hold(1200);
+    await until(() => /^◉ [▁▂▃▄▅▆▇█]{10}  listening   let go to ask$/.test(listenLine() ?? ''), 'the meter under the line');
+    await until(() => /[▅▆▇█]/.test(listenLine() ?? ''), 'the meter to move');
+    assert.equal(status(), '◉ pair · listening');
+    await until(() => listenLine() === '› Why does attempt 5 give up?', 'the words Pair heard, after you let go');
+    await until(() => messages.some(message => message.sender === 'user' && message.text === 'Why does attempt 5 give up?'), 'the question in the chat');
+    answer(fauxAssistantMessage([fauxToolCall('point', {file: 'a.js', line: 3, note: 'here'})], {stopReason: 'toolUse'}));
+    await until(() => words().length, 'the answer');
+    assert.deepEqual(words(), [[1, ['● Attempt 5 lands at exactly 15, and worker.js:2 gives up on >=.   M-j']]], 'under the line you asked on, with the key to where it pointed');
+    assert.equal(listenLine(), null, 'in place of your words');
+    await until(() => status() === '● pair', 'the statusline at rest');
+
+    // A tap: Pair listens until the next press.
+    partner.setResponses([fauxAssistantMessage([fauxText('Five.')])]);
+    remote(`luaeval("vim.api.nvim_input('<M-t>') or 0")`);
+    await until(() => /listening   M-t again to ask$/.test(listenLine() ?? ''), 'the tap hint');
+    await sleep(300);
+    assert.match(listenLine(), /M-t again to ask$/, 'still listening without the key');
+    remote(`luaeval("vim.api.nvim_input('<M-t>') or 0")`);
+    await until(() => words().some(([, lines]) => lines[0] === '● Five.'), 'the answer to the tapped question');
+
+    // The model fails: the line says there is no answer, a moment, and the chat says why.
+    partner.setResponses([() => { throw new Error('401 bad key'); }]);
+    await until(() => status() === '● pair', 'the statusline at rest');
+    await sleep(300); // a key pressed again within 0.22 s of the last one counts as still held
+    hold(600);
+    await until(() => listenLine() === '◌ no answer · the chat says why', 'no answer, said under the line');
+    await until(() => messages.some(message => /Pair could not answer/.test(message.text ?? '')), 'why, in the chat');
+    await until(() => listenLine() === null, 'the line to go after a moment');
+  } finally {
+    await stop();
+  }
+});
+
+test('Telescope searches reach the trail with what you opened; :Pair trail shows them, and x forgets them', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
+  const {project, watcher, remote, keys, stop} = await pairInNvim('retries pass', {rtp: [join(REPO, 'test/fixtures/telescope')]});
+  const panel = () => JSON.parse(remote('json_encode(getline(1, "$"))'));
+  try {
+    watcher.setResponses(Array.from({length: 10}, () => fauxAssistantMessage([fauxText('0')]))); // not worth a remark
+    writeFileSync(join(project, 'backoff.js'), 'export const next = attempt => 2 ** attempt\n');
+    const search = (...args) => remote(`luaeval("require('fake_search')(${args.map(arg => JSON.stringify(arg).replaceAll('"', "'")).join(', ')}) or 0")`);
+    search('Live Grep', 'give up', 0);
+    search('Live Grep', '   ', 3); // an empty prompt is no search
+    search('Live Grep', 'dead letter', 1, 'a.js'); // the file you are in: nothing opened
+    search('Find Files', 'retry', 2, 'backoff.js');
+    assert.equal(remote('expand("%:t")'), 'backoff.js');
+
+    keys(':Pair trail<CR>');
+    const lines = await until(() => remote('&filetype') === '' && remote('win_gettype()') === 'popup' && panel(), 'the trail panel');
+    assert.equal(lines[0], 'What the pair saw you look for, oldest first');
+    assert.match(lines[2], /^\+ +0s {2}Live Grep {3}"give up" {6}0 results {2}closed, nothing opened$/);
+    assert.match(lines[3], /^\+ +0s {2}Live Grep {3}"dead letter" {2}1 result {3}closed, nothing opened$/);
+    assert.match(lines[4], /^\+ +0s {2}Find Files {2}"retry" {8}2 results {2}→ backoff\.js$/);
+    assert.equal(lines[6], '3 searches in 0 s since your last edit; 2 closed with nothing opened.');
+    assert.equal(lines.at(-1), 'q closes · x forgets this trail');
+
+    keys('x');
+    await until(() => remote('win_gettype()') === '', 'the panel to close');
+    keys(':Pair trail<CR>');
+    await until(() => remote('win_gettype()') === 'popup', 'the panel again');
+    assert.deepEqual(panel(), ['What the pair saw you look for, oldest first', '', 'No searches since your last edit.', 'q closes']);
+    keys('q');
+    await until(() => remote('win_gettype()') === '', 'q to close it');
   } finally {
     await stop();
   }

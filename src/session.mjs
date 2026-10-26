@@ -9,10 +9,12 @@ import {insideRoot, MAX_LINES, newProjectFile, numberedLines, projectFile, readP
 import {fold, initialState} from './fold.mjs';
 import {decide} from './gate.mjs';
 import {gitStatus} from './git.mjs';
+import {Breakpoints, placeOf, stillTrue, urgent} from './held.mjs';
 import {plainLine} from './herdr.mjs';
 import {RUN_TIMEOUT_MS, shellQuote} from './scout-pane.mjs';
 import {parseTestOutput, testSummary} from './test-output.mjs';
 import {TestRuns} from './test-runs.mjs';
+import {currentTrail, trailMatches, trailSummary} from './trail.mjs';
 import {detectTriggers} from './triggers.mjs';
 import {tuning, WINDOW_MS} from './tuning.mjs';
 
@@ -39,6 +41,10 @@ const CHECKS = {
     + 'reason, often another test: the fix has to keep it working, so undo their change only if it is plainly wrong. If a small '
     + 'change fixes it, call suggest with it (the lines and their complete new text); else point at the cause. Then say why in '
     + 'one or two short sentences, without a trace.',
+  search_trail: 'The user searched for one thing several ways and has not found it: their words are not the code\'s words. From what '
+    + 'is failing and what the project has for their words, work out what they look for, read the code, and point at the place '
+    + '(file, line, and as code the code\'s own word for it). Then say in one sentence where it is, in the code\'s own word, '
+    + 'and, if something fails, how that place causes it. If you cannot tell what they look for, answer exactly SILENT.',
 };
 
 export function watchInput(trigger, description) {
@@ -109,6 +115,12 @@ export function runText({exit, timedOut, tests}) {
   return `${tests.failedCount} failing · ${name}${tests.failedCount > 1 ? ` +${tests.failedCount - 1}` : ''}`;
 }
 
+/** What the gate made of the search trail, for `:Pair trail`. */
+export function verdictLine({verdict, reason, score, bar}, level) {
+  if (score === undefined) return `Not scored: ${reason}.`;
+  return `The Watcher scored it ${score}/10; the bar at ${level} is ${bar}${verdict === 'speak' ? ', so Pair looked for it' : ''}.`;
+}
+
 const NOTE_CHANGES = 20; // lines of git status the note request shows
 
 /** What the Partner is asked at the end: the note the next session in this project starts from. */
@@ -173,7 +185,11 @@ export class PairSession {
     this.unasked = false; // the running turn is a remark nobody asked for
     this.words = []; // what Pair said this turn: an unasked remark shows it under the user's line too
     this.target = null; // where the user's jump key goes: Pair's suggestion this turn, else where it pointed last
-    this.held = []; // parts of an unasked remark that came while the user was typing
+    this.held = []; // parts of an urgent unasked remark that came while the user was typing
+    this.holding = null; // the parts of the running remark, when it can wait for the user's next breakpoint (see held.mjs)
+    this.thought = null; // the held thought, {id, trigger, since, parts}: a remark ready, waiting for that breakpoint
+    this.breakpoints = new Breakpoints();
+    this.accent = null; // the editor's accent (see style.lua) as #rrggbb, for the chat pane
     this.panes = null; // the user's herdr panes (a PaneWatch), for the Driver's type
     this.edited = false; // the Driver made its one edit in this hand-over
     this.handback = null; // that edit's lines and how the tests went on them: {file, line, endLine, tests}
@@ -187,6 +203,7 @@ export class PairSession {
     this.testsShown = null;
     this.runError = null; // the last run that could not run, said once in the chat
     this.wasRed = false; // the last run failed
+    this.trailVerdict = null; // what the gate decided on the search trail last: {start, verdict, reason, score, bar}
     this.blankPage = null; // the questions of :Pair new and their slice (see blank-page.mjs)
   }
 
@@ -196,7 +213,9 @@ export class PairSession {
 
   receive(event) {
     const file = event.file && isAbsolute(event.file) ? relative(this.root, event.file) : event.file;
-    this.state = fold(this.state, {at: this.now(), ...event, ...(file ? {file} : {})});
+    const folded = {at: this.now(), ...event, ...(file ? {file} : {})};
+    this.state = fold(this.state, folded);
+    this.breakpoints.see(folded);
     if (event.kind === 'save' && file && !file.startsWith('..')) this.testRuns?.saved(file);
   }
 
@@ -239,6 +258,13 @@ export class PairSession {
     this.message('system', `\`${label}\` after Pair's edit: ${run.tests ? testSummary(run.tests) : text}`);
   }
 
+  /** The editor's accent (see style.lua), which the chat pane prints Pair in too; one that is no #rrggbb is ignored. */
+  setAccent(color) {
+    if (typeof color !== 'string' || !/^#[0-9a-f]{6}$/i.test(color)) return;
+    this.accent = color;
+    this.notify('chat', {type: 'accent', color});
+  }
+
   /** Sends a test run's state to every editor, and keeps it for editors that connect later. */
   showTests(message) {
     this.testsShown = message;
@@ -249,16 +275,45 @@ export class PairSession {
     return this.now() - this.state.lastKeyAt < this.typingPauseMs;
   }
 
-  /** Shows `action` now, or, for an unasked remark while the user types, at their next pause. */
+  /**
+   * Shows `action` now or, for an unasked remark, when it is due: at the user's next pause in typing, or, for a
+   * remark that can wait, at their next breakpoint.
+   */
   show(action) {
-    if (this.unasked && this.typing()) this.held.push(action);
+    if (this.unasked && this.holding) this.holding.push(action);
+    else if (this.unasked && this.typing()) this.held.push(action);
     else action();
+  }
+
+  /** Shows what waits once it is due: the held thought at the user's next breakpoint, other parts at a pause. */
+  showDue() {
+    if (this.thought && this.breakpoints.last(this.state, this.now()) >= this.thought.since) this.release();
+    if (this.held.length && !this.typing()) this.held.splice(0).forEach(action => action());
+  }
+
+  /** Holds a finished remark that can wait: the editor shows a dot where it is about until it is due. */
+  hold(thought, target) {
+    this.thought = thought;
+    if (this.breakpoints.last(this.state, this.now()) >= thought.since) return this.release();
+    this.log(`${thought.trigger.kind}: held for the next breakpoint`);
+    this.notify('editor', {type: 'held', id: thought.id, ...placeOf(target, thought.trigger, this.root)});
+  }
+
+  /** Shows the held thought: at a breakpoint, or early when the user asks. One no longer true is dropped. */
+  release() {
+    const {thought} = this;
+    if (!thought) return;
+    this.thought = null;
+    if (stillTrue(thought.trigger, this.state)) return thought.parts.forEach(action => action());
+    this.log(`${thought.trigger.kind}: held thought dropped, no longer true`);
+    this.store.dropRemark(thought.id);
+    this.notify('editors', {type: 'unheld', id: thought.id});
   }
 
   /** Looks for a trigger worth a remark; called about once a second. Ticks never overlap. */
   async tick() {
     this.countActive();
-    if (this.held.length && !this.typing()) this.held.splice(0).forEach(action => action());
+    this.showDue();
     if (this.ticking || this.role === 'driver' || !this.health.ok()) return;
     const now = this.now();
     // While :Pair new asks its questions, the note they are in is no place for remarks.
@@ -270,10 +325,12 @@ export class PairSession {
     try {
       if (triggers.length && this.autoTune) this.budget.tune(tuning(this.store.remarks(now - WINDOW_MS), now));
       for (const trigger of triggers) {
+        if (this.thought && !urgent(trigger.kind)) continue; // one held thought at a time
         const decision = await decide({trigger, state: this.state, now, budget: this.budget, score: this.score, typingPauseMs: this.typingPauseMs});
         if (!this.repeats(trigger, decision)) this.log(`${trigger.kind}: ${decision.verdict} (${decision.reason})`);
         if (decision.held) this.waitFor(trigger, now);
         else this.waited(trigger, now);
+        if (trigger.kind === 'search_trail' && decision.verdict !== 'wait') this.trailVerdict = {start: trigger.searches[0].at, ...decision, bar: this.budget.barFor(trigger.kind)};
         if (decision.verdict === 'wait') return;
         if (decision.verdict === 'later') {
           this.deferred.add(trigger.key); // logged once, looked at again each tick until the budget allows
@@ -340,21 +397,28 @@ export class PairSession {
   async remark(trigger, score, waitedMs = null) {
     // The gate saw a pause, but a Partner turn takes seconds: the user may be typing again by the time it answers.
     this.unasked = true;
+    this.holding = urgent(trigger.kind) ? null : [];
+    const since = this.now(); // a breakpoint from here on is the one it waits for
     const id = this.remarkId = this.store.addRemark({sessionId: this.id, trigger: trigger.kind, score, at: this.now(), waitedMs});
     try {
-      const input = watchInput(trigger, describeState(this.state, this.now()));
+      // The trail's queries, searched in the project: which of the user's words the code has, and where.
+      const seen = trigger.kind === 'search_trail' ? {...trigger, detail: `${trigger.detail}\n${await trailMatches(this.root, trigger.searches)}`} : trigger;
+      const input = watchInput(seen, describeState(this.state, this.now()));
       if (!(await this.talk(input, {kind: 'remark'}))) return this.store.dropRemark(id);
-      this.budget.spend(this.now());
-      this.lastRemark = id;
       // After the remark's own words, also when they wait for a pause in the user's typing. The editor shows
       // the words under the line the user is on, with a way to the place Pair pointed at.
       const {words, target} = this;
+      // The budget pays for a remark the user gets to see, when they see it.
       this.show(() => {
+        this.budget.spend(this.now());
+        this.lastRemark = id;
         this.notify('chat', {type: 'remark', id});
         this.notify('editor', {type: 'remark', id, text: words.join('\n'), target});
       });
+      if (this.holding) this.hold({id, trigger, since, parts: this.holding}, target);
     } finally {
       this.unasked = false;
+      this.holding = null;
       this.remarkId = null;
       this.remarking = null;
     }
@@ -390,13 +454,18 @@ export class PairSession {
 
   /**
    * A question from the user, in the chat pane or Neovim: always answered, outside the budget. `selection`
-   * ({file, from, to}) is the lines they asked about.
+   * ({file, from, to}) is the lines they asked about. Resolves with what Pair said, '' when it only pointed or the
+   * text became the goal.
    */
   async ask(text, selection = null) {
     this.message('user', selection ? `${text} (${relative(this.root, selection.file)}:${selection.from}-${selection.to})` : text);
-    if (!this.state.goal && !selection) return this.setGoal(text);
+    if (!this.state.goal && !selection) {
+      this.setGoal(text);
+      return '';
+    }
     await this.yieldRemark();
     await this.talk(`[user] ${text}${await this.selected(selection)}\n\nNow:\n${describeState(this.state, this.now())}`);
+    return this.words.join('\n');
   }
 
   /** The lines the user selected, for the Partner's input; '' without a selection. */
@@ -575,6 +644,25 @@ export class PairSession {
     this.notify('chat', {type: 'confirmed', id});
     this.message('system', note);
     resolve(ok);
+  }
+
+  /** What `:Pair trail` shows: the searches a trail remark would send, oldest first, and what the gate made of them. */
+  trail() {
+    const now = this.now();
+    const trail = currentTrail(this.state, now);
+    const verdict = trail.length && this.trailVerdict?.start === trail[0].at ? this.trailVerdict : null;
+    return {
+      type: 'trail',
+      searches: trail.map(({picker, query, results, file, line, at}) => ({picker, query, results, file, line, after: at - trail[0].at})),
+      summary: trailSummary(trail),
+      verdict: verdict && verdictLine(verdict, this.budget.level),
+    };
+  }
+
+  /** Forgets the searches so far: none of them goes to a model. */
+  forgetTrail() {
+    this.receive({kind: 'forget_searches'});
+    this.trailVerdict = null;
   }
 
   /** Ends the session with a note, which the next session in this project starts from. */

@@ -1,37 +1,50 @@
 # The pair in Neovim
 
 Pair sits in the second chair. In Neovim it has a small visual language: a few marks in one colour, all in your
-own font, and no windows, boxes, borders or field labels. Everything it shows follows one test: would you keep it
-on screen for an eight-hour day?
+own font, and no windows, boxes, borders or field labels (the one panel, `:Pair trail`, opens only when you ask).
+Everything it shows follows one test: would you keep it on screen for an eight-hour day?
 
 ![Pair stops a wrong turn: it reads, says why under your edit, and Alt-j goes to the real cause](images/wrong-turn.gif)
 
 *The capture above is the plugin and the daemon as shipped, in a clean Neovim with the ayu colorscheme. The test
 run is real `go test`; only the models' words are scripted. It is recorded from a tape in [captures/](captures/).*
 
-## Six marks, one accent
+## A few marks, one accent
 
 | Mark | Where | What it means |
 | --- | --- | --- |
 | `●` and a line or two | under the line you are on | Pair's voice: what it says unasked, in your font, indented with your code |
 | a lit line number | the number column | its gaze: the lines it is reading, one after another, with a short trail |
 | `▎` | the sign column | a line it points at, or the line its words are about |
+| `•` | the sign column, and `held thought` in the statusline | a remark that waits for your next break, about this line ([below](#the-held-thought)) |
 | `M-j` | after its words | go where it points; your cursor never moves by itself |
 | `◎` | the statusline | it has the wheel (the Driver); any key takes it back |
 | a block after ghost text | where it types | its cursor, while it types the change you handed over |
 | `◌` | the statusline | it is not there: reconnecting, or a model is down |
+| `◉` and a meter | under your line, and the statusline | it listens while you hold `Alt-t` ([push-to-talk](voice.md)) |
 | `⠹` | the statusline | it thinks before it answers, or runs your tests |
 | `✓` `✗` | the statusline, and the sign column of your tests | tests it ran for you when you saved |
 
 **One accent, from your colorscheme.** Pair takes its colour from the colorscheme you use, so it fits in light and
 dark: of the colorscheme's own colours for regular expressions, its terminal cyan, its hints and its specials, it
 picks the one whose hue is furthest from every colour your code is drawn in, and makes sure it reads on your
-background. So Pair is never mistaken for syntax. With ayu that is its regexp teal; with Neovim's own colorscheme,
-its cyan. Pair's words are your foreground tinted toward the accent, and `code` in them is the accent.
+background. So Pair is never mistaken for syntax. It also keeps at least 30° of hue away from the colorscheme's
+error colour, so Pair is never mistaken for an error. With ayu that is its regexp teal; with Neovim's own
+colorscheme, its cyan. Pair's words are your foreground tinted toward the accent, and `code` in them is the accent.
+
+**On a grey palette.** Many desktop themes are greys with one signal colour, often a warm red. When your code is
+drawn in greys, with at most that one colour, Pair takes a quiet teal instead: the one other colour on screen, so
+when it speaks, you see it, and it never reads as an error. Before, such a palette gave Pair its red.
+
+**The chat pane in the same colour.** Neovim sends the accent to the daemon, and the chat pane prints Pair's name and
+the `code` in its words in it, in true colour, with long lines wrapped under the words. Before a Neovim with
+`termguicolors` connects it uses the terminal's cyan; with `NO_COLOR` set it prints no colours.
+
+![One look: Neovim on a grey palette with one warm red; Pair's teal under the code, in the statusline and in the chat pane](images/held-shown.png)
 
 Every highlight group is defined with `default = true`, and only when the colorscheme has not defined it: a
 colorscheme or your config can set any of them and keeps its own. Pair sets them again when you change the
-colorscheme or `background`.
+colorscheme, `background` or `termguicolors`.
 
 ## The wrong turn
 
@@ -156,6 +169,83 @@ The first slice comes as a suggestion that adds lines and strikes nothing, and `
 
 ![The slice under the last answer, nothing struck through, and Alt-y to take it into the note](images/blank-slice.png)
 
+## The search trail
+
+You look for something with Telescope and it is not there under your words. A test is red; you grep for
+"give up": nothing. "dead letter": one comment. You find-file "retry" and open `backoff.go`. Those three searches say
+what you are after better than a goal you typed, and that the code calls it something else. Pair reads the trail
+and, once you pause, says where the thing is, in the code's own word.
+
+![Three Telescope searches; Pair names ErrBudget at worker.go:35 under your line; :Pair trail shows what it saw](images/search-trail.gif)
+
+*The plugin and the daemon as shipped, with real Telescope in a clean Neovim. The test run is real `go test`. The
+Watcher's score and the Partner's words are what a live model answered to this trail in the live test
+(`test/live/trail.test.mjs`), replayed.*
+
+1. The delivery test fails in your terminal: `attempts = 4, want 5`.
+2. `␣sg` "give up", `Esc`: 0 results. `␣sg` "dead letter", `Esc`: one comment, nothing worth opening. `␣sf`
+   "retry", `Enter`: `backoff.go` opens.
+3. A few seconds after the last search, with no edit since, Pair looks. The Watcher scores the trail with what fails
+   now; the Partner gets the trail, the failing test's message, and what ripgrep finds in the project for each of
+   your queries, then reads the code.
+4. Its words show under your line: the word you are looking for is `ErrBudget`, and it fires at
+   `elapsed+wait >= cfg.Budget`, which refuses the wait that lands exactly on the 15 s budget. They end with `M-j`.
+5. `Alt-j` goes to `worker.go:35`, the `>=` underlined.
+
+![The cue under your line in backoff.go](images/trail-cue.png)
+
+**`:Pair trail`** shows what Pair saw: each search since your last edit, oldest first, with the picker, your words,
+how many results, and what you opened from it. Under them, what the trail looks like and what the Watcher made of
+it. These lines are all of your searches a model ever gets, and only with a trail remark. `x` forgets them, `q`
+closes the panel.
+
+![:Pair trail: three searches, the summary and the Watcher's score](images/trail-panel.png)
+
+**When it speaks.** A trail is the searches since your last edit, within four minutes. It is looked at once you
+pause after the last one, when there are three or more and one of them closed with nothing opened, or you searched
+the same words again and landed somewhere else. Three searches that each opened a file are you finding your way,
+and the same words opening the same file each time are your way back to it: both stay quiet. An edit
+ends a trail: what you searched before it, you found. Each new search in a trail is a new look, within the budget
+of your talk level.
+
+**Why the failing test goes with it.** From the trail alone, the model guesses what you are after, and in live runs
+it guessed wrong: it pointed at the attempt limit, the other place that "gives up". With the failing test's message
+next to the trail, it named the `>=` every time. So the cue always carries what fails now: the last red test run,
+else the last failed command, from the last ten minutes. With nothing failing, the cue still comes, and says where
+your words are in the code.
+
+**How the searches are read.** Telescope (`FileType TelescopePrompt`, then the prompt's `BufLeave`, as Telescope
+closes it) and snacks.picker (as its input window closes, whether you confirm from the input or the list): the picker's title, your words,
+the result count and the selected entry, then whether that file is where you are now (in a new split too). No mapping, action or
+picker setting of yours changes, and nothing is written to the picker's own history; Telescope's history keeps
+only searches that ended in a selection, and the ones you gave up on are the telling ones. A picker closed with an
+empty prompt is no search. fzf-lua has no hook for its close, so its searches are not read. `searches = false` in
+`setup` turns all of this off.
+## The held thought
+
+Most of what Pair has to say is not urgent. A remark about drift, a stall, or an error in a line you wrote and left
+is held for your next natural break: a save, a run or a commit that ended, leaving Insert mode for a few seconds, or
+a quiet stretch. A wrong turn, a regression or a failure you missed still speak at your next pause in typing.
+
+![The held thought: you write ring_pop in C and go on; a dot waits by the line, and the remark shows when you save](images/held-thought.gif)
+
+*The plugin and the daemon as shipped, in a clean Neovim on mini.base16 with a grey palette, `clangd` for the
+diagnostics, and the real chat pane on the right. Only the models' words are scripted.*
+
+1. You write `ring_pop` in C and go on typing. `clangd` marks `capacity` on line 26: nothing declares it.
+2. You stop for a moment to think; Pair looks, reads `ring.h`, and has its remark ready. It does not say it: you are
+   still in Insert mode, still writing. A `•` appears in the margin at line 26, and the statusline says
+   `● pair · held thought · M-j`. The chat stays as it was.
+3. You finish the function and save. Now the remark shows: line 26 tinted with `capacity` underlined and its note,
+   the words under your line, and the same words in the chat, in the same teal.
+
+![While you type: the dot by line 26, and the statusline](images/held.png)
+
+![At the save: the point, the note, the words under your line, and the chat](images/held-shown.png)
+
+`Alt-j` shows a held thought at once, and goes where it points once it shows. If you fix the line yourself before
+your break, the dot goes and Pair says nothing. The rules are in [docs/watcher.md](watcher.md#the-held-thought).
+
 ## What each thing looks like
 
 **Words.** One or two lines under the line you are on, indented with your code, with `●` before them. At most
@@ -179,7 +269,8 @@ lines sit right under them on a faint tint, and the note follows with `M-y`.
 **The statusline.** One quiet segment: `● pair` at rest, the `●` in the accent while Pair's words are on screen,
 `● reading worker.go` while it reads, `◎ pair has the wheel · any key takes it back` while it drives, and the
 tests on save as above (`(unsaved)` after the label for the run on the Driver's edit). The role and
-the talk level show only when they are not the usual ones (`● pair · scout`, `● pair · quiet`).
+the talk level show only when they are not the usual ones (`● pair · scout`, `● pair · quiet`). While a thought is
+held, `● pair · held thought · M-j`, the `●` in the accent.
 
 ![A model down, then the daemon away](images/statusline.png)
 
@@ -189,14 +280,16 @@ the talk level show only when they are not the usual ones (`● pair · scout`, 
 require('pair').setup({
   auto_connect = true,
   jump_key = '<M-j>',  -- false for none; :Pair jump works either way
+  listen_key = '<M-t>', -- hold it to speak to Pair (docs/voice.md); false for none
   motion = true,       -- false: no fades, the gaze lights one line at a time without its trail, and the Driver's edit lands at once
   glyphs = {},         -- for example {voice = '\u{f444}', wheel = '\u{f030c}'} with a Nerd Font
+  searches = true,     -- false: your Telescope and snacks.picker searches stay in Neovim, and there is no search trail
 })
 ```
 
 The keys (`jump_key`, `accept_key`, `useful_key`, `noise_key`) are mapped only while there is something for them
-to act on, and only where you have no mapping of your own. The glyphs are plain Unicode, so they show in any font:
-`voice` `●`, `mark` `▎`, `away` `◌`, `wheel` `◎`, `pass` `✓` and `fail` `✗`. The spinner is braille, `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`.
+to act on, and only where you have no mapping of your own; `listen_key` is mapped from the start, also only where it is free. The glyphs are plain Unicode, so they show in any font:
+`voice` `●`, `mark` `▎`, `held` `•`, `away` `◌`, `wheel` `◎`, `listen` `◉`, `pass` `✓` and `fail` `✗`. The spinner is braille, `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`.
 
 For the statusline, `require('pair').status()` is plain text and `require('pair').statusline()` the same with
 Pair's highlight groups, for the `statusline` option or a statusline plugin's section:
@@ -217,7 +310,7 @@ to standard ones and does not fade.
 | `PairNote` | Pair's words and notes | your foreground toward the accent |
 | `PairCode` | `code` in its words | the accent |
 | `PairKey` | the key after its words | between background and foreground |
-| `PairSign` | `▎` in the sign column | the accent |
+| `PairSign` | `▎` and `•` in the sign column | the accent |
 | `PairPoint` | a line Pair points at | the background, faintly toward the accent |
 | `PairSpan` | the code it means there, underlined | the background toward the accent |
 | `PairGaze` | a line number it reads | the accent, bold |
@@ -229,6 +322,7 @@ to standard ones and does not fade.
 | `PairPass` | `✓` on a passing test | the "ok" colour, faded toward the background |
 | `PairFail` | `✗` on a failing test, and in the statusline | your colorscheme's error colour (`DiagnosticError`) |
 | `PairFailNote` | why a test failed, after its line | your foreground toward the error colour |
+| `PairHeard` | your words as Pair heard them, in italics | between background and foreground |
 
 ## Ask about lines
 

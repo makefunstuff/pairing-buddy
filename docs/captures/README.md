@@ -14,13 +14,17 @@ recording comes out the same each time.
     `go test -overlay` on the unsaved buffer.
   - The user's shell is Neovim's `:terminal`, with Pair's shell hook.
 - **The project** is [hookd/](hookd/), a small Go webhook service with a retry bug. Each scene starts it at its
-  own point. The blank page's scenes start in an empty folder, `ticks`, with no git yet.
+  own point. The held thought is in C instead: [ringbuf/](ringbuf/), a ring buffer with a Makefile, and `clangd`
+  gives its diagnostics. The blank page's scenes start in an empty folder, `ticks`, with no git yet.
 - **The blank page's words** are not written for the capture: [ticks.json](ticks.json) holds a real `:Pair new`
   with a cloud model, unedited. It has the three questions (each asked after the answer before it), the slice and the
   two files the Driver typed. Its first slice broke the 90-character rule, so the daemon asked again; the slice
   here is the second answer, the one the note showed.
 - **Neovim** is clean: [init.lua](init.lua), the ayu colorscheme (fetched at a pinned commit), and scratch XDG
-  directories.
+  directories. The search-trail scene also fetches Telescope and plenary at pinned commits; Telescope's history goes
+  to the scratch directories too.
+  directories. The held thought uses mini.base16 (also fetched at a pinned commit) on a grey palette with one
+  warm red, and shows the real chat pane (`pair chat`) in a `:terminal` on the right.
 
 | Tape | Shows |
 | --- | --- |
@@ -30,16 +34,26 @@ recording comes out the same each time.
 | [take-back](tapes/take-back.tape) | a key while Pair drives takes the wheel back |
 | [blank-page](tapes/blank-page.tape) | 04 · the blank page: `:Pair new`, three questions, the first slice |
 | [first-run](tapes/first-run.tape) | 05 · the first run: the Driver types the slice's two files, and `make run` runs them |
+| [search-trail](tapes/search-trail.tape) | the search trail: three Telescope searches, the cue, `:Pair trail` |
+| [held-thought](tapes/held-thought.tape) | the held thought, and one look on a grey palette |
+| [push-to-talk](tapes/push-to-talk.tape) | hold `Alt-t`, ask aloud, and Pair answers under your line |
 
 ## Recording
 
-Needs [VHS](https://github.com/charmbracelet/vhs) 0.11 with ttyd, Neovim 0.11+, Go, Node.js, curl, FFmpeg and
-the JetBrainsMono Nerd Font.
+Needs [VHS](https://github.com/charmbracelet/vhs) 0.11 with ttyd, Neovim 0.11+, Go, clangd, Node.js, curl, FFmpeg
+and the JetBrainsMono Nerd Font.
 
 ```sh
 npm ci                                  # in the repo root
 docs/captures/record.sh                 # all six scenes into docs/captures/out/, or name some
 docs/captures/encode.sh                 # out/ -> site/media/ and docs/images/
+```
+
+The push-to-talk scene is not in the default four: it also needs [whisper.cpp](../voice.md#1-build-whispercpp-cpu-only),
+espeak-ng and FFmpeg. espeak-ng says the scene's question into the recorder, and whisper.cpp hears it for real:
+
+```sh
+CAP_WHISPER_MODEL=/path/to/ggml-base.en.bin CAP_WHISPER=/path/to/whisper-cli docs/captures/record.sh push-to-talk
 ```
 
 Each scene runs in its own scratch directory under `/tmp/paircap.*`, which holds:

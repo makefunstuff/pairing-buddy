@@ -91,7 +91,8 @@ end
 --- The pair's voice: `text` as virtual lines indented by `indent`, the voice glyph before the first line and
 --- `key` (the key that acts on it) dimmed after the last; at most MAX_LINES, cut with an ellipsis.
 local function voice(text, indent, width, key)
-  local lines = wrap(text, math.max(20, width - indent - 2), 'PairNote')
+  local room = key and vim.fn.strdisplaywidth(key) + 3 or 0 -- the key goes after the last line, so no line takes its place
+  local lines = wrap(text, math.max(20, width - indent - 2 - room), 'PairNote')
   if #lines > MAX_LINES then
     lines = vim.list_slice(lines, 1, MAX_LINES)
     table.insert(lines[MAX_LINES], {' …', 'PairNote'})
@@ -175,6 +176,11 @@ end
 --- The mark in the sign column of rows `first`..`last`, under any other mark of the pair. Returns the extmark id.
 function M.span(buf, first, last)
   return vim.api.nvim_buf_set_extmark(buf, M.ns, first, 0, {end_row = last, sign_text = style.glyphs.mark, sign_hl_group = 'PairSign', priority = 15})
+end
+
+--- The dot of a held thought in the sign column of row `row`, under the pair's other marks. Returns the extmark id.
+function M.held(buf, row)
+  return place(buf, M.ns, row, 0, {sign_text = style.glyphs.held, sign_hl_group = 'PairSign', priority = 18})
 end
 
 --- A note about row `row`: after the line when it fits in the window, else under it. Returns the extmark id.

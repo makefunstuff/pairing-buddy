@@ -11,6 +11,9 @@ local SETTLE_MS = 1500 -- after Insert mode, how long an answer stays unchanged 
 
 -- The question waiting for its answer: {buf, id (its extmark), n}; nil when none is.
 local asking = nil
+-- Where the next question goes: an extmark on the last line of the answer just sent, {buf, id}. You may be typing
+-- on below it by the time the question comes.
+local answered = nil
 local group = vim.api.nvim_create_augroup('pair_new', {clear = true}) -- the autocommands of the waiting question
 local settle = vim.uv.new_timer()
 
@@ -19,6 +22,11 @@ local function forget()
   asking = nil
   settle:stop()
   vim.api.nvim_clear_autocmds({group = group})
+end
+
+local function forget_answered()
+  if answered then draw.erase(answered.buf, {answered.id}) end
+  answered = nil
 end
 
 --- The last row of `buf` with text on it (0-based): the question goes under it.
@@ -59,6 +67,7 @@ end
 --- :Pair new: `send` reaches the daemon (init.lua's).
 function M.start(idea, send)
   forget()
+  forget_answered()
   local _, path = open_note(vim.trim(idea))
   send({type = 'new', idea = vim.trim(idea), file = path})
 end
@@ -66,10 +75,11 @@ end
 --- The daemon's interview message: a question to show (`n`, `text`), or `done`.
 function M.on_interview(message, send)
   forget()
-  if message.done then return end
+  if message.done then return forget_answered() end
   local buf = vim.fn.bufnr(message.file)
   if buf == -1 or not vim.api.nvim_buf_is_loaded(buf) then return end
-  local row = last_text_row(buf)
+  local after = answered and answered.buf == buf and draw.row(buf, answered.id)
+  local row = after or last_text_row(buf)
   asking = {buf = buf, n = message.n, id = draw.remark(buf, row, message.text, nil, {sign = {style.glyphs.voice, 'PairSign'}})}
   local question = asking
   local function answer()
@@ -78,6 +88,8 @@ function M.on_interview(message, send)
     local text = at and answer_of(buf, at) or ''
     if text == '' then return end
     vim.api.nvim_clear_autocmds({group = group}) -- one answer per question
+    forget_answered()
+    answered = {buf = buf, id = vim.api.nvim_buf_set_extmark(buf, draw.ns, last_text_row(buf), 0, {})}
     send({type = 'answer', text = text})
   end
   local function wait() settle:start(SETTLE_MS, 0, vim.schedule_wrap(answer)) end

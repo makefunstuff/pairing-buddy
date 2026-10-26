@@ -7,16 +7,21 @@
 local draw = require('pair.draw')
 local drive = require('pair.drive')
 local blank = require('pair.new')
+local listen = require('pair.listen')
+local searches = require('pair.searches')
 local style = require('pair.style')
+local trail = require('pair.trail')
 
 local M = {}
 
 local ns = draw.ns
 -- Alt-y: no built-in meaning in Normal mode. <Tab> would be the same byte as Ctrl-I, the jumplist's forward jump.
--- Alt-j goes where Pair points. Alt-u and Alt-n rate Pair's last unasked remark: useful, or noise.
+-- Alt-j goes where Pair points. Alt-u and Alt-n rate Pair's last unasked remark: useful, or noise. Hold Alt-t to
+-- speak to Pair (push-to-talk, see listen.lua).
 local config = {
   socket = nil, debounce_ms = 2000, max_points = 5, motion = true, glyphs = {},
-  accept_key = '<M-y>', jump_key = '<M-j>', useful_key = '<M-u>', noise_key = '<M-n>',
+  accept_key = '<M-y>', jump_key = '<M-j>', useful_key = '<M-u>', noise_key = '<M-n>', listen_key = '<M-t>',
+  searches = true, -- your Telescope and snacks.picker searches go to the daemon, for the search trail
 }
 local state = {
   channel = nil, partial = '', attached = {}, pending = {}, open_request = nil, level = nil, role = nil,
@@ -26,6 +31,7 @@ local state = {
   reading = nil, -- the file Pair reads now, for the statusline: {name, till}
   suggestion = nil, -- the change Pair suggested: {buf, ids, old, new, remark}
   remark = nil, -- the id of Pair's last unasked remark, until you rate it
+  held = nil, -- a remark Pair holds for your next break: {remark, buf, id} (buf and id: its dot in the margin)
   keys = {}, -- the keys this plugin mapped while something waits for them, by purpose
   wanted = false, -- connect was asked for (:Pair start or auto_connect) and not undone by :Pair stop
   retry = nil, -- the reconnect timer
@@ -132,10 +138,11 @@ local function point_target(point)
   return point and {buf = point.buf, ns = ns, id = point.ids.mark, code = point.code, point = point}
 end
 
---- The jump key goes to `target`, or to Pair's last point when it is nil, or nowhere when there is none.
+--- The jump key goes to `target`, or to Pair's last point when it is nil, or nowhere when there is none (unless a
+--- held thought waits for it).
 local function aim(target)
   state.target = target or point_target(state.points[#state.points])
-  if not state.target then unmap_keys('jump') end
+  if not state.target and not state.held then unmap_keys('jump') end -- a held thought keeps it: it shows the thought
 end
 
 local function forget_point(point)
@@ -151,7 +158,9 @@ local function clear_points()
 end
 
 --- Goes to the place Pair pointed at last, or to its suggestion, leaving a mark in the jumplist: Ctrl-O comes back.
+--- While Pair holds a thought, shows that first: the place it is about comes with it.
 function M.jump()
+  if state.held then return send({type = 'release'}) end
   local target = state.target
   local row = target and draw.row(target.buf, target.id, target.ns)
   if not row then return vim.notify('Pair: it points at nothing now') end
@@ -213,8 +222,35 @@ local function feedback(useful, id, implicit)
   end
 end
 
+-- A held thought: a remark that can wait for your next break (a save, a run, a stop to look). Meanwhile a dot
+-- in the margin says where it is about, and the jump key shows it now.
+
+local function forget_held()
+  local held = state.held
+  state.held = nil
+  if not held then return end
+  if held.id then draw.erase(held.buf, {held.id}) end
+  if not state.target then unmap_keys('jump') end
+  redraw_status()
+end
+
+local function on_held(message)
+  forget_held()
+  local file = type(message.file) == 'string' and message.file or nil
+  local buf = file and load(file) or vim.api.nvim_get_current_buf()
+  state.held = {remark = message.id}
+  if project_path(buf) then
+    local here = buf == vim.api.nvim_get_current_buf() and vim.api.nvim_win_get_cursor(0)[1] or 1
+    local line = type(message.line) == 'number' and message.line or here
+    state.held.buf, state.held.id = buf, draw.held(buf, math.min(line, vim.api.nvim_buf_line_count(buf)) - 1)
+  end
+  map_keys('jump', {{config.jump_key, M.jump, 'Show what Pair holds'}})
+  redraw_status()
+end
+
 -- An unasked remark: its words go under the line you are on, and the feedback keys wait for your verdict.
 local function on_remark(message)
+  if state.held and state.held.remark == message.id then forget_held() end -- another remark leaves a held one waiting
   state.remark = message.id
   map_keys('feedback', {
     {config.useful_key, function() feedback(true, state.remark) end, 'Pair\'s remark was useful'},
@@ -545,8 +581,15 @@ local function handback(message)
   redraw_status()
 end
 
+-- The chat pane prints Pair in the same accent as here, once Neovim has true colours to give.
+local function send_accent()
+  local color = vim.o.termguicolors and vim.api.nvim_get_hl(0, {name = 'PairAccent', link = false}).fg
+  if color then send({type = 'accent', color = style.hex(color)}) end
+end
+
 local function hello()
   send({type = 'hello', role = 'editor', cwd = vim.fn.getcwd()})
+  send_accent()
 end
 
 -- `models` maps each role to why its model is down, or to null (vim.NIL here) when it answers.
@@ -571,13 +614,17 @@ local handlers = {
     redraw_status()
   end,
   remark = on_remark,
+  held = on_held,
+  unheld = forget_held,
   tests = on_tests,
+  trail = function(message) trail.show(message, function() send({type = 'forget_trail'}) end) end,
   thinking = function(message)
     state.thinking = message.on
     spin()
     redraw_status()
   end,
   clear = function()
+    forget_held()
     clear_points()
     clear_suggestion()
     forget_words(false)
@@ -596,6 +643,18 @@ local handlers = {
     if message.sender == 'system' then vim.notify('Pair: ' .. message.text) end
   end,
   ended = hello,
+  listening = function(message) listen.level(message.level) end,
+  heard = listen.heard,
+  -- The answer to what you said: Pair's words under the line you asked on, in place of yours.
+  answer = function(message)
+    if message.text == '' and not message.pointed then return listen.unanswered() end
+    local buf, row = listen.answered()
+    if not buf or type(message.text) ~= 'string' or message.text == '' then return end
+    forget_words(false)
+    state.words = {buf = buf, row = row, text = message.text, key = message.pointed and key_label('jump', config.jump_key) or nil}
+    draw_words(state.words)
+    redraw_status()
+  end,
 }
 
 local disconnected
@@ -642,6 +701,7 @@ disconnected = function()
   if state.run and state.run.state == 'run' then on_tests({state = 'idle'}) end -- that run's end will not come
   if state.typing then state.typing() end -- no daemon waits for the edit any more
   state.thinking = false -- nor does any turn of its Partner
+  listen.cancel(function() end) -- nor what you were saying
   spin()
   if state.role == 'driver' then set_role('navigator') end -- a restarted daemon has ended the hand-over
   redraw_status()
@@ -666,6 +726,7 @@ function M.disconnect()
   if state.channel then vim.fn.chanclose(state.channel) end
   state.channel = nil
   set_role(nil)
+  forget_held()
   clear_points()
   clear_suggestion()
   forget_words(false)
@@ -687,6 +748,8 @@ local function status_parts()
   if #down > 0 then
     return {glyph = g.away, text = 'pair · ' .. (#down == 2 and 'models' or down[1]) .. ' down', hl = 'PairStatusWarn', text_hl = 'PairStatusWarn'}
   end
+  local hearing = listen.status()
+  if hearing then return hearing end
   local run = state.run
   if state.role == 'driver' and not (run and run.state == 'run') then
     local doing = state.thinking and 'thinking' or 'any key takes it back'
@@ -711,7 +774,9 @@ local function status_parts()
   local parts = {'pair'}
   if state.role and state.role ~= 'navigator' then table.insert(parts, state.role) end
   if state.level and state.level ~= 'normal' then table.insert(parts, state.level) end
-  return {glyph = g.voice, text = table.concat(parts, ' · '), hl = state.words and 'PairStatus' or 'PairStatusDim', text_hl = 'PairStatusDim'}
+  if state.held then table.insert(parts, 'held thought · ' .. (key_label('jump', config.jump_key) or ':Pair jump')) end
+  local lit = state.words or state.held
+  return {glyph = g.voice, text = table.concat(parts, ' · '), hl = lit and 'PairStatus' or 'PairStatusDim', text_hl = 'PairStatusDim'}
 end
 
 --- The statusline's text, for example `● pair`, `● reading worker.go`, `⠹ go test ./...`, `⠹ pair · thinking`, `✗ 1 failing · TestX` or
@@ -747,6 +812,7 @@ local commands = {
     blank.start(arg, send)
   end,
   jump = function() M.jump() end,
+  trail = function() send({type = 'trail'}) end,
   accept = M.accept,
   dismiss = M.dismiss,
   useful = function() feedback(true, state.remark) end,
@@ -765,6 +831,11 @@ local commands = {
     end
   end,
   stop = M.disconnect,
+  -- Like a tap of the listen key: Pair listens until the next :Pair listen. `:Pair listen cancel` drops it.
+  listen = function(arg, selection)
+    if arg == 'cancel' then return listen.cancel(send) end
+    listen.press(send, ':Pair listen', selection)
+  end,
 }
 
 function M.command(opts)
@@ -786,8 +857,16 @@ function M.setup(opts)
   drive.motion = config.motion
   style.apply()
   local group = vim.api.nvim_create_augroup('pair', {clear = true})
-  vim.api.nvim_create_autocmd('ColorScheme', {group = group, callback = style.apply})
-  vim.api.nvim_create_autocmd('OptionSet', {group = group, pattern = {'termguicolors', 'background'}, callback = style.apply})
+  local function restyle()
+    style.apply()
+    send_accent()
+  end
+  vim.api.nvim_create_autocmd('ColorScheme', {group = group, callback = restyle})
+  vim.api.nvim_create_autocmd('OptionSet', {group = group, pattern = {'termguicolors', 'background'}, callback = restyle})
+  -- Leaving Insert mode for a while is a natural break, where a held thought shows.
+  vim.api.nvim_create_autocmd({'InsertEnter', 'InsertLeave'}, {group = group, callback = function(args)
+    if state.channel then event({kind = 'mode', insert = args.event == 'InsertEnter'}) end
+  end})
   -- A note's place depends on the width of the window that shows it.
   vim.api.nvim_create_autocmd({'WinResized', 'VimResized', 'BufWinEnter'}, {group = group, callback = relayout})
   vim.api.nvim_create_autocmd('BufEnter', {group = group, callback = function(args)
@@ -798,6 +877,22 @@ function M.setup(opts)
     if file then event({kind = 'enter', file = file}) end
   end})
   vim.api.nvim_create_autocmd('CursorHold', {group = group, callback = send_cursor})
+  -- Whether you are at the editor: an answer to what you said is read aloud only while you are away.
+  vim.api.nvim_create_autocmd({'FocusGained', 'FocusLost'}, {group = group, callback = function(args)
+    send({type = 'focus', on = args.event == 'FocusGained'})
+  end})
+  -- Push-to-talk, in Normal mode and, about the selected lines, in Visual mode; only where the key is free.
+  for _, mode in ipairs({'n', 'x'}) do
+    if config.listen_key and config.listen_key ~= '' and vim.fn.maparg(config.listen_key, mode) == '' then
+      vim.keymap.set(mode, config.listen_key, function()
+        if not state.channel then return vim.notify('Pair: not connected') end
+        local file = mode == 'x' and project_path(0)
+        local from, to = vim.fn.line('v'), vim.fn.line('.')
+        local selection = file and {file = file, from = math.min(from, to), to = math.max(from, to)} or nil
+        listen.press(send, (config.listen_key:gsub('^<(.*)>$', '%1')), selection)
+      end, {desc = 'Hold to speak to Pair'})
+    end
+  end
   -- Saving is when Pair runs your tests, if you set a command for the project (see the README).
   vim.api.nvim_create_autocmd('BufWritePost', {group = group, callback = function(args)
     local file = state.channel and project_path(args.buf)
@@ -820,6 +915,7 @@ function M.setup(opts)
     diagnostic_timers[args.buf] = timer
     timer:start(config.debounce_ms, 0, vim.schedule_wrap(function() send_diagnostics(args.buf) end))
   end})
+  if config.searches then searches.watch(group, function(search) event(vim.tbl_extend('force', {kind = 'search'}, search)) end) end
   if config.auto_connect then M.connect() end
 end
 

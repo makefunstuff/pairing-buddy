@@ -21,14 +21,14 @@ Sleep 3s
 Set TypingSpeed 40ms
 Type "o- printed numbers. one line per frame: frame, steps this frame, total steps"
 Escape
-Sleep 3s
+Sleep 4.4s
 Type "o- a real sleep of half a second, once, at frame 20. the sim steps at 50 Hz"
 Escape
-Sleep 3.2s
+Sleep 4.4s
 Screenshot out/blank-question.png
 Type "o- no cap yet, I want to see all 25 land in one frame. the cap comes after"
 Escape
-Sleep 5s
+Sleep 6.5s
 Screenshot out/blank-slice.png
 Sleep 1.5s
 Alt+y

@@ -73,6 +73,42 @@ export const scenes = {
       {wait: 300, say: 'six cases, one undo step, and they pass. `64` shifts past the top bit: `Next` already caps it, so that one is a guard.'},
     ],
   },
+  // 04: the delivery test is red; you grep "give up", then "dead letter", and find-file "retry". Pair says where it
+  // is, in the code's own word. The Watcher's score and the Partner's words are a live model's, from test/live/trail.test.mjs.
+  'search-trail': {
+    goal: 'retries reach the budget',
+    watcher: prompt => (prompt.includes('(search_trail)') ? '7' : '0'),
+    partner: [
+      {when: /search_trail/, wait: 400, call: ['read', {file: 'internal/delivery/worker.go'}]},
+      {wait: 900, call: ['read', {file: 'internal/delivery/worker_test.go'}]},
+      {wait: 1100, call: ['point', {file: 'internal/delivery/worker.go', line: 35, note: 'the code\'s word for giving up: `ErrBudget`', code: '>='}]},
+      {wait: 200, say: 'The word you\'re looking for is `ErrBudget` ("retry budget spent"), and it fires here: `if elapsed+wait >= cfg.Budget` treats a wait that lands exactly on 15s as over budget, so it returns after attempt 4 instead of 5 — change `>=` to `>`.'},
+    ],
+  },
+  // The held thought, in C: you write ring_pop and go on; the error in a line you left can wait, so Pair holds
+  // its remark (a dot in the margin) until you save. The colorscheme is greys with one warm red.
+  'held-thought': {
+    project: 'ringbuf',
+    goal: 'ring_pop hands back the oldest value',
+    watcher: prompt => (prompt.includes('(new_code_diagnostic)') && prompt.includes('capacity') ? '9' : '0'),
+    partner: [
+      {when: /new_code_diagnostic/, wait: 300, call: ['read', {file: 'ring.h'}]},
+      {wait: 900, call: ['point', {file: 'ring.c', line: 26, note: 'the ring keeps its size in `r->cap`', code: 'capacity'}]},
+      {wait: 200, say: 'line 26 wraps the head with `capacity`, which nothing declares: the ring keeps its size in `r->cap`'},
+    ],
+  },
+  // 04: you hold Alt-t and ask aloud; whisper.cpp hears it (for real: the stage plays `question` into the recorder
+  // with espeak-ng), and Pair answers under your line.
+  'push-to-talk': {
+    goal: 'retries reach the budget',
+    question: 'Why does delivery give up one retry too early?',
+    watcher: score(),
+    partner: [
+      {when: /one retry too early/, wait: 500, call: ['read', {file: 'internal/delivery/worker.go'}]},
+      {wait: 1200, call: ['point', {file: 'internal/delivery/worker.go', line: 35, note: '7s + 8s = 15s: still inside the budget', code: '>='}]},
+      {wait: 200, say: 'attempt 5 would wait 8s after 7s: exactly the 15s budget, and `>=` gives up on it. `>` lets it run.'},
+    ],
+  },
   // The same hand-over, taken back with a key while Pair types.
   'take-back': {
     goal: 'retries reach the budget',

@@ -1,15 +1,19 @@
 -- The pair's visual language: a handful of glyphs and one accent, taken from your colorscheme.
 -- The accent is the colorscheme's own colour whose hue is furthest from its syntax colours, so the pair is
--- never mistaken for code. Every highlight group is a default: a colorscheme that defines one keeps its own.
+-- never mistaken for code, and never near its error colour, so it is never mistaken for an error. A scheme
+-- whose code is greys, perhaps with one signal colour, gets a quiet teal: the one other colour on screen. Every
+-- highlight group is a default: a colorscheme that defines one keeps its own.
 local M = {}
 
 M.glyphs = {
   voice = '●', -- the pair speaks: one or two lines under the line they are about
   mark = '▎', -- in the sign column, where it points
+  held = '•', -- in the sign column, where a thought waits for your next break
   away = '◌', -- not connected, or a model is down
   wheel = '◎', -- it has the wheel
   pass = '✓', -- a test passed, on its line and in the statusline
   fail = '✗', -- a test failed
+  listen = '◉', -- it listens while you hold the listen key
 }
 
 -- The statusline while Pair runs your tests or thinks.
@@ -108,7 +112,24 @@ function M.ground()
   return normal.bg or (dark and 0x14161b or 0xe0e2ea), normal.fg or (dark and 0xe0e2ea or 0x14161b)
 end
 
---- The pair's accent: the candidate colour furthest in hue from every syntax colour, readable on the background.
+local function hue_distance(a, b)
+  local d = math.abs(a - b) % 360
+  return d > 180 and 360 - d or d
+end
+
+local NEAR = 30 -- degrees of hue within which two colours read as one: the accent keeps this far from errors
+local TEAL = {dark = 0x7fd1b9, light = 0x1e7a65}
+
+--- Whether all of `hues` read as one colour (or there are none): code in greys, perhaps with one signal colour.
+local function one_colour(hues)
+  for _, hue in ipairs(hues) do
+    if hue_distance(hue, hues[1]) >= NEAR then return false end
+  end
+  return true
+end
+
+--- The pair's accent, readable on the background: the teal for code in one colour at most, else the candidate
+--- colour furthest in hue from every syntax colour and not near the error colour.
 function M.accent()
   local bg, fg = M.ground()
   local syntax = {}
@@ -116,23 +137,28 @@ function M.accent()
     local hue, saturation = hue_saturation(hl(name).fg or 0)
     if saturation > 0.2 then table.insert(syntax, hue) end
   end
+  local teal = TEAL[vim.o.background] or TEAL.dark
+  if one_colour(syntax) and (#syntax == 0 or hue_distance(hue_saturation(teal), syntax[1]) >= NEAR) then
+    return readable(teal, bg, fg, 3)
+  end
+  local error_hue, error_saturation = hue_saturation(hl('DiagnosticError').fg or hl('ErrorMsg').fg or 0)
   local best, best_score
   for i, name in ipairs(CANDIDATES) do
     local color = candidate(name)
     local hue, saturation = hue_saturation(color or 0)
-    if saturation >= 0.25 then
+    if saturation >= 0.25 and (error_saturation < 0.2 or hue_distance(hue, error_hue) >= NEAR) then
       local distance = 180
-      for _, other in ipairs(syntax) do
-        local d = math.abs(hue - other) % 360
-        distance = math.min(distance, d > 180 and 360 - d or d)
-      end
+      for _, other in ipairs(syntax) do distance = math.min(distance, hue_distance(hue, other)) end
       local score = distance - (i - 1) * 3 -- near-ties go to the earlier, more fitting candidate
       if not best_score or score > best_score then best, best_score = color, score end
     end
   end
-  -- A colorscheme without coloured diagnostics or specials: a quiet teal.
-  best = best or (vim.o.background == 'dark' and 0x7fd1b9 or 0x1e7a65)
-  return readable(best, bg, fg, 3)
+  return readable(best or teal, bg, fg, 3) -- no colour of its own that is not the error's: the teal too
+end
+
+--- A colour as #rrggbb.
+function M.hex(color)
+  return ('#%06x'):format(color)
 end
 
 -- What each group looks like, from the background, the foreground and the accent.
@@ -164,6 +190,7 @@ local function palette()
     PairFail = {fg = fail},
     PairStatusPass = {fg = ok}, -- a passing run, for a moment, in the statusline
     PairFailNote = {fg = readable(M.mix(fg, fail, 0.35), bg, fg, 4.5)}, -- why a test failed, after the line it failed on
+    PairHeard = {fg = readable(dim, bg, fg, 3), italic = true}, -- your words, as Pair heard them
   }
 end
 
@@ -174,6 +201,7 @@ local LINKS = {
   PairSuggestDelete = 'Comment', PairSuggestAdd = 'DiffAdd', PairCursor = 'Cursor',
   PairStatus = 'StatusLine', PairStatusDim = 'StatusLine', PairStatusWarn = 'StatusLine',
   PairPass = 'DiagnosticOk', PairStatusPass = 'DiagnosticOk', PairFail = 'DiagnosticError', PairFailNote = 'DiagnosticError',
+  PairHeard = 'Comment',
 }
 
 local ours = {} -- each group as this module last left it: a group that differs now was set by someone else
@@ -186,7 +214,9 @@ function M.apply()
   for name, spec in pairs(specs) do
     local now = vim.api.nvim_get_hl(0, {name = name})
     if vim.tbl_isempty(now) or vim.deep_equal(now, ours[name]) then
-      if not vim.tbl_isempty(now) then vim.api.nvim_set_hl(0, name, {}) end -- ours, from the last colorscheme
+      -- Ours, from the last colorscheme or mode: cleared, so the default below takes. (Setting it to {} would
+      -- leave it defined, and the default ignored.)
+      if not vim.tbl_isempty(now) then vim.cmd.highlight({'clear', name}) end
       vim.api.nvim_set_hl(0, name, vim.tbl_extend('force', spec, {default = true}))
       ours[name] = vim.api.nvim_get_hl(0, {name = name})
     end
