@@ -7,6 +7,7 @@ import {fileURLToPath} from 'node:url';
 import {thinkingBudgetForLevel} from '@earendil-works/pi-ai/api/simple-options';
 import {MIN_CONTEXT, replyRoom} from './context.mjs';
 import {storedKey} from './credentials.mjs';
+import {scoutPaneConfig} from './scout-shell.mjs';
 import {readServiceEnv} from './service-env.mjs';
 import {voiceConfig} from './voice.mjs';
 
@@ -225,6 +226,7 @@ export function parseConfig(raw) {
     dataDir: raw.dataDir ?? join(xdg('XDG_STATE_HOME', '.local/state'), 'pairing-buddy'),
     testOnSave: testCommands(raw.testOnSave),
     sessionRoots: sessionRoots(raw.sessionRoots),
+    scoutPane: scoutPaneConfig(raw.scoutPane), // Pair's pane: your rc file and the sandbox (see scout-shell.mjs)
     voice: voiceConfig(raw.voice), // push-to-talk; null when off (see voice.mjs)
     taskCommand: taskCommand(raw.taskCommand),
     board: boardCommand(raw.board),

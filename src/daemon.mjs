@@ -378,7 +378,10 @@ export async function startDaemon(config, {
   function watchHerdr(session, herdr) {
     if (watches.has(session.root) || !herdr?.socket) return;
     const sessionLog = line => log(`[${basename(session.root)}] ${line}`);
-    session.scout = new ScoutPane({socketPath: herdr.socket, workspaceId: herdr.workspace, besidePane: herdr.pane, cwd: session.root, log: sessionLog});
+    session.scout = new ScoutPane({
+      socketPath: herdr.socket, workspaceId: herdr.workspace, besidePane: herdr.pane, cwd: session.root,
+      setup: config.scoutPane, writable: [join(config.dataDir, 'runs')], hidden: [config.socket], log: sessionLog,
+    });
     const watch = new PaneWatch({
       socketPath: herdr.socket,
       workspaceId: herdr.workspace,

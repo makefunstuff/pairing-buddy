@@ -1,6 +1,7 @@
 // Which commands Scout may run in its pane: `allow` (read-only, tests and builds), `ask` (the user decides
 // in the chat) or `refuse`. Anything not known to be safe asks; git history, network and root are refused.
-// Pure: it looks only at the command line, never at the disk.
+// Pure: it looks only at the command line and the aliases and functions of the pane's shell, never at the disk.
+import {shellQuote} from './scout-shell.mjs';
 
 const VERDICTS = ['allow', 'ask', 'refuse'];
 
@@ -237,23 +238,43 @@ function program(words) {
   return ask(`${first} is not on the list of read-only, test and build commands`);
 }
 
-function segment(words) {
+/**
+ * The verdict for a command as the pane's shell runs it: through an alias or a function from the user's rc file
+ * (`shell`, see commandPolicy), or as a program. An alias is judged by what it stands for.
+ */
+function shellCommand(words, shell) {
+  const [first, ...args] = words;
+  if (shell.unknown) return ask('Pair could not list the aliases and functions of your rc file');
+  if (shell.functions?.includes(first)) return ask(`${first} is a function from your rc file`);
+  if (shell.aliases && Object.hasOwn(shell.aliases, first)) {
+    // As in bash, an alias inside its own text stands for the program.
+    const {[first]: text, ...others} = shell.aliases;
+    return commandPolicy([text, ...args.map(shellQuote)].join(' '), {...shell, aliases: others});
+  }
+  return program(words);
+}
+
+function segment(words, shell) {
   const start = words.findIndex(word => !/^[A-Za-z_]\w*=/.test(word));
   if (start === -1) return ask('it only sets variables');
-  const verdict = program(words.slice(start));
+  const verdict = shellCommand(words.slice(start), shell);
   if (verdict.verdict === 'allow' && words.some(outside)) return ask('it reaches outside the project');
   return verdict;
 }
 
-/** `{verdict, reason}` for a command line Scout wants to run; `reason` says why it is not simply allowed. */
-export function commandPolicy(line) {
+/**
+ * `{verdict, reason}` for a command line Scout wants to run; `reason` says why it is not simply allowed. `shell` is
+ * what the pane's shell has from the user's rc file: `{aliases: {name: text}, functions: [names]}`, or
+ * `{unknown: true}` when Pair could not list them.
+ */
+export function commandPolicy(line, shell = {}) {
   const {tokens, substitution, variable, newline} = tokenize(line);
   if (newline) return refuse('one command line at a time');
   if (!tokens.length) return refuse('the command is empty');
   let verdict = substitution ? ask('it runs a command substitution') : variable ? ask('it expands variables') : allow();
   let words = [];
   const end = () => {
-    if (words.length) verdict = worst(verdict, segment(words));
+    if (words.length) verdict = worst(verdict, segment(words, shell));
     words = [];
   };
   for (let i = 0; i < tokens.length; i++) {

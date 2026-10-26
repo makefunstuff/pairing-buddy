@@ -10,7 +10,7 @@ import {createModels, fauxProvider, InMemoryCredentialStore, ModelsError} from '
 import {loadConfig, parseConfig} from '../src/config.mjs';
 import {startDaemon} from '../src/daemon.mjs';
 import {fileCredentialStore} from '../src/credentials.mjs';
-import {contextCheck, daemonCheck, doctor, loginCheck, loginsCheck, rolesCheck, serviceCheck} from '../src/doctor.mjs';
+import {contextCheck, daemonCheck, doctor, loginCheck, loginsCheck, paneCheck, rolesCheck, serviceCheck} from '../src/doctor.mjs';
 import {sendMessage} from '../src/protocol.mjs';
 import {launchd} from '../src/launchd.mjs';
 import {systemd} from '../src/systemd.mjs';
@@ -234,4 +234,16 @@ test('a logins file others can read fails, with the chmod', () => {
   writeFileSync(path, '{}', {mode: 0o644});
   assert.equal(loginsCheck(path).level, 'fail');
   assert.match(loginsCheck(path).text, /others can read it: chmod 600 /);
+});
+
+test('the pane check says whether Pair\'s commands run in the sandbox and with which rc file', () => {
+  const rc = join(mkdtempSync(join(tmpdir(), 'pair-doctor-')), 'bashrc');
+  const setup = (fields = {}) => ({rc: null, sandbox: 'auto', network: false, writable: [], ...fields});
+  assert.deepEqual(paneCheck(setup(), () => true), {level: 'ok', name: 'pane', text: 'commands run in a bubblewrap sandbox, network off'});
+  assert.equal(paneCheck(setup(), () => false).level, 'warn');
+  assert.equal(paneCheck(setup({sandbox: true}), () => false).level, 'fail');
+  assert.match(paneCheck(setup({sandbox: false}), () => true).text, /^no sandbox/);
+  assert.match(paneCheck(setup({rc}), () => true).text, /which is not there/);
+  writeFileSync(rc, '');
+  assert.match(paneCheck(setup({rc, network: true}), () => true).text, /network on, with .*bashrc$/);
 });

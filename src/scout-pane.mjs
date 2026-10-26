@@ -1,19 +1,18 @@
 // Pair's own herdr pane, where Scout's commands are typed and run in plain sight.
-// Its shell is a plain bash whose prompt carries the command number and the last exit code
-// ("scout[3] exit 1 $ "): that is how Pair knows when a command ended and how, which herdr cannot say.
-// Scout's text is only ever sent to this pane, never to one of the user's.
+// Its shell is a bash whose prompt carries the command number and the last exit code ("scout[3] exit 1 $ "):
+// that is how Pair knows when a command ended and how, which herdr cannot say. How it starts (your rc file or
+// none, in a sandbox or not) is scout-shell.mjs. Scout's text is only ever sent to this pane, never to one of the user's.
 import {herdrRequest} from './herdr.mjs';
+import {rcNames, scoutPaneConfig, shellLine} from './scout-shell.mjs';
+
+export {shellQuote} from './scout-shell.mjs';
 
 const LABEL = 'pair scout';
 const PROMPT = /^scout\[(\d+)\] exit (\d+) \$/;
-// No rc files (a custom prompt would hide the exit code) and no history file (Pair's commands stay out of yours).
-const SHELL = "exec env HISTFILE= PS1='scout[\\#] exit $? $ ' bash --noprofile --norc -i";
 const READY_MS = 5000;
+const RC_READY_MS = 15_000; // an rc file may take its time (version managers, completions)
 const MAX_LINES = 1000; // the most herdr's pane.read returns
 export const RUN_TIMEOUT_MS = 120_000;
-
-/** `text` as one shell word. */
-export const shellQuote = text => `'${text.replaceAll("'", "'\\''")}'`;
 
 /** The number of the prompt on the pane's last line, or null when its shell is not at a prompt. */
 export function promptNumber(text) {
@@ -36,11 +35,16 @@ export function commandResult(text, number) {
 }
 
 export class ScoutPane {
-  /** The pane opens below `besidePane` (the chat pane) in `workspaceId`, in `cwd`. */
-  constructor({socketPath, workspaceId, besidePane, cwd, log = () => {}}) {
-    Object.assign(this, {socketPath, workspaceId, besidePane, cwd, log});
+  /**
+   * The pane opens below `besidePane` (the chat pane) in `workspaceId`, in `cwd`. `setup` is the config's
+   * `scoutPane`; in the sandbox, `writable` are folders it may write besides the project, `hidden` sockets it must
+   * not reach besides herdr's.
+   */
+  constructor({socketPath, workspaceId, besidePane, cwd, setup = scoutPaneConfig(), writable = [], hidden = [], log = () => {}}) {
+    Object.assign(this, {socketPath, workspaceId, besidePane, cwd, setup, writable, hidden, log});
     this.paneId = null;
     this.queue = Promise.resolve();
+    this.names = null;
   }
 
   request(method, params, timeoutMs) {
@@ -63,12 +67,29 @@ export class ScoutPane {
     this.paneId = panes.find(pane => pane.label === LABEL)?.pane_id ?? null;
     if (this.paneId && promptNumber(await this.lastLines()) !== null) return;
     if (this.paneId) await this.close();
+    // First, since it throws when the config asks for a sandbox that cannot be made.
+    const {line, sandboxed} = shellLine({setup: this.setup, cwd: this.cwd, writable: this.writable, hidden: [this.socketPath, ...this.hidden]});
     const {pane} = await this.request('pane.split', {target_pane_id: this.besidePane, direction: 'down', ratio: 0.5, cwd: this.cwd, focus: false});
     this.paneId = pane.pane_id;
     await this.request('pane.rename', {pane_id: this.paneId, label: LABEL});
-    await this.request('pane.send_text', {pane_id: this.paneId, text: `${SHELL}\r`});
-    await this.waitForPrompt(null, READY_MS);
-    this.log(`opened Pair's pane ${this.paneId}`);
+    await this.request('pane.send_text', {pane_id: this.paneId, text: `${line}\r`});
+    await this.waitForPrompt(null, this.setup.rc ? RC_READY_MS : READY_MS).catch(error => {
+      throw this.setup.rc ? new Error(`Pair's pane shows no prompt after loading ${this.setup.rc}: does it start another shell?`) : error;
+    });
+    this.log(`opened Pair's pane ${this.paneId}${sandboxed ? ' in the sandbox' : ''}${this.setup.rc ? ` with ${this.setup.rc}` : ''}`);
+  }
+
+  /**
+   * The aliases and functions the pane's shell has from the user's rc file, for the command policy: `{aliases,
+   * functions}`, `{unknown: true}` when they cannot be listed, or undefined without an rc file. Listed once.
+   */
+  rcNames() {
+    if (!this.setup.rc) return Promise.resolve(undefined);
+    this.names ??= rcNames(this.setup.rc, this.cwd).catch(error => {
+      this.log(error.message);
+      return {unknown: true};
+    });
+    return this.names;
   }
 
   async close() {

@@ -34,6 +34,13 @@ test('a broken config says which file and why', () => {
   assert.throws(() => loadConfig(join(path, 'missing')), /run `pair setup`/);
 });
 
+test('scoutPane sets Pair\'s pane: no rc file and the sandbox where it works, unless the config says otherwise', () => {
+  const config = scoutPane => parseConfig({scoutPane, models: {watcher: {api: 'anthropic', model: 'w'}, partner: {api: 'anthropic', model: 'p'}}});
+  assert.deepEqual(config(undefined).scoutPane, {rc: null, sandbox: 'auto', network: false, writable: []});
+  assert.equal(config({rc: true}).scoutPane.rc, join(homedir(), '.bashrc'));
+  assert.throws(() => config({network: 'yes'}), /scoutPane.network must be true or false/);
+});
+
 test('testOnSave maps project folders, ~ included, to the command run on save', () => {
   const dir = mkdtempSync(join(tmpdir(), 'pair-config-'));
   const config = (testOnSave) => parseConfig({testOnSave, models: {watcher: {api: 'anthropic', model: 'w'}, partner: {api: 'anthropic', model: 'p'}}});
