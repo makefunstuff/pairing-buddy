@@ -684,7 +684,7 @@ test('push-to-talk: hold Alt-t, a meter under your line; let go, your words, the
   writeFileSync(join(bin, 'whisper-cli'), '#!/bin/sh\nprintf " Why does attempt 5 give up?\\n"\n', {mode: 0o755});
   const record = `node -e 'const b = Buffer.alloc(3200); for (let i = 0; i < 1600; i++) b.writeInt16LE(i % 8 < 4 ? 9000 : -9000, i * 2); setInterval(() => process.stdout.write(b), 100)'`;
   const voice = {model: 'unused.bin', whisper: join(bin, 'whisper-cli'), record};
-  const {partner, messages, remote, status, stop} = await pairInNvim('retries pass', {voice});
+  const {partner, messages, remote, status, stop} = await pairInNvim('retries pass', {voice, knownKeys: ['M-j', 'M-?']});
   const listenLine = () => {
     const marks = JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, require('pair.listen').ns, 0, -1, {details = true}))")`));
     const line = marks.find(([, , , details]) => details.virt_lines)?.[3].virt_lines[0];

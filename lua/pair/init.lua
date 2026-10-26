@@ -705,7 +705,8 @@ local handlers = {
     local buf, row = listen.answered()
     if not buf or type(message.text) ~= 'string' or message.text == '' then return end
     forget_words(false)
-    state.words = {buf = buf, row = row, text = message.text, key = message.pointed and key_label('jump', config.jump_key) or nil}
+    map_teach()
+    state.words = {buf = buf, row = row, text = message.text, jump = message.pointed == true}
     draw_words(state.words)
     redraw_status()
   end,
