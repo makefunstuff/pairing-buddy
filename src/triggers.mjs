@@ -1,7 +1,7 @@
 // Finds the moments where a remark might help. Pure: the caller passes the clock and the keys already fired.
 import {errorSignature, failed, failureLine} from './fold.mjs';
 import {PROSE_KINDS, proseTriggers} from './prose-triggers.mjs';
-import {runsDetail} from './run-log.mjs';
+import {moveText, runsDetail} from './run-log.mjs';
 import {readingSummary} from './run-output.mjs';
 import {isSourceFile, testSummary} from './test-output.mjs';
 import {currentTrail, lost, TRAIL, trailLines} from './trail.mjs';
@@ -192,7 +192,7 @@ function loopTriggers(state, now) {
   }
   const moved = verdict.kind === 'moved' && verdict.moves.filter(move => move.time || (move.way && Math.abs(move.change) >= MOVED));
   if (!moved?.length) return [];
-  const said = moved.slice(0, 3).map(move => `${move.label} ${move.from} → ${move.to}${move.unit ? ` ${move.unit}` : ''}${move.better === false ? ' (worse)' : ''}`).join(', ');
+  const said = moved.slice(0, 3).map(moveText).join(', ');
   return [{
     kind: 'number_moved', key: `moved:${run.n}`, run: run.n, moves: moved, ...where,
     detail: `\`${run.cmd}\` (${runBy(run)}): next to run ${verdict.as}, ${said}.\n${runsDetail(state.runs, run.cmd)}`,

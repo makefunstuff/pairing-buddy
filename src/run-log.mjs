@@ -27,12 +27,14 @@ export function isRun(cmd = '') {
   return BUILDERS.test(first);
 }
 
+// A place in a file (a compiler's "probe.c:21:7:", odin's "main.odin(7:5)", a stack frame): no measurement.
+const PLACE = /\w\.\w+(?::\d+|\(\d+)/;
 const TIME_UNIT = /^(?:ns|µs|us|ms|s|sec|secs|seconds?|min)$|\/op$/i;
 
 /**
  * The numbers of a run's output, each `{label, text, value, unit, way, time}` by where it stands. Only lines whose
  * shape the output prints once count: a listing (one line per bucket, per item) is what a debug print shows, not
- * a measurement. Addresses are no numbers.
+ * a measurement. Addresses, and lines that name a place in a file, are no numbers.
  */
 export function measure(output = '') {
   const lines = output.replace(/\x1b\[[0-9;]*m/g, '').replace(/0x[0-9a-f]+/gi, 'ADDR').split('\n');
@@ -41,7 +43,7 @@ export function measure(output = '') {
     const shape = line.replace(/\d+(?:\.\d+)?/g, '#').trim();
     shapes.set(shape, (shapes.get(shape) ?? 0) + 1);
   }
-  const once = lines.filter(line => /\d/.test(line) && shapes.get(line.replace(/\d+(?:\.\d+)?/g, '#').trim()) === 1);
+  const once = lines.filter(line => /\d/.test(line) && !PLACE.test(line) && shapes.get(line.replace(/\d+(?:\.\d+)?/g, '#').trim()) === 1);
   const found = {};
   for (const [key, number] of [...numbersOf(once.join('\n'), {all: true})].slice(-NUMBERS)) {
     found[key] = {...number, time: TIME_UNIT.test(number.unit)};

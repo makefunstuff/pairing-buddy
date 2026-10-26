@@ -34,8 +34,10 @@ const PLACEHOLDER = /%[-+ #0]*\d*(?:\.\d+)?(?:hh|h|ll|l|z|j|t|L)?[diouxXfFeEgGaA
  * any word. Null when it has no format string to tell its lines by.
  */
 export function printedBy(text, output) {
-  const format = /"((?:[^"\\]|\\.)*)"/.exec(text)?.[1].replace(/\\n$/, '').replace(/\\t/g, '\t');
+  const literal = /"((?:[^"\\]|\\.)*)"(.*)$/.exec(text);
+  const format = literal?.[1].replace(/\\n$/, '').replace(/\\t/g, '\t');
   if (!format || !format.replace(PLACEHOLDER, '').trim()) return null; // "%d\n" alone would match any line
+  if (format.search(PLACEHOLDER) < 0 && literal[2].includes(',')) return null; // println("probe", p): no format, its args follow
   if (format.includes('\\n')) return null; // several lines in one call
   const pattern = format.split(PLACEHOLDER).map(part => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\S+');
   const line = new RegExp(`^${pattern}$`);

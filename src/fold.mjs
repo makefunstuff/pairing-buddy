@@ -27,7 +27,7 @@ export function initialState({root = null, goal = null} = {}) {
     savedRunFailed: null, // the tests that failed in the last run on save; null before the session's first
     searches: [], // what the user searched for in Neovim's pickers: picker, query, results, the file they opened (see trail.mjs)
     run: null, // the last build or run that crashed or printed compiler errors or warnings, or ran clean after one: see afterRun
-    runs: [], // every build and run of the session, numbered, with the change before it and its numbers (see run-log.mjs)
+    runs: [], // every build and run of the session that is no test run, numbered, with the change before it and its numbers (see run-log.mjs)
     builds: {cmds: [], warnings: []}, // the commands run so far, and the warnings their output printed (warningKey)
     edited: [], // the files the user edited in this session
     // The context card's sources (see context-card.mjs): git and the board as last read, where the user has been in the
@@ -134,7 +134,7 @@ function foldCommandEnd(state, event) {
   command.seen = lookingAt(state.focus, command);
   const ran = {cmd: command.cmd, by: 'you', at: event.at, reading: command.reading, exit: command.exit, output: event.output ?? ''};
   const next = {
-    ...(isRun(command.cmd) ? afterLoggedRun(state, ran) : afterRun(state, ran)),
+    ...(isRun(command.cmd) && !tests ? afterLoggedRun(state, ran) : afterRun(state, ran)),
     commands: keepLast(state.commands, command, KEEP.commands),
     tests: testsAfter(state, tests, event, 'you'),
     terminalPane: command.pane ?? state.terminalPane,
@@ -183,10 +183,11 @@ const handlers = {
   // failed tests. `newly` names the tests that fail now and did not in the last run on save. Only that run, of the
   // same command, says what passed before: the session's first run (also after a daemon restart) is the baseline,
   // and nothing in it is new. Its `reading` (run-output.mjs) is the crash or compiler output of a build on save;
-  // with its `output`, the run goes into the run log too.
+  // with its `output`, a run that is no test run goes into the run log too.
   test_run: (previous, event) => {
     const ran = {cmd: event.cmd, by: 'pair', at: event.at, reading: event.reading, exit: event.exit ?? null, output: event.output};
-    const state = !event.reading ? previous : event.output !== undefined ? afterLoggedRun(previous, ran) : afterRun(previous, ran);
+    const logged = event.output !== undefined && !event.tests;
+    const state = !event.reading ? previous : logged ? afterLoggedRun(previous, ran) : afterRun(previous, ran);
     if (!event.tests) return state;
     const {tests: _list, ...tests} = event.tests;
     const before = state.savedRunFailed && new Set(state.savedRunFailed);
