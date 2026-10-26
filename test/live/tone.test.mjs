@@ -105,11 +105,14 @@ describe('Pair\'s tone on live models', {skip: !stacks.length ? SKIP_REASON : !h
       const run = probe();
       const {session, chat, close} = await pairIn(run.root);
       session.receive({kind: 'command_end', pane: 'w1:p2', cmd: 'make run', exit: run.exit, output: run.output, at: Date.now() - 20_000});
-      await session.ask('why is the average probe 12.6? the table should grow at 0.7');
+      const answer = await session.ask('why is the average probe 12.6? the table should grow at 0.7');
       await close();
-      const answer = chat.join('\n');
-      holds(t, answer, WORDS.answer, 'the answer');
-      assert.match(answer, PLACE, 'it names the place as file:line');
+      t.diagnostic(`the chat: ${chat.join(' | ')}`);
+      t.diagnostic(`its words: ${answer}`);
+      // Its words, said or answered: a point's own line in the chat ("table.c:35 <note>") is no answer.
+      assert.ok(answer, 'it answers in words, not only with a point');
+      holds(t, chat.join('\n'), WORDS.answer, 'the chat');
+      assert.match(answer, PLACE, 'its words name the place as file:line');
     });
 
     test(`${stack.name}: green after a long red is named, not praised`, {timeout: 300_000}, async t => {
@@ -121,11 +124,15 @@ describe('Pair\'s tone on live models', {skip: !stacks.length ? SKIP_REASON : !h
       session.receive({kind: 'command_end', pane: 'w1:p2', cmd: 'make run', exit: red.exit, output: red.output, at: now - 23 * 60_000});
       session.receive({kind: 'edit', file: 'table.c', from: 35, to: 35, at: now - 60_000});
       session.receive({kind: 'command_end', pane: 'w1:p2', cmd: 'make run', exit: 0, output: green.output, at: now - 5000});
-      await session.ask('finally. 23 minutes on that one. it passes now, was that really it?');
+      const answer = await session.ask('finally. 23 minutes on that one. it passes now, was that really it?');
       await close();
-      const answer = chat.join('\n');
-      holds(t, answer, WORDS.answer, 'the answer');
-      assert.match(answer, /2\.3|0\.7|double|integer|table\.c/i, 'it names what is now true');
+      t.diagnostic(`the chat: ${chat.join(' | ')}`);
+      t.diagnostic(`its words: ${answer}`);
+      assert.ok(answer, 'it answers in words, not only with a point');
+      holds(t, chat.join('\n'), WORDS.answer, 'the chat');
+      // What the fix made true, in its own words: the line it changed, or what changed there (the ratio is no longer
+      // integer division, so the table grows at 0.7 and the average drops to 2.3).
+      assert.match(answer, /table\.c:35|grow|double|cast|integer|0\.7|2\.3|2048/i, 'its words name what is now true');
     });
   }
 });

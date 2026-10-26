@@ -604,19 +604,21 @@ export class PairSession {
    */
   async teach(said = this.lastWords, remark = null) {
     if (remark) this.seen(remark); // asking about a remark answers it, like going where it points
-    const answer = async () => {
-      if (!said) return this.message('system', 'Pair has said nothing yet to explain.');
-      await this.yieldRemark();
-      if (this.busy) return this.message('system', 'Pair is still answering; ask again once it is done.');
-      this.message('user', 'why?');
-      const lastWords = this.lastWords;
-      await this.talk(teachInput(said));
-      const teaching = this.words.join('\n');
-      this.lastWords = lastWords; // asking again is about the same words, not about this answer
-      return teaching;
+    // Why there is no teaching, for the chat and the editor that asked.
+    const unable = note => {
+      this.message('system', note);
+      this.notify('editor', {type: 'teaching', text: '', link: null, note});
     };
-    this.notify('editor', {type: 'teaching', ...splitTeaching((await answer()) || '')});
+    if (!said) return unable('Pair has said nothing yet to explain.');
+    await this.yieldRemark();
+    if (this.busy) return unable('Pair is still answering; ask again once it is done.');
+    this.message('user', 'why?');
+    const lastWords = this.lastWords;
+    await this.talk(teachInput(said));
+    this.lastWords = lastWords; // asking again is about the same words, not about this answer
+    this.notify('editor', {type: 'teaching', ...splitTeaching(this.words.join('\n'))});
   }
+
 
   /** Gives the Partner `role`'s tools and instructions, with the last session's note to start from. */
   configurePartner(role) {

@@ -322,6 +322,7 @@ local function on_teaching(message)
   if not teaching or teaching.text then return end
   local text = type(message.text) == 'string' and message.text or ''
   if text == '' then
+    if type(message.note) == 'string' then vim.notify('Pair: ' .. message.note) end -- busy, say, or nothing to explain
     words.teaching = nil
     return draw_words(words, true)
   end

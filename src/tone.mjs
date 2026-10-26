@@ -42,7 +42,10 @@ const APOLOGY = /\b(sorry|apologi[sz]e|my mistake|my bad)\b/i;
 const FILLER = /^(sure|certainly|of course|absolutely|happy to|i hope this helps)\b|\b(let me know|hope this helps|feel free)\b/i;
 const EMOJI = /\p{Extended_Pictographic}/u;
 const MARKDOWN = /^\s*(#{1,6}\s|[-*]\s|\d+\.\s)|\*\*[^*]+\*\*/m;
-const LINK = /https?:\/\/\S+/g;
+
+// A link ends at a space, a backtick, a quote or an angle bracket. Punctuation after it, and a closing parenthesis it
+// did not open (as in "(see https://...)"), are the sentence's, not the link's.
+const LINK = /https?:\/\/[^\s`'"<>]+/g;
 
 const prose = text => text.replace(/`[^`]*`/g, 'code').replace(LINK, 'link');
 const wordCount = text => prose(text).split(/\s+/).filter(Boolean).length;
@@ -62,12 +65,28 @@ export function toneProblems(text, {maxWords = Infinity} = {}) {
   return problems;
 }
 
-/** A teaching as the editor shows it: its words, and its last link, which the teach key opens, or null. */
+const MARKDOWN_LINK = /\[([^\]]*)\]\((https?:\/\/(?:[^\s()]|\([^\s()]*\))+)\)/g; // [docs](https://...), parentheses and all
+
+function trimLink(raw) {
+  let link = raw.replace(/[.,;:!?]+$/, '');
+  const count = char => link.split(char).length - 1;
+  while (link.endsWith(')') && count(')') > count('(')) link = link.slice(0, -1).replace(/[.,;:!?]+$/, '');
+  return link;
+}
+
+/**
+ * A teaching as the editor shows it: its words, and its last link, which the teach key opens, or null. A markdown
+ * link keeps its label in the words. A bare link that ends the teaching is taken out of them, with what wraps it
+ * (backticks, brackets, "Docs:"); one in the middle of a sentence stays, so the sentence still reads.
+ */
 export function splitTeaching(text) {
-  const plain = text.replace(/\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g, '$1'); // [docs](https://...) as the link alone
-  const link = plain.match(LINK)?.at(-1);
-  if (!link) return {text: text.trim(), link: null};
-  const at = plain.lastIndexOf(link);
-  const words = `${plain.slice(0, at).replace(/[\s:(<-]+$/, '')} ${plain.slice(at + link.length).replace(/^[>).,;:\s]+/, '')}`;
-  return {text: words.trim(), link: link.replace(/[>).,;:]+$/, '')};
+  const labelled = [...text.matchAll(MARKDOWN_LINK)];
+  if (labelled.length) return {text: text.replace(MARKDOWN_LINK, '$1').trim(), link: labelled.at(-1)[2]};
+  const raw = text.match(LINK)?.at(-1);
+  if (!raw) return {text: text.trim(), link: null};
+  const link = trimLink(raw);
+  const at = text.lastIndexOf(link);
+  const ending = /^[\s`'">).,;:!?]*$/.test(text.slice(at + link.length));
+  const words = ending ? text.slice(0, at).replace(/[\s`'"<(:-]+$/, '') : text;
+  return {text: words.trim(), link};
 }

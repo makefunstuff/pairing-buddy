@@ -25,8 +25,17 @@ test('a teaching keeps its words for the editor and its last link apart', () => 
   assert.deepEqual(splitTeaching('Integer division truncates first.\nhttps://en.cppreference.com/w/c/language/operator_arithmetic'),
     {text: 'Integer division truncates first.', link: 'https://en.cppreference.com/w/c/language/operator_arithmetic'});
   assert.deepEqual(splitTeaching('Scale both sides. Docs: [Division](https://ziglang.org/documentation/master/#Division).'),
-    {text: 'Scale both sides. Docs', link: 'https://ziglang.org/documentation/master/#Division'});
+    {text: 'Scale both sides. Docs: Division.', link: 'https://ziglang.org/documentation/master/#Division'});
   assert.deepEqual(splitTeaching('  No link here. '), {text: 'No link here.', link: null});
+  const cpp = 'https://en.cppreference.com/w/c/language/operator_arithmetic';
+  const wiki = 'https://en.wikipedia.org/wiki/Division_(mathematics)';
+  assert.deepEqual(splitTeaching(`Cast first.\n\`${cpp}\``), {text: 'Cast first.', link: cpp}, 'in backticks');
+  assert.deepEqual(splitTeaching(`Truncates.\n<${cpp}>`), {text: 'Truncates.', link: cpp}, 'in angle brackets');
+  assert.deepEqual(splitTeaching(`Cast first (${wiki})`), {text: 'Cast first', link: wiki}, 'its own parentheses kept, the sentence\'s dropped');
+  assert.deepEqual(splitTeaching(`Cast first: ${wiki}.`), {text: 'Cast first', link: wiki});
+  assert.deepEqual(splitTeaching(`See [it](${wiki}).`), {text: 'See it.', link: wiki}, 'a markdown link keeps its label');
+  assert.deepEqual(splitTeaching(`Integer division truncates; see ${cpp} for the rules.`),
+    {text: `Integer division truncates; see ${cpp} for the rules.`, link: cpp}, 'in mid-sentence, the link stays in the words');
 });
 
 test('? and /why in the chat ask for the idea behind Pair\'s last words', () => {
@@ -66,10 +75,25 @@ test('teaching from the chat is about what Pair said last, also when asked twice
   const {pair, asked, sent} = session(['The shift is fine; `worker.go:35` is the cause.', 'Check which side of a red test is wrong first.', 'Same idea again.']);
   await pair.teach();
   assert.equal(asked.length, 0, 'nothing to explain yet');
-  assert.deepEqual(sent.at(-1), {role: 'editor', type: 'teaching', text: '', link: null});
+  assert.deepEqual(sent.at(-1), {role: 'editor', type: 'teaching', text: '', link: null, note: 'Pair has said nothing yet to explain.'});
   await pair.ask('where is the bug?');
   await pair.teach();
   await pair.teach();
   assert.equal(asked[1], teachInput('The shift is fine; `worker.go:35` is the cause.'));
   assert.equal(asked[2], asked[1], 'the second ? is about the same words, not about the first teaching');
+});
+
+test('teaching while Pair is still answering: the chat and the editor that asked both hear why there is none', async () => {
+  let release;
+  const {pair, asked, sent} = session([]);
+  pair.partner.ask = (_id, input) => { asked.push(input); return new Promise(resolve => { release = resolve; }); };
+  const question = pair.ask('where is the bug?');
+  await new Promise(resolve => setImmediate(resolve));
+  await pair.teach('`table.c:35` divides two counts');
+  assert.equal(asked.length, 1, 'only the question went to the Partner');
+  const note = 'Pair is still answering; ask again once it is done.';
+  assert.deepEqual(sent.filter(message => message.type === 'teaching'), [{role: 'editor', type: 'teaching', text: '', link: null, note}]);
+  assert.ok(sent.some(message => message.type === 'message' && message.sender === 'system' && message.text === note));
+  release('It is at `table.c:35`.');
+  await question;
 });
