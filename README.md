@@ -146,6 +146,11 @@ pointed at, suggested, ran and typed, what it asked, and the moments it stayed q
 output, and `u` undoes one of its edits later, after your own edits too, which stay.
 [docs/neovim.md](docs/neovim.md#the-ledger)
 
+**Notices a green.** When the tests turn green after a red, the statusline lights up once and the test that turned
+glows. After a long red or a regression, or when a number in your benchmark finally moved the right way, one line
+says what is now true, then goes. Off by default: short sounds for the same moments, only while you are away from
+Neovim. [docs/neovim.md](docs/neovim.md#when-it-goes-green)
+
 **Starts from a blank page.** In an empty folder, `:Pair new` and one sentence: Pair asks three short questions in
 `NOTES.md`, one at a time, then suggests a first slice that runs: two files (a `Makefile` and `main.c`, `go.mod` and
 `main.go`, ...), what to poke at, when the first test is worth writing, and what to leave out. No scaffolding, no

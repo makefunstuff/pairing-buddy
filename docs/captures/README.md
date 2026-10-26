@@ -18,7 +18,8 @@ recording comes out the same each time.
 - **The project** is [hookd/](hookd/), a small Go webhook service with a retry bug. Each scene starts it at its
   own point. The held thought is in C instead: [ringbuf/](ringbuf/), a ring buffer with a Makefile, and `clangd`
   gives its diagnostics; so is the crash scene: [probe/](probe/), a small C hash table built and run with `make run`
-  and AddressSanitizer. The blank page's scenes start in an empty folder, `ticks`, with no git yet.
+  and AddressSanitizer. Delight is in C too: [intern/](intern/), a string-interning table and its benchmark. The
+  blank page's scenes start in an empty folder, `ticks`, with no git yet.
 - **The blank page's words** are not written for the capture: [ticks.json](ticks.json) holds a real `:Pair new`
   with a cloud model, unedited. It has the three questions (each asked after the answer before it), the slice and the
   two files the Driver typed. Its first slice broke the 90-character rule, so the daemon asked again; the slice
@@ -42,6 +43,7 @@ recording comes out the same each time.
 | [ledger](tapes/ledger.tape) | `:Pair today` after a morning of 02 and 03; `u` undoes the six cases after your own edit |
 | [search-trail](tapes/search-trail.tape) | the search trail: three Telescope searches, the cue, `:Pair trail` |
 | [held-thought](tapes/held-thought.tape) | the held thought, and one look on a grey palette |
+| [delight](tapes/delight.tape) | a number finally moves: the statusline lights up and one line says what moved |
 | [push-to-talk](tapes/push-to-talk.tape) | hold `Alt-t`, ask aloud, and Pair answers under your line |
 | [context-card](tapes/context-card.tape) | `:Pair context`, with the goal from the board task, and `x` on a source |
 | [crash](tapes/crash.tape) | a compiler error, a crash and its frame, and a new warning, from `make run` on save |
@@ -57,7 +59,7 @@ docs/captures/record.sh                 # all the scenes into docs/captures/out/
 docs/captures/encode.sh                 # out/ -> site/media/ and docs/images/
 ```
 
-The push-to-talk scene is not in the default four: it also needs [whisper.cpp](../voice.md#1-build-whispercpp-cpu-only),
+The push-to-talk scene is not among the default scenes: it also needs [whisper.cpp](../voice.md#1-build-whispercpp-cpu-only),
 espeak-ng and FFmpeg. espeak-ng says the scene's question into the recorder, and whisper.cpp hears it for real:
 
 ```sh
