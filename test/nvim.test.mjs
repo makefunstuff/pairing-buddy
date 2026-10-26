@@ -92,8 +92,9 @@ async function pairInNvim(goal) {
 }
 
 test('the plugin reports edits, diagnostics and the selection, shows points, serves unsaved text and switches roles', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
-  const {project, partner, messages, remote, keys, send, status, stop} = await pairInNvim('make x two');
+  const {project, watcher, partner, messages, remote, keys, send, status, stop} = await pairInNvim('make x two');
   try {
+    watcher.setResponses(Array.from({length: 10}, () => fauxAssistantMessage([fauxText('0')]))); // nothing worth a remark
     keys('ccconst x = 2<Esc>');
     remote(`luaeval("vim.diagnostic.set(vim.api.nvim_create_namespace('lsp'), 0, {{lnum = 0, col = 6, severity = 1, message = 'x is never read'}}) or 0")`);
     await sleep(500); // the plugin's 100 ms debounce, then the daemon folds the edit and the diagnostic
@@ -119,14 +120,103 @@ test('the plugin reports edits, diagnostics and the selection, shows points, ser
     assert.match(seen, /cursor at line 2, selected lines 1-2/, 'the visual selection reached the session state');
     assert.match(seen, /1: const x = 2/, 'read returned the unsaved buffer text');
     assert.equal(readFileSync(join(project, 'a.js'), 'utf8'), 'const x = 1\nconst y = 2\nconst z = 3\n', 'nothing was written to disk');
-    const marks = await until(() => Number(remote(`luaeval("#vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('pair'), 0, -1, {})")`)), 'the point extmark');
-    assert.equal(marks, 1);
+    const marks = await until(() => Number(remote(`luaeval("#vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('pair'), 0, -1, {})")`)), 'the point extmarks');
+    assert.equal(marks, 2, 'the marked lines, and the note');
 
-    assert.equal(status(), 'Pair: navigator · normal');
+    assert.equal(status(), '● reading a.js', 'the statusline names the file Pair just read');
+    await until(() => status() === '● pair', 'the statusline to let it go again');
     keys('<Esc>:Pair scout<CR>');
-    await until(() => status() === 'Pair: scout · normal', 'the statusline to show Scout');
+    await until(() => status() === '● pair · scout', 'the statusline to show Scout');
     keys('<Esc>:Pair navigate<CR>');
-    await until(() => status() === 'Pair: navigator · normal', 'the statusline to show Navigator again');
+    await until(() => status() === '● pair', 'the statusline to show Navigator again');
+  } finally {
+    await stop();
+  }
+});
+
+test('the wrong turn: Pair\'s words show under your line, the jump key goes to the cause, and your next edit answers them', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
+  const {project, dataDir, watcher, partner, messages, remote, keys, send, status, stop} = await pairInNvim('retries pass');
+  const extmarks = buffer => JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(${buffer}, vim.api.nvim_create_namespace('pair'), 0, -1, {details = true}))")`));
+  const words = () => extmarks(0).filter(([, , , details]) => details.virt_lines)
+    .map(([, row, , details]) => [row, details.virt_lines.map(line => line.map(chunk => chunk[0]).join('').trim())]);
+  const remarks = () => {
+    const store = openStore(join(dataDir, 'sessions.sqlite'));
+    try { return store.remarks(0); } finally { store.close(); }
+  };
+  try {
+    writeFileSync(join(project, 'worker.js'), 'export function run(elapsed, wait, budget) {\n  if (elapsed + wait >= budget) return false\n  return true\n}\n');
+    watcher.setResponses([fauxAssistantMessage([fauxText('9')]), ...Array.from({length: 10}, () => fauxAssistantMessage([fauxText('0')]))]);
+    partner.setResponses([
+      fauxAssistantMessage([fauxToolCall('read', {file: 'a.js'}), fauxToolCall('read', {file: 'worker.js'})], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxToolCall('point', {file: 'worker.js', line: 2, note: '7 + 8 = 15: still inside', code: '>='})], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxText('The shift is fine.\nAttempt 5 lands at exactly 15, and `worker.js:2` gives up on `>=`.')]),
+    ]);
+    // The tests went red in the pane you were watching; the failure names worker.test.js.
+    send({type: 'event', event: {kind: 'focus', target: 'terminal', pane: 'w1:p1'}});
+    send({type: 'event', event: {kind: 'command_end', pane: 'w1:p1', cmd: 'npm test', exit: 1,
+      output: '✖ retries five times (1.2ms)\n  worker.test.js:3: attempts = 4, want 5\nℹ tests 1\nℹ fail 1'}});
+    await sleep(200);
+    keys('3Gccconst z = 4<Esc>'); // a wrong turn in a.js
+    const shown = await until(() => words().length && words(), 'Pair\'s words under the line');
+    assert.deepEqual(shown, [[2, ['● The shift is fine.', 'Attempt 5 lands at exactly 15, and worker.js:2 gives up on >=.   M-j']]],
+      'under the line you are on, the code without backticks, the jump key at the end');
+    assert.equal(remote('mode()'), 'n', 'nothing moved you');
+    assert.equal(remote('expand("%:t")'), 'a.js');
+
+    keys('<M-j>');
+    await until(() => remote('expand("%:t")') === 'worker.js', 'the jump to the cause');
+    assert.deepEqual(JSON.parse(remote('json_encode(getpos("."))')).slice(1, 3), [2, 22], 'on the >=, which the point underlines');
+    const marks = extmarks(0);
+    assert.ok(marks.some(([, , , details]) => details.hl_group === 'PairSpan'), 'the code is underlined');
+    assert.ok(marks.some(([, , , details]) => details.line_hl_group === 'PairPoint' && details.sign_text?.trim() === '▎'), 'the line is tinted and signed');
+    assert.deepEqual(words(), [], 'its note fits after the line here, so nothing is under it');
+    await until(() => remarks()[0].verdict === 'seen', 'going there to answer the remark: seen');
+
+    keys('<C-o>');
+    await until(() => remote('expand("%:t")') === 'a.js', 'Ctrl-O back');
+    keys('2Gccconst y = 3<Esc>');
+    await sleep(300);
+    assert.equal(remarks()[0].trigger, 'edit_while_red');
+    await until(() => status() === '● pair', 'the statusline back to rest');
+
+    // A question about selected lines: the Partner gets them.
+    let input;
+    partner.setResponses([context => { input = context.messages.at(-1).content; return fauxAssistantMessage([fauxText('It sets z.')]); }]);
+    keys(':2,3Pair ask what is this?<CR>');
+    await until(() => messages.some(message => message.text === 'It sets z.'), 'the answer');
+    assert.match(input, /About lines 2-3 of a\.js, which the user selected:\n2: const y = 3\n3: const z = 4/);
+  } finally {
+    await stop();
+  }
+});
+
+test('a note that does not fit after its line goes under it, also when the window narrows; a strike starts at the code, not the indent', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
+  const {partner, messages, remote, keys, send, stop} = await pairInNvim('tidy up');
+  const marks = namespace => JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('${namespace}'), 0, -1, {details = true}))")`));
+  const noteUnder = () => marks('pair').some(([, , , details]) => details.virt_lines);
+  const noteAfter = () => marks('pair').some(([, , , details]) => details.virt_text_pos === 'eol');
+  const answered = text => until(() => messages.some(message => message.text === text), `the answer "${text}"`);
+  try {
+    keys('ggO\t\tlet total = 0<Esc>');
+    partner.setResponses([
+      fauxAssistantMessage([fauxToolCall('point', {file: 'a.js', line: 2, note: 'x is the start value of the loop below, so it has to stay one'})], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxText('See x.')]),
+    ]);
+    send({type: 'ask', text: 'what about x?'});
+    await answered('See x.');
+    await until(noteAfter, 'the note after the line, in a wide window');
+    remote('execute("vsplit | vertical resize 40")');
+    await until(noteUnder, 'the note under the line once the window is too narrow for it');
+    assert.equal(noteAfter(), false);
+
+    partner.setResponses([
+      fauxAssistantMessage([fauxToolCall('suggest', {file: 'a.js', line: 1, new_text: '\t\tlet total = 1', note: 'start at one'})], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxText('Start at one.')]),
+    ]);
+    send({type: 'ask', text: 'and total?'});
+    await answered('Start at one.');
+    const strike = await until(() => marks('pair_suggest').find(([, , , details]) => details.hl_group === 'PairSuggestDelete'), 'the struck line');
+    assert.deepEqual([strike[1], strike[2], strike[3].end_col], [0, 2, 15], 'from the first character after the two tabs to the end');
   } finally {
     await stop();
   }
@@ -146,7 +236,7 @@ test('suggestions show as a ghost diff that one key accepts; handing over gives 
     ]);
     send({type: 'ask', text: 'what should y be?'});
     await answered('Try 20.');
-    await until(() => ghosts() === 2, 'the ghost diff');
+    await until(() => ghosts() === 3, 'the ghost diff');
     assert.deepEqual(lines(), ['const x = 1', 'const y = 2', 'const z = 3']);
     keys('ggG<C-o><C-i>'); // the jumplist's Ctrl-I is <Tab> to a terminal: it must not accept
     await sleep(200);
@@ -162,7 +252,7 @@ test('suggestions show as a ghost diff that one key accepts; handing over gives 
     ]);
     send({type: 'ask', text: 'and z?'});
     await answered('Try 30.');
-    await until(() => ghosts() === 2, 'the second ghost diff');
+    await until(() => ghosts() === 3, 'the second ghost diff');
     keys('3Gccconst z = 4<Esc>');
     await until(() => ghosts() === 0, 'the ignored suggestion to go');
     keys(':Pair accept<CR>');
@@ -183,7 +273,7 @@ test('suggestions show as a ghost diff that one key accepts; handing over gives 
     await answered('Set x to 100.');
     assert.match(read, /3: const z = 4/, 'Pair read the unsaved buffer');
     assert.deepEqual(lines(), ['const x = 100', 'const y = 20', 'const z = 4']);
-    await until(() => status() === 'Pair: navigator · normal', 'Pair to hand back');
+    await until(() => status() === '● pair', 'Pair to hand back');
     assert.equal(onDisk(), 'const x = 1\nconst y = 2\nconst z = 3\n', 'nothing was saved');
     keys('u');
     await until(() => lines()[0] === 'const x = 1', 'one undo to remove Pair\'s edit');
@@ -193,10 +283,10 @@ test('suggestions show as a ghost diff that one key accepts; handing over gives 
     let refused;
     partner.setResponses([
       async () => {
-        await until(() => status() === 'Pair: driver · normal', 'the statusline to show the Driver');
+        await until(() => status() === '◎ pair has the wheel · any key takes it back', 'the statusline to show the Driver');
         keys('<ScrollWheelDown><ScrollWheelUp>');
         await sleep(300);
-        assert.equal(status(), 'Pair: driver · normal', 'a scroll is not a key');
+        assert.equal(status(), '◎ pair has the wheel · any key takes it back', 'a scroll is not a key');
         keys('j');
         await until(() => messages.some(message => message.text === 'You have the wheel back.'), 'the take-back');
         return fauxAssistantMessage([fauxToolCall('edit', {file: 'a.js', line: 1, new_text: 'const x = 7'})], {stopReason: 'toolUse'});
@@ -207,7 +297,7 @@ test('suggestions show as a ghost diff that one key accepts; handing over gives 
     await answered('Okay, yours.');
     assert.match(refused, /only while the user hands you the wheel/, 'the policy refused the edit, with a reason');
     assert.equal(lines()[0], 'const x = 1');
-    assert.equal(status(), 'Pair: navigator · normal');
+    assert.equal(status(), '● pair');
   } finally {
     await stop();
   }
@@ -248,12 +338,12 @@ test('Alt-n rates an unasked remark as noise; accepting its suggestion rates it 
 test('after a daemon restart the plugin reconnects by itself; a model that is down shows in the statusline', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
   const {partner, remote, status, restartDaemon, stop} = await pairInNvim('survive restarts');
   try {
-    await until(() => status() === 'Pair: navigator · normal', 'the first connection');
+    await until(() => status() === '● pair', 'the first connection');
     const down = async role => (role === 'partner' ? {ok: false, error: 'connect ECONNREFUSED'} : {ok: true});
     const restarted = restartDaemon({downMs: 1500, probe: down});
-    await until(() => status() === 'Pair: reconnecting', 'the statusline to say it is reconnecting');
+    await until(() => status() === '◌ pair · reconnecting', 'the statusline to say it is reconnecting');
     await restarted;
-    await until(() => status() === 'Pair: navigator · normal · partner down', 'the reconnect, with the warning', 10_000);
+    await until(() => status() === '◌ pair · partner down', 'the reconnect, with the warning', 10_000);
 
     // The new daemon gets the editor's buffers again: a question reads the unsaved text.
     remote('execute("normal! ggccconst x = 5")');

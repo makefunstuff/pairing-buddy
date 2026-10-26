@@ -1,0 +1,205 @@
+-- The pair's visual language: a handful of glyphs and one accent, taken from your colorscheme.
+-- The accent is the colorscheme's own colour whose hue is furthest from its syntax colours, so the pair is
+-- never mistaken for code. Every highlight group is a default: a colorscheme that defines one keeps its own.
+local M = {}
+
+M.glyphs = {
+  voice = '●', -- the pair speaks: one or two lines under the line they are about
+  mark = '▎', -- in the sign column, where it points
+  away = '◌', -- not connected, or a model is down
+  wheel = '◎', -- it has the wheel
+  pass = '✓',
+  fail = '✗',
+}
+
+-- Colours are 0xRRGGBB numbers, as nvim_get_hl gives them.
+local function channels(color)
+  return math.floor(color / 65536) % 256, math.floor(color / 256) % 256, color % 256
+end
+
+local function from_channels(r, g, b)
+  local function clamp(v) return math.max(0, math.min(255, math.floor(v + 0.5))) end
+  return clamp(r) * 65536 + clamp(g) * 256 + clamp(b)
+end
+
+--- `a` moved toward `b` by `t` (0: a, 1: b).
+function M.mix(a, b, t)
+  local ar, ag, ab = channels(a)
+  local br, bg, bb = channels(b)
+  return from_channels(ar + (br - ar) * t, ag + (bg - ag) * t, ab + (bb - ab) * t)
+end
+
+local function luminance(color)
+  local function linear(c)
+    c = c / 255
+    return c <= 0.03928 and c / 12.92 or ((c + 0.055) / 1.055) ^ 2.4
+  end
+  local r, g, b = channels(color)
+  return 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b)
+end
+
+--- The WCAG contrast ratio of two colours, 1 to 21.
+function M.contrast(a, b)
+  local la, lb = luminance(a), luminance(b)
+  return (math.max(la, lb) + 0.05) / (math.min(la, lb) + 0.05)
+end
+
+--- Hue in degrees and saturation 0..1.
+local function hue_saturation(color)
+  local r, g, b = channels(color)
+  r, g, b = r / 255, g / 255, b / 255
+  local max, min = math.max(r, g, b), math.min(r, g, b)
+  local delta = max - min
+  if delta == 0 then return 0, 0 end
+  local light = (max + min) / 2
+  local saturation = delta / (1 - math.abs(2 * light - 1))
+  local hue
+  if max == r then hue = ((g - b) / delta) % 6
+  elseif max == g then hue = (b - r) / delta + 2
+  else hue = (r - g) / delta + 4 end
+  return hue * 60, saturation
+end
+
+--- `color` moved toward `toward` until it reads with at least `ratio` on `bg`.
+local function readable(color, bg, toward, ratio)
+  for t = 0, 1, 0.05 do
+    local candidate = M.mix(color, toward, t)
+    if M.contrast(candidate, bg) >= ratio then return candidate end
+  end
+  return toward
+end
+
+local function hl(name)
+  return vim.api.nvim_get_hl(0, {name = name, link = false})
+end
+
+-- Groups whose colours are the code itself, and where the pair's accent may come from, in order of preference:
+-- the regexp colour (a hue most code never shows), the terminal's cyan, then the colorscheme's own colours for
+-- "a remark about your code".
+local SYNTAX = {'String', 'Keyword', 'Statement', 'Function', 'Type', 'Constant', 'Number', 'Identifier', 'PreProc',
+  'Operator', '@variable', '@keyword', '@function', '@string', '@type', '@constant', '@property'}
+local CANDIDATES = {'@string.regexp', 'terminal_color_6', 'DiagnosticHint', 'SpecialChar', 'terminal_color_14',
+  'DiagnosticInfo', 'Special', 'Title', 'Directory', 'DiagnosticOk', 'Question', 'MoreMsg'}
+
+-- Neovim's own colours, which a group keeps when the colorscheme leaves it alone: not the colorscheme's choice.
+local NVIM = {[0x004c73] = true, [0x007373] = true, [0x005523] = true, [0x470045] = true, [0x590008] = true,
+  [0x6b5300] = true, [0xa6dbff] = true, [0x8cf8f7] = true, [0xb3f6c0] = true, [0xffcaff] = true, [0xffc0b9] = true,
+  [0xfce094] = true}
+
+--- The colour a candidate names: a highlight group's foreground, or a terminal colour of the colorscheme.
+local function candidate(name)
+  if name:find('^terminal_color_') then
+    local hex = vim.g[name]
+    return type(hex) == 'string' and tonumber(hex:match('^#(%x%x%x%x%x%x)$') or '', 16) or nil
+  end
+  local color = hl(name).fg
+  local default = vim.g.colors_name == nil or vim.g.colors_name == 'default'
+  if color and NVIM[color] and not default then return nil end
+  return color
+end
+
+--- The editor's background and foreground; a transparent background is taken as Neovim's own default one.
+function M.ground()
+  local normal = hl('Normal')
+  local dark = vim.o.background == 'dark'
+  return normal.bg or (dark and 0x14161b or 0xe0e2ea), normal.fg or (dark and 0xe0e2ea or 0x14161b)
+end
+
+--- The pair's accent: the candidate colour furthest in hue from every syntax colour, readable on the background.
+function M.accent()
+  local bg, fg = M.ground()
+  local syntax = {}
+  for _, name in ipairs(SYNTAX) do
+    local hue, saturation = hue_saturation(hl(name).fg or 0)
+    if saturation > 0.2 then table.insert(syntax, hue) end
+  end
+  local best, best_score
+  for i, name in ipairs(CANDIDATES) do
+    local color = candidate(name)
+    local hue, saturation = hue_saturation(color or 0)
+    if saturation >= 0.25 then
+      local distance = 180
+      for _, other in ipairs(syntax) do
+        local d = math.abs(hue - other) % 360
+        distance = math.min(distance, d > 180 and 360 - d or d)
+      end
+      local score = distance - (i - 1) * 3 -- near-ties go to the earlier, more fitting candidate
+      if not best_score or score > best_score then best, best_score = color, score end
+    end
+  end
+  -- A colorscheme without coloured diagnostics or specials: a quiet teal.
+  best = best or (vim.o.background == 'dark' and 0x7fd1b9 or 0x1e7a65)
+  return readable(best, bg, fg, 3)
+end
+
+-- What each group looks like, from the background, the foreground and the accent.
+local function palette()
+  local bg, fg = M.ground()
+  local accent = M.accent()
+  local status = hl('StatusLine')
+  local status_bg = status.reverse and (status.fg or fg) or (status.bg or bg)
+  local status_fg = status.reverse and (status.bg or bg) or (status.fg or fg)
+  local dim = readable(M.mix(bg, fg, 0.42), bg, fg, 2.2)
+  return {
+    PairAccent = {fg = accent},
+    PairNote = {fg = readable(M.mix(fg, accent, 0.45), bg, fg, 4.5)}, -- the pair's words
+    PairCode = {fg = accent}, -- `code` in its words
+    PairKey = {fg = dim}, -- the key that acts on what it says
+    PairSign = {fg = accent},
+    PairPoint = {bg = M.mix(bg, accent, 0.07)}, -- a line it points at
+    PairSpan = {bg = M.mix(bg, accent, 0.16), sp = accent, underline = true}, -- the code it means there
+    PairGaze = {fg = accent, bold = true}, -- line numbers where it reads
+    PairSuggestDelete = {fg = dim, strikethrough = true},
+    PairSuggestAdd = {fg = fg, bg = M.mix(bg, accent, 0.1)},
+    PairStatus = {fg = accent},
+    PairStatusDim = {fg = M.mix(status_bg, status_fg, 0.62)},
+    PairStatusWarn = {fg = hl('DiagnosticWarn').fg or hl('WarningMsg').fg or accent},
+  }
+end
+
+-- Without 'termguicolors' there are no colours to derive from: plain links.
+local LINKS = {
+  PairAccent = 'DiagnosticHint', PairNote = 'DiagnosticHint', PairCode = 'Special', PairKey = 'Comment',
+  PairSign = 'DiagnosticHint', PairPoint = 'CursorLine', PairSpan = 'Visual', PairGaze = 'DiagnosticHint',
+  PairSuggestDelete = 'Comment', PairSuggestAdd = 'DiffAdd',
+  PairStatus = 'StatusLine', PairStatusDim = 'StatusLine', PairStatusWarn = 'StatusLine',
+}
+
+local ours = {} -- each group as this module last left it: a group that differs now was set by someone else
+local faded = {} -- fade steps made so far, by name
+
+--- (Re)defines the groups for the current colorscheme, leaving alone any group the colorscheme defined itself.
+function M.apply()
+  faded = {}
+  local specs = vim.o.termguicolors and palette() or vim.tbl_map(function(link) return {link = link} end, LINKS)
+  for name, spec in pairs(specs) do
+    local now = vim.api.nvim_get_hl(0, {name = name})
+    if vim.tbl_isempty(now) or vim.deep_equal(now, ours[name]) then
+      if not vim.tbl_isempty(now) then vim.api.nvim_set_hl(0, name, {}) end -- ours, from the last colorscheme
+      vim.api.nvim_set_hl(0, name, vim.tbl_extend('force', spec, {default = true}))
+      ours[name] = vim.api.nvim_get_hl(0, {name = name})
+    end
+  end
+end
+
+--- Whether the pair's colours can move: fades and the gaze need true colours.
+function M.can_move()
+  return vim.o.termguicolors
+end
+
+--- A group like `name` at `t` of its way in from the background (0: invisible, 1: itself).
+function M.fade(name, t)
+  if t >= 1 or not vim.o.termguicolors then return name end
+  local step = ('PairFade%s%02d'):format(name, math.floor(t * 20 + 0.5))
+  if faded[step] then return step end
+  local bg = M.ground()
+  local spec = hl(name)
+  spec.fg = spec.fg and M.mix(bg, spec.fg, t)
+  spec.bg = spec.bg and M.mix(bg, spec.bg, t)
+  spec.sp = spec.sp and M.mix(bg, spec.sp, t)
+  vim.api.nvim_set_hl(0, step, spec)
+  faded[step] = true
+  return step
+end
+
+return M
