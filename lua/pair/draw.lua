@@ -177,6 +177,11 @@ function M.span(buf, first, last)
   return vim.api.nvim_buf_set_extmark(buf, M.ns, first, 0, {end_row = last, sign_text = style.glyphs.mark, sign_hl_group = 'PairSign', priority = 15})
 end
 
+--- The dot of a held thought in the sign column of row `row`, under the pair's other marks. Returns the extmark id.
+function M.held(buf, row)
+  return place(buf, M.ns, row, 0, {sign_text = style.glyphs.held, sign_hl_group = 'PairSign', priority = 18})
+end
+
 --- A note about row `row`: after the line when it fits in the window, else under it. Returns the extmark id.
 function M.note(buf, row, note, opts)
   local after = {{'   ' .. style.glyphs.voice .. ' ', 'PairAccent'}}

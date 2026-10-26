@@ -531,3 +531,48 @@ test('saving runs the tests: the statusline spins, then names what fails; signs 
     await stop();
   }
 });
+
+test('a thought that can wait: a dot where it points and a word in the statusline while you type; Alt-j shows it at once', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
+  const {watcher, partner, messages, remote, keys, status, stop} = await pairInNvim('count the lines');
+  const marks = () => JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('pair'), 0, -1, {details = true}))")`));
+  const dot = () => marks().filter(([, , , details]) => details.sign_text?.trim() === '·').map(([, row]) => row);
+  try {
+    watcher.setResponses([fauxAssistantMessage([fauxText('9')]), ...Array.from({length: 10}, () => fauxAssistantMessage([fauxText('0')]))]);
+    partner.setResponses([
+      fauxAssistantMessage([fauxToolCall('point', {file: 'a.js', line: 1, note: '`n` is not declared', code: 'n'})], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxText('Line 1 reads `n` before anything sets it.')]),
+    ]);
+    keys('ccconst x = n<Esc>');
+    await sleep(300);
+    remote(`luaeval("vim.diagnostic.set(vim.api.nvim_create_namespace('lsp'), 0, {{lnum = 0, col = 10, severity = 1, message = 'n is not defined'}}) or 0")`);
+    keys('Go// and on'); // on down the file, still in Insert mode
+    await until(() => dot().length, 'the dot in the margin', 12_000);
+    assert.deepEqual(dot(), [0], 'on the line it points at');
+    assert.equal(status(), '● pair · held thought · M-j');
+    assert.ok(!messages.some(message => message.sender === 'pair'), 'nothing in the chat yet');
+    assert.equal(remote('mode()'), 'i', 'nothing took you out of Insert mode');
+
+    keys('<Esc><M-j>');
+    await until(() => messages.some(message => message.text === 'Line 1 reads `n` before anything sets it.'), 'the thought, at once', 2000);
+    await until(() => !dot().length && marks().some(([, , , details]) => details.virt_lines), 'its words under your line, and no dot');
+    assert.equal(status(), '● pair');
+  } finally {
+    await stop();
+  }
+});
+
+test('the chat pane gets the accent Neovim derived, and a new one when the colorscheme changes', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
+  const {messages, remote, stop} = await pairInNvim('one look');
+  const accent = () => remote(`luaeval("require('pair.style').hex(vim.api.nvim_get_hl(0, {name = 'PairAccent', link = false}).fg)")`);
+  // What the chat pane would print Pair in: the accent it was welcomed with, or the last one sent since.
+  const chatAccent = () => messages.filter(message => message.type === 'accent' || message.accent).map(message => message.color ?? message.accent).at(-1);
+  try {
+    remote('execute("set termguicolors")');
+    await until(() => chatAccent() === accent(), 'the accent');
+    const first = accent();
+    remote('execute("colorscheme shine")');
+    await until(() => chatAccent() === accent() && accent() !== first, 'the new accent');
+  } finally {
+    await stop();
+  }
+});
