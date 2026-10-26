@@ -16,9 +16,9 @@ export async function boardTasks(command) {
   }
 }
 
-/** The task number a branch is named for: 25 in `work/25-context-card` or `25-fix`; null for `main`. */
+/** The task number a branch is named for: 25 in `work/25-context-card` or `25-fix`; null for `main` or `release/2.0`. */
 export function branchNumber(branch) {
-  const number = branch?.match(/(?:^|\/)(\d+)(?:[-_.]|$)/)?.[1];
+  const number = branch?.match(/(?:^|\/)(\d+)(?:[-_]|$)/)?.[1];
   return number ? Number(number) : null;
 }
 
@@ -41,5 +41,8 @@ export function boardContext(tasks, {repos, branch}) {
   };
 }
 
-/** Whether a command line is the board launching one of its agents: the board typed it, not the user. */
-export const boardLaunch = cmd => /herdr-projects/.test(cmd);
+/**
+ * Whether a command line is the board launching one of its agents (the board typed it, not the user): the agent
+ * gets an option naming a file in one of the board's task folders, as in `claude --settings ~/.herdr-projects/data/tasks/…`.
+ */
+export const boardLaunch = cmd => /(?:^|\s)--[\w-]+[= ]\S*\.herdr-projects\/data\/tasks\//.test(cmd);

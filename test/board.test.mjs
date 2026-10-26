@@ -15,6 +15,8 @@ test('a branch names its task number: work/20-research, 20-fix; main names none'
   assert.equal(branchNumber('20-fix'), 20);
   assert.equal(branchNumber('feature/v2'), null);
   assert.equal(branchNumber('main'), null);
+  assert.equal(branchNumber('release/2.0'), null, 'a version is not a task number');
+  assert.equal(branchNumber('3.x'), null);
   assert.equal(branchNumber(null), null);
 });
 
@@ -34,4 +36,7 @@ test('the board\'s agent launches are told apart from the user\'s commands', () 
   assert.equal(boardLaunch('claude --session-id 1 --settings /home/u/.herdr-projects/data/tasks/x/settings.json'), true);
   assert.equal(boardLaunch('claude'), false);
   assert.equal(boardLaunch('make test'), false);
+  assert.equal(boardLaunch('herdr-projects approve pairing-buddy/25'), false, 'the user working the board is the user');
+  assert.equal(boardLaunch('cat ~/.herdr-projects/reports/x/notes.md'), false);
+  assert.equal(boardLaunch('less ~/.herdr-projects/data/tasks/x/closing-note.md'), false, 'reading a task\'s file is not a launch');
 });

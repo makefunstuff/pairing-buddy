@@ -82,3 +82,14 @@ test(':Pair context shows the goal and every source, where you have been, and x 
     await daemon.close();
   }
 });
+
+test(':Pair context before Neovim is connected says so instead of doing nothing', {skip: hasNvim ? false : 'nvim not installed', timeout: 10_000}, () => {
+  const out = execFileSync('nvim', [
+    '--headless', '--clean', '--cmd', `set rtp+=${REPO}`,
+    '-c', 'lua require(\'pair\').setup({socket = \'/nonexistent/pair.sock\'})',
+    '-c', 'Pair context',
+    '-c', 'lua io.stdout:write(vim.fn.execute("messages"))',
+    '-c', 'qa!',
+  ], {encoding: 'utf8'});
+  assert.match(out, /Pair: not connected, so there is no card; :Pair start connects/);
+});

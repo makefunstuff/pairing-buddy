@@ -235,16 +235,21 @@ herdr's work board ([captures/board.mjs](captures/board.mjs)).*
 | editor | your buffers, the jumplist, and your searches with what you opened from them | Neovim, and Telescope's prompt as you leave it; `/` and `?` too |
 
 - **`x` hides a source** for the rest of the session: it is struck through on the card and no longer sent. `x` on
-  it again brings it back. `q` or `Esc` closes the card. Hiding works from then on: what went with earlier questions
-  stays in the session's conversation.
+  it again brings it back. `q` or `Esc` closes the card. A hidden terminal also means no remark about a failed
+  command (nothing to say it with); the last test run still goes, with what you do now. Hiding works from then on:
+  what went with earlier questions stays in the session's conversation.
 - **A budget per source.** Six buffers, four jumps and three searches go; the card says how many more were cut.
-- **The board's own launches are not yours.** A command that launches one of the board's agents is left out of the
-  commands, and the card counts it as not sent, so Pair never thinks you ran it.
+- **The board's own launches are not yours.** A command that launches one of the board's agents (it hands the agent
+  a file from one of the board's task folders) is left out of the commands, and the card counts it as not sent, so
+  Pair never thinks you ran it. Your own `herdr-projects` commands are yours.
 - **Matched by repo and number.** The branch `work/7-retries` belongs to task 7 of this repo only: another repo's
   task 7 is never taken for it. The repo is the folder of the main checkout (also from a worktree) or the name in
   `origin`'s URL.
-- Searches are only watched: Telescope's prompt is read as you leave it, and the search counts once you land
-  somewhere new. Telescope's actions and your mappings are left alone.
+- Searches are only watched: Telescope's prompt is read as you leave it, and the search counts only when you land
+  somewhere other than where you opened the picker, so one you leave with `Esc` is not sent. Telescope's actions
+  and your mappings are left alone. A branch is read as a task number only when the number stands alone in a part of
+  its name (`work/7-retries`, `7-fix`), so `release/2.0` is no task.
+- `:Pair context` needs a connection; before one, it says so.
 
 ![x on the terminal: its rows are struck through and no longer go to the Partner](images/context-trimmed.png)
 

@@ -64,9 +64,13 @@ local function search(tool, query, results, from)
   emit({kind = 'search', tool = tool, query = query, results = results, file = file_of(now.buf), line = now.line})
 end
 
+-- Where you were when the last Telescope picker opened: a search that leaves you there (Esc) came to nothing.
+local before_picker = nil
+
 -- Telescope: the picker's title, the prompt and the number of results as you leave it, then where you land.
 local function watch_telescope(prompt_buf)
-  local from = here()
+  local from = before_picker
+  before_picker = nil
   local seen = {}
   local function look()
     local ok, picker = pcall(function() return require('telescope.actions.state').get_current_picker(prompt_buf) end)
@@ -80,7 +84,8 @@ local function watch_telescope(prompt_buf)
     look()
     -- The selection opens its file after the picker has closed.
     vim.defer_fn(function()
-      if seen.query then search(seen.tool or 'Telescope', seen.query, seen.results, from) end
+      -- Without where you were, an Esc could not be told from a selection: such a search is left out.
+      if seen.query and from then search(seen.tool or 'Telescope', seen.query, seen.results, from) end
     end, 50)
   end})
 end
@@ -94,6 +99,10 @@ function M.setup(group, send_event)
       entered[args.buf] = seconds * 1000 + micros / 1000
     end
     M.send(false)
+  end})
+  -- Telescope fires this before it opens its windows, while you are still where you were.
+  vim.api.nvim_create_autocmd('User', {group = group, pattern = 'TelescopeFindPre', callback = function()
+    before_picker = here()
   end})
   vim.api.nvim_create_autocmd('FileType', {group = group, pattern = 'TelescopePrompt', callback = function(args)
     watch_telescope(args.buf)

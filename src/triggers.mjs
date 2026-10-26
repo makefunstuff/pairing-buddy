@@ -130,8 +130,12 @@ function regressionTriggers(state, now) {
   }];
 }
 
-/** The candidate remarks for this moment whose keys have not fired yet. */
+/**
+ * The candidate remarks for this moment whose keys have not fired yet. A terminal the user hid on the context card
+ * raises none: a remark about a command would send it.
+ */
 export function detectTriggers(state, now, fired = new Set()) {
-  return [...commandTriggers(state, now), ...diagnosticTriggers(state), ...regressionTriggers(state, now), ...redTriggers(state, now), ...driftTriggers(state, now)]
+  const commands = state.hidden?.includes('terminal') ? [] : commandTriggers(state, now);
+  return [...commands, ...diagnosticTriggers(state), ...regressionTriggers(state, now), ...redTriggers(state, now), ...driftTriggers(state, now)]
     .filter(trigger => !fired.has(trigger.key));
 }

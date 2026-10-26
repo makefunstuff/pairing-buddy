@@ -17,7 +17,7 @@ export function commandLine(command, now) {
   return `\`${command.cmd}\` ${result}, ${ago(now, command.endedAt)}`;
 }
 
-const plural = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`;
+const plural = (n, noun, nouns = `${noun}s`) => `${n} ${n === 1 ? noun : nouns}`;
 
 function boardRows({board}) {
   if (!board) return [];
@@ -72,7 +72,7 @@ function editorRows(state) {
 
 /** Rows that are about the source but never sent: they say what was left out. */
 function notSent(source, state) {
-  if (source === 'terminal' && state.launches) return [{label: 'not sent', text: `${plural(state.launches, 'agent launch')} from the board, not yours`}];
+  if (source === 'terminal' && state.launches) return [{label: 'not sent', text: `${plural(state.launches, 'agent launch', 'agent launches')} from the board, not yours`}];
   return [];
 }
 

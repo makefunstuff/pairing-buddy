@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {contextCard, contextLines, goalFromContext} from '../src/context-card.mjs';
 import {describeState} from '../src/describe.mjs';
+import {watchInput} from '../src/session.mjs';
+import {detectTriggers} from '../src/triggers.mjs';
 import {fold, initialState} from '../src/fold.mjs';
 
 const ROOT = '/work/probe';
@@ -28,6 +30,8 @@ test('the card shows each source\'s rows, what a budget cut, and the board\'s la
   assert.deepEqual(git.rows.map(row => `${row.label} ${row.text}`), ['branch work/7-faster-hash', 'last abc1234 probe: count the worst case', 'tree 2 changed', 'PR none yet']);
   assert.deepEqual(terminal.rows.map(row => row.text), ['`make && ./probe` ok, 8 s ago'], 'the launch is not one of your commands');
   assert.deepEqual(terminal.notSent, [{label: 'not sent', text: '1 agent launch from the board, not yours'}]);
+  const twice = fold(busy(), {kind: 'command_end', cmd: 'pi --settings=/home/u/.herdr-projects/data/tasks/probe/9/s.json', exit: 0, output: '', at: 9000});
+  assert.equal(contextCard(twice, 10_000)[2].notSent[0].text, '2 agent launches from the board, not yours');
   const buffers = editor.rows.find(row => row.label === 'buffers');
   assert.equal(buffers.text, 'probe.c  main.c  a.h  b.h  c.h  d.h', 'project files, relative, as many as the budget allows');
   assert.equal(buffers.cut, 3);
@@ -48,6 +52,18 @@ test('what the Partner gets is what the card shows, and a hidden source goes now
   assert.doesNotMatch(describeState(hidden, 10_000), /Git:|Recent commands/);
   assert.deepEqual(contextCard(hidden, 10_000).filter(section => section.hidden).map(section => section.source), ['git', 'terminal'], 'the card still shows them, hidden');
   assert.equal(contextLines(fold(hidden, {kind: 'hide', source: 'git', hidden: false})).length, 3, 'x again brings it back');
+});
+
+test('a hidden terminal raises no remark about a command, so no command line reaches either model', () => {
+  const failing = [{kind: 'focus', target: 'editor', pane: 'w1:p1'}, {kind: 'command_end', pane: 'w1:p2', cmd: 'make SECRET_TOKEN=abc deploy', exit: 2, output: 'Error: denied'}];
+  const shown = state(failing);
+  assert.deepEqual(detectTriggers(shown, 60_000).map(trigger => trigger.kind), ['failed_command']);
+  const hidden = state([{kind: 'hide', source: 'terminal', hidden: true}, ...failing, failing[1]]);
+  const triggers = detectTriggers(hidden, 100_000);
+  assert.deepEqual(triggers, [], 'no failed_command, repeated_error or stall');
+  assert.doesNotMatch(describeState(hidden, 100_000), /SECRET_TOKEN/);
+  const back = fold(hidden, {kind: 'hide', source: 'terminal', hidden: false});
+  assert.match(watchInput(detectTriggers(back, 100_000)[0], describeState(back, 100_000)), /SECRET_TOKEN/, 'brought back, it goes again');
 });
 
 test('a session takes its goal from the board task, else the branch name; on main it asks', () => {

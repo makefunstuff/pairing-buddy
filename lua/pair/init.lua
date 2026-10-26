@@ -801,7 +801,10 @@ local commands = {
   useful = function() feedback(true, state.remark) end,
   noise = function() feedback(false, state.remark) end,
   ['end'] = function() send({type = 'end'}) end,
-  context = function() card.open(send) end,
+  context = function()
+    if not state.channel then return vim.notify('Pair: not connected, so there is no card; :Pair start connects', vim.log.levels.WARN) end
+    card.open(send)
+  end,
   open = function()
     if state.open_request then open_split(state.open_request.file, state.open_request.line) end
     state.open_request = nil
