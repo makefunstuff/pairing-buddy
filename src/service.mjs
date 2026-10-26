@@ -19,7 +19,7 @@ Documentation=https://github.com/makefunstuff/pairing-buddy
 
 [Service]
 ExecStart=${word(node)} --disable-warning=ExperimentalWarning ${word(script)} daemon
-${Object.entries(env).map(([name, value]) => `Environment=${name}=${value}\n`).join('')}Restart=on-failure
+${Object.entries(env).map(([name, value]) => `Environment="${name}=${value}"\n`).join('')}Restart=on-failure
 RestartSec=2
 
 [Install]

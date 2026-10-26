@@ -12,7 +12,7 @@ test('the unit starts the daemon at login and restarts it when it fails', () => 
 });
 
 test('paths with spaces are quoted and a custom config path is passed on', () => {
-  const unit = unitFile({node: '/my tools/node', script: '/opt/pair/bin/pair.mjs', env: {PAIR_CONFIG: '/etc/pair.json'}});
+  const unit = unitFile({node: '/my tools/node', script: '/opt/pair/bin/pair.mjs', env: {PAIR_CONFIG: '/home/u/My Configs/pair.json'}});
   assert.match(unit, /^ExecStart="\/my tools\/node" /m);
-  assert.match(unit, /^Environment=PAIR_CONFIG=\/etc\/pair\.json$/m);
+  assert.match(unit, /^Environment="PAIR_CONFIG=\/home\/u\/My Configs\/pair\.json"$/m);
 });

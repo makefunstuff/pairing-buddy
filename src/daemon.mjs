@@ -145,7 +145,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
         requestEditor: message => requestEditor(session, message),
         log: line => log(`[${basename(root)}] ${line}`),
       });
-      // Also gives conversations from v0.1, which had no roles, their role's tools.
+      // A stored conversation gets the model now in the config, and one from v0.1, which had no roles, its role's tools.
       await partner.setRole(session.conversationId, session.role);
       live.set(root, session);
       refreshBranch(session);

@@ -13,9 +13,10 @@ import {fakeHerdr} from './fake-herdr.mjs';
 
 const answers = async () => ({ok: true}); // the scripted models are not probed
 
-function scriptedModels() {
+/** Scripted Watcher and Partner; `partnerModel` names the Partner's model, as the config would. */
+function scriptedModels(partnerModel) {
   const watcher = fauxProvider({provider: 'faux-watcher'});
-  const partner = fauxProvider({provider: 'faux-partner'});
+  const partner = fauxProvider({provider: 'faux-partner', ...(partnerModel ? {models: [{id: partnerModel}]} : {})});
   const models = createModels();
   models.setProvider(watcher.provider);
   models.setProvider(partner.provider);
@@ -311,6 +312,37 @@ test('several Neovims and projects at once: each project has its own session, an
     assert.deepEqual([sessions['write a post'].editors, sessions['write a post'].chats], [1, 1]);
   } finally {
     for (const each of [shopVim, shopVim2, blogVim, shopChat, blogChat]) each.close();
+    await daemon.close();
+  }
+});
+
+test('after the Partner model is changed in the config, an open session answers with the new model', {timeout: 20_000}, async () => {
+  const project = mkdtempSync(join(tmpdir(), 'pair-project-'));
+  const config = testConfig(mkdtempSync(join(tmpdir(), 'pair-data-')));
+  const health = [];
+  const first = scriptedModels('your-larger-model');
+  let daemon = await startDaemon(config, {pairModels: first.pairModels, probe: answers, log: () => {}});
+  let chat = client(config.socket, {type: 'hello', role: 'chat', cwd: project});
+  await chat.next(message => message.type === 'welcome');
+  chat.send({type: 'goal', text: 'fix reconnect'});
+  await chat.next(message => message.text === 'Goal: fix reconnect');
+  chat.close();
+  await daemon.close();
+
+  const second = scriptedModels('the-real-model');
+  daemon = await startDaemon(config, {pairModels: second.pairModels, probe: answers, log: line => health.push(line)});
+  chat = client(config.socket, {type: 'hello', role: 'chat', cwd: project});
+  try {
+    await chat.next(message => message.type === 'welcome');
+    let asked;
+    second.partner.setResponses([(context, options, state, model) => { asked = model.id; return fauxAssistantMessage([fauxText('In ws.ts.')]); }]);
+    chat.send({type: 'ask', text: 'where is the timeout?'});
+    await chat.next(message => message.text === 'In ws.ts.' || message.text?.startsWith('Pair could not answer'));
+    assert.equal(asked, 'the-real-model');
+    assert.equal(chat.received.some(message => message.type === 'health'), false, 'the Partner was never marked down');
+    assert.deepEqual(health.filter(line => /model down/.test(line)), []);
+  } finally {
+    chat.close();
     await daemon.close();
   }
 });
