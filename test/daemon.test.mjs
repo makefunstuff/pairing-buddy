@@ -1,6 +1,7 @@
 // The daemon end to end over its socket, with scripted models in place of real ones.
 import assert from 'node:assert/strict';
-import {mkdtempSync, writeFileSync} from 'node:fs';
+import {execFileSync} from 'node:child_process';
+import {mkdirSync, mkdtempSync, realpathSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {test} from 'node:test';
@@ -24,8 +25,9 @@ function scriptedModels(partnerModel) {
   return {watcher, partner, pairModels: {models, watcher: watcher.getModel(), partner: partner.getModel()}};
 }
 
-function testConfig(dataDir) {
+function testConfig(dataDir, settings = {}) {
   return parseConfig({
+    ...settings,
     dataDir,
     socket: join(dataDir, 'pair.sock'),
     typingPauseMs: 50,
@@ -393,6 +395,76 @@ test('keep-warm asks the Watcher\'s model for one token while someone works, and
     assert.deepEqual(pings[0], {prompt: 'Nothing happened yet.', maxTokens: 1});
   } finally {
     editor.close();
+    await daemon.close();
+  }
+});
+
+test('two Neovims in one project: Pair shows things in the one with focus, from the terminal\'s focus reports or herdr\'s focused pane', {timeout: 20_000}, async () => {
+  const project = mkdtempSync(join(tmpdir(), 'pair-project-'));
+  writeFileSync(join(project, 'cart.js'), 'const total = 0\n');
+  const config = testConfig(mkdtempSync(join(tmpdir(), 'pair-data-')));
+  const herdrSocket = join(mkdtempSync(join(tmpdir(), 'pair-herdr-')), 'herdr.sock');
+  const herdr = await fakeHerdr(herdrSocket, {nvims: ['w1:n1', 'w1:n2']});
+  const {partner, pairModels} = scriptedModels();
+  const daemon = await startDaemon(config, {pairModels, probe: answers, log: () => {}});
+  const left = client(config.socket, {type: 'hello', role: 'editor', cwd: project, pane: 'w1:n1'});
+  const right = client(config.socket, {type: 'hello', role: 'editor', cwd: project, pane: 'w1:n2'});
+  const chat = client(config.socket, {type: 'hello', role: 'chat', cwd: project, herdr: {socket: herdrSocket, workspace: 'w1', pane: 'w1:p2'}});
+  const pointed = async (editor, other, line) => {
+    partner.setResponses([
+      fauxAssistantMessage([fauxToolCall('point', {file: 'cart.js', line, note: 'here'})], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxText(`See line ${line}.`)]),
+    ]);
+    chat.send({type: 'ask', text: 'where?'});
+    await chat.next(message => message.text === `See line ${line}.`);
+    await editor.next(message => message.type === 'point' && message.line === line);
+    assert.equal(other.received.some(message => message.type === 'point' && message.line === line), false, 'one Neovim shows it');
+  };
+  try {
+    for (const each of [left, right, chat]) await each.next(message => message.type === 'welcome');
+    chat.send({type: 'goal', text: 'fix the cart'});
+    await chat.next(message => message.text === 'Goal: fix the cart');
+
+    left.send({type: 'focus', on: true});
+    await new Promise(resolve => setTimeout(resolve, 50));
+    // A file that changed on disk is reloaded in the Neovim you are not in; that does not take you there.
+    right.send({type: 'event', event: {kind: 'cursor', file: join(project, 'cart.js'), line: 1, col: 0}});
+    await pointed(left, right, 1);
+
+    herdr.focus('w1:n2'); // herdr says you went to the right one, whether or not its terminal reports focus
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    await pointed(right, left, 2);
+
+    right.send({type: 'focus', on: false}); // to the browser: the Neovim you were in last still shows it
+    await pointed(right, left, 3);
+  } finally {
+    for (const each of [left, right, chat]) each.close();
+    await daemon.close();
+    await herdr.close();
+  }
+});
+
+test('session roots: in a monorepo each configured folder has its own session; each git worktree has its own too', {timeout: 20_000}, async () => {
+  const mono = realpathSync(mkdtempSync(join(tmpdir(), 'pair-mono-')));
+  for (const dir of ['packages/api/src', 'packages/web', 'tools']) mkdirSync(join(mono, dir), {recursive: true});
+  const git = (...args) => execFileSync('git', ['-C', mono, '-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], {stdio: 'ignore'});
+  git('init', '-q');
+  writeFileSync(join(mono, 'README'), 'mono\n');
+  git('add', '.');
+  git('commit', '-qm', 'start');
+  const worktree = `${mono}-feature`;
+  git('worktree', 'add', '-q', worktree);
+  const config = testConfig(mkdtempSync(join(tmpdir(), 'pair-data-')), {sessionRoots: [`${mono}/packages/*`]});
+  const {pairModels} = scriptedModels();
+  const daemon = await startDaemon(config, {pairModels, probe: answers, log: () => {}});
+  const cwds = [join(mono, 'packages/api/src'), join(mono, 'packages/api'), join(mono, 'packages/web'), join(mono, 'tools'), mono, worktree];
+  const editors = cwds.map(cwd => client(config.socket, {type: 'hello', role: 'editor', cwd}));
+  try {
+    const roots = [];
+    for (const editor of editors) roots.push((await editor.next(message => message.type === 'welcome')).root);
+    assert.deepEqual(roots, [join(mono, 'packages/api'), join(mono, 'packages/api'), join(mono, 'packages/web'), mono, mono, worktree]);
+  } finally {
+    for (const editor of editors) editor.close();
     await daemon.close();
   }
 });

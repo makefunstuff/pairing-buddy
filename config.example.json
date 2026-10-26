@@ -21,6 +21,10 @@
   // number), and the context card (:Pair context) shows the task. null turns it off; without the command, nothing is read.
   // "board": "herdr-projects",
 
+  // A project is a git root (each git worktree is one). In a monorepo, these folders are projects of their own;
+  // "<folder>/*" makes each folder in it one.
+  // "sessionRoots": ["~/src/shop/packages/*"],
+
   // One model for both roles: the Watcher asks it for one number without thinking, so it stays fast; the Partner
   // asks it with thinking. Its server needs to hold only this model, and may answer one request at a time: the
   // Watcher then waits while the Partner works, and your questions go first.

@@ -652,7 +652,8 @@ local function send_accent()
 end
 
 local function hello()
-  send({type = 'hello', role = 'editor', cwd = vim.fn.getcwd()})
+  -- The herdr pane this Neovim runs in, if any: Pair shows things in the Neovim whose pane has focus.
+  send({type = 'hello', role = 'editor', cwd = vim.fn.getcwd(), pane = vim.env.HERDR_PANE_ID})
   send_accent()
 end
 

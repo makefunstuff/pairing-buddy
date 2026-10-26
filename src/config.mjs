@@ -180,6 +180,18 @@ function boardCommand(raw = 'herdr-projects') {
   return raw && raw.trim().replace(/^~(?=\/)/, homedir());
 }
 
+/**
+ * `sessionRoots` lists the folders that each have their own session, for a monorepo where the git root is too coarse:
+ * a folder, or `<folder>/*` for every folder in it.
+ */
+function sessionRoots(raw = []) {
+  if (!Array.isArray(raw) || raw.some(path => typeof path !== 'string' || !path.trim())) throw new Error('config: sessionRoots must list folders');
+  return raw.map(path => {
+    const each = /\/\*$/.test(path);
+    return {path: projectPath(each ? path.slice(0, -2) : path), each};
+  });
+}
+
 export function parseConfig(raw) {
   const level = raw.level ?? 'normal';
   if (!LEVELS.includes(level)) throw new Error(`config: level must be one of ${LEVELS.join(', ')}`);
@@ -193,6 +205,7 @@ export function parseConfig(raw) {
     socket: raw.socket ?? defaultSocketPath(),
     dataDir: raw.dataDir ?? join(xdg('XDG_STATE_HOME', '.local/state'), 'pairing-buddy'),
     testOnSave: testCommands(raw.testOnSave),
+    sessionRoots: sessionRoots(raw.sessionRoots),
     voice: voiceConfig(raw.voice), // push-to-talk; null when off (see voice.mjs)
     board: boardCommand(raw.board),
     models,

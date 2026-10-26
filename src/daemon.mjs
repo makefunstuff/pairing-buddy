@@ -3,9 +3,10 @@
 import {chmodSync, mkdirSync, unlinkSync} from 'node:fs';
 import {realpath} from 'node:fs/promises';
 import {createServer} from 'node:net';
-import {basename, join, sep} from 'node:path';
+import {basename, join} from 'node:path';
 import {sameServer} from './config.mjs';
 import {goalFromContext, SOURCES} from './context-card.mjs';
+import {byUse, herdrFocus, noteEditor} from './editors.mjs';
 import {gitRoot} from './git.mjs';
 import {ModelHealth} from './health.mjs';
 import {PaneWatch} from './herdr.mjs';
@@ -20,6 +21,7 @@ import {projectContext} from './project-context.mjs';
 import {readMessages, sendMessage} from './protocol.mjs';
 import {ScoutPane} from './scout-pane.mjs';
 import {PairSession} from './session.mjs';
+import {openRootOf, sessionRootOf} from './session-root.mjs';
 import {ModelSlot} from './slot.mjs';
 import {openStore} from './store.mjs';
 import {ROLE_TOOLS, ROLES} from './tools.mjs';
@@ -128,12 +130,12 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
   };
 
   const clientsOf = (session, role) => [...clients].filter(client => client.session === session && client.role === role);
-  /** The Neovims attached to `session`, the one the user used last first. */
-  const editorsOf = session => clientsOf(session, 'editor').sort((a, b) => b.activeAt - a.activeAt);
+  /** The Neovims attached to `session`, the one the user is in first (see editors.mjs). */
+  const editorsOf = session => byUse(clientsOf(session, 'editor'));
 
   /**
-   * Sends `message` to the clients of `session` named by `to`: "chat", all "editors", or the "editor" the user
-   * used last (so with two Neovims open in one project, a point shows in the one you are working in).
+   * Sends `message` to the clients of `session` named by `to`: "chat", all "editors", or the "editor" the user is
+   * in (so with two Neovims open in one project, a point shows in the one you are working in).
    * Returns how many got it.
    */
   function notify(session, to, message) {
@@ -152,7 +154,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     });
   }
 
-  /** Asks the editor the user used last; a read asks the others too until one has the file loaded. */
+  /** Asks the editor the user is in; a read asks the others too until one has the file loaded. */
   async function requestEditor(session, message) {
     const editors = editorsOf(session);
     if (!editors.length) throw new Error('No editor attached');
@@ -178,11 +180,13 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     return reading;
   }
 
-  /** The project a working directory belongs to: an open session containing it, else its git root, else itself. */
+  /**
+   * The project a working directory belongs to: the session root the config gives it (see session-root.mjs), else
+   * an open session containing it, else its git root, else itself.
+   */
   async function rootOf(cwd) {
     const dir = await realpath(cwd ?? process.cwd());
-    const open = [...sessions.keys()].find(root => dir === root || dir.startsWith(root + sep));
-    return open ?? (await gitRoot(dir)) ?? dir;
+    return sessionRootOf(dir, config.sessionRoots) ?? openRootOf(dir, sessions.keys()) ?? (await gitRoot(dir)) ?? dir;
   }
 
   function loadSession(root) {
@@ -216,6 +220,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
   function receive(session, event) {
     session.receive(event);
     if (event.kind === 'command_end') refreshContext(session);
+    if (event.kind === 'focus' && event.target === 'editor') herdrFocus(clientsOf(session, 'editor'), event.pane);
   }
 
   function watchHerdr(session, herdr) {
@@ -282,6 +287,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
   async function hello(client, message) {
     client.role = message.role;
     client.activeAt = Date.now();
+    client.pane = message.pane ?? null; // the herdr pane a Neovim runs in
     client.session = await loadSession(await rootOf(message.cwd));
     const {session} = client;
     sendMessage(client.socket, {
@@ -339,8 +345,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     await client.ready;
     const {session} = client;
     if (!session) return sendMessage(client.socket, {type: 'message', sender: 'system', text: 'No active session; send hello first', at: Date.now()});
-    // What you do in a Neovim makes it the one Pair shows things in; its LSP's diagnostics do not.
-    if (client.role === 'editor' && message.event?.kind !== 'diagnostics') client.activeAt = Date.now();
+    if (client.role === 'editor') noteEditor(client, message);
     if (message.type === 'event') return receive(session, message.event);
     if (message.type === 'ask') return session.ask(message.text, message.selection ?? null);
     if (message.type === 'goal') return session.setGoal(message.text);
@@ -385,7 +390,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
   }
 
   const server = createServer(socket => {
-    const client = {socket, role: null, session: null, activeAt: 0, ready: Promise.resolve()};
+    const client = {socket, role: null, session: null, activeAt: 0, focused: null, ready: Promise.resolve()};
     clients.add(client);
     socket.on('close', () => {
       clients.delete(client);
