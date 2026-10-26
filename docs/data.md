@@ -13,5 +13,7 @@
 | `daemon.log` | The daemon's log, when `pair` started it (under systemd it goes to the journal) |
 | `daemon.lock` | Makes sure one daemon owns the files above |
 
-Nothing is written to your repository. Nothing leaves your machine except the requests to the model endpoints you
-configured and, for a login, to the provider's sign-in service.
+Nothing is written to your repository or to the work board (Pair only lists its tasks). Nothing leaves your machine
+except the requests to the model endpoints you configured, `gh pr view` for the
+[context card](neovim.md#what-it-knows-the-context-card) when `gh` is installed and, for a login, to the provider's
+sign-in service.

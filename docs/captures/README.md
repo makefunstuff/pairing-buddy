@@ -9,6 +9,8 @@ recording comes out the same each time.
   trigger it is asked about. The Partner's turns (tool calls or words, each after its own pause) come in order
   from [scenes.mjs](scenes.mjs). The tools those calls reach are real: they read the files, check the line and the
   code they point at, and type the edit.
+- **The board:** [board.mjs](board.mjs) stands in for herdr's work board in the context-card scene, which also
+  fetches Telescope and plenary at pinned commits for its searches.
 - **herdr:** [herdr.mjs](herdr.mjs) stands in for herdr's socket, because the captures show Neovim alone.
   - Pair's own pane runs its commands for real, with bash in the project: the tests on save, and
     `go test -overlay` on the unsaved buffer.
@@ -33,6 +35,7 @@ recording comes out the same each time.
 | [held-thought](tapes/held-thought.tape) | the held thought, and one look on a grey palette |
 | [delight](tapes/delight.tape) | a number finally moves: the statusline lights up and one line says what moved |
 | [push-to-talk](tapes/push-to-talk.tape) | hold `Alt-t`, ask aloud, and Pair answers under your line |
+| [context-card](tapes/context-card.tape) | `:Pair context`, with the goal from the board task, and `x` on a source |
 
 ## Recording
 
@@ -45,7 +48,7 @@ docs/captures/record.sh                 # all the scenes into docs/captures/out/
 docs/captures/encode.sh                 # out/ -> site/media/ and docs/images/
 ```
 
-The push-to-talk scene is not in the default six: it also needs [whisper.cpp](../voice.md#1-build-whispercpp-cpu-only),
+The push-to-talk scene is not among the default scenes: it also needs [whisper.cpp](../voice.md#1-build-whispercpp-cpu-only),
 espeak-ng and FFmpeg. espeak-ng says the scene's question into the recorder, and whisper.cpp hears it for real:
 
 ```sh

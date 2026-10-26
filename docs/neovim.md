@@ -1,7 +1,8 @@
 # The pair in Neovim
 
 Pair sits in the second chair. In Neovim it has a small visual language: a few marks in one colour, all in your
-own font, and no windows, boxes, borders or field labels (the two panels, `:Pair trail` and `:Pair today`, open only when you ask).
+own font, and no windows, boxes, borders or field labels (the three panels, `:Pair trail`, `:Pair context` and
+`:Pair today`, open only when you ask).
 Everything it shows follows one test: would you keep it on screen for an eight-hour day?
 
 ![Pair stops a wrong turn: it reads, says why under your edit, and Alt-j goes to the real cause](images/wrong-turn.gif)
@@ -373,6 +374,46 @@ held, `● pair · held thought · M-j`, the `●` in the accent.
 
 ![A model down, then the daemon away](images/statusline.png)
 
+## What it knows: the context card
+
+`:Pair context` shows everything the pair uses, as it is this second, on one card you can read and trim: the goal,
+the board task of your branch, git, the commands you ran, and where you have been in the editor. It is the same
+text the Partner gets with every remark and question, so what is not on the card is not sent. It is read again every
+two seconds while it is open.
+
+![:Pair context: the goal from the board task, the board, git, the failing run, and the buffers, jumps and searches](images/context.png)
+
+*The card in the capture, made by the daemon and plugin as shipped: no goal was typed, it came from the board task
+of the branch. The test run and the two Telescope searches are real; the board is a stand-in for
+herdr's work board ([captures/board.mjs](captures/board.mjs)).*
+
+| Source | Rows | Read from |
+| --- | --- | --- |
+| goal | what the session is for, and where it came from | the board task, else the branch name, else what you typed |
+| board | the task, its state, and how many of the repo's other tasks are working or need you | the herdr work board: the task whose number is in the branch name, in this repo |
+| git | branch, last commit, how many files changed, the pull request | `git`, and `gh pr view` at most every five minutes |
+| terminal | the last three commands, how they ended and how long ago | the herdr panes and the shell hook |
+| editor | your buffers, the jumplist, and your searches with what you opened from them | Neovim, and the searches the [search trail](#the-search-trail) reads from Telescope and snacks.picker |
+
+- **`x` hides a source** for the rest of the session: it is struck through on the card and no longer sent. `x` on
+  it again brings it back. `q` or `Esc` closes the card. A hidden terminal also means no remark about a failed
+  command (nothing to say it with); the last test run still goes, with what you do now. Hiding works from then on:
+  what went with earlier questions stays in the session's conversation.
+- **A budget per source.** Six buffers, four jumps and three searches go; the card says how many more were cut.
+- **The board's own launches are not yours.** A command that launches one of the board's agents (it hands the agent
+  a file from one of the board's task folders) is left out of the commands, and the card counts it as not sent, so
+  Pair never thinks you ran it. Your own `herdr-projects` commands are yours.
+- **Matched by repo and number.** The branch `work/7-retries` belongs to task 7 of this repo only: another repo's
+  task 7 is never taken for it. The repo is the folder of the main checkout (also from a worktree) or the name in
+  `origin`'s URL.
+- The searches are the search trail's: a search you leave with `Esc` shows without "opened", since nothing was.
+  Hiding the editor also keeps the search trail from raising a remark, which would send the searches.
+- A branch is read as a task number only when the number stands alone in a part of its name (`work/7-retries`,
+  `7-fix`), so `release/2.0` is no task.
+- `:Pair context` needs a connection; before one, it says so.
+
+![x on the terminal: its rows are struck through and no longer go to the Partner](images/context-trimmed.png)
+
 ## Setup
 
 The lazy.nvim spec is in [install.md](install.md#install). Without a plugin manager:
@@ -393,7 +434,7 @@ require('pair').setup({
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `auto_connect` | `false` | Connect to the daemon at startup (the lazy.nvim spec sets it) |
+| `auto_connect` | `false` | Connect to the daemon at startup (the lazy.nvim spec sets it). A Neovim without a screen (`nvim --headless`, an agent's or a script's) or one started in the temp folder does not, so it never starts a session; `:Pair start` connects it anyway |
 | `socket` | the daemon's default | The daemon's socket |
 | `debounce_ms` | `2000` | How long after you stop typing an edit is sent |
 | `max_points` | `5` | Points kept at once |
@@ -440,7 +481,8 @@ to standard ones and does not fade.
 | `:Pair open` | Open the place Pair asked to show while you were typing |
 | `:Pair today` | The [ledger](#the-ledger): everything Pair did in this project today; `⏎` goes there or shows the output, `u` undoes one of its edits later |
 | `:Pair clear` | Remove Pair's points and words |
-| `:Pair end` | End the session; Pair writes a short session note, which the next session in this project starts from |
+| `:Pair context` | Show what Pair knows right now: the goal, the board task, git, your commands, buffers, jumps and searches; `x` hides a source for the session, `q` closes |
+| `:Pair end` | End the session now; Pair writes a short session note, which the next session in this project starts from (it also [ends by itself](memory.md#no-ceremony-a-session-starts-and-ends-by-itself)) |
 | `:Pair listen [cancel]` | Push-to-talk without the key: works as a tap of `Alt-t`; `cancel` drops what is being recorded ([voice.md](voice.md)) |
 | `:Pair stop` | Disconnect this Neovim, and stop reconnecting |
 

@@ -352,7 +352,7 @@ test('the next session in a repo starts from the last note; a remark is rated wi
     await chat.next(message => message.type === 'ended');
     chat.send({type: 'hello', role: 'chat', cwd: project}); // what the chat pane does after an end
     await chat.next(message => message.text === 'Last time:\nGoal: fix reconnect. Loose end: the timeout.');
-    await chat.next(message => message.text === 'What are we doing this session? Type the goal here.');
+    await chat.next(message => message.text === 'What are we doing this session? Type the goal here, or "later".');
 
     let instructions;
     partner.setResponses([context => {

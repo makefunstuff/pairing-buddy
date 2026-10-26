@@ -50,8 +50,9 @@ Add the plugin with lazy.nvim:
 }
 ```
 
-Then set your model ([below](#configure-models)), open Neovim, run `pair` in the herdr pane next to it, and type the
-session's goal in the chat pane. `pair doctor` checks every part and says how to fix what is wrong.
+Then set your model ([below](#configure-models)), open Neovim, run `pair` in the herdr pane next to it, and work: the
+session takes its goal from the herdr board task of your branch, or the branch name, and asks only when there is
+neither. `pair doctor` checks every part and says how to fix what is wrong.
 
 Upgrading, installing from a clone, running without systemd, and the chat commands are in
 [docs/install.md](docs/install.md).
@@ -89,7 +90,7 @@ to do:
 | `Alt-u` / `Alt-n` | Tell Pair its last remark was useful / noise |
 | any key | Take the wheel back while Pair drives |
 
-The main commands are `:Pair ask <question>`, `:Pair drive [what]`, `:Pair scout`, `:Pair navigate`, `:Pair today`
+The main commands are `:Pair ask <question>`, `:Pair drive [what]`, `:Pair scout`, `:Pair navigate`, `:Pair context`, `:Pair today`
 and `:Pair end`.
 All options, commands, the statusline segment and the highlight groups are in [docs/neovim.md](docs/neovim.md), with
 captures of each moment.
@@ -127,6 +128,13 @@ broke gets a remark and a suggested fix. [docs/tests-on-save.md](docs/tests-on-s
 
 **Holds a thought.** A remark that can wait waits for your next save or pause, with a `•` in the margin meanwhile.
 [docs/neovim.md](docs/neovim.md#the-held-thought)
+
+**Shows what it knows.** `:Pair context` shows, on one card, everything that goes with a remark or a question: the
+goal, the board task of your branch (matched by repo and number), git, the commands you ran, your buffers, jumps and
+searches. `x` takes a source out for the session. [docs/neovim.md](docs/neovim.md#what-it-knows-the-context-card)
+
+**No ceremony.** A session starts with the goal of its board task or branch instead of asking, and ends by itself, with
+its note, after 45 minutes without you or once its last Neovim closes. [docs/memory.md](docs/memory.md#no-ceremony-a-session-starts-and-ends-by-itself)
 
 **Keeps a ledger.** `:Pair today` lists everything Pair did here today, one quiet line each: what it read, said,
 pointed at, suggested, ran and typed, what it asked, and the moments it stayed quiet. `⏎` goes there or shows the

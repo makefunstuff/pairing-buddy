@@ -20,6 +20,9 @@ its role's tools.
   diagnostics, and your Telescope and snacks.picker searches.
 - **herdr.** The daemon watches your herdr panes for focus, commands and their output
   ([herdr.md](herdr.md) says how, and what herdr lacks).
+- **Where you have been.** Your buffers and jumplist, the herdr work board's task for your branch, and git (branch,
+  last commit, changed files, pull request). The [context card](neovim.md#what-it-knows-the-context-card) shows all of
+  it, and what you hide there is not sent.
 - **The shell hook** (optional) adds exit codes, and catches commands too short for herdr's polling.
 - **Test output** is parsed (cargo, go test, jest, vitest, pytest, `node --test`): which tests failed and the first
   error line ([scout.md](scout.md#test-results)). With [tests on save](tests-on-save.md), the runner's JSON report

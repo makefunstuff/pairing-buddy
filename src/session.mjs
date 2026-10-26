@@ -3,6 +3,7 @@ import {readFile} from 'node:fs/promises';
 import {isAbsolute, relative} from 'node:path';
 import {Budget} from './budget.mjs';
 import {commandPolicy} from './command-policy.mjs';
+import {contextCard} from './context-card.mjs';
 import {Delight, LONG_RED_MS} from './delight.mjs';
 import {describeState} from './describe.mjs';
 import {insideRoot, MAX_LINES, numberedLines, projectFile, readProjectPath} from './files.mjs';
@@ -152,6 +153,11 @@ export function cleanNote(text) {
   return cut.slice(0, cut.lastIndexOf('\n') > 0 ? cut.lastIndexOf('\n') : NOTE_CHARS).trim();
 }
 
+// What the user does, unlike what Pair, herdr's focus or the LSP report: a session nobody uses never ends by itself.
+const USER_EVENTS = new Set(['typing', 'edit', 'enter', 'cursor', 'save', 'command_end', 'search']);
+// An answer to "What are we doing this session?" that means: no goal, don't ask.
+const NO_GOAL = /^\W*(exit|later|skip|none|no|nothing|-)\W*$/i;
+
 const IDLE_AFTER_MS = 5 * 60_000; // no key, edit or command for this long: the user is away, and active time stops
 const ACTIVE_FLUSH_MS = 60_000;
 const MAX_TICK_GAP_MS = 5000; // a longer gap between ticks (a suspended laptop) is not active time
@@ -204,6 +210,9 @@ export class PairSession {
     this.testsShown = null;
     this.runError = null; // the last run that could not run, said once in the chat
     this.wasRed = false; // the last run failed
+    this.usedAt = null; // when the user last did something in this session (see USER_EVENTS), since the daemon loaded it
+    this.goalFrom = null; // where the goal came from when the user did not type it: "the board task repo/12"
+    this.goalSkipped = false; // the user said "later" to the goal question
     this.ledger = new Ledger({store, sessionId: record.id, changed: () => this.notify('editors', {type: 'ledger_changed'}), now});
     this.trailVerdict = null; // what the gate decided on the search trail last: {start, verdict, reason, score, bar}
     this.delight = new Delight(); // the moments worth a glow, and the sounds while the user is away
@@ -218,6 +227,7 @@ export class PairSession {
     const folded = {at: this.now(), ...event, ...(file ? {file} : {})};
     this.state = fold(this.state, folded);
     this.breakpoints.see(folded);
+    if (USER_EVENTS.has(event.kind)) this.usedAt = this.now();
     if (event.kind === 'save' && file && !file.startsWith('..')) this.testRuns?.saved(file);
     if (event.kind === 'command_end') this.delighted(this.delight.command({cmd: event.cmd ?? '', failed: failed(this.state.commands.at(-1)), output: event.output}, folded.at));
   }
@@ -488,8 +498,14 @@ export class PairSession {
    */
   async ask(text, selection = null) {
     this.message('user', selection ? `${text} (${relative(this.root, selection.file)}:${selection.from}-${selection.to})` : text);
-    if (!this.state.goal && !selection) {
-      this.setGoal(text);
+    this.usedAt = this.now();
+    if (!this.state.goal && !this.goalSkipped && !selection) {
+      if (NO_GOAL.test(text)) {
+        this.goalSkipped = true;
+        this.message('system', 'No goal then. Ask anything; /goal sets one.');
+      } else {
+        this.setGoal(text);
+      }
       return '';
     }
     await this.yieldRemark();
@@ -560,10 +576,22 @@ export class PairSession {
     }
   }
 
-  setGoal(goal) {
+  /** The goal the user set, or one taken `from` the board task or the branch, which the greeting names. */
+  setGoal(goal, from = null) {
     this.store.setGoal(this.id, goal);
     this.receive({kind: 'goal', text: goal});
-    this.message('system', `Goal: ${goal}`);
+    this.goalFrom = from;
+    if (!from) this.message('system', `Goal: ${goal}`);
+  }
+
+  /** What the context card shows: the goal, and every source with what it sends (see context-card.mjs). */
+  card() {
+    return {type: 'context', goal: this.state.goal, goalFrom: this.goalFrom, sections: contextCard(this.state, this.now())};
+  }
+
+  /** Whether the user used this session and then did nothing for `ms`. */
+  idle(ms, now = this.now()) {
+    return this.usedAt !== null && now - this.usedAt >= ms;
   }
 
   setLevel(level) {
@@ -619,6 +647,7 @@ export class PairSession {
   async drive(words = '', selection = null) {
     if (words) this.message('user', words);
     await this.yieldRemark();
+    this.usedAt = this.now();
     if (this.busy) return this.message('system', 'Pair is still answering; hand over again once it is done.');
     if (!(await this.setRole('driver'))) return;
     this.edited = false;
@@ -700,13 +729,16 @@ export class PairSession {
     this.trailVerdict = null;
   }
 
-  /** Ends the session with a note, which the next session in this project starts from. */
-  async end() {
+  /**
+   * Ends the session with a note, which the next session in this project starts from. A session that ends by itself
+   * without having been used gets none (`withNote` false): there is nothing to note.
+   */
+  async end({withNote = true} = {}) {
     await this.scout?.close();
     this.storeActive();
     await this.yieldRemark();
-    const input = noteInput(this.state, await gitStatus(this.root));
-    const note = await this.partner.ask(this.conversationId, input).then(cleanNote, error => {
+    const input = withNote && noteInput(this.state, await gitStatus(this.root));
+    const note = !input ? null : await this.partner.ask(this.conversationId, input).then(cleanNote, error => {
       this.message('system', `No session note: ${error.message}`);
       return null;
     });
@@ -755,8 +787,8 @@ export class PairSession {
 
   greet() {
     if (this.previousNote) this.message('system', `Last time:\n${this.previousNote}`);
-    if (this.state.goal) this.message('system', `Goal: ${this.state.goal}`);
-    else this.message('system', 'What are we doing this session? Type the goal here.');
+    if (this.state.goal) this.message('system', `Goal${this.goalFrom ? `, from ${this.goalFrom}` : ''}: ${this.state.goal}`);
+    else this.message('system', 'What are we doing this session? Type the goal here, or "later".');
   }
 
   message(sender, text) {

@@ -52,6 +52,13 @@ Runs every test that needs no model, in under a minute, with scripted models and
 - **The search trail.** Three searches with one closed empty make a trail, an edit or the time window ends it; the
   trigger waits for a pause and carries what fails now; the Watcher's question; what the project has for each query;
   a trail remark and `:Pair trail` showing the same searches; a held trail remark dropped once you edit.
+- **The context card and no ceremony.** The board task matched by repo and number (never another repo's task of the
+  same number, nor a version branch), the board's agent launches left out of your commands, each source's rows and
+  budget, a hidden source left out of what the Partner gets and raising no remark (no failed command with a hidden
+  terminal, no search trail with a hidden editor), the goal from the board task or the branch with nothing asked,
+  "later" skipping the question, `:Pair context` in a headless Neovim (buffers and jumps on the card, `x` hiding git
+  and bringing it back, and a word when not connected), and sessions ending by themselves: after the idle time, and
+  once the last Neovim closed, with a note only for a session that was used.
 - **Tests on save.** The JSON reports of go test (subtests, panics, build failures), jest and vitest, each test placed
   at its line; runs in Pair's pane one at a time; the regression trigger raised once per run with new failures.
 - **Tests on unsaved text.** A real `go test -overlay` passing on the buffer's fix while the file on disk fails; a copy
@@ -105,6 +112,10 @@ editor is played by buffers in memory, and the files on disk must stay as they w
 **The search trail.** `test/live/trail.test.mjs` plays the captures' Go project with a red test and three searches;
 the cue has to name the real cause in the code's own words. The trail alone, without the failing test, is run too,
 for the record.
+
+**The context card.** `test/live/context.test.mjs` gives the Partner a board task, buffers and a search: it has to
+name the task, know nothing of the search while the editor source is hidden, and name the file the search opened once
+it is back.
 
 **Push-to-talk.** `test/live/voice.test.mjs` runs with real parts when `PAIR_LIVE_WHISPER_MODEL` names a whisper.cpp
 model (and `PAIR_LIVE_WHISPER` the program, if it is not `whisper-cli` on `PATH`): espeak-ng and FFmpeg play a
