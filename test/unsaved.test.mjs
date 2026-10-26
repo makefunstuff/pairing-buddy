@@ -11,6 +11,13 @@ import {overlaid, prepareUnsaved} from '../src/unsaved.mjs';
 
 const has = command => { try { execFileSync(command, ['version']); return true; } catch { return false; } };
 
+const scratch = () => mkdtempSync(join(tmpdir(), 'pair-unsaved-run-'));
+
+function git(root) {
+  execFileSync('git', ['init', '-q'], {cwd: root});
+  execFileSync('git', ['add', '.'], {cwd: root});
+}
+
 function project(files) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'pair-unsaved-')));
   for (const [path, text] of Object.entries(files)) {
@@ -51,31 +58,57 @@ test('go test on the unsaved buffer: the buffer\'s fix passes while the file on 
   assert.deepEqual(placed.map(test => [test.file, test.line]), [[testFile, 6]]);
 });
 
-test('other runners run in a copy of the project: git\'s files copied, the buffer\'s text in it, ignored folders linked, .git left out', async t => {
+test('other runners run in a copy of the project: git\'s files and ignored files copied, the buffer\'s text in it, .git left out', async t => {
   if (!has('git')) return t.skip('git not installed');
   const root = project({
-    '.gitignore': 'node_modules/\nbuild/\n',
+    '.gitignore': 'node_modules/\n.env\n',
     'src/total.js': 'export const total = xs => xs.slice(1).reduce((a, b) => a + b, 0)\n',
     'test/total.test.js': 'untracked, not ignored\n',
-    'node_modules/dep/index.js': 'module.exports = 1\n',
-    'build/out.js': 'built\n',
+    '.env': 'API=local\n',
   });
-  execFileSync('git', ['init', '-q'], {cwd: root});
-  execFileSync('git', ['add', 'src', '.gitignore'], {cwd: root});
+  git(root);
   const file = join(root, 'src/total.js');
-  const dir = join(tmpdir(), `pair-unsaved-run-${process.pid}`);
-  const run = await prepareUnsaved({root, command: 'npx vitest run --reporter=json', file, text: 'fixed\n', dir});
+  const run = await prepareUnsaved({root, command: 'npx vitest run --reporter=json', file, text: 'fixed\n', dir: scratch()});
   assert.equal(run.command, 'npx vitest run --reporter=json');
-  assert.equal(run.root, join(dir, 'tree'));
   assert.equal(readFileSync(join(run.root, 'src/total.js'), 'utf8'), 'fixed\n');
   assert.equal(readFileSync(file, 'utf8'), 'export const total = xs => xs.slice(1).reduce((a, b) => a + b, 0)\n', 'the project is untouched');
   assert.equal(readFileSync(join(run.root, 'test/total.test.js'), 'utf8'), 'untracked, not ignored\n');
-  assert.ok(lstatSync(join(run.root, 'node_modules')).isSymbolicLink());
+  assert.equal(readFileSync(join(run.root, '.env'), 'utf8'), 'API=local\n', 'an ignored file a test may read');
   assert.throws(() => lstatSync(join(run.root, '.git')));
   assert.equal(run.toProject(join(run.root, 'test/total.test.js')), join(root, 'test/total.test.js'));
   assert.equal(run.toProject(null), null);
+});
 
-  // A file in a linked folder would be written through the link, into the project: refused.
-  await assert.rejects(prepareUnsaved({root, command: 'npm test', file: join(root, 'build/out.js'), text: 'x', dir}), /build\/out\.js is in a folder git ignores/);
-  assert.equal(readFileSync(join(root, 'build/out.js'), 'utf8'), 'built\n');
+test('in the copy, dependency folders at any depth are linked, without their caches; what a run builds stays in the copy', async t => {
+  if (!has('git')) return t.skip('git not installed');
+  const root = project({
+    '.gitignore': 'node_modules/\ndist/\ncoverage/\n',
+    'src/a.js': 'saved\n',
+    'node_modules/dep/index.js': 'module.exports = 1\n',
+    'node_modules/.bin/dep': '#!/bin/sh\n',
+    'node_modules/.cache/babel/x.json': '{}\n',
+    'packages/a/package.json': '{}\n',
+    'packages/a/node_modules/inner/index.js': 'module.exports = 2\n',
+    'dist/a.js': 'built from the saved file\n',
+  });
+  git(root);
+  const run = await prepareUnsaved({root, command: 'npm test', file: join(root, 'src/a.js'), text: 'UNSAVED BUFFER TEXT\n', dir: scratch()});
+  // A workspace package's own dependencies are there, as in the project.
+  assert.equal(readFileSync(join(run.root, 'packages/a/node_modules/inner/index.js'), 'utf8'), 'module.exports = 2\n');
+  assert.equal(readFileSync(join(run.root, 'node_modules/dep/index.js'), 'utf8'), 'module.exports = 1\n');
+  assert.ok(lstatSync(join(run.root, 'node_modules/dep')).isSymbolicLink());
+  assert.ok(!lstatSync(join(run.root, 'node_modules')).isSymbolicLink(), 'node_modules itself is the copy\'s, so caches made in it stay there');
+  assert.ok(lstatSync(join(run.root, 'node_modules/.bin')).isSymbolicLink());
+  assert.throws(() => lstatSync(join(run.root, 'node_modules/.cache')), 'the caches are left out');
+  // A build into an ignored folder writes into the copy, not the project.
+  assert.throws(() => lstatSync(join(run.root, 'dist')), 'built output is left out');
+  execFileSync('bash', ['-c', 'mkdir -p dist coverage node_modules/.cache && cp src/a.js dist/a.js && cp src/a.js coverage/a.js && cp src/a.js node_modules/.cache/a.js'], {cwd: run.root});
+  assert.equal(readFileSync(join(root, 'dist/a.js'), 'utf8'), 'built from the saved file\n');
+  assert.throws(() => lstatSync(join(root, 'coverage')));
+  assert.throws(() => lstatSync(join(root, 'node_modules/.cache/a.js')));
+  assert.equal(readFileSync(join(root, 'src/a.js'), 'utf8'), 'saved\n');
+
+  // A file in a linked dependency folder would be written through the link, into the project: refused.
+  await assert.rejects(prepareUnsaved({root, command: 'npm test', file: join(root, 'packages/a/node_modules/inner/index.js'), text: 'x', dir: scratch()}), /packages\/a\/node_modules\/inner\/index\.js is in a dependency folder/);
+  assert.equal(readFileSync(join(root, 'packages/a/node_modules/inner/index.js'), 'utf8'), 'module.exports = 2\n');
 });

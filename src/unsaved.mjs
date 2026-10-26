@@ -1,6 +1,9 @@
 // The tests on text the user has not saved: what the Driver's edit does, before anything is written to the project.
-// Go reads the text through `go test -overlay`. Other runners run in a copy of the project's files (the ones git
-// knows, tracked or not ignored) with the text in it; what git ignores, such as node_modules, is linked, not copied.
+// Go reads the text through `go test -overlay`. Other runners run in a scratch copy of the project: the files git
+// knows, and the files it ignores, such as .env. Folders git ignores are left out, so what a run builds or caches
+// (dist, coverage, target) is made in the copy, never in the project; only dependency folders are linked, at any
+// depth, since a run needs them and does not build them. In node_modules each package is linked, and its caches
+// (.cache, .vite) are left out.
 import {execFile} from 'node:child_process';
 import {copyFile, mkdir, readdir, rm, symlink, writeFile} from 'node:fs/promises';
 import {basename, dirname, join, relative, sep} from 'node:path';
@@ -9,30 +12,46 @@ import {shellQuote} from './scout-pane.mjs';
 
 const GO_TEST = /(^|[\s;&|(])go test(?=\s|$)/;
 const MAX_FILES = 5000; // a bigger project is not copied for one run
+const DEPENDENCIES = new Set(['node_modules', '.venv', 'venv']);
+const NODE_MODULES_KEPT = new Set(['.bin', '.pnpm']); // the dot-entries of node_modules that are not caches
 
 /** `command` with `go test` reading `overlay`, or null when it runs no `go test`. */
 export const overlaid = (command, overlay) => (GO_TEST.test(command) ? command.replace(GO_TEST, `$1go test -overlay ${shellQuote(overlay)}`) : null);
 
-async function gitFiles(root) {
-  const {stdout} = await promisify(execFile)('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], {cwd: root, maxBuffer: 64 << 20})
+/** The paths git lists in `root` with `args`; ignored folders end with a slash. */
+async function gitList(root, args) {
+  const {stdout} = await promisify(execFile)('git', ['ls-files', '-z', ...args], {cwd: root, maxBuffer: 64 << 20})
     .catch(() => { throw new Error('the project is not a git repository, so there is no copy to test the buffer in'); });
   return [...new Set(stdout.split('\0').filter(Boolean))];
 }
 
+/** Links dependency folder `from` at `to`; node_modules package by package, without its caches. */
+async function linkDependencies(from, to) {
+  if (basename(from) !== 'node_modules') return symlink(from, to);
+  await mkdir(to, {recursive: true});
+  for (const entry of await readdir(from)) {
+    if (!entry.startsWith('.') || NODE_MODULES_KEPT.has(entry)) await symlink(join(from, entry), join(to, entry));
+  }
+}
+
 /**
- * Copies the project at `root` to `tree`: git's files, and a link for each other top-level entry but .git.
- * Returns the names of the linked entries.
+ * Copies the project at `root` to `tree` as the module comment says. Returns the dependency folders it linked,
+ * relative to `root`.
  */
 async function copyProject(root, tree) {
-  const files = await gitFiles(root);
+  const known = await gitList(root, ['--cached', '--others', '--exclude-standard']);
+  const ignored = await gitList(root, ['--others', '--ignored', '--exclude-standard', '--directory']);
+  const files = [...known, ...ignored.filter(path => !path.endsWith('/'))];
   if (files.length > MAX_FILES) throw new Error(`the project has more than ${MAX_FILES} files to copy`);
   for (const file of files) {
     await mkdir(dirname(join(tree, file)), {recursive: true});
     await copyFile(join(root, file), join(tree, file)).catch(() => {}); // deleted since, or a submodule
   }
-  const copied = new Set(files.map(file => file.split('/')[0]));
-  const linked = (await readdir(root)).filter(entry => entry !== '.git' && !copied.has(entry));
-  for (const entry of linked) await symlink(join(root, entry), join(tree, entry));
+  const linked = ignored.filter(path => path.endsWith('/') && DEPENDENCIES.has(basename(path))).map(path => path.slice(0, -1));
+  for (const folder of linked) {
+    await mkdir(dirname(join(tree, folder)), {recursive: true});
+    await linkDependencies(join(root, folder), join(tree, folder));
+  }
   return linked;
 }
 
@@ -56,7 +75,7 @@ export async function prepareUnsaved({root, command, file, text, dir}) {
   const linked = await copyProject(root, tree);
   const inTree = relative(root, file);
   // Written through a link, the text would land in the project itself.
-  if (linked.includes(inTree.split(sep)[0])) throw new Error(`${inTree} is in a folder git ignores`);
+  if (linked.some(folder => inTree.startsWith(folder + sep))) throw new Error(`${inTree} is in a dependency folder`);
   await mkdir(dirname(join(tree, inTree)), {recursive: true});
   await writeFile(join(tree, inTree), text);
   return {command, root: tree, texts: new Map(), toProject: path => (path?.startsWith(tree + sep) ? join(root, relative(tree, path)) : path)};
