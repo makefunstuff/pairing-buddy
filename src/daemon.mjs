@@ -197,6 +197,9 @@ export async function startDaemon(config, {
     return rebuilt;
   }
 
+  // The config as last saved: a change is told against it, so a socket or dataDir that waits for a restart is told once.
+  let saved = config;
+
   /** Says `text` in every chat pane and Neovim, as a line from the system. */
   function tellAll(text) {
     for (const client of clients) {
@@ -209,7 +212,7 @@ export async function startDaemon(config, {
    * save, voice and the board at once, and the models between turns. The socket and the data directory move only with a restart.
    */
   async function reload(next) {
-    const changed = configChanges(config, next);
+    const changed = configChanges(saved, next);
     if (!changed.length) return;
     let nextModels = null;
     if (changed.includes('models')) {
@@ -219,6 +222,7 @@ export async function startDaemon(config, {
         return refuse(error.message);
       }
     }
+    saved = next;
     config = {...next, socket: config.socket, dataDir: config.dataDir};
     for (const session of live.values()) {
       session.typingPauseMs = config.typingPauseMs;

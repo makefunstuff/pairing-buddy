@@ -1,6 +1,6 @@
 // The daemon watches its config file and takes a change without a restart: what changed, checked as at start.
 // A config with an error is not taken: the daemon keeps the one it runs and says why.
-import {watch} from 'node:fs';
+import {realpathSync, watch} from 'node:fs';
 import {readFile} from 'node:fs/promises';
 import {basename, dirname} from 'node:path';
 import {loadConfig} from './config.mjs';
@@ -19,8 +19,9 @@ export function configChanges(running, next) {
 }
 
 /**
- * Watches the config at `path` (its directory, since many editors save by renaming a new file over it) and calls
- * `onChange(config)` with each new valid config, or `onError(message)` when the file has an error. Returns `close()`.
+ * Watches the config at `path` and calls `onChange(config)` with each new valid config, or `onError(message)` when the
+ * file has an error. Returns `close()`. It watches the file's directory, since many editors save by renaming a new
+ * file over it; for a config that is a symlink (into a dotfiles repository, say), the target's directory too.
  */
 export function watchConfig(path, {onChange, onError, settleMs = SETTLE_MS}) {
   let timer = null;
@@ -41,15 +42,28 @@ export function watchConfig(path, {onChange, onError, settleMs = SETTLE_MS}) {
     onChange(config);
   }
 
-  const watcher = watch(dirname(path), (event, name) => {
-    if (name && name !== basename(path)) return;
-    clearTimeout(timer);
-    timer = setTimeout(check, settleMs);
-  });
+  const watchers = new Map(); // a watched file (the config, or its symlink's target) -> the watch of its directory
+  function follow(file) {
+    if (watchers.has(file)) return;
+    try {
+      watchers.set(file, watch(dirname(file), (event, name) => {
+        if (name && name !== basename(file)) return;
+        clearTimeout(timer);
+        timer = setTimeout(changed, settleMs);
+      }));
+    } catch {} // the target's directory is gone: the config's own directory is still watched
+  }
+  /** The symlink may point elsewhere now: its new target is watched too. */
+  function changed() {
+    try { follow(realpathSync(path)); } catch {}
+    return check();
+  }
+  follow(path);
+  try { follow(realpathSync(path)); } catch {}
   return {
     close() {
       clearTimeout(timer);
-      watcher.close();
+      for (const watcher of watchers.values()) watcher.close();
     },
   };
 }

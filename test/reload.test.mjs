@@ -1,6 +1,6 @@
 // The daemon takes a saved config without a restart; a config with an error is refused, and the old one stays.
 import assert from 'node:assert/strict';
-import {mkdirSync, mkdtempSync, renameSync, writeFileSync} from 'node:fs';
+import {mkdirSync, mkdtempSync, renameSync, symlinkSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {test} from 'node:test';
@@ -24,7 +24,7 @@ test('a saved config is read again; one with an error is reported, and a save th
   writeFileSync(path, JSON.stringify({model: entry('a')}));
   const seen = [];
   let wake;
-  const next = () => new Promise(resolve => { wake = resolve; });
+  const next = () => new Promise(resolve => { wake = resolve; setTimeout(resolve, 2000); }); // a missed save fails the assertion below
   const watch = watchConfig(path, {
     onChange: config => { seen.push(`model ${config.models.partner.model}`); wake(); },
     onError: message => { seen.push(message); wake(); },
@@ -46,6 +46,40 @@ test('a saved config is read again; one with an error is reported, and a save th
     writeFileSync(path, JSON.stringify({model: entry('c')}));
     await new Promise(resolve => setTimeout(resolve, 100));
     assert.deepEqual(seen, ['model b', 'config: level must be one of quiet, normal, chatty', 'model c']);
+  } finally {
+    watch.close();
+  }
+});
+
+test('a config that is a symlink is followed to its target, also after the link is pointed elsewhere', {timeout: 10_000}, async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pair-reload-'));
+  mkdirSync(join(dir, 'dotfiles'));
+  mkdirSync(join(dir, 'other'));
+  mkdirSync(join(dir, 'config'));
+  const target = join(dir, 'dotfiles', 'config.json');
+  const link = join(dir, 'config', 'config.json');
+  writeFileSync(target, JSON.stringify({model: entry('a')}));
+  symlinkSync(target, link);
+  const seen = [];
+  let wake;
+  const next = () => new Promise(resolve => { wake = resolve; setTimeout(resolve, 2000); }); // a missed save fails the assertion below
+  const watch = watchConfig(link, {onChange: config => { seen.push(config.models.partner.model); wake(); }, onError: wake, settleMs: 20});
+  try {
+    await new Promise(resolve => setTimeout(resolve, 50));
+    let event = next();
+    writeFileSync(target, JSON.stringify({model: entry('b')}));
+    await event;
+    // The link now points to a file in a directory not watched before.
+    event = next();
+    const elsewhere = join(dir, 'other', 'config.json');
+    writeFileSync(elsewhere, JSON.stringify({model: entry('c')}));
+    symlinkSync(elsewhere, `${link}.new`);
+    renameSync(`${link}.new`, link);
+    await event;
+    event = next();
+    writeFileSync(elsewhere, JSON.stringify({model: entry('d')}));
+    await event;
+    assert.deepEqual(seen, ['b', 'c', 'd']);
   } finally {
     watch.close();
   }
@@ -100,6 +134,11 @@ test('the daemon takes a new model between turns, and keeps the old config when 
 
     save({model: entry('second'), level: 'quiet', socket: join(dataDir, 'elsewhere.sock')});
     await chat.next(message => message.text === 'socket changes only when the daemon restarts.');
+    // A later save is told against the last one: the socket that waits for a restart is not told again.
+    save({model: entry('second'), level: 'chatty', socket: join(dataDir, 'elsewhere.sock')});
+    await chat.next(message => message.text?.startsWith('Config reloaded: level.'));
+    assert.equal(chat.received.filter(message => message.text === 'socket changes only when the daemon restarts.').length, 1);
+    assert.ok(!chat.received.some(message => message.text?.startsWith('Config reloaded: level.') && message.text.includes('socket')));
   } finally {
     chat.close();
     editor.close();

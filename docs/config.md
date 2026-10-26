@@ -4,7 +4,7 @@ Pair reads one file: `~/.config/pairing-buddy/config.json` (or the path in `$PAI
 respected). It is JSON with `//` and `/* */` comments. The first run of `pair setup`, `pair` or `pair daemon` writes it
 from [`config.example.json`](../config.example.json), which explains each field.
 
-The daemon takes a change as you save the file, without a restart, and says in the chat pane and Neovim what it
+The daemon takes a change as you save the file (also through a symlink), without a restart, and says in the chat pane and Neovim what it
 reloaded. It checks the new config as at start: one with an error is not taken, and the chat says why while the daemon
 keeps the config it runs. Run `pair doctor` after a change to check the models.
 
