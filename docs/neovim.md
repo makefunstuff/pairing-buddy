@@ -131,7 +131,7 @@ unsaved buffer; only the models' words are scripted.*
    statusline, the `▎` still on the lines it changed, and `u undoes it`. Like any of its words, they go with your
    next edit.
 5. Everything it typed is one undo step: one `u` takes it all away, `Ctrl-R` brings it back. Nothing is saved
-   until you `:w`.
+   until you `:w`. After your next edits, the [ledger](#the-ledger) still undoes it.
 
 ![While it drives: the ghost text and Pair's cursor, a bar on each line it entered, the wheel in the statusline](images/driving.png)
 
@@ -146,6 +146,50 @@ a key still takes the wheel back, and leaves the one change.
 
 A long edit types faster, to take about four seconds; with `motion = false` it lands at once, as one undo step.
 If no window shows the lines it changes, they open in a split first, so you can watch; your cursor stays where it was.
+
+## The ledger
+
+At the end of a morning, what did the pair actually do? `:Pair today` (or `/today` in the chat) opens a quiet list
+at the bottom: everything Pair did in this project today, oldest first, one line each. The time, what it did in
+the accent, what it did it to, and on the right the key that acts on it.
+
+![:Pair today lists the morning; u on the six typed cases takes them back while your comment above them stays, and u again brings them back](images/ledger.gif)
+
+*The plugin and the daemon as shipped, in a clean Neovim with ayu. Off screen, a morning of the two moments above:
+the tests on save find a regression and `Alt-y` takes Pair's fix; you hand over the edge cases, then write a comment
+above them and save. Every line in the list is what the daemon booked as it happened; only the models' words are
+scripted.*
+
+| It | When | On the right |
+| --- | --- | --- |
+| `read` | it read a file; reads in a row are one line (`queue_test.go 24-37, queue.go 1-29`) | `⏎ go` |
+| `said` | its words, unasked or answering you | your verdict on a remark (`+ useful`, `- noise`), or `⏎ all` |
+| `pointed`, `showed` | it pointed at a line, or opened one in a split | `⏎ go` |
+| `suggested` | it suggested a change | `⏎ go`; once you accept it, `accepted · u undo` |
+| `typed` | the Driver's edit (`6 lines in backoff_test.go · one undo step`), or one line it typed into your terminal | `u undo`, for the edit |
+| `ran`, `searched` | a command in its pane, or the tests it ran on save or on the unsaved buffer, with `✓` or `✗`; the same run in a row is one line (`· 3 times`) | `⏎ output` |
+| `asked`, `refused` | what it asked before running or typing, and what its policy refused, with the reason | `you said no` |
+| `stayed quiet` | the moments it let pass: `3 moments under the bar`, or held back by the budget | `⏎ why` |
+
+The last one shows that the gate works: Pair noticed, judged, and chose not to talk.
+
+**Keys in the list.** `⏎` goes to the place in the window you came from, or opens what the entry holds in the
+list's window (a command's output, why Pair stayed quiet, all it said; `q` comes back). `+` and `-` rate a remark.
+`q` closes the list. While it is open, it follows along.
+
+**`u` undoes Pair's edit, later.** In the buffer, Pair's edit is one undo step, but only until your next edit
+buries it. In the ledger, `u` on a `typed` line takes that edit back whenever you like, after other edits too: the
+daemon kept the buffer's text before and after it, and Neovim merges the undo into the buffer as it is now. Your
+changes since stay; the line is struck through and says `undone · u again redoes`; `u` again makes the edit again.
+An accepted suggestion works the same way. If you changed the very lines Pair's edit touched, undoing it would undo
+yours too, so nothing changes and Pair says why. The undo is one undo step in that buffer, and unsaved, like the
+edit was: the disk changes when you `:w`.
+
+![The six cases undone: your comment above them stays, and the ledger line is struck through](images/ledger-undone.png)
+
+The list is today's, from local midnight, across the sessions of this project; the line at the bottom sums it up:
+`11 things · 1 remark, 1 useful · 2 h 10 min` (the active pairing time today). The entries are kept in
+`sessions.sqlite`, with the output of each command (its last 20 000 characters).
 
 ## What each thing looks like
 

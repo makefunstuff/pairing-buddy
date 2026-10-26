@@ -67,26 +67,38 @@ local function current_row()
   return view.rows[vim.api.nvim_win_get_cursor(view.win)[1]]
 end
 
+--- `text` cut to `width` columns, with an ellipsis when it is cut.
+local function fit(text, width)
+  if vim.fn.strdisplaywidth(text) <= width then return text end
+  local chars = vim.fn.strchars(text)
+  while chars > 0 and vim.fn.strdisplaywidth(vim.fn.strcharpart(text, 0, chars)) > width - 1 do chars = chars - 1 end
+  return vim.fn.strcharpart(text, 0, chars) .. '…'
+end
+
+--- The list in its buffer: one line a row, its words cut to leave room for the key on the right.
 local function render()
   local buf = view.buf
+  local width = valid_win() and vim.api.nvim_win_get_width(view.win) or vim.o.columns
   local lines, marks = {}, {}
   for i, row in ipairs(view.rows) do
     local head = row.time .. '  ' .. row.label .. string.rep(' ', math.max(1, LABEL_WIDTH - vim.fn.strdisplaywidth(row.label)))
-    local line = head .. row.text
-    local text_end = #line
     local glyph = row.result == 'pass' and style.glyphs.pass or row.result == 'fail' and style.glyphs.fail or nil
-    local note_from = #line
-    if row.note or glyph then line = line .. '   ' .. (glyph and glyph .. ' ' or '') .. (row.note or '') end
+    local tail = (row.note or glyph) and '   ' .. (glyph and glyph .. ' ' or '') .. (row.note or '') or ''
+    local key = hint(row)
+    local room = width - vim.fn.strdisplaywidth(head .. tail .. key) - 2
+    local line = head .. fit(row.text, math.max(12, room))
+    local text_end = #line
+    line = line .. tail
     lines[i] = line
     table.insert(marks, {i - 1, 0, {end_col = #row.time, hl_group = 'PairKey'}})
     table.insert(marks, {i - 1, #row.time + 2, {end_col = #row.time + 2 + #row.label, hl_group = 'PairAccent'}})
     if glyph then
-      local at = note_from + 3
+      local at = text_end + 3
       table.insert(marks, {i - 1, at, {end_col = at + #glyph, hl_group = row.result == 'pass' and 'PairStatusPass' or 'PairFail'}})
     end
     if row.note then table.insert(marks, {i - 1, #line - #row.note, {end_col = #line, hl_group = 'PairKey'}}) end
     if row.state == 'undone' then table.insert(marks, {i - 1, #row.time + 2, {end_col = text_end, hl_group = 'PairSuggestDelete', priority = 210}}) end
-    table.insert(marks, {i - 1, 0, {virt_text = {{hint(row), 'PairKey'}}, virt_text_pos = 'right_align'}})
+    table.insert(marks, {i - 1, 0, {virt_text = {{key, 'PairKey'}}, virt_text_pos = 'right_align'}})
   end
   if #lines == 0 then
     lines = {'Pair has done nothing here today.'}
@@ -149,6 +161,10 @@ local function list_buffer()
   map('+', function() rate(true) end, 'Pair\'s remark was useful')
   map('-', function() rate(false) end, 'Pair\'s remark was noise')
   map('q', function() M.close() end, 'Close the ledger')
+  -- Each line is cut to the window's width.
+  vim.api.nvim_create_autocmd({'WinResized', 'VimResized'}, {group = vim.api.nvim_create_augroup('pair_ledger', {clear = true}), callback = function()
+    if valid_win() and vim.api.nvim_buf_is_valid(buf) then render() end
+  end})
   return buf
 end
 
@@ -193,7 +209,8 @@ function M.show(message)
   -- A list that grew past its window gets the room it needs, up to MAX_HEIGHT.
   local height = math.min(MAX_HEIGHT, math.max(3, #view.rows))
   if vim.api.nvim_win_get_height(view.win) < height then pcall(vim.api.nvim_win_set_height, view.win, height) end
-  if vim.api.nvim_win_get_buf(view.win) == view.buf then pcall(vim.api.nvim_win_set_cursor, view.win, {math.max(line, 1), 0}) end
+  -- On the label, where the eye reads what Pair did.
+  if vim.api.nvim_win_get_buf(view.win) == view.buf then pcall(vim.api.nvim_win_set_cursor, view.win, {math.max(line, 1), 7}) end
 end
 
 --- What an entry opens to, in the list's window; `q` goes back to the list.

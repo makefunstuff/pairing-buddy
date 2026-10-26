@@ -552,7 +552,9 @@ end
 
 -- The ledger undoes one of Pair's edits, or makes it again: merged into the buffer as it is now.
 local function revert(message)
-  local why = merge.apply(load(message.file), message.base, message.other)
+  local buf = load(message.file)
+  local why = merge.apply(buf, message.base, message.other)
+  if vim.fn.bufwinid(buf) ~= -1 then vim.cmd.redraw() end -- a change made here shows only at the next event
   send({type = 'reply', id = message.id, result = why and {error = why} or {ok = true}})
 end
 

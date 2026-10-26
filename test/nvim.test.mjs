@@ -558,7 +558,7 @@ test('the ledger: :Pair today lists what Pair did; u undoes its edit after your 
     assert.match(ledgerLines()[read - 1], /^\d\d:\d\d {2}read {10}a\.js 1-3$/);
     assert.match(ledgerLines()[typed - 1], /typed {9}2 lines in a\.js {3}one undo step$/);
     assert.match(ledgerLines()[ran - 1], /ran {11}cat a\.js {3}✓ passed · unsaved$/);
-    assert.deepEqual(hints(), ['⏎ go', 'u undo', '⏎ output', '⏎ go'].slice(0, ledgerLines().length));
+    assert.deepEqual(hints(), ['⏎ go', 'u undo', '⏎ output', '⏎ all'], 'the key that acts on each');
     assert.equal(remote('&buftype'), 'nofile', 'the cursor is in the ledger');
     assert.match(remote('&statusline'), /pair · today%=\d things · 0 remarks, 0 useful · \d+ min$/);
 

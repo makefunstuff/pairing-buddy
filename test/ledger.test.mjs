@@ -136,7 +136,8 @@ test('the Driver\'s edit is booked with the buffer before and after, and undone 
   pair.notify = (to, message) => { sent.push({via: to, ...message}); return 1; };
   await pair.drive('document New');
   const typed = pair.today().rows.find(row => row.kind === 'typed');
-  assert.deepEqual([typed.text, typed.note, typed.undo, typed.place.line], ['2 lines in queue.go', 'one undo step', true, 3]);
+  assert.equal('place' in pair.today().rows.find(row => row.kind === 'said'), false, 'words that point nowhere go nowhere');
+  assert.deepEqual([typed.text, typed.note, typed.undo, typed.place.line], ['a line in queue.go', 'one undo step', true, 3]);
 
   await pair.undo(typed.id);
   assert.deepEqual(asked.at(-1), {type: 'revert', file: join(root, 'queue.go'), base: after, other: before});

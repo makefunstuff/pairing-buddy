@@ -451,7 +451,7 @@ export class PairSession {
 
   /** What Pair said this turn, in the ledger: with its remark, rated there, and the place it pointed at. */
   bookWords() {
-    const place = this.target && {file: this.target.file, line: this.target.line};
+    const place = this.target ? {file: this.target.file, line: this.target.line} : undefined;
     this.ledger.add('said', this.words.join('\n'), {data: {remark: this.remarkId ?? undefined, place}, detail: {words: this.words.join('\n\n')}});
   }
 
@@ -672,7 +672,7 @@ export class PairSession {
     if (!path) return `No file ${file} in the project`;
     this.spoke = true;
     if (!this.target?.suggestion) this.target = {file: path, line, endLine, note, code};
-    this.ledger.add('pointed', `${file}:${line}, ${note}`, {data: {place: {file: path, line}}});
+    this.ledger.add('pointed', `${relative(this.root, path)}:${line}, ${note}`, {data: {place: {file: path, line}}});
     this.show(() => {
       this.notify('editor', {type: 'point', file: path, line, endLine, note, code});
       this.message('pair', `${file}:${line} ${note}`);
@@ -684,7 +684,7 @@ export class PairSession {
     const path = await projectFile(this.root, file);
     if (!path) return `No file ${file} in the project`;
     const typing = this.now() - this.state.lastKeyAt < this.typingPauseMs;
-    this.ledger.add('showed', `${file}:${line}`, {data: {place: {file: path, line}, note: typing ? 'asked first: you were typing' : undefined}});
+    this.ledger.add('showed', `${relative(this.root, path)}:${line}`, {data: {place: {file: path, line}, note: typing ? 'asked first: you were typing' : undefined}});
     this.notify('editor', {type: 'open', file: path, line, ask: typing});
     return typing ? 'The user is typing; they were asked to open it.' : 'opened in a split';
   }
@@ -700,7 +700,7 @@ export class PairSession {
     // The jump key goes to a suggestion before a point: that is where the one key that takes it works.
     this.target = {file: path, line, endLine, note, suggestion: true};
     const remark = this.remarkId; // now: a suggestion held for the user's pause is shown after the turn ended
-    const action = this.ledger.add('suggested', `${file}:${line}, ${note}`, {data: {place: {file: path, line}, remark: remark ?? undefined}});
+    const action = this.ledger.add('suggested', `${relative(this.root, path)}:${line}, ${note}`, {data: {place: {file: path, line}, remark: remark ?? undefined}});
     this.show(() => {
       this.notify('editor', {type: 'suggest', file: path, line, endLine, text, note, remark, action});
       this.message('pair', `${file}:${line}${endLine > line ? `-${endLine}` : ''} suggestion: ${note}\n${text}`);
@@ -800,7 +800,9 @@ export class PairSession {
     this.handback = {file: path, line: reply.from ?? line, endLine: reply.to ?? line + Math.max(count, 1) - 1, tests: null};
     // With the buffer's text before and after, the ledger can undo the edit later, after other edits too.
     const patch = Array.isArray(reply.before) && Array.isArray(reply.after) ? {file: path, before: reply.before, after: reply.after} : null;
-    const typed = count ? `${count === 1 ? 'a line' : `${count} lines`} in ${file}` : `lines ${line}-${endLine} of ${file} deleted`;
+    const name = relative(this.root, path);
+    const changed = this.handback.endLine - this.handback.line + 1;
+    const typed = count ? `${changed === 1 ? 'a line' : `${changed} lines`} in ${name}` : `lines ${line}-${endLine} of ${name} deleted`;
     this.ledger.add('typed', typed, {data: {place: {file: path, line: this.handback.line}, note: 'one undo step', undo: !!patch}, detail: patch && {patch}});
     const done = 'Changed, as one undo step. That was your one edit: say in one sentence what you changed';
     // The tests on save read the saved file, so a check there would see the old code and send small models in circles.
