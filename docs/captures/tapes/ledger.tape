@@ -44,10 +44,9 @@ Sleep 500ms
 Enter
 Sleep 2.5s
 Type "3k"
+# The stills come from the video (encode.sh): VHS's Screenshot can catch the screen before Neovim repaints it.
 Sleep 1.2s
-Screenshot out/ledger.png
 Type "u"
 Sleep 2.8s
-Screenshot out/ledger-undone.png
 Type "u"
 Sleep 2.5s
