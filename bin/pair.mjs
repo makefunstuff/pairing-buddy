@@ -14,6 +14,9 @@ import {herdrRequest} from '../src/herdr.mjs';
 import {requestDaemon, sendMessage} from '../src/protocol.mjs';
 import {installService, removeService, systemctl, UNIT, unitPath} from '../src/service.mjs';
 import {shellHook} from '../src/shell-hook.mjs';
+import {statsReport} from '../src/stats.mjs';
+import {openStore} from '../src/store.mjs';
+import {WINDOW_MS} from '../src/tuning.mjs';
 
 const SCRIPT = realpathSync(fileURLToPath(import.meta.url));
 
@@ -22,6 +25,7 @@ const USAGE = `usage:
   pair chat         run the chat pane here
   pair setup        create the config if there is none, install and start the daemon as a systemd user service
   pair doctor       check the daemon, Neovim, herdr and the models, and say what is wrong
+  pair stats [--days N]   remarks per hour, useful vs dismissed, per trigger, and the tuning (default: 7 days)
   pair uninstall    stop and remove the service (the config and data stay)
   pair daemon       run the daemon in the foreground
   pair shell-hook bash|zsh   print the shell hook that reports exit codes
@@ -106,6 +110,26 @@ async function runDoctor() {
   process.exitCode = failed ? 1 : 0;
 }
 
+function stats(args) {
+  const {values} = parseArgs({args, options: {days: {type: 'string', default: '7'}}});
+  const days = Number(values.days);
+  if (!(days > 0)) throw new Error('--days takes a number of days');
+  const config = loadConfig();
+  const path = join(config.dataDir, 'sessions.sqlite');
+  if (!existsSync(path)) return console.log('No sessions yet: start one with `pair`.');
+  const store = openStore(path);
+  const now = Date.now();
+  const window = days * 24 * 60 * 60_000;
+  try {
+    // Tuning looks at its own window, which may be longer than the one shown.
+    const remarks = store.remarks(now - Math.max(window, WINDOW_MS));
+    const activeMs = store.activeMs(now - window);
+    console.log(statsReport({remarks, activeMs, now, days, level: config.level, autoTune: config.autoTune}).join('\n'));
+  } finally {
+    store.close();
+  }
+}
+
 async function daemon(config) {
   const running = await startDaemon(config);
   const stop = async () => { await running.close(); process.exit(0); };
@@ -148,6 +172,8 @@ try {
     await uninstall();
   } else if (command === 'doctor') {
     await runDoctor();
+  } else if (command === 'stats') {
+    stats(args);
   } else if ([undefined, 'chat', 'daemon'].includes(command)) {
     firstRunConfig();
     const config = loadConfig();

@@ -1,6 +1,8 @@
 // Finds the moments where a remark might help. Pure: the caller passes the clock and the keys already fired.
 import {errorSignature, failed, failureLine} from './fold.mjs';
 
+export const TRIGGER_KINDS = ['failed_command', 'repeated_error', 'new_code_diagnostic', 'stall', 'drift'];
+
 export const TIMING = {
   lookGraceMs: 4_000, // a failure gets this long to be noticed before Pair counts it as missed
   recentMs: 120_000, // older failures are history, not news
