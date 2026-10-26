@@ -272,12 +272,13 @@ export class PairSession {
 
   async search({pattern, path = '.'}) {
     if (!(await insideRoot(this.root, path))) return `Cannot search ${path}: not inside the project`;
-    const where = path === '.' ? '' : ` ${shellQuote(path)}`;
-    const result = await this.inPane(`rg --line-number --color never --max-columns 200 --max-count 20 -- ${shellQuote(pattern)}${where}`);
+    // Always with a path: rg without one searches its stdin when that is not a terminal.
+    const result = await this.inPane(`rg --line-number --no-heading --color never --max-columns 200 --max-count 20 -- ${shellQuote(pattern)} ${shellQuote(path)}`);
     if (result.exit === 1) return 'No matches.';
     const lines = result.output.split('\n');
     const more = lines.length > SEARCH_LINES ? `\n(${lines.length - SEARCH_LINES} more lines; search a narrower path)` : '';
-    return (result.exit === 0 ? '' : `exit ${result.exit}\n`) + lines.slice(0, SEARCH_LINES).join('\n') + more;
+    // Small models follow an instruction next to the result far better than one in the system prompt.
+    return `${result.exit === 0 ? '' : `exit ${result.exit}\n`}${lines.slice(0, SEARCH_LINES).join('\n')}${more}\n\nName these places (file:line) in your answer.`;
   }
 
   async run({command}) {

@@ -18,7 +18,7 @@ Switching to Scout opens a pane below the chat pane, labelled `pair scout`. It r
 
 | Tool | What is typed in the pane |
 | --- | --- |
-| `search(pattern, path?)` | `rg --line-number --color never --max-columns 200 --max-count 20 -- '<pattern>' ['<path>']`; the path must be inside the project, and the model sees the first 50 lines |
+| `search(pattern, path?)` | `rg --line-number --no-heading --color never --max-columns 200 --max-count 20 -- '<pattern>' '<path>'` (the path defaults to `.` and must be inside the project), and the model sees the first 50 lines |
 | `run(command)` | The command line as given, after the command policy allowed it; the model sees the exit code, the parsed test results and the last 3000 characters of output |
 
 ## The command policy

@@ -171,15 +171,15 @@ test('without a chat pane to ask in, a command that writes does not run', async 
 });
 
 test('a remark nobody asked for may search but not run commands', async () => {
-  const {pair, ran} = scoutSession({results: {"rg --line-number --color never --max-columns 200 --max-count 20 -- 'TIMEOUT'": {output: 'src/ws.ts:1:TIMEOUT'}}});
+  const {pair, ran} = scoutSession({results: {"rg --line-number --no-heading --color never --max-columns 200 --max-count 20 -- 'TIMEOUT' '.'": {output: 'src/ws.ts:1:TIMEOUT'}}});
   pair.unasked = true;
   assert.match(await pair.run({command: 'npm test'}), /^Not now/);
-  assert.equal(await pair.search({pattern: 'TIMEOUT'}), 'src/ws.ts:1:TIMEOUT');
+  assert.equal(await pair.search({pattern: 'TIMEOUT'}), 'src/ws.ts:1:TIMEOUT\n\nName these places (file:line) in your answer.');
   assert.equal(ran.length, 1);
 });
 
 test('search quotes the pattern, stays in the project and says when nothing matched', async () => {
-  const {pair, ran} = scoutSession({results: {"rg --line-number --color never --max-columns 200 --max-count 20 -- 'it'\\''s' 'src'": {exit: 1}}});
+  const {pair, ran} = scoutSession({results: {"rg --line-number --no-heading --color never --max-columns 200 --max-count 20 -- 'it'\\''s' 'src'": {exit: 1}}});
   assert.equal(await pair.search({pattern: "it's", path: 'src'}), 'No matches.');
   assert.match(await pair.search({pattern: 'x', path: '..'}), /not inside the project/);
   assert.equal(ran.length, 1);
