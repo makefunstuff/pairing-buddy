@@ -72,7 +72,7 @@ const SCENES = [
   {
     id: 'jump', ch: 1, title: 'Alt-J jumps to the cause', pad: 1.8,
     shots: [{clip: 'moments', from: 24.6, to: 30}],
-    zooms: [{at: 0, box: G(0, 4, 72, 8)}],
+    zooms: [{at: 0, box: G(0, 4, 79, 8)}],
     keys: [{at: 0.35, keys: ['Alt', 'J'], note: 'Pair writes it M-j'}],
     marks: [{at: 'exact', box: G(30, 8, 2, 1), label: '>= gives up at exactly 15 s', below: true}],
   },
@@ -83,7 +83,7 @@ const SCENES = [
     shots: [{clip: 'moments', from: 30.6, to: 33.4, rate: 1.2}, {clip: 'moments', from: 33.4, to: 34.4, rate: 0.4}],
     zooms: [{at: 0, box: G(0, 4, 72, 8)}, {at: 'runs', box: null}],
     keys: [{at: 1, keys: ['x']}, {at: 2.5, keys: [':w']}],
-    marks: [{at: 3.4, box: G(36, 18, 46, 1), label: 'Pair ran go test ./... when you saved', above: true}],
+    marks: [{at: 0.2, until: 2.3, box: G(28, 8, 4, 1), label: 'you delete the =, so >= becomes >', below: true}, {at: 3.4, box: G(36, 18, 46, 1), label: 'Pair ran go test ./... when you saved', above: true}],
   },
   {
     id: 'regression', ch: 2, title: 'A test that passed now fails', pad: 0.8,
@@ -94,19 +94,19 @@ const SCENES = [
   },
   {
     id: 'explain', ch: 2, title: 'Pair says why, and offers a fix', pad: 2.2,
-    shots: [{clip: 'moments', from: 37.6, to: 41.2}, {clip: 'moments', from: 44.6, to: 46}],
+    shots: [{clip: 'moments', from: 37.6, to: 43.4}, {clip: 'moments', from: 44.6, to: 46}],
     zooms: [{at: 0, box: null}],
-    quote: {at: 0.2, until: 3.5, text: 'delivery passes now, queue doesn’t: attempt 5 starts at 15s, the instant evt_42’s lease runs out, so a second worker takes it.'},
-    marks: [{at: 0.2, until: 3.5, box: G(10, 9, 72, 2), label: 'under your line', below: true}],
-    keys: [{at: 4.45, keys: ['Alt', 'J']}],
+    quote: {at: 0.2, until: 5.7, text: 'delivery passes now, queue doesn’t: attempt 5 starts at 15s, the instant evt_42’s lease runs out, so a second worker takes it.'},
+    marks: [{at: 0.2, until: 5.7, box: G(10, 9, 72, 2), label: 'under your line', below: true}],
+    keys: [{at: 6.6, keys: ['Alt', 'J']}],
   },
   {
     id: 'accept', ch: 2, title: 'Alt-Y accepts the fix', pad: 0.9,
     shots: [{clip: 'moments', from: 46, to: 55.4}],
     zooms: [{at: 0, box: G(0, 6, 60, 7)}, {at: 7.4, box: null}],
     marks: [
-      {at: 'old', until: 2.1, box: G(9, 9, 47, 1), label: 'the old line, struck through', above: true},
-      {at: 'fix', until: 5.2, box: G(9, 10, 47, 2), label: 'the fix, as ghost text (M-y means Alt-Y)', below: true},
+      {at: 'old', until: 2.3, box: G(9, 9, 47, 1), label: 'the old line, struck through: now < until', above: true},
+      {at: 'fix', until: 5.2, box: G(9, 10, 47, 2), label: 'the fix as ghost text: now <= until (M-y is Alt-Y)', below: true},
       {at: 8.6, box: G(36, 18, 46, 1), label: 'all green', above: true},
     ],
     keys: [{at: 5.3, keys: ['Alt', 'Y']}, {at: 7.95, keys: [':w']}],
@@ -147,27 +147,27 @@ const SCENES = [
     chips: [{at: 0, until: 2, text: ':Pair drive the edge cases', note: 'again'}],
     keys: [{at: 4, keys: ['j'], note: 'any key'}],
     compare: {at: 6.4, rows: [
-      {clip: 'moments', t: 95.45, box: G(9, 6, 50, 3), label: 'while Pair types'},
+      {clip: 'moments', t: 95.7, box: G(9, 6, 50, 3), label: 'while Pair types'},
       {clip: 'moments', t: 97.5, box: G(9, 6, 50, 3), label: 'after your key: as if it never started'},
     ]},
   },
 
   {id: 'roles', kind: 'roles', pad: 1},
   {
-    id: 'install', title: 'Install in two commands', pad: 1.6,
+    id: 'install', title: 'Install: two commands, then the plugin', pad: 3,
     shots: [
       {clip: 'install', from: 0.8, to: 6.2, rate: 2},
       {clip: 'install', from: 6.2, to: 20.2, rate: 10, badge: 'npm install · 10× speed'},
       {clip: 'install', from: 20.2, to: 24.6},
     ],
-    zooms: [{at: 0, box: I(0, 0, 70, 6)}, {at: 7.7, box: I(0, 10, 72, 10)}],
+    zooms: [{at: 0, box: I(0, 0, 70, 6)}, {at: 7.7, box: I(0, 10, 88, 10)}],
     chips: [
       {at: 'npm', until: 'pair', text: 'npm install -g github:makefunstuff/pairing-buddy'},
       {at: 'pair', until: 7.6, text: 'pair setup'},
     ],
     marks: [
-      {at: 8.2, until: 'run', box: I(2, 11, 44, 7), label: 'add the Neovim plugin (lazy.nvim)', below: true},
-      {at: 'run', box: I(2, 19, 70, 1), label: 'then: pair doctor checks every part', above: true},
+      {at: 8.2, until: 11.4, box: I(2, 11, 44, 7), label: 'add the Neovim plugin (lazy.nvim)', below: true},
+      {at: 11.4, box: I(2, 19, 84, 1), label: 'then: pair doctor checks every part', above: true},
     ],
   },
   {id: 'keys', kind: 'keys', pad: 3},
@@ -248,8 +248,9 @@ for (const [index, scene] of SCENES.entries()) {
 const total = r(clock);
 
 // The music bed: from the scene MUSIC.from to the end, faded in and out.
-const musicStart = timeline.find(scene => scene.id === MUSIC.from).start;
-const musicLength = Math.min(seconds('audio/music.mp3'), total - musicStart);
+// A bed shorter than that starts later instead, so it still ends with the film.
+const musicStart = r(Math.max(timeline.find(scene => scene.id === MUSIC.from).start, total - seconds('audio/music.mp3')));
+const musicLength = total - musicStart;
 media.push(`<audio id="music" class="clip" src="audio/music.mp3" data-start="${musicStart}" data-duration="${r(musicLength)}" data-track-index="11" data-volume="${MUSIC.volume}" data-fade-in="1.5" data-fade-out="3"></audio>`);
 
 // Every overlay, written out with its absolute times for the script.
@@ -464,7 +465,7 @@ const page = `<!doctype html>
       .mark-above .mark-l { bottom: calc(100% + 0.5em); }
       .mark-below .mark-l { top: calc(100% + 0.5em); }
       .mark-right .mark-l { left: calc(100% + 0.6em); top: 0; }
-      .keys { position: absolute; right: ${1920 - FRAME.x - FRAME.w + 28}px; top: ${FRAME.y + FRAME.h - 112}px; display: flex; align-items: center; gap: 10px; opacity: 0; }
+      .keys { position: absolute; right: ${1920 - FRAME.x - FRAME.w + 28}px; top: ${FRAME.y + 28}px; display: flex; align-items: center; gap: 10px; opacity: 0; }
       .key { display: inline-block; min-width: 54px; text-align: center; font-family: "JetBrains Mono", monospace; font-weight: 700; font-size: 34px;
         color: #f3f0e6; padding: 12px 20px; border-radius: 12px; background: var(--key);
         box-shadow: inset 0 -5px 0 rgba(0,0,0,0.45), 0 0 0 2px var(--accent), 0 14px 30px rgba(0,0,0,0.5); }
@@ -490,7 +491,7 @@ const page = `<!doctype html>
       .badge { right: ${1920 - FRAME.x - FRAME.w + 28}px; top: ${FRAME.y + 28}px; font-family: "JetBrains Mono", monospace; font-size: 28px; color: var(--text);
         background: rgba(10,13,18,0.92); padding: 10px 18px; border-radius: 10px; box-shadow: 0 0 0 1px var(--line); }
       .cmp { position: absolute; left: ${FRAME.x}px; top: ${FRAME.y}px; width: ${FRAME.w}px; height: ${FRAME.h}px; border-radius: 14px; opacity: 0;
-        background: rgba(10,13,18,0.97); display: flex; flex-direction: column; justify-content: center; gap: 44px; padding: 0 64px; box-sizing: border-box; }
+        background: var(--term); display: flex; flex-direction: column; justify-content: center; gap: 44px; padding: 0 64px; box-sizing: border-box; }
       .cmp-l { font-family: "JetBrains Mono", monospace; font-weight: 700; font-size: 28px; color: var(--accent); margin-bottom: 14px; }
       .cmp-img { position: relative; overflow: hidden; border-radius: 10px; box-shadow: 0 0 0 1px var(--line); }
       .cmp-img img { position: absolute; max-width: none; }

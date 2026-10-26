@@ -105,77 +105,77 @@ Pair tells you why,
 00:01:46.610 --> 00:01:49.070
 and Alt J takes you to its fix.
 
-00:01:51.540 --> 00:01:53.640
+00:01:52.290 --> 00:01:54.390
 The old code is struck through,
 
-00:01:53.640 --> 00:01:56.340
+00:01:54.390 --> 00:01:57.090
 and the fix waits as ghost text.
 
-00:01:56.340 --> 00:01:58.120
+00:01:57.090 --> 00:01:58.870
 Alt Y accepts it.
 
-00:01:58.120 --> 00:02:00.120
+00:01:58.870 --> 00:02:00.870
 Save, and it's all green.
 
-00:02:03.470 --> 00:02:04.950
+00:02:04.220 --> 00:02:05.700
 Or hand over a change.
 
-00:02:04.950 --> 00:02:09.229
+00:02:05.700 --> 00:02:09.979
 Pair drive makes Pair the Driver, for one change.
 
-00:02:10.259 --> 00:02:13.280
+00:02:11.009 --> 00:02:14.030
 You watch it type, with its own cursor.
 
-00:02:13.280 --> 00:02:15.800
+00:02:14.030 --> 00:02:16.550
 Each line lands only when it's whole.
 
-00:02:16.890 --> 00:02:20.170
+00:02:17.640 --> 00:02:20.920
 It tests the unsaved buffer, and hands back:
 
-00:02:20.170 --> 00:02:22.130
+00:02:20.920 --> 00:02:22.880
 a tick, a short note,
 
-00:02:22.130 --> 00:02:24.790
+00:02:22.880 --> 00:02:25.540
 and one undo takes it all away.
 
-00:02:25.860 --> 00:02:27.100
+00:02:26.610 --> 00:02:27.850
 Changed your mind?
 
-00:02:27.100 --> 00:02:29.120
+00:02:27.850 --> 00:02:29.870
 Press any key while it types,
 
-00:02:29.120 --> 00:02:30.700
+00:02:29.870 --> 00:02:31.450
 and the edit is gone.
 
-00:02:34.150 --> 00:02:36.170
+00:02:34.900 --> 00:02:36.920
 So, three roles.
 
-00:02:36.170 --> 00:02:38.790
+00:02:36.920 --> 00:02:39.540
 The Navigator watches and points.
 
-00:02:38.790 --> 00:02:43.230
+00:02:39.540 --> 00:02:43.980
 The Scout searches, and runs commands in its own pane.
 
-00:02:43.230 --> 00:02:46.730
+00:02:43.980 --> 00:02:47.480
 The Driver makes one change, then gives the wheel back.
 
-00:02:47.920 --> 00:02:50.140
+00:02:48.670 --> 00:02:50.890
 Install it with two commands:
 
-00:02:50.140 --> 00:02:53.960
+00:02:50.890 --> 00:02:54.710
 npm install, then pair setup.
 
-00:02:53.960 --> 00:02:56.960
+00:02:54.710 --> 00:02:57.710
 Add the Neovim plugin, set your two models,
 
-00:02:56.960 --> 00:02:58.580
+00:02:57.710 --> 00:02:59.330
 and run pair doctor.
 
-00:03:00.510 --> 00:03:02.250
+00:03:02.660 --> 00:03:04.400
 The keys to remember:
 
-00:03:02.250 --> 00:03:07.050
+00:03:04.400 --> 00:03:09.200
 Alt J, Alt Y, Pair drive, and u.
 
-00:03:07.050 --> 00:03:09.190
+00:03:09.200 --> 00:03:11.340
 Pair stays in the second chair.

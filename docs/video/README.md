@@ -27,8 +27,13 @@ node tts.mjs [scene ...]       # audio/<scene>.mp3 from narration.json (existing
 node words.mjs                 # words.json: when each word of the script is said, for the captions
 node music.mjs                 # audio/music.mp3, the bed under the voice
 node build.mjs                 # index.html, captions.vtt and frames/
-npx hyperframes@0.8.205 render . --quality delivery --no-browser-gpu --output renders/tutorial.mp4
+npx hyperframes@0.8.205 render . --quality delivery --no-browser-gpu --output renders/final.mp4
+./finish.sh                    # renders/pairing-buddy-tour.mp4 and the site's hero.mp4, hero.webm, hero-poster.jpg
 ```
+
+The README plays `renders/pairing-buddy-tour.mp4` from a GitHub attachment (GitHub plays a video in a README only
+from its own attachments, not from a file in the repository); for a new cut, drop the file into any comment box
+on github.com and put the `user-attachments` link it gives in the README.
 
 `build.mjs` holds the scenes: their titles, which stretch of a capture each one plays and how fast, where the camera
 zooms, the callouts (`marks`), the keys shown on screen, and the before/after cards. Times are seconds into a scene,
