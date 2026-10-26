@@ -110,16 +110,19 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
   });
   const scoreRemark = createWatcher({models: pairModels.models, model: pairModels.watcher, chooseModel: chooseWatcherModel});
   let partnerAsked = false; // since the Watcher's last call: its next call may find the Partner's model loaded
-  const score = rememberScores(async (trigger, state) => {
+  const deferred = {deferred: true, reason: 'the Partner has the model'};
+  const remembered = rememberScores(async (trigger, state) => {
     const afterPartner = partnerAsked;
     const started = Date.now();
     const result = await slot.watch(signal => scoreRemark(trigger, state, {signal}));
-    if (!result) return {deferred: true, reason: 'the Partner has the model'};
+    if (!result) return deferred;
     partnerAsked = false;
     chooseWatcherModel.timed?.(Date.now() - started, afterPartner);
     health.report('watcher', result.error);
     return result;
   }, {momentOf});
+  // A remembered score waits for the Partner too: on one server the remark it lets through would queue behind it.
+  const score = (trigger, state) => (slot.exclusive && slot.busy() ? deferred : remembered(trigger, state));
   const sessionPartner = {
     ...partner,
     cancel: conversationId => slot.cancel(conversationId),
