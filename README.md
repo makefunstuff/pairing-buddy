@@ -118,8 +118,8 @@ how often Pair talks. It never interrupts your typing. [docs/how-it-works.md](do
 **Stops a wrong turn.** While a test is red and you edit a file the failure does not name, Pair traces the test and,
 only if the cause is elsewhere, says so under your edit. [docs/neovim.md](docs/neovim.md#the-wrong-turn)
 
-**Follows your search trail.** After three Telescope or snacks.picker searches that miss, Pair says where the thing
-is, in the code's own word. `:Pair trail` shows the searches it saw. [docs/neovim.md](docs/neovim.md#the-search-trail)
+**Follows your search trail.** When you search in circles (three Telescope or snacks.picker searches, one of them
+without a result you opened), Pair says where the thing is, in the code's own word. `:Pair trail` shows the searches it saw. [docs/neovim.md](docs/neovim.md#the-search-trail)
 
 **Runs your tests on save.** Set a test command per project, and each save runs it in Pair's pane; a test your change
 broke gets a remark and a suggested fix. [docs/tests-on-save.md](docs/tests-on-save.md)
@@ -133,8 +133,6 @@ tune when Pair talks. `pair stats` shows the numbers. [docs/memory.md](docs/memo
 **Listens.** Hold `Alt-t` in Neovim, ask aloud, let go. whisper.cpp writes it down on your CPU, in about half a
 second, and Pair answers under your line. An answer is read aloud only if you are away from the editor when it comes.
 Off until you set `"voice"` in the config. [docs/voice.md](docs/voice.md)
-
-![Hold Alt-t: a meter under your line; let go: the words Pair heard, then its answer in their place](docs/images/push-to-talk.gif)
 
 ## Documentation
 
