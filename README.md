@@ -10,7 +10,8 @@ you save.
 ![In Neovim: Pair reads, says why under your edit, and Alt-j goes to the real cause](docs/images/wrong-turn.gif)
 
 *Pair in Neovim, as shipped: a test is red and you start fixing the wrong file. Pair reads (its gaze crosses the
-line numbers), says why under your edit, and `Alt-j` goes to the real cause. More in [docs/neovim.md](docs/neovim.md).*
+line numbers), says why under your edit, and `Alt-j` goes to the real cause. More in [docs/neovim.md](docs/neovim.md).
+The captures are recorded from tapes in [docs/captures](docs/captures/), with only the models scripted.*
 
 ![On save, Pair runs the tests, marks the one your fix broke, says why under your line, and Alt-y takes its fix](docs/images/tests-on-save.gif)
 

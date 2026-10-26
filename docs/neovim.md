@@ -7,7 +7,7 @@ on screen for an eight-hour day?
 ![Pair stops a wrong turn: it reads, says why under your edit, and Alt-j goes to the real cause](images/wrong-turn.gif)
 
 *The capture above is the plugin and the daemon as shipped, in a clean Neovim with the ayu colorscheme. The test
-run is real `go test`; only the models' words are scripted.*
+run is real `go test`; only the models' words are scripted. It is recorded from a tape in [captures/](captures/).*
 
 ## Six marks, one accent
 
@@ -41,7 +41,7 @@ The moment this language was made for: a test is red, and you start fixing it in
 2. Once you pause, Pair looks: its gaze crosses the line numbers of `backoff.go`, then the statusline says
    `● reading worker.go`.
 3. Two quiet lines appear under your edit, fading in over a quarter of a second: the shift is fine, and the real
-   cause is `worker.go:33`, which gives up on `>=`. They end with `M-j`.
+   cause is `worker.go:35`, which gives up on `>=`. They end with `M-j`.
 4. You undo. The words go with your edit: an edit counts as having seen them, neither useful nor noise.
 5. `Alt-j` goes there. The line is tinted, the `>=` is underlined, and Pair's note sits after the line.
    `Ctrl-O` brings you back.
@@ -159,7 +159,7 @@ you resize. Editing a pointed line removes the point. The last point is where `A
 another, with a trail of two fading behind, in about 0.8 s whatever the length. The statusline names the file for
 two seconds, also when it is not on screen. Without line numbers, the statusline alone shows it.
 
-![The gaze mid-sweep: line 18 lit, 17 fading behind it, and the statusline naming the file](images/gaze.png)
+![The gaze mid-sweep: line 19 lit, 18 and 17 fading behind it, and the statusline naming the file](images/gaze.png)
 
 **Suggestions.** The old lines are struck through from their first character (the indent stays clean), the new
 lines sit right under them on a faint tint, and the note follows with `M-y`.
