@@ -9,6 +9,7 @@ import {gitBranch, gitRoot} from './git.mjs';
 import {ModelHealth} from './health.mjs';
 import {PaneWatch} from './herdr.mjs';
 import {followLoaded, shareServer} from './loaded-model.mjs';
+import {Listener} from './listen.mjs';
 import {createPairModels} from './models.mjs';
 import {acquireOwner} from './owner.mjs';
 import {openPartner} from './partner.mjs';
@@ -49,6 +50,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
   const sessions = new Map(); // root -> Promise<PairSession>
   const live = new Map(); // root -> PairSession, once loaded
   const watches = new Map(); // root -> PaneWatch
+  const listeners = new Map(); // root -> Listener, once someone holds the listen key there
   const clients = new Set();
   const replies = new Map();
   let nextRequest = 0;
@@ -212,8 +214,31 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     log(`[${basename(session.root)}] watching herdr workspace ${herdr.workspace}`);
   }
 
+  /** The session's push-to-talk (see listen.mjs); null when the config has no voice. */
+  function listenerOf(session) {
+    if (!config.voice) return null;
+    if (!listeners.has(session.root)) {
+      listeners.set(session.root, new Listener({
+        voice: config.voice, session, dir: join(config.dataDir, 'voice'),
+        ask: (text, selection) => session.ask(text, selection),
+        log: line => log(`[${basename(session.root)}] ${line}`),
+      }));
+    }
+    return listeners.get(session.root);
+  }
+
+  function listen(client, session, message) {
+    const listener = listenerOf(session);
+    if (!listener) return sendMessage(client.socket, {type: 'heard', error: 'voice is off: set "voice" in the config (see docs/voice.md)'});
+    if (message.action === 'start') return listener.start(reply => sendMessage(client.socket, reply), message.selection ?? null, client);
+    if (message.action === 'stop') return listener.stop();
+    if (message.action === 'cancel') return listener.cancel();
+  }
+
   async function endSession(session) {
     await session.end();
+    listeners.get(session.root)?.close();
+    listeners.delete(session.root);
     watches.get(session.root)?.stop();
     watches.delete(session.root);
     sessions.delete(session.root);
@@ -299,12 +324,17 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     if (message.type === 'release') return session.release();
     if (message.type === 'accent') return session.setAccent(message.color);
     if (message.type === 'end') return endSession(session);
+    if (message.type === 'listen') return listen(client, session, message);
+    if (message.type === 'focus') return listenerOf(session)?.focus(message.on === true);
   }
 
   const server = createServer(socket => {
     const client = {socket, role: null, session: null, activeAt: 0, ready: Promise.resolve()};
     clients.add(client);
-    socket.on('close', () => clients.delete(client));
+    socket.on('close', () => {
+      clients.delete(client);
+      if (client.session) listeners.get(client.session.root)?.drop(client); // no microphone stays open for a gone editor
+    });
     socket.on('error', () => {});
     readMessages(socket, message => handle(client, message).catch(error => {
       log(`${message.type} failed: ${error.stack ?? error}`);
@@ -342,6 +372,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
       clearInterval(ticker);
       health.stop();
       for (const watch of watches.values()) watch.stop();
+      for (const listener of listeners.values()) listener.close();
       for (const client of clients) client.socket.destroy();
       await new Promise(resolve => server.close(resolve));
       await partner.close();

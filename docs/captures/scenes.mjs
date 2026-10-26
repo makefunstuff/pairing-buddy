@@ -80,6 +80,18 @@ export const scenes = {
       {wait: 200, say: 'line 26 wraps the head with `capacity`, which nothing declares: the ring keeps its size in `r->cap`'},
     ],
   },
+  // 04: you hold Alt-t and ask aloud; whisper.cpp hears it (for real: the stage plays `question` into the recorder
+  // with espeak-ng), and Pair answers under your line.
+  'push-to-talk': {
+    goal: 'retries reach the budget',
+    question: 'Why does delivery give up one retry too early?',
+    watcher: score(),
+    partner: [
+      {when: /one retry too early/, wait: 500, call: ['read', {file: 'internal/delivery/worker.go'}]},
+      {wait: 1200, call: ['point', {file: 'internal/delivery/worker.go', line: 35, note: '7s + 8s = 15s: still inside the budget', code: '>='}]},
+      {wait: 200, say: 'attempt 5 would wait 8s after 7s: exactly the 15s budget, and `>=` gives up on it. `>` lets it run.'},
+    ],
+  },
   // The same hand-over, taken back with a key while Pair types.
   'take-back': {
     goal: 'retries reach the budget',
