@@ -15,7 +15,7 @@ run is real `go test`; only the models' words are scripted. It is recorded from 
 | Mark | Where | What it means |
 | --- | --- | --- |
 | `●` and a line or two | under the line you are on | Pair's voice: what it says unasked, in your font, indented with your code |
-| a lit line number | the number column | its gaze: the lines it is reading, one after another, with a short trail |
+| a lit line number | the number column (without one, a faint tint on the line) | its gaze: the lines it is reading, one after another, with a short trail |
 | `▎` | the sign column | a line it points at, or the line its words are about |
 | `•` | the sign column, and `held thought` in the statusline | a remark that waits for your next break, about this line ([below](#the-held-thought)) |
 | `M-j` | after its words | go where it points; your cursor never moves by itself |
@@ -295,8 +295,9 @@ line is underlined. Its note goes after the line when it fits in the window, els
 you resize. Editing a pointed line removes the point. The last point is where `Alt-j` (or `:Pair jump`) goes, unless Pair suggested a change since: then it goes to the suggestion, where `Alt-y` takes it.
 
 **The gaze.** While Pair reads a file you have open, the line numbers it reads light up in the accent, one after
-another, with a trail of two fading behind, in about 0.8 s whatever the length. The statusline names the file for
-two seconds, also when it is not on screen. Without line numbers, the statusline alone shows it.
+another, with a trail of two fading behind, in about 0.8 s whatever the length. In a window without line numbers
+the lines themselves take a faint tint instead, with the same trail. The statusline names the file for two seconds,
+also when it is not on screen.
 
 ![The gaze mid-sweep: line 19 lit, 18 and 17 fading behind it, and the statusline naming the file](images/gaze.png)
 
@@ -455,6 +456,7 @@ vim.o.statusline = "%f %m%=%{%v:lua.require'pair'.statusline()%}  %l:%c "
 | `PairPoint` | a line Pair points at | the background, faintly toward the accent |
 | `PairSpan` | the code it means there, underlined | the background toward the accent |
 | `PairGaze` | a line number it reads | the accent, bold |
+| `PairGazeLine` | a line it reads, in a window without line numbers | the background toward the accent |
 | `PairSuggestDelete` | the lines a suggestion replaces, struck through | between background and foreground |
 | `PairSuggestAdd` | a suggestion's new lines, and the text the Driver is typing | your foreground on a faint tint |
 | `PairCursor` | the Driver's cursor | the background on the accent |
