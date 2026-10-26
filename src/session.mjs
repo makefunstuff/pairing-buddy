@@ -165,11 +165,16 @@ export class PairSession {
     }
   }
 
+  /** Whether the user typed, edited or ran a command in the last few minutes. */
+  active(now = this.now()) {
+    const lastActivity = Math.max(this.state.lastKeyAt, this.state.lastEditAt, this.state.commands.at(-1)?.endedAt ?? 0);
+    return now - lastActivity < IDLE_AFTER_MS;
+  }
+
   /** Adds the time since the last tick to the active time while the user is at work, for `pair stats`. */
   countActive() {
     const now = this.now();
-    const lastActivity = Math.max(this.state.lastKeyAt, this.state.lastEditAt, this.state.commands.at(-1)?.endedAt ?? 0);
-    if (this.tickedAt !== null && now - lastActivity < IDLE_AFTER_MS) {
+    if (this.tickedAt !== null && this.active(now)) {
       this.activeMs += Math.min(now - this.tickedAt, MAX_TICK_GAP_MS);
       this.activeAt = now;
     } else {

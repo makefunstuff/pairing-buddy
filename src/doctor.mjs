@@ -3,8 +3,9 @@ import {execFile} from 'node:child_process';
 import {existsSync} from 'node:fs';
 import {homedir} from 'node:os';
 import {basename, delimiter, join} from 'node:path';
-import {apiKeyOf, configPath, loadConfig} from './config.mjs';
+import {configPath, loadConfig} from './config.mjs';
 import {herdrRequest} from './herdr.mjs';
+import {listModels} from './loaded-model.mjs';
 import {createPairModels} from './models.mjs';
 import {probeModel} from './probe.mjs';
 import {requestDaemon} from './protocol.mjs';
@@ -107,16 +108,11 @@ export async function herdrCheck(env) {
   }
 }
 
-/** The model ids an OpenAI-compatible server lists, or `{error}` when it does not answer. */
+/** The model ids an OpenAI-compatible server lists (null when it does not list), or `{error}` when it does not answer. */
 async function listedModels(entry) {
   try {
-    const key = apiKeyOf(entry);
-    const response = await fetch(`${entry.baseUrl.replace(/\/$/, '')}/models`, {
-      headers: key ? {authorization: `Bearer ${key}`} : {},
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!response.ok) return {ids: null}; // some servers do not list; the probe tells
-    return {ids: ((await response.json()).data ?? []).map(model => model.id)};
+    const listed = await listModels(entry, {timeoutMs: 5000});
+    return {ids: listed?.map(model => model.id) ?? null}; // some servers do not list; the probe tells
   } catch (error) {
     return {error: error.cause?.code ?? error.cause?.message ?? error.message};
   }

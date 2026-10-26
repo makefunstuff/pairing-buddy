@@ -415,3 +415,11 @@ test('type needs the Driver role, a known terminal pane, and the wheel still in 
   assert.match(await reply, /^The user has the wheel now/);
   assert.deepEqual(typed, []);
 });
+
+test('a session is active for five minutes after the user last typed, edited or ran something', () => {
+  const {pair} = session();
+  assert.equal(pair.active(10 * 60_000), false, 'nothing yet');
+  pair.receive({kind: 'command_end', cmd: 'ls', exit: 0, output: '', at: 50_000});
+  assert.equal(pair.active(50_000 + 5 * 60_000 - 1), true);
+  assert.equal(pair.active(50_000 + 5 * 60_000), false);
+});

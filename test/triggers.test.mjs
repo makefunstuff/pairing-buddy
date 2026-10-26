@@ -84,14 +84,18 @@ test('old code, warnings and late diagnostics are not new_code_diagnostic', () =
   assert.deepEqual(kinds(state, 3000), []);
 });
 
-test('drift is checked once per window, only with a goal and recent edits', () => {
-  const edit = {kind: 'edit', file: 'docs/x.md', from: 1, to: 1, at: 1000};
-  assert.deepEqual(kinds(foldAll([edit]), 2000), [], 'no goal');
-  const state = foldAll([{kind: 'goal', text: 'fix reconnect', at: 0}, edit]);
+test('drift is checked once for each file the user moves into, only with a goal and recent edits', () => {
+  const edit = (file, at) => ({kind: 'edit', file, from: 1, to: 1, at});
+  assert.deepEqual(kinds(foldAll([edit('docs/x.md', 1000)]), 2000), [], 'no goal');
+  const state = foldAll([{kind: 'goal', text: 'fix reconnect', at: 0}, edit('src/ws.ts', 500), edit('docs/x.md', 1000)]);
   const [trigger] = detectTriggers(state, 2000);
   assert.equal(trigger.kind, 'drift');
-  assert.match(trigger.detail, /fix reconnect.*docs\/x\.md/);
-  assert.deepEqual(kinds(state, 2000, new Set([trigger.key])), []);
+  assert.equal(trigger.file, 'docs/x.md');
+  assert.match(trigger.detail, /fix reconnect.*now edits docs\/x\.md \(recently also src\/ws\.ts\)/);
+  const fired = new Set([trigger.key]);
+  assert.deepEqual(kinds(fold(state, edit('docs/x.md', 3000)), 4000, fired), [], 'more edits in the same file');
+  assert.deepEqual(kinds(fold(state, edit('src/billing.ts', 3000)), 4000, fired), ['drift'], 'a new file');
+  assert.deepEqual(kinds(state, 1000 + TIMING.driftWindowMs + 1), [], 'no recent edits');
 });
 
 test('fired keys are not raised again', () => {
