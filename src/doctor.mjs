@@ -2,7 +2,7 @@
 import {execFile} from 'node:child_process';
 import {existsSync, mkdtempSync, rmSync} from 'node:fs';
 import {homedir, tmpdir} from 'node:os';
-import {basename, delimiter, join} from 'node:path';
+import {basename, delimiter, dirname, join} from 'node:path';
 import {credentialState} from './auth.mjs';
 import {authPath, configPath, mostThinking, replyTokens, sameModel, sameServer, whereIs} from './config.mjs';
 import {SMALL_CONTEXT} from './context.mjs';
@@ -13,7 +13,8 @@ import {listModels, shareServer, SWAP_FACTOR, SWAP_MS} from './loaded-model.mjs'
 import {createPairModels} from './models.mjs';
 import {levelGroups, probeModel, probeThinking} from './probe.mjs';
 import {requestDaemon} from './protocol.mjs';
-import {serviceState, UNIT} from './service.mjs';
+import {keyVariables, readServiceEnv} from './service-env.mjs';
+import {serviceManager} from './service.mjs';
 import {VERSION} from './version.mjs';
 import {RATE, recorderOf, transcribe} from './voice.mjs';
 
@@ -33,7 +34,8 @@ const onPath = (name, env) => (env.PATH ?? '').split(delimiter).some(dir => exis
 
 /** Every check, in order, as `{level: ok|warn|fail, name, text}`; yields each as soon as it is known. */
 export async function* doctor({
-  path = configPath(), env = process.env, service = serviceState, nvimPlugin = nvimHasPlugin, auth = authPath(), credentials = fileCredentialStore(auth),
+  path = configPath(), env = process.env, manager = serviceManager(), service = async () => manager?.state(), nvimPlugin = nvimHasPlugin, auth = authPath(), credentials = fileCredentialStore(auth),
+  serviceEnv = join(dirname(path), 'service.env'), // as serviceEnvPath() has it
 } = {}) {
   let config;
   try {
@@ -46,31 +48,35 @@ export async function* doctor({
   yield examples.length
     ? warn('config', `${tilde(path)} still has the example's model names: set your models there`)
     : ok('config', tilde(path));
-  yield serviceCheck(await service());
+  yield serviceCheck(await service(), manager);
   const status = await requestDaemon(config.socket, {type: 'status'}).catch(() => null);
-  yield daemonCheck(status, config);
+  yield daemonCheck(status, config, manager);
   // A connected Neovim has the plugin; only without one is Neovim started to look (it can take seconds).
   const connected = status?.sessions.some(session => session.editors > 0);
   yield connected ? ok('plugin', 'loaded in the connected Neovims') : pluginCheck(await nvimPlugin(env));
   if (status) yield editorsCheck(status);
   yield await herdrCheck(env);
   if (existsSync(auth)) yield loginsCheck(auth);
+  if (keyVariables(config).length) yield keysCheck(keyVariables(config), env, serviceEnv);
   yield await voiceCheck(config.voice);
   yield* modelChecks(config, status, credentials);
 }
 
-export function serviceCheck(state) {
+/** The service's `state` under `manager` (see service.mjs); without one, the supervisor restarts the daemon. */
+export function serviceCheck(state, manager) {
+  if (!manager) return warn('service', 'no systemd or launchd here: `pair` runs the daemon under a supervisor that restarts it when it fails, but nothing starts it at login');
   if (!state.installed) return warn('service', 'not installed: `pair setup` makes the daemon start at login and restart when it fails');
   if (state.node && !existsSync(state.node)) return fail('service', `it runs Node.js from ${tilde(state.node)}, which is gone: run \`pair setup\` again`);
-  if (!state.active) return fail('service', `installed but not running: see \`journalctl --user -u ${UNIT} -n 20\`, then \`systemctl --user restart ${UNIT}\``);
-  if (!state.enabled) return warn('service', `running, but it does not start at login: \`systemctl --user enable ${UNIT}\``);
+  if (!state.active) return fail('service', `installed but not running: see \`${manager.logs}\`, then \`${manager.restart}\``);
+  if (!state.enabled) return warn('service', `running, but it does not start at login: \`${manager.enable}\``);
   return ok('service', 'starts at login, running');
 }
 
-export function daemonCheck(status, config) {
+export function daemonCheck(status, config, manager) {
   if (!status) return fail('daemon', `nothing answers on ${tilde(config.socket)}: run \`pair setup\`, or \`pair daemon\` in a terminal`);
   if (status.version !== VERSION) {
-    return warn('daemon', `it runs version ${status.version} and this pair is ${VERSION}: \`systemctl --user restart ${UNIT}\``);
+    const restart = manager?.installed() ? `\`${manager.restart}\`` : `stop it (\`kill ${status.pid}\`) and run \`pair\``;
+    return warn('daemon', `it runs version ${status.version} and this pair is ${VERSION}: ${restart}`);
   }
   const minutes = Math.round((Date.now() - status.startedAt) / 60_000);
   const sessions = status.sessions.length === 1 ? '1 session' : `${status.sessions.length} sessions`;
@@ -122,6 +128,20 @@ export function loginsCheck(path) {
   return readableByOthers(path)
     ? fail('logins', `${tilde(path)} holds your logins and keys and others can read it: chmod 600 ${tilde(path)}`)
     : ok('logins', `${tilde(path)}, readable by you only`);
+}
+
+/**
+ * Whether the daemon, run as a service without your shell's environment, finds the variables `names` that model
+ * entries take their keys from ("apiKeyEnv"): `pair setup` stores them in the file at `path`.
+ */
+export function keysCheck(names, env, path) {
+  if (readableByOthers(path)) return fail('keys', `${tilde(path)} holds your keys and others can read it: chmod 600 ${tilde(path)}`);
+  const stored = readServiceEnv(path);
+  const unset = names.filter(name => !stored[name] && !env[name]);
+  if (unset.length) return fail('keys', `${unset.join(', ')} ${unset.length === 1 ? 'is' : 'are'} not set: set ${unset.length === 1 ? 'it' : 'them'} and run \`pair setup\`, or store the key with \`pair auth login NAME\` and "auth"`);
+  const shellOnly = names.filter(name => !stored[name]);
+  if (shellOnly.length) return warn('keys', `${shellOnly.join(', ')} ${shellOnly.length === 1 ? 'is' : 'are'} set in this shell only, which the service does not see: run \`pair setup\` to store ${shellOnly.length === 1 ? 'it' : 'them'} for it`);
+  return ok('keys', `${names.join(', ')} stored for the service in ${tilde(path)}, readable by you only`);
 }
 
 /**

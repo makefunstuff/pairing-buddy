@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {prefilter} from '../src/prefilter.mjs';
+import {prefilter, words} from '../src/prefilter.mjs';
 
 const failure = (cmd, exit) => ({kind: 'failed_command', key: 'k', detail: '', command: {cmd, exit}});
+
+test('words splits paths, identifiers and camelCase', () => {
+  assert.deepEqual(words('src/net/reconnectTimer.ts RECONNECT_TIMEOUT_MS'), ['src', 'net', 'reconnect', 'timer', 'ts', 'reconnect', 'timeout', 'ms']);
+});
 
 test('a search that finds nothing, or a command the user stopped, is not a failure worth a remark', () => {
   for (const cmd of ['grep -rn SLEEP src', 'rg backoff', 'git diff --exit-code', 'diff a b', 'test -f x']) {

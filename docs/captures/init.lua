@@ -37,6 +37,7 @@ vim.o.tabstop = 4
 vim.o.shiftwidth = 4
 vim.o.statusline = " %{&buftype ==# 'terminal' ? 'shell' : expand('%:.')} %m%=%{%v:lua.require'pair'.statusline()%}   %l:%c "
 vim.env.HERDR_PANE_ID = 'w1:p3'
+vim.env.HERDR_SOCKET_PATH = cap .. '/herdr.sock' -- the stand-in: the captures never see your herdr
 vim.o.shell = 'bash --noprofile --rcfile ' .. vim.env.CAP_HERE .. '/bashrc'
 vim.api.nvim_create_autocmd('TermOpen', {callback = function()
   vim.opt_local.number = false

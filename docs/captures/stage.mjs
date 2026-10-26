@@ -3,9 +3,9 @@
 // that points at them, and a chat client, as the chat pane would be. Writes `ready` when Neovim may start.
 // usage: node stage.mjs <scene> <scratch dir under /tmp/paircap.*>
 import {execFileSync, spawn} from 'node:child_process';
-import {cpSync, existsSync, openSync, writeFileSync} from 'node:fs';
+import {chmodSync, cpSync, existsSync, mkdirSync, openSync, writeFileSync} from 'node:fs';
 import {connect} from 'node:net';
-import {join} from 'node:path';
+import {basename, join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {readMessages, sendMessage} from '../../src/protocol.mjs';
 import {standInHerdr} from './herdr.mjs';
@@ -22,21 +22,38 @@ if (!/^\/tmp\/paircap\.[^/]+$/.test(dir ?? '')) throw new Error('the stage needs
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const log = line => console.error(`${new Date().toISOString().slice(11, 23)} ${line}`);
 
-// The project (hookd, unless the scene names another), committed as it is when the scene starts; a Go project's
-// packages built, so the first test run is quick.
-const project = join(dir, scene.project ?? 'hookd');
-cpSync(join(HERE, scene.project ?? 'hookd'), project, {recursive: true});
+// The project (hookd, unless the scene names another), committed as it is when the scene starts; built with the
+// scene's `build`, or a Go project's packages, so the first run is quick.
+const source = join(HERE, scene.project ?? 'hookd');
+const project = join(dir, basename(source));
+cpSync(source, project, {recursive: true});
 scene.setup?.(project);
 const git = (...args) => execFileSync('git', ['-c', 'user.name=dev', '-c', 'user.email=dev@example.com', ...args], {cwd: project});
 git('init', '-q');
 git('add', '-A');
 git('commit', '-qm', 'hookd');
 if (scene.branch) git('checkout', '-qb', scene.branch);
-if (existsSync(join(project, 'go.mod'))) execFileSync('go', ['test', '-count=1', '-run', '^$', './...'], {cwd: project, stdio: 'ignore'});
+if (scene.build) execFileSync(scene.build[0], scene.build.slice(1), {cwd: project, stdio: 'ignore'});
+else if (existsSync(join(project, 'go.mod'))) execFileSync('go', ['test', '-count=1', '-run', '^$', './...'], {cwd: project, stdio: 'ignore'});
+
+// The scene's other agents: a stand-in board (its command prints the list; its task files say where each task's
+// agent runs) and herdr's agents. Scenes without them read no board at all, never yours.
+const board = join(dir, 'board');
+const showBoard = tasks => writeFileSync(join(board, 'list.json'), JSON.stringify(tasks));
+if (scene.agents) {
+  mkdirSync(board);
+  writeFileSync(join(board, 'herdr-projects'), `#!/bin/sh\ncat '${join(board, 'list.json')}'\n`);
+  chmodSync(join(board, 'herdr-projects'), 0o755);
+  for (const [id, file] of Object.entries(scene.agents.files)) {
+    mkdirSync(join(board, 'tasks', id), {recursive: true});
+    writeFileSync(join(board, 'tasks', id, 'task.json'), JSON.stringify(file));
+  }
+  showBoard(scene.agents.tasks);
+}
 
 const models = await startModelServer(scene, {log});
 const herdrSocket = join(dir, 'herdr.sock');
-const herdr = await standInHerdr(herdrSocket, {cwd: project, nvim: join(dir, 'nvim.sock'), log});
+const herdr = await standInHerdr(herdrSocket, {cwd: project, nvim: join(dir, 'nvim.sock'), agents: scene.agents?.herdr ?? [], log});
 
 // The microphone of a scene with a question: its words, said by espeak-ng, played in real time while the key is
 // held. whisper.cpp hears them for real: CAP_WHISPER_MODEL is its model, CAP_WHISPER its binary (else whisper-cli).
@@ -58,12 +75,14 @@ writeFileSync(join(dir, 'config.json'), JSON.stringify({
   keepWarm: false,
   ...(scene.testOnSave ? {testOnSave: {[project]: scene.testOnSave}} : {}),
   ...voice(),
-  board: scene.board ? join(HERE, 'board.mjs') : null, // the stand-in board, or none: not yours
+  // the stand-in board, or none: not yours
+  board: scene.board ? join(HERE, 'board.mjs') : scene.agents ? join(board, 'herdr-projects') : null,
+  agents: Boolean(scene.agents),
   models: {watcher: model('watcher'), partner: model('partner')},
 }, null, 2));
 const out = openSync(join(dir, 'daemon.log'), 'a');
 const daemon = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', PAIR, 'daemon'], {
-  env: {...process.env, PAIR_CONFIG: join(dir, 'config.json')}, stdio: ['ignore', out, out],
+  env: {...process.env, PAIR_CONFIG: join(dir, 'config.json'), HERDR_PROJECTS_DATA_DIR: board}, stdio: ['ignore', out, out],
 });
 while (!existsSync(socket)) await sleep(50);
 
@@ -83,5 +102,24 @@ async function stop() {
 }
 process.on('SIGTERM', stop);
 process.on('SIGINT', stop);
+// The other agents move on once you start typing in the file Neovim opened (buffer 1): the relay holds their news
+// for your next breakpoint.
+if (scene.agents?.later) {
+  const changedtick = () => {
+    try {
+      return Number(execFileSync('nvim', ['--server', join(dir, 'nvim.sock'), '--remote-expr', 'getbufvar(1, "changedtick")'], {encoding: 'utf8'}));
+    } catch {
+      return null;
+    }
+  };
+  (async () => {
+    let first = null;
+    while (first === null) { first = changedtick(); await sleep(200); }
+    while (changedtick() === first) await sleep(100);
+    scene.agents.later(herdr.agents, showBoard);
+    log('the other agents moved on');
+  })();
+}
+
 writeFileSync(join(dir, 'ready'), '');
 log(`ready: ${name}`);

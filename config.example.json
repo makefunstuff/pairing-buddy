@@ -1,5 +1,4 @@
-// pairing-buddy config. JSON with // comments. After a change: systemctl --user restart pairing-buddy
-// (or `pair setup` again), then `pair doctor` to check it.
+// pairing-buddy config. JSON with // comments. The daemon takes a change as you save it; `pair doctor` checks it.
 {
   // How often Pair speaks unasked: "quiet", "normal" or "chatty".
   "level": "normal",
@@ -20,6 +19,19 @@
   // The herdr work board's command: a session takes its goal from the board task of its branch (matched by repo and
   // number), and the context card (:Pair context) shows the task. null turns it off; without the command, nothing is read.
   // "board": "herdr-projects",
+
+  // A project is a git root (each git worktree is one). In a monorepo, these folders are projects of their own;
+  // "<folder>/*" makes each folder in it one.
+  // "sessionRoots": ["~/src/shop/packages/*"],
+
+  // Your other agents: when one needs you, is ready to approve or is done, Pair says so in one line at your next
+  // breakpoint (a save, a run that ended, a stop to look). It reads herdr's agents and the board above, if there is
+  // one. false turns the relay off.
+  // "agents": false,
+
+  // What :Pair tasks runs for each task you say yes to, in the project, as a list of words: {title} and {description}
+  // are put in as whole words, never through a shell. Without it, the tasks are copied as a Markdown checklist.
+  // "taskCommand": ["gh", "issue", "create", "--title", "{title}", "--body", "{description}"],
 
   // One model for both roles: the Watcher asks it for one number without thinking, so it stays fast; the Partner
   // asks it with thinking. Its server needs to hold only this model, and may answer one request at a time: the

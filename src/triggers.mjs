@@ -1,10 +1,11 @@
 // Finds the moments where a remark might help. Pure: the caller passes the clock and the keys already fired.
 import {errorSignature, failed, failureLine} from './fold.mjs';
+import {PROSE_KINDS, proseTriggers} from './prose-triggers.mjs';
 import {readingSummary} from './run-output.mjs';
 import {isSourceFile, testSummary} from './test-output.mjs';
 import {currentTrail, lost, TRAIL, trailLines} from './trail.mjs';
 
-export const TRIGGER_KINDS = ['failed_command', 'repeated_error', 'new_code_diagnostic', 'stall', 'drift', 'edit_while_red', 'regression', 'search_trail', 'crash', 'new_warning'];
+export const TRIGGER_KINDS = ['failed_command', 'repeated_error', 'new_code_diagnostic', 'stall', 'drift', 'edit_while_red', 'regression', 'search_trail', 'crash', 'new_warning', ...PROSE_KINDS];
 
 export const TIMING = {
   lookGraceMs: 4_000, // a failure gets this long to be noticed before Pair counts it as missed
@@ -211,6 +212,6 @@ export function detectTriggers(state, now, fired = new Set()) {
   const trail = hidden('editor') ? [] : trailTriggers(state, now);
   // A run in the user's terminal is the terminal's: a hidden terminal sends none. Pair's own runs on save are Pair's.
   const runs = hidden('terminal') && state.run?.by === 'you' ? {crashes: [], warnings: []} : {crashes: crashTriggers(state, now), warnings: warningTriggers(state, now)};
-  return [...runs.crashes, ...commands, ...diagnosticTriggers(state), ...regressionTriggers(state, now), ...redTriggers(state, now), ...runs.warnings, ...driftTriggers(state, now), ...trail]
+  return [...runs.crashes, ...commands, ...diagnosticTriggers(state), ...regressionTriggers(state, now), ...redTriggers(state, now), ...runs.warnings, ...driftTriggers(state, now), ...trail, ...proseTriggers(state, now)]
     .filter(trigger => !fired.has(trigger.key));
 }

@@ -7,6 +7,7 @@ local M = {}
 
 M.glyphs = {
   voice = '●', -- the pair speaks: one or two lines under the line they are about
+  idea = '∴', -- the idea behind its words, when you ask for it
   mark = '▎', -- in the sign column, where it points
   held = '•', -- in the sign column, where a thought waits for your next break
   away = '◌', -- not connected, or a model is down
@@ -15,6 +16,12 @@ M.glyphs = {
   fail = '✗', -- a test failed, a build failed, a run crashed
   warn = '△', -- a compiler warning
   listen = '◉', -- it listens while you hold the listen key
+  agents = '◇', -- another agent's news, after Pair's own part of the statusline
+  question = '?', -- in a note's margin: a question the note does not answer
+  contradiction = '≠', -- two lines that cannot both be true
+  code = '→', -- a claim that depends on code: the link goes there
+  decision = '◆', -- a decision worth logging, and the log
+  ['repeat'] = '≈', -- a paragraph that says again what an earlier one said
 }
 
 -- The statusline while Pair runs your tests or thinks.
@@ -113,6 +120,14 @@ function M.ground()
   return normal.bg or (dark and 0x14161b or 0xe0e2ea), normal.fg or (dark and 0xe0e2ea or 0x14161b)
 end
 
+--- The statusline's background and foreground.
+local function status_ground()
+  local bg, fg = M.ground()
+  local status = hl('StatusLine')
+  if status.reverse then return status.fg or fg, status.bg or bg end
+  return status.bg or bg, status.fg or fg
+end
+
 local function hue_distance(a, b)
   local d = math.abs(a - b) % 360
   return d > 180 and 360 - d or d
@@ -166,9 +181,7 @@ end
 local function palette()
   local bg, fg = M.ground()
   local accent = M.accent()
-  local status = hl('StatusLine')
-  local status_bg = status.reverse and (status.fg or fg) or (status.bg or bg)
-  local status_fg = status.reverse and (status.bg or bg) or (status.fg or fg)
+  local status_bg, status_fg = status_ground()
   local dim = readable(M.mix(bg, fg, 0.42), bg, fg, 2.2)
   local ok = readable(hl('DiagnosticOk').fg or accent, bg, fg, 3)
   local fail = readable(hl('DiagnosticError').fg or hl('ErrorMsg').fg or 0xe06c75, bg, fg, 3)
@@ -182,6 +195,7 @@ local function palette()
     PairPoint = {bg = M.mix(bg, accent, 0.07)}, -- a line it points at
     PairSpan = {bg = M.mix(bg, accent, 0.16), sp = accent, underline = true}, -- the code it means there
     PairGaze = {fg = accent, bold = true}, -- line numbers where it reads
+    PairGazeLine = {bg = M.mix(bg, accent, 0.14)}, -- lines where it reads, in a window without numbers
     PairSuggestDelete = {fg = dim, strikethrough = true},
     PairSuggestAdd = {fg = fg, bg = M.mix(bg, accent, 0.1)}, -- also the text the Driver is typing
     PairCursor = {fg = bg, bg = accent}, -- the Driver's cursor
@@ -191,6 +205,10 @@ local function palette()
     PairPass = {fg = readable(M.mix(bg, ok, 0.55), bg, ok, 2.2)}, -- quiet: a column of passing tests is no news
     PairFail = {fg = fail},
     PairStatusPass = {fg = ok}, -- a passing run, for a moment, in the statusline
+    -- Delight: a green after a red lights up once, then settles (see M.between).
+    PairGlow = {fg = readable(M.mix(ok, fg, 0.3), bg, fg, 4.5), bg = M.mix(bg, ok, 0.18), bold = true}, -- the sign that turned green
+    PairGlowLine = {bg = M.mix(bg, ok, 0.18)}, -- and its line
+    PairStatusGlow = {fg = readable(M.mix(ok, status_fg, 0.3), status_bg, status_fg, 4.5), bg = M.mix(status_bg, ok, 0.28), bold = true},
     PairFailNote = {fg = readable(M.mix(fg, fail, 0.35), bg, fg, 4.5)}, -- why a test failed, after the line it failed on
     PairHeard = {fg = readable(dim, bg, fg, 3), italic = true}, -- your words, as Pair heard them
     PairWarn = {fg = warn}, -- a compiler warning the builds before did not print
@@ -203,15 +221,15 @@ end
 local LINKS = {
   PairAccent = 'DiagnosticHint', PairNote = 'DiagnosticHint', PairCode = 'Special', PairKey = 'Comment',
   PairSign = 'DiagnosticHint', PairPoint = 'CursorLine', PairSpan = 'Visual', PairGaze = 'DiagnosticHint',
-  PairSuggestDelete = 'Comment', PairSuggestAdd = 'DiffAdd', PairCursor = 'Cursor',
+  PairGazeLine = 'CursorLine', PairSuggestDelete = 'Comment', PairSuggestAdd = 'DiffAdd', PairCursor = 'Cursor',
   PairStatus = 'StatusLine', PairStatusDim = 'StatusLine', PairStatusWarn = 'StatusLine',
-  PairPass = 'DiagnosticOk', PairStatusPass = 'DiagnosticOk', PairFail = 'DiagnosticError', PairFailNote = 'DiagnosticError',
+  PairPass = 'DiagnosticOk', PairStatusPass = 'DiagnosticOk', PairGlow = 'DiagnosticOk', PairGlowLine = 'CursorLine', PairStatusGlow = 'DiagnosticOk', PairFail = 'DiagnosticError', PairFailNote = 'DiagnosticError',
   PairHeard = 'Comment',
   PairWarn = 'DiagnosticWarn', PairWarnQuiet = 'Comment', PairWarnNote = 'DiagnosticWarn',
 }
 
 local ours = {} -- each group as this module last left it: a group that differs now was set by someone else
-local faded = {} -- fade steps made so far, by name
+local faded = {} -- fade and settle steps made so far, by name
 
 --- (Re)defines the groups for the current colorscheme, leaving alone any group the colorscheme defined itself.
 function M.apply()
@@ -245,6 +263,24 @@ function M.fade(name, t)
   spec.bg = spec.bg and M.mix(bg, spec.bg, t)
   spec.sp = spec.sp and M.mix(bg, spec.sp, t)
   vim.api.nvim_set_hl(0, step, spec)
+  faded[step] = true
+  return step
+end
+
+--- A glow `from` settling into `to`, at `t` of the way (0: the glow, 1: `to` itself). A colour a group leaves
+--- unset is the editor's, or the statusline's for `{statusline = true}`.
+function M.between(from, to, t, opts)
+  if t >= 1 or not vim.o.termguicolors then return to end
+  local step = ('PairSettle%s%s%02d'):format(from, to, math.floor(t * 20 + 0.5))
+  if faded[step] then return step end
+  local bg, fg
+  if opts and opts.statusline then bg, fg = status_ground() else bg, fg = M.ground() end
+  local a, b = hl(from), hl(to)
+  vim.api.nvim_set_hl(0, step, {
+    fg = M.mix(a.fg or fg, b.fg or fg, t),
+    bg = M.mix(a.bg or bg, b.bg or bg, t),
+    bold = t < 0.5 and a.bold or b.bold,
+  })
   faded[step] = true
   return step
 end

@@ -7,6 +7,7 @@ import {fileURLToPath} from 'node:url';
 import {thinkingBudgetForLevel} from '@earendil-works/pi-ai/api/simple-options';
 import {MIN_CONTEXT, replyRoom} from './context.mjs';
 import {storedKey} from './credentials.mjs';
+import {readServiceEnv} from './service-env.mjs';
 import {voiceConfig} from './voice.mjs';
 
 const EXAMPLE = fileURLToPath(new URL('../config.example.json', import.meta.url));
@@ -30,6 +31,11 @@ export function configPath() {
 /** Where `pair auth` keeps the logins and keys: next to the config, or `$PAIR_AUTH`. */
 export function authPath() {
   return process.env.PAIR_AUTH || join(dirname(configPath()), 'auth.json');
+}
+
+/** Where `pair setup` keeps the variables named by "apiKeyEnv" for the service: next to the config. */
+export function serviceEnvPath() {
+  return join(dirname(configPath()), 'service.env');
 }
 
 /**
@@ -176,12 +182,15 @@ export function rolesText({watcher, partner}) {
   return `the Watcher ${whereIs(watcher)}, the Partner ${whereIs(partner)}`;
 }
 
-/** The API key of a model entry: the stored key `auth`, `apiKey`, the file `apiKeyFile` or the env var `apiKeyEnv`. */
+/**
+ * The API key of a model entry: the stored key `auth`, `apiKey`, the file `apiKeyFile` or the env var `apiKeyEnv`,
+ * from the environment or else the file `pair setup` stored it in for the service.
+ */
 export function apiKeyOf(entry) {
   if (entry.auth) return storedKey(authPath(), entry.auth);
   if (entry.apiKey) return entry.apiKey;
   if (entry.apiKeyFile) return readFileSync(entry.apiKeyFile.replace(/^~(?=\/)/, homedir()), 'utf8').trim();
-  if (entry.apiKeyEnv) return process.env[entry.apiKeyEnv];
+  if (entry.apiKeyEnv) return process.env[entry.apiKeyEnv] ?? readServiceEnv(serviceEnvPath())[entry.apiKeyEnv];
   return undefined;
 }
 
@@ -200,10 +209,31 @@ function testCommands(raw = {}) {
   }));
 }
 
+/** `taskCommand`: the command, as words, that :Pair tasks runs for each task, with {title} and {description} in them. */
+function taskCommand(raw) {
+  if (raw === undefined || raw === null) return null;
+  if (!Array.isArray(raw) || !raw.length || !raw.every(word => typeof word === 'string' && word)) {
+    throw new Error('config: taskCommand must be a command as a list of words, for example ["gh", "issue", "create", "--title", "{title}"]');
+  }
+  return raw;
+}
+
 /** The work board's command (herdr-projects), which the context card and the goal are read from; null for none. */
 function boardCommand(raw = 'herdr-projects') {
   if (raw !== null && (typeof raw !== 'string' || !raw.trim())) throw new Error('config: board must be the board\'s command, or null');
   return raw && raw.trim().replace(/^~(?=\/)/, homedir());
+}
+
+/**
+ * `sessionRoots` lists the folders that each have their own session, for a monorepo where the git root is too coarse:
+ * a folder, or `<folder>/*` for every folder in it.
+ */
+function sessionRoots(raw = []) {
+  if (!Array.isArray(raw) || raw.some(path => typeof path !== 'string' || !path.trim())) throw new Error('config: sessionRoots must list folders');
+  return raw.map(path => {
+    const each = /\/\*$/.test(path);
+    return {path: projectPath(each ? path.slice(0, -2) : path), each};
+  });
 }
 
 /**
@@ -214,6 +244,7 @@ export function parseConfig(raw, {windows = {}} = {}) {
   const level = raw.level ?? 'normal';
   if (!LEVELS.includes(level)) throw new Error(`config: level must be one of ${LEVELS.join(', ')}`);
   const models = parseModels(raw, windows);
+  if (raw.agents !== undefined && typeof raw.agents !== 'boolean') throw new Error('config: agents must be true or false');
   return {
     level,
     typingPauseMs: raw.typingPauseMs ?? 2000,
@@ -223,8 +254,11 @@ export function parseConfig(raw, {windows = {}} = {}) {
     socket: raw.socket ?? defaultSocketPath(),
     dataDir: raw.dataDir ?? join(xdg('XDG_STATE_HOME', '.local/state'), 'pairing-buddy'),
     testOnSave: testCommands(raw.testOnSave),
+    sessionRoots: sessionRoots(raw.sessionRoots),
     voice: voiceConfig(raw.voice), // push-to-talk; null when off (see voice.mjs)
+    taskCommand: taskCommand(raw.taskCommand),
     board: boardCommand(raw.board),
+    agents: raw.agents ?? true, // relays your other agents' news (see agents.mjs)
     models,
   };
 }

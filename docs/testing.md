@@ -14,7 +14,8 @@ Runs every test that needs no model, in under a minute, with scripted models and
 - **Panes and roles.** Pair's pane and role switching against a fake herdr; hand-over and take-back; `type` (only after
   a yes, only into your terminal pane, never Enter); the bash hook.
 - **The daemon end to end** with scripted models; several projects and Neovims at once; Neovim and the chat pane
-  reconnecting after a daemon restart.
+  reconnecting after a daemon restart; a question the restart cut off answered late, a remark dropped; a saved config
+  taken without a restart (a new model between turns, one with an error refused).
 - **The Neovim plugin** in a headless Neovim:
   - suggestions accepted and ignored, struck from their first character;
   - a Driver edit undone with one `u` and never saved, and a key taking the wheel back;
@@ -30,6 +31,8 @@ Runs every test that needs no model, in under a minute, with scripted models and
   - a held thought end to end: the `•` where it points and the statusline while you type in Insert mode, nothing in
     the chat, and `Alt-j` showing it at once;
   - push-to-talk: the held key's meter, the words heard and the answer in their place, and a tap;
+  - teaching on request: `Alt-?` showing the idea under Pair's words and then opening its link, each key's first-use
+    hint, and the keys you used remembered;
   - the accent reaching the chat pane, also after a colorscheme change; the accent itself on a grey palette with one
     warm red, in a coloured scheme whose regexp colour is the error's hue, and in Neovim's own scheme.
 - **Push-to-talk** without Neovim: the recorder (levels, a pipeline stopped as a whole, a failing recorder said at
@@ -39,12 +42,16 @@ Runs every test that needs no model, in under a minute, with scripted models and
 - **Install and daily use.** The config with comments and the first run's example; model entries that name a provider
   or a stored key; the credential store (owner-only, a token renewed once when two processes need it at the same
   time, a lock left by a dead process); `pair auth` with fake providers (subscription or key, a key for your own
-  server, logout, the list without secrets, a typed key not echoed); the systemd unit; `pair doctor` against a fake
+  server, logout, the list without secrets, a typed key not echoed); the systemd unit, the launchd agent and the
+  supervisor that restarts the daemon without either; keys from environment variables stored for the service; `pair doctor` against a fake
   model server (fast, slow, dead, a wrong model name, a stored key it needs, a login that no longer renews); model
   health (one notice, no remarks while down, back after a probe).
 - **Memory and feedback.** The note the next session starts from (in the chat and the Partner's instructions, per
   project, never a failed note); remarks stored with their verdicts (`+`, `Alt-n`, an accepted suggestion); ignored
   remarks counting as noise and seen ones as neither; the tuning and its bounds; active time; `pair stats`.
+- **The tone.** The checker the live tests use (praise, apology, filler, emoji, `!` outside code, headings and lists,
+  words over the limit), the tone in the Partner's instructions, and teaching: the Partner asked about the words
+  shown, the idea and its link apart for the editor, `?` in the chat about Pair's last words.
 - **The Watcher's speed.** The prefilter's rules, the one-number answer, scores remembered, drift checked once per
   file with the file's gist, keep-warm, the Watcher following the model a one-model server has loaded, and, end to
   end against a fake server that swaps and does not say so, the Watcher moving to the Partner's model after two
@@ -78,6 +85,13 @@ Runs every test that needs no model, in under a minute, with scripted models and
 - **The ledger.** What a session books (reads in a row as one line, the place a remark pointed at, its verdict,
   commands with their output, what it asked and was refused, the moments it stayed quiet and why), today from local
   midnight, the three-way merge that undoes an edit, details forgotten after a week, and `/today` in the chat.
+- **Notes in the margin.** The repeat a rule finds, and the near-repeats and parallel paragraphs (two allocators, three
+  build targets, option A and B) it leaves alone; decisions and their section; the code a note names found where it is
+  defined (C and Go); the model's marks kept only where they hold up (a contradiction needs its other side); marks
+  following their lines and going with an edit; the decision log (its entry, the question it quotes, a decision
+  superseded, going back to one, never logged twice); tasks added only after the yes, as whole words; the prose
+  triggers, the Watcher's questions for them, and a stall remark held to one question; and the plugin end to end:
+  five marks, `Alt-l` to the code, `Alt-d` putting the entry in the log's buffer and not on disk, the tasks panel.
 - **[One model](config.md#one-model).** Each role's request to it (no thinking and 8 tokens for the Watcher, thinking
   for the Partner); the Watcher waiting while the Partner works in another project, and its remark saying how long it
   waited; a question cancelling the remark still being written (dropped, and no failure of the model); the context
@@ -119,6 +133,9 @@ Stacks can name a `provider` too, with its login or key from `pair auth`. Withou
   we leave open?" from it; the note not turning a noise moment into a remark.
 - **Builds and runs** (`test/live/runs.test.mjs`): a C program built and run for real with `cc`. A segfault gets a
   point at its cause, a `-Wformat` warning a point at the `printf`, and an unused variable silence.
+- **Notes in the margin:** at most five specific marks on a design note, with its contradiction and a mark on what
+  the code does; tasks with its open question as one; after a stalled question, one question back about it, through
+  a real session; one question about a section that left the note, and silence for one that did not.
 - **The probe** `pair doctor` and the daemon's health check use, and the Watcher answering it within 3 s.
 - **A scripted session** (`test/live/dogfood.test.mjs`): twelve minutes of edits, failing tests, a stall, a question
   and drift, played through a real Pair session on a simulated clock and printed like a transcript. It checks that
@@ -134,6 +151,12 @@ for the record.
 **The context card.** `test/live/context.test.mjs` gives the Partner a board task, buffers and a search: it has to
 name the task, know nothing of the search while the editor source is hidden, and name the file the search opened once
 it is back.
+
+**The tone.** `test/live/tone.test.mjs` runs a real Pair session on a small C program with a Makefile
+([test/live/probe](../test/live/probe/)), built and run for real: a remark on a failed `make run` names `file:line` in
+at most 30 words, the idea behind it stays within 45 and its link opens, a question gets at most 80 words, and a green
+run after a long red is named, not praised; none of them with praise, apology, filler, emoji, `!`, headings or lists.
+Details in [tone.md](tone.md).
 
 **Push-to-talk.** `test/live/voice.test.mjs` runs with real parts when `PAIR_LIVE_WHISPER_MODEL` names a whisper.cpp
 model (and `PAIR_LIVE_WHISPER` the program, if it is not `whisper-cli` on `PATH`): espeak-ng and FFmpeg play a

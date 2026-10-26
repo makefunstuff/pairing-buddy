@@ -6,6 +6,11 @@
 const ANSWERS_WITH_EXIT_1 = new Set(['grep', 'egrep', 'fgrep', 'rg', 'ag', 'diff', 'cmp', 'test', '[', 'which', 'pgrep', 'git diff', 'git grep']);
 const INTERRUPTED = new Set([130, 143]); // Ctrl-C, or a kill: the user stopped it themselves
 
+/** The words of `text`, split at punctuation, underscores and camelCase humps, lowercased. */
+export function words(text) {
+  return text.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+}
+
 function exitIsAnAnswer(command) {
   const [first, second] = command.cmd.trim().split(/\s+/);
   return command.exit === 1 && (ANSWERS_WITH_EXIT_1.has(first) || ANSWERS_WITH_EXIT_1.has(`${first} ${second}`));

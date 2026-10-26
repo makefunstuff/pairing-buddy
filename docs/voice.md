@@ -83,7 +83,7 @@ Most desktops have one. The daemon runs as your user, so it uses your default mi
 }
 ```
 
-Restart the daemon, then `pair doctor` checks it: it finds the recorder, and runs whisper on a second of silence to
+Save the config (the daemon takes it as you save it), then `pair doctor` checks it: it finds the recorder, and runs whisper on a second of silence to
 say how long it takes.
 
 ```

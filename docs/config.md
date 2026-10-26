@@ -4,8 +4,16 @@ Pair reads one file: `~/.config/pairing-buddy/config.json` (or the path in `$PAI
 respected). It is JSON with `//` and `/* */` comments. The first run of `pair setup`, `pair` or `pair daemon` writes it
 from [`config.example.json`](../config.example.json), which explains each field.
 
-The config is read when the daemon starts: after a change, restart it (`systemctl --user restart pairing-buddy`) and
-run `pair doctor`. Logins and keys are the exception; they take effect without a restart.
+The daemon takes a change as you save the file (also through a symlink), without a restart, and says in the chat pane and Neovim what it
+reloaded. It checks the new config as at start: one with an error is not taken, and the chat says why while the daemon
+keeps the config it runs. Run `pair doctor` after a change to check the models.
+
+- **At once**: the typing pause, `autoTune`, `keepWarm`, `testOnSave`, `voice`, `taskCommand` and `board`, in open
+  sessions too.
+- **Between turns**: new `model` or `models` entries (and their thinking levels). An answer under way finishes on
+  the old model; the next one is the new model's, in the same conversation.
+- **For new sessions**: `level` and `sessionRoots`. An open session keeps its own level; `/level` changes it.
+- **After a restart only**: `socket`, `dataDir`, and turning `agents` on or off.
 
 ## Models
 
@@ -55,7 +63,7 @@ A model entry says where its requests go in one of two ways:
 | `baseUrl` | The server's base URL, usually ending in `/v1`. Required for `openai`; `anthropic` defaults to the Anthropic API |
 | `model` | The model id the provider or server expects |
 | `auth` | The name of a key stored with `pair auth login NAME`, for an endpoint (a name pi-ai does not know stores a key for your own server; a provider's id uses that provider's stored key) |
-| `apiKey`, `apiKeyFile`, `apiKeyEnv` | Or the key inline, in a file, or in an environment variable. A local server without a key needs none. The service does not see your shell's variables: with `apiKeyEnv`, add it with `systemctl --user edit pairing-buddy` (`[Service]` and `Environment=NAME=value`), or use `auth` or `apiKeyFile` |
+| `apiKey`, `apiKeyFile`, `apiKeyEnv` | Or the key inline, in a file, or in an environment variable. A local server without a key needs none. The service does not see your shell's variables: `pair setup` stores those named by `apiKeyEnv` in `service.env` next to the config, readable by you only, and `pair doctor` says when one is missing there |
 | `contextWindow` | Tokens of conversation Pair keeps for this model (at least 16384 for the Partner). Pair compacts the conversation before it crowds out the reply. Without it, Pair asks as the daemon starts: a provider's model has its window from pi-ai's catalog; an OpenAI-compatible server is asked what it serves (vLLM and SGLang list it, llama.cpp's `/props` and LM Studio's model info have it); a found window above 131072 is held to that, since every turn sends the whole conversation. Where nothing says (Ollama, many proxies), it is 32768. `pair doctor` shows where the window came from, and warns when yours is larger than the server serves |
 | `maxTokens` | The Partner's longest answer, its thinking included (default 2048 plus room for its most thinking: 10240 with the default levels, and at most a third of `contextWindow`). The Watcher always answers with one number |
 | `reasoning` | Whether Pair sets the model's thinking. The Partner's default is `true`, so it thinks as `thinking` says; set `false` for a model that cannot think. The Watcher's default is `false`: set `true` for a model that thinks by default, so Pair can switch its thinking off. A provider's model has it from pi-ai's catalog, whatever the role |
@@ -79,10 +87,28 @@ the Watcher does not. Details in [watcher.md](watcher.md#thinking-the-partner-no
 | `keepWarm` | While you work, ask the Watcher's model for one token every 4 minutes, so a server that unloads idle models keeps it loaded. Default `true` for an `openai` Watcher, `false` for an `anthropic` one ([watcher.md](watcher.md#keep-warm)) |
 | `typingPauseMs` | How long after a keystroke you count as typing, default 2000 |
 | `testOnSave` | A test command per project, run when you save ([tests-on-save.md](tests-on-save.md)) |
+| `sessionRoots` | Folders that are projects of their own, for a monorepo ([session roots](#session-roots)) |
+| `agents` | The relay of your other agents' news, from herdr and the `board`: `false` turns it off ([agents.md](agents.md#configure)) |
 | `voice` | Push-to-talk with whisper.cpp; off until set ([voice.md](voice.md)) |
+| `taskCommand` | What `:Pair tasks` runs for each task you say yes to, as a list of words with `{title}` and `{description}`, never through a shell, for example `["gh", "issue", "create", "--title", "{title}", "--body", "{description}"]`. Without it, the tasks are copied as a checklist ([notes.md](notes.md#tasks-only-when-you-ask)) |
 | `board` | The herdr work board's command, default `"herdr-projects"`: the goal and the [context card](neovim.md#what-it-knows-the-context-card) read the board task of your branch. `null` turns it off |
 | `socket` | The daemon's socket path |
 | `dataDir` | Where Pair keeps its data ([data.md](data.md)) |
+
+## Session roots
+
+A project, with its own session, goal, chat and memory, is the git root of the folder Neovim and `pair` start in.
+In a monorepo that is too coarse; `sessionRoots` lists folders that are projects of their own. A folder ending in
+`/*` makes each folder in it one:
+
+```jsonc
+"sessionRoots": ["~/src/shop/packages/*", "~/src/shop/tools"]
+```
+
+Neovim started in `~/src/shop/packages/api/src` then pairs in the project `~/src/shop/packages/api`, and so does
+`pair` started there; the deepest listed folder wins. Start both in the package, or below it: a Neovim started at
+the monorepo's root stays in the root's project. Pair reads, points and suggests only inside the project, and its
+`testOnSave` entry is the package's folder.
 
 ## Talk levels
 
@@ -118,6 +144,11 @@ pair auth logout anthropic  # also `pair logout anthropic`
 - **API keys**: every provider takes one. The key is typed at a prompt that does not echo it. A key for your own
   server: `pair auth login my-server` (any name pi-ai does not know), then `"auth": "my-server"` in its model entry.
 - The daemon reads the file as it needs a key, so a login takes effect without a restart.
+- **Keys from environment variables** (`apiKeyEnv`): a service started at login does not get your shell's
+  environment, so `pair setup` stores each variable a model entry names, as this shell has it, in `service.env` next to
+  the config, readable by you only. The daemon takes the variable from its own environment first, else from that file,
+  as it needs the key. After changing the key, run `pair setup` again; `pair doctor` says which variable the service
+  would miss.
 
 ### Before you use a subscription
 

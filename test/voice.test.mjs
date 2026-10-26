@@ -288,7 +288,7 @@ test('the daemon: Neovim quitting mid-recording closes the microphone at once, a
   const whisper = join(dir, 'whisper-cli');
   writeFileSync(whisper, `#!/bin/sh\ntouch ${dir}/whisper-ran\necho " hello"\n`, {mode: 0o755});
   const config = parseConfig({
-    dataDir: dir, socket: join(dir, 'pair.sock'),
+    dataDir: dir, socket: join(dir, 'pair.sock'), agents: false, // never the real board of the machine running the tests
     models: {watcher: {api: 'openai', baseUrl: 'http://unused', model: 'w'}, partner: {api: 'openai', baseUrl: 'http://unused', model: 'p'}},
     voice: {model: 'unused.bin', whisper, record: `${toneCommand(30)} | (${marker}; cat)`, maxSeconds: 1},
   });

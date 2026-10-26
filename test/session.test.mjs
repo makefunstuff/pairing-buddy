@@ -101,6 +101,7 @@ test('an unasked remark that arrives while the user types again waits for their 
     ['chat', 'message', 'The name is wrong.'],
     ['chat', 'remark', undefined],
     ['editor', 'remark', 'The name is wrong.'],
+    ['editor', 'earcon', undefined],
   ]);
   assert.ok(sent.every(message => message.at - lastKey >= 2000), 'everything waited for a 2 s pause');
 });
@@ -607,6 +608,40 @@ test('the session\'s first run is the baseline: tests that were red already rais
   advance(3000);
   await pair.tick();
   assert.equal(sent.some(message => message.type === 'remark'), false);
+});
+
+test('green after a long red: the editor glows and says what passes again, the chat says how long it was red, and a regression sounds', async () => {
+  const {pair, root, sent, setReport, advance, tests} = saveSession();
+  const to = type => sent.filter(message => message.type === type).map(({to: target, type: _type, ...rest}) => [target, rest]);
+  setReport('go-test'); // the session's first run: red, the baseline
+  pair.receive({kind: 'save', file: join(root, 'cart/cart.go')});
+  await until(() => tests().length === 2, 'the first run');
+  assert.equal(tests()[1].redSince, 100_000, 'the statusline can say how long it has been red');
+  assert.deepEqual(to('earcon'), [], 'a red baseline is no regression');
+  advance(23 * 60_000);
+  setReport('go-test-pass');
+  pair.receive({kind: 'save', file: join(root, 'cart/cart.go')});
+  await until(() => tests().length === 4, 'the green run');
+  assert.equal(tests()[3].redSince, undefined);
+  assert.deepEqual(to('delight'), [['editor', {text: '`TestRate` and `TestTotal/two_items` pass again, after 23 min of red.'}]]);
+  assert.deepEqual(to('earcon'), [['editor', {sound: 'green'}]]);
+  assert.equal(sent.filter(message => message.to === 'chat').at(-1).text, '`go test ./...` passes again, after 23 min of red: 4 tests, 2 packages.');
+
+  setReport('go-test');
+  pair.receive({kind: 'save', file: join(root, 'cart/cart.go')});
+  await until(() => tests().length === 6, 'the regression');
+  assert.deepEqual(to('earcon').at(-1), ['editor', {sound: 'red'}]);
+});
+
+test('a number in the output of a command you run, holding still and then much better, is a delight; a long-failing build that passes is too', () => {
+  const {pair, sent} = session();
+  const ran = (output, extra = {}) => pair.receive({kind: 'command_end', cmd: './probe', exit: 0, output, at: 100_000, ...extra});
+  for (const probe of ['23.7', '23.8', '1.1']) ran(`avg probe ${probe}\n`);
+  assert.deepEqual(sent.filter(message => message.type === 'delight').map(message => message.text), ['avg probe 23.8 → 1.1, after 2 runs at 23.8.']);
+  pair.receive({kind: 'command_end', cmd: 'make', exit: 2, output: 'cc: error: x', at: 0});
+  pair.receive({kind: 'command_end', cmd: 'make', exit: 0, output: '', at: 15 * 60_000});
+  assert.equal(sent.filter(message => message.type === 'delight').at(-1).text, '`make` passes again, after 15 min of red.');
+  assert.deepEqual(sent.filter(message => message.type === 'earcon').map(message => message.sound), ['green', 'green']);
 });
 
 test('without Pair\'s pane, a save says once in the chat why the tests did not run, and the editors say it too', async () => {
