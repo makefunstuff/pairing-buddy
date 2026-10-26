@@ -112,6 +112,15 @@ export const scenes = {
       {wait: 200, say: 'line 26 wraps the head with `capacity`, which nothing declares: the ring keeps its size in `r->cap`'},
     ],
   },
+  // Delight, in C: you grow the interning table twice and the average probe holds still, because the hash was the
+  // problem. Its fix moves the number, and the editor notices, briefly. Pair runs `make -s run` on each save.
+  delight: {
+    project: 'intern',
+    goal: 'interning stays fast past 4000 names',
+    testOnSave: 'make -s run',
+    watcher: score(),
+    partner: [],
+  },
   // 04: you hold Alt-t and ask aloud; whisper.cpp hears it (for real: the stage plays `question` into the recorder
   // with espeak-ng), and Pair answers under your line.
   'push-to-talk': {

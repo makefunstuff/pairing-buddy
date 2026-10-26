@@ -4,9 +4,10 @@ import {isAbsolute, relative} from 'node:path';
 import {Budget} from './budget.mjs';
 import {commandPolicy} from './command-policy.mjs';
 import {contextCard} from './context-card.mjs';
+import {Delight, LONG_RED_MS} from './delight.mjs';
 import {describeState} from './describe.mjs';
 import {insideRoot, MAX_LINES, numberedLines, projectFile, readProjectPath} from './files.mjs';
-import {fold, initialState} from './fold.mjs';
+import {failed, fold, initialState} from './fold.mjs';
 import {decide} from './gate.mjs';
 import {gitStatus} from './git.mjs';
 import {Breakpoints, placeOf, stillTrue, urgent} from './held.mjs';
@@ -239,6 +240,7 @@ export class PairSession {
     this.goalSkipped = false; // the user said "later" to the goal question
     this.ledger = new Ledger({store, sessionId: record.id, changed: () => this.notify('editors', {type: 'ledger_changed'}), now});
     this.trailVerdict = null; // what the gate decided on the search trail last: {start, verdict, reason, score, bar}
+    this.delight = new Delight(); // the moments worth a glow, and the sounds while the user is away
   }
 
   get id() { return this.record.id; }
@@ -253,6 +255,7 @@ export class PairSession {
     this.breakpoints.see(folded);
     if (USER_EVENTS.has(event.kind)) this.usedAt = this.now();
     if (event.kind === 'save' && file && !file.startsWith('..')) this.testRuns?.saved(file);
+    if (event.kind === 'command_end') this.delighted(this.delight.command({cmd: event.cmd ?? '', failed: failed(this.state.commands.at(-1)), output: event.output}, folded.at));
     if (this.state.run !== run) this.showRun(this.state.run);
   }
 
@@ -265,6 +268,20 @@ export class PairSession {
     if (this.state.run !== run) return; // a newer run came while this one was placed
     this.runShown = {type: 'run', cmd: run.cmd, places};
     this.notify('editors', this.runShown);
+  }
+
+  /**
+   * A moment of delight.mjs: the editor the user used last lights up for a green, and says its line if it has one.
+   * Its sound plays only while the user is away from that editor, and only if they turned sounds on there.
+   */
+  delighted(moment) {
+    if (!moment) return;
+    if (moment.sound === 'green') this.notify('editor', {type: 'delight', text: moment.text});
+    this.earcon(moment.sound);
+  }
+
+  earcon(sound) {
+    this.notify('editor', {type: 'earcon', sound});
   }
 
   /** A test run on save starts or ends (see test-runs.mjs): the editors show it, and the session state takes it in. */
@@ -288,12 +305,15 @@ export class PairSession {
     this.receive({kind: 'test_run', cmd: run.label, tests: run.tests, files, saved: run.saved, reading: run.reading});
     const fresh = this.state.run !== last ? this.state.run.newWarnings.length : 0; // this run's
     const text = !red && fresh ? `${fresh} new warning${fresh === 1 ? '' : 's'}` : runText(run);
+    const moment = this.delight.testRun({red, failed: run.tests?.failed, newly: run.tests ? this.state.tests.newly : []}, this.now())
+      ?? (red || run.tests ? null : this.delight.numbers(run.label, run.output));
     this.ledger.add('ran', run.label, {data: {note: text, result: red ? 'fail' : 'pass'}, detail: {output: keptOutput(run.output)}});
-    this.showTests({type: 'tests', state: red ? 'fail' : 'pass', label: run.label, text, results: run.placed});
+    this.showTests({type: 'tests', state: red ? 'fail' : 'pass', label: run.label, text, results: run.placed, ...(red ? {redSince: this.delight.redSince} : {})});
     // The chat hears of a run when it turns red or green, or finds new failures; a run like the last one is no news.
     if (red && (!this.wasRed || (run.tests && this.state.tests.newly.length))) this.message('system', `\`${run.label}\` after you saved ${run.saved}: ${summaryOf(run, text)}`);
-    else if (!red && this.wasRed) this.message('system', `\`${run.label}\` passes again: ${text}.`);
+    else if (!red && this.wasRed) this.message('system', `\`${run.label}\` passes again${moment?.lasted >= LONG_RED_MS ? `, after ${Math.round(moment.lasted / 60_000)} min of red` : ''}: ${text}.`);
     this.wasRed = red;
+    this.delighted(moment);
   }
 
   /**
@@ -472,6 +492,7 @@ export class PairSession {
         this.lastRemark = id;
         this.notify('chat', {type: 'remark', id});
         this.notify('editor', {type: 'remark', id, text: words.join('\n'), target});
+        this.earcon('tick');
       });
       if (this.holding) this.hold({id, trigger, since, parts: this.holding}, target);
     } finally {
@@ -678,6 +699,7 @@ export class PairSession {
     await this.handBack();
     // The hand-back line: what Pair says it did, under the lines it changed, with how the tests went on them.
     if (this.handback) this.notify('editor', {type: 'handback', ...this.handback, text: this.words.join('\n')});
+    this.earcon('handback');
     // Only now does the conversation lose the Driver's tools. After a take-back during the answer, the policy
     // hook refused edit and type with a reason; a tool that vanished mid-answer leaves small models writing
     // the call as plain text, and the user sees nothing.

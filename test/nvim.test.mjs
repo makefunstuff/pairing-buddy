@@ -660,6 +660,57 @@ test('the ledger: :Pair today lists what Pair did; u undoes its edit after your 
   }
 });
 
+test('green after a regression: the sign that turned glows and settles, the statusline lights up once, one line says what passes; sounds only while away', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
+  const {project, watcher, remote, keys, status, stop} = await pairInNvim('totals', {testOnSave: 'cat report.json'});
+  const lua = expr => JSON.parse(remote(`luaeval("vim.json.encode(${expr})")`));
+  const marks = namespace => lua(`vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('${namespace}'), 0, -1, {details = true})`);
+  const sign = line => marks('pair_tests').find(([, row]) => row === line - 1)?.[3];
+  const words = () => marks('pair').map(([, , , details]) => details.virt_lines?.map(chunks => chunks.map(chunk => chunk[0]).join('')).join('|').trim()).find(Boolean);
+  const report = name => writeFileSync(join(project, 'report.json'), readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), 'utf8').replaceAll('/home/you/shop', project));
+  try {
+    mkdirSync(join(project, 'cart'));
+    mkdirSync(join(project, 'tax'));
+    writeFileSync(join(project, 'go.mod'), 'module example.com/shop\n');
+    writeFileSync(join(project, 'cart/cart_test.go'), 'package cart\n\nimport "testing"\n\nfunc TestTotal(t *testing.T) {\n}\n\nfunc TestEmptyCart(t *testing.T) {\n}\n');
+    writeFileSync(join(project, 'tax/tax_test.go'), 'package tax\n\nimport "testing"\n\nfunc TestRate(t *testing.T) {\n}\n');
+    watcher.setResponses(Array.from({length: 20}, () => fauxAssistantMessage([fauxText('0')]))); // the regression raises no remark
+    remote('execute("set termguicolors")'); // the glow needs true colours
+
+    report('go-test-pass');
+    keys(':edit cart/cart_test.go<CR>:w<CR>');
+    await until(() => status().startsWith('✓'), 'the green baseline');
+    report('go-test');
+    keys(':w<CR>');
+    await until(() => status().startsWith('✗') && sign(5)?.sign_hl_group === 'PairFail', 'the regression');
+
+    report('go-test-pass');
+    keys(':w<CR>');
+    await until(() => status().startsWith('✓'), 'green again');
+    await until(() => /^PairSettle/.test(sign(5)?.sign_hl_group ?? ''), 'the sign that turned green to glow');
+    assert.match(sign(5).line_hl_group, /^PairFadePairGlowLine/, 'its line lit too');
+    assert.equal(sign(8).sign_hl_group, 'PairPass', 'the test that passed already is just there');
+    assert.match(remote('luaeval("require(\'pair\').statusline()")'), /^%#PairSettlePairStatusGlowPairStatusPass\d\d#✓ %#PairSettlePairStatusGlowPairStatusDim\d\d#cat report.json/, 'the statusline lights up');
+    assert.equal(words(), '● TestRate and TestTotal/two_items pass again: the regression is fixed.');
+    await until(() => sign(5)?.sign_hl_group === 'PairPass' && !sign(5).line_hl_group, 'the glow to settle');
+    await until(() => /^%#PairStatusPass#/.test(remote('luaeval("require(\'pair\').statusline()")')), 'the statusline to settle');
+    await until(() => words() === undefined, 'the line to go after a few seconds', 8000);
+
+    // Sounds: off by default; on, they play only while Neovim does not have the focus.
+    const command = () => lua("require('pair.earcons').command('green') or vim.NIL");
+    assert.equal(command(), null, 'off by default');
+    keys(':lua require("pair.earcons").enabled = true<CR>');
+    assert.equal(command(), null, 'not while Neovim has the focus');
+    keys(':doautocmd FocusLost<CR>');
+    const away = await until(command, 'a sound while away');
+    assert.match(away.at(-1), /\/sounds\/green\.wav$/);
+    assert.ok(readFileSync(away.at(-1)).length > 1000);
+    keys(':doautocmd FocusGained<CR>');
+    await until(() => command() === null, 'silence once back');
+  } finally {
+    await stop();
+  }
+});
+
 test('a thought that can wait: a dot where it points and a word in the statusline while you type; Alt-j shows it at once', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
   const {watcher, partner, messages, remote, keys, status, stop} = await pairInNvim('count the lines');
   const marks = () => JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('pair'), 0, -1, {details = true}))")`));
