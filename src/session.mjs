@@ -9,6 +9,7 @@ import {fold, initialState} from './fold.mjs';
 import {decide} from './gate.mjs';
 import {gitStatus} from './git.mjs';
 import {plainLine} from './herdr.mjs';
+import {keptOutput, Ledger, ledgerDetail, today} from './ledger.mjs';
 import {RUN_TIMEOUT_MS, shellQuote} from './scout-pane.mjs';
 import {parseTestOutput, testSummary} from './test-output.mjs';
 import {TestRuns} from './test-runs.mjs';
@@ -186,6 +187,7 @@ export class PairSession {
     this.testsShown = null;
     this.runError = null; // the last run that could not run, said once in the chat
     this.wasRed = false; // the last run failed
+    this.ledger = new Ledger({store, sessionId: record.id, changed: () => this.notify('editors', {type: 'ledger_changed'}), now});
   }
 
   get id() { return this.record.id; }
@@ -203,7 +205,10 @@ export class PairSession {
     if (run.unsaved) return this.unsavedRun(run);
     if (run.state === 'error') {
       this.log(`tests on save: ${run.error}`);
-      if (run.error !== this.runError) this.message('system', `Pair could not run \`${run.label}\`: ${run.error}.`);
+      if (run.error !== this.runError) {
+        this.message('system', `Pair could not run \`${run.label}\`: ${run.error}.`);
+        this.ledger.add('ran', run.label, {data: {note: run.short, result: 'fail'}});
+      }
       this.runError = run.error;
       return this.showTests({type: 'tests', state: 'error', label: run.label, text: run.short});
     }
@@ -214,6 +219,7 @@ export class PairSession {
     const files = [...new Set(failing.map(test => relative(this.root, test.failure?.file ?? test.file)))];
     this.receive({kind: 'test_run', cmd: run.label, tests: run.tests, files, saved: run.saved});
     const text = runText(run);
+    this.ledger.add('ran', run.label, {data: {note: text, result: red ? 'fail' : 'pass'}, detail: {output: keptOutput(run.output)}});
     this.showTests({type: 'tests', state: red ? 'fail' : 'pass', label: run.label, text, results: run.placed});
     // The chat hears of a run when it turns red or green, or finds new failures; a run like the last one is no news.
     if (red && (!this.wasRed || (run.tests && this.state.tests.newly.length))) this.message('system', `\`${run.label}\` after you saved ${run.saved}: ${run.tests ? testSummary(run.tests) : text}`);
@@ -233,6 +239,7 @@ export class PairSession {
       return this.notify('editors', this.testsShown ?? {type: 'tests', state: 'idle'});
     }
     const text = runText(run);
+    this.ledger.add('ran', run.label, {data: {note: `${text} · unsaved`, result: isRed(run) ? 'fail' : 'pass'}, detail: {output: keptOutput(run.output)}});
     this.showTests({type: 'tests', state: isRed(run) ? 'fail' : 'pass', label, text, results: run.placed});
     this.message('system', `\`${label}\` after Pair's edit: ${run.tests ? testSummary(run.tests) : text}`);
   }
@@ -278,6 +285,7 @@ export class PairSession {
         }
         this.fired.add(trigger.key);
         if (decision.verdict === 'speak') return await (this.remarking = this.remark(trigger, decision.score, this.waits.get(trigger.key)?.ms));
+        this.ledger.quiet(trigger.kind, decision.reason, {budget: decision.score === undefined});
       }
     } finally {
       this.ticking = false;
@@ -340,7 +348,10 @@ export class PairSession {
     const id = this.remarkId = this.store.addRemark({sessionId: this.id, trigger: trigger.kind, score, at: this.now(), waitedMs});
     try {
       const input = watchInput(trigger, describeState(this.state, this.now()));
-      if (!(await this.talk(input, {kind: 'remark'}))) return this.store.dropRemark(id);
+      if (!(await this.talk(input, {kind: 'remark'}))) {
+        this.ledger.quiet(trigger.kind, 'Pair looked, and found nothing worth saying');
+        return this.store.dropRemark(id);
+      }
       this.budget.spend(this.now());
       this.lastRemark = id;
       // After the remark's own words, also when they wait for a pause in the user's typing. The editor shows
@@ -425,6 +436,7 @@ export class PairSession {
         this.words.push(answer);
         this.spoke = true;
       }
+      if (this.words.length) this.bookWords();
     } catch (error) {
       // A remark nobody asked for fails quietly: the statusline already says that the model is down.
       if (this.unasked) this.log(`remark failed: ${error.message}`);
@@ -435,6 +447,12 @@ export class PairSession {
       this.thinks = false;
     }
     return this.spoke;
+  }
+
+  /** What Pair said this turn, in the ledger: with its remark, rated there, and the place it pointed at. */
+  bookWords() {
+    const place = this.target && {file: this.target.file, line: this.target.line};
+    this.ledger.add('said', this.words.join('\n'), {data: {remark: this.remarkId ?? undefined, place}, detail: {words: this.words.join('\n\n')}});
   }
 
   /** Tells the editors whether the Partner's model is thinking now, in a turn that thinks. */
@@ -555,6 +573,13 @@ export class PairSession {
     });
   }
 
+  /** Asks the user whether Pair may do `what` with question `text`, and books their answer in the ledger. */
+  async allowed(what, text) {
+    const ok = await this.confirm(text);
+    this.ledger.add('asked', what, {data: {answer: ok ? 'yes' : 'no'}});
+    return ok;
+  }
+
   /** The user's answer to confirmation `id`. */
   answer(id, ok, note = ok ? 'Allowed.' : 'Not allowed.') {
     const resolve = this.confirmations.get(id);
@@ -578,6 +603,44 @@ export class PairSession {
     this.store.endSession(this.id, note, this.now());
     if (note) this.message('pair', `Session note:\n${note}`);
     this.notify('editors', {type: 'clear'});
+  }
+
+  // The ledger (see ledger.mjs): today's list, what an entry opens to, and Pair's edits undone or done again.
+
+  today() {
+    return today(this.store, this.root, this.now());
+  }
+
+  ledgerDetail(ids) {
+    return ledgerDetail(this.store, this.root, ids);
+  }
+
+  /**
+   * Undoes Pair's edit `id`, or does it again when it is undone: Neovim merges it into the buffer as it is now, as
+   * one undo step, unsaved. When the user changed those lines since, nothing changes and they are told why.
+   */
+  async undo(id) {
+    const action = this.store.action(id);
+    const patch = action?.root === this.root ? action.detail?.patch : null;
+    if (!patch) return;
+    const undone = action.state === 'undone';
+    const [base, other] = undone ? [patch.before, patch.after] : [patch.after, patch.before];
+    const reply = await this.requestEditor({type: 'revert', file: patch.file, base, other}).catch(error => ({error: error.message}));
+    const name = relative(this.root, patch.file);
+    if (reply?.error) {
+      const text = `Pair's change in ${name} was not ${undone ? 'made again' : 'undone'}: ${reply.error}.`;
+      this.message('system', text);
+      return this.notify('editor', {type: 'message', sender: 'system', text});
+    }
+    this.ledger.update(id, {state: undone ? (action.kind === 'suggested' ? 'applied' : null) : 'undone'});
+    this.message('system', `${undone ? 'Made Pair\'s change again' : 'Undid Pair\'s change'} in ${name}, unsaved.`);
+  }
+
+  /** The user accepted Pair's suggestion `id`: from then on the ledger can undo it like the Driver's edit. */
+  applied(id, before, after) {
+    const action = this.store.action(id);
+    if (action?.root !== this.root || action.kind !== 'suggested' || !Array.isArray(before) || !Array.isArray(after)) return;
+    this.ledger.update(id, {state: 'applied', data: {undo: true}, detail: {patch: {file: action.data.place.file, before, after}}});
   }
 
   greet() {
@@ -609,6 +672,7 @@ export class PairSession {
     if (!path) return `No file ${file} in the project`;
     this.spoke = true;
     if (!this.target?.suggestion) this.target = {file: path, line, endLine, note, code};
+    this.ledger.add('pointed', `${file}:${line}, ${note}`, {data: {place: {file: path, line}}});
     this.show(() => {
       this.notify('editor', {type: 'point', file: path, line, endLine, note, code});
       this.message('pair', `${file}:${line} ${note}`);
@@ -620,6 +684,7 @@ export class PairSession {
     const path = await projectFile(this.root, file);
     if (!path) return `No file ${file} in the project`;
     const typing = this.now() - this.state.lastKeyAt < this.typingPauseMs;
+    this.ledger.add('showed', `${file}:${line}`, {data: {place: {file: path, line}, note: typing ? 'asked first: you were typing' : undefined}});
     this.notify('editor', {type: 'open', file: path, line, ask: typing});
     return typing ? 'The user is typing; they were asked to open it.' : 'opened in a split';
   }
@@ -635,8 +700,9 @@ export class PairSession {
     // The jump key goes to a suggestion before a point: that is where the one key that takes it works.
     this.target = {file: path, line, endLine, note, suggestion: true};
     const remark = this.remarkId; // now: a suggestion held for the user's pause is shown after the turn ended
+    const action = this.ledger.add('suggested', `${file}:${line}, ${note}`, {data: {place: {file: path, line}, remark: remark ?? undefined}});
     this.show(() => {
-      this.notify('editor', {type: 'suggest', file: path, line, endLine, text, note, remark});
+      this.notify('editor', {type: 'suggest', file: path, line, endLine, text, note, remark, action});
       this.message('pair', `${file}:${line}${endLine > line ? `-${endLine}` : ''} suggestion: ${note}\n${text}`);
     });
     return 'Shown in the editor. The user accepts it with one key or ignores it.';
@@ -649,7 +715,9 @@ export class PairSession {
     const path = await projectFile(this.root, file);
     const text = await this.bufferText(path, source.text);
     const first = Math.max(1, from ?? 1);
-    this.notify('editor', {type: 'look', file: path, from: first, to: Math.min(text.split('\n').length, to ?? first + MAX_LINES - 1)});
+    const last = Math.min(text.split('\n').length, to ?? first + MAX_LINES - 1);
+    this.ledger.add('read', `${relative(this.root, path)} ${first}-${last}`, {data: {place: {file: path, line: first}}});
+    this.notify('editor', {type: 'look', file: path, from: first, to: last});
     return numberedLines(text, from, to);
   }
 
@@ -675,8 +743,10 @@ export class PairSession {
     if (!(await insideRoot(this.root, path))) return `Cannot search ${path}: not inside the project`;
     // Always with a path: rg without one searches its stdin when that is not a terminal.
     const result = await this.inPane(`rg --line-number --no-heading --color never --max-columns 200 --max-count 20 -- ${shellQuote(pattern)} ${shellQuote(path)}`);
-    if (result.exit === 1) return 'No matches.';
     const lines = result.output.split('\n');
+    const found = result.exit === 0 ? `${lines.length} ${lines.length === 1 ? 'match' : 'matches'}` : result.exit === 1 ? 'no matches' : `exit ${result.exit}`;
+    this.ledger.add('searched', `${pattern}${path === '.' ? '' : ` in ${path}`}`, {data: {note: found}, detail: {output: keptOutput(result.output)}});
+    if (result.exit === 1) return 'No matches.';
     const more = lines.length > SEARCH_LINES ? `\n(${lines.length - SEARCH_LINES} more lines; search a narrower path)` : '';
     // Small models follow an instruction next to the result far better than one in the system prompt.
     return `${result.exit === 0 ? '' : `exit ${result.exit}\n`}${lines.slice(0, SEARCH_LINES).join('\n')}${more}\n\nName these places (file:line) in your answer.`;
@@ -687,13 +757,18 @@ export class PairSession {
     if (this.unasked) return 'Not now: run commands only when the user asks. Read and search instead.';
     const policy = commandPolicy(command);
     if (policy.verdict === 'refuse') {
+      this.ledger.add('refused', command, {data: {note: policy.reason}});
       this.message('system', `Pair may not run \`${command}\`: ${policy.reason}.`);
       return `Refused: ${policy.reason}. Do not try another way; tell the user.`;
     }
-    if (policy.verdict === 'ask' && !(await this.confirm(`Pair wants to run \`${command}\` in its pane (${policy.reason}). Allow?`))) {
+    if (policy.verdict === 'ask' && !(await this.allowed(command, `Pair wants to run \`${command}\` in its pane (${policy.reason}). Allow?`))) {
       return 'The user did not allow it. Do not run it another way.';
     }
-    return runReport(await this.inPane(command));
+    const result = await this.inPane(command);
+    const tests = parseTestOutput(result.output);
+    const note = result.timedOut ? 'stopped after 2 min' : tests ? runText({...result, tests}) : result.exit ? `exit ${result.exit}` : undefined;
+    this.ledger.add('ran', command, {data: {note, result: result.exit === 0 && !result.timedOut ? 'pass' : 'fail'}, detail: {output: keptOutput(result.output)}});
+    return runReport(result);
   }
 
   // The Driver's tools: they work only while the user hands Pair the wheel, and only in plain sight.
@@ -723,6 +798,10 @@ export class PairSession {
     // The editor says which lines it changed: lines the edit kept as they were are not Pair's.
     const count = text === '' ? 0 : text.replace(/\n$/, '').split('\n').length;
     this.handback = {file: path, line: reply.from ?? line, endLine: reply.to ?? line + Math.max(count, 1) - 1, tests: null};
+    // With the buffer's text before and after, the ledger can undo the edit later, after other edits too.
+    const patch = Array.isArray(reply.before) && Array.isArray(reply.after) ? {file: path, before: reply.before, after: reply.after} : null;
+    const typed = count ? `${count === 1 ? 'a line' : `${count} lines`} in ${file}` : `lines ${line}-${endLine} of ${file} deleted`;
+    this.ledger.add('typed', typed, {data: {place: {file: path, line: this.handback.line}, note: 'one undo step', undo: !!patch}, detail: patch && {patch}});
     const done = 'Changed, as one undo step. That was your one edit: say in one sentence what you changed';
     // The tests on save read the saved file, so a check there would see the old code and send small models in circles.
     if (!this.testRuns) return `${done}. The file on disk changes only when the user saves, so do not run the tests now.`;
@@ -740,13 +819,17 @@ export class PairSession {
     const pane = this.state.terminalPane;
     if (!this.panes || !pane) return 'No terminal pane of the user is known yet; say the command instead.';
     const policy = commandPolicy(text);
-    if (policy.verdict === 'refuse') return `Refused: ${policy.reason}. Do not try another way; tell the user.`;
-    if (!(await this.confirm(`Pair wants to type \`${text}\` into your terminal (pane ${pane}), without pressing Enter. Allow?`))) {
+    if (policy.verdict === 'refuse') {
+      this.ledger.add('refused', text, {data: {note: policy.reason}});
+      return `Refused: ${policy.reason}. Do not try another way; tell the user.`;
+    }
+    if (!(await this.allowed(text, `Pair wants to type \`${text}\` into your terminal (pane ${pane}), without pressing Enter. Allow?`))) {
       return 'The user did not allow it.';
     }
     const after = this.wheel();
     if (after) return after;
     await this.panes.type(pane, text);
+    this.ledger.add('typed', text, {data: {note: 'in your terminal, without Enter'}});
     return 'Typed. The user decides whether to press Enter.';
   }
 }

@@ -2,6 +2,7 @@
 import {connect} from 'node:net';
 import {clearLine, createInterface, cursorTo} from 'node:readline';
 import {LEVELS} from './config.mjs';
+import {ledgerText} from './ledger.mjs';
 import {readMessages, sendMessage} from './protocol.mjs';
 
 const STYLE = {pair: '\x1b[36mpair\x1b[0m', user: '\x1b[2myou\x1b[0m', system: '\x1b[2m··\x1b[0m'};
@@ -13,6 +14,7 @@ const HELP = `/goal <text>   set the session goal
 /drive [what]  hand Pair the wheel for one change (or say "you take it" or "your turn")
 +  or /useful  Pair's last remark was useful
 -  or /noise   it was not (a remark you never see counts as not useful too)
+/today         what Pair did here today
 /end           end the session and write a session note
 /quit          close this pane (the session goes on)
 anything else  ask Pair`;
@@ -33,6 +35,7 @@ export function parseInput(line) {
   if (command === '/navigate') return {type: 'role', role: 'navigator'};
   if (command === '/drive') return {type: 'drive', text: arg};
   if (command === '/end') return {type: 'end'};
+  if (command === '/today') return {type: 'today'};
   if (text === '+' || command === '/useful') return {type: 'feedback', useful: true};
   if (text === '-' || command === '/noise') return {type: 'feedback', useful: false};
   if (command === '/quit') return {local: 'quit'};
@@ -109,6 +112,7 @@ export function runChat(socketPath) {
       print(`${STYLE.pair} ${message.text} [y/N]`);
     }
     if (message.type === 'confirmed' && message.id === confirming) confirming = null; // answered, or timed out
+    if (message.type === 'ledger') print(ledgerText(message).map(line => `${STYLE.system} ${line}`).join('\n'));
     if (message.type === 'remark') print(`${STYLE.system} \x1b[2m+ useful  - noise\x1b[0m`);
     // What you type is already on screen; your own lines come back only as history.
     const echo = message.sender === 'user' && !message.history;
