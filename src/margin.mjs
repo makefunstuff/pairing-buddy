@@ -37,9 +37,10 @@ export const taskArgs = (command, task, description) => command.map(word => word
 export class NoteMargin {
   /**
    * `state()` is the session's state, and `receive(event)` folds an event into it. `read(path)` is a file's text
-   * as the editor has it ('' when there is none), `ask(system, input, {asked})` the model's answer (`asked`: the user
-   * asked for it), `notify` and `message` as for a PairSession. `ready()` says whether the model may read a note now. `taskCommand` is the command line, as words, that
-   * :Pair tasks runs for each task the user says yes to; without it, the editor copies them.
+   * as the editor has it ('' when there is none), `ask(system, input, {asked})` the model's answer (`asked`: the
+   * user asked for it), `notify` and `message` as for a PairSession. `ready()` says whether the model may read a
+   * note now. `taskCommand` is the command line, as words, that :Pair tasks runs for each task the user says yes
+   * to; without it, the editor copies them.
    */
   constructor({root, state, receive, read, ask, notify, message, typingPauseMs, ready = () => true, taskCommand = null, log = () => {}, now = Date.now}) {
     Object.assign(this, {root, state, receive, read, ask, notify, message, typingPauseMs, ready, taskCommand, log, now});
@@ -151,7 +152,7 @@ export class NoteMargin {
     note.model = note.model.filter(mark => mark !== asked && mark !== marked);
     this.notify('editor', {type: 'decision_log', file: logPath, text: result.text, line: result.line, name});
     const superseded = result.superseded.length ? ` It supersedes: ${result.superseded.join('; ')}.` : '';
-    this.message('system', `Logged in ${name}: ${decision}.${superseded} Save it to keep it.`);
+    this.message('system', `Logged in ${name}: ${decision.replace(/\.$/, '')}.${superseded} Save it to keep it.`);
     await this.refresh(file);
   }
 
