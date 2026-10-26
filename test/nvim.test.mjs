@@ -615,3 +615,56 @@ test('another remark leaves a held thought\'s dot and Alt-j alone; its own remar
     server.close();
   }
 });
+
+test('a build or run on save: crashes and compiler errors on their lines, the jump key goes there, new warnings speak and old ones stay quiet', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
+  const {project, watcher, remote, keys, status, stop} = await pairInNvim('spread the keys', {testOnSave: 'cat run.out; exit $(cat run.exit)'});
+  const marks = () => JSON.parse(remote('luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace(\'pair_runs\'), 0, -1, {details = true}))")'));
+  const signs = () => marks().filter(([, , , details]) => details.sign_text).map(([, row, , details]) => [row + 1, details.sign_text.trim(), details.sign_hl_group]);
+  const notes = () => marks().filter(([, , , details]) => details.virt_text).map(([, row, , details]) => [row + 1, details.virt_text.map(chunk => chunk[0]).join('')]);
+  const printing = (output, exit) => {
+    writeFileSync(join(project, 'run.out'), output.replaceAll('/home/dev/probe', project));
+    writeFileSync(join(project, 'run.exit'), String(exit));
+  };
+  const fixture = name => readFileSync(new URL(`./fixtures/runs/${name}.txt`, import.meta.url), 'utf8');
+  try {
+    writeFileSync(join(project, 'probe.c'), Array.from({length: 24}, (_, i) => `  int line${i + 1} = ${i + 1};`).join('\n') + '\n');
+    watcher.setResponses(Array.from({length: 10}, () => fauxAssistantMessage([fauxText('0')])));
+
+    printing(fixture('clang-errors').replaceAll('bad.c', 'probe.c'), 1);
+    keys(':edit probe.c<CR>:w<CR>');
+    await until(() => status() === '✗ does not build · probe.c:3 +1', 'the build error in the statusline');
+    await until(() => signs().length === 2, 'the signs');
+    assert.deepEqual(signs(), [[3, '✗', 'PairFail'], [4, '✗', 'PairFail']]);
+    assert.deepEqual(notes(), [[3, '   ✗ use of undeclared identifier \'undefined_thing\''], [4, '   ✗ expected \';\' after expression']]);
+    keys('gg<M-j>');
+    await until(() => remote('line(".")') === '3' && remote('col(".")') === '11', 'the jump to the first error, at its column');
+
+    printing(fixture('asan-segv'), 1);
+    keys(':w<CR>');
+    await until(() => status() === '✗ AddressSanitizer: SEGV · probe.c:10', 'the crash in the statusline');
+    await until(() => signs().length === 1, 'the crash on its line');
+    assert.deepEqual(notes(), [[10, '   ✗ AddressSanitizer: SEGV']]);
+    keys('gg<M-j>');
+    await until(() => remote('line(".")') === '10', 'the jump to the frame in the project\'s code');
+
+    // The command ran before in this session, so a warning it prints now is news; printed again, it is not.
+    const warning = 'probe.c:21:7: warning: unused variable \'spare\'\n';
+    printing(warning, 0);
+    keys(':w<CR>');
+    await until(() => status() === '✓ cat run.out; exit $(cat run.exit) · 1 new warning', 'the new warning in the statusline');
+    await until(() => signs().length === 1 && signs()[0][0] === 21, 'the warning on its line');
+    assert.deepEqual(signs(), [[21, '△', 'PairWarn']]);
+    assert.deepEqual(notes(), [[21, '   △ unused variable \'spare\'']]);
+    printing(warning, 0);
+    keys(':w<CR>');
+    await until(() => signs()[0]?.[2] === 'PairWarnQuiet', 'the same warning again: quiet');
+    assert.deepEqual(notes(), [], 'no words for a warning that is no news');
+
+    printing('190000 keys  load 0.72  avg probe 1.3\n', 0);
+    keys(':w<CR>');
+    await until(() => signs().length === 0, 'a clean run to clear the marks');
+    assert.equal(remote('maparg("<M-j>", "n")'), '', 'the jump key went with the run\'s places');
+  } finally {
+    await stop();
+  }
+});

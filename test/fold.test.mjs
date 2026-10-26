@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {errorSignature, failed, fold, initialState} from '../src/fold.mjs';
+import {errorSignature, failed, failureLine, fold, initialState} from '../src/fold.mjs';
+import {readRun} from '../src/run-output.mjs';
 
 const foldAll = (events, state = initialState()) => events.reduce(fold, state);
 
@@ -155,4 +156,55 @@ test('a test run on save is the last test run, with the tests that fail now and 
   assert.deepEqual(second.tests.newly, ['TestLease'], 'compared with the run on save before it');
   assert.deepEqual(fold(second, run(['TestNoDouble', 'TestLease'], 12)).tests.newly, [], 'still red the same way: nothing new');
   assert.equal(fold(first, {kind: 'test_run', cmd: 'make', saved: 'a.go', tests: null, at: 9}), first, 'output that is no test run changes nothing');
+});
+
+test('a crash or a compiler error is a failure without an exit code, and its line names it', () => {
+  const segfault = {exit: null, output: './probe\nmake: *** [Makefile:2: run] Segmentation fault (core dumped)'};
+  segfault.reading = readRun(segfault.output);
+  assert.equal(failed(segfault), true, 'Segmentation fault says none of the words a failure is found by');
+  assert.equal(failureLine(segfault), 'Segmentation fault');
+  const build = {exit: null, output: 'probe.c:10:5: error: expected \u2018;\u2019 before \u2018return\u2019'};
+  build.reading = readRun(build.output);
+  assert.equal(failed(build), true);
+  assert.equal(failureLine(build), '1 error: probe.c:10: expected \u2018;\u2019 before \u2018return\u2019');
+  const warned = {exit: null, output: 'probe.c:9:7: warning: unused variable \u2018unused\u2019'};
+  warned.reading = readRun(warned.output);
+  assert.equal(failed(warned), false, 'a warning is no failure');
+});
+
+const build = (at, output, {cmd = 'make', exit = 0} = {}) => ({kind: 'command_end', pane: 'w1:p3', cmd, exit, output, at});
+const WARN = {unused: 'probe.c:9:7: warning: unused variable \'unused\' [-Wunused-variable]', sign: 'probe.c:21:14: warning: comparison of integers of different signs [-Wsign-compare]'};
+
+test('the last build or run that crashed or printed diagnostics is the state\'s run, until the same command runs clean', () => {
+  const crashed = foldAll([build(1, 'avg probe 23.7\nSegmentation fault (core dumped)', {cmd: './probe', exit: 139})], initialState({root: '/p'}));
+  assert.deepEqual([crashed.run.cmd, crashed.run.by, crashed.run.crash.signal], ['./probe', 'you', 'SIGSEGV']);
+  assert.equal(crashed.commands[0].reading.crash.text, 'Segmentation fault');
+  const other = fold(crashed, build(2, 'M probe.c', {cmd: 'git status'}));
+  assert.equal(other.run, crashed.run, 'another command that printed nothing of the kind leaves it');
+  const clean = fold(other, build(3, 'avg probe 1.3', {cmd: './probe'}));
+  assert.deepEqual([clean.run.cmd, clean.run.crash, clean.run.errors], ['./probe', null, []], 'the same command, clean now: nothing to show');
+});
+
+test('compiler paths are relative to where the command ran: the run keeps them relative to the project', () => {
+  const state = fold(initialState({root: '/p'}), {...build(1, 'probe.c:3:11: error: use of undeclared identifier \'x\'', {exit: 1}), cwd: '/p/src'});
+  assert.equal(state.run.errors[0].file, 'src/probe.c');
+});
+
+test('a new warning: one no build in the session printed before; each command\'s first run is its baseline', () => {
+  let state = foldAll([build(1, WARN.unused)]);
+  assert.deepEqual(state.run.newWarnings, [], 'there when the session started: no news');
+  state = fold(state, build(2, `${WARN.unused}\n${WARN.sign}`));
+  assert.deepEqual(state.run.newWarnings.map(warning => warning.line), [21]);
+  state = fold(state, build(3, WARN.unused.replace(':9:', ':12:')));
+  assert.deepEqual(state.run.newWarnings, [], 'a warning that moved with an edit above it is the same one');
+  state = fold(state, build(4, '', {cmd: 'make run'}));
+  state = fold(state, build(5, WARN.sign, {cmd: 'make run'}));
+  assert.deepEqual(state.run.newWarnings, [], 'make rebuilt only some files: a warning another build printed is still old');
+  const clean = foldAll([build(1, 'cc -o probe probe.c'), build(2, WARN.unused)]);
+  assert.equal(clean.run.newWarnings.length, 1, 'after a clean first build, the first warning is news');
+});
+
+test('a build on save is read like the user\'s: Pair\'s run is the state\'s run', () => {
+  const state = fold(initialState(), {kind: 'test_run', cmd: 'make run', saved: 'probe.c', tests: null, reading: readRun('', {exit: 139}), at: 4});
+  assert.deepEqual([state.run.cmd, state.run.by, state.run.crash.signal, state.tests], ['make run', 'pair', 'SIGSEGV', null]);
 });

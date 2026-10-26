@@ -1,5 +1,6 @@
 // The session state as a few short lines of text: what both models see instead of raw events.
 import {failed, failureLine} from './fold.mjs';
+import {readingSummary} from './run-output.mjs';
 import {testSummary} from './test-output.mjs';
 
 const ago = (now, at) => `${Math.max(0, Math.round((now - at) / 1000))} s ago`;
@@ -16,6 +17,12 @@ function currentFile(state) {
 
 const runBy = tests => (tests.saved ? `Pair, when the user saved ${tests.saved}` : tests.by === 'pair' ? 'Pair' : 'the user');
 const testsLine = (tests, now) => `Last test run: \`${tests.cmd}\` by ${runBy(tests)}, ${ago(now, tests.at)}: ${testSummary(tests)}`;
+
+function buildLine(run, now) {
+  const fresh = run.newWarnings.map(warning => `${warning.file}:${warning.line}: ${warning.message}`).slice(0, 3);
+  return `Last build or run: \`${run.cmd}\` by ${run.by === 'pair' ? 'Pair, on save' : 'the user'}, ${ago(now, run.at)}: `
+    + `${readingSummary(run) || 'clean'}${fresh.length ? `; new warnings: ${fresh.join('; ')}` : ''}`;
+}
 
 const looking = state => `The user is looking at: ${state.focus.target}${state.focus.scrolled ? ' (scrolled up)' : ''}`;
 const lastKey = (state, now) => `Last keystroke: ${state.lastKeyAt ? ago(now, state.lastKeyAt) : 'none yet'}`;
@@ -35,6 +42,7 @@ export function describeState(state, now) {
   const commands = state.commands.slice(-3).map(command => `- ${commandLine(command, now)}`);
   if (commands.length) lines.push(`Recent commands:\n${commands.join('\n')}`);
   if (state.tests) lines.push(testsLine(state.tests, now));
+  if (state.run) lines.push(buildLine(state.run, now));
   if (state.focus.target !== 'unknown') lines.push(looking(state));
   lines.push(lastKey(state, now));
   return lines.join('\n');

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {fold, initialState} from '../src/fold.mjs';
+import {readRun} from '../src/run-output.mjs';
 import {detectTriggers, fileStem, TIMING} from '../src/triggers.mjs';
 
 const foldAll = (events, state = initialState()) => events.reduce(fold, state);
@@ -170,4 +171,47 @@ test('a regression: the tests Pair ran on save fail where the run before did not
   assert.deepEqual(kinds(fold(red, run(['TestNoDoubleDelivery'], 5000)), 6000), [], 'red the same way again is no news');
   assert.deepEqual(kinds(red, 3000 + TIMING.recentMs + 1), [], 'old runs are history');
   assert.deepEqual(kinds(foldAll([run(['TestNoDoubleDelivery'], 1000)]), 2000), [], 'the session\'s first run, red already, is no regression');
+});
+
+const run = (at, output, {cmd = './probe', exit = null, pane = 'w1:p3'} = {}) => ({kind: 'command_end', pane, cmd, exit, output, at});
+const ASAN = '==4242==ERROR: AddressSanitizer: SEGV on unknown address 0x00000000c000\n    #0 0x55 in probe /p/probe.c:10\n    #1 0x55 in main /p/probe.c:17\n    #2 0x7f in __libc_start_main (/usr/lib/libc.so.6+0x278b8)';
+
+test('a crash is a trigger of its own, also while the user looks at it: the terminal says that, not where or why', () => {
+  const looking = foldAll([{kind: 'focus', target: 'terminal', pane: 'w1:p3', at: 0}, run(1000, ASAN, {exit: 1})], initialState({root: '/p'}));
+  const [trigger, ...rest] = detectTriggers(looking, 1500);
+  assert.deepEqual(rest, []);
+  assert.equal(trigger.kind, 'crash');
+  assert.deepEqual([trigger.file, trigger.line], ['probe.c', 10]);
+  assert.equal(trigger.detail, '`./probe` crashed (the user ran it): AddressSanitizer: SEGV at probe.c:10 in probe. '
+    + 'Its stack, innermost first: probe.c:10 (probe), probe.c:17 (main).', 'libc\'s frame names no line: it is no place');
+  const away = foldAll([{kind: 'focus', target: 'editor', pane: 'w1:p1', at: 0}, run(1000, 'Segmentation fault (core dumped)')]);
+  assert.deepEqual(kinds(away, 1000 + TIMING.lookGraceMs), ['crash'], 'a crash, not also a failed command');
+  assert.match(detectTriggers(away, 6000)[0].detail, /Segmentation fault\. It printed no stack/);
+});
+
+test('the same crash at the same place is raised once; again, it is the same error a second time', () => {
+  const first = foldAll([run(1000, 'Segmentation fault (core dumped)')]);
+  const [crash] = detectTriggers(first, 1500);
+  const again = fold(first, run(2000, 'Segmentation fault (core dumped)'));
+  assert.deepEqual(kinds(again, 2500, new Set([crash.key])), ['repeated_error']);
+  assert.deepEqual(kinds(again, 2000 + TIMING.recentMs + 1, new Set([crash.key])), [], 'old crashes are history');
+});
+
+test('a crash in a run on save is a trigger too', () => {
+  const state = fold(initialState({root: '/p'}), {kind: 'test_run', cmd: 'make run', saved: 'probe.c', tests: null, reading: readRun(ASAN, {root: '/p', exit: 1}), at: 1000});
+  const [trigger] = detectTriggers(state, 1500);
+  assert.equal(trigger.kind, 'crash');
+  assert.match(trigger.detail, /^`make run` crashed \(Pair ran it when the user saved\)/);
+});
+
+test('a new warning is raised once per build; a warning that was there before is no news', () => {
+  const warn = 'probe.c:21:14: warning: comparison of integers of different signs [-Wsign-compare]';
+  const baseline = foldAll([run(1000, 'probe.c:9:7: warning: unused variable \'unused\'', {cmd: 'make', exit: 0})]);
+  assert.deepEqual(kinds(baseline, 1500), []);
+  const state = fold(baseline, run(2000, `probe.c:9:7: warning: unused variable 'unused'\n${warn}`, {cmd: 'make', exit: 0}));
+  const [trigger] = detectTriggers(state, 2500);
+  assert.equal(trigger.kind, 'new_warning');
+  assert.deepEqual([trigger.file, trigger.line], ['probe.c', 21]);
+  assert.equal(trigger.detail, '`make` (the user ran it) printed a new warning, not in the builds before: probe.c:21: comparison of integers of different signs [-Wsign-compare]');
+  assert.deepEqual(kinds(state, 2500, new Set([trigger.key])), []);
 });

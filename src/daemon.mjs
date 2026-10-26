@@ -236,6 +236,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     });
     // A Neovim that connects (or reconnects) after a test run shows its result too.
     if (client.role === 'editor' && session.testsShown) sendMessage(client.socket, session.testsShown);
+    if (client.role === 'editor' && session.runShown) sendMessage(client.socket, session.runShown);
     if (client.role !== 'chat') return;
     watchHerdr(session, message.herdr);
     // A chat pane that reconnects after a daemon restart already shows the history.
@@ -272,7 +273,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     const watch = watches.get(session.root);
     watch?.markHooked(message.pane);
     const output = watch && message.pane ? await watch.output(message.pane, message.cmd).catch(() => '') : '';
-    receive(session, {kind: 'command_end', pane: message.pane ?? null, cmd: message.cmd, exit: message.exit, output});
+    receive(session, {kind: 'command_end', pane: message.pane ?? null, cmd: message.cmd, exit: message.exit, output, cwd: message.cwd});
   }
 
   async function handle(client, message) {

@@ -1,0 +1,11 @@
+Segmentation fault at address 0x0
+/home/dev/probe/z/seg.zig:4:20: 0x113e87c in main (seg.zig)
+    std.debug.print("{d}\n", .{p.*});
+                   ^
+/usr/lib/zig/std/start.zig:618:22: 0x113dabd in posixCallMainAndExit (std.zig)
+            root.main();
+                     ^
+/usr/lib/zig/std/start.zig:232:5: 0x113d351 in _start (std.zig)
+    asm volatile (switch (native_arch) {
+    ^
+???:?:?: 0x0 in ??? (???)

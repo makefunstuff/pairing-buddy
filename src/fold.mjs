@@ -1,8 +1,9 @@
 // Folds raw editor, terminal and chat events into one small session state.
 // Pure: `fold(state, event)` returns a new state and never looks at the clock.
+import {hasNews, readingSummary, readRun, warningKey} from './run-output.mjs';
 import {namedFiles, parseTestOutput, testSummary} from './test-output.mjs';
 
-const KEEP = {edits: 20, commands: 10, outputChars: 2000, diagnostics: 30};
+const KEEP = {edits: 20, commands: 10, outputChars: 2000, diagnostics: 30, buildCommands: 20, warnings: 200};
 
 export function initialState({root = null, goal = null} = {}) {
   return {
@@ -22,6 +23,8 @@ export function initialState({root = null, goal = null} = {}) {
     terminalPane: null, // the user's terminal pane they used last: where the Driver's type goes
     tests: null, // the last test run, the user's or Pair's: parsed by test-output.mjs, plus cmd, by, at and the files it names
     savedRunFailed: null, // the tests that failed in the last run on save; null before the session's first
+    run: null, // the last build or run that crashed or printed compiler errors or warnings, or ran clean after one: see afterRun
+    builds: {cmds: [], warnings: []}, // the commands run so far, and the warnings their output printed (warningKey)
   };
 }
 
@@ -29,11 +32,12 @@ const keepLast = (list, item, max) => [...list, item].slice(-max);
 
 /**
  * Whether a finished command failed. Without an exit code (herdr alone gives none), its parsed test results
- * decide, else its output.
+ * decide, else a crash or a compiler error in its output, else the words in it.
  */
 export function failed(command) {
   if (command.exit !== null && command.exit !== undefined) return command.exit !== 0;
   if (command.tests) return command.tests.failedCount > 0;
+  if (command.reading?.crash || command.reading?.errors.length) return true;
   return /(error|exception)\b|\bfail(ed|ure)?\b|\bpanic|\btraceback/i.test(command.output ?? '');
 }
 
@@ -43,9 +47,14 @@ export function errorLine(output = '') {
   return lines.find(line => /error|fail|exception|panic|traceback|assert/i.test(line)) ?? lines.at(-1) ?? '';
 }
 
-/** What a failed command says went wrong: its failed tests and first error when it ran tests, else its error line. */
+/**
+ * What a failed command says went wrong: its failed tests and first error when it ran tests, its crash or
+ * compiler errors when it had any, else its error line.
+ */
 export function failureLine(command) {
-  return command.tests?.failedCount ? testSummary(command.tests) : errorLine(command.output);
+  if (command.tests?.failedCount) return testSummary(command.tests);
+  if (command.reading?.crash || command.reading?.errors.length) return readingSummary(command.reading);
+  return errorLine(command.output);
 }
 
 /** Two failures with the same failure line share a signature, whatever numbers, times or ids they print. */
@@ -64,6 +73,26 @@ function testsAfter(state, tests, event, by) {
   return tests ? {...tests, cmd: event.cmd ?? '', by, at: event.at, files: namedFiles(event.output)} : state.tests;
 }
 
+/**
+ * The state after a build or run of `cmd` that run-output.mjs read. It becomes the state's `run` when it found
+ * something, or when it is the command of the last such run, which now ran clean. Its `newWarnings` are the
+ * warnings no output since the session began printed; the first run of each command is its baseline, so
+ * warnings already there when the session starts are never new.
+ */
+function afterRun(state, {cmd, by, at, reading}) {
+  const {builds} = state;
+  const known = builds.cmds.includes(cmd);
+  const newWarnings = known ? reading.warnings.filter(warning => !builds.warnings.includes(warningKey(warning))) : [];
+  const next = {
+    ...state,
+    builds: {
+      cmds: known ? builds.cmds : keepLast(builds.cmds, cmd, KEEP.buildCommands),
+      warnings: [...new Set([...builds.warnings, ...reading.warnings.map(warningKey)])].slice(-KEEP.warnings),
+    },
+  };
+  return hasNews(reading) || state.run?.cmd === cmd ? {...next, run: {cmd, by, at, ...reading, newWarnings}} : next;
+}
+
 function foldCommandEnd(state, event) {
   // Parsed from the whole output: the failed tests' names are often far above the kept tail.
   const tests = parseTestOutput(event.output);
@@ -73,11 +102,13 @@ function foldCommandEnd(state, event) {
     exit: event.exit ?? null,
     output: (event.output ?? '').slice(-KEEP.outputChars),
     tests,
+    // The shell hook says where the command ran: compilers name files relative to that.
+    reading: readRun(event.output, {exit: event.exit ?? null, root: state.root, cwd: event.cwd ?? state.root}),
     endedAt: event.at,
   };
   command.seen = lookingAt(state.focus, command);
   const next = {
-    ...state,
+    ...afterRun(state, {cmd: command.cmd, by: 'you', at: event.at, reading: command.reading}),
     commands: keepLast(state.commands, command, KEEP.commands),
     tests: testsAfter(state, tests, event, 'you'),
     terminalPane: command.pane ?? state.terminalPane,
@@ -124,8 +155,9 @@ const handlers = {
   // The tests Pair ran when the user saved `saved` (see test-runs.mjs), already parsed, with the files of the
   // failed tests. `newly` names the tests that fail now and did not in the last run on save. Only that run, of the
   // same command, says what passed before: the session's first run (also after a daemon restart) is the baseline,
-  // and nothing in it is new.
-  test_run: (state, event) => {
+  // and nothing in it is new. Its `reading` (run-output.mjs) is the crash or compiler output of a build on save.
+  test_run: (previous, event) => {
+    const state = event.reading ? afterRun(previous, {cmd: event.cmd, by: 'pair', at: event.at, reading: event.reading}) : previous;
     if (!event.tests) return state;
     const {tests: _list, ...tests} = event.tests;
     const before = state.savedRunFailed && new Set(state.savedRunFailed);
