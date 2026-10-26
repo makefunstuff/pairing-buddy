@@ -15,7 +15,7 @@ recording comes out the same each time.
   - The user's shell is Neovim's `:terminal`, with Pair's shell hook.
 - **The project** is [hookd/](hookd/), a small Go webhook service with a retry bug. Each scene starts it at its
   own point. The held thought is in C instead: [ringbuf/](ringbuf/), a ring buffer with a Makefile, and `clangd`
-  gives its diagnostics.
+  gives its diagnostics. Delight is in C too: [intern/](intern/), a string-interning table and its benchmark.
 - **Neovim** is clean: [init.lua](init.lua), the ayu colorscheme (fetched at a pinned commit), and scratch XDG
   directories. The held thought uses mini.base16 (also fetched at a pinned commit) on a grey palette with one
   warm red, and shows the real chat pane (`pair chat`) in a `:terminal` on the right.
@@ -27,6 +27,7 @@ recording comes out the same each time.
 | [hand-over](tapes/hand-over.tape) | 03 · the visible hand-over |
 | [take-back](tapes/take-back.tape) | a key while Pair drives takes the wheel back |
 | [held-thought](tapes/held-thought.tape) | the held thought, and one look on a grey palette |
+| [delight](tapes/delight.tape) | a number finally moves: the statusline lights up and one line says what moved |
 | [push-to-talk](tapes/push-to-talk.tape) | hold `Alt-t`, ask aloud, and Pair answers under your line |
 
 ## Recording
@@ -36,11 +37,11 @@ and the JetBrainsMono Nerd Font.
 
 ```sh
 npm ci                                  # in the repo root
-docs/captures/record.sh                 # all five scenes into docs/captures/out/, or name some
+docs/captures/record.sh                 # all six scenes into docs/captures/out/, or name some
 docs/captures/encode.sh                 # out/ -> site/media/ and docs/images/
 ```
 
-The push-to-talk scene is not in the default four: it also needs [whisper.cpp](../voice.md#1-build-whispercpp-cpu-only),
+The push-to-talk scene is not in the default six: it also needs [whisper.cpp](../voice.md#1-build-whispercpp-cpu-only),
 espeak-ng and FFmpeg. espeak-ng says the scene's question into the recorder, and whisper.cpp hears it for real:
 
 ```sh

@@ -35,6 +35,13 @@ It is one undo step, and any key halfway leaves no change at all. [Details](docs
 margin meanwhile, so Pair never breaks your train of thought for news that keeps. On a grey palette with one warm red,
 Pair's teal is the one other colour, in Neovim and in the chat pane. [Details](docs/neovim.md#the-held-thought).*
 
+![Exploring in C: the average probe holds still twice, then the hash fix moves it; the statusline lights up once and one line says what moved](docs/images/delight.gif)
+
+*When it goes green: the statusline lights up once and the test that turned glows. After a long red or a regression,
+or when a number in your benchmark finally moved the right way, one line says what is now true, and goes after five
+seconds. Off by default: short sounds for the same moments, only while you are away from Neovim.
+[Details](docs/neovim.md#when-it-goes-green).*
+
 **Website:** [makefunstuff.github.io/pairing-buddy](https://makefunstuff.github.io/pairing-buddy/): the concept, three moments in Neovim, roles, and install (source in [`site/`](site/)).
 
 **Video** (3 min): the tour above, with its captures, script and how to render it again, is in [docs/video](docs/video/).
@@ -290,7 +297,10 @@ You choose the command, per project, in the config; the model never chooses or s
   suggests the fix where it breaks (or points at the cause); its words show under your line, `Alt-j` goes to the
   suggestion and `Alt-y` takes it.
 - Other runners work too (`cargo test`, `pytest`, `npm test`): the statusline and the regressions use their
-  output, without signs.
+  output, without signs. So does any command, `make -s run` or a benchmark: it is red when it exits with an error.
+- When the run turns green after a red, Neovim lights up once; after ten minutes of red, or a regression, one line
+  under yours says what passes again, and a number in the output that held still and then moved the right way gets
+  the same moment. [Details](docs/neovim.md#when-it-goes-green).
 - After the Driver's edit, the same command runs once on your unsaved buffer: with `go test -overlay`, or for other
   runners in a scratch copy of the project (git's files and ignored files; ignored folders are left out, so builds and
   caches stay in the copy, and only dependency folders such as `node_modules` are linked). The
@@ -305,7 +315,7 @@ The lazy.nvim spec is in [Install](#install). Without a plugin manager: `vim.opt
 
 What Pair shows in Neovim, and how it looks, is in **[docs/neovim.md](docs/neovim.md)**: its words under the line you are on, which fade in and go with your next edit; its gaze in the line numbers while it reads; the lines it points at, and `Alt-j` to go there; suggestions; remarks held for your next break, with a `•` in the margin; and one accent colour taken from your colorscheme, in light and dark, kept away from its error colour, and a quiet teal on a grey palette.
 
-Options for `setup`: `socket` (default: the daemon's default socket), `debounce_ms` (2000), `max_points` (points kept at once, 5), `jump_key` (goes where Pair pointed last, or shows a held thought; mapped in Normal mode while it points somewhere or holds a thought, only where you have no mapping of your own; default `'<M-j>'`, `false` for none), `accept_key` (accepts a suggestion; mapped in Normal mode, only in the buffer and only while a suggestion shows; default `'<M-y>'`, `false` for none; avoid `<Tab>`, which terminals send for Ctrl-I, the jumplist's forward jump), `listen_key` (hold it to speak to Pair, see [docs/voice.md](docs/voice.md); mapped in Normal and Visual mode, only where you have no mapping of your own; default `'<M-t>'`, `false` for none), `useful_key` and `noise_key` (your verdict on Pair's last unasked remark; mapped in Normal mode only while a remark waits for one, and only where you have no mapping of your own; defaults `'<M-u>'` and `'<M-n>'`, `false` for none), `motion` (fades, and the trail behind the gaze, `true`; without it the gaze still steps line by line), `glyphs` (Pair's marks, plain Unicode by default; see [docs/neovim.md](docs/neovim.md#setup)), `auto_connect` (connect at startup, `false`; the spec above sets it).
+Options for `setup`: `socket` (default: the daemon's default socket), `debounce_ms` (2000), `max_points` (points kept at once, 5), `jump_key` (goes where Pair pointed last, or shows a held thought; mapped in Normal mode while it points somewhere or holds a thought, only where you have no mapping of your own; default `'<M-j>'`, `false` for none), `accept_key` (accepts a suggestion; mapped in Normal mode, only in the buffer and only while a suggestion shows; default `'<M-y>'`, `false` for none; avoid `<Tab>`, which terminals send for Ctrl-I, the jumplist's forward jump), `listen_key` (hold it to speak to Pair, see [docs/voice.md](docs/voice.md); mapped in Normal and Visual mode, only where you have no mapping of your own; default `'<M-t>'`, `false` for none), `useful_key` and `noise_key` (your verdict on Pair's last unasked remark; mapped in Normal mode only while a remark waits for one, and only where you have no mapping of your own; defaults `'<M-u>'` and `'<M-n>'`, `false` for none), `motion` (fades, the glow of a green, and the trail behind the gaze, `true`; without it the gaze still steps line by line), `sounds` (short sounds for a green, a regression, a remark and the hand-back, only while Neovim does not have the focus, see [docs/neovim.md](docs/neovim.md#sounds-while-you-are-away); `false`), `sound_volume` (0 to 1, `0.5`), `glyphs` (Pair's marks, plain Unicode by default; see [docs/neovim.md](docs/neovim.md#setup)), `auto_connect` (connect at startup, `false`; the spec above sets it).
 
 Once connected, the plugin stays connected: when the daemon restarts (an upgrade, `systemctl --user restart`, a crash), it reconnects by itself, after 1, 2, 5, 10 and then every 30 seconds, and sends the current file again. `:Pair stop` disconnects for good.
 
@@ -332,7 +342,7 @@ Commands:
 
 For a statusline, `require('pair').status()` returns one quiet segment while connected: `● pair`, with the role and talk level only when they are not the usual ones (`● pair · scout`, `● pair · quiet`), `● reading worker.go` while Pair reads, `⠹ pair · thinking` while it thinks, `⠹ go test ./...`, `✗ 1 failing · TestX` or `✓ go test ./... · 4 tests, 3 packages` for the [tests on save](#tests-on-save) (with `(unsaved)` after the command for the run on the Driver's edit), and `◎ pair has the wheel · any key takes it back` while it drives (`· thinking` while its model thinks, the hint again while it types). It says `◌ pair · partner down` (or `models down`) while a model is down, `◌ pair · reconnecting` while the daemon is away, and is empty when the plugin is not connected. `require('pair').statusline()` is the same with Pair's highlight groups, for the `statusline` option or a statusline plugin's section.
 
-Highlight groups (`PairAccent`, `PairNote`, `PairCode`, `PairKey`, `PairSign`, `PairPoint`, `PairSpan`, `PairGaze`, `PairSuggestDelete`, `PairSuggestAdd`, `PairStatus`, `PairStatusDim`, `PairStatusWarn`, `PairStatusPass`, `PairPass`, `PairFail`, `PairFailNote`) are made from your colorscheme's colours and defined only where your colorscheme or config has not defined them; the [table in docs/neovim.md](docs/neovim.md#highlight-groups) says what each one colours.
+Highlight groups (`PairAccent`, `PairNote`, `PairCode`, `PairKey`, `PairSign`, `PairPoint`, `PairSpan`, `PairGaze`, `PairSuggestDelete`, `PairSuggestAdd`, `PairStatus`, `PairStatusDim`, `PairStatusWarn`, `PairStatusPass`, `PairStatusGlow`, `PairPass`, `PairGlow`, `PairGlowLine`, `PairFail`, `PairFailNote`) are made from your colorscheme's colours and defined only where your colorscheme or config has not defined them; the [table in docs/neovim.md](docs/neovim.md#highlight-groups) says what each one colours.
 
 ## Start a session in herdr
 
