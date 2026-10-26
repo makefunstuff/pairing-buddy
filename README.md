@@ -146,6 +146,11 @@ pointed at, suggested, ran and typed, what it asked, and the moments it stayed q
 output, and `u` undoes one of its edits later, after your own edits too, which stay.
 [docs/neovim.md](docs/neovim.md#the-ledger)
 
+**Notices a green.** When the tests turn green after a red, the statusline lights up once and the test that turned
+glows. After a long red or a regression, or when a number in your benchmark finally moved the right way, one line
+says what is now true, then goes. Off by default: short sounds for the same moments, only while you are away from
+Neovim. [docs/neovim.md](docs/neovim.md#when-it-goes-green)
+
 **Remembers and learns.** Each session ends with a short note the next one starts from, and your useful/noise verdicts
 tune when Pair talks. `pair stats` shows the numbers. [docs/memory.md](docs/memory.md)
 
