@@ -84,6 +84,8 @@ Other settings: `level` (`quiet`, `normal` or `chatty`), `typingPauseMs` (how lo
 Tips for local models:
 
 - The Watcher runs on every candidate remark and should answer in about a second: use a small model, keep `reasoning: true` for models that think by default (so thinking gets switched off), and keep `maxTokens` small.
+- A server that keeps only one model loaded at a time (llama.cpp's router mode, for example) reloads on every switch between two models. There, give both roles the same model; a mid-sized one answers the Watcher's short prompt in well under a second.
+- If the server's default temperature is high, give the Partner `"samplingParams": {"temperature": 0.3}`: its yes-or-no calls (speak or stay SILENT) get much steadier. The Watcher always runs at temperature 0.
 - The prompts and tools are deliberately simple (four tools, flat arguments, one instruction per message), so mid-sized local models handle them. Thinking is off by default for both roles; turn it on for the Partner with `thinking` if your model needs it.
 
 ## Install the Neovim plugin
