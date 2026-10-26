@@ -4,6 +4,8 @@
 # Neovim's XDG directories. Nothing of your own Neovim, pair config, history or daemon is read or touched. The clock
 # is UTC, so the times the ledger shows are not your time zone.
 set -euo pipefail
+# The crash scene crashes a program on purpose: no core dumps, and none handed to the crash reporter (see test/no-core.mjs).
+prlimit --pid $$ --core=1 2>/dev/null || ulimit -c 0
 HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$HERE/../.." && pwd)
 AYU=01faacb4cb76e8cf72ad9858c581d80876260ab3 # ayu-theme/ayu-vim, Apache-2.0
@@ -11,7 +13,7 @@ TELESCOPE=40aedd8a68c78a656a10a8d62d80c54af59420fb # nvim-telescope/telescope.nv
 PLENARY=74b06c6c75e4eeb3108ec01852001636d85a932b # nvim-lua/plenary.nvim, MIT: Telescope needs it
 MINI=561751e839b99a4baca36b9d963166b66d2536a6 # echasnovski/mini.nvim, MIT: only mini.base16
 SCENES=("$@")
-[ ${#SCENES[@]} -gt 0 ] || SCENES=(wrong-turn tests-on-save hand-over take-back held-thought search-trail ledger context-card notes)
+[ ${#SCENES[@]} -gt 0 ] || SCENES=(wrong-turn tests-on-save hand-over take-back held-thought search-trail ledger context-card crash notes)
 mkdir -p "$HERE/out"
 
 fetch() { # fetch <github repo> <commit> <dir>: one commit, no history

@@ -1,0 +1,11 @@
+bad.c: In function ‘main’:
+bad.c:3:11: error: ‘undefined_thing’ undeclared (first use in this function)
+    3 |   int x = undefined_thing;
+      |           ^~~~~~~~~~~~~~~
+bad.c:3:11: note: each undeclared identifier is reported only once for each function it appears in
+bad.c:4:20: error: expected ‘;’ before ‘return’
+    4 |   printf("%d\n", x)
+      |                    ^
+      |                    ;
+    5 |   return 0;
+      |   ~~~~~~            

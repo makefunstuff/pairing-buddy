@@ -4,7 +4,7 @@ import {readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {test} from 'node:test';
-import {PairSession} from '../src/session.mjs';
+import {PairSession, runReport} from '../src/session.mjs';
 
 function session({score = async () => ({value: 9, reason: 'worth it'}), answer = 'Line 2 is off.'} = {}) {
   const asked = [];
@@ -539,7 +539,7 @@ test('saving a source file runs the project\'s tests in Pair\'s pane, and the ed
   pair.receive({kind: 'save', file: join(root, 'cart/cart.go')});
   pair.receive({kind: 'save', file: join(root, 'docs.md')}); // notes are no reason to run the tests
   await until(() => tests().length === 2, 'the run to end');
-  assert.deepEqual(ran, [`cd '${root}' && go test -json ./... > '${outputFile}' 2>&1`], 'from the root, whatever Scout\'s cd did');
+  assert.deepEqual(ran, [`cd '${root}' && (go test -json ./...) > '${outputFile}' 2>&1`], 'from the root, whatever Scout\'s cd did');
   const [start, end] = tests();
   assert.deepEqual(start, {to: 'editors', type: 'tests', state: 'run', label: 'go test ./...'});
   assert.deepEqual([end.state, end.label, end.text], ['fail', 'go test ./...', '2 failing · TestRate +1']);
@@ -631,7 +631,7 @@ test('after the Driver\'s edit, the tests run on the unsaved buffer: the Partner
   setReport('go-test-pass');
   await pair.drive('your turn');
   const overlay = `${join(root, 'run.out')}.unsaved/overlay.json`;
-  assert.deepEqual(ran, [`cd '${root}' && go test -overlay '${overlay}' -json ./... > '${root}/run.out.unsaved/run.out' 2>&1`]);
+  assert.deepEqual(ran, [`cd '${root}' && (go test -overlay '${overlay}' -json ./...) > '${root}/run.out.unsaved/run.out' 2>&1`]);
   assert.match(reply, /^Changed, as one undo step\. That was your one edit: say in one sentence what you changed, and whether the tests pass\. `go test \.\/\.\.\.` on the unsaved buffer: 4 passed\.$/);
   const [start, end] = tests();
   assert.deepEqual(start, {to: 'editors', type: 'tests', state: 'run', label: 'go test ./... (unsaved)'});
@@ -690,4 +690,108 @@ test('a moment that comes up while the Partner answers waits for it; its remark 
   await new Promise(setImmediate);
   finish.shift()();
   await next;
+});
+
+/**
+ * A session in a small C project whose run on save is `make run`, with a stand-in for Pair's pane that writes
+ * `output` to the output file and ends with `exit`, as the real run would.
+ */
+function buildSession() {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'pair-build-')));
+  mkdirSync(join(root, 'src'));
+  for (const file of ['probe.c', 'src/table.c']) writeFileSync(join(root, file), 'int main(void) {\n  return 0;\n}\n'.repeat(8));
+  const sent = [];
+  const result = {output: '', exit: 0};
+  const pair = new PairSession({
+    record: {id: 1, root, conversation_id: 7, goal: 'spread the keys', level: 'normal'},
+    store: {addMessage() {}, addAction: () => 1, updateAction() {}, setRole() {}, addRemark: () => 1, dropRemark() {}},
+    partner: {thinkingOf: () => 'off', ask: async () => 'SILENT', setRole: async () => {}},
+    score: async () => ({value: 0, reason: 'no'}),
+    typingPauseMs: 2000,
+    testOnSave: {command: 'make run', outputFile: join(root, 'run.out')},
+    notify: (to, message) => { sent.push({to, ...message}); return 1; },
+    requestEditor: async () => null,
+    now: () => 100_000,
+  });
+  pair.scout = {
+    close: async () => {},
+    run: async command => {
+      writeFileSync(/> '([^']+)' 2>&1$/.exec(command)[1], result.output.replaceAll('/home/dev/probe', root));
+      return {exit: result.exit, output: '', timedOut: false};
+    },
+  };
+  const ends = () => sent.filter(message => message.type === 'tests' && message.state !== 'run');
+  /** Saves probe.c with the run printing `output` and ending with `exit`: the editors' last tests and run messages. */
+  const save = async (output, exit) => {
+    Object.assign(result, {output, exit});
+    const count = ends().length;
+    const shown = pair.runShown;
+    pair.receive({kind: 'save', file: join(root, 'probe.c')});
+    await until(() => ends().length > count, 'the run to end');
+    await until(() => pair.runShown !== shown, 'its places');
+    return {tests: ends().at(-1), run: sent.filter(message => message.type === 'run').at(-1)};
+  };
+  return {pair, root, sent, save, chat: () => sent.filter(message => message.to === 'chat').map(message => message.text)};
+}
+
+const runFixture = name => readFileSync(new URL(`./fixtures/runs/${name}.txt`, import.meta.url), 'utf8');
+
+test('a build on save that does not build: the statusline says where, the editors get each error\'s line', async () => {
+  const {root, save, chat} = buildSession();
+  const output = runFixture('gcc-errors').replaceAll('bad.c', 'probe.c') + 'src/table.c:5:1: warning: unused function [-Wunused-function]\nmissing.c:1:1: error: gone\n';
+  const {tests, run} = await save(output, 2);
+  assert.deepEqual([tests.state, tests.text], ['fail', 'does not build · probe.c:3 +2']);
+  assert.deepEqual(run.places.map(place => [place.file.slice(root.length), place.line, place.col, place.kind, place.new]), [
+    ['/probe.c', 3, 11, 'error', false],
+    ['/probe.c', 4, 20, 'error', false],
+    ['/src/table.c', 5, 1, 'warning', false],
+  ], 'a file that is not in the project is not shown');
+  assert.equal(run.places[0].text, '‘undefined_thing’ undeclared (first use in this function)');
+  assert.deepEqual(chat(), ['`make run` after you saved probe.c: 3 errors: probe.c:3: ‘undefined_thing’ undeclared (first use in this function)']);
+});
+
+test('a run on save that crashes: the signal from the exit code, the frame in the project\'s code, and a clean run clears it', async () => {
+  const {pair, root, save, chat} = buildSession();
+  let {tests, run} = await save('190000 keys  load 0.72\n', 139);
+  assert.deepEqual([tests.state, tests.text, run.places], ['fail', 'Segmentation fault', []], 'the shell said it in Pair\'s pane, not in the output: the exit code says it');
+  ({tests, run} = await save(runFixture('asan-segv'), 1));
+  assert.deepEqual([tests.state, tests.text], ['fail', 'AddressSanitizer: SEGV · probe.c:10']);
+  assert.deepEqual(run.places.map(place => [place.file.slice(root.length), place.line, place.kind, place.text]), [['/probe.c', 10, 'crash', 'AddressSanitizer: SEGV']]);
+  assert.deepEqual(chat(), ['`make run` after you saved probe.c: Segmentation fault'], 'red again is no news in the chat');
+  ({tests, run} = await save('190000 keys  load 0.72  avg probe 1.3\n', 0));
+  assert.deepEqual([tests.state, tests.text, run.places], ['pass', 'passed', []]);
+  assert.deepEqual(pair.runShown, {type: 'run', cmd: 'make run', places: []}, 'kept for an editor that connects later');
+});
+
+test('a build on save with a new warning says so in the statusline; a warning the first build printed is no news', async () => {
+  const {pair, root, save} = buildSession();
+  const warning = 'probe.c:9:7: warning: unused variable ‘unused’ [-Wunused-variable]\n';
+  let {tests, run} = await save(warning, 0);
+  assert.deepEqual([tests.state, tests.text, run.places[0].new], ['pass', 'passed', false]);
+  pair.receive({kind: 'edit', file: join(root, 'probe.c'), from: 21, to: 21});
+  ({tests, run} = await save(`${warning}probe.c:21:14: warning: comparison of integers of different signs [-Wsign-compare]\n`, 0));
+  assert.deepEqual([tests.state, tests.text], ['pass', '1 new warning']);
+  assert.deepEqual(run.places.map(place => [place.line, place.new]), [[9, false], [21, true]]);
+});
+
+test('a crash in the user\'s terminal shows on its line in the editors, with paths from where the command ran', async () => {
+  const {pair, root, sent} = buildSession();
+  pair.receive({kind: 'command_end', pane: 'w1:p3', cmd: './table', exit: 134, cwd: join(root, 'src'), output: 'table: table.c:4: main: Assertion `n > 0\' failed.\nAborted (core dumped)'});
+  await until(() => sent.some(message => message.type === 'run'), 'the run message');
+  const {places} = sent.find(message => message.type === 'run');
+  assert.deepEqual(places, [{file: join(root, 'src/table.c'), line: 4, col: null, kind: 'crash', text: 'Assertion `n > 0\' failed (SIGABRT)', new: false}]);
+  assert.match(pair.state.commands.at(-1).reading.crash.text, /^Assertion/);
+});
+
+test('Scout\'s report of a command says how a build or run went', () => {
+  assert.equal(runReport({exit: 139, output: 'avg probe 23.7\n'}), 'exit 139\nCrashed: Segmentation fault\navg probe 23.7\n');
+  assert.equal(runReport({exit: 2, output: 'bad.c:3:11: error: x undeclared\n'}).split('\n')[1], 'Build: 1 error: bad.c:3: x undeclared');
+});
+
+test('recursive make: an error in a sub-make\'s folder is placed on its file there', async () => {
+  const {root, save} = buildSession();
+  const output = `make -C src all\nmake[1]: Entering directory '/home/dev/probe/src'\ntable.c:5:3: error: expected ‘;’ before ‘}’ token\nmake[1]: Leaving directory '/home/dev/probe/src'\nmake: *** [Makefile:2: run] Error 2\n`;
+  const {tests, run} = await save(output, 2);
+  assert.equal(tests.text, 'does not build · table.c:5');
+  assert.deepEqual(run.places.map(place => [place.file, place.line, place.kind]), [[join(root, 'src/table.c'), 5, 'error']]);
 });

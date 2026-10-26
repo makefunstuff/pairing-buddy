@@ -59,6 +59,11 @@ Runs every test that needs no model, in under a minute, with scripted models and
   "later" skipping the question, `:Pair context` in a headless Neovim (buffers and jumps on the card, `x` hiding git
   and bringing it back, and a word when not connected), and sessions ending by themselves: after the idle time, and
   once the last Neovim closed, with a note only for a session that was used.
+- **Builds and crashes.** The crash and diagnostic readers on real output of gcc, clang, zig, lld, glibc, the
+  sanitizers, bash and make, recursive make included (and Odin's and C3's formats); signals from exit codes, never a
+  program's own words in a run that ended with exit 0; the frame in the project; paths from where a command ran; new
+  warnings only in files you edited; the crash and new-warning triggers; and in Neovim the `✗` and `△` on their lines,
+  `Alt-j` to the crash or first error at its column, and a clean run clearing them.
 - **Tests on save.** The JSON reports of go test (subtests, panics, build failures), jest and vitest, each test placed
   at its line; runs in Pair's pane one at a time; the regression trigger raised once per run with new failures.
 - **Tests on unsaved text.** A real `go test -overlay` passing on the buffer's fix while the file on disk fails; a copy
@@ -79,6 +84,12 @@ Runs every test that needs no model, in under a minute, with scripted models and
   for the Partner); the Watcher waiting while the Partner works in another project, and its remark saying how long it
   waited; a question cancelling the remark still being written (dropped, and no failure of the model); the context
   budget: the reply's room, compaction, and the instructions, tools and longest note fitting the smallest window.
+
+**No core dumps.** Tests that crash a program on purpose (and the captures' crash scene) run it through
+[test/no-core.mjs](../test/no-core.mjs), which sets the core limit to 1 byte. With systemd-coredump in
+`/proc/sys/kernel/core_pattern`, `ulimit -c 0` is not enough: the kernel still hands the crash to it, and it logs the
+crash and shows a notification. At 1 byte the kernel gives up before the pipe. A new test that crashes something on
+purpose should run it the same way (`bashWithoutCores(command)`).
 
 ## Live tests against real models
 
@@ -108,6 +119,8 @@ Stacks can name a `provider` too, with its login or key from `pair auth`. Withou
   the Navigator suggesting instead of editing.
 - **Memory:** a session note that names the goal, the change and the loose end; the next session answering "what did
   we leave open?" from it; the note not turning a noise moment into a remark.
+- **Builds and runs** (`test/live/runs.test.mjs`): a C program built and run for real with `cc`. A segfault gets a
+  point at its cause, a `-Wformat` warning a point at the `printf`, and an unused variable silence.
 - **Notes in the margin:** at most five specific marks on a design note, with its contradiction and a mark on what
   the code does; tasks with its open question as one; after a stalled question, one question back about it, through
   a real session; one question about a section that left the note, and silence for one that did not.

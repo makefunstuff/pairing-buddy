@@ -1,0 +1,2 @@
+./probe
+make: *** [Makefile:2: run] Segmentation fault (core dumped)

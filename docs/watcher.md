@@ -1,6 +1,6 @@
 # The Watcher: fast and well-judged
 
-Every candidate remark (a failed command you missed, the same error again, a new diagnostic, a stall, drift, the wrong turn, a regression, and in a Markdown note a stall after a question or a section that drifts) goes through the speak gate before the Partner writes a word. The gate asks the Watcher model for a score from 0 to 10, so the Watcher must answer in well under a second, and must not make the Partner's model slower. This page says how Pair keeps it that way.
+Every candidate remark (a failed command you missed, the same error again, a new diagnostic, a stall, drift, the wrong turn, a regression, a crash, a new warning, and in a Markdown note a stall after a question or a section that drifts) goes through the speak gate before the Partner writes a word. The gate asks the Watcher model for a score from 0 to 10, so the Watcher must answer in well under a second, and must not make the Partner's model slower. This page says how Pair keeps it that way.
 
 ## The order of the gate
 
@@ -72,6 +72,32 @@ says why in one or two sentences. Before it was told to keep your change, a fast
 user's fix about one time in three. Like every remark, the check thinks first. The
 live test accepts any fix that makes all the project's tests pass, and checks that by running them. In Neovim the words show under your
 line, and `Alt-j` goes to the suggestion, where `Alt-y` takes it.
+
+## Crashes and new warnings
+
+Builds and runs are read by `src/run-output.mjs` (see [builds.md](builds.md)), yours in the
+terminal and Pair's on save. Two triggers come from them: a crash is judged first of all, a new warning just
+before drift.
+
+`crash` is raised when the last build or run died of a signal (from its exit code, or the shell's or make's words
+when herdr gives no exit code) or reported a fault: a sanitizer, a failed assert, a panic. It is raised also while
+you look at the terminal, since the terminal says that it crashed, not why; it replaces `failed_command` for that
+command. Its key is the crash and its place, so the same crash at the same place is raised once; again, it is the
+same error a second time (`repeated_error`). The Watcher is asked how much hearing where and why it crashed would
+save you: 0 if the output already names the line and the cause plainly, 10 if you would have to hunt for it. The
+Partner gets the stack, innermost first, reads the code at the frame in the project (or the code you changed last
+when there is no stack), and points at the line with the characters that are wrong. Live, with a fast model: a bare
+segfault of a hash table whose mask you just removed scored 7 or 8, and the Partner pointed at the unmasked hash or
+the index it gives in every run.
+
+`new_warning` is raised once per build when it printed a warning in a file you edited in this session that no build
+before it in the session printed (each command's first run is its baseline; a file you did not touch, which an
+incremental build compiles again after a header changed, brings no news; the line is not part of a warning's
+identity, since it moves as you edit). The
+Watcher is asked how likely it is a real bug worth a word now: 0 for something untidy while exploring (an unused
+variable or parameter), 10 for a likely bug (an uninitialised value, a wrong format, an overflow, a missing return).
+The Partner reads the line and speaks only for a bug; otherwise it answers SILENT. Live: a `-Wformat` warning (`%d`
+with a double) scored 8 and got a point at the `printf`; an unused variable scored 2 and got SILENT.
 
 ## The search trail
 
