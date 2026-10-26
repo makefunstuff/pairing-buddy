@@ -109,7 +109,7 @@ The chat pane is optional: a Neovim alone is a whole session.
 
 **Chat commands.** `/goal <text>`, `/level quiet|normal|chatty`, `/scout`, `/navigate`, `/drive [what]`, `+` or
 `/useful` and `-` or `/noise` (your verdict on Pair's last unasked remark), `/today` (what Pair did here today, as in
-`:Pair today`, without the keys), `/agents` (your other agents and board tasks), `/end`, and `/quit` (closes the pane; the
+`:Pair today`, without the keys), `/agents` (your other agents and board tasks), `?` or `/why` (the idea worth keeping behind what Pair said last), `/end`, and `/quit` (closes the pane; the
 session goes on). A line that starts with "you take it" or "your turn" hands Pair the wheel too; anything else is a
 question for Pair. When Pair asks before running or typing a command, your next line is the answer: `y` or `yes`
 allows it, anything else declines.
@@ -123,10 +123,16 @@ eval "$(pair shell-hook bash)"   # or zsh
 **Without herdr**, run `pair chat` in any terminal. Pair then sees your editor and, with the shell hook, your
 commands' exit codes, but no terminal output.
 
-**Several projects** work at once: each project (git root) has its own session, chat pane and goal, and the daemon
-serves them all. Several Neovims in one project share its session; Pair shows points, suggestions and edits in the
-Neovim you used last (the one that last sent an edit, a cursor move or a file change), and reads a file from
-whichever Neovim has it loaded.
+**Several projects** work at once: each project has its own session, chat pane and goal, and the daemon serves them
+all. A project is the git root of the folder Neovim and `pair` start in, so each git worktree is a project of its
+own: two pieces of work in one repository each get their own session in their own worktree. In a monorepo, where
+the git root is too coarse, [`sessionRoots`](config.md#session-roots) makes smaller folders projects.
+
+**Several Neovims** in one project share its session. Pair shows points, suggestions and edits in the Neovim you are
+in: the one with focus, which Neovim learns from the terminal's focus reports and Pair from herdr's focused pane;
+when none has it (you are in the chat pane, or the browser), the one you were in last. A Neovim's own doings, such
+as its LSP's diagnostics or a file it reloads while you are elsewhere, never make it the one. Pair reads a file from
+whichever Neovim has it loaded, the one you are in first.
 
 **Restarts.** If the daemon restarts, the chat pane says so, waits for it and carries on, without printing the
 history again. Neovim reconnects by itself too ([neovim.md](neovim.md#setup)).

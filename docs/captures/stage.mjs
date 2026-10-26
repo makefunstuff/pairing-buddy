@@ -5,7 +5,7 @@
 import {execFileSync, spawn} from 'node:child_process';
 import {chmodSync, cpSync, existsSync, mkdirSync, openSync, writeFileSync} from 'node:fs';
 import {connect} from 'node:net';
-import {join} from 'node:path';
+import {basename, join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {readMessages, sendMessage} from '../../src/protocol.mjs';
 import {standInHerdr} from './herdr.mjs';
@@ -22,22 +22,24 @@ if (!/^\/tmp\/paircap\.[^/]+$/.test(dir ?? '')) throw new Error('the stage needs
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const log = line => console.error(`${new Date().toISOString().slice(11, 23)} ${line}`);
 
-// The project (hookd, unless the scene names another), committed as it is when the scene starts; a Go project's
-// packages built, so the first test run is quick. A scene of the blank page starts in a folder of its own with no
-// git yet: empty, or with what its setup puts there.
-const project = join(dir, scene.blank ?? scene.project ?? 'hookd');
+// The project (hookd, unless the scene names another), committed as it is when the scene starts; built with the
+// scene's `build`, or a Go project's packages, so the first run is quick. A scene of the blank page starts in a folder
+// of its own with no git yet: empty, or with what its setup puts there.
+const source = join(HERE, scene.project ?? 'hookd');
+const project = join(dir, scene.blank ?? basename(source));
 if (scene.blank) {
   mkdirSync(project);
   scene.setup?.(project);
 } else {
-  cpSync(join(HERE, scene.project ?? 'hookd'), project, {recursive: true});
+  cpSync(source, project, {recursive: true});
   scene.setup?.(project);
   const git = (...args) => execFileSync('git', ['-c', 'user.name=dev', '-c', 'user.email=dev@example.com', ...args], {cwd: project});
   git('init', '-q');
   git('add', '-A');
   git('commit', '-qm', 'hookd');
   if (scene.branch) git('checkout', '-qb', scene.branch);
-  if (existsSync(join(project, 'go.mod'))) execFileSync('go', ['test', '-count=1', '-run', '^$', './...'], {cwd: project, stdio: 'ignore'});
+  if (scene.build) execFileSync(scene.build[0], scene.build.slice(1), {cwd: project, stdio: 'ignore'});
+  else if (existsSync(join(project, 'go.mod'))) execFileSync('go', ['test', '-count=1', '-run', '^$', './...'], {cwd: project, stdio: 'ignore'});
 }
 
 // The scene's other agents: a stand-in board (its command prints the list; its task files say where each task's

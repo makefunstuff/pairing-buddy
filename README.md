@@ -88,6 +88,7 @@ to do:
 | `Alt-y` | Take Pair's suggested change, as your own edit |
 | `Alt-t` (hold) | Ask aloud: [push-to-talk](docs/voice.md), when voice is set up |
 | `Alt-u` / `Alt-n` | Tell Pair its last remark was useful / noise |
+| `Alt-?` | The one idea worth keeping behind Pair's words under your line; again, open its link to the docs |
 | `Alt-a` | Go to the agent whose news Pair relayed ([your other agents](docs/agents.md)) |
 | any key | Take the wheel back while Pair drives |
 
@@ -160,6 +161,11 @@ only reads the board and herdr. [docs/agents.md](docs/agents.md)
 
 ![While you type, the other agents move on; you save, and one line comes in the statusline: #21 needs you, and M-a goes there](docs/images/agents.gif)
 
+**Talks like a colleague.** The fact and its `file:line` first, the numbers, no praise, filler or emoji, and at most
+30 words for a remark. Ask why (`Alt-?`, or `?` in the chat) and it gives the one idea worth keeping behind what it
+said, with a link to the docs when it is sure of one. [docs/tone.md](docs/tone.md),
+[docs/neovim.md](docs/neovim.md#the-idea-behind-it)
+
 **Starts from a blank page.** In an empty folder, `:Pair new` and one sentence: Pair asks three short questions in
 `NOTES.md`, one at a time, then suggests a first slice that runs: two files (a `Makefile` and `main.c`, `go.mod` and
 `main.go`, ...), what to poke at, when the first test is worth writing, and what to leave out. No scaffolding, no
@@ -183,6 +189,7 @@ Off until you set `"voice"` in the config. [docs/voice.md](docs/voice.md)
 - [Driver and suggestions](docs/driver.md): handing over, tests on the unsaved buffer, taking the wheel back
 - [Tests on save](docs/tests-on-save.md)
 - [Builds and crashes](docs/builds.md): crashes, compiler errors and new warnings, read from your runs
+- [Tone](docs/tone.md): how Pair's words read, teaching on request, and the live tests that hold them
 - [Push-to-talk](docs/voice.md): asking aloud, whisper.cpp, answers read aloud
 - [The Watcher](docs/watcher.md): the speak gate, held thoughts, thinking, keep-warm
 - [Memory and feedback](docs/memory.md): session notes, verdicts, tuning, `pair stats`

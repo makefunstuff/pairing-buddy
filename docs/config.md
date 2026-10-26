@@ -78,11 +78,27 @@ the Watcher does not. Details in [watcher.md](watcher.md#thinking-the-partner-no
 | `keepWarm` | While you work, ask the Watcher's model for one token every 4 minutes, so a server that unloads idle models keeps it loaded. Default `true` for an `openai` Watcher, `false` for an `anthropic` one ([watcher.md](watcher.md#keep-warm)) |
 | `typingPauseMs` | How long after a keystroke you count as typing, default 2000 |
 | `testOnSave` | A test command per project, run when you save ([tests-on-save.md](tests-on-save.md)) |
+| `sessionRoots` | Folders that are projects of their own, for a monorepo ([session roots](#session-roots)) |
 | `agents` | The relay of your other agents' news, from herdr and the `board`: `false` turns it off ([agents.md](agents.md#configure)) |
 | `voice` | Push-to-talk with whisper.cpp; off until set ([voice.md](voice.md)) |
 | `board` | The herdr work board's command, default `"herdr-projects"`: the goal and the [context card](neovim.md#what-it-knows-the-context-card) read the board task of your branch. `null` turns it off |
 | `socket` | The daemon's socket path |
 | `dataDir` | Where Pair keeps its data ([data.md](data.md)) |
+
+## Session roots
+
+A project, with its own session, goal, chat and memory, is the git root of the folder Neovim and `pair` start in.
+In a monorepo that is too coarse; `sessionRoots` lists folders that are projects of their own. A folder ending in
+`/*` makes each folder in it one:
+
+```jsonc
+"sessionRoots": ["~/src/shop/packages/*", "~/src/shop/tools"]
+```
+
+Neovim started in `~/src/shop/packages/api/src` then pairs in the project `~/src/shop/packages/api`, and so does
+`pair` started there; the deepest listed folder wins. Start both in the package, or below it: a Neovim started at
+the monorepo's root stays in the root's project. Pair reads, points and suggests only inside the project, and its
+`testOnSave` entry is the package's folder.
 
 ## Talk levels
 

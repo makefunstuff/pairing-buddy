@@ -85,6 +85,12 @@ The lists are enforced in code: each conversation is offered only its role's too
 refuses any other name ([driver.md](driver.md#the-policy-in-code)). Nothing in the daemon writes your files or saves
 buffers, and nothing is typed into your own panes except the Driver's `type`.
 
+## How it talks
+
+Pair's instructions give it a tone: a colleague in the second chair, not an assistant. The fact and its `file:line`
+first, the numbers, no praise, apology, filler, emoji or `!`, and at most 30 words for a remark, 80 for an answer.
+Asked why, it gives the one idea worth keeping behind what it said. Both are in [tone.md](tone.md).
+
 ## What it remembers
 
 Each project gets one long-lived Partner conversation, stored in SQLite by pi-durable, so a restart of the daemon
