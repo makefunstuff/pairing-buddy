@@ -8,6 +8,7 @@ local agents = require('pair.agents')
 local card = require('pair.card')
 local draw = require('pair.draw')
 local drive = require('pair.drive')
+local hints = require('pair.hints')
 local ledger = require('pair.ledger')
 local earcons = require('pair.earcons')
 local listen = require('pair.listen')
@@ -24,21 +25,23 @@ local M = {}
 local ns = draw.ns
 -- Alt-y: no built-in meaning in Normal mode. <Tab> would be the same byte as Ctrl-I, the jumplist's forward jump.
 -- Alt-j goes where Pair points. Alt-u and Alt-n rate Pair's last unasked remark: useful, or noise. Hold Alt-t to
--- speak to Pair (push-to-talk, see listen.lua). Alt-a goes to the agent whose news Pair relayed. In a note's
--- margin, Alt-d logs a decision and Alt-l opens the code a mark links to.
+-- speak to Pair (push-to-talk, see listen.lua). Alt-a goes to the agent whose news Pair relayed. Alt-? asks for the
+-- idea behind Pair's words under your line, and then opens its link to the docs. In a note's margin, Alt-d logs a
+-- decision and Alt-l opens the code a mark links to.
 local config = {
   socket = nil, debounce_ms = 2000, max_points = 5, motion = true, glyphs = {},
   accept_key = '<M-y>', jump_key = '<M-j>', useful_key = '<M-u>', noise_key = '<M-n>', listen_key = '<M-t>',
   sounds = false, sound_volume = 0.5,
   searches = true, -- your Telescope and snacks.picker searches go to the daemon, for the search trail
   decide_key = '<M-d>', link_key = '<M-l>',
+  teach_key = '<M-?>',
   agents_key = '<M-a>',
 }
 local state = {
   channel = nil, partial = '', attached = {}, pending = {}, open_request = nil, level = nil, role = nil,
   points = {}, -- the lines Pair points at: {buf, ids (see draw.point), note, code}, oldest first
   target = nil, -- where the jump key goes: {buf, ns, id, code, col} of Pair's last point, its suggestion, or a run's crash or error
-  words = nil, -- Pair's words under your line: {buf, row, id, remark, text, key, sign, span}, until your next edit
+  words = nil, -- Pair's words under your line: {buf, row, id, remark, text, key, sign, span, teaching}, until your next edit
   reading = nil, -- the file Pair reads now, for the statusline: {name, till}
   suggestion = nil, -- the change Pair suggested: {buf, ids, old, new, remark}
   remark = nil, -- the id of Pair's last unasked remark, until you rate it
@@ -129,9 +132,14 @@ end
 
 local function unmap_keys(purpose) map_keys(purpose, {}) end
 
---- How a mapped key reads in Pair's words: <M-j> as M-j. Nil when this plugin did not map it.
+--- How a key reads in Pair's words: <M-j> as M-j.
+local function label(key)
+  return key and (key:gsub('^<(.*)>$', '%1')) or nil
+end
+
+--- The same for a key this plugin mapped for `purpose`; nil when it did not.
 local function key_label(purpose, key)
-  return key and vim.tbl_contains(state.keys[purpose] or {}, key) and (key:gsub('^<(.*)>$', '%1')) or nil
+  return key and vim.tbl_contains(state.keys[purpose] or {}, key) and label(key) or nil
 end
 
 -- Pair's words under your line: they go with your next edit, which counts as having seen them.
@@ -140,13 +148,33 @@ local function forget_words(seen)
   local words = state.words
   state.words = nil
   if not words then return end
+  unmap_keys('teach')
   draw.erase(words.buf, {words.id, words.span})
   if seen and words.remark then send({type = 'seen', remark = words.remark}) end
   redraw_status()
 end
 
-local function draw_words(words, still)
-  words.id = draw.remark(words.buf, words.row, words.text, words.key, {still = still, sign = words.sign})
+--- The keys after Pair's words, each with what it does until you have used it once: `M-j goes there · M-? why`.
+--- The teach key shows only until then, and not once it was asked: it works on any words of Pair's.
+local function words_keys(words)
+  local keys = {}
+  local jump = words.jump and key_label('jump', config.jump_key)
+  if jump then table.insert(keys, hints.label(jump, 'goes there')) end
+  if words.undo then table.insert(keys, 'u undoes it') end
+  local teach = key_label('teach', config.teach_key)
+  if teach and not hints.known(teach) and not words.teaching then table.insert(keys, hints.label(teach, 'why')) end
+  return #keys > 0 and table.concat(keys, ' · ') or nil
+end
+
+-- `teaching` is the idea behind the words, once asked for (see M.teach): {text, link, key}, without text while it comes.
+local function draw_words(words, still, teaching_rises)
+  if words.id then draw.erase(words.buf, {words.id}) end
+  words.id = draw.remark(words.buf, words.row, words.text, words_keys(words),
+    {still = still, sign = words.sign, teaching = words.teaching, teaching_rises = teaching_rises})
+end
+
+local function map_teach()
+  map_keys('teach', {{config.teach_key, function() M.teach() end, 'Why: the idea behind Pair\'s words'}})
 end
 
 -- Points: the lines Pair points at. The last one is where the jump key goes, unless a suggestion is newer.
@@ -181,6 +209,7 @@ function M.jump()
   local target = state.target
   local row = target and draw.row(target.buf, target.id, target.ns)
   if not row then return vim.notify('Pair: it points at nothing now') end
+  hints.used(label(config.jump_key))
   forget_words(true) -- going there answers what it said
   vim.cmd("normal! m'")
   local ok, err = pcall(vim.api.nvim_win_set_buf, 0, target.buf)
@@ -223,7 +252,6 @@ local function relayout()
   local words = state.words
   local row = words and draw.row(words.buf, words.id)
   if row then
-    draw.erase(words.buf, {words.id})
     words.row = row
     draw_words(words, true)
   end
@@ -286,10 +314,44 @@ local function on_remark(message)
   if text == '' and target then text = ('`%s:%d` %s'):format(vim.fn.fnamemodify(message.target.file, ':.'), message.target.line, target.note) end
   local buf = vim.api.nvim_get_current_buf()
   if text == '' or not project_path(buf) then return end
-  state.words = {buf = buf, row = vim.api.nvim_win_get_cursor(0)[1] - 1, text = text, remark = message.id, key = target and key_label('jump', config.jump_key)}
+  map_teach()
+  state.words = {buf = buf, row = vim.api.nvim_win_get_cursor(0)[1] - 1, text = text, remark = message.id, jump = target ~= nil}
   draw_words(state.words)
   state.reading = nil
   redraw_status()
+end
+
+-- Teaching on request: the teach key on Pair's words asks for the one idea worth keeping behind them, which shows
+-- under them. Pressed again, it opens the link to the docs that came with it.
+
+--- Asks for the idea behind Pair's words under your line, or opens its link once it has come.
+function M.teach()
+  local words = state.words
+  if not words then return vim.notify('Pair: there are no words of Pair here to explain') end
+  hints.used(label(config.teach_key))
+  local teaching = words.teaching
+  if teaching and teaching.link then return vim.ui.open(teaching.link) end
+  if teaching then return end -- asked already
+  words.teaching = {}
+  draw_words(words, true) -- the hint goes, and the ellipsis shows it heard you
+  send({type = 'teach', text = words.text, remark = words.remark})
+end
+
+-- The idea behind the words, or no text when there is none; when your edit took the words away, the chat has it.
+local function on_teaching(message)
+  local words = state.words
+  local teaching = words and words.teaching
+  if not teaching or teaching.text then return end
+  local text = type(message.text) == 'string' and message.text or ''
+  if text == '' then
+    if type(message.note) == 'string' then vim.notify('Pair: ' .. message.note) end -- busy, say, or nothing to explain
+    words.teaching = nil
+    return draw_words(words, true)
+  end
+  local link = type(message.link) == 'string' and message.link or nil
+  teaching.text, teaching.link = text, link
+  teaching.key = link and ('%s opens %s'):format(label(config.teach_key), link:match('^https?://([^/]+)') or 'the docs') or nil
+  draw_words(words, false, true)
 end
 
 -- Suggestions: the old lines struck through, the new ones under them, until you accept or edit them.
@@ -326,6 +388,7 @@ function M.accept()
   local unchanged = still_suggested(suggestion)
   local first, last = suggested_range(suggestion)
   clear_suggestion()
+  hints.used(label(config.accept_key))
   if not unchanged then return vim.notify('Pair: those lines changed, so the suggestion was dropped') end
   local before = vim.api.nvim_buf_get_lines(suggestion.buf, 0, -1, false)
   vim.api.nvim_buf_set_lines(suggestion.buf, first, last, false, suggestion.new)
@@ -352,7 +415,7 @@ local function suggest(message)
   local last = math.max(first, math.min(message.endLine or message.line, count) - 1)
   local old = vim.api.nvim_buf_get_lines(buf, first, last + 1, false)
   local new = text_lines(message.text)
-  local key = config.accept_key and (config.accept_key:gsub('^<(.*)>$', '%1'))
+  local key = config.accept_key and hints.label(label(config.accept_key), 'takes it')
   if config.accept_key then
     vim.keymap.set('n', config.accept_key, M.accept, {buffer = buf, desc = 'Accept Pair\'s suggestion'})
   end
@@ -647,9 +710,10 @@ local function handback(message)
   if buf == -1 or not vim.api.nvim_buf_is_loaded(buf) then return end
   local signs = {pass = {style.glyphs.pass, 'PairStatusPass'}, fail = {style.glyphs.fail, 'PairFail'}}
   forget_words(false)
+  map_teach()
   local last = math.min(message.endLine, vim.api.nvim_buf_line_count(buf)) - 1
   state.words = {
-    buf = buf, row = last, key = 'u undoes it',
+    buf = buf, row = last, undo = true,
     text = message.text ~= '' and message.text or ('changed lines %d to %d'):format(message.line, message.endLine),
     sign = signs[message.tests], span = draw.span(buf, math.min(message.line - 1, last), last),
   }
@@ -672,9 +736,10 @@ local function send_accent()
 end
 
 local function hello()
-  -- herdr's socket lets the daemon see your other agents, also when no chat pane runs.
+  -- herdr's socket lets the daemon see your other agents, also when no chat pane runs; the herdr pane this Neovim
+  -- runs in, if any, lets Pair show things in the Neovim whose pane has focus.
   local herdr = vim.env.HERDR_SOCKET_PATH and {socket = vim.env.HERDR_SOCKET_PATH} or nil
-  send({type = 'hello', role = 'editor', cwd = vim.fn.getcwd(), herdr = herdr})
+  send({type = 'hello', role = 'editor', cwd = vim.fn.getcwd(), herdr = herdr, pane = vim.env.HERDR_PANE_ID})
   send_accent()
 end
 
@@ -735,6 +800,7 @@ local handlers = {
   remark = on_remark,
   held = on_held,
   unheld = forget_held,
+  teaching = on_teaching,
   tests = on_tests,
   run = on_run,
   context = card.update,
@@ -777,7 +843,8 @@ local handlers = {
     local buf, row = listen.answered()
     if not buf or type(message.text) ~= 'string' or message.text == '' then return end
     forget_words(false)
-    state.words = {buf = buf, row = row, text = message.text, key = message.pointed and key_label('jump', config.jump_key) or nil}
+    map_teach()
+    state.words = {buf = buf, row = row, text = message.text, jump = message.pointed == true}
     draw_words(state.words)
     redraw_status()
   end,
@@ -956,6 +1023,7 @@ local commands = {
   today = function() if M.connect() then ledger.open() end end,
   useful = function() feedback(true, state.remark) end,
   noise = function() feedback(false, state.remark) end,
+  why = function() M.teach() end,
   agents = agents.request,
   ['end'] = function() send({type = 'end'}) end,
   context = function()

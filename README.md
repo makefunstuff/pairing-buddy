@@ -89,6 +89,7 @@ to do:
 | `Alt-t` (hold) | Ask aloud: [push-to-talk](docs/voice.md), when voice is set up |
 | `Alt-u` / `Alt-n` | Tell Pair its last remark was useful / noise |
 | `Alt-l` / `Alt-d` | In a Markdown note: open the code a mark names / log the decision on your line |
+| `Alt-?` | The one idea worth keeping behind Pair's words under your line; again, open its link to the docs |
 | `Alt-a` | Go to the agent whose news Pair relayed ([your other agents](docs/agents.md)) |
 | any key | Take the wheel back while Pair drives |
 
@@ -169,6 +170,11 @@ only reads the board and herdr. [docs/agents.md](docs/agents.md)
 
 ![While you type, the other agents move on; you save, and one line comes in the statusline: #21 needs you, and M-a goes there](docs/images/agents.gif)
 
+**Talks like a colleague.** The fact and its `file:line` first, the numbers, no praise, filler or emoji, and at most
+30 words for a remark. Ask why (`Alt-?`, or `?` in the chat) and it gives the one idea worth keeping behind what it
+said, with a link to the docs when it is sure of one. [docs/tone.md](docs/tone.md),
+[docs/neovim.md](docs/neovim.md#the-idea-behind-it)
+
 **Remembers and learns.** Each session ends with a short note the next one starts from, and your useful/noise verdicts
 tune when Pair talks. `pair stats` shows the numbers. [docs/memory.md](docs/memory.md)
 
@@ -187,6 +193,7 @@ Off until you set `"voice"` in the config. [docs/voice.md](docs/voice.md)
 - [Tests on save](docs/tests-on-save.md)
 - [Builds and crashes](docs/builds.md): crashes, compiler errors and new warnings, read from your runs
 - [Notes in the margin](docs/notes.md): marks in a Markdown note, the decision log, tasks when asked
+- [Tone](docs/tone.md): how Pair's words read, teaching on request, and the live tests that hold them
 - [Push-to-talk](docs/voice.md): asking aloud, whisper.cpp, answers read aloud
 - [The Watcher](docs/watcher.md): the speak gate, held thoughts, thinking, keep-warm
 - [Memory and feedback](docs/memory.md): session notes, verdicts, tuning, `pair stats`

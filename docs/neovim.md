@@ -21,6 +21,7 @@ run is real `go test`; only the models' words are scripted. It is recorded from 
 | `M-j` | after its words | go where it points; your cursor never moves by itself |
 | `◎` | the statusline | it has the wheel (the Driver); any key takes it back |
 | a block after ghost text | where it types | its cursor, while it types the change you handed over |
+| `∴` and a line or two | under its words, when you ask | the idea worth keeping behind them (`Alt-?`) |
 | `◌` | the statusline | it is not there: reconnecting, or a model is down |
 | `◉` and a meter | under your line, and the statusline | it listens while you hold `Alt-t` ([push-to-talk](voice.md)) |
 | `⠹` | the statusline | it thinks before it answers, or runs your tests |
@@ -293,6 +294,34 @@ the note's work, adding nothing until you press `y`. You change a marked line, a
 
 Everything about it is in [docs/notes.md](notes.md).
 
+## The idea behind it
+
+Teaching on request: a remark says what is wrong; `Alt-?` asks what to keep from it. Learning is part of the
+pleasure of pairing, but only when you ask, so Pair never adds it by itself.
+
+![make run fails twice; the remark under your line; Alt-? and the idea under it, with the key that opens the docs](images/teach.gif)
+
+*The plugin and the daemon as shipped, in a clean Neovim with ayu, on a small C program with a Makefile; `make run`
+is real. The remark and the idea are a real model's words from one run of the live tone test on the same project,
+replayed unedited; the point's note too.*
+
+1. `make run` fails twice: the table never grows, and the average probe is 12.6. Pair reads `table.c`, points at
+   line 35 and says why under your line, with the place first. The first time, the keys say what they do:
+   `M-j goes there · M-? why`.
+2. `Alt-?` (or `:Pair why`). A dimmed `∴ …` shows at once that it heard you, and the hint goes.
+3. The idea follows under the remark, after `∴`: integer division truncates, so a ratio test of two counts is 0 or 1.
+   It ends with `M-? opens en.cppreference.com`: Pair gives a link only when it is sure of one, to the language's or
+   library's own documentation.
+4. `Alt-?` again opens it in your browser (`vim.ui.open`). Your next edit takes the words and the idea away; the chat
+   has both, the link included.
+
+![The remark, with each key saying what it does](images/teach-hint.png)
+
+![The idea under the remark, and the key that opens its link](images/teach.png)
+
+It works on any words of Pair's under your line: a remark, or the hand-back line after the Driver's edit. In the
+chat, `?` or `/why` asks about what Pair said last. Asking about a remark counts as having seen it.
+
 ## The ledger
 
 At the end of a morning, what did the pair actually do? `:Pair today` (or `/today` in the chat) opens a quiet list
@@ -402,7 +431,9 @@ silent. The sounds are made from sine waves by [sounds/make.sh](../sounds/make.s
 ## What each thing looks like
 
 **Words.** One or two lines under the line you are on, indented with your code, with `●` before them. At most
-three lines; the chat pane has all of them. Your next edit, anywhere, takes them away.
+three lines; the chat pane has all of them. Your next edit, anywhere, takes them away. The keys that act on them
+follow, dimmed, each with what it does until you have used it once (`M-j goes there · M-? why`), then the key alone;
+on a line of their own when they do not fit.
 
 **Points.** The lines Pair points at get `▎` in the sign column and a faint tint; the code it means on the first
 line is underlined. Its note goes after the line when it fits in the window, else under the line, and moves when
@@ -499,6 +530,7 @@ require('pair').setup({
 | `accept_key` | `'<M-y>'` | Accepts a suggestion. Mapped in Normal mode, only in that buffer and only while a suggestion shows. Avoid `<Tab>`: terminals send it for Ctrl-I, the jumplist's forward jump |
 | `listen_key` | `'<M-t>'` | Hold it to speak to Pair ([voice.md](voice.md)). Mapped in Normal and Visual mode from the start |
 | `useful_key`, `noise_key` | `'<M-u>'`, `'<M-n>'` | Your verdict on Pair's last unasked remark. Mapped in Normal mode only while a remark waits for one |
+| `teach_key` | `'<M-?>'` | Asks for the idea behind Pair's words under your line, then opens its link ([below](#the-idea-behind-it)). Mapped in Normal mode while they show |
 | `agents_key` | `'<M-a>'` | Goes to the agent whose news Pair relayed, or puts the line away when it has no pane ([agents.md](agents.md)). Mapped in Normal mode while such a line shows |
 | `motion` | `true` | Fades, the glow of a green, and the trail behind the gaze; without it the gaze still steps line by line |
 | `decide_key`, `link_key` | `'<M-d>'`, `'<M-l>'` | In a note's margin: log the decision on your line, open the code a mark names. Mapped in Normal mode only in a note with such a mark ([notes.md](notes.md)) |
@@ -508,8 +540,9 @@ require('pair').setup({
 | `glyphs` | plain Unicode | Pair's marks (below) |
 
 Every key option takes `false` for none; the commands work either way. The keys are mapped only where you have no
-mapping of your own, and all but `listen_key` only while there is something for them to act on. The glyphs are plain
-Unicode, so they show in any font: `voice` `●`, `mark` `▎`, `held` `•`, `away` `◌`, `wheel` `◎`, `listen` `◉`, `pass`
+mapping of your own, and all but `listen_key` only while there is something for them to act on. Each says what it does
+until you have used it once (`M-j goes there`); the keys you have used are kept in `stdpath('state')/pair/keys.json`.
+The glyphs are plain Unicode, so they show in any font: `voice` `●`, `idea` `∴`, `mark` `▎`, `held` `•`, `away` `◌`, `wheel` `◎`, `listen` `◉`, `pass`
 `✓`, `fail` `✗`, `warn` `△` and `agents` `◇`, and in a note's margin `question` `?`, `contradiction` `≠`, `code` `→`,
 `decision` `◆` and `repeat` `≈`. The spinner is braille, `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`.
 
@@ -537,6 +570,7 @@ to standard ones and does not fade.
 | `:Pair dismiss` | Drop Pair's suggestion; for a suggestion in an unasked remark, that rates the remark not useful |
 | `:Pair useful` | Pair's last unasked remark was useful (same as `Alt-u`) |
 | `:Pair noise` | It was not (same as `Alt-n`) |
+| `:Pair why` | The idea worth keeping behind Pair's words under your line (same as `Alt-?`); again, it opens the link that came with it |
 | `:Pair open` | Open the place Pair asked to show while you were typing |
 | `:Pair agents` | Your other agents and board tasks, the ones that need you first; `⏎` goes to one ([agents.md](agents.md)) |
 | `:Pair today` | The [ledger](#the-ledger): everything Pair did in this project today; `⏎` goes there or shows the output, `u` undoes one of its edits later |

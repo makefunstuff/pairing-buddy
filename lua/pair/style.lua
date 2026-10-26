@@ -7,6 +7,7 @@ local M = {}
 
 M.glyphs = {
   voice = '●', -- the pair speaks: one or two lines under the line they are about
+  idea = '∴', -- the idea behind its words, when you ask for it
   mark = '▎', -- in the sign column, where it points
   held = '•', -- in the sign column, where a thought waits for your next break
   away = '◌', -- not connected, or a model is down

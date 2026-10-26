@@ -30,6 +30,8 @@ Runs every test that needs no model, in under a minute, with scripted models and
   - a held thought end to end: the `•` where it points and the statusline while you type in Insert mode, nothing in
     the chat, and `Alt-j` showing it at once;
   - push-to-talk: the held key's meter, the words heard and the answer in their place, and a tap;
+  - teaching on request: `Alt-?` showing the idea under Pair's words and then opening its link, each key's first-use
+    hint, and the keys you used remembered;
   - the accent reaching the chat pane, also after a colorscheme change; the accent itself on a grey palette with one
     warm red, in a coloured scheme whose regexp colour is the error's hue, and in Neovim's own scheme.
 - **Push-to-talk** without Neovim: the recorder (levels, a pipeline stopped as a whole, a failing recorder said at
@@ -45,6 +47,9 @@ Runs every test that needs no model, in under a minute, with scripted models and
 - **Memory and feedback.** The note the next session starts from (in the chat and the Partner's instructions, per
   project, never a failed note); remarks stored with their verdicts (`+`, `Alt-n`, an accepted suggestion); ignored
   remarks counting as noise and seen ones as neither; the tuning and its bounds; active time; `pair stats`.
+- **The tone.** The checker the live tests use (praise, apology, filler, emoji, `!` outside code, headings and lists,
+  words over the limit), the tone in the Partner's instructions, and teaching: the Partner asked about the words
+  shown, the idea and its link apart for the editor, `?` in the chat about Pair's last words.
 - **The Watcher's speed.** The prefilter's rules, the one-number answer, drift checked once per file, keep-warm, and
   the Watcher following the model a one-model server has loaded.
 - **The wrong turn's trigger.** Raised once per red run and file, never for the code the failure names, its test,
@@ -139,6 +144,12 @@ for the record.
 **The context card.** `test/live/context.test.mjs` gives the Partner a board task, buffers and a search: it has to
 name the task, know nothing of the search while the editor source is hidden, and name the file the search opened once
 it is back.
+
+**The tone.** `test/live/tone.test.mjs` runs a real Pair session on a small C program with a Makefile
+([test/live/probe](../test/live/probe/)), built and run for real: a remark on a failed `make run` names `file:line` in
+at most 30 words, the idea behind it stays within 45 and its link opens, a question gets at most 80 words, and a green
+run after a long red is named, not praised; none of them with praise, apology, filler, emoji, `!`, headings or lists.
+Details in [tone.md](tone.md).
 
 **Push-to-talk.** `test/live/voice.test.mjs` runs with real parts when `PAIR_LIVE_WHISPER_MODEL` names a whisper.cpp
 model (and `PAIR_LIVE_WHISPER` the program, if it is not `whisper-cli` on `PATH`): espeak-ng and FFmpeg play a
