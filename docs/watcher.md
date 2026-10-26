@@ -105,6 +105,11 @@ the default. Off, the wrong turn and the regression checks trace the code badly 
   `compat.thinkingFormat` (for example `"qwen-chat-template"`); without it Pair cannot set the level.
   `pair doctor` asks the Partner a short sum with thinking on and says when it answered without thinking, or failed
   because the model cannot think.
+- **What it bought.** Against a fast cloud model, three runs each of the live suite and the scripted session, with
+  thinking off and then with these defaults: real drift was named in 0 of 3 runs without thinking and 3 of 3 with it;
+  the regression's fix landed in the right file 2 of 3 times without and 3 of 3 with; the whole suite went from 92 to
+  95 passes of 96. Answers to questions took about 1 to 4 s longer, remarks about the same, and the Watcher's
+  median stayed under a second (789 ms before, 839 ms after, both within the run-to-run noise).
 - **What you see.** While a turn that thinks runs, the Neovim statusline spins `⠹ pair · thinking` (or
   `◎ pair has the wheel · thinking` as Driver), and goes back to rest with the answer, or silence.
 
