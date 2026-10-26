@@ -24,7 +24,7 @@ export function configPath() {
   return process.env.PAIR_CONFIG || join(xdg('XDG_CONFIG_HOME', '.config'), 'pairing-buddy', 'config.json');
 }
 
-export const THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'];
+const THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'];
 
 // How much the Partner thinks for each kind of turn: an answer as Navigator, as Scout or as Driver, and a remark
 // nobody asked for. A remark may come a few seconds later; a wrong one costs the user more than the wait.
