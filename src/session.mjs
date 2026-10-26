@@ -32,6 +32,7 @@ const ROLE_NOTES = {
 };
 
 const CONFIRM_MS = 60_000;
+const PANE_USES_PER_TURN = 4; // small steps: a few searches or commands per question, not a long plan
 const SEARCH_LINES = 50;
 const RUN_OUTPUT_CHARS = 3000;
 
@@ -64,6 +65,7 @@ export class PairSession {
     this.scout = null; // Pair's own pane (a ScoutPane), once herdr is known
     this.confirmations = new Map(); // id -> resolve(ok), for commands waiting for the user's yes or no
     this.lastConfirmation = 0;
+    this.paneUses = 0; // searches and commands in the running turn
     this.fired = new Set();
     this.busy = false; // a Partner turn is running
     this.ticking = false;
@@ -130,6 +132,7 @@ export class PairSession {
     this.busy = true;
     this.spoke = false;
     this.said = false;
+    this.paneUses = 0;
     try {
       const answer = await this.partner.ask(this.conversationId, input);
       // After a say, local models tend to end with filler or a repeat; the say already was the answer.
@@ -258,7 +261,10 @@ export class PairSession {
   // Scout's tools: they work only in Pair's own pane, where the user sees each command typed and run.
 
   async inPane(command) {
+    // Also covers a turn that started as Scout when the user has switched back since: its pane is closed.
+    if (this.role !== 'scout') throw new Error('Searching and running need the Scout role; the user can switch with /scout.');
     if (!this.scout) throw new Error('Pair has no pane of its own: start Pair with `pair` inside herdr');
+    if (++this.paneUses > PANE_USES_PER_TURN) throw new Error(`That is ${PANE_USES_PER_TURN} commands for this question. Answer with what you found.`);
     const result = await this.scout.run(command);
     this.receive({kind: 'scout_run', cmd: command, exit: result.exit, output: result.output});
     return result;

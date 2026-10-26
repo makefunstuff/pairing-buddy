@@ -205,3 +205,21 @@ test('without herdr there is no pane, so the role stays Navigator', async () => 
   assert.equal(pair.role, 'navigator');
   assert.ok(sent.some(message => /Scout needs its own herdr pane/.test(message.text)));
 });
+
+test('a question gets at most four searches or commands; the next turn starts again', async () => {
+  const {pair, ran} = scoutSession();
+  for (let i = 0; i < 4; i++) await pair.run({command: 'git log -1'});
+  await assert.rejects(pair.search({pattern: 'x'}), /That is 4 commands for this question/);
+  assert.equal(ran.length, 4);
+  await pair.talk('[user] again');
+  await pair.run({command: 'git log -1'});
+  assert.equal(ran.length, 5);
+});
+
+test('after a switch back to Navigator, a call still in flight does not reopen Pair\'s pane', async () => {
+  const {pair, pane, ran} = scoutSession();
+  await pair.setRole('navigator');
+  await assert.rejects(pair.run({command: 'npm test'}), /need the Scout role/);
+  assert.deepEqual(ran, []);
+  assert.equal(pane.opened, false);
+});
