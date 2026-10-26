@@ -8,11 +8,12 @@ The daemon takes a change as you save the file (also through a symlink), without
 reloaded. It checks the new config as at start: one with an error is not taken, and the chat says why while the daemon
 keeps the config it runs. Run `pair doctor` after a change to check the models.
 
-- **At once**: the typing pause, `autoTune`, `keepWarm`, `testOnSave`, `voice` and `board`, in open sessions too.
+- **At once**: the typing pause, `autoTune`, `keepWarm`, `testOnSave`, `voice`, `taskCommand` and `board`, in open
+  sessions too.
 - **Between turns**: new `model` or `models` entries (and their thinking levels). An answer under way finishes on
   the old model; the next one is the new model's, in the same conversation.
-- **For new sessions**: `level`. An open session keeps its own; `/level` changes it.
-- **After a restart only**: `socket` and `dataDir`.
+- **For new sessions**: `level` and `sessionRoots`. An open session keeps its own level; `/level` changes it.
+- **After a restart only**: `socket`, `dataDir`, and turning `agents` on or off.
 
 ## Models
 

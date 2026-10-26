@@ -209,7 +209,8 @@ export async function startDaemon(config, {
 
   /**
    * Takes a changed config: new sessions get all of it; the open ones get the typing pause, auto-tuning, tests on
-   * save, voice and the board at once, and the models between turns. The socket and the data directory move only with a restart.
+   * save, voice, the task command and the board at once, and the models between turns. The socket, the data directory
+   * and turning the agent relay on or off wait for a restart.
    */
   async function reload(next) {
     const changed = configChanges(saved, next);
@@ -223,13 +224,17 @@ export async function startDaemon(config, {
       }
     }
     saved = next;
-    config = {...next, socket: config.socket, dataDir: config.dataDir};
+    config = {...next, socket: config.socket, dataDir: config.dataDir, agents: config.agents};
     for (const session of live.values()) {
       session.typingPauseMs = config.typingPauseMs;
       session.autoTune = config.autoTune;
       session.setTestOnSave(testOnSaveOf(session.root, session.id));
+      Object.assign(margins.get(session.root) ?? {}, {typingPauseMs: config.typingPauseMs, taskCommand: config.taskCommand});
     }
-    if (changed.includes('board')) readContext = projectContext({board: config.board});
+    if (changed.includes('board')) {
+      readContext = projectContext({board: config.board});
+      if (agents) agents.board = config.board;
+    }
     if (changed.includes('voice')) {
       for (const listener of listeners.values()) listener.close();
       listeners.clear();

@@ -139,6 +139,8 @@ test('the daemon takes a new model between turns, and keeps the old config when 
     await chat.next(message => message.text?.startsWith('Config reloaded: level.'));
     assert.equal(chat.received.filter(message => message.text === 'socket changes only when the daemon restarts.').length, 1);
     assert.ok(!chat.received.some(message => message.text?.startsWith('Config reloaded: level.') && message.text.includes('socket')));
+    save({model: entry('second'), level: 'chatty', socket: join(dataDir, 'elsewhere.sock'), agents: false});
+    await chat.next(message => message.text === 'agents changes only when the daemon restarts.');
   } finally {
     chat.close();
     editor.close();

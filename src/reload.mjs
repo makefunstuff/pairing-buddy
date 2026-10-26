@@ -8,10 +8,13 @@ import {loadConfig} from './config.mjs';
 const SETTLE_MS = 200; // an editor's save can be several writes, or a write and a rename
 
 /** The fields of a parsed config that a change can touch, in the order the chat names them. */
-const FIELDS = ['models', 'level', 'typingPauseMs', 'autoTune', 'keepWarm', 'testOnSave', 'voice', 'board', 'socket', 'dataDir'];
+const FIELDS = [
+  'models', 'level', 'typingPauseMs', 'autoTune', 'keepWarm', 'testOnSave', 'sessionRoots', 'voice', 'taskCommand', 'board', 'agents',
+  'socket', 'dataDir',
+];
 
-/** Only a restart moves these: the daemon listens on its socket and holds its data directory. */
-export const RESTART_FIELDS = ['socket', 'dataDir'];
+/** Only a restart moves these: the daemon listens on its socket, holds its data directory and starts the agent relay. */
+export const RESTART_FIELDS = ['socket', 'dataDir', 'agents'];
 
 /** The fields that differ between two parsed configs. */
 export function configChanges(running, next) {
