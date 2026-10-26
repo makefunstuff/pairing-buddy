@@ -140,13 +140,15 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
         ?? store.createSession({root, conversationId: await partner.createConversation(), goal: null, level: config.level, at: Date.now()});
       const session = new PairSession({
         record, store, partner: sessionPartner, score, health,
+        previousNote: store.previousNote(root, record.id),
+        autoTune: config.autoTune,
         typingPauseMs: config.typingPauseMs,
         notify: (role, message) => notify(session, role, message),
         requestEditor: message => requestEditor(session, message),
         log: line => log(`[${basename(root)}] ${line}`),
       });
       // A stored conversation gets the model now in the config, and one from v0.1, which had no roles, its role's tools.
-      await partner.setRole(session.conversationId, session.role);
+      await session.configurePartner(session.role);
       live.set(root, session);
       refreshBranch(session);
       return session;
@@ -256,6 +258,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     if (message.type === 'drive') return session.drive(message.text ?? '');
     if (message.type === 'take_back') return session.takeBack();
     if (message.type === 'confirm') return session.answer(message.id, message.ok === true);
+    if (message.type === 'feedback') return session.feedback({useful: message.useful === true, id: message.remark ?? undefined, implicit: message.implicit === true});
     if (message.type === 'end') return endSession(session);
   }
 

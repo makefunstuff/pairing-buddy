@@ -6,7 +6,7 @@ import {PairSession} from '../src/session.mjs';
 function session({score = async () => ({value: 9, reason: 'worth it'}), answer = 'Line 2 is off.'} = {}) {
   const asked = [];
   const sent = [];
-  const store = {addMessage() {}, setGoal() {}, setLevel() {}, endSession() {}};
+  const store = {addMessage() {}, setGoal() {}, setLevel() {}, endSession() {}, addRemark: () => 1, dropRemark() {}};
   const partner = {ask: async (_id, input) => { asked.push(input); return answer; }};
   const pair = new PairSession({
     record: {id: 1, root: '/project', conversation_id: 7, goal: 'fix it', level: 'normal'},
@@ -63,7 +63,7 @@ test('an unasked remark that arrives while the user types again waits for their 
   const sent = [];
   const pair = new PairSession({
     record: {id: 1, root: process.cwd(), conversation_id: 7, goal: 'fix it', level: 'normal'},
-    store: {addMessage() {}},
+    store: {addMessage() {}, addRemark: () => 1, dropRemark() {}},
     // The Partner takes 6 s; the user types again half a second before it answers.
     partner: {ask: async () => {
       clock += 5500;
@@ -94,6 +94,8 @@ test('an unasked remark that arrives while the user types again waits for their 
     ['editor', 'point', undefined],
     ['chat', 'message', 'package.json:1 look here'],
     ['chat', 'message', 'The name is wrong.'],
+    ['chat', 'remark', undefined],
+    ['editors', 'remark', undefined],
   ]);
   assert.ok(sent.every(message => message.at - lastKey >= 2000), 'everything waited for a 2 s pause');
 });

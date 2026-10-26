@@ -35,6 +35,15 @@ test('/drive, "you take it" and "your turn" hand Pair the wheel; the words go al
   assert.deepEqual(parseInput('you take it from here or should I?'), {type: 'ask', text: 'you take it from here or should I?'});
 });
 
+test('+ and /useful rate Pair\'s last remark useful, - and /noise not useful; a question with a + is still a question', () => {
+  assert.deepEqual(parseInput(' + '), {type: 'feedback', useful: true});
+  assert.deepEqual(parseInput('/useful'), {type: 'feedback', useful: true});
+  assert.deepEqual(parseInput('-'), {type: 'feedback', useful: false});
+  assert.deepEqual(parseInput('/noise'), {type: 'feedback', useful: false});
+  assert.deepEqual(parseInput('+1 on that'), {type: 'ask', text: '+1 on that'});
+  assert.deepEqual(parseInput('- why?'), {type: 'ask', text: '- why?'});
+});
+
 test('only y or yes allows a command', () => {
   for (const line of ['y', 'Y', 'yes', ' YES ']) assert.equal(allows(line), true, line);
   for (const line of ['', 'n', 'no', 'yes please', 'sure', 'yy']) assert.equal(allows(line), false, line);

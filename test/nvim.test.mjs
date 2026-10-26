@@ -11,6 +11,7 @@ import {createModels, fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall
 import {parseConfig} from '../src/config.mjs';
 import {startDaemon} from '../src/daemon.mjs';
 import {readMessages, sendMessage} from '../src/protocol.mjs';
+import {openStore} from '../src/store.mjs';
 import {fakeHerdr} from './fake-herdr.mjs';
 
 const REPO = fileURLToPath(new URL('..', import.meta.url));
@@ -71,7 +72,7 @@ async function pairInNvim(goal) {
   await until(() => messages.some(message => message.text === `Goal: ${goal}`), 'the goal from :Pair start');
 
   return {
-    project, partner, messages, remote, keys,
+    project, dataDir, watcher, partner, messages, remote, keys,
     send: message => sendMessage(chat, message),
     lines: () => JSON.parse(remote('json_encode(getline(1, "$"))')),
     status: () => remote('luaeval("require(\'pair\').status()")'),
@@ -207,6 +208,38 @@ test('suggestions show as a ghost diff that one key accepts; handing over gives 
     assert.match(refused, /only while the user hands you the wheel/, 'the policy refused the edit, with a reason');
     assert.equal(lines()[0], 'const x = 1');
     assert.equal(status(), 'Pair: navigator · normal');
+  } finally {
+    await stop();
+  }
+});
+
+test('Alt-n rates an unasked remark as noise; accepting its suggestion rates it useful after all', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
+  const {project, dataDir, watcher, partner, messages, remote, keys, send, lines, stop} = await pairInNvim('tune the numbers');
+  const mapped = key => remote(`maparg('${key}', 'n')`) !== '';
+  const verdict = () => {
+    const store = openStore(join(dataDir, 'sessions.sqlite'));
+    try { return store.remarks(0).map(remark => remark.verdict); } finally { store.close(); }
+  };
+  try {
+    assert.equal(mapped('<M-n>'), false, 'the feedback keys are mapped only while a remark waits for a verdict');
+    watcher.setResponses([fauxAssistantMessage([fauxText('{"score": 9, "reason": "same failure twice"}')])]);
+    partner.setResponses([
+      fauxAssistantMessage([fauxToolCall('suggest', {file: 'a.js', line: 2, new_text: 'const y = 20', note: 'twenty'})], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxText('y should be 20.')]),
+    ]);
+    const failure = {type: 'command', cwd: project, pane: null, cmd: 'npm test', exit: 1};
+    send(failure);
+    send(failure);
+    await until(() => mapped('<M-n>') && mapped('<M-u>'), 'the feedback keys');
+
+    keys('<M-n>');
+    await until(() => messages.some(message => message.text === 'Noted: not useful.'), 'the verdict in the chat');
+    assert.deepEqual(verdict(), ['dismissed']);
+    assert.equal(mapped('<M-n>'), false, 'one verdict per remark: the keys are gone');
+
+    keys('<M-y>');
+    await until(() => lines()[1] === 'const y = 20', 'the accepted suggestion');
+    await until(() => verdict()[0] === 'useful', 'accepting to count as useful');
   } finally {
     await stop();
   }

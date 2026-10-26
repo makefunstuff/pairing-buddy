@@ -9,6 +9,7 @@ import {createModels, fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall
 import {parseConfig} from '../src/config.mjs';
 import {startDaemon} from '../src/daemon.mjs';
 import {readMessages, requestDaemon, sendMessage} from '../src/protocol.mjs';
+import {openStore} from '../src/store.mjs';
 import {fakeHerdr} from './fake-herdr.mjs';
 
 const answers = async () => ({ok: true}); // the scripted models are not probed
@@ -341,6 +342,52 @@ test('after the Partner model is changed in the config, an open session answers 
     assert.equal(asked, 'the-real-model');
     assert.equal(chat.received.some(message => message.type === 'health'), false, 'the Partner was never marked down');
     assert.deepEqual(health.filter(line => /model down/.test(line)), []);
+  } finally {
+    chat.close();
+    await daemon.close();
+  }
+});
+
+test('the next session in a repo starts from the last note; a remark is rated with + in the chat', {timeout: 20_000}, async () => {
+  const project = mkdtempSync(join(tmpdir(), 'pair-project-'));
+  const config = testConfig(mkdtempSync(join(tmpdir(), 'pair-data-')));
+  const {watcher, partner, pairModels} = scriptedModels();
+  const daemon = await startDaemon(config, {pairModels, probe: answers, log: () => {}});
+  const chat = client(config.socket, {type: 'hello', role: 'chat', cwd: project});
+  try {
+    await chat.next(message => message.type === 'welcome');
+    chat.send({type: 'goal', text: 'fix reconnect'});
+
+    // An unasked remark, then the user's verdict on it.
+    watcher.setResponses([fauxAssistantMessage([fauxText('{"score": 9, "reason": "same failure twice"}')])]);
+    partner.setResponses([fauxAssistantMessage([fauxText('The timeout is 5 s in the code.')])]);
+    const failure = {type: 'command', cwd: project, pane: null, cmd: 'npm test', exit: 1};
+    chat.send(failure);
+    chat.send(failure);
+    const {id} = await chat.next(message => message.type === 'remark');
+    chat.send({type: 'feedback', useful: true});
+    await chat.next(message => message.text === 'Noted: useful.');
+
+    partner.setResponses([fauxAssistantMessage([fauxText('Goal: fix reconnect. Loose end: the timeout.')])]);
+    chat.send({type: 'end'});
+    await chat.next(message => message.type === 'ended');
+    chat.send({type: 'hello', role: 'chat', cwd: project}); // what the chat pane does after an end
+    await chat.next(message => message.text === 'Last time:\nGoal: fix reconnect. Loose end: the timeout.');
+    await chat.next(message => message.text === 'What are we doing this session? Type the goal here.');
+
+    let instructions;
+    partner.setResponses([context => {
+      instructions = context.messages[0].sections.instructions;
+      return fauxAssistantMessage([fauxText('The timeout.')]);
+    }]);
+    chat.send({type: 'goal', text: 'finish reconnect'});
+    chat.send({type: 'ask', text: 'what was left last time?'});
+    await chat.next(message => message.text === 'The timeout.');
+    assert.match(instructions, /last session in this project ended with this note[\s\S]*Goal: fix reconnect\. Loose end: the timeout\./);
+
+    const store = openStore(join(config.dataDir, 'sessions.sqlite'));
+    assert.deepEqual(store.remarks(0).map(remark => [remark.id, remark.trigger, remark.verdict]), [[id, 'repeated_error', 'useful']]);
+    store.close();
   } finally {
     chat.close();
     await daemon.close();

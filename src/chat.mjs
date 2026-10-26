@@ -11,6 +11,8 @@ const HELP = `/goal <text>   set the session goal
 /scout         Pair may search and run commands in its own pane
 /navigate      back to watching and pointing (the default)
 /drive [what]  hand Pair the wheel for one change (or say "you take it" or "your turn")
++  or /useful  Pair's last remark was useful
+-  or /noise   it was not (a remark you ignore counts as not useful too)
 /end           end the session and write a session note
 /quit          close this pane (the session goes on)
 anything else  ask Pair`;
@@ -31,6 +33,8 @@ export function parseInput(line) {
   if (command === '/navigate') return {type: 'role', role: 'navigator'};
   if (command === '/drive') return {type: 'drive', text: arg};
   if (command === '/end') return {type: 'end'};
+  if (text === '+' || command === '/useful') return {type: 'feedback', useful: true};
+  if (text === '-' || command === '/noise') return {type: 'feedback', useful: false};
   if (command === '/quit') return {local: 'quit'};
   if (command.startsWith('/')) return {local: 'help'};
   if (HAND_OVER.test(text)) return {type: 'drive', text};
@@ -105,6 +109,7 @@ export function runChat(socketPath) {
       print(`${STYLE.pair} ${message.text} [y/N]`);
     }
     if (message.type === 'confirmed' && message.id === confirming) confirming = null; // answered, or timed out
+    if (message.type === 'remark') print(`${STYLE.system} \x1b[2m+ useful  - noise\x1b[0m`);
     // What you type is already on screen; your own lines come back only as history.
     const echo = message.sender === 'user' && !message.history;
     if (message.type === 'message' && !echo) print(`${STYLE[message.sender] ?? message.sender} ${message.text}`);
