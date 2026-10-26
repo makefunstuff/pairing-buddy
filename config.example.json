@@ -1,0 +1,17 @@
+{
+  "level": "normal",
+  "models": {
+    "watcher": {
+      "api": "openai",
+      "baseUrl": "http://localhost:8080/v1",
+      "model": "your-small-model",
+      "contextWindow": 32768
+    },
+    "partner": {
+      "api": "openai",
+      "baseUrl": "http://localhost:8080/v1",
+      "model": "your-larger-model",
+      "contextWindow": 65536
+    }
+  }
+}

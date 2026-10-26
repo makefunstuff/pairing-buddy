@@ -1,0 +1,3 @@
+node_modules/
+# Live test stacks (endpoints, keys): see test/live/stacks.mjs
+test/live/config.json
