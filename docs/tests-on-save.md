@@ -33,8 +33,10 @@ and read back is in [scout.md](scout.md#tests-on-save).
 - The chat says when the run turns red or green, and after a long red, for how long it was red.
 - When the run turns green after a red, Neovim lights up once; after ten minutes of red, or a regression, one line
   under yours says what passes again. [When it goes green](neovim.md#when-it-goes-green).
-- Any command works too, `make -s run` or a benchmark: it is red when it exits with an error, and a number in its
-  output that held still and then moved the right way gets the same moment.
+- A number in the output of a passing run without a test report, `make -s run` or a benchmark, that held still and
+  then moved the right way gets the same moment.
+- A build or a run works too (`"~/src/probe": "make run"`): a crash or a compiler error shows on its line and in the
+  statusline (`✗ does not build · probe.c:11`, `✗ Segmentation fault · probe.c:19`), see [builds.md](builds.md).
 - Other runners work too (`cargo test`, `pytest`, `npm test`): the statusline and the regressions use their output,
   without signs ([#40](https://github.com/makefunstuff/pairing-buddy/issues/40)).
 

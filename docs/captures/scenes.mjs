@@ -129,6 +129,19 @@ export const scenes = {
       {wait: 200, say: 'attempt 5 would wait 8s after 7s: exactly the 15s budget, and `>=` gives up on it. `>` lets it run.'},
     ],
   },
+  // A build and run on save in a C project (probe/, `make run` with AddressSanitizer): a missing semicolon, then a
+  // crash whose frame Alt-j goes to, and Pair says why; then a new warning, which Pair leaves to the margin.
+  'crash': {
+    project: 'probe',
+    goal: 'see how well the table spreads its keys',
+    testOnSave: 'make run',
+    watcher: score('crash'),
+    partner: [
+      {when: /crash/, wait: 300, call: ['read', {file: 'probe.c'}]},
+      {wait: 1400, call: ['point', {file: 'probe.c', line: 11, note: '64 * 31 = 1984: past the table', code: 'key * 31'}]},
+      {wait: 200, say: 'insert writes `keys[1984]`: without the mask, the second key already lands past `CAP`'},
+    ],
+  },
   // :Pair context: no goal typed (it comes from the board task of the branch), a failing run, two Telescope searches,
   // then the card, and x on a source. No model words: the card is what the daemon reads.
   'context-card': {

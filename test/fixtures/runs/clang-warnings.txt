@@ -1,0 +1,7 @@
+probe.c:9:7: warning: unused variable 'unused' [-Wunused-variable]
+    9 |   int unused;
+      |       ^~~~~~
+probe.c:13:27: warning: unused parameter 'argv' [-Wunused-parameter]
+   13 | int main(int argc, char **argv) {
+      |                           ^
+2 warnings generated.

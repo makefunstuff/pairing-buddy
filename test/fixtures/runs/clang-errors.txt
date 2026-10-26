@@ -1,0 +1,8 @@
+bad.c:3:11: error: use of undeclared identifier 'undefined_thing'
+    3 |   int x = undefined_thing;
+      |           ^~~~~~~~~~~~~~~
+bad.c:4:20: error: expected ';' after expression
+    4 |   printf("%d\n", x)
+      |                    ^
+      |                    ;
+2 errors generated.

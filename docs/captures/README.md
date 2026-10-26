@@ -17,7 +17,10 @@ recording comes out the same each time.
   - The user's shell is Neovim's `:terminal`, with Pair's shell hook.
 - **The project** is [hookd/](hookd/), a small Go webhook service with a retry bug. Each scene starts it at its
   own point. The held thought is in C instead: [ringbuf/](ringbuf/), a ring buffer with a Makefile, and `clangd`
-  gives its diagnostics. Delight is in C too: [intern/](intern/), a string-interning table and its benchmark.
+  gives its diagnostics; so is the crash scene: [probe/](probe/), a small C hash table built and run with `make run`
+  and AddressSanitizer. Delight is in C too: [intern/](intern/), a string-interning table and its benchmark.
+- **No core dumps.** The crash scene crashes a program on purpose. `record.sh` sets the core limit to 1 byte for
+  everything it starts, so nothing reaches the machine's crash reporter (see [test/no-core.mjs](../../test/no-core.mjs)).
 - **Neovim** is clean: [init.lua](init.lua), the ayu colorscheme (fetched at a pinned commit), and scratch XDG
   directories. The search-trail scene also fetches Telescope and plenary at pinned commits; Telescope's history goes
   to the scratch directories too.
@@ -36,11 +39,12 @@ recording comes out the same each time.
 | [delight](tapes/delight.tape) | a number finally moves: the statusline lights up and one line says what moved |
 | [push-to-talk](tapes/push-to-talk.tape) | hold `Alt-t`, ask aloud, and Pair answers under your line |
 | [context-card](tapes/context-card.tape) | `:Pair context`, with the goal from the board task, and `x` on a source |
+| [crash](tapes/crash.tape) | a compiler error, a crash and its frame, and a new warning, from `make run` on save |
 
 ## Recording
 
-Needs [VHS](https://github.com/charmbracelet/vhs) 0.11 with ttyd, Neovim 0.11+, Go, clangd, Node.js, curl, FFmpeg
-and the JetBrainsMono Nerd Font.
+Needs [VHS](https://github.com/charmbracelet/vhs) 0.11 with ttyd, Neovim 0.11+, Go, clangd, a C compiler with
+AddressSanitizer, make, Node.js, curl, FFmpeg, util-linux's `prlimit` and the JetBrainsMono Nerd Font.
 
 ```sh
 npm ci                                  # in the repo root
