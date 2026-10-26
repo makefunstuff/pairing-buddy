@@ -155,3 +155,7 @@ the browser, and then it runs the login test against it and removes the file. Re
 
 **The Anthropic API.** Run when `ANTHROPIC_API_KEY` and `PAIR_LIVE_ANTHROPIC_MODEL` are set: the cloud model answers
 the probe as both roles, scores a repeated failure above the bar, and answers a short question as Partner.
+
+Neither has been run against the real services yet: the Anthropic test has reached the real API, but only with a key
+the API refused, and no subscription has been signed in to with `check-login.sh`. The script itself has been run end
+to end with an API-key login ([#44](https://github.com/makefunstuff/pairing-buddy/issues/44)).
