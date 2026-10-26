@@ -1,19 +1,24 @@
 -- The blank page (:Pair new [idea]): the note NOTES.md, opened unsaved, and Pair's questions in it, one at a time,
--- each under the last line you wrote. You answer on the lines under the question; leaving Insert mode sends the
--- answer. After the last one the daemon suggests the first slice in the note (init.lua shows it like any suggestion).
+-- each under the last line you wrote. You answer on the lines under the question; the answer goes once you have
+-- left Insert mode and changed nothing for a moment, so an Esc to fix a typo sends the fixed answer. After the last one the daemon suggests the first slice in the note (init.lua shows it like any suggestion).
 local draw = require('pair.draw')
 local style = require('pair.style')
 
 local M = {}
 
 local NOTE = 'NOTES.md'
+local SETTLE_MS = 1500 -- after Insert mode, how long an answer stays unchanged before it goes
 
 -- The question waiting for its answer: {buf, id (its extmark), n}; nil when none is.
 local asking = nil
+local group = vim.api.nvim_create_augroup('pair_new', {clear = true}) -- the autocommands of the waiting question
+local settle = vim.uv.new_timer()
 
 local function forget()
   if asking then draw.erase(asking.buf, {asking.id}) end
   asking = nil
+  settle:stop()
+  vim.api.nvim_clear_autocmds({group = group})
 end
 
 --- The last row of `buf` with text on it (0-based): the question goes under it.
@@ -67,14 +72,21 @@ function M.on_interview(message, send)
   local row = last_text_row(buf)
   asking = {buf = buf, n = message.n, id = draw.remark(buf, row, message.text, nil, {sign = {style.glyphs.voice, 'PairSign'}})}
   local question = asking
-  vim.api.nvim_create_autocmd('InsertLeave', {buffer = buf, callback = function()
-    if asking ~= question then return true end -- answered, or a new :Pair new: this one is done
+  local function answer()
+    if asking ~= question or vim.fn.mode():find('^[iR]') then return end
     local at = draw.row(buf, question.id)
-    local answer = at and answer_of(buf, at) or ''
-    if answer == '' then return end
-    send({type = 'answer', text = answer})
-    return true
+    local text = at and answer_of(buf, at) or ''
+    if text == '' then return end
+    vim.api.nvim_clear_autocmds({group = group}) -- one answer per question
+    send({type = 'answer', text = text})
+  end
+  local function wait() settle:start(SETTLE_MS, 0, vim.schedule_wrap(answer)) end
+  -- Leaving Insert mode starts the wait; going back in, or a change in Normal mode (a typo fixed with x), restarts it.
+  vim.api.nvim_create_autocmd('InsertLeave', {group = group, buffer = buf, callback = wait})
+  vim.api.nvim_create_autocmd('TextChanged', {group = group, buffer = buf, callback = function()
+    if settle:is_active() then wait() end
   end})
+  vim.api.nvim_create_autocmd('InsertEnter', {group = group, buffer = buf, callback = function() settle:stop() end})
 end
 
 --- For the statusline: `question 2 of a few` while a question waits, else nil.

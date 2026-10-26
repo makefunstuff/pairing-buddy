@@ -1,6 +1,7 @@
 // The blank page against real models, through a real PairSession in an empty folder: :Pair new asks three short
 // questions one at a time, then shows a first slice of two files in the note, with the build file the stack wants.
-// For C and Zig with a Makefile, the Driver then types both files, and they build and run once saved. The editor is played
+// For C and Zig with a Makefile, the Driver then types both files: once saved, make run builds them and the program
+// starts. Whether the program the model typed then has a bug of its own is the user's next step, and is only reported. The editor is played
 // by buffers in memory: the folder on disk stays empty.
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
@@ -67,6 +68,13 @@ const IDEAS = {
   js: {
     idea: 'a node script that watches a folder and prints each file that changes',
     answers: ['the file name and the time, one line each', 'only the folder I pass, not its subfolders', 'node only, nothing from npm'],
+    build: /^package\.json$/,
+    source: /\.m?js$/,
+  },
+  // "go" here is English, not the stack.
+  'js-go': {
+    idea: 'a node script where deleted files go to a trash folder instead of away',
+    answers: ['move the file into .trash with the time in its name', 'one file per call, the path is the only argument', 'node only, nothing from npm'],
     build: /^package\.json$/,
     source: /\.m?js$/,
   },
@@ -140,7 +148,7 @@ describe('The blank page on live models', {skip: stacks.length ? false : SKIP_RE
     }
 
     for (const name of ['c', 'zig']) {
-      test(`${stack.name}: ${name}: handed the wheel twice, Pair types the Makefile and the source, and once saved they build and run`, {timeout: 600_000}, async t => {
+      test(`${stack.name}: ${name}: handed the wheel twice, Pair types the Makefile and the source, and once saved they build and the program starts`, {timeout: 600_000}, async t => {
         const result = await interview(IDEAS[name]);
         const {session, editor, root} = result;
         session.notify = (to, message) => (message.type === 'message' && result.shown.push(`${message.sender}: ${message.text}`), 1);
@@ -154,12 +162,10 @@ describe('The blank page on live models', {skip: stacks.length ? false : SKIP_RE
         // The user saves both and runs it.
         const copy = mkdtempSync(join(tmpdir(), 'pair-new-run-'));
         for (const file of editor.files().filter(file => file !== result.note)) writeFileSync(join(copy, file.slice(root.length + 1)), editor.text(file));
-        // The two files are wired up when they build and the program runs: a bug in the program it typed is the
-        // user's next step, not the slice's.
         const run = spawnSync('make', ['run'], {cwd: copy, encoding: 'utf8', timeout: 30_000});
         t.diagnostic(`make run (exit ${run.status}):\n${run.stdout}${run.stderr}`);
         assert.doesNotMatch(run.stderr, /error:|missing separator|No rule to make/, 'it builds');
-        assert.match(run.stdout + run.stderr, /\d/, 'and runs: it prints what it counts');
+        assert.match(run.stdout + run.stderr, /\d/, 'and the program starts: it prints what it counts');
         await result.partner.close();
       });
     }

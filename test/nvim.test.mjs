@@ -543,12 +543,7 @@ test(':Pair new opens the note unsaved, asks one question at a time under your l
     test: 'the accumulator: given dt, the steps and leftover', later: ['the swarm', 'the mouse'],
   };
   try {
-    partner.setResponses([
-      fauxAssistantMessage([fauxText('What should the first run show?')]),
-      fauxAssistantMessage([fauxText('Sim steps or wall clock?')]),
-      fauxAssistantMessage([fauxText('What do you want to learn from it?')]),
-      fauxAssistantMessage([fauxText(JSON.stringify(slice))]),
-    ]);
+    partner.setResponses([fauxAssistantMessage([fauxText('What should the first run show?')])]);
     keys(':Pair new a small toy in C<CR>');
     const name = project.split('/').at(-1);
     await until(() => virtual('pair').length, 'the first question');
@@ -557,8 +552,18 @@ test(':Pair new opens the note unsaved, asks one question at a time under your l
     assert.deepEqual(virtual('pair'), [[2, ['● What should the first run show?']]], 'under the idea');
     assert.equal(status(), '● pair · question 1 of a few');
 
-    keys('o- two counters<Esc>');
+    // An Esc to fix a typo halfway: the fixed answer goes, once it has settled.
+    let answered;
+    partner.setResponses([
+      context => { answered = context.messages.at(-1).content; return fauxAssistantMessage([fauxText('Sim steps or wall clock?')]); },
+      fauxAssistantMessage([fauxText('What do you want to learn from it?')]),
+      fauxAssistantMessage([fauxText(JSON.stringify(slice))]),
+    ]);
+    keys('o- two countres<Esc>');
+    await sleep(300);
+    keys('bciwcounters<Esc>A and a dot<Esc>');
     await until(() => status() === '● pair · question 2 of a few', 'the second question');
+    assert.match(answered, /A1: two counters and a dot\n/, 'the answer as fixed, not the half before the first Esc');
     assert.deepEqual(virtual('pair'), [[3, ['● Sim steps or wall clock?']]], 'under the answer, and the first one gone');
     keys('o- sim steps<Esc>');
     await until(() => status() === '● pair · question 3 of a few', 'the third question');
@@ -572,7 +577,7 @@ test(':Pair new opens the note unsaved, asks one question at a time under your l
 
     keys('<M-y>');
     await until(() => lines().length > 6, 'the slice in the note');
-    assert.deepEqual(lines().slice(5, 8), ['- the accumulator', '', '## First run']);
+    assert.deepEqual(lines().slice(3, 8), ['- two counters and a dot', '- sim steps', '- the accumulator', '', '## First run']);
     assert.equal(lines().at(-1), '- the swarm · the mouse');
     assert.equal(status(), '● pair');
     assert.equal(remote('&modified'), '1', 'the note is not saved');

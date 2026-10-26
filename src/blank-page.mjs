@@ -3,6 +3,7 @@
 // the Partner's; how many there are, how short, and what a first slice may hold (two files, no library the user
 // did not name, no README) is decided here. Nothing is written to disk: the note changes when the user takes the
 // suggestion, and the files come when they write them or hand Pair the wheel for one.
+import {resolve} from 'node:path';
 import {readProjectPath} from './files.mjs';
 
 export const QUESTIONS = 3;
@@ -11,20 +12,23 @@ const MAX_FILES = 3; // the rule; the stacks below say two
 const ITEM_CHARS = 90; // of one line of the slice
 const LINE_CHARS = 80; // of the line that lists what to leave out
 
-// The first slice for the stacks the idea names: a build file with a run target, and one source file.
+// The first slice for the stacks the idea names: a build file with a run target, and one source file. "go" and
+// "node" are also plain English ("files go to the trash", "each node of the tree"), so only their names as a stack
+// count: Go with a capital, golang, go.mod, `go run`, "in go"; node.js, "node script", "in node".
 const STACKS = [
   {name: 'C', test: /(?<![\w#+])C(?![\w#+])|\bc99\b|\bc11\b|\bgcc\b|\bclang\b|\braylib\b/, files: 'Makefile (`make run` builds and runs it) and main.c'},
   {name: 'C3', test: /\bC3\b/i, files: 'Makefile (`make run` calls c3c) and main.c3'},
   {name: 'Odin', test: /\bodin\b/i, files: 'Makefile (`make run` calls odin) and main.odin'},
   {name: 'Zig', test: /\bzig\b/i, files: 'Makefile (`make run` calls zig) and main.zig'},
-  {name: 'Go', test: /\bgo(lang)?\b/i, files: 'go.mod and main.go (`go run .`)'},
-  {name: 'JavaScript', test: /\b(js|javascript|node(\.js)?|typescript|ts)\b/i, files: 'package.json (a "start" script, no dependencies) and main.js'},
+  {name: 'Go', test: /\bGo\b|\bgolang\b|\bgo\.mod\b|\bgo (run|build|test)\b|\b(in|with|using) go\b(?!\s+\w)/, files: 'go.mod and main.go (`go run .`)'},
+  {name: 'JavaScript', test: /\b(javascript|typescript|js|ts|node\.?js|deno|bun)\b|\bnode (script|program|cli|tool|app|toy|project|server|only)\b|\b(in|with|using) node\b/i,
+    files: 'package.json (a "start" script, no dependencies) and main.js'},
 ];
 
-/** The stack the user's words name, or null: C3 before C, since "C3" also reads as C. */
+/** The stack the user's words name first, or null. */
 export function stackOf(words) {
-  const named = STACKS.filter(stack => stack.test.test(words));
-  return named.find(stack => stack.name === 'C3') ?? named[0] ?? null;
+  const named = STACKS.map(stack => ({stack, at: words.search(stack.test)})).filter(found => found.at >= 0);
+  return named.sort((a, b) => a.at - b.at)[0]?.stack ?? null;
 }
 
 const asked = qa => qa.map(({question, answer}, i) => `Q${i + 1}: ${question}\nA${i + 1}: ${answer}`).join('\n');
@@ -109,7 +113,7 @@ const SLOP = /(^|\/)(readme|licen[cs]e|changelog|contributing|\.gitignore|\.edit
 export function sliceProblems(slice, userWords) {
   if (!slice) return ['That was not the JSON asked for.'];
   const problems = [];
-  if (!slice.files.length) problems.push('It names no files.');
+  if (slice.files.length < 2) problems.push(`It has ${slice.files.length ? 'one file' : 'no files'}; a first slice has two: the build or run file and one source file.`);
   if (slice.files.length > MAX_FILES) problems.push(`It has ${slice.files.length} files; a first slice has two, at most ${MAX_FILES}.`);
   for (const file of slice.files.filter(file => SLOP.test(file.path))) problems.push(`${file.path} has no place in a first slice.`);
   const said = userWords.toLowerCase();
@@ -161,7 +165,7 @@ export class BlankPage {
     this.idea = '';
     this.qa = []; // {question, answer}
     this.question = null; // the question waiting for its answer
-    this.open = true; // until the slice is shown: no remarks nobody asked for meanwhile
+    this.open = true; // until the slice is shown or the questions stop: no remarks about the note meanwhile
     this.consulting = false; // a turn of the Partner for a question or the slice is running
   }
 
@@ -216,6 +220,18 @@ export class BlankPage {
       type: 'suggest', file: this.file, line, endLine: line, insert: true, text: `\n${text}`,
       note: sliceNote(this.qa.length, slice.files.length), keyNote: 'takes it into the note', remark: null,
     });
+  }
+
+  /** Whether `trigger` (see triggers.mjs) is about the note while the questions run. */
+  covers(trigger) {
+    return this.open && !!trigger.file && resolve(this.session.root, trigger.file) === this.file;
+  }
+
+  /** :Pair clear: the questions stop, and the next :Pair new starts again. */
+  stop() {
+    if (!this.open) return;
+    this.close();
+    this.session.message('system', 'The questions of :Pair new stop here. :Pair new starts again.');
   }
 
   close() {

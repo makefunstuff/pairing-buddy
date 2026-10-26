@@ -19,12 +19,15 @@ the answer before it.*
    answer is the idea.
 2. The sentence becomes the session's goal. Pair's question shows under your last line, with `●` in the sign
    column and in its words, and the statusline says `● pair · question 1 of a few`.
-3. You answer on the lines under the question, as a list or as prose. Leaving Insert mode (`Esc`) sends the
-   answer. The next question shows under it, and the one before goes.
+3. You answer on the lines under the question, as a list or as prose. The answer goes once you have left Insert
+   mode (`Esc`) and changed nothing for a second and a half. Going back into Insert mode, or fixing a typo in
+   Normal mode, waits again, so it is the fixed answer that goes. The next question shows under it, and the one
+   before goes.
 4. A question has at most 18 words: one question, no code, no list of options. One that breaks this gets one
    more try, with what was wrong.
 
-While the questions run, Pair makes no remarks nobody asked for.
+While a question waits, Pair makes no remarks about the note. Its remarks about everything else go on: a question
+you leave unanswered does not silence it. `:Pair clear` ends the questions; `:Pair new` starts again.
 
 ![The third question under the second answer: should we cap steps per frame?](images/blank-question.png)
 
@@ -58,7 +61,7 @@ The Partner writes the slice as JSON. The daemon checks it against the rules and
 
 | Rule | Why |
 | --- | --- |
-| Two files: the build or run file and one source file, never more than three | The thinnest slice that runs end to end (Cockburn's walking skeleton), not a skeleton of the whole idea |
+| Two files: the build or run file and one source file; fewer is refused, and never more than three | The thinnest slice that runs end to end (Cockburn's walking skeleton), not a skeleton of the whole idea |
 | No README, licence, `.gitignore`, test folder or config files | There is nothing to describe until it runs |
 | No library or tool you did not name | Every dependency in the first slice is one you chose |
 | How to run it, and 2 to 4 probes | What to try once it runs, and what to watch |
@@ -76,10 +79,12 @@ The two files come from the stack your words name:
 | C3 | `Makefile` (`make run` calls c3c) and `main.c3` |
 | Odin | `Makefile` (`make run` calls odin) and `main.odin` |
 | Zig | `Makefile` (`make run` calls zig) and `main.zig` |
-| Go | `go.mod` and `main.go` (`go run .`) |
-| JavaScript, TypeScript, node | `package.json` (a `start` script, no dependencies) and `main.js` |
+| Go (with a capital), golang, `go.mod`, `go run`, "in go" | `go.mod` and `main.go` (`go run .`) |
+| JavaScript, JS, TypeScript, node.js, "node script", "in node" | `package.json` (a `start` script, no dependencies) and `main.js` |
 
-For any other stack, the rule is the same: one build or run file and one source file.
+"go" and "node" are plain English too ("files go to the trash", "each node of the tree"), so only these forms name
+the stack. When your words name two stacks, the one named first counts. For any other stack, the rule is the same:
+one build or run file and one source file.
 
 ## The first run
 
@@ -104,10 +109,9 @@ land in the frame after the stall:
 
 ## Limits
 
-- Three questions, always, unless Pair asks none it can use.
+- Three questions, always, unless Pair asks none it can use or you stop them with `:Pair clear`.
 - `NOTES.md` is in Neovim's current folder, and must be inside the project (the git root, or the folder itself
   when there is no git yet).
-- An answer is sent when you leave Insert mode with text under the question. Leaving Insert mode halfway through
-  an answer sends that half.
+- An answer that has gone cannot be taken back: once it has settled after `Esc`, the next question comes.
 - The slice's rules are checked in code, but a library is found by its name in your words. A library the model
   uses without listing it in `needs` is not caught.

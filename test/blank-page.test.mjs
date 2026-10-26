@@ -23,6 +23,13 @@ test('the stack comes from the user\'s words: C, C3, Odin and Zig with a Makefil
   assert.equal(stackOf('a node script').name, 'JavaScript');
   assert.equal(stackOf('something for C# devs'), null, 'C# is not C');
   assert.equal(stackOf('a cool thing'), null);
+  // "go" and "node" in plain English name no stack.
+  assert.equal(stackOf('a node script where files go to the trash').name, 'JavaScript');
+  assert.equal(stackOf('a JS toy, dots that go left').name, 'JavaScript');
+  assert.equal(stackOf('a graph where each node can go anywhere'), null);
+  assert.equal(stackOf('a word counter written in go').name, 'Go');
+  assert.equal(stackOf('a golang toy').name, 'Go');
+  assert.equal(stackOf('a Go CLI that shells out to node.js').name, 'Go', 'the stack named first');
 });
 
 test('a question is asked with the answers so far; the slice is asked with its rules and the stack\'s two files', () => {
@@ -83,6 +90,7 @@ test('a slice with scaffolding, too many files or a library nobody named breaks 
     'The user did not name SDL2: leave it out.',
   ]);
   assert.deepEqual(sliceProblems({...SLICE, run: '', probes: ['one']}, words), ['It does not say how to run it.', 'It needs 2 to 4 probes.']);
+  assert.deepEqual(sliceProblems({...SLICE, files: SLICE.files.slice(1)}, words), ['It has one file; a first slice has two: the build or run file and one source file.']);
   assert.deepEqual(sliceProblems(null, words), ['That was not the JSON asked for.']);
 });
 
@@ -178,4 +186,27 @@ test('the Driver can create a file not written yet as a new buffer, and read it 
   assert.match(await pair.edit({file: 'Makefile', line: 1, endLine: 1, text: 'run:\n\tcc main.c'}), /^Changed/);
   assert.deepEqual(requests.at(-1), {type: 'edit', file: join(root, 'Makefile'), line: 1, endLine: 1, text: 'run:\n\tcc main.c'});
   assert.deepEqual(readdirSync(root), [], 'still only a buffer');
+});
+
+test('a question left unanswered does not silence Pair: only remarks about the note wait, and :Pair clear stops the questions', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'pair-new-'));
+  const {pair, sent, inputs} = session(root, ['What should it show first?', 'Line 2 is off.']);
+  pair.store.addRemark = () => 1;
+  pair.store.dropRemark = () => {};
+  pair.store.remarks = () => [];
+  pair.now = () => 100_000;
+  await pair.startNew('a raylib toy in C', join(root, 'NOTES.md'));
+  assert.equal(pair.blankPage.covers({kind: 'drift', file: 'NOTES.md'}), true, 'a remark about the note waits');
+  assert.equal(pair.blankPage.covers({kind: 'drift', file: 'main.c'}), false);
+  assert.equal(pair.blankPage.covers({kind: 'repeated_error'}), false);
+  // The user leaves the question and runs make twice; both fail.
+  for (const at of [90_000, 95_000]) pair.receive({kind: 'command_end', cmd: 'make run', exit: 2, output: 'main.c:3: error: boom', at});
+  await pair.tick();
+  assert.match(inputs.at(-1), /^\[watch\] repeated_error:/, 'the Watcher\'s pick reaches the Partner');
+  pair.blankPage.stop();
+  assert.equal(pair.blankPage.open, false);
+  assert.deepEqual(sent.findLast(m => m.type === 'interview'), {to: 'editor', type: 'interview', file: join(root, 'NOTES.md'), done: true});
+  assert.match(sent.findLast(m => m.type === 'message').text, /stop here/);
+  await pair.blankPage.answer('too late');
+  assert.equal(inputs.length, 2, 'an answer after the stop asks nothing');
 });

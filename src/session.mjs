@@ -259,9 +259,10 @@ export class PairSession {
   async tick() {
     this.countActive();
     if (this.held.length && !this.typing()) this.held.splice(0).forEach(action => action());
-    if (this.ticking || this.role === 'driver' || this.blankPage?.open || !this.health.ok()) return;
+    if (this.ticking || this.role === 'driver' || !this.health.ok()) return;
     const now = this.now();
-    const triggers = detectTriggers(this.state, now, this.fired);
+    // While :Pair new asks its questions, the note they are in is no place for remarks.
+    const triggers = detectTriggers(this.state, now, this.fired).filter(trigger => !this.blankPage?.covers(trigger));
     this.waits = new Map([...this.waits].filter(([key]) => triggers.some(trigger => trigger.key === key)));
     // While the Partner is at work, what comes up waits for the model; how long goes with the remark it becomes.
     if (this.busy) return triggers.forEach(trigger => this.waitFor(trigger, now));

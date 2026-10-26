@@ -759,6 +759,10 @@ local commands = {
   clear = function()
     clear_points()
     forget_words(false)
+    if blank.status() then
+      blank.on_interview({done = true})
+      send({type = 'new_stop'})
+    end
   end,
   stop = M.disconnect,
 }

@@ -150,7 +150,7 @@ If no window shows the lines it changes, they open in a split first, so you can 
 ## The blank page
 
 At the start of something new, `:Pair new` and one sentence: Pair asks three questions in `NOTES.md`, one at a
-time, each under your last answer, in its usual voice (`●` and its words). Leaving Insert mode sends your answer.
+time, each under your last answer, in its usual voice (`●` and its words). Your answer goes once you leave Insert mode and it settles.
 The first slice comes as a suggestion that adds lines and strikes nothing, and `Alt-y` takes it into the note. See
 **[docs/blank-page.md](blank-page.md)**.
 
