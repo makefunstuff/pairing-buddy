@@ -89,7 +89,7 @@ async function play(stack) {
   const t = () => `${String(Math.round((clock - start) / 1000)).padStart(4)} s`;
   const session = new PairSession({
     record: {id: 1, root, conversation_id: conversation, goal: null, level: 'normal', role: 'navigator'},
-    store: {addMessage() {}, setGoal() {}, setRole() {}, addActive() {}, addRemark: remark => remarks.push({...remark, words: []}) - 1, dropRemark: id => { remarks[id].dropped = true; }, remarks: () => []},
+    store: {addMessage() {}, addAction: () => 1, updateAction() {}, setGoal() {}, setRole() {}, addActive() {}, addRemark: remark => remarks.push({...remark, words: []}) - 1, dropRemark: id => { remarks[id].dropped = true; }, remarks: () => []},
     partner, score: timed, typingPauseMs: 2000, now,
     notify: (to, message) => {
       if (to === 'chat' && message.type === 'message' && message.sender === 'pair') {

@@ -1,8 +1,8 @@
 # The pair in Neovim
 
 Pair sits in the second chair. In Neovim it has a small visual language: a few marks in one colour, all in your
-own font, and no windows, boxes, borders or field labels. Everything it shows follows one test: would you keep it
-on screen for an eight-hour day?
+own font, and no windows, boxes, borders or field labels (the two panels, `:Pair trail` and `:Pair today`, open only when you ask).
+Everything it shows follows one test: would you keep it on screen for an eight-hour day?
 
 ![Pair stops a wrong turn: it reads, says why under your edit, and Alt-j goes to the real cause](images/wrong-turn.gif)
 
@@ -74,7 +74,7 @@ sure, it stays silent; only when the failure still comes from elsewhere does it 
 
 The second moment: you save a fix, the tests you ran pass, and you would push. Pair runs the whole suite as you
 save, in its own pane, and finds what your fix broke somewhere you were not looking. You set the command per project
-(`testOnSave` in the config, see the [README](../README.md#tests-on-save)); the model never starts a run.
+(`testOnSave` in the config, see [tests-on-save.md](tests-on-save.md)); the model never starts a run.
 
 ![On save: the spinner, the failing test, the remark, the suggestion, Alt-y, and green](images/tests-on-save.gif)
 
@@ -145,7 +145,7 @@ unsaved buffer; only the models' words are scripted.*
    statusline, the `▎` still on the lines it changed, and `u undoes it`. Like any of its words, they go with your
    next edit.
 5. Everything it typed is one undo step: one `u` takes it all away, `Ctrl-R` brings it back. Nothing is saved
-   until you `:w`.
+   until you `:w`. After your next edits, the [ledger](#the-ledger) still undoes it.
 
 ![While it drives: the ghost text and Pair's cursor, a bar on each line it entered, the wheel in the statusline](images/driving.png)
 
@@ -160,6 +160,60 @@ a key still takes the wheel back, and leaves the one change.
 
 A long edit types faster, to take about four seconds; with `motion = false` it lands at once, as one undo step.
 If no window shows the lines it changes, they open in a split first, so you can watch; your cursor stays where it was.
+
+## The search trail
+
+You look for something with Telescope and it is not there under your words. A test is red; you grep for
+"give up": nothing. "dead letter": one comment. You find-file "retry" and open `backoff.go`. Those three searches say
+what you are after better than a goal you typed, and that the code calls it something else. Pair reads the trail
+and, once you pause, says where the thing is, in the code's own word.
+
+![Three Telescope searches; Pair names ErrBudget at worker.go:35 under your line; :Pair trail shows what it saw](images/search-trail.gif)
+
+*The plugin and the daemon as shipped, with real Telescope in a clean Neovim. The test run is real `go test`. The
+Watcher's score and the Partner's words are what a live model answered to this trail in the live test
+(`test/live/trail.test.mjs`), replayed.*
+
+1. The delivery test fails in your terminal: `attempts = 4, want 5`.
+2. `␣sg` "give up", `Esc`: 0 results. `␣sg` "dead letter", `Esc`: one comment, nothing worth opening. `␣sf`
+   "retry", `Enter`: `backoff.go` opens.
+3. A few seconds after the last search, with no edit since, Pair looks. The Watcher scores the trail with what fails
+   now; the Partner gets the trail, the failing test's message, and what ripgrep finds in the project for each of
+   your queries, then reads the code.
+4. Its words show under your line: the word you are looking for is `ErrBudget`, and it fires at
+   `elapsed+wait >= cfg.Budget`, which refuses the wait that lands exactly on the 15 s budget. They end with `M-j`.
+5. `Alt-j` goes to `worker.go:35`, the `>=` underlined.
+
+![The cue under your line in backoff.go](images/trail-cue.png)
+
+**`:Pair trail`** shows what Pair saw: each search since your last edit, oldest first, with the picker, your words,
+how many results, and what you opened from it. Under them, what the trail looks like and what the Watcher made of
+it. These lines are all of your searches a model ever gets, and only with a trail remark. `x` forgets them, `q`
+closes the panel.
+
+![:Pair trail: three searches, the summary and the Watcher's score](images/trail-panel.png)
+
+**When it speaks.** A trail is the searches since your last edit, within four minutes. It is looked at once you
+pause after the last one, when there are three or more and one of them closed with nothing opened, or you searched
+the same words again and landed somewhere else. Three searches that each opened a file are you finding your way,
+and the same words opening the same file each time are your way back to it: both stay quiet. An edit
+ends a trail: what you searched before it, you found. Each new search in a trail is a new look, within the budget
+of your talk level.
+
+**Why the failing test goes with it.** From the trail alone, the model guesses what you are after, and in live runs
+it guessed wrong: it pointed at the attempt limit, the other place that "gives up". With the failing test's message
+next to the trail, it named the `>=` every time. So the cue always carries what fails now: the last red test run,
+else the last failed command, from the last ten minutes. With nothing failing, the cue still comes, and says where
+your words are in the code.
+
+**How the searches are read.** Telescope (`FileType TelescopePrompt`, then the prompt's `BufLeave`, as Telescope
+closes it) and snacks.picker (as its input window closes, whether you confirm from the input or the list): the picker's title, your words,
+the result count and the selected entry, then whether that file is where you are now (in a new split too). No mapping, action or
+picker setting of yours changes, and nothing is written to the picker's own history; Telescope's history keeps
+only searches that ended in a selection, and the ones you gave up on are the telling ones. A picker closed with an
+empty prompt is no search. fzf-lua has no hook for its close, so its searches are not read
+([#56](https://github.com/makefunstuff/pairing-buddy/issues/56)). `searches = false` in
+`setup` turns all of this off.
 
 ## The held thought
 
@@ -185,6 +239,51 @@ diagnostics, and the real chat pane on the right. Only the models' words are scr
 
 `Alt-j` shows a held thought at once, and goes where it points once it shows. If you fix the line yourself before
 your break, the dot goes and Pair says nothing. The rules are in [docs/watcher.md](watcher.md#the-held-thought).
+
+## The ledger
+
+At the end of a morning, what did the pair actually do? `:Pair today` (or `/today` in the chat) opens a quiet list
+at the bottom: everything Pair did in this project today, oldest first, one line each. The time, what it did in
+the accent, what it did it to, and on the right the key that acts on it.
+
+![:Pair today lists the morning; u on the six typed cases takes them back while your comment above them stays, and u again brings them back](images/ledger.gif)
+
+*The plugin and the daemon as shipped, in a clean Neovim with ayu. Off screen, a morning of the two moments above:
+the tests on save find a regression and `Alt-y` takes Pair's fix; you hand over the edge cases, then write a comment
+above them and save. Every line in the list is what the daemon booked as it happened; only the models' words are
+scripted.*
+
+| It | When | On the right |
+| --- | --- | --- |
+| `read` | it read a file; reads in a row are one line (`queue_test.go 24-37, queue.go 1-29`) | `⏎ go` |
+| `said` | its words, unasked or answering you | your verdict on a remark (`+ useful`, `- noise`), or `⏎ all` |
+| `pointed`, `showed` | it pointed at a line, or opened one in a split | `⏎ go` |
+| `suggested` | it suggested a change | `⏎ go`; once you accept it, `accepted · u undo` |
+| `typed` | the Driver's edit (`6 lines in backoff_test.go · one undo step`), or one line it typed into your terminal | `u undo`, for the edit |
+| `ran`, `searched` | a command in its pane, or the tests it ran on save or on the unsaved buffer, with `✓` or `✗`; the same run in a row is one line (`· 3 times`) | `⏎ output` |
+| `asked`, `refused` | what it asked before running or typing, and what its policy refused, with the reason | `you said no` |
+| `stayed quiet` | the moments it let pass: `3 moments under the bar`, or held back by the budget | `⏎ why` |
+
+The last one shows that the gate works: Pair noticed, judged, and chose not to talk.
+
+**Keys in the list.** `⏎` goes to the place in the window you came from, or opens what the entry holds in the
+list's window (a command's output, why Pair stayed quiet, all it said; `q` comes back). `+` and `-` rate a remark.
+`q` closes the list. While it is open, it follows along.
+
+**`u` undoes Pair's edit, later.** In the buffer, Pair's edit is one undo step, but only until your next edit
+buries it. In the ledger, `u` on a `typed` line takes that edit back whenever you like, after other edits too: the
+daemon kept the buffer's text before and after it, and Neovim merges the undo into the buffer as it is now. Your
+changes since stay; the line is struck through and says `undone · u again redoes`; `u` again makes the edit again.
+An accepted suggestion works the same way. If you changed the very lines Pair's edit touched, undoing it would undo
+yours too, so nothing changes and Pair says why. The undo is one undo step in that buffer, and unsaved, like the
+edit was: the disk changes when you `:w`.
+
+![The six cases undone: your comment above them stays, and the ledger line is struck through](images/ledger-undone.png)
+
+The list is today's, from local midnight, across the sessions of this project; the line at the bottom sums it up:
+`11 things · 1 remark, 1 useful · 2 h 10 min` (the active pairing time today). The entries are kept in
+`sessions.sqlite`; what they open to (the output of each command, its last 20 000 characters, and the text before
+and after each edit) for a week.
 
 ## When it goes green
 
@@ -276,6 +375,9 @@ held, `● pair · held thought · M-j`, the `●` in the accent.
 
 ## Setup
 
+The lazy.nvim spec is in [install.md](install.md#install). Without a plugin manager:
+`vim.opt.rtp:append('/path/to/pairing-buddy')` and `require('pair').setup({auto_connect = true})`.
+
 ```lua
 require('pair').setup({
   auto_connect = true,
@@ -283,25 +385,86 @@ require('pair').setup({
   listen_key = '<M-t>', -- hold it to speak to Pair (docs/voice.md); false for none
   motion = true,       -- false: no fades, the gaze lights one line at a time without its trail, and the Driver's edit lands at once
   glyphs = {},         -- for example {voice = '\u{f444}', wheel = '\u{f030c}'} with a Nerd Font
+  searches = true,     -- false: your Telescope and snacks.picker searches stay in Neovim, and there is no search trail
   sounds = false,      -- true: short sounds while you are away from Neovim (see above)
   sound_volume = 0.5,  -- 0 to 1
 })
 ```
 
-The keys (`jump_key`, `accept_key`, `useful_key`, `noise_key`) are mapped only while there is something for them
-to act on, and only where you have no mapping of your own; `listen_key` is mapped from the start, also only where it is free. The glyphs are plain Unicode, so they show in any font:
-`voice` `●`, `mark` `▎`, `held` `•`, `away` `◌`, `wheel` `◎`, `listen` `◉`, `pass` `✓` and `fail` `✗`. The spinner is braille, `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`.
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `auto_connect` | `false` | Connect to the daemon at startup (the lazy.nvim spec sets it) |
+| `socket` | the daemon's default | The daemon's socket |
+| `debounce_ms` | `2000` | How long after you stop typing an edit is sent |
+| `max_points` | `5` | Points kept at once |
+| `jump_key` | `'<M-j>'` | Goes where Pair pointed last, or shows a held thought. Mapped in Normal mode while it points somewhere or holds a thought |
+| `accept_key` | `'<M-y>'` | Accepts a suggestion. Mapped in Normal mode, only in that buffer and only while a suggestion shows. Avoid `<Tab>`: terminals send it for Ctrl-I, the jumplist's forward jump |
+| `listen_key` | `'<M-t>'` | Hold it to speak to Pair ([voice.md](voice.md)). Mapped in Normal and Visual mode from the start |
+| `useful_key`, `noise_key` | `'<M-u>'`, `'<M-n>'` | Your verdict on Pair's last unasked remark. Mapped in Normal mode only while a remark waits for one |
+| `motion` | `true` | Fades, the glow of a green, and the trail behind the gaze; without it the gaze still steps line by line |
+| `searches` | `true` | Read your Telescope and snacks.picker searches for the [search trail](#the-search-trail) |
+| `sounds` | `false` | Short [sounds](#sounds-while-you-are-away) for a green, a regression, a remark and the hand-back, only while Neovim does not have the focus |
+| `sound_volume` | `0.5` | Their volume, 0 to 1 |
+| `glyphs` | plain Unicode | Pair's marks (below) |
 
-For the statusline, `require('pair').status()` is plain text and `require('pair').statusline()` the same with
-Pair's highlight groups, for the `statusline` option or a statusline plugin's section:
+Every key option takes `false` for none; the commands work either way. The keys are mapped only where you have no
+mapping of your own, and all but `listen_key` only while there is something for them to act on. The glyphs are plain
+Unicode, so they show in any font: `voice` `●`, `mark` `▎`, `held` `•`, `away` `◌`, `wheel` `◎`, `listen` `◉`, `pass`
+`✓` and `fail` `✗`. The
+spinner is braille, `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`.
+
+Once connected, the plugin stays connected: when the daemon restarts (an upgrade, `systemctl --user restart`, a
+crash), it reconnects by itself, after 1, 2, 5, 10 and then every 30 seconds, and sends the current file again.
+`:Pair stop` disconnects for good.
+
+Colours need `termguicolors`, which Neovim turns on by itself in most terminals. Without it Pair links its groups
+to standard ones and does not fade.
+
+## Commands
+
+| Command | What it does |
+| --- | --- |
+| `:Pair start [goal]` | Connect to the daemon (not needed with `auto_connect`), optionally setting the session goal |
+| `:Pair goal <text>` | Set the session goal |
+| `:Pair ask <text>` | Ask Pair something (the answer appears in the chat pane); with a range (`:'<,'>Pair ask ...`), about those lines |
+| `:Pair level quiet\|normal\|chatty` | How often Pair speaks unasked |
+| `:Pair scout` | Switch to Scout: Pair may search and run commands in its own pane |
+| `:Pair navigate` | Switch back to Navigator (the default) |
+| `:Pair drive [what]` | Hand Pair the wheel for one change; any key takes it back. With a range, for those lines |
+| `:Pair jump` | Go where Pair pointed last (same as `Alt-j`); `Ctrl-O` comes back. While Pair holds a thought, show it now |
+| `:Pair trail` | Show your searches since your last edit, as Pair saw them; `x` forgets them |
+| `:Pair accept` | Accept Pair's suggestion (same as `Alt-y`); for a suggestion in an unasked remark, that rates the remark useful |
+| `:Pair dismiss` | Drop Pair's suggestion; for a suggestion in an unasked remark, that rates the remark not useful |
+| `:Pair useful` | Pair's last unasked remark was useful (same as `Alt-u`) |
+| `:Pair noise` | It was not (same as `Alt-n`) |
+| `:Pair open` | Open the place Pair asked to show while you were typing |
+| `:Pair today` | The [ledger](#the-ledger): everything Pair did in this project today; `⏎` goes there or shows the output, `u` undoes one of its edits later |
+| `:Pair clear` | Remove Pair's points and words |
+| `:Pair end` | End the session; Pair writes a short session note, which the next session in this project starts from |
+| `:Pair listen [cancel]` | Push-to-talk without the key: works as a tap of `Alt-t`; `cancel` drops what is being recorded ([voice.md](voice.md)) |
+| `:Pair stop` | Disconnect this Neovim, and stop reconnecting |
+
+## Statusline
+
+`require('pair').status()` returns one quiet segment while connected, and is empty when the plugin is not connected.
+`require('pair').statusline()` is the same with Pair's highlight groups, for the `statusline` option or a statusline
+plugin's section:
 
 ```lua
 vim.o.statusline = "%f %m%=%{%v:lua.require'pair'.statusline()%}  %l:%c "
 -- lualine: sections = {lualine_x = {function() return require('pair').status() end}}
 ```
 
-Colours need `termguicolors`, which Neovim turns on by itself in most terminals. Without it Pair links its groups
-to standard ones and does not fade.
+| Segment | When |
+| --- | --- |
+| `● pair` | At rest. The role and talk level show only when they are not the usual ones: `● pair · scout`, `● pair · quiet` |
+| `● reading worker.go` | While Pair reads |
+| `⠹ pair · thinking` | While its model thinks |
+| `● pair · held thought · M-j` | While a remark waits for your next break |
+| `⠹ go test ./...`, `✗ 1 failing · TestX`, `✓ go test ./... · 4 tests, 3 packages` | [Tests on save](tests-on-save.md); `(unsaved)` after the command for the run on the Driver's edit |
+| `◎ pair has the wheel · any key takes it back` | While it drives (`· thinking` while its model thinks, the hint again while it types) |
+| `◌ pair · partner down` (or `models down`) | While a model is down |
+| `◌ pair · reconnecting` | While the daemon is away |
 
 ## Highlight groups
 

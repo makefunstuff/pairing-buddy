@@ -9,6 +9,7 @@ import {gitBranch, gitRoot} from './git.mjs';
 import {ModelHealth} from './health.mjs';
 import {PaneWatch} from './herdr.mjs';
 import {followLoaded, shareServer} from './loaded-model.mjs';
+import {DETAIL_KEPT_MS} from './ledger.mjs';
 import {Listener} from './listen.mjs';
 import {createPairModels} from './models.mjs';
 import {acquireOwner} from './owner.mjs';
@@ -47,6 +48,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
   mkdirSync(join(config.dataDir, 'runs'), {recursive: true}); // the output of the tests run on save, one file per session
   const owner = acquireOwner(config.dataDir);
   const store = openStore(join(config.dataDir, 'sessions.sqlite'));
+  store.forgetActionDetails(Date.now() - DETAIL_KEPT_MS);
   const sessions = new Map(); // root -> Promise<PairSession>
   const live = new Map(); // root -> PairSession, once loaded
   const watches = new Map(); // root -> PaneWatch
@@ -321,6 +323,12 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     if (message.type === 'confirm') return session.answer(message.id, message.ok === true);
     if (message.type === 'feedback') return session.feedback({useful: message.useful === true, id: message.remark ?? undefined, implicit: message.implicit === true});
     if (message.type === 'seen') return session.seen(message.remark);
+    if (message.type === 'today') return sendMessage(client.socket, {type: 'ledger', ...session.today()});
+    if (message.type === 'ledger_detail') return sendMessage(client.socket, {type: 'ledger_detail', ids: message.ids, detail: session.ledgerDetail(message.ids ?? [])});
+    if (message.type === 'undo') return session.undo(message.action);
+    if (message.type === 'applied') return session.applied(message.action, message.before, message.after);
+    if (message.type === 'trail') return sendMessage(client.socket, session.trail());
+    if (message.type === 'forget_trail') return session.forgetTrail();
     if (message.type === 'release') return session.release();
     if (message.type === 'accent') return session.setAccent(message.color);
     if (message.type === 'end') return endSession(session);

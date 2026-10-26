@@ -39,7 +39,7 @@ const runIn = cwd => command => new Promise(resolve => {
  * `:Pair start <goal>`, and a chat client. With `testOnSave`, saving runs that command in the project, for real,
  * in the fake herdr's pane. With `thinks`, the Partner's model can think. `voice` is the config's. `stop()` ends them all.
  */
-async function pairInNvim(goal, {testOnSave, thinks = false, voice} = {}) {
+async function pairInNvim(goal, {testOnSave, thinks = false, voice, rtp = []} = {}) {
   const project = realpathSync(mkdtempSync(join(tmpdir(), 'pair-nvim-')));
   writeFileSync(join(project, 'a.js'), 'const x = 1\nconst y = 2\nconst z = 3\n');
   const dataDir = mkdtempSync(join(tmpdir(), 'pair-data-'));
@@ -63,7 +63,7 @@ async function pairInNvim(goal, {testOnSave, thinks = false, voice} = {}) {
   const server = join(mkdtempSync('/tmp/pair-'), 'nvim.sock'); // short: socket paths max out near 100 bytes
   const nvim = spawn('nvim', [
     '--headless', '--clean', '--listen', server,
-    '--cmd', `set rtp+=${REPO}`,
+    '--cmd', `set rtp+=${[REPO, ...rtp].join(',')}`,
     '-c', `lua require('pair').setup({socket = '${config.socket}', debounce_ms = 100})`,
     '-c', `cd ${project}`,
     '-c', 'edit a.js',
@@ -533,6 +533,71 @@ test('saving runs the tests: the statusline spins, then names what fails; signs 
   }
 });
 
+test('the ledger: :Pair today lists what Pair did; u undoes its edit after your later edits, and again makes it again; a clash changes nothing; <CR> shows output', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
+  const {project, partner, messages, remote, keys, send, lines, stop} = await pairInNvim('tune the numbers', {testOnSave: 'cat a.js'});
+  const ledgerLines = () => JSON.parse(remote('luaeval("vim.json.encode(vim.api.nvim_buf_get_lines(vim.fn.bufnr(\'pair://today\'), 0, -1, false))")'));
+  const hints = () => JSON.parse(remote('luaeval("vim.json.encode(vim.tbl_map(function(m) return m[4].virt_text[1][1] end, vim.api.nvim_buf_get_extmarks(vim.fn.bufnr(\'pair://today\'), vim.api.nvim_create_namespace(\'pair_ledger\'), 0, -1, {details = true, type = \'virt_text\'})))")'));
+  const row = text => ledgerLines().findIndex(line => line.includes(text)) + 1;
+  const a = () => JSON.parse(remote('json_encode(getbufline(bufnr("a.js"), 1, "$"))'));
+  try {
+    execFileSync('git', ['init', '-q'], {cwd: project});
+    execFileSync('git', ['add', '.'], {cwd: project});
+    partner.setResponses([
+      fauxAssistantMessage([fauxToolCall('read', {file: 'a.js'})], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxToolCall('edit', {file: 'a.js', line: 1, new_text: 'const x = 100\nconst w = 5'})], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxText('x is 100, and w is new.')]),
+    ]);
+    send({type: 'drive', text: 'your turn'});
+    await until(() => messages.some(message => message.text === 'x is 100, and w is new.'), 'the hand-back');
+    keys('Gccconst z = 30<Esc>'); // your own edit, after Pair's
+    assert.deepEqual(lines(), ['const x = 100', 'const w = 5', 'const y = 2', 'const z = 30']);
+
+    keys(':Pair today<CR>');
+    await until(() => row('typed'), 'the ledger');
+    const [read, typed, ran, said] = ['read', 'typed', 'ran', 'said'].map(row);
+    assert.ok(read < typed && typed < ran && ran < said, ledgerLines().join('\n'));
+    assert.match(ledgerLines()[read - 1], /^\d\d:\d\d {2}read {10}a\.js 1-3$/);
+    assert.match(ledgerLines()[typed - 1], /typed {9}2 lines in a\.js {3}one undo step$/);
+    assert.match(ledgerLines()[ran - 1], /ran {11}cat a\.js {3}✓ passed · unsaved$/);
+    assert.deepEqual(hints(), ['⏎ go', 'u undo', '⏎ output', '⏎ all'], 'the key that acts on each');
+    assert.equal(remote('&buftype'), 'nofile', 'the cursor is in the ledger');
+    assert.match(remote('&statusline'), /pair · today%=\d things · 0 remarks, 0 useful · \d+ min$/);
+
+    // u on Pair's edit: its lines go, yours stay, and nothing is saved.
+    keys(`${typed}Gu`);
+    await until(() => a().length === 3, 'the undo, merged with your edit');
+    assert.deepEqual(a(), ['const x = 1', 'const y = 2', 'const z = 30']);
+    assert.equal(readFileSync(join(project, 'a.js'), 'utf8'), 'const x = 1\nconst y = 2\nconst z = 3\n', 'nothing was saved');
+    await until(() => hints()[typed - 1] === 'undone · u again redoes', 'the entry to say so');
+    // u again makes it again.
+    keys('u');
+    await until(() => a().length === 4, 'the edit made again');
+    assert.deepEqual(a(), ['const x = 100', 'const w = 5', 'const y = 2', 'const z = 30']);
+    await until(() => hints()[typed - 1] === 'u undo', 'the entry back to undoable');
+
+    // You change one of Pair's lines: undoing it would undo yours, so nothing changes, and Pair says why.
+    remote('execute("call setbufline(bufnr(\'a.js\'), 2, \'const w = 6\')")');
+    keys('u');
+    await until(() => messages.some(message => message.text === 'Pair\'s change in a.js was not undone: you changed those lines since.'), 'why not');
+    assert.deepEqual(a(), ['const x = 100', 'const w = 6', 'const y = 2', 'const z = 30']);
+
+    // <CR> on a run shows its output in the ledger's window; q goes back to the list, and q again closes it.
+    keys(`${ran}G<CR>`);
+    await until(() => remote('bufname()').startsWith('pair://today/'), 'the output');
+    assert.deepEqual(JSON.parse(remote('json_encode(getline(1, "$"))')), ['const x = 100', 'const w = 5', 'const y = 2', 'const z = 3'], 'what cat printed on the unsaved buffer');
+    keys('q');
+    await until(() => remote('bufname()') === 'pair://today', 'back to the list');
+    keys(`${read}G<CR>`);
+    await until(() => remote('bufname()') === 'a.js', '<CR> going to what Pair read');
+    keys(':Pair today<CR>');
+    await until(() => remote('bufname()') === 'pair://today', 'the ledger again');
+    keys('q');
+    await until(() => remote('winnr("$")') === '1', 'q to close it');
+  } finally {
+    await stop();
+  }
+});
+
 test('green after a regression: the sign that turned glows and settles, the statusline lights up once, one line says what passes; sounds only while away', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
   const {project, watcher, remote, keys, status, stop} = await pairInNvim('totals', {testOnSave: 'cat report.json'});
   const lua = expr => JSON.parse(remote(`luaeval("vim.json.encode(${expr})")`));
@@ -720,6 +785,40 @@ test('push-to-talk: hold Alt-t, a meter under your line; let go, your words, the
     await until(() => listenLine() === '◌ no answer · the chat says why', 'no answer, said under the line');
     await until(() => messages.some(message => /Pair could not answer/.test(message.text ?? '')), 'why, in the chat');
     await until(() => listenLine() === null, 'the line to go after a moment');
+  } finally {
+    await stop();
+  }
+});
+
+test('Telescope searches reach the trail with what you opened; :Pair trail shows them, and x forgets them', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
+  const {project, watcher, remote, keys, stop} = await pairInNvim('retries pass', {rtp: [join(REPO, 'test/fixtures/telescope')]});
+  const panel = () => JSON.parse(remote('json_encode(getline(1, "$"))'));
+  try {
+    watcher.setResponses(Array.from({length: 10}, () => fauxAssistantMessage([fauxText('0')]))); // not worth a remark
+    writeFileSync(join(project, 'backoff.js'), 'export const next = attempt => 2 ** attempt\n');
+    const search = (...args) => remote(`luaeval("require('fake_search')(${args.map(arg => JSON.stringify(arg).replaceAll('"', "'")).join(', ')}) or 0")`);
+    search('Live Grep', 'give up', 0);
+    search('Live Grep', '   ', 3); // an empty prompt is no search
+    search('Live Grep', 'dead letter', 1, 'a.js'); // the file you are in: nothing opened
+    search('Find Files', 'retry', 2, 'backoff.js');
+    assert.equal(remote('expand("%:t")'), 'backoff.js');
+
+    keys(':Pair trail<CR>');
+    const lines = await until(() => remote('&filetype') === '' && remote('win_gettype()') === 'popup' && panel(), 'the trail panel');
+    assert.equal(lines[0], 'What the pair saw you look for, oldest first');
+    assert.match(lines[2], /^\+ +0s {2}Live Grep {3}"give up" {6}0 results {2}closed, nothing opened$/);
+    assert.match(lines[3], /^\+ +0s {2}Live Grep {3}"dead letter" {2}1 result {3}closed, nothing opened$/);
+    assert.match(lines[4], /^\+ +0s {2}Find Files {2}"retry" {8}2 results {2}→ backoff\.js$/);
+    assert.equal(lines[6], '3 searches in 0 s since your last edit; 2 closed with nothing opened.');
+    assert.equal(lines.at(-1), 'q closes · x forgets this trail');
+
+    keys('x');
+    await until(() => remote('win_gettype()') === '', 'the panel to close');
+    keys(':Pair trail<CR>');
+    await until(() => remote('win_gettype()') === 'popup', 'the panel again');
+    assert.deepEqual(panel(), ['What the pair saw you look for, oldest first', '', 'No searches since your last edit.', 'q closes']);
+    keys('q');
+    await until(() => remote('win_gettype()') === '', 'q to close it');
   } finally {
     await stop();
   }

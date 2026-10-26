@@ -38,7 +38,7 @@ export class Breakpoints {
 
 /**
  * Whether what `trigger` saw still holds in `state`: the error is still in the code, the user is still in the
- * file that drifted. A held thought about what is gone is dropped.
+ * file that drifted, no edit since the searches of a trail. A held thought about what is gone is dropped.
  */
 export function stillTrue(trigger, state) {
   if (trigger.kind === 'new_code_diagnostic') {
@@ -46,6 +46,7 @@ export function stillTrue(trigger, state) {
     return (state.diagnostics[trigger.file] ?? []).some(item => item.message === trigger.message);
   }
   if (trigger.kind === 'drift') return state.edits.at(-1)?.file === trigger.file;
+  if (trigger.kind === 'search_trail') return state.lastEditAt < trigger.searches[0].at; // an edit since: you found it
   return true;
 }
 
