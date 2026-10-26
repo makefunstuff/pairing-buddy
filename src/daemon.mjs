@@ -205,8 +205,8 @@ export async function startDaemon(config, {
   }
 
   /**
-   * Takes a changed config: new sessions get all of it; the open ones get the typing pause, auto-tuning and tests on
-   * save at once, and the models between turns. The socket and the data directory move only with a restart.
+   * Takes a changed config: new sessions get all of it; the open ones get the typing pause, auto-tuning, tests on
+   * save, voice and the board at once, and the models between turns. The socket and the data directory move only with a restart.
    */
   async function reload(next) {
     const changed = configChanges(config, next);
@@ -225,6 +225,7 @@ export async function startDaemon(config, {
       session.autoTune = config.autoTune;
       session.setTestOnSave(testOnSaveOf(session.root, session.id));
     }
+    if (changed.includes('board')) readContext = projectContext({board: config.board});
     if (changed.includes('voice')) {
       for (const listener of listeners.values()) listener.close();
       listeners.clear();
@@ -283,7 +284,7 @@ export async function startDaemon(config, {
     return {text: null};
   }
 
-  const readContext = projectContext({board: config.board});
+  let readContext = projectContext({board: config.board});
   const contextReads = new Map(); // session -> {at, reading}: the last read of its git and board, or the one under way
 
   /** Reads the project's git and board into the session state, unless a read is under way or `freshMs` old. */
