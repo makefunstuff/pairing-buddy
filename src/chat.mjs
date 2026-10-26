@@ -15,6 +15,7 @@ const HELP = `/goal <text>   set the session goal
 +  or /useful  Pair's last remark was useful
 -  or /noise   it was not (a remark you never see counts as not useful too)
 /today         what Pair did here today
+?  or /why     the one idea worth keeping behind what Pair said last
 /agents        your other agents and board tasks, the ones that need you first
 /end           end the session now and write a session note (it also ends by itself)
 /quit          close this pane (the session goes on)
@@ -40,6 +41,7 @@ export function parseInput(line) {
   if (command === '/agents') return {type: 'agents'};
   if (text === '+' || command === '/useful') return {type: 'feedback', useful: true};
   if (text === '-' || command === '/noise') return {type: 'feedback', useful: false};
+  if (text === '?' || command === '/why') return {type: 'teach'};
   if (command === '/quit') return {local: 'quit'};
   if (command.startsWith('/')) return {local: 'help'};
   if (HAND_OVER.test(text)) return {type: 'drive', text};

@@ -33,7 +33,7 @@ A heading the model adds itself (`Session note:`, `# Session Notes`, …) is dro
 
 ## The next session starts from it
 
-The next session in the same project (the same git root) starts from the last note, in two ways:
+The next session in the same project (the same git root, or [session root](config.md#session-roots)) starts from the last note, in two ways:
 
 - The chat shows it before the new goal (or before asking for one):
 
