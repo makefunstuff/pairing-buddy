@@ -141,6 +141,10 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
       },
       () => reported('partner', partner.ask(conversationId, content, options)),
     ),
+    finish: (conversationId, submissionId) => slot.turn(
+      {conversation: conversationId, asked: true, cancel: () => {}},
+      () => reported('partner', partner.finish(conversationId, submissionId)),
+    ),
   };
 
   /**
@@ -343,16 +347,23 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
       type: 'welcome', root: session.root, goal: session.state.goal, level: session.budget.level, role: session.role, models: health.snapshot(),
       accent: session.accent,
     });
-    // A Neovim that connects (or reconnects) after a test run shows its result too.
+    // A Neovim that connects (or reconnects) after a test run shows its result too, and a late answer it missed.
     if (client.role === 'editor' && session.testsShown) sendMessage(client.socket, session.testsShown);
     if (client.role === 'editor' && session.runShown) sendMessage(client.socket, session.runShown);
     if (message.herdr?.socket) agents?.useHerdr(message.herdr.socket);
     const relayed = relays.get(session.root)?.last;
     if (client.role === 'editor' && relayed) sendMessage(client.socket, relayed);
+    if (client.role === 'editor' && session.lateForEditors) {
+      sendMessage(client.socket, session.lateForEditors);
+      session.lateForEditors = null;
+    }
     if (client.role !== 'chat') return;
     watchHerdr(session, message.herdr);
-    // A chat pane that reconnects after a daemon restart already shows the history.
-    if (message.resume) return;
+    // A chat pane that reconnects after a daemon restart already shows the history, up to the restart.
+    if (message.resume) {
+      for (const missed of store.messagesSince(session.id, startedAt)) sendMessage(client.socket, {type: 'message', history: true, ...missed});
+      return;
+    }
     const history = store.messages(session.id);
     for (const old of history) sendMessage(client.socket, {type: 'message', history: true, ...old});
     if (!history.length) session.greet();
@@ -488,6 +499,18 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     }));
   });
 
+  // The user's questions the daemon was answering when it stopped: their sessions are loaded before the Partner
+  // goes on, so its tool calls find them; a question whose session ended is dropped.
+  const late = [];
+  const orphans = [];
+  for (const turn of partner.interrupted) {
+    const record = store.activeSessionOf(turn.conversationId);
+    if (record) late.push({...turn, session: await loadSession(record.root)});
+    else orphans.push(turn.conversationId);
+  }
+  for (const conversationId of orphans) await partner.cancel(conversationId);
+  await partner.resume();
+
   // The owner lock is held, so a socket file left behind is from a daemon that died.
   try { unlinkSync(config.socket); } catch {}
   await new Promise((resolve, reject) => server.once('error', reject).listen(config.socket, resolve));
@@ -522,6 +545,11 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
   health.start();
   agents?.start();
   log(`pair daemon ${VERSION} listening on ${config.socket}`);
+  for (const {session, conversationId, submissionId, question} of late) {
+    log(`[${basename(session.root)}] finishing the answer the restart interrupted`);
+    session.lateAnswer(question, () => sessionPartner.finish(conversationId, submissionId))
+      .catch(error => log(`late answer failed: ${error.stack ?? error}`));
+  }
 
   return {
     async close() {

@@ -236,6 +236,7 @@ export class PairSession {
     this.testRuns = testOnSave && new TestRuns({...testOnSave, root: record.root, pane: () => this.scout, report: run => this.testRun(run)});
     this.testsShown = null;
     this.runShown = null; // the places of the last build or run that the editors show (see showRun)
+    this.lateForEditors = null; // a late answer no editor was there for, shown to the next one that connects
     this.runError = null; // the last run that could not run, said once in the chat
     this.wasRed = false; // the last run failed
     this.usedAt = null; // when the user last did something in this session (see USER_EVENTS), since the daemon loaded it
@@ -558,6 +559,18 @@ export class PairSession {
     return this.words.join('\n');
   }
 
+  /**
+   * The user's `question` the daemon was answering when it stopped: the Partner finishes it on restart (`answering`
+   * resolves with its answer), and it shows as late, in the chat and the editors, also those that reconnect after it.
+   */
+  async lateAnswer(question, answering) {
+    this.message('system', `The daemon restarted while Pair was answering "${question}"; its answer comes late.`);
+    await this.talk(null, {}, answering);
+    if (!this.words.length) return;
+    const message = {type: 'message', sender: 'system', text: `Late answer to "${question}": ${this.words.join('\n')}`, at: this.now()};
+    if (!this.notify('editors', message)) this.lateForEditors = message;
+  }
+
   /** The lines the user selected, for the Partner's input; '' without a selection. */
   async selected(selection) {
     const path = selection && (await projectFile(this.root, selection.file));
@@ -569,8 +582,9 @@ export class PairSession {
    * Runs one Partner turn (`options` as for the Partner's ask); true when anything reached the user. While the model
    * of a turn that thinks is at work, the statusline says so: thinking takes seconds, and the user should not take
    * it for silence. While one of its tools runs (it types an edit, reads, runs a command) it says what that does.
+   * `answering` resolves with the answer, as the Partner's ask does: by default, it asks.
    */
-  async talk(input, options = {}) {
+  async talk(input, options = {}, answering = () => this.partner.ask(this.conversationId, input, options)) {
     this.busy = true;
     this.spoke = false;
     this.said = false;
@@ -581,6 +595,7 @@ export class PairSession {
     this.showThinking(true);
     try {
       const answer = this.voiced(await this.partner.ask(this.conversationId, input, options));
+      const answer = await answering();
       // After a say, local models tend to end with filler or a repeat; the say already was the answer.
       if (answer && !silent(answer) && !this.said) {
         this.show(() => this.message('pair', answer));
