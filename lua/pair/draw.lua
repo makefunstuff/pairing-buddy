@@ -1,5 +1,5 @@
 -- Drawing the pair in your buffers, in its visual language (style.lua): its words under a line, the lines it
--- points at, the changes it suggests, and its gaze in the line numbers. Only extmarks: no windows, no boxes.
+-- points at, the changes it suggests, and its gaze over the lines it reads. Only extmarks: no windows, no boxes.
 -- What it draws rises from the background in a quarter of a second, unless motion is off.
 local style = require('pair.style')
 
@@ -10,9 +10,11 @@ M.suggest_ns = vim.api.nvim_create_namespace('pair_suggest')
 M.tests_ns = vim.api.nvim_create_namespace('pair_tests')
 M.runs_ns = vim.api.nvim_create_namespace('pair_runs')
 local gaze_ns = vim.api.nvim_create_namespace('pair_gaze')
+local gaze_line_ns = vim.api.nvim_create_namespace('pair_gaze_line') -- shown only in windows without numbers
 
 M.motion = true -- setup's `motion` option
 local FADE_FRAMES, FRAME_MS = 10, 28 -- a fade-in of 280 ms
+local GLOW_MS = 650 -- a test that turned green lights up, then settles
 local MAX_LINES = 3 -- of the pair's words under a line; the chat has them all
 
 --- The window showing `buf`: the current one if it does, else the first in this tab page, else the current
@@ -263,19 +265,44 @@ local function failure_note(buf, note, glyph, glyph_group, text_group, set)
   set(note, {virt_lines = lines, priority = 15})
 end
 
---- A function that places a mark of `ns` in `buf` on its line, rising from the background when it `changed`.
+--- Sets a sign that turned green: it and its line light up, then settle into the quiet pass in GLOW_MS.
+local function glow(buf, ns, row, col, spec)
+  if not (M.motion and style.can_move()) then return vim.api.nvim_buf_set_extmark(buf, ns, row, col, spec) end
+  local function at(t)
+    return vim.tbl_extend('force', spec, {
+      sign_hl_group = style.between('PairGlow', spec.sign_hl_group, t),
+      line_hl_group = t < 1 and style.fade('PairGlowLine', 1 - t) or nil,
+    })
+  end
+  local id = vim.api.nvim_buf_set_extmark(buf, ns, row, col, at(0))
+  local start, timer = vim.uv.now(), vim.uv.new_timer()
+  timer:start(FRAME_MS, FRAME_MS, vim.schedule_wrap(function()
+    if timer:is_closing() then return end
+    local t = math.min(1, (vim.uv.now() - start) / GLOW_MS)
+    local mark = vim.api.nvim_buf_is_valid(buf) and vim.api.nvim_buf_get_extmark_by_id(buf, ns, id, {}) or {}
+    if mark[1] then
+      pcall(vim.api.nvim_buf_set_extmark, buf, ns, mark[1], mark[2], vim.tbl_extend('force', at(ease(t)), {id = id}))
+      show(buf)
+    end
+    if not mark[1] or t >= 1 then timer:close() end
+  end))
+  return id
+end
+
+--- A function that places a mark of `ns` in `buf` on its line, rising from the background when it `changed`, or
+--- glowing when it turned green (`glow`).
 local function setter(buf, ns, rise)
   local count = vim.api.nvim_buf_line_count(buf)
   return function(mark, spec)
     if mark.line > count then return end
-    local how = mark.changed and rise and place or vim.api.nvim_buf_set_extmark
+    local how = rise and (mark.glow and glow or mark.changed and place) or vim.api.nvim_buf_set_extmark
     how(buf, ns, mark.line - 1, 0, spec)
   end
 end
 
---- What a test run found in `buf`: `signs` ({line, ok, changed}) put ✓ or ✗ in the sign column of each test,
+--- What a test run found in `buf`: `signs` ({line, ok, changed, glow}) put ✓ or ✗ in the sign column of each test,
 --- `notes` ({line, text, changed}) say why a test failed there: after the line when it fits, else under it. What `changed` since the last run
---- rises from the background; with `stale` (the next run is on) everything shows half faded.
+--- rises from the background, a sign with `glow` (it turned green) lights up; with `stale` (the next run is on) everything shows half faded.
 function M.tests(buf, signs, notes, opts)
   vim.api.nvim_buf_clear_namespace(buf, M.tests_ns, 0, -1)
   local stale = opts and opts.stale
@@ -306,40 +333,70 @@ function M.runs(buf, places)
   end
 end
 
--- The gaze: the line numbers the pair reads light up one after another, a short trail fading behind.
+-- The gaze: the lines the pair reads light up one after another, a short trail fading behind. Where a window has
+-- line numbers, the numbers light up; where it has none, the lines themselves take a faint tint.
 
 local gazes = {} -- buf -> its running timer
+
+local function numbered(win)
+  return vim.wo[win].number or vim.wo[win].relativenumber
+end
+
+--- Scopes the tinted lines to the windows of this tab page without numbers: a window with numbers shows the
+--- gaze in them alone. False when none of them shows `buf`.
+local function scope_tint(buf)
+  local plain, shows = {}, false
+  for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    if not numbered(win) then
+      table.insert(plain, win)
+      shows = shows or vim.api.nvim_win_get_buf(win) == buf
+    end
+  end
+  -- a namespace scoped to no window shows everywhere
+  if shows then vim.api.nvim__ns_set(gaze_line_ns, {wins = plain}) end
+  return shows
+end
+
+local function clear_gaze(buf)
+  vim.api.nvim_buf_clear_namespace(buf, gaze_ns, 0, -1)
+  vim.api.nvim_buf_clear_namespace(buf, gaze_line_ns, 0, -1)
+end
 
 --- Sweeps lines `from`..`to` (1-based) of `buf` where a window shows them; false when none does.
 function M.gaze(buf, from, to)
   if gazes[buf] and not gazes[buf]:is_closing() then gazes[buf]:close() end
-  vim.api.nvim_buf_clear_namespace(buf, gaze_ns, 0, -1)
+  clear_gaze(buf)
   local top, bottom
   for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
-    if vim.api.nvim_win_get_buf(win) == buf and (vim.wo[win].number or vim.wo[win].relativenumber) then
+    if vim.api.nvim_win_get_buf(win) == buf then
       top = math.min(top or math.huge, vim.fn.line('w0', win))
       bottom = math.max(bottom or 0, vim.fn.line('w$', win))
     end
   end
   local first, last = math.max(from, top or math.huge), math.min(to, bottom or 0)
   if first > last then return false end
-  local trail = {'PairGaze', style.fade('PairGaze', 0.55), style.fade('PairGaze', 0.25)}
-  if not (M.motion and style.can_move()) then trail = {'PairGaze'} end
+  local tint = scope_tint(buf)
+  local trail = {{'PairGaze', 'PairGazeLine'}, {style.fade('PairGaze', 0.55), style.fade('PairGazeLine', 0.55)},
+    {style.fade('PairGaze', 0.25), style.fade('PairGazeLine', 0.25)}}
+  if not (M.motion and style.can_move()) then trail = {trail[1]} end
   -- the whole sweep takes about 0.8 s, however many lines show
   local step = math.max(16, math.min(70, math.floor(800 / (last - first + 1))))
   local line, timer = first, vim.uv.new_timer()
   gazes[buf] = timer
   timer:start(0, step, vim.schedule_wrap(function()
     if timer:is_closing() or not vim.api.nvim_buf_is_valid(buf) then return end
-    vim.api.nvim_buf_clear_namespace(buf, gaze_ns, 0, -1)
+    clear_gaze(buf)
     if line > last + #trail - 1 then
       timer:close()
       return show(buf)
     end
-    for k, group in ipairs(trail) do
+    for k, groups in ipairs(trail) do
       local row = line - k + 1
       if row >= first and row <= last then
-        pcall(vim.api.nvim_buf_set_extmark, buf, gaze_ns, row - 1, 0, {number_hl_group = group, priority = 300})
+        pcall(vim.api.nvim_buf_set_extmark, buf, gaze_ns, row - 1, 0, {number_hl_group = groups[1], priority = 300})
+        if tint then
+          pcall(vim.api.nvim_buf_set_extmark, buf, gaze_line_ns, row - 1, 0, {line_hl_group = groups[2], priority = 300})
+        end
       end
     end
     show(buf)
