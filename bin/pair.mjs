@@ -148,13 +148,15 @@ try {
     await uninstall();
   } else if (command === 'doctor') {
     await runDoctor();
-  } else {
+  } else if ([undefined, 'chat', 'daemon'].includes(command)) {
     firstRunConfig();
     const config = loadConfig();
     if (command === undefined) await openChatPane(config);
     else if (command === 'chat') { await ensureDaemon(config); runChat(config.socket); }
-    else if (command === 'daemon') await daemon(config);
-    else { console.log(USAGE); process.exitCode = command === 'help' || command === '--help' ? 0 : 2; }
+    else await daemon(config);
+  } else {
+    console.log(USAGE);
+    process.exitCode = command === 'help' || command === '--help' ? 0 : 2;
   }
 } catch (error) {
   console.error(`pair: ${error.message}`);
