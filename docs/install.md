@@ -114,11 +114,14 @@ session goes on). A line that starts with "you take it" or "your turn" hands Pai
 question for Pair. When Pair asks before running or typing a command, your next line is the answer: `y` or `yes`
 allows it, anything else declines.
 
-**The shell hook.** Optional, for exit codes and short commands; add it to your shell's rc file:
+**The shell hook.** Optional, for exit codes and the shortest commands; add it to your shell's rc file:
 
 ```sh
 eval "$(pair shell-hook bash)"   # or zsh
+pair shell-hook fish | source    # fish, in config.fish
 ```
+
+It also emits OSC 133 marks (prompt, output, end with the exit code) for a terminal that reads them.
 
 **Without herdr**, run `pair chat` in any terminal. Pair then sees your editor and, with the shell hook, your
 commands' exit codes, but no terminal output.

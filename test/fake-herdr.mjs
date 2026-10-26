@@ -1,4 +1,5 @@
-// A stand-in for herdr's socket API, just enough for Pair: panes to list, split, close and read, and a
+// A stand-in for herdr's socket API, just enough for Pair: panes to list, split, close and read, events to
+// subscribe to, and a
 // shell in each new pane that runs scripted commands, shows the prompt Scout's bash would show and writes the
 // files its rc file would (see pane-runs.mjs).
 import {mkdirSync, writeFileSync} from 'node:fs';
@@ -9,12 +10,24 @@ import {readMessages, sendMessage} from '../src/protocol.mjs';
 /**
  * `commands` maps a command line to `{output, exit}`; others print nothing and exit 0. It may instead be a
  * function of the command line that resolves with them, to really run commands. The workspace starts
- * with the user's pane `w1:p1` and the chat pane `w1:p2`. `sent` records every send_text as [pane, text].
+ * with the user's pane `w1:p1`, which has focus, and the chat pane `w1:p2`. `sent` records every send_text as
+ * [pane, text], `calls` the method of every request. `processes` maps a pane to its foreground processes other than the shell (none by default);
+ * `focus(pane)` and `scroll(pane, offset)` change what pane.list says and push the event to subscribers.
  */
 export async function fakeHerdr(socketPath, {commands = {}} = {}) {
   const panes = new Map([['w1:p1', {label: null, lines: ['$ ']}], ['w1:p2', {label: null, lines: ['› ']}]]);
   const sent = [];
+  const calls = []; // the method of every request
+  const processes = new Map();
+  const subscribers = new Set(); // {socket, subscriptions}
+  let focused = 'w1:p1';
   let next = 3;
+
+  function push(event, data, wanted = ({type}) => type.replace('.', '_') === event) {
+    for (const {socket, subscriptions} of subscribers) {
+      if (subscriptions.some(wanted)) sendMessage(socket, {event, data});
+    }
+  }
 
   async function type(pane, text) {
     const shell = panes.get(pane);
@@ -41,14 +54,15 @@ export async function fakeHerdr(socketPath, {commands = {}} = {}) {
   const lastLines = (pane, lines = 1000) => panes.get(pane).lines.slice(-lines).join('\n');
 
   const methods = {
-    'pane.list': () => ({panes: [...panes].map(([pane_id, pane]) => ({pane_id, label: pane.label, focused: pane_id === 'w1:p1'}))}),
+    'pane.list': () => ({panes: [...panes].map(([pane_id, pane]) => ({pane_id, label: pane.label, focused: pane_id === focused, scroll: {offset_from_bottom: pane.offset ?? 0}}))}),
     'pane.split': () => {
       const pane_id = `w1:p${next++}`;
       panes.set(pane_id, {label: null, lines: ['$ ']});
+      setImmediate(() => push('pane_created', {pane: {pane_id}}));
       return {pane: {pane_id}};
     },
     'pane.rename': ({pane_id, label}) => { panes.get(pane_id).label = label; return {}; },
-    'pane.close': ({pane_id}) => { panes.delete(pane_id); return {}; },
+    'pane.close': ({pane_id}) => { panes.delete(pane_id); setImmediate(() => push('pane_closed', {pane_id})); return {}; },
     'pane.send_text': ({pane_id, text}) => { sent.push([pane_id, text]); type(pane_id, text); return {}; },
     'pane.read': ({pane_id, lines}) => ({read: {text: lastLines(pane_id, lines)}}),
     'pane.wait_for_output': async ({pane_id, lines, match, timeout_ms}) => {
@@ -59,10 +73,17 @@ export async function fakeHerdr(socketPath, {commands = {}} = {}) {
       }
       return {};
     },
-    'pane.process_info': ({pane_id}) => ({process_info: {pane_id, shell_pid: 1, foreground_processes: [{pid: 1, name: 'bash'}]}}),
+    'pane.process_info': ({pane_id}) => ({process_info: {pane_id, shell_pid: 1, foreground_processes: [{pid: 1, name: 'bash'}, ...(processes.get(pane_id) ?? [])]}}),
   };
 
   const server = createServer(socket => readMessages(socket, async ({id, method, params}) => {
+    if (method === 'events.subscribe') {
+      const subscriber = {socket, subscriptions: params.subscriptions};
+      subscribers.add(subscriber);
+      socket.on('close', () => subscribers.delete(subscriber));
+      return sendMessage(socket, {id, result: {type: 'subscription_started'}});
+    }
+    calls.push(method);
     try {
       sendMessage(socket, {id, result: await methods[method](params)});
     } catch (error) {
@@ -70,5 +91,19 @@ export async function fakeHerdr(socketPath, {commands = {}} = {}) {
     }
   }));
   await new Promise(resolve => server.listen(socketPath, resolve));
-  return {panes, sent, close: () => new Promise(resolve => server.close(resolve))};
+  return {
+    panes, sent, calls, processes, subscribers,
+    focus(pane) {
+      focused = pane;
+      push('pane_focused', {pane_id: pane, workspace_id: 'w1'});
+    },
+    scroll(pane, offset) {
+      panes.get(pane).offset = offset;
+      push('pane.scroll_changed', {pane_id: pane, scroll: {offset_from_bottom: offset}}, ({type, pane_id}) => type === 'pane.scroll_changed' && pane_id === pane);
+    },
+    close() {
+      for (const {socket} of subscribers) socket.destroy();
+      return new Promise(resolve => server.close(resolve));
+    },
+  };
 }
