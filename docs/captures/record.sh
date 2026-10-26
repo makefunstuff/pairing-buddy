@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
-# Records the scenes with VHS into out/: ./record.sh [scene ...] (default: all four).
+# Records the scenes with VHS into out/: ./record.sh [scene ...] (default: all six).
 # Each scene gets its own scratch directory under /tmp/paircap.*: the project, the daemon's socket and data, and
 # Neovim's XDG directories. Nothing of your own Neovim, pair config, history or daemon is read or touched.
 set -euo pipefail
+# The crash scene crashes a program on purpose: no core dumps, and none handed to the crash reporter (see test/no-core.mjs).
+prlimit --pid $$ --core=1 2>/dev/null || ulimit -c 0
 HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$HERE/../.." && pwd)
 AYU=01faacb4cb76e8cf72ad9858c581d80876260ab3 # ayu-theme/ayu-vim, Apache-2.0
 MINI=561751e839b99a4baca36b9d963166b66d2536a6 # echasnovski/mini.nvim, MIT: only mini.base16
 SCENES=("$@")
-[ ${#SCENES[@]} -gt 0 ] || SCENES=(wrong-turn tests-on-save hand-over take-back held-thought)
+[ ${#SCENES[@]} -gt 0 ] || SCENES=(wrong-turn tests-on-save hand-over take-back held-thought crash)
 mkdir -p "$HERE/out"
 
 for scene in "${SCENES[@]}"; do

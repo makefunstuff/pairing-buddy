@@ -16,6 +16,7 @@ import {openPartner} from '../../src/partner.mjs';
 import {watchInput} from '../../src/session.mjs';
 import {detectTriggers} from '../../src/triggers.mjs';
 import {createWatcher} from '../../src/watcher.mjs';
+import {bashWithoutCores} from '../no-core.mjs';
 import {liveStacks, SKIP_REASON} from './stacks.mjs';
 
 // Exploring a hash table: the user just took the mask out of hash() (line 10), so the index runs past the table.
@@ -52,9 +53,12 @@ const BUILD = 'cc -g -O0 -Wall -o probe probe.c';
 const hasCc = spawnSync('cc', ['--version']).status === 0;
 const NOW = 1_000_000;
 
-/** Runs `command` in `root` with bash, as the user's terminal would: its output, and its exit code as the shell hook reports it. */
+/**
+ * Runs `command` in `root` with bash, as the user's terminal would, but without core dumps (see ../no-core.mjs):
+ * its output, and its exit code as the shell hook reports it.
+ */
 function sh(root, command) {
-  const result = spawnSync('bash', ['-c', command], {cwd: root, encoding: 'utf8'});
+  const result = spawnSync(...bashWithoutCores(command), {cwd: root, encoding: 'utf8'});
   const signals = {SIGSEGV: 11, SIGABRT: 6, SIGBUS: 7, SIGFPE: 8};
   return {output: result.stdout + result.stderr, exit: result.signal ? 128 + signals[result.signal] : result.status};
 }

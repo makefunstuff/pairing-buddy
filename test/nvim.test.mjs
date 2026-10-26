@@ -13,6 +13,7 @@ import {startDaemon} from '../src/daemon.mjs';
 import {readMessages, sendMessage} from '../src/protocol.mjs';
 import {openStore} from '../src/store.mjs';
 import {fakeHerdr} from './fake-herdr.mjs';
+import {bashWithoutCores} from './no-core.mjs';
 
 const REPO = fileURLToPath(new URL('..', import.meta.url));
 const hasNvim = (() => { try { execFileSync('nvim', ['--version']); return true; } catch { return false; } })();
@@ -29,9 +30,9 @@ async function until(check, what, timeoutMs = 8000) {
   throw new Error(`timed out waiting for ${what}`);
 }
 
-/** Runs a command line in `cwd` with bash, as Pair's pane would: its output and exit code. */
+/** Runs a command line in `cwd` with bash, as Pair's pane would (without core dumps): its output and exit code. */
 const runIn = cwd => command => new Promise(resolve => {
-  execFile('bash', ['-c', command], {cwd}, (error, stdout, stderr) => resolve({output: stdout + stderr, exit: error ? error.code ?? 1 : 0}));
+  execFile(...bashWithoutCores(command), {cwd}, (error, stdout, stderr) => resolve({output: stdout + stderr, exit: error ? error.code ?? 1 : 0}));
 });
 
 /**
