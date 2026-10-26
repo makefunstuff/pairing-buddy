@@ -13,11 +13,11 @@ export function trueColor(hex) {
   return `\x1b[38;2;${n >> 16};${(n >> 8) & 255};${n & 255}m`;
 }
 
-/** The words of one line, each {text, code, space}: a `code` span is one word; `space` says a space came before it. */
+/** The words of one line, each {text, code, space}: a `code` span is one word; `space` is the spaces before it. */
 function tokens(line) {
   const out = [];
   for (const [, space, code, word] of line.matchAll(/(\s*)(?:`([^`]+)`|(\S+))/g)) {
-    out.push({text: code ?? word, code: code !== undefined, space: space !== ''});
+    out.push({text: code ?? word, code: code !== undefined, space});
   }
   return out;
 }
@@ -27,20 +27,20 @@ function wrap(text, width) {
   const lines = [];
   for (const paragraph of text.split('\n')) {
     if (/^\s/.test(paragraph)) {
-      lines.push([{text: paragraph, code: false, space: false}]);
+      lines.push([{text: paragraph, code: false, space: ''}]);
       continue;
     }
     let line = [];
     let used = 0;
     for (const token of tokens(paragraph)) {
-      if (used > 0 && used + 1 + token.text.length > width) {
+      if (used > 0 && used + token.space.length + token.text.length > width) {
         lines.push(line);
         line = [];
         used = 0;
       }
-      const space = used > 0 && token.space;
+      const space = used > 0 ? token.space : ''; // a wrapped line starts at its word
       line.push({...token, space});
-      used += (space ? 1 : 0) + token.text.length;
+      used += space.length + token.text.length;
     }
     lines.push(line);
   }
@@ -60,7 +60,9 @@ export function formatMessage(sender, text, {accent = null, width = 0, color = t
   if (sender === 'user') return `${head} ${text}`;
   const indent = ' '.repeat(name.length + 1);
   const lines = wrap(text, width > indent.length + 20 ? width - indent.length : Infinity);
-  const body = lines.map(line => line.map(token => (token.space ? ' ' : '') + (token.code ? paint(ink, token.text) : token.text)).join(''));
+  // Code shows in the accent, without its backticks; without colours the backticks stay, to mark it.
+  const code = word => (color ? paint(ink, word) : `\`${word}\``);
+  const body = lines.map(line => line.map(token => token.space + (token.code ? code(token.text) : token.text)).join(''));
   return `${head} ${body.join(`\n${indent}`)}`;
 }
 

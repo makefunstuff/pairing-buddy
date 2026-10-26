@@ -132,10 +132,11 @@ local function point_target(point)
   return point and {buf = point.buf, ns = ns, id = point.ids.mark, code = point.code, point = point}
 end
 
---- The jump key goes to `target`, or to Pair's last point when it is nil, or nowhere when there is none.
+--- The jump key goes to `target`, or to Pair's last point when it is nil, or nowhere when there is none (unless a
+--- held thought waits for it).
 local function aim(target)
   state.target = target or point_target(state.points[#state.points])
-  if not state.target then unmap_keys('jump') end
+  if not state.target and not state.held then unmap_keys('jump') end -- a held thought keeps it: it shows the thought
 end
 
 local function forget_point(point)
@@ -243,7 +244,7 @@ end
 
 -- An unasked remark: its words go under the line you are on, and the feedback keys wait for your verdict.
 local function on_remark(message)
-  forget_held()
+  if state.held and state.held.remark == message.id then forget_held() end -- another remark leaves a held one waiting
   state.remark = message.id
   map_keys('feedback', {
     {config.useful_key, function() feedback(true, state.remark) end, 'Pair\'s remark was useful'},

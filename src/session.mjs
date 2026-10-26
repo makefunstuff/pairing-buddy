@@ -173,9 +173,9 @@ export class PairSession {
     this.unasked = false; // the running turn is a remark nobody asked for
     this.words = []; // what Pair said this turn: an unasked remark shows it under the user's line too
     this.target = null; // where the user's jump key goes: Pair's suggestion this turn, else where it pointed last
-    this.held = []; // parts of an unasked remark not shown yet: while the user types, or until a breakpoint
-    this.holding = false; // the running remark can wait for the user's next breakpoint (see held.mjs)
-    this.thought = null; // the held thought, {id, trigger, since}: a remark ready, waiting for that breakpoint
+    this.held = []; // parts of an urgent unasked remark that came while the user was typing
+    this.holding = null; // the parts of the running remark, when it can wait for the user's next breakpoint (see held.mjs)
+    this.thought = null; // the held thought, {id, trigger, since, parts}: a remark ready, waiting for that breakpoint
     this.breakpoints = new Breakpoints();
     this.accent = null; // the editor's accent (see style.lua) as #rrggbb, for the chat pane
     this.panes = null; // the user's herdr panes (a PaneWatch), for the Driver's type
@@ -266,17 +266,15 @@ export class PairSession {
    * remark that can wait, at their next breakpoint.
    */
   show(action) {
-    if (this.unasked && (this.holding || this.typing())) this.held.push(action);
+    if (this.unasked && this.holding) this.holding.push(action);
+    else if (this.unasked && this.typing()) this.held.push(action);
     else action();
   }
 
   /** Shows what waits once it is due: the held thought at the user's next breakpoint, other parts at a pause. */
   showDue() {
-    if (this.thought) {
-      if (this.breakpoints.last(this.state, this.now()) >= this.thought.since) this.release();
-    } else if (this.held.length && !this.holding && !this.typing()) {
-      this.held.splice(0).forEach(action => action());
-    }
+    if (this.thought && this.breakpoints.last(this.state, this.now()) >= this.thought.since) this.release();
+    if (this.held.length && !this.typing()) this.held.splice(0).forEach(action => action());
   }
 
   /** Holds a finished remark that can wait: the editor shows a dot where it is about until it is due. */
@@ -292,8 +290,7 @@ export class PairSession {
     const {thought} = this;
     if (!thought) return;
     this.thought = null;
-    const actions = this.held.splice(0);
-    if (stillTrue(thought.trigger, this.state)) return actions.forEach(action => action());
+    if (stillTrue(thought.trigger, this.state)) return thought.parts.forEach(action => action());
     this.log(`${thought.trigger.kind}: held thought dropped, no longer true`);
     this.store.dropRemark(thought.id);
     this.notify('editors', {type: 'unheld', id: thought.id});
@@ -384,25 +381,26 @@ export class PairSession {
   async remark(trigger, score, waitedMs = null) {
     // The gate saw a pause, but a Partner turn takes seconds: the user may be typing again by the time it answers.
     this.unasked = true;
-    this.holding = !urgent(trigger.kind);
+    this.holding = urgent(trigger.kind) ? null : [];
     const since = this.now(); // a breakpoint from here on is the one it waits for
     const id = this.remarkId = this.store.addRemark({sessionId: this.id, trigger: trigger.kind, score, at: this.now(), waitedMs});
     try {
       const input = watchInput(trigger, describeState(this.state, this.now()));
       if (!(await this.talk(input, {kind: 'remark'}))) return this.store.dropRemark(id);
-      this.budget.spend(this.now());
-      this.lastRemark = id;
       // After the remark's own words, also when they wait for a pause in the user's typing. The editor shows
       // the words under the line the user is on, with a way to the place Pair pointed at.
       const {words, target} = this;
+      // The budget pays for a remark the user gets to see, when they see it.
       this.show(() => {
+        this.budget.spend(this.now());
+        this.lastRemark = id;
         this.notify('chat', {type: 'remark', id});
         this.notify('editor', {type: 'remark', id, text: words.join('\n'), target});
       });
-      if (this.holding) this.hold({id, trigger, since}, target);
+      if (this.holding) this.hold({id, trigger, since, parts: this.holding}, target);
     } finally {
       this.unasked = false;
-      this.holding = false;
+      this.holding = null;
       this.remarkId = null;
       this.remarking = null;
     }

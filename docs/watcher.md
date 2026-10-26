@@ -22,7 +22,7 @@ Once the Partner has written a remark, it shows at your next pause if it is abou
 
 Meanwhile Neovim shows a `•` in the sign column at the line it is about (where it points, else where its trigger is) and the statusline says `● pair · held thought · M-j`; nothing goes to the chat. `Alt-j` (or `:Pair jump`) shows it at once. A breakpoint that came while the Partner was still writing counts, so a remark that is ready while you already rest shows at once, without a dot.
 
-A held thought is dropped, without a word, when what it saw is gone by then: the error is no longer in your code, or you left the file that drifted. It is not stored as a remark, so it counts neither as useful nor as noise. While a thought is held, other triggers that can wait are not judged; urgent ones still are.
+A held thought is dropped, without a word, when what it saw is gone by then: the error is no longer in your code (on any line: lines added above it only move it), or you left the file that drifted. It is not stored as a remark, so it counts neither as useful nor as noise. It costs the talk budget only when it shows, so a thought you have not seen never holds back another remark. While a thought is held, other triggers that can wait are not judged; urgent ones still are, and show at your next pause as usual, while the held one keeps waiting for its breakpoint.
 
 ## The prefilter
 

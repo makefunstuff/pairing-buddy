@@ -170,3 +170,51 @@ test('while a thought is held, nothing else that can wait is judged; urgent news
   await pair.tick();
   assert.ok(judged.includes('repeated_error'), 'the same failure again does not');
 });
+
+const RED = '--- FAIL: TestPop (0.00s)\n    ring_test.go:9: got 2, want 1\nFAIL\texample.com/ring\t0.001s';
+
+test('an urgent remark made while a thought is held shows at the next pause, and stays when the held one is dropped', async () => {
+  const {file, pair, clock, errorInNewCode, types, shown} = pairSession();
+  const logged = [];
+  pair.log = line => logged.push(line);
+  pair.receive({kind: 'focus', target: 'terminal', pane: 'w1:p3', at: clock.now - 40_000}); // the user watched it fail
+  pair.receive({kind: 'command_end', pane: 'w1:p3', cmd: 'go test ./...', exit: 1, output: RED, at: clock.now - 30_000});
+  errorInNewCode();
+  await pair.tick();
+  const [held] = shown('held');
+  assert.ok(held, 'the error in new code is held');
+
+  types();
+  clock.now += 2500;
+  pair.partner.ask = async () => {
+    types(); // typing again while Pair writes the wrong turn
+    return 'The failure is in ring_test.go, not in main.c.';
+  };
+  await pair.tick();
+  assert.ok(logged.some(line => line.startsWith('edit_while_red: speak')), 'the wrong turn is not held back by the budget of an unseen thought');
+  assert.deepEqual(shown('remark'), [], 'not while you type');
+
+  clock.now += 2500; // a pause, still in Insert mode: no breakpoint
+  await pair.tick();
+  assert.deepEqual(shown('remark').map(message => message.text), ['The failure is in ring_test.go, not in main.c.'], 'the wrong turn, at the pause');
+  assert.equal(pair.thought?.id, held.id, 'the held thought still waits');
+
+  pair.receive({kind: 'diagnostics', file, items: []}); // the user fixes the first error
+  pair.receive({kind: 'save', file});
+  await pair.tick();
+  assert.deepEqual(shown('unheld').map(message => message.id), [held.id], 'the held one goes');
+  assert.equal(shown('remark').length, 1, 'the wrong turn stays shown');
+});
+
+test('a held error whose line moves is still the same error, and shows at the save', async () => {
+  const {file, pair, errorInNewCode, types, shown} = pairSession();
+  errorInNewCode();
+  await pair.tick();
+  types();
+  // A line added at the top: the same error, now on line 5.
+  pair.receive({kind: 'diagnostics', file, items: [{line: 5, severity: 'error', message: 'use of undeclared identifier n'}]});
+  pair.receive({kind: 'save', file});
+  await pair.tick();
+  assert.deepEqual(shown('unheld'), []);
+  assert.equal(shown('remark').length, 1);
+});

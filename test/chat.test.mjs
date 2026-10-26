@@ -56,13 +56,14 @@ test('Pair\'s name and its code show in the editor\'s accent, in true colour; be
   assert.equal(formatMessage('pair', 'Look at `queue.c:18`.', {accent: '#7fd1b9'}), `${teal}pair\x1b[0m Look at ${teal}queue.c:18\x1b[0m.`);
   assert.equal(formatMessage('pair', 'Hi.'), '\x1b[36mpair\x1b[0m Hi.');
   assert.equal(formatMessage('user', 'why `x`?', {accent: '#7fd1b9'}), '\x1b[2myou\x1b[0m why `x`?', 'what you typed, as you typed it');
-  assert.equal(formatMessage('system', '`make` passes again.', {color: false}), '·· make passes again.');
+  assert.equal(formatMessage('system', '`make` passes again.', {color: false}), '·· `make` passes again.', 'without colours, the backticks mark the code');
+  assert.equal(formatMessage('pair', 'Is `make test` ok?  Two spaces.', {accent: '#7fd1b9'}), `${teal}pair\x1b[0m Is ${teal}make test\x1b[0m ok?  Two spaces.`, 'spaces as written');
 });
 
 test('a long message wraps under its words, not under the name; an indented line is code and stays as it is', () => {
   const text = 'The lease in `queue.c:18` ends as attempt five starts.\nqueue.c:18 suggestion: renew it\n    lease->until = now + ttl;';
   assert.equal(formatMessage('pair', text, {color: false, width: 40}), [
-    'pair The lease in queue.c:18 ends as',
+    'pair The lease in `queue.c:18` ends as',
     '     attempt five starts.',
     '     queue.c:18 suggestion: renew it',
     '         lease->until = now + ttl;',

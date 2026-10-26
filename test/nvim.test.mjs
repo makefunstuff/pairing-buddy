@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {execFile, execFileSync, spawn} from 'node:child_process';
 import {mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync} from 'node:fs';
-import {connect} from 'node:net';
+import {connect, createServer} from 'node:net';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -574,5 +574,44 @@ test('the chat pane gets the accent Neovim derived, and a new one when the color
     await until(() => chatAccent() === accent() && accent() !== first, 'the new accent');
   } finally {
     await stop();
+  }
+});
+
+test('another remark leaves a held thought\'s dot and Alt-j alone; its own remark takes them away', {skip: hasNvim ? false : 'nvim not installed', timeout: 20_000}, async () => {
+  // A stand-in daemon: it greets Neovim and sends what the test says.
+  const dir = mkdtempSync('/tmp/pair-');
+  let editor;
+  const received = [];
+  const server = createServer(socket => {
+    editor = socket;
+    readMessages(socket, message => received.push(message));
+  });
+  await new Promise(resolve => server.listen(join(dir, 'pair.sock'), resolve));
+  const project = realpathSync(mkdtempSync(join(tmpdir(), 'pair-nvim-')));
+  writeFileSync(join(project, 'a.c'), 'int a;\nint b;\nint c;\nint d;\n');
+  const nvimSocket = join(dir, 'nvim.sock');
+  const nvim = spawn('nvim', ['--headless', '--clean', '--listen', nvimSocket, '--cmd', `set rtp+=${REPO}`,
+    '-c', `lua require('pair').setup({socket = '${join(dir, 'pair.sock')}'})`, '-c', `cd ${project}`, '-c', 'edit a.c', '-c', 'Pair start'], {stdio: 'ignore'});
+  const remote = expr => execFileSync('nvim', ['--server', nvimSocket, '--remote-expr', expr], {encoding: 'utf8'}).trim();
+  const dot = () => JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('pair'), 0, -1, {details = true}))")`))
+    .filter(([, , , details]) => details.sign_text?.trim() === '•').map(([, row]) => row);
+  const mapped = () => remote(`maparg('<M-j>', 'n')`) !== '';
+  try {
+    await until(() => editor && received.some(message => message.type === 'hello'), 'the plugin to connect');
+    sendMessage(editor, {type: 'welcome', root: project, level: 'normal', role: 'navigator', models: {}});
+    sendMessage(editor, {type: 'held', id: 1, file: join(project, 'a.c'), line: 3});
+    await until(() => dot().length, 'the dot');
+    sendMessage(editor, {type: 'remark', id: 2, text: 'The failure is elsewhere.', target: null});
+    await until(() => remote('luaeval("require(\'pair\').status()")').includes('held thought'), 'the statusline');
+    await sleep(300);
+    assert.deepEqual(dot(), [2], 'the dot stays');
+    assert.equal(mapped(), true, 'and Alt-j with it');
+    remote('execute("Pair jump")');
+    await until(() => received.some(message => message.type === 'release'), 'Alt-j to ask for the held thought');
+    sendMessage(editor, {type: 'remark', id: 1, text: 'Line 3 is the one.', target: null});
+    await until(() => !dot().length, 'its own remark to take the dot');
+  } finally {
+    nvim.kill();
+    server.close();
   }
 });

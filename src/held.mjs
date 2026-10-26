@@ -42,7 +42,8 @@ export class Breakpoints {
  */
 export function stillTrue(trigger, state) {
   if (trigger.kind === 'new_code_diagnostic') {
-    return (state.diagnostics[trigger.file] ?? []).some(item => item.line === trigger.line && item.message === trigger.message);
+    // By its message: lines added or removed above it move the error, and it is still the same error.
+    return (state.diagnostics[trigger.file] ?? []).some(item => item.message === trigger.message);
   }
   if (trigger.kind === 'drift') return state.edits.at(-1)?.file === trigger.file;
   return true;
