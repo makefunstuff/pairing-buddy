@@ -4,6 +4,7 @@
 -- buffer only while you hand it the wheel (the Driver role): one edit, typed while you watch (drive.lua) as one
 -- undo step, and refused or undone as soon as you press any key. Once connected, it stays connected: when the
 -- daemon restarts, it reconnects by itself.
+local agents = require('pair.agents')
 local card = require('pair.card')
 local draw = require('pair.draw')
 local drive = require('pair.drive')
@@ -21,12 +22,13 @@ local M = {}
 local ns = draw.ns
 -- Alt-y: no built-in meaning in Normal mode. <Tab> would be the same byte as Ctrl-I, the jumplist's forward jump.
 -- Alt-j goes where Pair points. Alt-u and Alt-n rate Pair's last unasked remark: useful, or noise. Hold Alt-t to
--- speak to Pair (push-to-talk, see listen.lua).
+-- speak to Pair (push-to-talk, see listen.lua). Alt-a goes to the agent whose news Pair relayed.
 local config = {
   socket = nil, debounce_ms = 2000, max_points = 5, motion = true, glyphs = {},
   accept_key = '<M-y>', jump_key = '<M-j>', useful_key = '<M-u>', noise_key = '<M-n>', listen_key = '<M-t>',
   sounds = false, sound_volume = 0.5,
   searches = true, -- your Telescope and snacks.picker searches go to the daemon, for the search trail
+  agents_key = '<M-a>',
 }
 local state = {
   channel = nil, partial = '', attached = {}, pending = {}, open_request = nil, level = nil, role = nil,
@@ -589,9 +591,11 @@ local function watch_keys(on)
     if state.role == 'driver' then -- a burst of keys takes the wheel back once
       state.role = 'navigator' -- edits on their way are refused from this key on
       vim.schedule(function()
+        -- The take-back first: undoing a half-typed edit answers it with a refusal, which must not end the turn
+        -- before the daemon knows the wheel is back.
+        send({type = 'take_back'})
         if state.typing then state.typing() end
         vim.on_key(nil, ns)
-        send({type = 'take_back'})
         redraw_status()
       end)
     end
@@ -662,7 +666,9 @@ local function send_accent()
 end
 
 local function hello()
-  send({type = 'hello', role = 'editor', cwd = vim.fn.getcwd()})
+  -- herdr's socket lets the daemon see your other agents, also when no chat pane runs.
+  local herdr = vim.env.HERDR_SOCKET_PATH and {socket = vim.env.HERDR_SOCKET_PATH} or nil
+  send({type = 'hello', role = 'editor', cwd = vim.fn.getcwd(), herdr = herdr})
   send_accent()
 end
 
@@ -727,6 +733,8 @@ local handlers = {
   run = on_run,
   context = card.update,
   trail = function(message) trail.show(message, function() send({type = 'forget_trail'}) end) end,
+  agents = agents.on_relay,
+  agent_list = agents.on_list,
   thinking = function(message)
     state.thinking = message.on
     spin()
@@ -840,6 +848,7 @@ function M.disconnect()
   clear_suggestion()
   forget_words(false)
   unmap_feedback()
+  agents.clear()
   state.results, state.run, state.thinking = {}, nil, false
   spin()
   show_all_tests()
@@ -892,7 +901,9 @@ end
 --- `◌ pair · partner down`.
 function M.status()
   local parts = status_parts()
-  return parts and (parts.glyph .. ' ' .. parts.text) or ''
+  if not parts then return '' end
+  local relayed = agents.status_parts()
+  return parts.glyph .. ' ' .. parts.text .. (relayed and ('  ' .. relayed.glyph .. ' ' .. relayed.text) or '')
 end
 
 --- The same with its highlight groups, for a 'statusline' expression or a statusline plugin's section.
@@ -904,7 +915,9 @@ function M.statusline()
     parts.hl = style.between('PairStatusGlow', parts.hl, t, {statusline = true})
     parts.text_hl = style.between('PairStatusGlow', parts.text_hl, t, {statusline = true})
   end
-  return ('%%#%s#%s %%#%s#%s%%*'):format(parts.hl, parts.glyph, parts.text_hl, (parts.text:gsub('%%', '%%%%')))
+  local function part(p) return ('%%#%s#%s %%#%s#%s'):format(p.hl, p.glyph, p.text_hl, (p.text:gsub('%%', '%%%%'))) end
+  local relayed = agents.status_parts()
+  return part(parts) .. (relayed and ('  ' .. part(relayed)) or '') .. '%*'
 end
 
 -- Each command gets the words after its name and, with a range (:'<,'>Pair ask ...), the lines it covers.
@@ -928,6 +941,7 @@ local commands = {
   today = function() if M.connect() then ledger.open() end end,
   useful = function() feedback(true, state.remark) end,
   noise = function() feedback(false, state.remark) end,
+  agents = agents.request,
   ['end'] = function() send({type = 'end'}) end,
   context = function()
     if not state.channel then return vim.notify('Pair: not connected, so there is no card; :Pair start connects', vim.log.levels.WARN) end
@@ -969,6 +983,7 @@ function M.setup(opts)
   earcons.enabled, earcons.volume = config.sounds, config.sound_volume
   ledger.send = send
   ledger.rate = feedback
+  agents.setup({send = send, map_keys = map_keys, unmap_keys = unmap_keys, key_label = key_label, redraw_status = redraw_status}, config.agents_key)
   style.apply()
   local group = vim.api.nvim_create_augroup('pair', {clear = true})
   local function restyle()

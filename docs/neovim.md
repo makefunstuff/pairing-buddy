@@ -1,8 +1,8 @@
 # The pair in Neovim
 
 Pair sits in the second chair. In Neovim it has a small visual language: a few marks in one colour, all in your
-own font, and no windows, boxes, borders or field labels (the three panels, `:Pair trail`, `:Pair context` and
-`:Pair today`, open only when you ask).
+own font, and no windows, boxes, borders or field labels (the panels, `:Pair trail`, `:Pair context`, `:Pair today`
+and `:Pair agents`, open only when you ask).
 Everything it shows follows one test: would you keep it on screen for an eight-hour day?
 
 ![Pair stops a wrong turn: it reads, says why under your edit, and Alt-j goes to the real cause](images/wrong-turn.gif)
@@ -27,6 +27,7 @@ run is real `go test`; only the models' words are scripted. It is recorded from 
 | `✓` `✗` | the statusline, and the sign column of your tests | tests it ran for you when you saved |
 | `✗` `△` | the sign column, and the words after the line | a crash or a compiler error, and a new warning, from your last build or run |
 | a glow, and one line | the statusline, a `✓`, under your line | it went green after a red, or a number finally moved ([below](#when-it-goes-green)) |
+| `◇` and `M-a` | the statusline, after Pair's own part | another agent's news, at your breakpoint; `M-a` goes to that agent ([your other agents](agents.md)) |
 
 **One accent, from your colorscheme.** Pair takes its colour from the colorscheme you use, so it fits in light and
 dark: of the colorscheme's own colours for regular expressions, its terminal cyan, its hints and its specials, it
@@ -411,6 +412,8 @@ lines sit right under them on a faint tint, and the note follows with `M-y`.
 tests on save as above (`(unsaved)` after the label for the run on the Driver's edit). The role and
 the talk level show only when they are not the usual ones (`● pair · scout`, `● pair · quiet`). While a thought is
 held, `● pair · held thought · M-j`, the `●` in the accent.
+After it, at your next breakpoint, another agent's news: `◇ #21 needs you: Should a segfault… +2  M-a`
+([details](agents.md)).
 
 ![A model down, then the daemon away](images/statusline.png)
 
@@ -482,6 +485,7 @@ require('pair').setup({
 | `accept_key` | `'<M-y>'` | Accepts a suggestion. Mapped in Normal mode, only in that buffer and only while a suggestion shows. Avoid `<Tab>`: terminals send it for Ctrl-I, the jumplist's forward jump |
 | `listen_key` | `'<M-t>'` | Hold it to speak to Pair ([voice.md](voice.md)). Mapped in Normal and Visual mode from the start |
 | `useful_key`, `noise_key` | `'<M-u>'`, `'<M-n>'` | Your verdict on Pair's last unasked remark. Mapped in Normal mode only while a remark waits for one |
+| `agents_key` | `'<M-a>'` | Goes to the agent whose news Pair relayed, or puts the line away when it has no pane ([agents.md](agents.md)). Mapped in Normal mode while such a line shows |
 | `motion` | `true` | Fades, the glow of a green, and the trail behind the gaze; without it the gaze still steps line by line |
 | `searches` | `true` | Read your Telescope and snacks.picker searches for the [search trail](#the-search-trail) |
 | `sounds` | `false` | Short [sounds](#sounds-while-you-are-away) for a green, a regression, a remark and the hand-back, only while Neovim does not have the focus |
@@ -491,7 +495,7 @@ require('pair').setup({
 Every key option takes `false` for none; the commands work either way. The keys are mapped only where you have no
 mapping of your own, and all but `listen_key` only while there is something for them to act on. The glyphs are plain
 Unicode, so they show in any font: `voice` `●`, `mark` `▎`, `held` `•`, `away` `◌`, `wheel` `◎`, `listen` `◉`, `pass`
-`✓`, `fail` `✗` and `warn` `△`. The
+`✓`, `fail` `✗`, `warn` `△` and `agents` `◇`. The
 spinner is braille, `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`.
 
 Once connected, the plugin stays connected: when the daemon restarts (an upgrade, `systemctl --user restart`, a
@@ -519,6 +523,7 @@ to standard ones and does not fade.
 | `:Pair useful` | Pair's last unasked remark was useful (same as `Alt-u`) |
 | `:Pair noise` | It was not (same as `Alt-n`) |
 | `:Pair open` | Open the place Pair asked to show while you were typing |
+| `:Pair agents` | Your other agents and board tasks, the ones that need you first; `⏎` goes to one ([agents.md](agents.md)) |
 | `:Pair today` | The [ledger](#the-ledger): everything Pair did in this project today; `⏎` goes there or shows the output, `u` undoes one of its edits later |
 | `:Pair clear` | Remove Pair's points and words |
 | `:Pair context` | Show what Pair knows right now: the goal, the board task, git, your commands, buffers, jumps and searches; `x` hides a source for the session, `q` closes |

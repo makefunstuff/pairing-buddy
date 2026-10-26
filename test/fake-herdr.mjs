@@ -7,10 +7,12 @@ import {readMessages, sendMessage} from '../src/protocol.mjs';
  * `commands` maps a command line to `{output, exit}`; others print nothing and exit 0. It may instead be a
  * function of the command line that resolves with them, to really run commands. The workspace starts
  * with the user's pane `w1:p1` and the chat pane `w1:p2`. `sent` records every send_text as [pane, text].
+ * `agents` is what agent.list answers (change it in place); `focused` records the targets of agent.focus.
  */
-export async function fakeHerdr(socketPath, {commands = {}} = {}) {
+export async function fakeHerdr(socketPath, {commands = {}, agents = []} = {}) {
   const panes = new Map([['w1:p1', {label: null, lines: ['$ ']}], ['w1:p2', {label: null, lines: ['› ']}]]);
   const sent = [];
+  const focused = [];
   let next = 3;
 
   async function type(pane, text) {
@@ -49,6 +51,12 @@ export async function fakeHerdr(socketPath, {commands = {}} = {}) {
       }
       return {};
     },
+    'agent.list': () => ({type: 'agent_list', agents}),
+    'agent.focus': ({target}) => {
+      if (!agents.some(agent => agent.pane_id === target)) throw new Error(`agent target ${target} not found`);
+      focused.push(target);
+      return {};
+    },
     'pane.process_info': ({pane_id}) => ({process_info: {pane_id, shell_pid: 1, foreground_processes: [{pid: 1, name: 'bash'}]}}),
   };
 
@@ -60,5 +68,5 @@ export async function fakeHerdr(socketPath, {commands = {}} = {}) {
     }
   }));
   await new Promise(resolve => server.listen(socketPath, resolve));
-  return {panes, sent, close: () => new Promise(resolve => server.close(resolve))};
+  return {panes, sent, agents, focused, close: () => new Promise(resolve => server.close(resolve))};
 }
