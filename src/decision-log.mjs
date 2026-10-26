@@ -1,6 +1,6 @@
 // The decision log: decisions.md next to a note, one entry per decision you log with the decide key, in the
-// spirit of Nygard's ADRs. An entry keeps your decision in your words, where it stands in the note and the
-// question that led to it. A later decision about the same thing supersedes it: the entry stays, its status says so.
+// spirit of Nygard's ADRs. An entry keeps your decision in your words, where it stands in the note, the question
+// that led to it (its context), and an empty line for its consequences, which you write. A later decision about the same thing supersedes it: the entry stays, its status says so.
 // Pure: it turns the log's text into its next text; the editor puts that in the buffer, which you save.
 import {ideaWords, overlap} from './note-rules.mjs';
 
@@ -26,8 +26,11 @@ export function entries(log) {
   return found;
 }
 
-/** Whether `decision`, from the note `file`, is in the log already. */
-export const logged = (log, file, decision) => entries(log).some(entry => entry.file === file && entry.title === decision);
+/**
+ * Whether `decision`, from the note `file`, is the log's decision now. One that was superseded is not: going back
+ * to it is a decision of its own.
+ */
+export const logged = (log, file, decision) => entries(log).some(entry => entry.decided && entry.file === file && entry.title === decision);
 
 /**
  * The log after `decision` ({date, text, file, line, section, asked}) is logged: `{text, line, superseded}`, with
@@ -53,6 +56,7 @@ export function logDecision(log, decision) {
     DECIDED,
     `- Where: ${decision.file}:${decision.line}${decision.section ? ` (${decision.section})` : ''}`,
     ...(decision.asked ? [`- Asked: "${decision.asked}"`] : []),
+    '- Consequences:',
   ];
   return {text: `${body}\n\n${entry.join('\n')}\n`, line: body.split('\n').length + 2, superseded};
 }

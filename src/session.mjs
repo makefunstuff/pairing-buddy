@@ -11,7 +11,7 @@ import {gitStatus} from './git.mjs';
 import {Breakpoints, placeOf, stillTrue, urgent} from './held.mjs';
 import {plainLine} from './herdr.mjs';
 import {RUN_TIMEOUT_MS, shellQuote} from './scout-pane.mjs';
-import {PROSE_CHECKS} from './prose-triggers.mjs';
+import {asksBack, oneQuestion, PROSE_CHECKS} from './prose-triggers.mjs';
 import {parseTestOutput, testSummary} from './test-output.mjs';
 import {TestRuns} from './test-runs.mjs';
 import {currentTrail, trailMatches, trailSummary} from './trail.mjs';
@@ -184,6 +184,7 @@ export class PairSession {
     this.spoke = false; // anything reached the user this turn
     this.said = false; // the say tool was used this turn
     this.unasked = false; // the running turn is a remark nobody asked for
+    this.asksBack = false; // that remark is one question back, and nothing else (see prose-triggers.mjs)
     this.words = []; // what Pair said this turn: an unasked remark shows it under the user's line too
     this.target = null; // where the user's jump key goes: Pair's suggestion this turn, else where it pointed last
     this.held = []; // parts of an urgent unasked remark that came while the user was typing
@@ -396,6 +397,7 @@ export class PairSession {
   async remark(trigger, score, waitedMs = null) {
     // The gate saw a pause, but a Partner turn takes seconds: the user may be typing again by the time it answers.
     this.unasked = true;
+    this.asksBack = asksBack(trigger.kind);
     this.holding = urgent(trigger.kind) ? null : [];
     const since = this.now(); // a breakpoint from here on is the one it waits for
     const id = this.remarkId = this.store.addRemark({sessionId: this.id, trigger: trigger.kind, score, at: this.now(), waitedMs});
@@ -417,6 +419,7 @@ export class PairSession {
       if (this.holding) this.hold({id, trigger, since, parts: this.holding}, target);
     } finally {
       this.unasked = false;
+      this.asksBack = false;
       this.holding = null;
       this.remarkId = null;
       this.remarking = null;
@@ -489,7 +492,7 @@ export class PairSession {
     this.thinks = this.partner.thinkingOf(this.conversationId, options.kind) !== 'off';
     this.showThinking(true);
     try {
-      const answer = await this.partner.ask(this.conversationId, input, options);
+      const answer = this.voiced(await this.partner.ask(this.conversationId, input, options));
       // After a say, local models tend to end with filler or a repeat; the say already was the answer.
       if (answer && !silent(answer) && !this.said) {
         this.show(() => this.message('pair', answer));
@@ -684,8 +687,18 @@ export class PairSession {
 
   // The Partner's tools (see tools.mjs). Each returns what the model is told.
 
-  say(text) {
-    if (silent(text)) return 'shown'; // some models say their SILENT instead of answering it
+  /**
+   * What of `text` Pair shows: all of it, but in a remark that is one question back, that question alone, once.
+   * Null when nothing of it shows.
+   */
+  voiced(text) {
+    if (!this.asksBack || !text) return text;
+    return this.said ? null : oneQuestion(text);
+  }
+
+  say(words) {
+    const text = this.voiced(words);
+    if (!text || silent(text)) return 'shown'; // some models say their SILENT instead of answering it
     this.spoke = true;
     this.said = true;
     this.words.push(text);
@@ -695,6 +708,7 @@ export class PairSession {
 
   /** Marks lines in the editor, with `code` on the first one underlined; the last point of a turn is where the jump key goes. */
   async point({file, line, endLine, note, code}) {
+    if (this.asksBack) return 'Not in this remark: ask your one question in words.';
     const path = await projectFile(this.root, file);
     if (!path) return `No file ${file} in the project`;
     this.spoke = true;

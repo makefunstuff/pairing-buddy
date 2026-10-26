@@ -42,6 +42,10 @@ said: in the research behind this feature, the note's last line repeated line 9 
 the model's marks said so. Two paragraphs repeat each other when they share at least three idea words (no stop
 words, plurals and verb endings dropped) and those words carry at least half of what the two say, each word
 weighed by how rare it is in the note. A decision restates the question it settles, so it is never a repeat.
+Paragraphs that are parallel are no repeats either, however alike they read: two allocator sections, three build
+targets, option A and option B each say something of their own. A paragraph is about its label (`Option A:`,
+`` `debug`: ``) when it has one, else its first idea word ("The arena allocator …" is about the arena); two
+labelled paragraphs with different labels, or two whose subject the other does not mention, are parallel.
 
 ## The decision log
 
@@ -55,13 +59,15 @@ it gets `◆`, and `Alt-d` (`<M-d>`, or `:Pair decide`) logs it in `decisions.md
 - Status: decided
 - Where: docs/dead-letters.md:20 (## How)
 - Asked: "Replay as attempt 1 with full budget: does the 5-attempt cap then apply again, so a dead receiver loops forever?"
+- Consequences:
 ```
 
-- The decision is in your words. `Asked` quotes the model's question or contradiction in the same section that the
+- The decision is in your words, and so are its consequences: the line is left for you to fill in. `Asked` quotes the model's question or contradiction in the same section that the
   decision answers (the one that shares most words with it, else the nearest above), and that mark goes.
 - A later decision about the same thing (same note, same section, mostly the same words) **supersedes** the old
   entry: it stays, and its status says `superseded by 2026-10-28 · …`. Nothing is deleted.
-- A decision logged already is not logged again.
+- A decision logged already is not logged again. Going back to one that was superseded is a decision of its own: it
+  is logged again, and supersedes the one in between.
 - The log opens in a split below the note, at the new entry; your cursor stays in the note, and the statusline says
   `◆ logged · docs/decisions.md` for a few seconds. **Pair does not write the file:** the entry is in the log's
   buffer, and you save it, like any change Pair suggests.
@@ -101,6 +107,10 @@ the budget limits how often Pair speaks, and its words show under your line.
 | claim about code | when the model reads the note | the `→` mark; `Alt-l` opens the code |
 | decision | when you say so | `Alt-d`; see [The decision log](#the-decision-log) |
 | tasks | when you ask | `:Pair tasks`, and a `y` |
+
+Both remarks are one question and nothing else, and Pair holds them to it: it shows the first question of the
+answer alone (at most 25 words, else nothing), says no second remark, and refuses to point at lines meanwhile. In
+live runs, models otherwise added a second remark about a contradiction the margin already showed.
 
 The Watcher is asked about the question or the section itself: would a question back help, and is this section about
 something other than the note's title. Asked only whether a remark would save time, a tested model scored a stalled

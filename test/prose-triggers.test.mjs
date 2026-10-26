@@ -62,3 +62,36 @@ test('the Watcher is asked about the question or the section itself, not whether
   await score(proseTriggers(drifted, 100_000)[0], drifted);
   assert.match(asked[1], /titled "Dead letters"\. They began the section "## Pricing tiers"[\s\S]*0 if it could belong in that note/);
 });
+
+test('a stall remark is one question back: its first question alone, once, and no point', async () => {
+  const {PairSession} = await import('../src/session.mjs');
+  const {oneQuestion} = await import('../src/prose-triggers.mjs');
+  const sent = [];
+  const told = [];
+  let pair;
+  const partner = {thinkingOf: () => 'off', ask: async () => {
+    told.push(await pair.point({file: 'package.json', line: 1, note: '5 on line 14, 6 here'}));
+    pair.say('If replay restarts at 1, what stops endless replays?');
+    pair.say('If replay always restarts at attempt 1, what stops it? (Also: line 14 says 5 attempts, line 21 says 6.)');
+    return 'Also, line 14 contradicts line 21.';
+  }};
+  pair = new PairSession({
+    record: {id: 1, root: process.cwd(), conversation_id: 7, goal: 'dead letters', level: 'normal'},
+    store: {addMessage() {}, addRemark: () => 1, dropRemark() {}},
+    partner, score: async () => ({value: 9}), typingPauseMs: 2000,
+    notify: (role, message) => sent.push({role, ...message}),
+    requestEditor: async () => null,
+    now: () => 200_000,
+  });
+  const state = write(initialState(), 100_000, 'Should replay reset the attempt count?');
+  await pair.remark(proseTriggers(state, 200_000)[0], 9);
+  assert.deepEqual(told, ['Not in this remark: ask your one question in words.']);
+  assert.deepEqual(sent.filter(message => message.type === 'message').map(message => message.text), ['If replay restarts at 1, what stops endless replays?']);
+  assert.ok(!sent.some(message => message.type === 'point'));
+  assert.equal(sent.find(message => message.type === 'remark' && message.role === 'editor').text, 'If replay restarts at 1, what stops endless replays?');
+  // Outside such a remark, nothing is cut.
+  assert.equal(pair.voiced('One. Two?'), 'One. Two?');
+  assert.equal(oneQuestion('Does `worker.go:36` park it? (Also: line 14 says 5.)'), 'Does `worker.go:36` park it?');
+  assert.equal(oneQuestion('Line 14 says 5 attempts and line 20 says 6.'), null);
+  assert.equal(oneQuestion(`${'word '.repeat(30)}?`), null);
+});

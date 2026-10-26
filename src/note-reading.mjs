@@ -111,24 +111,27 @@ export async function oneAnswer({models, model, signal}, systemPrompt, content) 
   return message.content.filter(block => block.type === 'text').map(block => block.text).join('');
 }
 
-/** The first JSON array in a model's answer, also inside a code fence or after words; [] when there is none. */
+/**
+ * The JSON array in a model's answer, also inside a code fence, after words, before words that have brackets of
+ * their own, or as the one list in an object ({"marks": [...]}); [] when there is none.
+ */
 export function jsonList(text) {
-  const start = text.indexOf('[');
-  const end = text.lastIndexOf(']');
-  if (start < 0 || end < start) return [];
-  try {
-    const list = JSON.parse(text.slice(start, end + 1));
-    return Array.isArray(list) ? list.filter(item => item && typeof item === 'object') : [];
-  } catch {
-    return [];
+  const start = text.search(/[[{]/);
+  if (start < 0) return [];
+  for (let end = text.length; end > start; end = text.lastIndexOf(text[start] === '[' ? ']' : '}', end - 1)) {
+    let value;
+    try { value = JSON.parse(text.slice(start, end + 1)); } catch { continue; }
+    const list = Array.isArray(value) ? value : Object.values(value ?? {}).find(Array.isArray);
+    return (list ?? []).filter(item => item && typeof item === 'object');
   }
+  return [];
 }
 
 const inNote = (count, line) => Number.isInteger(line) && line >= 1 && line <= count;
 
 /**
  * The marks in the model's answer that hold up: a known kind, a line of the note that is not a heading, words, and
- * for a contradiction its other line. `exists(file)` says whether a file it names is in the project; a code
+ * for a contradiction its other line or the code that contradicts it. `exists(file)` says whether a file it names is in the project; a code
  * place that is not loses its link, not its mark.
  */
 export async function parseMarks(answer, text, exists) {
@@ -142,6 +145,7 @@ export async function parseMarks(answer, text, exists) {
     const other = Number(item.other_line);
     if (inNote(lines.length, other) && other !== line) mark.other = other;
     if (typeof item.file === 'string' && Number.isInteger(item.file_line) && (await exists(item.file))) Object.assign(mark, {file: item.file, fileLine: item.file_line});
+    if (mark.kind === 'contradiction' && !mark.other && !mark.file) continue; // it names neither side it contradicts
     if (marks.some(old => old.line === line)) continue;
     marks.push(mark);
     if (marks.length === MAX_MARKS) break;

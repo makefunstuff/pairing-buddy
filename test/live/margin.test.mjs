@@ -8,13 +8,13 @@ import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {describe, test} from 'node:test';
 import {MemoryStorage} from '@earendil-works/pi-durable';
-import {describeState} from '../../src/describe.mjs';
-import {numberedLines, readProjectPath} from '../../src/files.mjs';
+import {readProjectPath} from '../../src/files.mjs';
 import {fold, initialState} from '../../src/fold.mjs';
 import {codeFor, MARKS_PROMPT, noteInput, oneAnswer, parseMarks, parseTasks, TASKS_PROMPT} from '../../src/note-reading.mjs';
 import {openPartner} from '../../src/partner.mjs';
 import {proseTriggers} from '../../src/prose-triggers.mjs';
-import {watchInput} from '../../src/session.mjs';
+import {PairSession} from '../../src/session.mjs';
+import {ROLE_TOOLS} from '../../src/tools.mjs';
 import {createWatcher} from '../../src/watcher.mjs';
 import {liveStacks, SKIP_REASON} from './stacks.mjs';
 
@@ -36,36 +36,35 @@ function project(note = NOTE) {
 
 const wordCount = text => text.split(/\s+/).filter(Boolean).length;
 
-/** The Partner, with hands that only read and record what it shows. */
-async function partnerFor(stack, root) {
-  const shown = [];
-  const hands = {
-    roleOf: () => 'navigator',
-    say: async (_c, text) => { shown.push(text); return 'shown'; },
-    point: async (_c, args) => { shown.push(args.note); return 'highlighted'; },
-    open: async () => 'opened in a split',
-    suggest: async () => 'Not now: in a note, ask instead.',
-    read: async (_c, {file, from, to}) => {
-      const source = await readProjectPath(root, file);
-      return source.error ?? source.listing ?? numberedLines(source.text, from, to);
-    },
-  };
-  const partner = await openPartner({storage: new MemoryStorage(), models: stack.models, model: stack.partner, thinking: stack.config.models.partner.thinking, hands});
-  return {shown, partner, conversation: await partner.createConversation()};
-}
-
-/** What the Partner says to the prose trigger raised by `events`, and the Watcher's score for it. */
+/**
+ * What Pair shows for the prose trigger raised by `events`, through a real session and the live Partner, as the
+ * daemon wires them (its editor is the files on disk); and the Watcher's score for it.
+ */
 async function remarkOn(stack, root, events, kind) {
   const state = events.reduce(fold, initialState({root, goal: 'dead letters for webhooks'}));
   const trigger = proseTriggers(state, NOW).find(found => found.kind === kind);
   assert.ok(trigger, `the events raise ${kind}`);
-  const {shown, partner, conversation} = await partnerFor(stack, root);
-  const answer = await partner.ask(conversation, watchInput(trigger, describeState(state, NOW)), {kind: 'remark'});
+  let session;
+  const hands = {
+    ...Object.fromEntries(ROLE_TOOLS.navigator.map(name => [name, (_c, args) => session.useTool(name, args)])),
+    roleOf: () => 'navigator',
+  };
+  const partner = await openPartner({storage: new MemoryStorage(), models: stack.models, model: stack.partner, thinking: stack.config.models.partner.thinking, hands});
+  const conversation = await partner.createConversation();
+  const shown = [];
+  session = new PairSession({
+    record: {id: 1, root, conversation_id: conversation, goal: state.goal, level: 'normal'},
+    store: {addMessage() {}, addRemark: () => 1, dropRemark() {}},
+    partner, score: async () => ({value: 9}), typingPauseMs: 2000,
+    notify: (_to, message) => { if (message.type === 'message') shown.push(message.text); return 1; },
+    requestEditor: async () => null,
+    now: () => NOW,
+  });
+  session.state = state;
+  await session.remark(trigger, 9);
   await partner.close();
   const score = await createWatcher({models: stack.models, model: stack.watcher, now: () => NOW})(trigger, state);
-  // As the session shows it: after a say, the final answer is not shown again.
-  const said = (shown.length ? shown : [answer]).filter(text => text && !/^\W*SILENT\W*$/.test(text)).join('\n');
-  return {said, score: score.value};
+  return {said: shown.join('\n'), score: score.value};
 }
 
 const stacks = liveStacks();
@@ -80,6 +79,7 @@ describe('Notes in the margin on live models', {skip: stacks.length ? false : SK
       assert.deepEqual(code.map(place => place.file), ['internal/delivery/worker.go', 'internal/delivery/worker.go']);
       const answer = await oneAnswer(model, MARKS_PROMPT, noteInput(FILE, NOTE, code, 'dead letters for webhooks'));
       const marks = await parseMarks(answer, NOTE, async file => Boolean(await readProjectPath(root, file).then(source => source.text)));
+      if (!marks.length) t.diagnostic(`the answer, with no mark in it: ${answer}`);
       for (const mark of marks) t.diagnostic(`${mark.kind} ${mark.line}${mark.other ? `/${mark.other}` : ''}${mark.file ? ` ${mark.file}:${mark.fileLine}` : ''}: ${mark.text}`);
       assert.ok(marks.length >= 2 && marks.length <= 5, `${marks.length} marks`);
       assert.ok(marks.every(mark => wordCount(mark.text) <= 35), 'each mark is short');
@@ -105,7 +105,9 @@ describe('Notes in the margin on live models', {skip: stacks.length ? false : SK
       t.diagnostic(`watcher ${score}: ${said}`);
       assert.ok(score >= 6, `the Watcher lets it through at the normal bar (${score})`);
       assert.match(said, /\?\s*$/, 'a question back');
-      assert.ok(wordCount(said) <= 30, 'one short question');
+      assert.equal(said.match(/\?/g).length, 1, 'one question, nothing more');
+      assert.ok(wordCount(said) <= 25, 'one short question');
+      assert.doesNotMatch(said, /line (14|20|21)\b|\b6 attempts/i, 'about their question, not the contradiction the margin shows');
     });
 
     test(`${stack.name}: a section that leaves the note gets one question; one about the note itself gets silence`, {timeout: 240_000}, async t => {

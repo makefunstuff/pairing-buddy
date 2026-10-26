@@ -16,9 +16,10 @@ const HEADING = /^#{2,6}\s+(.+?)\s*#*\s*$/;
 // What the Partner is asked for each of them (see CHECKS in session.mjs).
 export const PROSE_CHECKS = {
   note_stall: 'The user is thinking in their note and stopped after writing a question. Read the note around that line. '
-    + 'Do not answer the question, do not write their text and do not suggest a change: here a question back is the remark. '
-    + 'Ask one short question (at most 18 words) that helps them answer it themselves, about the note or the code it names. '
-    + 'If they plainly do not need one, answer exactly SILENT.',
+    + 'Your whole answer is one question back, at most 18 words, about their question and nothing else: one that helps '
+    + 'them answer it themselves. Do not answer it, do not write their text, do not point at lines and do not suggest a '
+    + 'change. Say nothing about other lines of the note: its margin already shows their problems. '
+    + 'If they plainly do not need a question, answer exactly SILENT.',
   note_drift: 'Do not help with the section itself. Read the note: its title and the new section. If the section serves '
     + 'the title or the goal, answer exactly SILENT. If it has left them, your whole answer is one short question that names '
     + 'the note, for example "is this still the <title> note?". Do not point at lines.',
@@ -33,6 +34,20 @@ export const PROSE_WATCH = {
   note_drift: trigger => `The user writes a design note titled "${trigger.title}". They began the section "${trigger.heading}" in it and write under it.\n`
     + `Score how clearly that section is about something other than "${trigger.title}": 0 if it could belong in that note, 10 if it is plainly another subject.`,
 };
+
+const MAX_QUESTION_WORDS = 25;
+
+/** Whether a remark on `kind` is one question back, and nothing else: no point, no second remark. */
+export const asksBack = kind => PROSE_KINDS.includes(kind);
+
+/**
+ * The question in a remark that must be one question back: its first sentence that ends with "?", without what
+ * comes after it. Null when it has none, or one too long to be a short question: then Pair says nothing.
+ */
+export function oneQuestion(text) {
+  const question = text.split(/(?<=[.?!])\s+|\n/).map(sentence => sentence.trim()).find(sentence => sentence.endsWith('?'));
+  return question && question.split(/\s+/).length <= MAX_QUESTION_WORDS ? question : null;
+}
 
 /** The last line of `text` that asks a question, as {index, text}; null when none does. */
 function lastQuestion(text) {

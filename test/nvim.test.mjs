@@ -758,7 +758,7 @@ test('notes in the margin: five marks in a note, a fixed line loses its mark, a 
     await until(() => status() === '◆ logged · docs/decisions.md', 'the log in the statusline');
     const log = JSON.parse(remote('json_encode(getbufline(bufnr("docs/decisions.md"), 1, "$"))'));
     assert.match(log[2], /^## \d{4}-\d\d-\d\d · replay keeps the attempt cap; it gets the budget back, not new attempts$/);
-    assert.deepEqual(log.slice(3), ['', '- Status: decided', '- Where: docs/dead-letters.md:20 (## How)', '- Asked: "Replay as attempt 1 with full budget: does the 5-attempt cap apply again?"']);
+    assert.deepEqual(log.slice(3), ['', '- Status: decided', '- Where: docs/dead-letters.md:20 (## How)', '- Asked: "Replay as attempt 1 with full budget: does the 5-attempt cap apply again?"', '- Consequences:']);
     assert.equal(remote('expand("%:t")'), 'dead-letters.md', 'your cursor stays in the note');
     assert.throws(() => readFileSync(join(project, 'docs', 'decisions.md')), 'the log is a buffer you save, not a file Pair wrote');
     await until(() => !marks().some(([line]) => line === 17 || line === 20), 'the answered question\'s mark and the decision\'s to go');

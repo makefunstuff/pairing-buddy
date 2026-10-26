@@ -38,7 +38,7 @@ test('the model reads the note numbered, with the code it names', () => {
   assert.match(input, /Code the note names:\ninternal\/delivery\/worker\.go:24: func Deliver/);
 });
 
-test('only marks that hold up are kept: a known kind on a written line, five at most, one per line', async () => {
+test('only marks that hold up are kept: a known kind on a written line, a contradiction with its other side, five at most, one per line', async () => {
   const answer = `Here they are:\n\`\`\`json\n${JSON.stringify([
     {kind: 'contradiction', line: 14, text: 'Line 14 says 5 attempts, line 20 says 6.', other_line: 20},
     {kind: 'code', line: 4, text: 'Deliver returns ErrBudget at worker.go:36.', file: 'internal/delivery/worker.go', file_line: 36},
@@ -47,6 +47,7 @@ test('only marks that hold up are kept: a known kind on a written line, five at 
     {kind: 'praise', line: 8, text: 'Nice.'},
     {kind: 'question', line: 99, text: 'Past the end?'},
     {kind: 'question', line: 14, text: 'Same line again?'},
+    {kind: 'contradiction', line: 15, text: 'This contradicts something.'},
     {kind: 'question', line: 17, text: 'Does the cap apply again?'},
     {kind: 'question', line: 20, text: 'Six attempts inside 15 s?'},
     {kind: 'question', line: 25, text: 'One too many?'},
@@ -73,4 +74,6 @@ test('tasks: titles of at most 60 characters, cut at a word, with the lines they
   ]);
   assert.equal(parseTasks('[{"title": "Allow operators to view and replay dead letters on the admin page"}]')[0].title, 'Allow operators to view and replay dead letters on the…');
   assert.deepEqual(jsonList('[{"a": 1}, 2, null'), []);
+  assert.deepEqual(jsonList('Marks:\n```json\n[{"line": 3}]\n```\nAll from lines [3] and [14].'), [{line: 3}]);
+  assert.deepEqual(jsonList('{"marks": [{"line": 3}]}'), [{line: 3}]);
 });

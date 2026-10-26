@@ -34,3 +34,31 @@ test('a note is a Markdown file, and its title its first top-level heading or it
   assert.equal(noteTitle(NOTE, 'docs/dead-letters.md'), 'Dead letters');
   assert.equal(noteTitle('## Only a section\n', 'ideas/context-rot.md'), 'context-rot');
 });
+
+test('parallel paragraphs, each about its own thing, are no repeats; a rewording is one', () => {
+  const allocators = '# Allocators\n\n## Arena\n\nThe arena allocator hands out memory from one big block and frees it all at once.\n\n'
+    + '## Pool\n\nThe pool allocator hands out memory in fixed size blocks and frees each block on its own.\n';
+  assert.deepEqual(repeats(allocators), []);
+  const targets = '# Build\n\n- `debug`: builds the game with -O0 -g and the address sanitizer, for stepping through in gdb.\n'
+    + '- `release`: builds the game with -O2 and no sanitizer, for playing and timing it.\n'
+    + '- `profile`: builds the game with -O2 -pg, for timing it with gprof.\n';
+  assert.deepEqual(repeats(targets), []);
+  const plain = '# Build\n\n- The debug build compiles the game with -O0 -g and the address sanitizer.\n'
+    + '- The release build compiles the game with -O2 and without the address sanitizer.\n';
+  assert.deepEqual(repeats(plain), []);
+  const options = '# Saving\n\nOption A: save the world state to one binary file on every quit.\n\n'
+    + 'Option B: save the world state as text files per chunk on every quit.\n';
+  assert.deepEqual(repeats(options), []);
+  const ports = '# Ports\n\nOdin port: the renderer moves to Odin with raylib bindings and the same frame loop.\n\n'
+    + 'Zig port: the renderer moves to Zig with raylib bindings and the same frame loop.\n';
+  assert.deepEqual(repeats(ports), []);
+  const reworded = '# Loop\n\nThe frame loop runs physics at a fixed 60 Hz step and renders as fast as it can.\n\n'
+    + '## Later\n\nPhysics steps at a fixed 60 Hz in the frame loop, while rendering runs as fast as possible.\n';
+  assert.deepEqual(repeats(reworded), [{line: 7, other: 3, text: 'Says again what line 3 says.'}]);
+});
+
+test('a repeat is still one when only one of the two paragraphs has a label', () => {
+  const note = '# Replay\n\nOperators can see the failed webhooks on the admin page and replay them.\n\n'
+    + '- Admin page: operators see failed webhooks there and can replay them.\n';
+  assert.deepEqual(repeats(note), [{line: 5, other: 3, text: 'Says again what line 3 says.'}]);
+});
