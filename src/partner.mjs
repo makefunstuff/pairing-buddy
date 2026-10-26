@@ -2,7 +2,7 @@
 import {BACKGROUND_CONTEXT as C} from '@earendil-works/chord/context';
 import {createRegistry, Harness} from '@earendil-works/pi-durable';
 import {openNodeSqliteStorage} from '@earendil-works/pi-durable/storage/sqlite/node';
-import {navigatorExtension} from './tools.mjs';
+import {pairExtension, ROLE_PROMPTS, ROLE_TOOLS} from './tools.mjs';
 
 // Small local context windows need smaller margins than the library's cloud-sized defaults.
 function compactionFor(contextWindow) {
@@ -29,7 +29,7 @@ function answerText(entry) {
  * `hands` carries out the tools; see tools.mjs.
  */
 export async function openPartner({storage, models, model, thinking = 'off', hands}) {
-  const extension = navigatorExtension(hands);
+  const extension = pairExtension(hands);
   const registry = createRegistry();
   registry.install(extension);
   const opened = typeof storage === 'string' ? await openNodeSqliteStorage(storage) : storage;
@@ -40,12 +40,21 @@ export async function openPartner({storage, models, model, thinking = 'off', han
     settings: {extensions: [extension], compaction: compactionFor(model.contextWindow), afterFailedRun: 'continue'},
   }, C);
   harness.resume();
+  // The model is offered only its role's tools; the policy hook refuses the others anyway.
+  const roleAgent = role => ({tools: extension.tools.filter(tool => ROLE_TOOLS[role].includes(tool.name)), instructions: ROLE_PROMPTS[role]});
 
   return {
+    /** A new conversation, in the Navigator role. */
     async createConversation() {
-      const agent = {model: {provider: model.provider, modelId: model.id}, thinkingLevel: thinking};
+      const agent = {model: {provider: model.provider, modelId: model.id}, thinkingLevel: thinking, ...roleAgent('navigator')};
       const conversation = await harness.createConversation({ownership: {kind: 'ownerless'}, agent}, C);
       return conversation.id;
+    },
+
+    /** Gives the conversation the tools and instructions of `role`, from its next request on. */
+    async setRole(conversationId, role) {
+      const conversation = await harness.conversation(conversationId, C);
+      await conversation.configure(roleAgent(role), C);
     },
 
     /** Sends one input and resolves with the Partner's final text (tool calls happen on the way). */

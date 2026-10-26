@@ -1,5 +1,5 @@
 // Finds the moments where a remark might help. Pure: the caller passes the clock and the keys already fired.
-import {errorLine, errorSignature, failed} from './fold.mjs';
+import {errorSignature, failed, failureLine} from './fold.mjs';
 
 export const TIMING = {
   lookGraceMs: 4_000, // a failure gets this long to be noticed before Pair counts it as missed
@@ -23,8 +23,8 @@ function lastFailure(state, now) {
 function commandTriggers(state, now) {
   const command = lastFailure(state, now);
   if (!command) return [];
-  const signature = errorSignature(command.output) || `exit ${command.exit} ${command.cmd}`;
-  const error = errorLine(command.output);
+  const signature = errorSignature(command);
+  const error = failureLine(command);
   const count = state.errors[signature]?.count ?? 1;
   const found = [];
   if (count >= 2) {

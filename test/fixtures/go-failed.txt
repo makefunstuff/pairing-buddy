@@ -1,0 +1,8 @@
+--- FAIL: TestTimeout (0.00s)
+    a_test.go:3: timeout = 5000, want 30000
+--- FAIL: TestSub (0.00s)
+    --- FAIL: TestSub/inner (0.00s)
+        a_test.go:5: inner broke
+FAIL
+FAIL	example.com/gt	0.001s
+FAIL

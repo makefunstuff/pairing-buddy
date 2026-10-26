@@ -103,3 +103,105 @@ test('an answer to the user\'s own question is shown at once, even while they ty
   await pair.ask('what is wrong?');
   assert.ok(sent.some(message => message.text === 'Line 2 is off.'));
 });
+
+/** A session in the Scout role with a stand-in for Pair's pane that records what it was asked to run. */
+function scoutSession({results = {}, chat = true} = {}) {
+  const ran = [];
+  const sent = [];
+  const roles = [];
+  const pane = {
+    opened: false,
+    open: async () => { pane.opened = true; },
+    close: async () => { pane.opened = false; },
+    run: async command => { ran.push(command); return {exit: 0, output: '', timedOut: false, ...results[command]}; },
+  };
+  const pair = new PairSession({
+    record: {id: 1, root: process.cwd(), conversation_id: 7, goal: 'fix it', level: 'normal', role: 'scout'},
+    store: {addMessage() {}, setRole: (_id, role) => roles.push(role)},
+    partner: {ask: async () => 'ok', setRole: async () => {}},
+    score: async () => ({value: 9, reason: 'worth it'}),
+    typingPauseMs: 2000,
+    notify: (to, message) => { sent.push({to, ...message}); return to === 'chat' && !chat ? 0 : 1; },
+    requestEditor: async () => null,
+    now: () => 100_000,
+  });
+  pair.scout = pane;
+  return {pair, pane, ran, sent, roles};
+}
+
+test('Scout runs allowed commands at once and reports exit, parsed tests and output', async () => {
+  const output = 'FAIL src/ws.test.js\n  ● reconnect › waits\n\n    Expected: 30000\n\nTests:       1 failed, 2 passed, 3 total';
+  const {pair, ran} = scoutSession({results: {'npm test': {exit: 1, output}}});
+  const report = await pair.run({command: 'npm test'});
+  assert.deepEqual(ran, ['npm test']);
+  assert.match(report, /^exit 1\nTests \(jest\): 1 failed \(reconnect › waits\): Expected: 30000\nFAIL src/);
+  assert.equal(pair.state.tests.by, 'pair');
+  assert.equal(pair.state.tests.failedCount, 1);
+  assert.deepEqual(pair.state.commands, [], 'Pair\'s own runs are not the user\'s commands, so they raise no remark');
+});
+
+test('Scout never runs a refused command and tells the user why', async () => {
+  const {pair, ran, sent} = scoutSession();
+  assert.match(await pair.run({command: 'git commit -am wip'}), /^Refused: git commit changes git history/);
+  assert.deepEqual(ran, []);
+  assert.ok(sent.some(message => /may not run `git commit -am wip`/.test(message.text)));
+});
+
+test('a command that writes asks the user in the chat and runs only on yes', async () => {
+  const {pair, ran, sent} = scoutSession();
+  const denied = pair.run({command: 'rm -rf build'});
+  await Promise.resolve();
+  const question = sent.find(message => message.type === 'confirm');
+  assert.match(question.text, /`rm -rf build`.*rm writes or deletes files/);
+  pair.answer(question.id, false);
+  assert.match(await denied, /did not allow/);
+  assert.deepEqual(ran, []);
+
+  const allowed = pair.run({command: 'rm -rf build'});
+  await Promise.resolve();
+  pair.answer(sent.filter(message => message.type === 'confirm').at(-1).id, true);
+  assert.match(await allowed, /^exit 0/);
+  assert.deepEqual(ran, ['rm -rf build']);
+});
+
+test('without a chat pane to ask in, a command that writes does not run', async () => {
+  const {pair, ran} = scoutSession({chat: false});
+  assert.match(await pair.run({command: 'npm install'}), /did not allow/);
+  assert.deepEqual(ran, []);
+});
+
+test('a remark nobody asked for may search but not run commands', async () => {
+  const {pair, ran} = scoutSession({results: {"rg --line-number --color never --max-columns 200 --max-count 20 -- 'TIMEOUT'": {output: 'src/ws.ts:1:TIMEOUT'}}});
+  pair.unasked = true;
+  assert.match(await pair.run({command: 'npm test'}), /^Not now/);
+  assert.equal(await pair.search({pattern: 'TIMEOUT'}), 'src/ws.ts:1:TIMEOUT');
+  assert.equal(ran.length, 1);
+});
+
+test('search quotes the pattern, stays in the project and says when nothing matched', async () => {
+  const {pair, ran} = scoutSession({results: {"rg --line-number --color never --max-columns 200 --max-count 20 -- 'it'\\''s' 'src'": {exit: 1}}});
+  assert.equal(await pair.search({pattern: "it's", path: 'src'}), 'No matches.');
+  assert.match(await pair.search({pattern: 'x', path: '..'}), /not inside the project/);
+  assert.equal(ran.length, 1);
+});
+
+test('switching to Scout opens Pair\'s pane and tells the editor and the chat; switching back closes it', async () => {
+  const {pair, pane, sent, roles} = scoutSession();
+  pair.role = 'navigator';
+  await pair.setRole('scout');
+  assert.equal(pane.opened, true);
+  assert.deepEqual(sent.filter(message => message.type === 'role').map(message => [message.to, message.role]), [['editor', 'scout'], ['chat', 'scout']]);
+  await pair.setRole('navigator');
+  assert.equal(pane.opened, false);
+  assert.deepEqual(roles, ['scout', 'navigator']);
+  assert.equal(pair.role, 'navigator');
+});
+
+test('without herdr there is no pane, so the role stays Navigator', async () => {
+  const {pair, sent} = scoutSession();
+  pair.role = 'navigator';
+  pair.scout = null;
+  await pair.setRole('scout');
+  assert.equal(pair.role, 'navigator');
+  assert.ok(sent.some(message => /Scout needs its own herdr pane/.test(message.text)));
+});

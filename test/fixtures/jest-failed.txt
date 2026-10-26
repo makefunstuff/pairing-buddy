@@ -1,0 +1,41 @@
+FAIL ./ws.test.js
+  reconnect
+    ✕ waits up to 30 s after sleep (2 ms)
+    ✓ backs off
+    ✕ throws nothing
+
+  ● reconnect › waits up to 30 s after sleep
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 30000
+    Received: 5000
+
+      1 | const TIMEOUT = 5000;
+      2 | describe('reconnect', () => {
+    > 3 |   test('waits up to 30 s after sleep', () => { expect(TIMEOUT).toBe(30000); });
+        |                                                                ^
+      4 |   test('backs off', () => { expect(1).toBe(1); });
+      5 |   test('throws nothing', () => { throw new TypeError('socket is undefined'); });
+      6 | });
+
+      at Object.toBe (ws.test.js:3:64)
+
+  ● reconnect › throws nothing
+
+    TypeError: socket is undefined
+
+      3 |   test('waits up to 30 s after sleep', () => { expect(TIMEOUT).toBe(30000); });
+      4 |   test('backs off', () => { expect(1).toBe(1); });
+    > 5 |   test('throws nothing', () => { throw new TypeError('socket is undefined'); });
+        |                                        ^
+      6 | });
+      7 |
+
+      at Object.<anonymous> (ws.test.js:5:40)
+
+Test Suites: 1 failed, 1 total
+Tests:       2 failed, 1 passed, 3 total
+Snapshots:   0 total
+Time:        0.121 s
+Ran all test suites.

@@ -1,0 +1,47 @@
+
+ RUN  v2.1.9 /home/you/project
+
+ ❯ ws2.test.mjs (3 tests | 2 failed) 4ms
+   × reconnect > waits up to 30 s after sleep 3ms
+     → expected 5000 to be 30000 // Object.is equality
+   × reconnect > throws nothing 0ms
+     → socket is undefined
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  ws2.test.mjs > reconnect > waits up to 30 s after sleep
+AssertionError: expected 5000 to be 30000 // Object.is equality
+
+- Expected
++ Received
+
+- 30000
++ 5000
+
+ ❯ ws2.test.mjs:4:64
+      2| const TIMEOUT = 5000;
+      3| describe('reconnect', () => {
+      4|   test('waits up to 30 s after sleep', () => { expect(TIMEOUT).toBe(30…
+       |                                                                ^
+      5|   test('backs off', () => { expect(1).toBe(1); });
+      6|   test('throws nothing', () => { throw new TypeError('socket is undefi…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  ws2.test.mjs > reconnect > throws nothing
+TypeError: socket is undefined
+ ❯ ws2.test.mjs:6:40
+      4|   test('waits up to 30 s after sleep', () => { expect(TIMEOUT).toBe(30…
+      5|   test('backs off', () => { expect(1).toBe(1); });
+      6|   test('throws nothing', () => { throw new TypeError('socket is undefi…
+       |                                        ^
+      7| });
+      8|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 1 passed (3)
+   Start at  02:52:20
+   Duration  164ms (transform 8ms, setup 0ms, collect 4ms, tests 4ms, environment 0ms, prepare 31ms)
+

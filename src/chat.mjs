@@ -8,6 +8,8 @@ const STYLE = {pair: '\x1b[36mpair\x1b[0m', user: '\x1b[2myou\x1b[0m', system: '
 
 const HELP = `/goal <text>   set the session goal
 /level ${LEVELS.join('|')}   how often Pair speaks unasked
+/scout         Pair may search and run commands in its own pane
+/navigate      back to watching and pointing (the default)
 /end           end the session and write a session note
 /quit          close this pane (the session goes on)
 anything else  ask Pair`;
@@ -20,15 +22,22 @@ export function parseInput(line) {
   const arg = rest.join(' ');
   if (command === '/goal' && arg) return {type: 'goal', text: arg};
   if (command === '/level' && LEVELS.includes(arg)) return {type: 'level', level: arg};
+  if (command === '/scout') return {type: 'role', role: 'scout'};
+  if (command === '/navigate') return {type: 'role', role: 'navigator'};
   if (command === '/end') return {type: 'end'};
   if (command === '/quit') return {local: 'quit'};
   if (command.startsWith('/')) return {local: 'help'};
   return {type: 'ask', text};
 }
 
+/** The answer to a "may Pair run this?" question: only y or yes allows it. */
+export const allows = line => /^\s*y(es)?\s*$/i.test(line);
+
 export function runChat(socketPath) {
   const socket = connect(socketPath);
   const rl = createInterface({input: process.stdin, output: process.stdout, prompt: '› '});
+  let confirming = null; // the id of the question the next line answers
+  const showRole = role => rl.setPrompt(`${role} › `);
   const print = text => {
     clearLine(process.stdout, 0);
     cursorTo(process.stdout, 0);
@@ -49,7 +58,19 @@ export function runChat(socketPath) {
   socket.on('close', () => { print('The pair daemon went away.'); process.exit(0); });
 
   readMessages(socket, message => {
-    if (message.type === 'welcome') print(`${STYLE.system} pairing on ${message.root} (${message.level}) · /help`);
+    if (message.type === 'welcome') {
+      showRole(message.role);
+      print(`${STYLE.system} pairing on ${message.root} (${message.level}) · /help`);
+    }
+    if (message.type === 'role') {
+      showRole(message.role);
+      rl.prompt(true);
+    }
+    if (message.type === 'confirm') {
+      confirming = message.id;
+      print(`${STYLE.pair} ${message.text} [y/N]`);
+    }
+    if (message.type === 'confirmed' && message.id === confirming) confirming = null; // answered, or timed out
     // What you type is already on screen; your own lines come back only as history.
     const echo = message.sender === 'user' && !message.history;
     if (message.type === 'message' && !echo) print(`${STYLE[message.sender] ?? message.sender} ${message.text}`);
@@ -60,6 +81,11 @@ export function runChat(socketPath) {
   });
 
   rl.on('line', line => {
+    if (confirming !== null) {
+      sendMessage(socket, {type: 'confirm', id: confirming, ok: allows(line)});
+      confirming = null;
+      return rl.prompt();
+    }
     const input = parseInput(line);
     if (input?.local === 'quit') return rl.close();
     if (input?.local === 'help') print(HELP);

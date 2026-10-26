@@ -11,6 +11,7 @@ import {createModels, fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall
 import {parseConfig} from '../src/config.mjs';
 import {startDaemon} from '../src/daemon.mjs';
 import {readMessages, sendMessage} from '../src/protocol.mjs';
+import {fakeHerdr} from './fake-herdr.mjs';
 
 const REPO = fileURLToPath(new URL('..', import.meta.url));
 const hasNvim = (() => { try { execFileSync('nvim', ['--version']); return true; } catch { return false; } })();
@@ -26,7 +27,7 @@ async function until(check, what, timeoutMs = 8000) {
   throw new Error(`timed out waiting for ${what}`);
 }
 
-test('the plugin reports edits, diagnostics and the selection, shows points and serves unsaved text to read', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
+test('the plugin reports edits, diagnostics and the selection, shows points, serves unsaved text and switches roles', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
   const project = mkdtempSync(join(tmpdir(), 'pair-nvim-'));
   writeFileSync(join(project, 'a.js'), 'const x = 1\nconst y = 2\nconst z = 3\n');
   const dataDir = mkdtempSync(join(tmpdir(), 'pair-data-'));
@@ -41,6 +42,8 @@ test('the plugin reports edits, diagnostics and the selection, shows points and 
   models.setProvider(watcher.provider);
   models.setProvider(partner.provider);
   const daemon = await startDaemon(config, {pairModels: {models, watcher: watcher.getModel(), partner: partner.getModel()}, log: () => {}});
+  const herdrSocket = join(dataDir, 'herdr.sock');
+  const herdr = await fakeHerdr(herdrSocket);
 
   const server = join(mkdtempSync('/tmp/pair-'), 'nvim.sock'); // short: socket paths max out near 100 bytes
   const nvim = spawn('nvim', [
@@ -56,7 +59,7 @@ test('the plugin reports edits, diagnostics and the selection, shows points and 
   const chat = connect(config.socket);
   const messages = [];
   readMessages(chat, message => messages.push(message));
-  chat.on('connect', () => sendMessage(chat, {type: 'hello', role: 'chat', cwd: project}));
+  chat.on('connect', () => sendMessage(chat, {type: 'hello', role: 'chat', cwd: project, herdr: {socket: herdrSocket, workspace: 'w1', pane: 'w1:p2'}}));
 
   try {
     await until(() => { try { return remote('1'); } catch { return false; } }, 'nvim to listen');
@@ -88,9 +91,17 @@ test('the plugin reports edits, diagnostics and the selection, shows points and 
     assert.equal(readFileSync(join(project, 'a.js'), 'utf8'), 'const x = 1\nconst y = 2\nconst z = 3\n', 'nothing was written to disk');
     const marks = await until(() => Number(remote(`luaeval("#vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('pair'), 0, -1, {})")`)), 'the point extmark');
     assert.equal(marks, 1);
+
+    const status = () => remote(`luaeval("require('pair').status()")`);
+    assert.equal(status(), 'Pair: navigator · normal');
+    execFileSync('nvim', ['--server', server, '--remote-send', '<Esc>:Pair scout<CR>']);
+    await until(() => status() === 'Pair: scout · normal', 'the statusline to show Scout');
+    execFileSync('nvim', ['--server', server, '--remote-send', '<Esc>:Pair navigate<CR>']);
+    await until(() => status() === 'Pair: navigator · normal', 'the statusline to show Navigator again');
   } finally {
     chat.destroy();
     nvim.kill();
     await daemon.close();
+    await herdr.close();
   }
 });

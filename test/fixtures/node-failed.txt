@@ -1,0 +1,31 @@
+✖ waits long (0.587799ms)
+✔ ok (0.07583ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 1
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 26.001617
+
+✖ failing tests:
+
+test at nt.test.mjs:2:1
+✖ waits long (0.587799ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  5000 !== 30000
+
+      at TestContext.<anonymous> (file:///home/you/project.test.mjs:2:35)
+      at Test.runInAsyncScope (node:async_hooks:213:14)
+      at Test.run (node:internal/test_runner/test:1106:25)
+      at Test.start (node:internal/test_runner/test:1003:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:358:17) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 5000,
+    expected: 30000,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

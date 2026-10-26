@@ -53,7 +53,7 @@ test('without an exit code the output decides whether a command failed', () => {
 });
 
 test('errorSignature prefers the line that names the failure', () => {
-  assert.equal(errorSignature('compiling\nsrc/x.rs:12 error[E0308]: mismatched types\nwarning: 3 more'), 'src/x.rs:# error[e#]: mismatched types');
+  assert.equal(errorSignature({output: 'compiling\nsrc/x.rs:12 error[E0308]: mismatched types\nwarning: 3 more'}), 'src/x.rs:# error[e#]: mismatched types');
 });
 
 test('diagnostics keep the time they first appeared', () => {
@@ -83,4 +83,50 @@ test('cursor, focus, goal and branch are folded as given', () => {
 test('unknown events leave the state alone', () => {
   const state = initialState();
   assert.equal(fold(state, {kind: 'nonsense', at: 1}), state);
+});
+
+const JEST_FAILED = duration => `FAIL src/ws.test.js
+  ● reconnect › waits up to 30 s
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 30000
+    Received: 5000
+
+Tests:       1 failed, 2 passed, 3 total
+Time:        ${duration} s`;
+
+test('test output is parsed into the command and the session\'s last test run', () => {
+  const state = foldAll([{kind: 'command_end', cmd: 'npm test', exit: null, output: JEST_FAILED('0.4'), at: 100}]);
+  assert.equal(failed(state.commands[0]), true, 'a failed test fails the command, also without an exit code');
+  assert.deepEqual(state.tests, {
+    runner: 'jest', failed: ['reconnect › waits up to 30 s'], passed: 2, failedCount: 1,
+    firstError: 'expect(received).toBe(expected) // Object.is equality (Expected: 30000, Received: 5000)',
+    cmd: 'npm test', by: 'you', at: 100,
+  });
+});
+
+test('a passing test run is not a failure, whatever words its test names use', () => {
+  const state = foldAll([{kind: 'command_end', cmd: 'npm test', exit: null, output: '  ✓ reports an error on timeout\nTests:       3 passed, 3 total', at: 1}]);
+  assert.equal(failed(state.commands[0]), false);
+  assert.deepEqual(state.errors, {});
+  assert.equal(state.tests.failedCount, 0);
+});
+
+test('the same failing test twice is one error, counted twice, though the runs differ', () => {
+  const state = foldAll([
+    {kind: 'command_end', cmd: 'npm test', exit: 1, output: JEST_FAILED('0.4'), at: 100},
+    {kind: 'command_end', cmd: 'npx jest', exit: 1, output: `PASS src/a.test.js\n${JEST_FAILED('1.7')}`, at: 200},
+  ]);
+  const errors = Object.values(state.errors);
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0].count, 2);
+  assert.match(errors[0].text, /^1 failed \(reconnect › waits up to 30 s\): expect/);
+});
+
+test('Scout\'s own runs update the last test run, not the user\'s commands or errors', () => {
+  const state = foldAll([{kind: 'scout_run', cmd: 'cargo test', exit: 101, output: 'test result: FAILED. 3 passed; 1 failed; 0 ignored', at: 5}]);
+  assert.deepEqual(state.commands, []);
+  assert.deepEqual(state.errors, {});
+  assert.deepEqual([state.tests.runner, state.tests.by, state.tests.failedCount], ['cargo', 'pair', 1]);
 });

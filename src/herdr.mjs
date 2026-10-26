@@ -8,10 +8,10 @@ const EDITORS = new Set(['nvim', 'vim', 'vi']);
 const POLL_MS = 1000;
 
 /** One request to herdr's socket. herdr answers one request per connection. */
-export function herdrRequest(socketPath, method, params = {}) {
+export function herdrRequest(socketPath, method, params = {}, {timeoutMs = 3000} = {}) {
   return new Promise((resolve, reject) => {
     const socket = connect(socketPath);
-    const timer = setTimeout(() => { socket.destroy(); reject(new Error(`herdr ${method} timed out`)); }, 3000);
+    const timer = setTimeout(() => { socket.destroy(); reject(new Error(`herdr ${method} timed out`)); }, timeoutMs);
     socket.on('error', error => { clearTimeout(timer); reject(error); });
     socket.on('connect', () => sendMessage(socket, {id: '1', method, params}));
     readMessages(socket, message => {
@@ -37,13 +37,16 @@ export function commandOutput(text, cmd) {
   const lines = text.replace(/\s+$/, '').split('\n');
   const probe = cmd.trim().slice(0, 40);
   const start = probe ? lines.findLastIndex(line => line.includes(probe)) : -1;
-  return lines.slice(start + 1, -1).join('\n').slice(-4000);
+  return lines.slice(start + 1, -1).join('\n');
 }
 
 export class PaneWatch {
-  /** `emit(event)` gets focus and command_end events for the panes of `workspaceId`, except `chatPane`. */
-  constructor({socketPath, workspaceId, chatPane, emit, log = () => {}}) {
-    Object.assign(this, {socketPath, workspaceId, chatPane, emit, log});
+  /**
+   * `emit(event)` gets focus and command_end events for the panes of `workspaceId`, except Pair's own:
+   * `chatPane` and the pane of `scout` (a ScoutPane), whose commands are Pair's, not the user's.
+   */
+  constructor({socketPath, workspaceId, chatPane, scout = null, emit, log = () => {}}) {
+    Object.assign(this, {socketPath, workspaceId, chatPane, scout, emit, log});
     this.running = new Map();
     this.hooked = new Set();
     this.editors = new Set();
@@ -65,14 +68,15 @@ export class PaneWatch {
   }
 
   async output(pane, cmd) {
-    const read = await herdrRequest(this.socketPath, 'pane.read', {pane_id: pane, source: 'recent_unwrapped', lines: 80});
+    // Test runners print the failed tests' names far above their summary, so read well back.
+    const read = await herdrRequest(this.socketPath, 'pane.read', {pane_id: pane, source: 'recent_unwrapped', lines: 400});
     return commandOutput(read.read.text, cmd);
   }
 
   async poll() {
     const {panes} = await herdrRequest(this.socketPath, 'pane.list', {workspace_id: this.workspaceId});
     for (const pane of panes) {
-      if (pane.pane_id !== this.chatPane) await this.pollPane(pane.pane_id);
+      if (!['chat', 'scout'].includes(this.targetOf(pane.pane_id))) await this.pollPane(pane.pane_id);
     }
     this.updateFocus(panes.find(pane => pane.focused));
   }
@@ -105,6 +109,7 @@ export class PaneWatch {
 
   targetOf(pane) {
     if (pane === this.chatPane) return 'chat';
+    if (pane === this.scout?.paneId) return 'scout';
     return this.editors.has(pane) ? 'editor' : 'terminal';
   }
 }
