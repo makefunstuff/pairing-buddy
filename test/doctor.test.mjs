@@ -51,11 +51,11 @@ test('all well: each check says ok, and a slow Watcher gets advice', {timeout: 2
   editor.on('connect', () => sendMessage(editor, {type: 'hello', role: 'editor', cwd: dir}));
   await new Promise(resolve => editor.once('data', resolve));
   try {
-    const checks = await run({path, env: {PATH: ''}, service: installed, nvimPlugin: async () => 'yes'});
+    const checks = await run({path, env: {PATH: ''}, service: installed, nvimPlugin: async () => assert.fail('not started: a Neovim is connected')});
     assert.equal(checks.config.level, 'ok');
     assert.equal(checks.service.text, 'starts at login, running');
     assert.match(checks.daemon.text, new RegExp(`^version ${VERSION}, up 0 min, 1 session$`));
-    assert.equal(checks.plugin.level, 'ok');
+    assert.equal(checks.plugin.text, 'loaded in the connected Neovims');
     assert.match(checks.neovim.text, /^1 connected, in pair-doctor-/);
     assert.match(checks.herdr.text, /^not installed: Pair works without it/);
     assert.equal(checks.partner.level, 'ok');

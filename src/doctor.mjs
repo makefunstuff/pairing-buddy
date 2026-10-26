@@ -40,7 +40,9 @@ export async function* doctor({path = configPath(), env = process.env, service =
   yield serviceCheck(await service());
   const status = await requestDaemon(config.socket, {type: 'status'}).catch(() => null);
   yield daemonCheck(status, config);
-  yield pluginCheck(await nvimPlugin(env));
+  // A connected Neovim has the plugin; only without one is Neovim started to look (it can take seconds).
+  const connected = status?.sessions.some(session => session.editors > 0);
+  yield connected ? ok('plugin', 'loaded in the connected Neovims') : pluginCheck(await nvimPlugin(env));
   if (status) yield editorsCheck(status);
   yield await herdrCheck(env);
   yield* modelChecks(config, status);
