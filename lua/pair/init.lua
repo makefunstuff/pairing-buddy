@@ -439,7 +439,7 @@ end
 
 -- What the daemon asks for.
 
--- Pair reads a file: its gaze crosses the line numbers you see, and the statusline names the file a moment.
+-- Pair reads a file: its gaze crosses the lines you see, and the statusline names the file a moment.
 local function look(message)
   local buf = vim.fn.bufnr(message.file)
   if buf ~= -1 and vim.api.nvim_buf_is_loaded(buf) then draw.gaze(buf, message.from, message.to) end
