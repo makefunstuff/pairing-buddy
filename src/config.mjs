@@ -7,6 +7,7 @@ import {fileURLToPath} from 'node:url';
 import {thinkingBudgetForLevel} from '@earendil-works/pi-ai/api/simple-options';
 import {MIN_CONTEXT, replyRoom} from './context.mjs';
 import {storedKey} from './credentials.mjs';
+import {readServiceEnv} from './service-env.mjs';
 import {voiceConfig} from './voice.mjs';
 
 const EXAMPLE = fileURLToPath(new URL('../config.example.json', import.meta.url));
@@ -30,6 +31,11 @@ export function configPath() {
 /** Where `pair auth` keeps the logins and keys: next to the config, or `$PAIR_AUTH`. */
 export function authPath() {
   return process.env.PAIR_AUTH || join(dirname(configPath()), 'auth.json');
+}
+
+/** Where `pair setup` keeps the variables named by "apiKeyEnv" for the service: next to the config. */
+export function serviceEnvPath() {
+  return join(dirname(configPath()), 'service.env');
 }
 
 /**
@@ -150,12 +156,15 @@ export function rolesText({watcher, partner}) {
   return `the Watcher ${whereIs(watcher)}, the Partner ${whereIs(partner)}`;
 }
 
-/** The API key of a model entry: the stored key `auth`, `apiKey`, the file `apiKeyFile` or the env var `apiKeyEnv`. */
+/**
+ * The API key of a model entry: the stored key `auth`, `apiKey`, the file `apiKeyFile` or the env var `apiKeyEnv`,
+ * from the environment or else the file `pair setup` stored it in for the service.
+ */
 export function apiKeyOf(entry) {
   if (entry.auth) return storedKey(authPath(), entry.auth);
   if (entry.apiKey) return entry.apiKey;
   if (entry.apiKeyFile) return readFileSync(entry.apiKeyFile.replace(/^~(?=\/)/, homedir()), 'utf8').trim();
-  if (entry.apiKeyEnv) return process.env[entry.apiKeyEnv];
+  if (entry.apiKeyEnv) return process.env[entry.apiKeyEnv] ?? readServiceEnv(serviceEnvPath())[entry.apiKeyEnv];
   return undefined;
 }
 
