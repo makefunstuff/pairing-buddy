@@ -1,5 +1,6 @@
 // The Driver against real models, through a real PairSession: handed the wheel, it makes one edit that
-// does what was asked (ping-pong TDD included), types a command for the user without Enter, and as
+// does what was asked (ping-pong TDD included, with the tests run on the unsaved buffer after the edit), types a
+// command for the user without Enter, and as
 // Navigator suggests a change instead of making it. The editor is played by in-memory buffers, so the
 // files on disk must stay as they were.
 import assert from 'node:assert/strict';
@@ -55,8 +56,9 @@ describe('Driver on live models', {skip: stacks.length ? false : SKIP_REASON}, (
      * Runs one turn: `start(session)` hands over or asks. Resolves with what the chat showed, the tools
      * called, the editor's buffers and what was typed into the user's terminal. Every confirmation is a yes.
      */
-    async function turn(start, {edited, takeBackAtFirstTool = false} = {}) {
+    async function turn(start, {edited, takeBackAtFirstTool = false, testOnSave = null} = {}) {
       const {root} = project();
+      let handback = null;
       const editor = buffers(root);
       const shown = [];
       const tools = [];
@@ -83,9 +85,11 @@ describe('Driver on live models', {skip: stacks.length ? false : SKIP_REASON}, (
         notify: (to, message) => {
           if (to === 'chat' && message.type === 'message' && message.sender === 'pair') shown.push(message.text);
           if (to === 'chat' && message.type === 'confirm') setImmediate(() => session.answer(message.id, true));
+          if (message.type === 'handback') handback = message;
           return 1;
         },
         requestEditor: async message => editor.request(message),
+        testOnSave: testOnSave && {command: testOnSave, outputFile: join(mkdtempSync(join(tmpdir(), 'pair-driver-out-')), 'run.out')},
       });
       session.scout = localPane(root);
       session.panes = {type: async (pane, text) => typed.push([pane, text])};
@@ -94,7 +98,7 @@ describe('Driver on live models', {skip: stacks.length ? false : SKIP_REASON}, (
       await start(session);
       await partner.close();
       const unchanged = Object.entries(FILES).every(([file, text]) => readFileSync(join(root, file), 'utf8') === text);
-      return {root, shown: shown.join('\n'), tools, editor, typed, role: session.role, unchanged};
+      return {root, shown: shown.join('\n'), tools, editor, typed, role: session.role, unchanged, handback};
     }
 
     const report = (t, result) => {
@@ -113,6 +117,19 @@ describe('Driver on live models', {skip: stacks.length ? false : SKIP_REASON}, (
       assert.equal(result.editor.text('test/ws.test.mjs'), FILES['test/ws.test.mjs'], 'the test was left alone');
       assert.ok(testsPass(result.root, result.editor), 'the tests pass with the edited buffer');
       assert.equal(result.role, 'navigator', 'Pair handed back');
+      assert.ok(result.unchanged, 'nothing was written to disk');
+    });
+
+    test(`${stack.name}: with a test command, the tests run on the unsaved buffer after the edit, and the hand-back says they pass`, {timeout: 300_000}, async t => {
+      const result = await turn(session => session.drive('your turn'), {
+        edited: {file: 'test/ws.test.mjs', from: 5, to: 7, text: FILES['test/ws.test.mjs'].split('\n').slice(4, 7).join('\n'), at: Date.now() - 20_000},
+        testOnSave: 'node --test',
+      });
+      report(t, result);
+      t.diagnostic(`hand-back: ${JSON.stringify(result.handback)}`);
+      assert.equal(edits(result).length, 1, 'one edit');
+      assert.equal(result.handback?.tests, 'pass', 'the run on the buffer passed');
+      assert.match(result.handback.text, /pass/i, 'and Pair says so');
       assert.ok(result.unchanged, 'nothing was written to disk');
     });
 
