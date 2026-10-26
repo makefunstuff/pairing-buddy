@@ -147,3 +147,17 @@ test('the config\'s taskCommand is a command as words; without one, :Pair tasks 
   assert.deepEqual(parseConfig({models, taskCommand: ['gh', 'issue', 'create', '--title', '{title}']}).taskCommand, ['gh', 'issue', 'create', '--title', '{title}']);
   assert.throws(() => parseConfig({models, taskCommand: 'gh issue create'}), /taskCommand must be a command as a list of words/);
 });
+
+test('a reading that comes back empty is asked once more', async () => {
+  const m = margin({answers: ['[]', MODEL_MARKS]});
+  m.edit(NOTE, 21);
+  m.pass(READ_PAUSE_MS);
+  await m.pair.tick();
+  assert.equal(m.asked.length, 2);
+  assert.deepEqual(m.margins().at(-1).marks.map(mark => mark.line), [14, 17, 20, 26]);
+  const quiet = margin({answers: ['[]', '[]']});
+  quiet.edit(NOTE, 21);
+  quiet.pass(READ_PAUSE_MS);
+  await quiet.pair.tick();
+  assert.equal(quiet.asked.length, 2, 'twice at most');
+});

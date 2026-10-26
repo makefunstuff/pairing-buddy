@@ -77,7 +77,7 @@ test('a stall remark is one question back: its first question alone, once, and n
   }};
   pair = new PairSession({
     record: {id: 1, root: process.cwd(), conversation_id: 7, goal: 'dead letters', level: 'normal'},
-    store: {addMessage() {}, addRemark: () => 1, dropRemark() {}},
+    store: {addMessage() {}, addAction: () => 1, updateAction() {}, action: () => null, addRemark: () => 1, dropRemark() {}},
     partner, score: async () => ({value: 9}), typingPauseMs: 2000,
     notify: (role, message) => sent.push({role, ...message}),
     requestEditor: async () => null,

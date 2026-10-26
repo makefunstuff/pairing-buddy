@@ -30,7 +30,9 @@ repeats an earlier one, and a `Decision:` line that is not in the log yet. When 
 the Partner's model reads the note, numbered, with the code it names: each name in backticks, and each camel or
 snake word outside them, found in the project with `git grep` (where it is defined, if a line defines it, in C,
 Odin, Zig, C3, Go and the like). It answers with at most five marks as JSON, and Pair keeps only those that hold
-up: a known kind, on a written line that is no heading, and a file that exists for a link. Rules come first, so the
+up: a known kind, on a written line that is no heading, a contradiction with its other side, and a file that exists
+for a link. An empty answer is asked once more: without thinking, a model now and then answers `[]` for a note with
+plain contradictions in it. Rules come first, so the
 five are the repeats, then the decisions, then the model's marks in its order. The note is read again only after it
 changed.
 

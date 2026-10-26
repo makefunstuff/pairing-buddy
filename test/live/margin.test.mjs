@@ -2,15 +2,16 @@
 // tasks come from the note, and the prose triggers ask a question back instead of writing for you.
 import assert from 'node:assert/strict';
 import {cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync} from 'node:fs';
+import {readFile} from 'node:fs/promises';
 import {execFileSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {describe, test} from 'node:test';
 import {MemoryStorage} from '@earendil-works/pi-durable';
-import {readProjectPath} from '../../src/files.mjs';
 import {fold, initialState} from '../../src/fold.mjs';
-import {codeFor, MARKS_PROMPT, noteInput, oneAnswer, parseMarks, parseTasks, TASKS_PROMPT} from '../../src/note-reading.mjs';
+import {NoteMargin} from '../../src/margin.mjs';
+import {codeFor, noteInput, oneAnswer, parseTasks, TASKS_PROMPT} from '../../src/note-reading.mjs';
 import {openPartner} from '../../src/partner.mjs';
 import {proseTriggers} from '../../src/prose-triggers.mjs';
 import {PairSession} from '../../src/session.mjs';
@@ -54,7 +55,7 @@ async function remarkOn(stack, root, events, kind) {
   const shown = [];
   session = new PairSession({
     record: {id: 1, root, conversation_id: conversation, goal: state.goal, level: 'normal'},
-    store: {addMessage() {}, addRemark: () => 1, dropRemark() {}},
+    store: {addMessage() {}, addAction: () => 1, updateAction() {}, action: () => null, addRemark: () => 1, dropRemark() {}},
     partner, score: async () => ({value: 9}), typingPauseMs: 2000,
     notify: (_to, message) => { if (message.type === 'message') shown.push(message.text); return 1; },
     requestEditor: async () => null,
@@ -77,9 +78,18 @@ describe('Notes in the margin on live models', {skip: stacks.length ? false : SK
       const root = project();
       const code = await codeFor(root, NOTE);
       assert.deepEqual(code.map(place => place.file), ['internal/delivery/worker.go', 'internal/delivery/worker.go']);
-      const answer = await oneAnswer(model, MARKS_PROMPT, noteInput(FILE, NOTE, code, 'dead letters for webhooks'));
-      const marks = await parseMarks(answer, NOTE, async file => Boolean(await readProjectPath(root, file).then(source => source.text)));
-      if (!marks.length) t.diagnostic(`the answer, with no mark in it: ${answer}`);
+      // As the daemon reads it: the note margin, its model call and its second try on an empty answer.
+      const answers = [];
+      const margin = new NoteMargin({
+        root, state: () => initialState({root, goal: 'dead letters for webhooks'}), receive() {}, typingPauseMs: 2000,
+        read: path => readFile(path, 'utf8').catch(() => ''),
+        ask: async (system, input) => { answers.push(await oneAnswer(model, system, input)); return answers.at(-1); },
+        notify() {}, message() {},
+      });
+      margin.note(FILE).text = NOTE;
+      await margin.readNote(FILE);
+      const marks = margin.note(FILE).model;
+      if (answers.length > 1) t.diagnostic(`asked again after: ${answers[0]}`);
       for (const mark of marks) t.diagnostic(`${mark.kind} ${mark.line}${mark.other ? `/${mark.other}` : ''}${mark.file ? ` ${mark.file}:${mark.fileLine}` : ''}: ${mark.text}`);
       assert.ok(marks.length >= 2 && marks.length <= 5, `${marks.length} marks`);
       assert.ok(marks.every(mark => wordCount(mark.text) <= 35), 'each mark is short');

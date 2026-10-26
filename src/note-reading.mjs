@@ -74,8 +74,9 @@ export function noteInput(file, text, code, goal = null) {
 export const MARKS_PROMPT = `You read a design note in its margin, like a colleague with a pencil. The writer thinks by writing:
 you never write, rewrite or summarise the note. You only ask and point.
 
-Answer with a JSON array of at most ${MAX_MARKS} marks, the most useful first, or [] when nothing deserves one:
-[{"kind": "...", "line": N, "text": "...", "other_line": N, "file": "path", "file_line": N}]
+Answer with a JSON array of at most ${MAX_MARKS} marks, the most useful first. A note being written nearly always
+leaves something open: answer [] only for a note that is finished and consistent with itself and its code.
+Each mark: {"kind": "...", "line": N, "text": "...", "other_line": N, "file": "path", "file_line": N}
 Kinds:
 - "question": something the note needs to answer and does not. Ask it in one sentence ending with "?".
 - "contradiction": two lines that cannot both be true (give other_line), or a line the code contradicts (give file
@@ -83,8 +84,9 @@ Kinds:
 - "code": a line whose claim depends on the code shown: say what the code really does there, with file and file_line.
 - "decision": a line that settles a choice worth logging but does not start with "Decision:". Say what it settles.
 Rules: "line" is the note's line number the mark sits on. Each text at most 25 words, specific: use the note's own
-numbers and names. No praise, no style or wording advice, no marks on headings. Do not mark a paragraph for
-repeating an earlier one: a rule does that. Answer with the JSON alone.`;
+numbers and names. When code is shown, at least one mark says what it really does for a line that names it. No
+praise, no style or wording advice, no marks on headings. Do not mark a paragraph for repeating an earlier one: a
+rule does that. Answer with the JSON alone.`;
 
 export const TASKS_PROMPT = `The writer of this design note asked for the work in it as tasks. List at most ${MAX_TASKS},
 in the note's order, as a JSON array: [{"title": "...", "lines": "lines 3-4, line 8", "open": false}]
@@ -94,6 +96,8 @@ in the note's order, as a JSON array: [{"title": "...", "lines": "lines 3-4, lin
 Answer with the JSON alone.`;
 
 const ANSWER_TIMEOUT_MS = 120_000;
+// At the server's default, a tested model answered [] for a note full of open questions about one time in eight.
+const TEMPERATURE = 0.3;
 
 /**
  * One answer of `model` to `content`, outside any conversation: its text. Throws when the model fails or `signal`
@@ -105,7 +109,7 @@ export async function oneAnswer({models, model, signal}, systemPrompt, content) 
   const message = await models.completeSimple(
     model,
     {systemPrompt, messages: [{role: 'user', content, timestamp: Date.now()}]},
-    {signal: signal ? AbortSignal.any([signal, timeout]) : timeout},
+    {temperature: TEMPERATURE, signal: signal ? AbortSignal.any([signal, timeout]) : timeout},
   );
   if (message.errorMessage) throw new Error(message.errorMessage);
   return message.content.filter(block => block.type === 'text').map(block => block.text).join('');

@@ -79,9 +79,12 @@ export class NoteMargin {
     const text = note.readText = note.text;
     try {
       const code = await codeFor(this.root, text);
-      const answer = await this.ask(MARKS_PROMPT, noteInput(file, text, code, this.state().goal), {asked: false});
+      const input = noteInput(file, text, code, this.state().goal);
+      const read = async () => parseMarks(await this.ask(MARKS_PROMPT, input, {asked: false}), text, async path => Boolean(await projectFile(this.root, path)));
+      let marks = await read();
+      // A model without thinking now and then answers [] for a note with plain contradictions in it: once more.
+      if (!marks.length) marks = await read();
       const lines = text.split('\n');
-      const marks = await parseMarks(answer, text, async path => Boolean(await projectFile(this.root, path)));
       note.model = marks.map(mark => ({...mark, lineText: lines[mark.line - 1], otherText: mark.other && lines[mark.other - 1]}));
       this.log(`margin: the model marked ${marks.length} lines of ${file}`);
     } catch (error) {
