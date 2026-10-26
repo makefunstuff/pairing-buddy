@@ -12,6 +12,7 @@ local gaze_ns = vim.api.nvim_create_namespace('pair_gaze')
 
 M.motion = true -- setup's `motion` option
 local FADE_FRAMES, FRAME_MS = 10, 28 -- a fade-in of 280 ms
+local GLOW_MS = 650 -- a test that turned green lights up, then settles
 local MAX_LINES = 3 -- of the pair's words under a line; the chat has them all
 
 --- The window showing `buf`: the current one if it does, else the first in this tab page, else the current
@@ -240,9 +241,33 @@ end
 
 -- Tests: what the run on save found, on the lines of the tests in `buf`.
 
---- What a test run found in `buf`: `signs` ({line, ok, changed}) put ✓ or ✗ in the sign column of each test,
+--- Sets a sign that turned green: it and its line light up, then settle into the quiet pass in GLOW_MS.
+local function glow(buf, ns, row, col, spec)
+  if not (M.motion and style.can_move()) then return vim.api.nvim_buf_set_extmark(buf, ns, row, col, spec) end
+  local function at(t)
+    return vim.tbl_extend('force', spec, {
+      sign_hl_group = style.between('PairGlow', spec.sign_hl_group, t),
+      line_hl_group = t < 1 and style.fade('PairGlowLine', 1 - t) or nil,
+    })
+  end
+  local id = vim.api.nvim_buf_set_extmark(buf, ns, row, col, at(0))
+  local start, timer = vim.uv.now(), vim.uv.new_timer()
+  timer:start(FRAME_MS, FRAME_MS, vim.schedule_wrap(function()
+    if timer:is_closing() then return end
+    local t = math.min(1, (vim.uv.now() - start) / GLOW_MS)
+    local mark = vim.api.nvim_buf_is_valid(buf) and vim.api.nvim_buf_get_extmark_by_id(buf, ns, id, {}) or {}
+    if mark[1] then
+      pcall(vim.api.nvim_buf_set_extmark, buf, ns, mark[1], mark[2], vim.tbl_extend('force', at(ease(t)), {id = id}))
+      show(buf)
+    end
+    if not mark[1] or t >= 1 then timer:close() end
+  end))
+  return id
+end
+
+--- What a test run found in `buf`: `signs` ({line, ok, changed, glow}) put ✓ or ✗ in the sign column of each test,
 --- `notes` ({line, text, changed}) say why a test failed there: after the line when it fits, else under it. What `changed` since the last run
---- rises from the background; with `stale` (the next run is on) everything shows half faded.
+--- rises from the background, a sign with `glow` (it turned green) lights up; with `stale` (the next run is on) everything shows half faded.
 function M.tests(buf, signs, notes, opts)
   vim.api.nvim_buf_clear_namespace(buf, M.tests_ns, 0, -1)
   local count = vim.api.nvim_buf_line_count(buf)
@@ -250,7 +275,7 @@ function M.tests(buf, signs, notes, opts)
   local function group(name) return stale and style.fade(name, 0.4) or name end
   local function set(mark, spec)
     if mark.line > count then return end
-    local how = mark.changed and not stale and place or vim.api.nvim_buf_set_extmark
+    local how = stale and vim.api.nvim_buf_set_extmark or mark.glow and glow or mark.changed and place or vim.api.nvim_buf_set_extmark
     how(buf, M.tests_ns, mark.line - 1, 0, spec)
   end
   for _, sign in ipairs(signs) do

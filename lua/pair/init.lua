@@ -6,6 +6,7 @@
 -- daemon restarts, it reconnects by itself.
 local draw = require('pair.draw')
 local drive = require('pair.drive')
+local earcons = require('pair.earcons')
 local listen = require('pair.listen')
 local style = require('pair.style')
 
@@ -18,6 +19,7 @@ local ns = draw.ns
 local config = {
   socket = nil, debounce_ms = 2000, max_points = 5, motion = true, glyphs = {},
   accept_key = '<M-y>', jump_key = '<M-j>', useful_key = '<M-u>', noise_key = '<M-n>', listen_key = '<M-t>',
+  sounds = false, sound_volume = 0.5,
 }
 local state = {
   channel = nil, partial = '', attached = {}, pending = {}, open_request = nil, level = nil, role = nil,
@@ -32,7 +34,8 @@ local state = {
   wanted = false, -- connect was asked for (:Pair start or auto_connect) and not undone by :Pair stop
   retry = nil, -- the reconnect timer
   models = {}, -- why each model is down, per role: the daemon's health
-  run = nil, -- the test run on save, for the statusline: {state = 'run'|'pass'|'fail'|'error'|'idle', label, text, till}
+  run = nil, -- the test run on save, for the statusline: {state = 'run'|'pass'|'fail'|'error'|'idle', label, text, till, red_since}
+  pulse = nil, -- when the statusline last lit up for a green (see delight), until it settles
   thinking = false, -- a Partner turn that thinks is running, for the statusline
   results = {}, -- what the last finished run found: {name, file, line, ok, failure}, absolute paths
   typing = nil, -- while the Driver's edit is being typed: the function that stops it and undoes what it typed
@@ -40,6 +43,9 @@ local state = {
 local RETRY_MS = {1000, 2000, 5000, 10000, 30000} -- then every 30 s
 local READING_MS = 2000 -- how long the statusline names the file Pair reads
 local PASS_MS = 6000 -- how long the statusline shows a passing run; a failing one stays until the next run
+local PULSE_MS = 700 -- the statusline lights up once for a green, and settles
+local DELIGHT_MS = 5000 -- how long the line about a green stays, from when you are at the editor
+local LONG_RED_MIN = 10 -- a failing run says how long it has been red after this many minutes (delight.mjs's LONG_RED_MS)
 
 local function default_socket()
   if vim.env.PAIR_SOCKET then return vim.env.PAIR_SOCKET end
@@ -445,7 +451,7 @@ local function show_tests(buf)
   local name = vim.api.nvim_buf_get_name(buf)
   local signs, notes, shown = {}, {}, {}
   for _, test in ipairs(state.results) do
-    if test.file == name then table.insert(signs, {line = test.line, ok = test.ok, changed = test.changed}) end
+    if test.file == name then table.insert(signs, {line = test.line, ok = test.ok, changed = test.changed, glow = test.glow}) end
     local failure = type(test.failure) == 'table' and test.failure -- JSON null arrives as vim.NIL
     if failure and failure.file == name then table.insert(notes, {line = failure.line, text = failure.text, changed = test.changed}) end
     if test.file == name or (failure and failure.file == name) then table.insert(shown, test) end
@@ -454,7 +460,7 @@ local function show_tests(buf)
   draw.tests(buf, signs, notes, {stale = stale})
   -- A change rises from the background once, where it first shows.
   if not stale then
-    for _, test in ipairs(shown) do test.changed = false end
+    for _, test in ipairs(shown) do test.changed, test.glow = false, false end
   end
 end
 
@@ -468,9 +474,13 @@ local function on_tests(message)
     local before = {}
     for _, test in ipairs(state.results) do before[test.file .. ':' .. test.name] = test.ok end
     state.results = message.results or {}
-    for _, test in ipairs(state.results) do test.changed = before[test.file .. ':' .. test.name] ~= test.ok end
+    for _, test in ipairs(state.results) do
+      local was = before[test.file .. ':' .. test.name]
+      test.changed = was ~= test.ok
+      test.glow = test.ok and was == false -- it turned green
+    end
   end
-  state.run = {state = message.state, label = message.label, text = message.text, till = now_ms() + PASS_MS}
+  state.run = {state = message.state, label = message.label, text = message.text, till = now_ms() + PASS_MS, red_since = message.redSince}
   if message.state == 'pass' then vim.defer_fn(redraw_status, PASS_MS + 50) end
   spin()
   show_all_tests()
@@ -593,7 +603,40 @@ local function set_models(models)
   redraw_status()
 end
 
+-- Delight: a green after a red lights the statusline up once; when it is worth words, one line under yours says
+-- what is now true, and goes after a few seconds, counted from when you are at the editor.
+
+local pulse_timer
+
+local function pulse()
+  if not (config.motion and style.can_move()) then return end
+  state.pulse = now_ms()
+  pulse_timer = pulse_timer or vim.uv.new_timer()
+  pulse_timer:start(0, 35, vim.schedule_wrap(function()
+    if state.pulse and now_ms() - state.pulse > PULSE_MS then
+      state.pulse = nil
+      pulse_timer:stop()
+    end
+    redraw_status()
+  end))
+end
+
+local function on_delight(message)
+  pulse()
+  local text = type(message.text) == 'string' and message.text or ''
+  local buf = vim.api.nvim_get_current_buf()
+  if text == '' or state.words or not project_path(buf) then return end -- Pair's own words stay
+  local words = {buf = buf, row = vim.api.nvim_win_get_cursor(0)[1] - 1, text = text}
+  state.words = words
+  draw_words(words)
+  local function fade() vim.defer_fn(function() if state.words == words then forget_words(false) end end, DELIGHT_MS) end
+  if earcons.focused then fade() else vim.api.nvim_create_autocmd('FocusGained', {once = true, callback = fade}) end
+  redraw_status()
+end
+
 local handlers = {
+  delight = on_delight,
+  earcon = function(message) earcons.play(message.sound) end,
   look = look,
   point = point,
   open = open,
@@ -749,7 +792,8 @@ local function status_parts()
   elseif state.thinking then
     return {glyph = style.spinner[spinner.frame], text = 'pair · thinking', hl = 'PairStatus', text_hl = 'PairStatusDim'}
   elseif run and run.state == 'fail' then
-    return {glyph = g.fail, text = run.text, hl = 'PairFail', text_hl = 'PairStatusDim'}
+    local red = type(run.red_since) == 'number' and math.floor((os.time() * 1000 - run.red_since) / 60000) or 0
+    return {glyph = g.fail, text = run.text .. (red >= LONG_RED_MIN and (' · red %d min'):format(red) or ''), hl = 'PairFail', text_hl = 'PairStatusDim'}
   elseif run and run.state == 'error' then
     return {glyph = g.away, text = run.label .. ' · ' .. run.text, hl = 'PairStatusWarn', text_hl = 'PairStatusDim'}
   elseif run and run.state == 'pass' and now_ms() < run.till then
@@ -774,6 +818,11 @@ end
 function M.statusline()
   local parts = status_parts()
   if not parts then return '' end
+  if state.pulse then
+    local t = math.min(1, (now_ms() - state.pulse) / PULSE_MS)
+    parts.hl = style.between('PairStatusGlow', parts.hl, t, {statusline = true})
+    parts.text_hl = style.between('PairStatusGlow', parts.text_hl, t, {statusline = true})
+  end
   return ('%%#%s#%s %%#%s#%s%%*'):format(parts.hl, parts.glyph, parts.text_hl, (parts.text:gsub('%%', '%%%%')))
 end
 
@@ -830,6 +879,7 @@ function M.setup(opts)
   style.glyphs = vim.tbl_extend('force', style.glyphs, config.glyphs)
   draw.motion = config.motion
   drive.motion = config.motion
+  earcons.enabled, earcons.volume = config.sounds, config.sound_volume
   style.apply()
   local group = vim.api.nvim_create_augroup('pair', {clear = true})
   local function restyle()
@@ -853,8 +903,10 @@ function M.setup(opts)
   end})
   vim.api.nvim_create_autocmd('CursorHold', {group = group, callback = send_cursor})
   -- Whether you are at the editor: an answer to what you said is read aloud only while you are away.
+  -- And whether Pair's sounds may play (earcons.lua).
   vim.api.nvim_create_autocmd({'FocusGained', 'FocusLost'}, {group = group, callback = function(args)
-    send({type = 'focus', on = args.event == 'FocusGained'})
+    earcons.focused = args.event == 'FocusGained'
+    send({type = 'focus', on = earcons.focused})
   end})
   -- Push-to-talk, in Normal mode and, about the selected lines, in Visual mode; only where the key is free.
   for _, mode in ipairs({'n', 'x'}) do
