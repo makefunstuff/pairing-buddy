@@ -38,7 +38,7 @@ Then:
 3. A second `edit` in the same answer is refused: one change per hand-over. An edit Neovim could not apply (a line past the end of the buffer), or that you stopped halfway, does not count.
 4. If the project has a test command (`testOnSave`), Pair runs it on the unsaved buffer and tells the model the result (below). It says in one sentence what it changed and, when the tests ran, whether they pass. It is told not to run the tests itself: they would read the file on disk, which changes only when you save.
 5. When the answer ends, Pair is Navigator again by itself, also when it answered without an edit, for example with a question.
-6. The hand-back line: its words under the last line it changed, `✓` or `✗` in the sign column there when the tests ran, `▎` on the lines it changed, and `u undoes it`. They go with your next edit.
+6. The hand-back line: its words under the last line it changed, `✓` or `✗` in the sign column there when the tests ran, `▎` on the lines it changed, and `u undoes it`. They go with your next edit. After that, `u` on the edit's line in `:Pair today` still undoes it: Neovim merges the undo into the buffer as it is then, and keeps your later edits, or changes nothing when you edited the same lines ([the ledger](neovim.md#the-ledger)).
 
 A hand-over needs Neovim connected (`:Pair start`), and is refused while Pair is still answering something else. No remark nobody asked for starts while Pair has the wheel.
 

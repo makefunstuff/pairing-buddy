@@ -101,7 +101,8 @@ It exits with 1 when a check fails, so scripts can use it too.
 5. `/end` in the chat (or `:Pair end`) closes the session with a short note, kept for the next one.
 
 **Chat commands.** `/goal <text>`, `/level quiet|normal|chatty`, `/scout`, `/navigate`, `/drive [what]`, `+` or
-`/useful` and `-` or `/noise` (your verdict on Pair's last unasked remark), `/end`, and `/quit` (closes the pane; the
+`/useful` and `-` or `/noise` (your verdict on Pair's last unasked remark), `/today` (what Pair did here today, as in
+`:Pair today`, without the keys), `/end`, and `/quit` (closes the pane; the
 session goes on). A line that starts with "you take it" or "your turn" hands Pair the wheel too; anything else is a
 question for Pair. When Pair asks before running or typing a command, your next line is the answer: `y` or `yes`
 allows it, anything else declines.

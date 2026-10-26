@@ -89,7 +89,8 @@ to do:
 | `Alt-u` / `Alt-n` | Tell Pair its last remark was useful / noise |
 | any key | Take the wheel back while Pair drives |
 
-The main commands are `:Pair ask <question>`, `:Pair drive [what]`, `:Pair scout`, `:Pair navigate` and `:Pair end`.
+The main commands are `:Pair ask <question>`, `:Pair drive [what]`, `:Pair scout`, `:Pair navigate`, `:Pair today`
+and `:Pair end`.
 All options, commands, the statusline segment and the highlight groups are in [docs/neovim.md](docs/neovim.md), with
 captures of each moment.
 
@@ -126,6 +127,11 @@ broke gets a remark and a suggested fix. [docs/tests-on-save.md](docs/tests-on-s
 
 **Holds a thought.** A remark that can wait waits for your next save or pause, with a `•` in the margin meanwhile.
 [docs/neovim.md](docs/neovim.md#the-held-thought)
+
+**Keeps a ledger.** `:Pair today` lists everything Pair did here today, one quiet line each: what it read, said,
+pointed at, suggested, ran and typed, what it asked, and the moments it stayed quiet. `⏎` goes there or shows the
+output, and `u` undoes one of its edits later, after your own edits too, which stay.
+[docs/neovim.md](docs/neovim.md#the-ledger)
 
 **Remembers and learns.** Each session ends with a short note the next one starts from, and your useful/noise verdicts
 tune when Pair talks. `pair stats` shows the numbers. [docs/memory.md](docs/memory.md)
