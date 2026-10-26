@@ -10,20 +10,22 @@ M.suggest_ns = vim.api.nvim_create_namespace('pair_suggest')
 local gaze_ns = vim.api.nvim_create_namespace('pair_gaze')
 
 M.motion = true -- setup's `motion` option
-local FADE_FRAMES, FRAME_MS = 8, 30 -- a fade-in of 240 ms
+local FADE_FRAMES, FRAME_MS = 10, 28 -- a fade-in of 280 ms
 local MAX_LINES = 3 -- of the pair's words under a line; the chat has them all
 
---- The window showing `buf`: the current one if it does, else the first in this tab page; nil when none does.
+--- The window showing `buf`: the current one if it does, else the first in this tab page, else the current
+--- one, where it would show if you went there.
 local function window_of(buf)
-  if vim.api.nvim_get_current_buf() == buf then return vim.api.nvim_get_current_win() end
+  local current = vim.api.nvim_get_current_win()
+  if vim.api.nvim_win_get_buf(current) == buf then return current end
   for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
     if vim.api.nvim_win_get_buf(win) == buf then return win end
   end
+  return current
 end
 
 --- How many columns of text `win` shows, after its number and sign columns.
 local function text_width(win)
-  if not win then return 80 end
   local info = vim.fn.getwininfo(win)[1]
   return info.width - info.textoff
 end
@@ -32,8 +34,14 @@ local function line_of(buf, row)
   return vim.api.nvim_buf_get_lines(buf, row, row + 1, false)[1] or ''
 end
 
+--- How many columns the indent of row `row` takes. Counted here: switching to the buffer to ask would run its
+--- autocommands, and tell the daemon you went there.
 local function indent_of(buf, row)
-  return vim.api.nvim_buf_call(buf, function() return vim.fn.indent(row + 1) end)
+  local tabstop, width = vim.bo[buf].tabstop, 0
+  for char in line_of(buf, row):match('^%s*'):gmatch('.') do
+    width = char == '\t' and (math.floor(width / tabstop) + 1) * tabstop or width + 1
+  end
+  return width
 end
 
 -- Text: the pair writes Markdown-ish lines, where `code` is code. It shows in the accent, without the backticks.
@@ -97,7 +105,13 @@ end
 
 -- The fade: each frame sets the extmark again with every group at its step of the way in.
 
-local function ease(p) return 1 - (1 - p) ^ 3 end
+--- Shows a frame now: Neovim does not repaint for changes made in a timer until something else happens.
+local function show(buf)
+  if vim.fn.bufwinid(buf) ~= -1 then vim.cmd.redraw() end
+end
+
+-- Slow at both ends: the words arrive without a jump at the start or a snap at the end.
+local function ease(p) return p * p * (3 - 2 * p) end
 
 local GROUP_FIELDS = {'hl_group', 'line_hl_group', 'sign_hl_group', 'number_hl_group'}
 
@@ -128,6 +142,7 @@ local function place(buf, ns, row, col, opts)
     local at = vim.api.nvim_buf_is_valid(buf) and vim.api.nvim_buf_get_extmark_by_id(buf, ns, id, {}) or {}
     if at[1] then
       pcall(vim.api.nvim_buf_set_extmark, buf, ns, at[1], at[2], vim.tbl_extend('force', painted(opts, ease(frame / FADE_FRAMES)), {id = id}))
+      show(buf)
     end
     if not at[1] or frame >= FADE_FRAMES then timer:close() end
   end))
@@ -236,13 +251,17 @@ function M.gaze(buf, from, to)
   timer:start(0, step, vim.schedule_wrap(function()
     if timer:is_closing() or not vim.api.nvim_buf_is_valid(buf) then return end
     vim.api.nvim_buf_clear_namespace(buf, gaze_ns, 0, -1)
-    if line > last + #trail - 1 then return timer:close() end
+    if line > last + #trail - 1 then
+      timer:close()
+      return show(buf)
+    end
     for k, group in ipairs(trail) do
       local row = line - k + 1
       if row >= first and row <= last then
         pcall(vim.api.nvim_buf_set_extmark, buf, gaze_ns, row - 1, 0, {number_hl_group = group, priority = 300})
       end
     end
+    show(buf)
     line = line + 1
   end))
   return true

@@ -71,7 +71,14 @@ local function flush(buf)
 end
 
 local function redraw_status()
-  pcall(vim.cmd.redrawstatus)
+  pcall(vim.cmd, 'redrawstatus!')
+end
+
+--- The loaded buffer of `file` (an absolute path from the daemon), named relative to the working directory.
+local function load(file)
+  local buf = vim.fn.bufadd(vim.fn.fnamemodify(file, ':.'))
+  vim.fn.bufload(buf)
+  return buf
 end
 
 -- Keys that act on something Pair shows are mapped in Normal mode only while it shows, and only where you have
@@ -143,13 +150,13 @@ function M.jump()
 end
 
 local function point(message)
-  local buf = vim.fn.bufadd(message.file)
-  vim.fn.bufload(buf)
+  local buf = load(message.file)
   local count = vim.api.nvim_buf_line_count(buf)
   local first = math.min(message.line, count) - 1
   local last = math.max(first, math.min(message.endLine or message.line, count) - 1)
   local code = type(message.code) == 'string' and message.code or nil
   local new = {buf = buf, ids = draw.point(buf, first, last, message.note, code), note = message.note, code = code}
+  state.reading = nil -- it has read what it needed
   table.insert(state.points, new)
   state.target = new
   map_keys('jump', {{config.jump_key, M.jump, 'Go where Pair points'}})
@@ -204,6 +211,7 @@ local function on_remark(message)
   if text == '' or not project_path(buf) then return end
   state.words = {buf = buf, row = vim.api.nvim_win_get_cursor(0)[1] - 1, text = text, remark = message.id, key = target and key_label('jump', config.jump_key)}
   draw_words(state.words)
+  state.reading = nil
   redraw_status()
 end
 
@@ -253,8 +261,7 @@ end
 
 local function suggest(message)
   clear_suggestion()
-  local buf = vim.fn.bufadd(message.file)
-  vim.fn.bufload(buf)
+  local buf = load(message.file)
   local count = vim.api.nvim_buf_line_count(buf)
   -- The daemon checked the line against the buffer; it may have shrunk since. A wrong line marks nothing.
   if message.line > count then return vim.notify('Pair: its suggestion is past the end of the buffer, so it was dropped') end
@@ -269,6 +276,8 @@ local function suggest(message)
   -- JSON null arrives as vim.NIL: a suggestion in an answer to you is no remark.
   local remark = message.remark ~= vim.NIL and message.remark or nil
   state.suggestion = {buf = buf, ids = draw.suggestion(buf, first, old, new, message.note, key), old = old, new = new, remark = remark}
+  state.reading = nil
+  redraw_status()
 end
 
 --- Your edit of rows `first`..`last` answers what Pair said: its words go, and so does a point on those lines.
@@ -409,8 +418,7 @@ end
 local function edit(message)
   local function reply(result) send({type = 'reply', id = message.id, result = result}) end
   if state.role ~= 'driver' then return reply({error = 'the user has taken the wheel back'}) end
-  local buf = vim.fn.bufadd(message.file)
-  vim.fn.bufload(buf)
+  local buf = load(message.file)
   local count = vim.api.nvim_buf_line_count(buf)
   if message.line > count then return reply({error = ('line %d is past the end of the buffer (%d lines)'):format(message.line, count)}) end
   -- Setting 'undolevels' starts a new undo step, so `u` undoes Pair's change and nothing of yours.
@@ -619,9 +627,11 @@ function M.setup(opts)
   local group = vim.api.nvim_create_augroup('pair', {clear = true})
   vim.api.nvim_create_autocmd('ColorScheme', {group = group, callback = style.apply})
   vim.api.nvim_create_autocmd('OptionSet', {group = group, pattern = {'termguicolors', 'background'}, callback = style.apply})
-  vim.api.nvim_create_autocmd({'WinResized', 'VimResized'}, {group = group, callback = relayout})
+  -- A note's place depends on the width of the window that shows it.
+  vim.api.nvim_create_autocmd({'WinResized', 'VimResized', 'BufWinEnter'}, {group = group, callback = relayout})
   vim.api.nvim_create_autocmd('BufEnter', {group = group, callback = function(args)
-    if not state.channel then return end
+    -- Loading a file Pair points at enters it in Neovim's hidden autocommand window: you did not go there.
+    if not state.channel or vim.fn.win_gettype() == 'autocmd' then return end
     attach(args.buf)
     local file = project_path(args.buf)
     if file then event({kind = 'enter', file = file}) end
