@@ -54,7 +54,7 @@ Then set your model ([below](#configure-models)), open Neovim, run `pair` in the
 session takes its goal from the herdr board task of your branch, or the branch name, and asks only when there is
 neither. `pair doctor` checks every part and says how to fix what is wrong.
 
-Upgrading, installing from a clone, running without systemd, and the chat commands are in
+Upgrading, installing from a clone, running without systemd or launchd, and the chat commands are in
 [docs/install.md](docs/install.md).
 
 ## Configure models

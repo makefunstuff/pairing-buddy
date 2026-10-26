@@ -16,18 +16,20 @@ import {herdrRequest} from '../src/herdr.mjs';
 import {terminalInteraction} from '../src/prompt.mjs';
 import {requestDaemon, sendMessage} from '../src/protocol.mjs';
 import {keyVariables, storeServiceEnv} from '../src/service-env.mjs';
-import {installService, removeService, systemctl, UNIT, unitPath} from '../src/service.mjs';
+import {serviceManager} from '../src/service.mjs';
 import {shellHook} from '../src/shell-hook.mjs';
 import {statsReport} from '../src/stats.mjs';
+import {supervise} from '../src/supervise.mjs';
 import {openStore} from '../src/store.mjs';
 import {WINDOW_MS} from '../src/tuning.mjs';
 
 const SCRIPT = realpathSync(fileURLToPath(import.meta.url));
+const SERVICE = serviceManager();
 
 const USAGE = `usage:
   pair              open the chat pane next to this one (in herdr), starting the daemon if needed
   pair chat         run the chat pane here
-  pair setup        create the config if there is none, install and start the daemon as a systemd user service
+  pair setup        create the config if there is none, install and start the daemon as a service (systemd, launchd)
   pair doctor       check the daemon, Neovim, herdr and the models, and say what is wrong
   pair auth login PROVIDER    log in with a subscription or store an API key (also \`pair login PROVIDER\`)
   pair auth logout PROVIDER   remove that login or key (also \`pair logout PROVIDER\`)
@@ -36,6 +38,7 @@ const USAGE = `usage:
   pair stats [--days N]   remarks per hour, useful vs dismissed, per trigger, and the tuning (default: 7 days)
   pair uninstall    stop and remove the service (the config and data stay)
   pair daemon       run the daemon in the foreground
+  pair supervise    run the daemon in the foreground, restarted when it fails (what \`pair\` starts without a service)
   pair shell-hook bash|zsh   print the shell hook that reports exit codes
   pair report --exit N --cmd TEXT   (used by the shell hook)`;
 
@@ -64,17 +67,20 @@ async function waitFor(check, tries = 50) {
   return false;
 }
 
-/** Starts the daemon if it is not running: through systemd once `pair setup` installed it, else in the background. */
+/**
+ * Starts the daemon if it is not running: as the service once `pair setup` installed it, else in the background under
+ * the supervisor, which restarts it when it fails.
+ */
 async function ensureDaemon(config) {
   if (await reachable(config.socket)) return;
-  if (existsSync(unitPath())) {
-    await systemctl('start', UNIT);
+  if (SERVICE?.installed()) {
+    await SERVICE.start();
     if (await waitFor(() => reachable(config.socket))) return;
-    throw new Error(`The service did not start; see \`journalctl --user -u ${UNIT} -n 20\``);
+    throw new Error(`The service did not start; see \`${SERVICE.logs}\``);
   }
   mkdirSync(config.dataDir, {recursive: true, mode: 0o700});
   const log = openSync(join(config.dataDir, 'daemon.log'), 'a');
-  spawn(process.execPath, ['--disable-warning=ExperimentalWarning', SCRIPT, 'daemon'], {detached: true, stdio: ['ignore', log, log]}).unref();
+  spawn(process.execPath, ['--disable-warning=ExperimentalWarning', SCRIPT, 'supervise'], {detached: true, stdio: ['ignore', log, log]}).unref();
   if (!(await waitFor(() => reachable(config.socket)))) throw new Error(`The daemon did not start; see ${join(config.dataDir, 'daemon.log')}`);
 }
 
@@ -98,7 +104,7 @@ async function authLogin(id) {
   console.log(how === 'key'
     ? `Stored the key as "${id}" in ${tilde(authPath())}. Use it in a model entry with an "api" and a "baseUrl": "auth": "${id}"`
     : `${how === 'oauth' ? `Logged in to ${id}` : `Stored the API key of ${id}`} in ${tilde(authPath())}. Use it in a model entry: {"provider": "${id}", "model": "…"}; \`pair auth models ${id}\` lists the models.
-The daemon reads logins as it needs them; after a change to the config: systemctl --user restart ${UNIT}`);
+The daemon reads logins as it needs them; after a change to the config: ${SERVICE?.restart ?? 'stop the daemon and run `pair`'}`);
 }
 
 async function authLogout(id) {
@@ -145,23 +151,33 @@ function storeKeyVariables(config) {
   if (missing.length) console.error(`pair: the config takes keys from ${missing.join(', ')}, which this shell does not set: set them and run \`pair setup\` again`);
 }
 
+/** Installs and starts the service, so it runs this install's code; says what it did. */
+async function installService(config) {
+  // A daemon started by `pair` before the service existed holds the data directory: hand it over to the service.
+  const running = await requestDaemon(config.socket, {type: 'status'}).catch(() => null);
+  if (running && !(await SERVICE.state()).active) {
+    process.kill(running.pid, 'SIGTERM');
+    await waitFor(async () => !(await reachable(config.socket)));
+  }
+  const env = Object.fromEntries(['PAIR_CONFIG', 'PAIR_AUTH'].filter(name => process.env[name]).map(name => [name, process.env[name]]));
+  await SERVICE.install({node: process.execPath, script: SCRIPT, env});
+  if (!(await waitFor(() => reachable(config.socket)))) throw new Error(`The service did not start; see \`${SERVICE.logs}\``);
+  return `The daemon runs as ${SERVICE.name}: it starts at login and restarts when it fails.`;
+}
+
+/** Without systemd or launchd: starts the daemon under the supervisor, if it is not running; says what it does. */
+async function withoutService(config) {
+  await ensureDaemon(config);
+  return 'No systemd or launchd here: `pair` starts the daemon under a supervisor that restarts it when it fails, but not at login (see docs/install.md).';
+}
+
 async function setup() {
   firstRunConfig();
   await offerLogin();
   const config = loadConfig();
   storeKeyVariables(config);
-  // A daemon started by `pair` before the service existed holds the data directory: hand it over to systemd.
-  const running = await requestDaemon(config.socket, {type: 'status'}).catch(() => null);
-  const service = await systemctl('is-active', UNIT);
-  if (running && !service.ok) {
-    process.kill(running.pid, 'SIGTERM');
-    await waitFor(async () => !(await reachable(config.socket)));
-  }
-  const env = Object.fromEntries(['PAIR_CONFIG', 'PAIR_AUTH'].filter(name => process.env[name]).map(name => [name, process.env[name]]));
-  await installService({node: process.execPath, script: SCRIPT, env});
-  if (!(await waitFor(() => reachable(config.socket)))) throw new Error(`The service did not start; see \`journalctl --user -u ${UNIT} -n 20\``);
-  console.log(`The daemon runs as ${UNIT}: it starts at login and restarts when it fails.
-Config: ${tilde(configPath())} (after a change: systemctl --user restart ${UNIT})
+  console.log(`${SERVICE ? await installService(config) : await withoutService(config)}
+Config: ${tilde(configPath())} (after a change: ${SERVICE?.restart ?? 'stop the daemon and run `pair`'})
 Models: ${rolesText(config.models)}. ${sameModel(config.models.watcher, config.models.partner) ? ONE_MODEL : TWO_MODELS}
 
 Next:
@@ -172,8 +188,9 @@ ${LAZY_SPEC}
 }
 
 async function uninstall() {
-  await removeService();
-  console.log(`Removed ${UNIT}. The config (${tilde(configPath())}) and the data directory are kept.`);
+  if (!SERVICE?.installed()) return console.log('No service is installed.');
+  await SERVICE.remove();
+  console.log(`Removed ${SERVICE.name}. The config (${tilde(configPath())}) and the data directory are kept.`);
 }
 
 async function runDoctor() {
@@ -210,6 +227,14 @@ async function daemon(config) {
   const stop = async () => { await running.close(); process.exit(0); };
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);
+}
+
+/** `pair supervise`: the daemon in a child process, restarted when it fails, until it stops cleanly or is stopped. */
+async function runSupervised() {
+  const log = line => process.stderr.write(`${new Date().toTimeString().slice(0, 8)} supervisor: ${line}\n`);
+  const supervisor = supervise({command: process.execPath, args: ['--disable-warning=ExperimentalWarning', SCRIPT, 'daemon'], log});
+  for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => supervisor.stop());
+  await supervisor.finished;
 }
 
 async function openChatPane(config) {
@@ -251,6 +276,8 @@ try {
     await auth([command, ...args]);
   } else if (command === 'doctor') {
     await runDoctor();
+  } else if (command === 'supervise') {
+    await runSupervised();
   } else if (command === 'stats') {
     stats(args);
   } else if ([undefined, 'chat', 'daemon'].includes(command)) {

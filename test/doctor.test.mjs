@@ -12,6 +12,8 @@ import {startDaemon} from '../src/daemon.mjs';
 import {fileCredentialStore} from '../src/credentials.mjs';
 import {contextCheck, daemonCheck, doctor, loginCheck, loginsCheck, rolesCheck, serviceCheck} from '../src/doctor.mjs';
 import {sendMessage} from '../src/protocol.mjs';
+import {launchd} from '../src/launchd.mjs';
+import {systemd} from '../src/systemd.mjs';
 import {VERSION} from '../src/version.mjs';
 
 /**
@@ -61,7 +63,7 @@ test('all well: each check says ok, and a slow Watcher gets advice', {timeout: 2
   editor.on('connect', () => sendMessage(editor, {type: 'hello', role: 'editor', cwd: dir}));
   await new Promise(resolve => editor.once('data', resolve));
   try {
-    const checks = await run({path, env: {PATH: ''}, service: installed, nvimPlugin: async () => assert.fail('not started: a Neovim is connected')});
+    const checks = await run({path, env: {PATH: ''}, manager: systemd, service: installed, nvimPlugin: async () => assert.fail('not started: a Neovim is connected')});
     assert.equal(checks.config.level, 'ok');
     assert.equal(checks.service.text, 'starts at login, running');
     assert.match(checks.daemon.text, new RegExp(`^version ${VERSION}, up 0 min, 1 session$`));
@@ -94,7 +96,7 @@ test('broken: no daemon, a dead endpoint and a model the server does not serve, 
     models: {watcher: {api: 'openai', baseUrl: server.url, model: 'smal'}, partner: {api: 'openai', baseUrl: dead.url, model: 'big'}},
   }));
   try {
-    const checks = await run({path, env: {PATH: ''}, service: async () => ({installed: false}), nvimPlugin: async () => 'no'});
+    const checks = await run({path, env: {PATH: ''}, manager: systemd, service: async () => ({installed: false}), nvimPlugin: async () => 'no'});
     assert.match(checks.service.text, /^not installed: `pair setup`/);
     assert.equal(checks.daemon.level, 'fail');
     assert.match(checks.daemon.text, /^nothing answers on .*pair\.sock: run `pair setup`/);
@@ -116,7 +118,7 @@ test('thinking: a model that thinks anyway, one that does not, and levels the se
   const doctorFor = async entry => {
     const server = entry.model === 'thinker' ? thinker : plain;
     writeFileSync(path, JSON.stringify({socket: join(dir, 'pair.sock'), models: {watcher: {api: 'openai', baseUrl: thinker.url, model: 'thinker'}, partner: {api: 'openai', baseUrl: server.url, ...entry}}}));
-    const checks = await run({path, env: {PATH: ''}, service: installed, nvimPlugin: async () => 'yes'});
+    const checks = await run({path, env: {PATH: ''}, manager: systemd, service: installed, nvimPlugin: async () => 'yes'});
     return {watcher: checks.watcher, thinking: checks.thinking.map(({level, text}) => [level, text])};
   };
   try {
@@ -147,7 +149,7 @@ test('one model: one line checks it, the roles line explains how it serves both,
   const path = join(dir, 'config.json');
   writeFileSync(path, JSON.stringify({socket: join(dir, 'pair.sock'), model: {api: 'openai', baseUrl: server.url, model: 'one', reasoning: true, compat: {supportsReasoningEffort: true}}}));
   try {
-    const checks = await run({path, env: {PATH: ''}, service: installed, nvimPlugin: async () => 'yes'});
+    const checks = await run({path, env: {PATH: ''}, manager: systemd, service: installed, nvimPlugin: async () => 'yes'});
     assert.equal(checks.watcher, undefined);
     assert.equal(checks.partner, undefined);
     assert.match(checks.models.text, /^one at http:\/\/127\.0\.0\.1:\d+\/v1 /);
@@ -178,9 +180,13 @@ test('the context check says when the reply cannot hold the thinking, and when c
 });
 
 test('the service and daemon checks name the fix', () => {
-  assert.match(serviceCheck({installed: true, active: true, enabled: true, node: '/gone/node'}).text, /which is gone: run `pair setup` again/);
-  assert.match(serviceCheck({installed: true, active: false, enabled: true, node: process.execPath}).text, /not running: see `journalctl --user -u pairing-buddy.service/);
-  assert.match(daemonCheck({version: '0.0.1', startedAt: Date.now(), sessions: []}, {}).text, /runs version 0\.0\.1 .*systemctl --user restart pairing-buddy\.service/);
+  assert.match(serviceCheck({installed: true, active: true, enabled: true, node: '/gone/node'}, systemd).text, /which is gone: run `pair setup` again/);
+  assert.match(serviceCheck({installed: true, active: false, enabled: true, node: process.execPath}, systemd).text, /not running: see `journalctl --user -u pairing-buddy.service/);
+  assert.match(serviceCheck({installed: true, active: false, enabled: true, node: process.execPath}, launchd).text, /not running: see `tail -n 20 ~\/Library\/Logs\/pairing-buddy\.log`, then `launchctl kickstart -k /);
+  assert.match(serviceCheck(null, null).text, /^no systemd or launchd here: `pair` runs the daemon under a supervisor/);
+  const old = {version: '0.0.1', pid: 4242, startedAt: Date.now(), sessions: []};
+  assert.match(daemonCheck(old, {}, {...systemd, installed: () => true}).text, /runs version 0\.0\.1 .*systemctl --user restart pairing-buddy\.service/);
+  assert.match(daemonCheck(old, {}, null).text, /runs version 0\.0\.1 .*stop it \(`kill 4242`\) and run `pair`/);
 });
 
 test('a model entry with "auth" uses the stored key; without one, doctor says how to store it', {timeout: 20_000}, async () => {
@@ -193,7 +199,7 @@ test('a model entry with "auth" uses the stored key; without one, doctor says ho
   const saved = process.env.PAIR_AUTH;
   process.env.PAIR_AUTH = auth; // where apiKeyOf reads the key, as the daemon does
   try {
-    const options = {path, auth, env: {PATH: ''}, service: async () => ({installed: false}), nvimPlugin: async () => 'no'};
+    const options = {path, auth, env: {PATH: ''}, manager: systemd, service: async () => ({installed: false}), nvimPlugin: async () => 'no'};
     let checks = await run(options);
     assert.equal(checks.models.text, `small at ${server.url}: no key stored as "my-server": run \`pair auth login my-server\``);
     assert.equal(checks.logins, undefined, 'no file yet');

@@ -13,7 +13,7 @@ import {createPairModels} from './models.mjs';
 import {levelGroups, probeModel, probeThinking} from './probe.mjs';
 import {requestDaemon} from './protocol.mjs';
 import {keyVariables, readServiceEnv} from './service-env.mjs';
-import {serviceState, UNIT} from './service.mjs';
+import {serviceManager} from './service.mjs';
 import {VERSION} from './version.mjs';
 import {RATE, recorderOf, transcribe} from './voice.mjs';
 
@@ -33,7 +33,7 @@ const onPath = (name, env) => (env.PATH ?? '').split(delimiter).some(dir => exis
 
 /** Every check, in order, as `{level: ok|warn|fail, name, text}`; yields each as soon as it is known. */
 export async function* doctor({
-  path = configPath(), env = process.env, service = serviceState, nvimPlugin = nvimHasPlugin, auth = authPath(), credentials = fileCredentialStore(auth),
+  path = configPath(), env = process.env, manager = serviceManager(), service = async () => manager?.state(), nvimPlugin = nvimHasPlugin, auth = authPath(), credentials = fileCredentialStore(auth),
   serviceEnv = join(dirname(path), 'service.env'), // as serviceEnvPath() has it
 } = {}) {
   let config;
@@ -47,9 +47,9 @@ export async function* doctor({
   yield examples.length
     ? warn('config', `${tilde(path)} still has the example's model names: set your models there`)
     : ok('config', tilde(path));
-  yield serviceCheck(await service());
+  yield serviceCheck(await service(), manager);
   const status = await requestDaemon(config.socket, {type: 'status'}).catch(() => null);
-  yield daemonCheck(status, config);
+  yield daemonCheck(status, config, manager);
   // A connected Neovim has the plugin; only without one is Neovim started to look (it can take seconds).
   const connected = status?.sessions.some(session => session.editors > 0);
   yield connected ? ok('plugin', 'loaded in the connected Neovims') : pluginCheck(await nvimPlugin(env));
@@ -61,18 +61,21 @@ export async function* doctor({
   yield* modelChecks(config, status, credentials);
 }
 
-export function serviceCheck(state) {
+/** The service's `state` under `manager` (see service.mjs); without one, the supervisor restarts the daemon. */
+export function serviceCheck(state, manager) {
+  if (!manager) return warn('service', 'no systemd or launchd here: `pair` runs the daemon under a supervisor that restarts it when it fails, but nothing starts it at login');
   if (!state.installed) return warn('service', 'not installed: `pair setup` makes the daemon start at login and restart when it fails');
   if (state.node && !existsSync(state.node)) return fail('service', `it runs Node.js from ${tilde(state.node)}, which is gone: run \`pair setup\` again`);
-  if (!state.active) return fail('service', `installed but not running: see \`journalctl --user -u ${UNIT} -n 20\`, then \`systemctl --user restart ${UNIT}\``);
-  if (!state.enabled) return warn('service', `running, but it does not start at login: \`systemctl --user enable ${UNIT}\``);
+  if (!state.active) return fail('service', `installed but not running: see \`${manager.logs}\`, then \`${manager.restart}\``);
+  if (!state.enabled) return warn('service', `running, but it does not start at login: \`${manager.enable}\``);
   return ok('service', 'starts at login, running');
 }
 
-export function daemonCheck(status, config) {
+export function daemonCheck(status, config, manager) {
   if (!status) return fail('daemon', `nothing answers on ${tilde(config.socket)}: run \`pair setup\`, or \`pair daemon\` in a terminal`);
   if (status.version !== VERSION) {
-    return warn('daemon', `it runs version ${status.version} and this pair is ${VERSION}: \`systemctl --user restart ${UNIT}\``);
+    const restart = manager?.installed() ? `\`${manager.restart}\`` : `stop it (\`kill ${status.pid}\`) and run \`pair\``;
+    return warn('daemon', `it runs version ${status.version} and this pair is ${VERSION}: ${restart}`);
   }
   const minutes = Math.round((Date.now() - status.startedAt) / 60_000);
   const sessions = status.sessions.length === 1 ? '1 session' : `${status.sessions.length} sessions`;
