@@ -278,9 +278,9 @@ test('handing over makes Pair the Driver for one answer with one edit, which goe
   assert.match(input, /^\[drive\] The user handed you the wheel for one change\. The user said: "your turn"/);
   assert.match(input, /make it pass by changing the code, not the test/);
   assert.deepEqual(edits.map(({type, line, endLine, text}) => ({type, line, endLine, text})), [{type: 'edit', line: 2, endLine: 2, text: '  "name": "x",'}]);
-  assert.match(replies[0], /^Changed, as one undo step; not saved\. That was your one edit/);
+  assert.match(replies[0], /^Changed, as one undo step\. The file on disk changes only when the user saves, so do not run the tests now\. That was your one edit/);
   assert.match(replies[1], /^You already made your one change/, 'one edit per hand-over');
-  assert.equal(roleAfterEdit, 'driver', 'it may still check its edit, say by running the tests');
+  assert.equal(roleAfterEdit, 'driver', 'the wheel stays until the answer ends, so tools do not vanish mid-answer');
   assert.deepEqual(roleChanges(), ['driver', 'navigator']);
   assert.equal(pair.role, 'navigator');
   assert.deepEqual(roles, ['navigator'], 'the Driver role is never stored');

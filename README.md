@@ -53,7 +53,7 @@ In every role Pair can **suggest** a change: the old lines are marked in your bu
 **Driving** ([details](docs/driver.md)): hand over with `:Pair drive [what to do]` in Neovim, `/drive [what to do]` in the chat, or a chat line that starts with "you take it" or "your turn". Pair becomes the Driver for that one answer:
 
 - It reads the code and makes one `edit`: the lines change in your buffer as one undo step, so `u` takes it back. The buffer is not saved; the disk changes when you `:w`.
-- It gets one edit per hand-over. It may still check it (run the tests in its pane), says what it changed, and then is Navigator again by itself, also when it answered without an edit.
+- It gets one edit per hand-over, says what it changed, and then is Navigator again by itself, also when it answered without an edit. You save and run the tests.
 - Any key you press in Neovim while Pair has the wheel takes it back at once: an edit still on its way is refused.
 - It may `type` one command line into your terminal pane (the one you last used), after you allow it in the chat. It never presses Enter, and never types what Scout's policy refuses (`git commit`, `git push`, ...).
 - Ping-pong TDD: write a failing test, say "your turn", and Pair changes the code (not the test) to make it pass, then hands back. Run the tests, write the next one.
@@ -229,5 +229,5 @@ Without `PAIR_LIVE_CONFIG` (or a gitignored `test/live/config.json`) the live te
 - The Driver makes one edit per hand-over, in whole lines. After its answer, Pair is Navigator again, also when you handed over in Scout (Pair's pane then closes).
 - One suggestion shows at a time; a new one replaces it.
 - `type` needs herdr and goes to the terminal pane you last looked at or ran a command in.
-- When the Driver checks its edit by running the tests, they read the files on disk, not your unsaved buffer.
+- Pair's pane runs commands against the files on disk, not your unsaved buffer, so the Driver does not run the tests after its edit: you save and run them.
 - Test output is parsed from what the pane shows: a user's command's output is read from the last 400 lines of its pane.

@@ -212,8 +212,7 @@ export class PairSession {
 
   /**
    * The user hands Pair the wheel for one change (:Pair drive, "you take it", "your turn"). Pair answers as
-   * Driver, with at most one edit (it may still check it, say by running the tests), and is Navigator again
-   * when the answer is done.
+   * Driver, with at most one edit, and is Navigator again when the answer is done.
    */
   async drive(words = '') {
     if (words) this.message('user', words);
@@ -393,7 +392,9 @@ export class PairSession {
       return `Not changed: ${reply.error}.`;
     }
     this.message('pair', `Changed ${file}:${line}${endLine > line ? `-${endLine}` : ''} (u undoes it).`);
-    return 'Changed, as one undo step; not saved. That was your one edit. Check it if needed, then say in one sentence what you changed.';
+    // Tests read the saved file, so a check now would see the old code and send small models in circles.
+    return 'Changed, as one undo step. The file on disk changes only when the user saves, so do not run the tests now. '
+      + 'That was your one edit: say in one sentence what you changed.';
   }
 
   /** Types one line into the user's terminal pane once they allow it; Enter stays with them. */

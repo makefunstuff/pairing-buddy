@@ -36,7 +36,7 @@ Then:
 1. Pair becomes the Driver for one answer. The chat prompt and `require('pair').status()` show `driver`.
 2. It reads the code and calls `edit` once: the lines are replaced through Neovim's buffer API as one undo step. If the file is not shown in a window, it opens in a split. The chat says `Changed src/ws.mjs:1 (u undoes it).`
 3. A second `edit` in the same answer is refused: one change per hand-over. An edit Neovim could not apply (a line past the end of the buffer) does not count.
-4. It may check its edit, for example by running the tests in its pane, and says in one sentence what it changed.
+4. It says in one sentence what it changed. It is told not to run the tests now: they read the file on disk, which changes only when you save.
 5. When the answer ends, Pair is Navigator again by itself, also when it answered without an edit, for example with a question.
 
 A hand-over needs Neovim connected (`:Pair start`), and is refused while Pair is still answering something else. No remark nobody asked for starts while Pair has the wheel.
@@ -58,7 +58,7 @@ Typing in the chat pane or in a shell pane does not take the wheel back: herdr d
 3. It makes one edit and hands back.
 4. You run the tests and write the next one.
 
-As Driver Pair also has `search` and `run` in its own pane (the same command policy and limits as [Scout](scout.md)), so it may run the test before it edits.
+As Driver Pair also has `search` and `run` in its own pane (the same command policy and limits as [Scout](scout.md)), so it may run the test before it edits. After the edit, the tests would still see the saved file, so saving and running them is yours.
 
 ## Typing into your terminal
 
