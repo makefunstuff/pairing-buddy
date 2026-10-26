@@ -1,9 +1,9 @@
 // The blank page against real models, through a real PairSession in an empty folder: :Pair new asks three short
 // questions one at a time, then shows a first slice of two files in the note, with the build file the stack wants.
-// For C with a Makefile, the Driver then types both files, and they build and run once saved. The editor is played
+// For C and Zig with a Makefile, the Driver then types both files, and they build and run once saved. The editor is played
 // by buffers in memory: the folder on disk stays empty.
 import assert from 'node:assert/strict';
-import {execFileSync} from 'node:child_process';
+import {spawnSync} from 'node:child_process';
 import {mkdtempSync, readdirSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -43,12 +43,20 @@ const IDEAS = {
     ],
     build: /^Makefile$/,
     source: /\.c$/,
+    main: 'main.c',
   },
   odin: {
     idea: 'an Odin toy with a Makefile: a game of life in the terminal',
     answers: ['a 20 by 20 grid with a glider, printed every generation', 'ten generations, then it stops', 'only core: no vendor packages'],
     build: /^Makefile$/,
     source: /\.odin$/,
+  },
+  zig: {
+    idea: 'a zig toy with a Makefile, to see what an arena allocator gives back',
+    answers: ['allocate a hundred small strings from an arena, print how many bytes it holds', 'then free it all at once and print it again', 'std only, and it exits by itself'],
+    build: /^Makefile$/,
+    source: /\.zig$/,
+    main: 'main.zig',
   },
   go: {
     idea: 'a small Go CLI that counts words in the files I pass it',
@@ -131,24 +139,29 @@ describe('The blank page on live models', {skip: stacks.length ? false : SKIP_RE
       });
     }
 
-    test(`${stack.name}: c: handed the wheel twice, Pair types the Makefile and main.c, and once saved they build and run`, {timeout: 600_000}, async t => {
-      const result = await interview(IDEAS.c);
-      const {session, editor, root} = result;
-      session.notify = (to, message) => (message.type === 'message' && result.shown.push(`${message.sender}: ${message.text}`), 1);
-      await session.drive('you take it: write the Makefile from the slice');
-      await session.drive('you take it: now write main.c from the slice');
-      t.diagnostic(`tools: ${result.tools.join('\n')}`);
-      t.diagnostic(`shown: ${result.shown.join('\n')}`);
-      t.diagnostic(`buffers: ${editor.files().map(file => file.slice(root.length + 1)).join(', ')}`);
-      for (const file of editor.files().filter(file => file !== result.note)) t.diagnostic(`${file.slice(root.length + 1)}:\n${editor.text(file)}`);
-      assert.deepEqual(readdirSync(root), [], 'still nothing on disk: the user saves');
-      // The user saves both and runs it.
-      const copy = mkdtempSync(join(tmpdir(), 'pair-new-run-'));
-      for (const file of editor.files().filter(file => file !== result.note)) writeFileSync(join(copy, file.slice(root.length + 1)), editor.text(file));
-      const output = execFileSync('make', ['run'], {cwd: copy, encoding: 'utf8', timeout: 30_000});
-      t.diagnostic(`make run:\n${output}`);
-      assert.match(output, /\d/, 'it prints its counters');
-      await result.partner.close();
-    });
+    for (const name of ['c', 'zig']) {
+      test(`${stack.name}: ${name}: handed the wheel twice, Pair types the Makefile and the source, and once saved they build and run`, {timeout: 600_000}, async t => {
+        const result = await interview(IDEAS[name]);
+        const {session, editor, root} = result;
+        session.notify = (to, message) => (message.type === 'message' && result.shown.push(`${message.sender}: ${message.text}`), 1);
+        await session.drive('you take it: write the Makefile from the slice');
+        await session.drive(`you take it: now write ${IDEAS[name].main} from the slice`);
+        t.diagnostic(`tools: ${result.tools.join('\n')}`);
+        t.diagnostic(`shown: ${result.shown.join('\n')}`);
+        t.diagnostic(`buffers: ${editor.files().map(file => file.slice(root.length + 1)).join(', ')}`);
+        for (const file of editor.files().filter(file => file !== result.note)) t.diagnostic(`${file.slice(root.length + 1)}:\n${editor.text(file)}`);
+        assert.deepEqual(readdirSync(root), [], 'still nothing on disk: the user saves');
+        // The user saves both and runs it.
+        const copy = mkdtempSync(join(tmpdir(), 'pair-new-run-'));
+        for (const file of editor.files().filter(file => file !== result.note)) writeFileSync(join(copy, file.slice(root.length + 1)), editor.text(file));
+        // The two files are wired up when they build and the program runs: a bug in the program it typed is the
+        // user's next step, not the slice's.
+        const run = spawnSync('make', ['run'], {cwd: copy, encoding: 'utf8', timeout: 30_000});
+        t.diagnostic(`make run (exit ${run.status}):\n${run.stdout}${run.stderr}`);
+        assert.doesNotMatch(run.stderr, /error:|missing separator|No rule to make/, 'it builds');
+        assert.match(run.stdout + run.stderr, /\d/, 'and runs: it prints what it counts');
+        await result.partner.close();
+      });
+    }
   }
 });

@@ -29,6 +29,14 @@ goes to its one-line fix and `Alt-y` takes it. Save again: `✓ 4 tests, 3 packa
 watch, a whole line at a time, runs `go test -overlay` on your unsaved buffer, and hands back with `✓` and a note.
 It is one undo step, and any key halfway leaves no change at all. [Details](docs/neovim.md#the-visible-hand-over).*
 
+![The blank page: in an empty folder, :Pair new and one sentence; Pair asks three questions one at a time, then suggests a first slice of two files in NOTES.md, and Alt-y takes it in](docs/images/blank-page.gif)
+
+*The blank page: an empty folder, `:Pair new` and one sentence. Pair asks three short questions, one at a time,
+each under your last answer in `NOTES.md`. Then it suggests the first slice: two files (here a `Makefile` and
+`main.c`), how to run them, what to poke at, when the first test is worth writing, and what to leave out. `Alt-y`
+takes it into the note, still unsaved. The questions and the slice are a real model's answers, replayed.
+[Details](docs/blank-page.md).*
+
 **Website:** [makefunstuff.github.io/pairing-buddy](https://makefunstuff.github.io/pairing-buddy/): the concept, three moments in Neovim, roles, and install (source in [`site/`](site/)).
 
 **Video** (3 min): the tour above, with its captures, script and how to render it again, is in [docs/video](docs/video/).
@@ -302,6 +310,7 @@ Commands:
 | Command | What it does |
 | --- | --- |
 | `:Pair start [goal]` | Connect to the daemon (not needed with `auto_connect`), optionally setting the session goal |
+| `:Pair new [idea]` | Start something new: Pair asks three questions in `NOTES.md`, one at a time, then suggests a first slice of two files ([details](docs/blank-page.md)) |
 | `:Pair goal <text>` | Set the session goal |
 | `:Pair ask <text>` | Ask Pair something (the answer appears in the chat pane); with a range (`:'<,'>Pair ask ...`), about those lines |
 | `:Pair level quiet\|normal\|chatty` | How often Pair speaks unasked |
@@ -422,7 +431,7 @@ runs the model-free tests: event folding, triggers, the budget and speak gate, t
 PAIR_LIVE_CONFIG=/path/to/stacks.json npm run test:live
 ```
 
-runs the same decisions against real models: Watcher scores for worth-it and noise moments, the speak gate, the Partner's tool calls (pointing at the right line, staying silent on noise, reading before answering, changing nothing when asked to, and on a wrong turn pointing at the real cause with its code, or staying silent when your edit is the fix; on a regression found on save, a real `node --test` run, suggesting the fix where it breaks rather than undoing your change), Scout (searching to answer "where else", running the tests to say what fails, leaving the commit to you, and the Navigator pointing to `/scout`), the Driver (making a failing test pass after "your turn" without touching the test, then hearing the tests on the unsaved buffer pass and saying so, making exactly the change asked for, typing the test command without Enter, and the Navigator suggesting instead of editing), and memory (a session note that names the goal, the change and the loose end; the next session answering "what did we leave open?" from it; and the note not turning a noise moment into a remark). It also sends the probe `pair doctor` and the daemon's health check use, and checks that the Watcher answers it within 3 s. And it plays a scripted twelve-minute session (edits, failing tests, a stall, a question, drift) through a real Pair session on a simulated clock, prints it like a transcript, and checks that Pair spoke a few times, on the moments that matter. The Scout and Driver tests work in a scratch project with a local bash in place of the herdr pane; the Driver's editor is played by buffers in memory, and the files on disk must stay as they were. The file lists one or more stacks, each with a `watcher` and a `partner` entry like those in the config:
+runs the same decisions against real models: Watcher scores for worth-it and noise moments, the speak gate, the Partner's tool calls (pointing at the right line, staying silent on noise, reading before answering, changing nothing when asked to, and on a wrong turn pointing at the real cause with its code, or staying silent when your edit is the fix; on a regression found on save, a real `node --test` run, suggesting the fix where it breaks rather than undoing your change), Scout (searching to answer "where else", running the tests to say what fails, leaving the commit to you, and the Navigator pointing to `/scout`), the Driver (making a failing test pass after "your turn" without touching the test, then hearing the tests on the unsaved buffer pass and saying so, making exactly the change asked for, typing the test command without Enter, and the Navigator suggesting instead of editing), the blank page (three questions of at most 18 words, then a slice of two files with the build file the stack wants, for C, Odin, Go and JavaScript; for C, handed the wheel twice, the Driver types the Makefile and main.c into new buffers, and once saved, `make run` builds and runs them), and memory (a session note that names the goal, the change and the loose end; the next session answering "what did we leave open?" from it; and the note not turning a noise moment into a remark). It also sends the probe `pair doctor` and the daemon's health check use, and checks that the Watcher answers it within 3 s. And it plays a scripted twelve-minute session (edits, failing tests, a stall, a question, drift) through a real Pair session on a simulated clock, prints it like a transcript, and checks that Pair spoke a few times, on the moments that matter. The Scout and Driver tests work in a scratch project with a local bash in place of the herdr pane; the Driver's editor is played by buffers in memory, and the files on disk must stay as they were. The file lists one or more stacks, each with a `watcher` and a `partner` entry like those in the config:
 
 ```json
 {"stacks": [{"name": "local", "watcher": {"api": "openai", "baseUrl": "http://localhost:8080/v1", "model": "your-small-model"}, "partner": {"api": "openai", "baseUrl": "http://localhost:8080/v1", "model": "your-larger-model"}}]}
@@ -444,6 +453,7 @@ Without `PAIR_LIVE_CONFIG` (or a gitignored `test/live/config.json`) the live te
 - Typing in a shell pane does not count as typing: herdr does not report keystrokes. For the same reason, only a key in Neovim takes the wheel back from the Driver; typing in the chat or a shell pane does not.
 - The Driver makes one edit per hand-over, in whole lines. After its answer, Pair is Navigator again, also when you handed over in Scout (Pair's pane then closes).
 - One suggestion shows at a time; a new one replaces it.
+- `:Pair new` asks three questions, always, and sends an answer when you leave Insert mode. Its rules for the first slice find a library by its name in your words ([details](docs/blank-page.md#limits)).
 - Pair's words show under your line only for its unasked remarks; answers to your questions are in the chat pane.
 - The gaze shows in line numbers: in a window without them, only the statusline says what Pair reads.
 - `type` needs herdr and goes to the terminal pane you last looked at or ran a command in.

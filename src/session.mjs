@@ -607,6 +607,11 @@ export class PairSession {
 
   say(text) {
     if (silent(text)) return 'shown'; // some models say their SILENT instead of answering it
+    // A question or slice of :Pair new is the blank page's to show, once it has checked it.
+    if (this.blankPage?.consulting) {
+      this.words.push(text);
+      return 'noted';
+    }
     this.spoke = true;
     this.said = true;
     this.words.push(text);

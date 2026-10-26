@@ -22,4 +22,7 @@ clip tests-on-save m2; still regression m2-still1; still regression-fix m2-still
 clip hand-over m3; still driving m3-still1; still hand-back m3-still2
 for name in wrong-turn tests-on-save hand-over take-back; do gif "$name"; done
 for name in gaze remark jump regression regression-fix driving hand-back; do cp "$OUT/$name.png" "$IMAGES/$name.png"; done
+# The blank page: its clip as a GIF, the first run's stills.
+gif blank-page
+for name in blank-question blank-slice first-run-typing first-run; do cp "$OUT/$name.png" "$IMAGES/$name.png"; done
 ls -l "$SITE"/m?.* "$SITE"/m?-still* "$IMAGES"/*.gif

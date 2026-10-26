@@ -67,6 +67,8 @@ test('the slice is read from the JSON in the answer, and becomes the note\'s sec
 
 ## Not yet
 - particle swarm · mouse following`);
+  const later = ['the cap on steps per frame', 'a moving dot or any drawing', 'interpolated positions between steps'];
+  assert.deepEqual(sliceText({...slice, later}).split('\n').slice(-3), ['- the cap on steps per frame', '- a moving dot or any drawing', '- interpolated positions between steps'], 'one a line when they do not fit on one');
   assert.equal(sliceNote(3, 2), 'Your three answers as a first slice. Two files, nothing written yet.');
   assert.equal(sliceNote(1, 1), 'Your one answer as a first slice. One file, nothing written yet.');
 });
@@ -91,7 +93,11 @@ function session(root, answers) {
   const pair = new PairSession({
     record: {id: 1, root, conversation_id: 7, goal: null, level: 'normal'},
     store: {addMessage() {}, setGoal() {}},
-    partner: {thinkingOf: () => 'off', ask: async (_id, input) => { inputs.push(input); return answers.shift(); }},
+    partner: {thinkingOf: () => 'off', ask: async (_id, input) => {
+      inputs.push(input);
+      const answer = answers.shift();
+      return typeof answer === 'function' ? answer() : answer;
+    }},
     score: async () => ({value: 9, reason: ''}),
     typingPauseMs: 2000,
     notify: (to, message) => { sent.push({to, ...message}); return 1; },
@@ -102,7 +108,9 @@ function session(root, answers) {
 
 test(':Pair new asks three questions one at a time, then suggests the slice under the note\'s last line', async () => {
   const root = mkdtempSync(join(tmpdir(), 'pair-new-'));
-  const {pair, sent, inputs} = session(root, ['What should it show first?', 'Steps or wall clock?', 'Q3: What do you want to learn?', JSON.stringify(SLICE)]);
+  // The slice comes through the say tool, as some models send it: it is checked before the chat shows anything.
+  const said = async () => { await pair.say(JSON.stringify(SLICE)); return ''; };
+  const {pair, sent, inputs} = session(root, ['What should it show first?', 'Steps or wall clock?', 'Q3: What do you want to learn?', said]);
   await pair.startNew('a raylib toy in C', join(root, 'NOTES.md'));
   assert.equal(pair.state.goal, 'a raylib toy in C', 'the idea is the session\'s goal');
   assert.deepEqual(sent.filter(m => m.type === 'interview').map(m => [m.n, m.text]), [[1, 'What should it show first?']]);
@@ -120,6 +128,8 @@ test(':Pair new asks three questions one at a time, then suggests the slice unde
     note: 'Your three answers as a first slice. Two files, nothing written yet.', keyNote: 'takes it into the note', remark: null,
   });
   assert.equal(pair.blankPage.open, false);
+  assert.deepEqual(sent.filter(m => m.type === 'message' && m.sender === 'pair').map(m => m.text.split('\n')[0]),
+    ['What should it show first?', 'Steps or wall clock?', 'What do you want to learn?', '## First run'], 'the chat has the questions and the slice, no JSON');
   assert.deepEqual(readdirSync(root), [], 'nothing was written');
 });
 

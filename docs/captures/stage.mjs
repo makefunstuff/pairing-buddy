@@ -3,7 +3,7 @@
 // that points at them, and a chat client, as the chat pane would be. Writes `ready` when Neovim may start.
 // usage: node stage.mjs <scene> <scratch dir under /tmp/paircap.*>
 import {execFileSync, spawn} from 'node:child_process';
-import {cpSync, existsSync, openSync, writeFileSync} from 'node:fs';
+import {cpSync, existsSync, mkdirSync, openSync, writeFileSync} from 'node:fs';
 import {connect} from 'node:net';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -22,15 +22,21 @@ if (!/^\/tmp\/paircap\.[^/]+$/.test(dir ?? '')) throw new Error('the stage needs
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const log = line => console.error(`${new Date().toISOString().slice(11, 23)} ${line}`);
 
-// The project, committed as it is when the scene starts; its packages built, so the first test run is quick.
-const project = join(dir, 'hookd');
-cpSync(join(HERE, 'hookd'), project, {recursive: true});
-scene.setup?.(project);
-const git = (...args) => execFileSync('git', ['-c', 'user.name=dev', '-c', 'user.email=dev@example.com', ...args], {cwd: project});
-git('init', '-q');
-git('add', '-A');
-git('commit', '-qm', 'hookd');
-execFileSync('go', ['test', '-count=1', '-run', '^$', './...'], {cwd: project, stdio: 'ignore'});
+// The project, committed as it is when the scene starts; its packages built, so the first test run is quick. A scene
+// of the blank page starts in a folder of its own with no git yet: empty, or with what its setup puts there.
+const project = join(dir, scene.blank ?? 'hookd');
+if (scene.blank) {
+  mkdirSync(project);
+  scene.setup?.(project);
+} else {
+  cpSync(join(HERE, 'hookd'), project, {recursive: true});
+  scene.setup?.(project);
+  const git = (...args) => execFileSync('git', ['-c', 'user.name=dev', '-c', 'user.email=dev@example.com', ...args], {cwd: project});
+  git('init', '-q');
+  git('add', '-A');
+  git('commit', '-qm', 'hookd');
+  execFileSync('go', ['test', '-count=1', '-run', '^$', './...'], {cwd: project, stdio: 'ignore'});
+}
 
 const models = await startModelServer(scene, {log});
 const herdrSocket = join(dir, 'herdr.sock');
@@ -56,7 +62,7 @@ const chat = connect(socket);
 readMessages(chat, message => { if (message.type === 'message') log(`chat: ${message.sender}: ${message.text}`); });
 await new Promise(resolve => chat.on('connect', resolve));
 sendMessage(chat, {type: 'hello', role: 'chat', cwd: project, herdr: {socket: herdrSocket, workspace: 'w1', pane: 'w1:p2'}});
-sendMessage(chat, {type: 'goal', text: scene.goal});
+if (scene.goal) sendMessage(chat, {type: 'goal', text: scene.goal}); // :Pair new sets its own
 
 async function stop() {
   chat.destroy();

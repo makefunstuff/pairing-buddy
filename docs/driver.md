@@ -35,6 +35,7 @@ Then:
 
 1. Pair becomes the Driver for one answer. The chat prompt and `require('pair').status()` show `driver`.
 2. It reads the code and calls `edit` once. Neovim types the change while you watch (see [the visible hand-over](neovim.md#the-visible-hand-over)): ghost text with Pair's cursor, each line entering the buffer only when it is whole, all of it one undo step. If no window shows those lines, they open in a split. The edit's answer to the model waits until the typing is done. The chat says `Changed src/ws.mjs:1 (u undoes it).`
+   A file that does not exist yet (inside the project, in a folder that does) opens as a new buffer and is typed there, for example the `Makefile` of a [first slice](blank-page.md#the-first-run). Its `read` says it does not exist yet, or shows the buffer once Pair has typed it. The disk has it when you save it.
 3. A second `edit` in the same answer is refused: one change per hand-over. An edit Neovim could not apply (a line past the end of the buffer), or that you stopped halfway, does not count.
 4. If the project has a test command (`testOnSave`), Pair runs it on the unsaved buffer and tells the model the result (below). It says in one sentence what it changed and, when the tests ran, whether they pass. It is told not to run the tests itself: they would read the file on disk, which changes only when you save.
 5. When the answer ends, Pair is Navigator again by itself, also when it answered without an edit, for example with a question.

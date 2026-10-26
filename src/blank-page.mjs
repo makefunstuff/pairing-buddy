@@ -9,6 +9,7 @@ export const QUESTIONS = 3;
 const QUESTION_WORDS = 18;
 const MAX_FILES = 3; // the rule; the stacks below say two
 const ITEM_CHARS = 90; // of one line of the slice
+const LINE_CHARS = 80; // of the line that lists what to leave out
 
 // The first slice for the stacks the idea names: a build file with a run target, and one source file.
 const STACKS = [
@@ -134,7 +135,9 @@ export function sliceText(slice) {
   if (slice.shows) lines.push(`- shows: ${slice.shows}`);
   lines.push('', '## Then poke at it', ...slice.probes.map(probe => `- ${probe}`));
   if (slice.test) lines.push('', '## A test, once it exists', `- ${slice.test}`);
-  if (slice.later.length) lines.push('', '## Not yet', `- ${slice.later.join(' · ')}`);
+  // What to leave out reads as one line while it fits a window; the suggestion's lines do not wrap.
+  const later = slice.later.join(' · ');
+  if (slice.later.length) lines.push('', '## Not yet', ...(later.length <= LINE_CHARS ? [`- ${later}`] : slice.later.map(item => `- ${item}`)));
   return lines.join('\n');
 }
 
@@ -159,6 +162,7 @@ export class BlankPage {
     this.qa = []; // {question, answer}
     this.question = null; // the question waiting for its answer
     this.open = true; // until the slice is shown: no remarks nobody asked for meanwhile
+    this.consulting = false; // a turn of the Partner for a question or the slice is running
   }
 
   async start(idea) {
@@ -187,8 +191,9 @@ export class BlankPage {
     const listing = await this.listing();
     if (this.qa.length >= QUESTIONS) return this.slice(listing);
     const question = await this.consult(questionInput({idea: this.idea, qa: this.qa, listing}), cleanQuestion, questionProblem);
-    if (question) await this.ask(question, this.qa.length + 1);
-    else this.close();
+    if (question) return this.ask(question, this.qa.length + 1);
+    this.close();
+    this.session.message('system', 'Pair asked no question it could use, so the questions stop here. :Pair new starts again.');
   }
 
   ask(question, n) {
@@ -201,7 +206,7 @@ export class BlankPage {
     const said = [this.idea, ...this.qa.map(item => item.answer)].join(' ');
     const slice = await this.consult(sliceInput({idea: this.idea, qa: this.qa, listing}), parseSlice, found => sliceProblems(found, said).join(' ') || null);
     this.close();
-    if (!slice) return;
+    if (!slice) return this.session.message('system', 'Pair could not put a first slice together. :Pair new starts again.');
     const problems = sliceProblems(slice, said);
     if (problems.length) return this.session.message('system', `Pair's first slice broke its own rules, so it is not shown: ${problems.join(' ')}`);
     const text = sliceText(slice);
@@ -239,17 +244,19 @@ export class BlankPage {
   async turn(input) {
     const {session} = this;
     session.busy = true;
+    this.consulting = true;
     session.words = [];
     session.thinks = session.partner.thinkingOf(session.conversationId) !== 'off';
     session.showThinking(true);
     try {
-      // A model that said its answer with the say tool has it in the session's words.
+      // A model that said its answer with the say tool has it in the session's words, not in the chat yet.
       return (await session.partner.ask(session.conversationId, input)) || session.words.join('\n');
     } catch (error) {
       session.message('system', `Pair could not answer: ${error.message}`);
       return null;
     } finally {
       session.busy = false;
+      this.consulting = false;
       session.showThinking(false);
       session.thinks = false;
     }

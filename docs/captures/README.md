@@ -14,7 +14,11 @@ recording comes out the same each time.
     `go test -overlay` on the unsaved buffer.
   - The user's shell is Neovim's `:terminal`, with Pair's shell hook.
 - **The project** is [hookd/](hookd/), a small Go webhook service with a retry bug. Each scene starts it at its
-  own point.
+  own point. The blank page's scenes start in an empty folder, `ticks`, with no git yet.
+- **The blank page's words** are not written for the capture: [ticks.json](ticks.json) holds a real `:Pair new`
+  with a cloud model, unedited. It has the three questions (each asked after the answer before it), the slice and the
+  two files the Driver typed. Its first slice broke the 90-character rule, so the daemon asked again; the slice
+  here is the second answer, the one the note showed.
 - **Neovim** is clean: [init.lua](init.lua), the ayu colorscheme (fetched at a pinned commit), and scratch XDG
   directories.
 
@@ -24,6 +28,8 @@ recording comes out the same each time.
 | [tests-on-save](tapes/tests-on-save.tape) | 02 · it runs what you'd skip |
 | [hand-over](tapes/hand-over.tape) | 03 · the visible hand-over |
 | [take-back](tapes/take-back.tape) | a key while Pair drives takes the wheel back |
+| [blank-page](tapes/blank-page.tape) | 04 · the blank page: `:Pair new`, three questions, the first slice |
+| [first-run](tapes/first-run.tape) | 05 · the first run: the Driver types the slice's two files, and `make run` runs them |
 
 ## Recording
 
@@ -32,7 +38,7 @@ the JetBrainsMono Nerd Font.
 
 ```sh
 npm ci                                  # in the repo root
-docs/captures/record.sh                 # all four scenes into docs/captures/out/, or name some
+docs/captures/record.sh                 # all six scenes into docs/captures/out/, or name some
 docs/captures/encode.sh                 # out/ -> site/media/ and docs/images/
 ```
 

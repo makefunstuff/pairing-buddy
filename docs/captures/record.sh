@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Records the scenes with VHS into out/: ./record.sh [scene ...] (default: all four).
+# Records the scenes with VHS into out/: ./record.sh [scene ...] (default: all six).
 # Each scene gets its own scratch directory under /tmp/paircap.*: the project, the daemon's socket and data, and
 # Neovim's XDG directories. Nothing of your own Neovim, pair config, history or daemon is read or touched.
 set -euo pipefail
@@ -7,7 +7,7 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$HERE/../.." && pwd)
 AYU=01faacb4cb76e8cf72ad9858c581d80876260ab3 # ayu-theme/ayu-vim, Apache-2.0
 SCENES=("$@")
-[ ${#SCENES[@]} -gt 0 ] || SCENES=(wrong-turn tests-on-save hand-over take-back)
+[ ${#SCENES[@]} -gt 0 ] || SCENES=(wrong-turn tests-on-save hand-over take-back blank-page first-run)
 mkdir -p "$HERE/out"
 
 for scene in "${SCENES[@]}"; do

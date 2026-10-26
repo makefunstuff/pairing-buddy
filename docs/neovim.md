@@ -147,6 +147,15 @@ a key still takes the wheel back, and leaves the one change.
 A long edit types faster, to take about four seconds; with `motion = false` it lands at once, as one undo step.
 If no window shows the lines it changes, they open in a split first, so you can watch; your cursor stays where it was.
 
+## The blank page
+
+At the start of something new, `:Pair new` and one sentence: Pair asks three questions in `NOTES.md`, one at a
+time, each under your last answer, in its usual voice (`●` and its words). Leaving Insert mode sends your answer.
+The first slice comes as a suggestion that adds lines and strikes nothing, and `Alt-y` takes it into the note. See
+**[docs/blank-page.md](blank-page.md)**.
+
+![The slice under the last answer, nothing struck through, and Alt-y to take it into the note](images/blank-slice.png)
+
 ## What each thing looks like
 
 **Words.** One or two lines under the line you are on, indented with your code, with `●` before them. At most
