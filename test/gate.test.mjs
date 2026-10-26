@@ -66,3 +66,23 @@ test('the gate does not spend the budget; delivering the remark does', async () 
   await gate({budget}).run();
   assert.equal(budget.allows(10 * MIN).ok, true);
 });
+
+test('a tuned trigger needs its own bar, and the tuned budget allows more or fewer remarks', async () => {
+  const budget = new Budget('normal', {offsets: {failed_command: 2}, factor: 0.5});
+  assert.equal(budget.barFor('failed_command'), 8);
+  assert.equal(budget.barFor('stall'), BUDGETS.normal.bar);
+  assert.equal((await gate({score: 7, budget}).run()).verdict, 'drop');
+  assert.deepEqual(budget.limits(), {perHour: 3, minGapMs: 8 * MIN});
+  budget.spend(0);
+  assert.equal(budget.allows(BUDGETS.normal.minGapMs).ok, false, 'the gap doubled');
+  assert.equal(budget.allows(8 * MIN).ok, true);
+});
+
+test('a tuning outside the safe bounds is held within them', () => {
+  const budget = new Budget('quiet', {offsets: {drift: 7, stall: -5}, factor: 10});
+  assert.equal(budget.barFor('drift'), 9, 'never above 9, so a trigger is never silenced');
+  assert.equal(budget.barFor('stall'), 7);
+  assert.deepEqual(budget.limits(), {perHour: 3, minGapMs: 10 * MIN});
+  budget.tune({offsets: {}, factor: 0});
+  assert.deepEqual(budget.limits(), {perHour: 1, minGapMs: 30 * MIN});
+});

@@ -7,10 +7,13 @@ local M = {}
 local ns = vim.api.nvim_create_namespace('pair')
 local suggest_ns = vim.api.nvim_create_namespace('pair_suggest')
 -- Alt-y: no built-in meaning in Normal mode. <Tab> would be the same byte as Ctrl-I, the jumplist's forward jump.
-local config = {socket = nil, debounce_ms = 2000, max_points = 5, accept_key = '<M-y>'}
+-- Alt-u and Alt-n rate Pair's last unasked remark: useful, or noise.
+local config = {socket = nil, debounce_ms = 2000, max_points = 5, accept_key = '<M-y>', useful_key = '<M-u>', noise_key = '<M-n>'}
 local state = {
   channel = nil, partial = '', attached = {}, pending = {}, points = {}, open_request = nil, level = nil, role = nil,
-  suggestion = nil, -- the change Pair suggested: {buf, mark, old, new}
+  suggestion = nil, -- the change Pair suggested: {buf, mark, old, new, remark}
+  remark = nil, -- the id of Pair's last unasked remark, until you rate it
+  feedback_keys = {}, -- the feedback keys this plugin mapped, to unmap them again
   wanted = false, -- connect was asked for (:Pair start or auto_connect) and not undone by :Pair stop
   retry = nil, -- the reconnect timer
   models = {}, -- why each model is down, per role: the daemon's health
@@ -56,6 +59,35 @@ local function flush(buf)
   event({kind = 'cursor', file = file, line = cursor[1], col = cursor[2]})
 end
 
+-- Feedback: whether Pair's unasked remark was useful. Accepting or dismissing its suggestion says so too.
+
+local function unmap_feedback()
+  for _, key in ipairs(state.feedback_keys) do pcall(vim.keymap.del, 'n', key) end
+  state.feedback_keys = {}
+end
+
+-- `id` is the remark's, or nil for the last one; `implicit` feedback is not confirmed in the chat.
+local function feedback(useful, id, implicit)
+  send({type = 'feedback', useful = useful, remark = id, implicit = implicit})
+  if not implicit and id then vim.notify(useful and 'Pair: noted, useful' or 'Pair: noted, not useful') end
+  if id == nil or id == state.remark then
+    state.remark = nil
+    unmap_feedback()
+  end
+end
+
+-- The feedback keys are mapped while a remark waits for a verdict, and only where you have no mapping of your own.
+local function on_remark(message)
+  unmap_feedback()
+  state.remark = message.id
+  for key, useful in pairs({[config.useful_key or ''] = true, [config.noise_key or ''] = false}) do
+    if key ~= '' and vim.fn.maparg(key, 'n') == '' then
+      vim.keymap.set('n', key, function() feedback(useful, state.remark) end, {desc = useful and 'Pair\'s remark was useful' or 'Pair\'s remark was noise'})
+      table.insert(state.feedback_keys, key)
+    end
+  end
+end
+
 -- Suggestions: an inline diff (the old lines highlighted, the new ones as ghost text below) until you accept or edit them.
 
 local function text_lines(text)
@@ -91,6 +123,13 @@ function M.accept()
   clear_suggestion()
   if not unchanged then return vim.notify('Pair: those lines changed, so the suggestion was dropped') end
   vim.api.nvim_buf_set_lines(suggestion.buf, first, last, false, suggestion.new)
+  if suggestion.remark then feedback(true, suggestion.remark, true) end
+end
+
+function M.dismiss()
+  local suggestion = state.suggestion
+  clear_suggestion()
+  if suggestion and suggestion.remark then feedback(false, suggestion.remark, true) end
 end
 
 local function suggest(message)
@@ -115,7 +154,9 @@ local function suggest(message)
     virt_text_pos = 'eol',
   })
   vim.api.nvim_buf_set_extmark(buf, suggest_ns, last, 0, {virt_lines = ghost})
-  state.suggestion = {buf = buf, mark = mark, old = old, new = new}
+  -- JSON null arrives as vim.NIL: a suggestion in an answer to you is no remark.
+  local remark = message.remark ~= vim.NIL and message.remark or nil
+  state.suggestion = {buf = buf, mark = mark, old = old, new = new, remark = remark}
   if config.accept_key then
     vim.keymap.set('n', config.accept_key, M.accept, {buffer = buf, desc = 'Accept Pair\'s suggestion'})
   end
@@ -299,9 +340,12 @@ local handlers = {
   read = read,
   suggest = suggest,
   edit = edit,
+  remark = on_remark,
   clear = function()
     clear_points()
     clear_suggestion()
+    state.remark = nil
+    unmap_feedback()
   end,
   welcome = function(message)
     state.level = message.level
@@ -382,6 +426,7 @@ function M.disconnect()
   set_role(nil)
   clear_points()
   clear_suggestion()
+  unmap_feedback()
 end
 
 -- The statusline's text: the role and talk level, plus a warning while a model is down or the daemon is away.
@@ -407,7 +452,9 @@ local commands = {
   navigate = function() send({type = 'role', role = 'navigator'}) end,
   drive = function(arg) send({type = 'drive', text = arg}) end,
   accept = M.accept,
-  dismiss = clear_suggestion,
+  dismiss = M.dismiss,
+  useful = function() feedback(true, state.remark) end,
+  noise = function() feedback(false, state.remark) end,
   ['end'] = function() send({type = 'end'}) end,
   open = function()
     if state.open_request then open_split(state.open_request.file, state.open_request.line) end

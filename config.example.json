@@ -4,6 +4,10 @@
   // How often Pair speaks unasked: "quiet", "normal" or "chatty".
   "level": "normal",
 
+  // Your verdicts on Pair's unasked remarks (useful or not; ignored counts as not) tune each trigger's bar
+  // and the level's budget, within fixed bounds. `pair stats` shows how. false keeps the level's defaults.
+  "autoTune": true,
+
   "models": {
     // The Watcher scores every candidate remark, so it must be fast: a small model, about 1 s per answer.
     "watcher": {

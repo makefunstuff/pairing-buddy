@@ -53,6 +53,7 @@ export function parseConfig(raw) {
   return {
     level,
     typingPauseMs: raw.typingPauseMs ?? 2000,
+    autoTune: raw.autoTune ?? true,
     socket: raw.socket ?? defaultSocketPath(),
     dataDir: raw.dataDir ?? join(xdg('XDG_STATE_HOME', '.local/state'), 'pairing-buddy'),
     models: {watcher: modelConfig('watcher', raw.models?.watcher), partner: modelConfig('partner', raw.models?.partner)},

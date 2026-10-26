@@ -7,10 +7,12 @@ import {describeState} from './describe.mjs';
 import {insideRoot, numberedLines, projectFile, readProjectPath} from './files.mjs';
 import {fold, initialState} from './fold.mjs';
 import {decide} from './gate.mjs';
+import {gitStatus} from './git.mjs';
 import {plainLine} from './herdr.mjs';
 import {RUN_TIMEOUT_MS, shellQuote} from './scout-pane.mjs';
 import {parseTestOutput, testSummary} from './test-output.mjs';
 import {detectTriggers} from './triggers.mjs';
+import {tuning, WINDOW_MS} from './tuning.mjs';
 
 const SILENT = /^\W*silent\W*$/i;
 
@@ -63,17 +65,33 @@ export function runReport(result) {
   return lines.join('\n');
 }
 
-const NOTE_REQUEST = `[end] The session is over. Write a short session note in plain text, at most 6 lines:
-the goal, what changed, and loose ends. No tool calls.`;
+const NOTE_CHANGES = 20; // lines of git status the note request shows
+
+/** What the Partner is asked at the end: the note the next session in this project starts from. */
+export function noteInput(state, changes) {
+  const lines = changes ? changes.split('\n') : [];
+  const shown = lines.length > NOTE_CHANGES ? [...lines.slice(0, NOTE_CHANGES), `(${lines.length - NOTE_CHANGES} more)`] : lines;
+  return `[end] The session is over. Write a short session note in plain text, at most 6 lines, for the next session in this project:
+the goal, what changed, and loose ends. No tool calls.
+
+Goal: ${state.goal ?? '(not set)'}
+Uncommitted changes (git status): ${shown.length ? `\n${shown.join('\n')}` : 'none'}`;
+}
+
+const IDLE_AFTER_MS = 5 * 60_000; // no key, edit or command for this long: the user is away, and active time stops
+const ACTIVE_FLUSH_MS = 60_000;
+const MAX_TICK_GAP_MS = 5000; // a longer gap between ticks (a suspended laptop) is not active time
 
 export class PairSession {
   /**
    * `record` is the stored session row. `notify(target, message)` sends to this session's "chat" clients,
    * all its "editors", or the "editor" the user used last, and returns how many got it; `requestEditor(message)`
    * asks the editor and resolves with its reply. While `health` says a model is down, Pair makes no remarks.
+   * `previousNote` is the note of the last session in this project. With `autoTune`, the user's verdicts on
+   * past remarks tune the budget (see tuning.mjs).
    */
-  constructor({record, store, partner, score, typingPauseMs, notify, requestEditor, health = {ok: () => true}, log = () => {}, now = Date.now}) {
-    Object.assign(this, {record, store, partner, score, typingPauseMs, notify, requestEditor, health, log, now});
+  constructor({record, store, partner, score, typingPauseMs, notify, requestEditor, previousNote = null, autoTune = false, health = {ok: () => true}, log = () => {}, now = Date.now}) {
+    Object.assign(this, {record, store, partner, score, typingPauseMs, notify, requestEditor, previousNote, autoTune, health, log, now});
     this.state = initialState({root: record.root, goal: record.goal});
     this.budget = new Budget(record.level);
     this.role = record.role ?? 'navigator';
@@ -90,6 +108,10 @@ export class PairSession {
     this.held = []; // parts of an unasked remark that came while the user was typing
     this.panes = null; // the user's herdr panes (a PaneWatch), for the Driver's type
     this.edited = false; // the Driver made its one edit in this hand-over
+    this.remarkId = null; // the stored remark of the running unasked turn
+    this.lastRemark = null; // the last remark that reached the user: what feedback without an id rates
+    this.tickedAt = null;
+    this.activeMs = 0; // active time not yet stored
   }
 
   get id() { return this.record.id; }
@@ -113,28 +135,69 @@ export class PairSession {
 
   /** Looks for a trigger worth a remark; called about once a second. Ticks never overlap. */
   async tick() {
+    this.countActive();
     if (this.held.length && !this.typing()) this.held.splice(0).forEach(action => action());
     if (this.ticking || this.busy || this.role === 'driver' || !this.health.ok()) return;
     this.ticking = true;
     try {
       const now = this.now();
-      for (const trigger of detectTriggers(this.state, now, this.fired)) {
+      const triggers = detectTriggers(this.state, now, this.fired);
+      if (triggers.length && this.autoTune) this.budget.tune(tuning(this.store.remarks(now - WINDOW_MS), now));
+      for (const trigger of triggers) {
         const decision = await decide({trigger, state: this.state, now, budget: this.budget, score: this.score, typingPauseMs: this.typingPauseMs});
         this.log(`${trigger.kind}: ${decision.verdict} (${decision.reason})`);
         if (decision.verdict === 'wait') return;
         this.fired.add(trigger.key);
-        if (decision.verdict === 'speak') return await this.remark(trigger);
+        if (decision.verdict === 'speak') return await this.remark(trigger, decision.score);
       }
     } finally {
       this.ticking = false;
     }
   }
 
-  async remark(trigger) {
+  /** Adds the time since the last tick to the active time while the user is at work, for `pair stats`. */
+  countActive() {
+    const now = this.now();
+    const lastActivity = Math.max(this.state.lastKeyAt, this.state.lastEditAt, this.state.commands.at(-1)?.endedAt ?? 0);
+    if (this.tickedAt !== null && now - lastActivity < IDLE_AFTER_MS) this.activeMs += Math.min(now - this.tickedAt, MAX_TICK_GAP_MS);
+    this.tickedAt = now;
+    if (this.activeMs >= ACTIVE_FLUSH_MS) this.storeActive();
+  }
+
+  storeActive() {
+    if (this.activeMs) this.store.addActive(this.id, this.activeMs);
+    this.activeMs = 0;
+  }
+
+  /** One unasked remark. It is stored so the user can rate it (dropped again if Pair stays silent), and costs budget. */
+  async remark(trigger, score) {
     // The gate saw a pause, but a Partner turn takes seconds: the user may be typing again by the time it answers.
     this.unasked = true;
-    const spoke = await this.talk(watchInput(trigger, describeState(this.state, this.now()))).finally(() => { this.unasked = false; });
-    if (spoke) this.budget.spend(this.now());
+    const id = this.remarkId = this.store.addRemark({sessionId: this.id, trigger: trigger.kind, score, at: this.now()});
+    try {
+      if (!(await this.talk(watchInput(trigger, describeState(this.state, this.now()))))) return this.store.dropRemark(id);
+      this.budget.spend(this.now());
+      this.lastRemark = id;
+      // After the remark's own words, also when they wait for a pause in the user's typing.
+      this.show(() => {
+        this.notify('chat', {type: 'remark', id});
+        this.notify('editors', {type: 'remark', id});
+      });
+    } finally {
+      this.unasked = false;
+      this.remarkId = null;
+    }
+  }
+
+  /**
+   * The user's verdict on a remark: on remark `id`, else on the last one. Accepting or dismissing a suggestion
+   * is `implicit` feedback, which the chat does not confirm.
+   */
+  feedback({useful, id = this.lastRemark, implicit = false}) {
+    const rated = id !== null && this.store.rateRemark(id, useful ? 'useful' : 'dismissed');
+    if (implicit) return;
+    if (!rated) return this.message('system', 'There is no remark of Pair to rate yet.');
+    this.message('system', useful ? 'Noted: useful.' : 'Noted: not useful.');
   }
 
   /** A message from the user in the chat pane: always answered, outside the budget. */
@@ -201,7 +264,7 @@ export class PairSession {
       return false;
     }
     this.role = role;
-    await this.partner.setRole(this.conversationId, role);
+    await this.configurePartner(role);
     this.announce(role);
     return true;
   }
@@ -228,7 +291,12 @@ export class PairSession {
     // Only now does the conversation lose the Driver's tools. After a take-back during the answer, the policy
     // hook refused edit and type with a reason; a tool that vanished mid-answer leaves small models writing
     // the call as plain text, and the user sees nothing.
-    await this.partner.setRole(this.conversationId, this.role);
+    await this.configurePartner(this.role);
+  }
+
+  /** Gives the Partner `role`'s tools and instructions, with the last session's note to start from. */
+  configurePartner(role) {
+    return this.partner.setRole(this.conversationId, role, this.previousNote);
   }
 
   /** Pair goes back to Navigator, if it is driving. */
@@ -266,15 +334,22 @@ export class PairSession {
     resolve(ok);
   }
 
+  /** Ends the session with a note, which the next session in this project starts from. */
   async end() {
     await this.scout?.close();
-    const note = await this.partner.ask(this.conversationId, NOTE_REQUEST).catch(error => `(no note: ${error.message})`);
+    this.storeActive();
+    const input = noteInput(this.state, await gitStatus(this.root));
+    const note = await this.partner.ask(this.conversationId, input).then(text => (text && !SILENT.test(text) ? text : null), error => {
+      this.message('system', `No session note: ${error.message}`);
+      return null;
+    });
     this.store.endSession(this.id, note, this.now());
-    this.message('pair', `Session note:\n${note}`);
+    if (note) this.message('pair', `Session note:\n${note}`);
     this.notify('editors', {type: 'clear'});
   }
 
   greet() {
+    if (this.previousNote) this.message('system', `Last time:\n${this.previousNote}`);
     if (this.state.goal) this.message('system', `Goal: ${this.state.goal}`);
     else this.message('system', 'What are we doing this session? Type the goal here.');
   }
@@ -322,8 +397,9 @@ export class PairSession {
     const count = (await this.bufferText(path)).split('\n').length;
     if (line > count) return `Line ${line} is past the end of ${file}, which has ${count} lines. Read it first.`;
     this.spoke = true;
+    const remark = this.remarkId; // now: a suggestion held for the user's pause is shown after the turn ended
     this.show(() => {
-      this.notify('editor', {type: 'suggest', file: path, line, endLine, text, note});
+      this.notify('editor', {type: 'suggest', file: path, line, endLine, text, note, remark});
       this.message('pair', `${file}:${line}${endLine > line ? `-${endLine}` : ''} suggestion: ${note}\n${text}`);
     });
     return 'Shown in the editor. The user accepts it with one key or ignores it.';

@@ -11,3 +11,5 @@ async function git(cwd, args) {
 
 export const gitRoot = cwd => git(cwd, ['rev-parse', '--show-toplevel']).catch(() => null);
 export const gitBranch = root => git(root, ['rev-parse', '--abbrev-ref', 'HEAD']).catch(() => null);
+/** `git status --short`: the uncommitted changes, one file per line. */
+export const gitStatus = root => git(root, ['status', '--short']).catch(() => null);

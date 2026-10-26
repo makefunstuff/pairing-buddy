@@ -15,6 +15,15 @@ function compactionFor(contextWindow) {
   };
 }
 
+/** The last session's note, as the instructions carry it into a new session in the same project. */
+export function memoryPrompt(note) {
+  return `The last session in this project ended with this note. The user may pick up where it left off;
+use it when they ask about the last session or its loose ends, and do not bring it up otherwise.
+---
+${note}
+---`;
+}
+
 function answerText(entry) {
   return (entry?.model ?? [])
     .flatMap(message => (Array.isArray(message.content) ? message.content : []))
@@ -51,11 +60,11 @@ export async function openPartner({storage, models, model, thinking = 'off', han
   harness.resume();
   // The model is offered only its role's tools; the policy hook refuses the others anyway.
   // Always with the configured model: a conversation stored under a model since renamed in the config gets the new one.
-  const roleAgent = role => ({
+  const roleAgent = (role, previousNote) => ({
     model: {provider: model.provider, modelId: model.id},
     thinkingLevel: thinking,
     tools: extension.tools.filter(tool => ROLE_TOOLS[role].includes(tool.name)),
-    instructions: ROLE_PROMPTS[role],
+    instructions: previousNote ? `${ROLE_PROMPTS[role]}\n\n${memoryPrompt(previousNote)}` : ROLE_PROMPTS[role],
   });
 
   return {
@@ -65,10 +74,13 @@ export async function openPartner({storage, models, model, thinking = 'off', han
       return conversation.id;
     },
 
-    /** Gives the conversation the configured model and the tools and instructions of `role`, from its next request on. */
-    async setRole(conversationId, role) {
+    /**
+     * Gives the conversation the configured model and the tools and instructions of `role`, from its next request on,
+     * with the note of the project's last session when there is one.
+     */
+    async setRole(conversationId, role, previousNote = null) {
       const conversation = await harness.conversation(conversationId, C);
-      await conversation.configure(roleAgent(role), C);
+      await conversation.configure(roleAgent(role, previousNote), C);
     },
 
     /** Sends one input and resolves with the Partner's final text (tool calls happen on the way). */
