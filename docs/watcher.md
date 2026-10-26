@@ -113,11 +113,12 @@ the default. Off, the wrong turn and the regression checks trace the code badly 
 - **`pair doctor` checks it.** It asks the Partner a short sum with thinking on and says whether it failed (the model
   cannot think) or answered without thinking. It also says whether your levels send the model different requests,
   or only switch thinking on. With thinking off, or `"reasoning": false`, it says whether the model thinks anyway.
-- **What it bought.** Against a fast cloud model, three runs each of the live suite and the scripted session, with
-  thinking off and then with these defaults: real drift was named in 0 of 3 runs without thinking and 3 of 3 with it;
-  the regression's fix landed in the right file 2 of 3 times without and 3 of 3 with; the whole suite went from 92 to
-  95 passes of 96. Answers to questions took about 1 to 4 s longer, remarks about the same, and the Watcher's
-  median stayed under a second (789 ms before, 839 ms after, both within the run-to-run noise).
+- **What it bought.** Against a fast cloud model that takes the level as `reasoning_effort`, three runs each of the
+  live suite and the scripted session, with thinking off and then with these defaults: real drift was named in 0 of
+  3 runs without thinking and 3 of 3 with it; the regression's fix landed in the right file 2 of 3 times without and
+  3 of 3 with; the whole suite went from 92 to 96 passes of 96. Answers to questions took about 1 to 4 s longer;
+  remarks, at `low`, about as long as before; the Watcher's median stayed under a second (789 ms before, 800 ms
+  after).
 - **What you see.** While the model of a turn that thinks is at work, the Neovim statusline spins
   `⠹ pair · thinking` (or `◎ pair has the wheel · thinking` as Driver). While one of its tools runs, the statusline
   shows that instead: what it reads, or as Driver, `any key takes it back` while it types. It goes back to rest with
