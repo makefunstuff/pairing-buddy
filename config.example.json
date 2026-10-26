@@ -23,13 +23,13 @@
     // On a server that keeps one model in memory, give both roles the same model (or the Watcher uses the
     // Partner's model whenever only that one is loaded, rather than make the server reload).
     "watcher": {
-      "api": "openai",                      // "openai" (any OpenAI-compatible server) or "anthropic"
+      "api": "openai",                      // "openai" (any OpenAI-compatible server) or "anthropic"; or a "provider"
       "baseUrl": "http://localhost:8080/v1",
       "model": "your-small-model",
       "contextWindow": 32768
       // "reasoning": true,                 // for a model that thinks by default, so Pair can switch it off
       // "compat": {"thinkingFormat": "..."},  // the thinking switch of its chat template, if it has one (see the README)
-      // "apiKeyEnv": "MY_SERVER_KEY"       // or "apiKey", or "apiKeyFile": "~/.config/my-server.key"
+      // "auth": "my-server"                // a key stored by `pair auth login my-server`; or "apiKeyEnv", "apiKey", "apiKeyFile"
     },
 
     // The Partner writes the words and calls the tools, and thinks before it does. One model can serve both roles.
@@ -46,8 +46,13 @@
       // every level is just "on"; `pair doctor` says which it is):
       // "compat": {"thinkingFormat": "...", "supportsReasoningEffort": true},
       // "samplingParams": {"temperature": 0.3}   // steadier answers when the server's default is high
-      // A cloud Partner instead:
-      // "api": "anthropic", "model": "your-cloud-model", "apiKeyEnv": "ANTHROPIC_API_KEY"
+      // A cloud Partner instead: a provider pi-ai knows, with a subscription login or an API key from
+      // `pair auth login PROVIDER` (`pair auth list` lists the providers, `pair auth models PROVIDER` their models).
+      // A subscription's requests count against its plan's limits, and its terms decide whether a tool like this
+      // may use it (see "Logins and keys" in the README).
+      // "provider": "anthropic", "model": "your-cloud-model"
+      // Or an endpoint with a key stored by `pair auth login my-server`:
+      // "api": "openai", "baseUrl": "https://example.com/v1", "model": "your-cloud-model", "auth": "my-server"
     }
   }
 

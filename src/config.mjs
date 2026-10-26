@@ -5,6 +5,7 @@ import {homedir} from 'node:os';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {thinkingBudgetForLevel} from '@earendil-works/pi-ai/api/simple-options';
+import {storedKey} from './credentials.mjs';
 
 const EXAMPLE = fileURLToPath(new URL('../config.example.json', import.meta.url));
 
@@ -22,6 +23,28 @@ export function defaultSocketPath() {
 
 export function configPath() {
   return process.env.PAIR_CONFIG || join(xdg('XDG_CONFIG_HOME', '.config'), 'pairing-buddy', 'config.json');
+}
+
+/** Where `pair auth` keeps the logins and keys: next to the config, or `$PAIR_AUTH`. */
+export function authPath() {
+  return process.env.PAIR_AUTH || join(dirname(configPath()), 'auth.json');
+}
+
+/**
+ * Where a model entry's requests go: a pi-ai `provider` (its own API, catalog and login), or an `api` at a `baseUrl`.
+ * Its key comes from one of `auth` (a key stored by `pair auth login`), `apiKey`, `apiKeyFile` and `apiKeyEnv`.
+ */
+function checkSource(role, entry) {
+  const keys = ['auth', 'apiKey', 'apiKeyFile', 'apiKeyEnv'].filter(name => entry[name] !== undefined);
+  if (keys.length > 1) throw new Error(`config: models.${role} takes one of ${keys.join(', ')}`);
+  if (entry.provider === undefined) {
+    if (!['openai', 'anthropic'].includes(entry.api)) throw new Error(`config: models.${role} needs a "provider", or an "api": "openai" or "anthropic"`);
+    if (entry.auth !== undefined && (typeof entry.auth !== 'string' || !entry.auth)) throw new Error(`config: models.${role}.auth must name a key stored by \`pair auth login\``);
+    return;
+  }
+  if (typeof entry.provider !== 'string' || !entry.provider) throw new Error(`config: models.${role}.provider must be a provider id (see \`pair auth list\`)`);
+  if (entry.api !== undefined || entry.baseUrl !== undefined) throw new Error(`config: models.${role} names a provider, which brings its own api and baseUrl`);
+  if (keys.length) throw new Error(`config: models.${role} names a provider: log in with \`pair auth login ${entry.provider}\` instead of ${keys[0]}`);
 }
 
 const THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'];
@@ -54,7 +77,7 @@ export function mostThinking(thinking) {
  */
 export function modelConfig(role, entry) {
   if (!entry || typeof entry !== 'object') throw new Error(`config: models.${role} is missing`);
-  if (!['openai', 'anthropic'].includes(entry.api)) throw new Error(`config: models.${role}.api must be "openai" or "anthropic"`);
+  checkSource(role, entry);
   if (typeof entry.model !== 'string' || !entry.model) throw new Error(`config: models.${role}.model is missing`);
   if (entry.api === 'openai' && !entry.baseUrl) throw new Error(`config: models.${role}.baseUrl is missing`);
   const base = {baseUrl: entry.api === 'anthropic' ? 'https://api.anthropic.com' : undefined, contextWindow: 32768};
@@ -71,8 +94,9 @@ export function modelConfig(role, entry) {
   };
 }
 
-/** The API key of a model entry: `apiKey`, else the file `apiKeyFile`, else the env var `apiKeyEnv`. */
+/** The API key of a model entry: the stored key `auth`, `apiKey`, the file `apiKeyFile` or the env var `apiKeyEnv`. */
 export function apiKeyOf(entry) {
+  if (entry.auth) return storedKey(authPath(), entry.auth);
   if (entry.apiKey) return entry.apiKey;
   if (entry.apiKeyFile) return readFileSync(entry.apiKeyFile.replace(/^~(?=\/)/, homedir()), 'utf8').trim();
   if (entry.apiKeyEnv) return process.env[entry.apiKeyEnv];
