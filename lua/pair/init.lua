@@ -9,7 +9,9 @@ local drive = require('pair.drive')
 local ledger = require('pair.ledger')
 local listen = require('pair.listen')
 local merge = require('pair.merge')
+local searches = require('pair.searches')
 local style = require('pair.style')
+local trail = require('pair.trail')
 
 local M = {}
 
@@ -20,6 +22,7 @@ local ns = draw.ns
 local config = {
   socket = nil, debounce_ms = 2000, max_points = 5, motion = true, glyphs = {},
   accept_key = '<M-y>', jump_key = '<M-j>', useful_key = '<M-u>', noise_key = '<M-n>', listen_key = '<M-t>',
+  searches = true, -- your Telescope and snacks.picker searches go to the daemon, for the search trail
 }
 local state = {
   channel = nil, partial = '', attached = {}, pending = {}, open_request = nil, level = nil, role = nil,
@@ -627,6 +630,7 @@ local handlers = {
   held = on_held,
   unheld = forget_held,
   tests = on_tests,
+  trail = function(message) trail.show(message, function() send({type = 'forget_trail'}) end) end,
   thinking = function(message)
     state.thinking = message.on
     spin()
@@ -814,6 +818,7 @@ local commands = {
   navigate = function() send({type = 'role', role = 'navigator'}) end,
   drive = function(arg, selection) send({type = 'drive', text = arg, selection = selection}) end,
   jump = function() M.jump() end,
+  trail = function() send({type = 'trail'}) end,
   accept = M.accept,
   dismiss = M.dismiss,
   today = function() if M.connect() then ledger.open() end end,
@@ -915,6 +920,7 @@ function M.setup(opts)
     diagnostic_timers[args.buf] = timer
     timer:start(config.debounce_ms, 0, vim.schedule_wrap(function() send_diagnostics(args.buf) end))
   end})
+  if config.searches then searches.watch(group, function(search) event(vim.tbl_extend('force', {kind = 'search'}, search)) end) end
   if config.auto_connect then M.connect() end
 end
 

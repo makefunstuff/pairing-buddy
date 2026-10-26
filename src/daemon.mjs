@@ -327,6 +327,8 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     if (message.type === 'ledger_detail') return sendMessage(client.socket, {type: 'ledger_detail', ids: message.ids, detail: session.ledgerDetail(message.ids ?? [])});
     if (message.type === 'undo') return session.undo(message.action);
     if (message.type === 'applied') return session.applied(message.action, message.before, message.after);
+    if (message.type === 'trail') return sendMessage(client.socket, session.trail());
+    if (message.type === 'forget_trail') return session.forgetTrail();
     if (message.type === 'release') return session.release();
     if (message.type === 'accent') return session.setAccent(message.color);
     if (message.type === 'end') return endSession(session);
