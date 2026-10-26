@@ -40,16 +40,19 @@ function client(socketPath, hello) {
   };
 }
 
-test('a repeated failure becomes a pointed remark; a question is answered; :Pair end writes a note', {timeout: 20_000}, async () => {
-  const project = mkdtempSync(join(tmpdir(), 'pair-project-'));
-  writeFileSync(join(project, 'ws.test.js'), 'test("reconnect", () => {\n  expect(timeout).toBe(30)\n})\n');
-  const dataDir = mkdtempSync(join(tmpdir(), 'pair-data-'));
-  const config = parseConfig({
+function testConfig(dataDir) {
+  return parseConfig({
     dataDir,
     socket: join(dataDir, 'pair.sock'),
     typingPauseMs: 50,
     models: {watcher: {api: 'openai', baseUrl: 'http://unused', model: 'w'}, partner: {api: 'openai', baseUrl: 'http://unused', model: 'p'}},
   });
+}
+
+test('a repeated failure becomes a pointed remark; a question is answered; :Pair end writes a note', {timeout: 20_000}, async () => {
+  const project = mkdtempSync(join(tmpdir(), 'pair-project-'));
+  writeFileSync(join(project, 'ws.test.js'), 'test("reconnect", () => {\n  expect(timeout).toBe(30)\n})\n');
+  const config = testConfig(mkdtempSync(join(tmpdir(), 'pair-data-')));
   const {watcher, partner, pairModels} = scriptedModels();
   const daemon = await startDaemon(config, {pairModels, log: () => {}});
 
@@ -85,6 +88,43 @@ test('a repeated failure becomes a pointed remark; a question is answered; :Pair
     await editor.next(message => message.type === 'clear');
   } finally {
     editor.close();
+    chat.close();
+    await daemon.close();
+  }
+});
+
+test('the session, its chat and its conversation survive a daemon restart', {timeout: 20_000}, async () => {
+  const project = mkdtempSync(join(tmpdir(), 'pair-project-'));
+  const config = testConfig(mkdtempSync(join(tmpdir(), 'pair-data-')));
+
+  const first = scriptedModels();
+  let daemon = await startDaemon(config, {pairModels: first.pairModels, log: () => {}});
+  let chat = client(config.socket, {type: 'hello', role: 'chat', cwd: project});
+  first.partner.setResponses([fauxAssistantMessage([fauxText('It is in ws.ts.')])]);
+  await chat.next(message => message.type === 'welcome');
+  chat.send({type: 'goal', text: 'fix reconnect'});
+  chat.send({type: 'ask', text: 'where is the timeout?'});
+  await chat.next(message => message.text === 'It is in ws.ts.');
+  chat.close();
+  await daemon.close();
+
+  const second = scriptedModels();
+  daemon = await startDaemon(config, {pairModels: second.pairModels, log: () => {}});
+  chat = client(config.socket, {type: 'hello', role: 'chat', cwd: project});
+  try {
+    const welcome = await chat.next(message => message.type === 'welcome');
+    assert.equal(welcome.goal, 'fix reconnect');
+    await chat.next(message => message.history && message.text === 'It is in ws.ts.');
+    let earlier;
+    second.partner.setResponses([context => {
+      earlier = context.messages.filter(message => message.role === 'user').map(message => message.content);
+      return fauxAssistantMessage([fauxText('Still ws.ts.')]);
+    }]);
+    chat.send({type: 'ask', text: 'and now?'});
+    await chat.next(message => message.text === 'Still ws.ts.');
+    assert.match(earlier[0], /^\[user\] where is the timeout\?/);
+    assert.match(earlier.at(-1), /^\[user\] and now\?/);
+  } finally {
     chat.close();
     await daemon.close();
   }
