@@ -7,6 +7,10 @@ only through the same tools you use: it never writes files on its own. Edits
 land unsaved in your buffer as a single undo step; the disk changes only when
 you save.
 
+**Watch the three-minute tour**: the three moments in Neovim, the roles, install in two commands and the keys, with captions.
+
+https://github.com/user-attachments/assets/1a189e13-ff42-4710-a731-d5c493238cf9
+
 ![In Neovim: Pair reads, says why under your edit, and Alt-j goes to the real cause](docs/images/wrong-turn.gif)
 
 *Pair in Neovim, as shipped: a test is red and you start fixing the wrong file. Pair reads (its gaze crosses the
@@ -27,7 +31,7 @@ It is one undo step, and any key halfway leaves no change at all. [Details](docs
 
 **Website:** [makefunstuff.github.io/pairing-buddy](https://makefunstuff.github.io/pairing-buddy/): the concept, three moments in Neovim, roles, and install (source in [`site/`](site/)).
 
-**Video tutorial** (3 min 25 s): [how to use pairing-buddy day to day](docs/video/pairing-buddy-tutorial.mp4): install and `pair doctor`, the Neovim plugin, the chat pane in herdr, a question answered with a suggestion, the Watcher's remarks, a model going down, and the config.
+**Video** (3 min): the tour above, with its captures, script and how to render it again, is in [docs/video](docs/video/).
 
 Roles:
 
@@ -100,7 +104,7 @@ Scout runs commands only when you ask: for a remark nobody asked for, it may rea
 - Neovim 0.11 or newer
 - [herdr](https://herdr.dev) for the chat pane, terminal watching and Scout's pane (Pair also works without it, with the chat in any terminal, as Navigator only)
 - For Scout: `bash` and [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg`)
-- A model with an OpenAI-compatible or Anthropic API, on any OpenAI-compatible local server (for example llama.cpp or Ollama) or a cloud provider: [one model](#one-model) for both roles, or one for each.
+- A model: any OpenAI-compatible local server (for example llama.cpp or Ollama), an Anthropic-compatible API, or any provider [pi-ai](https://www.npmjs.com/package/@earendil-works/pi-ai) supports, with an API key or a subscription login. [One model](#one-model) can serve both roles, or each role has its own.
 
 ## Install
 
@@ -114,8 +118,9 @@ pair setup
 `pair setup`:
 
 1. Writes a commented config to `~/.config/pairing-buddy/config.json` if there is none yet. Set your models there (see below).
-2. Installs the daemon as a systemd user service, `pairing-buddy.service`: it starts at login and restarts when it fails.
-3. Starts it, and prints the next steps.
+2. In a terminal, offers to log in to a model provider (a subscription or an API key; see [Logins and keys](#logins-and-keys)). Enter skips it.
+3. Installs the daemon as a systemd user service, `pairing-buddy.service`: it starts at login and restarts when it fails.
+4. Starts it, and prints the next steps.
 
 Run it again after upgrading Node.js or pairing-buddy (`npm install -g github:makefunstuff/pairing-buddy` again): the unit names the Node.js binary it runs, and setup rewrites it and restarts the daemon. `pair uninstall` stops and removes the service and keeps the config and data.
 
@@ -155,22 +160,28 @@ Or a model for each role, in place of `model`; `"watcher": "same as partner"` is
   "models": {
     // The Watcher scores every candidate remark with one number: it must be fast
     "watcher": {"api": "openai", "baseUrl": "http://localhost:8080/v1", "model": "your-small-model"},
-    "partner": {"api": "anthropic", "model": "your-cloud-model", "apiKeyEnv": "ANTHROPIC_API_KEY"}
+    // A provider pi-ai knows, logged in to with `pair auth login`: a subscription or an API key
+    "partner": {"provider": "anthropic", "model": "your-cloud-model"}
   }
 }
 ```
 
-Each model entry:
+A model entry says where its requests go in one of two ways:
+
+- **A provider:** `"provider"` names one of pi-ai's providers (`pair auth list` lists them) and `"model"` one of its models (`pair auth models PROVIDER`). The provider brings its own API, endpoint and model details; the login or key comes from `pair auth login PROVIDER`, or from the provider's usual environment variable (for example `ANTHROPIC_API_KEY`).
+- **An endpoint:** `"api"` and `"baseUrl"`, for a local server or any OpenAI- or Anthropic-compatible API. Its key comes from `"auth"` (a key stored with `pair auth login NAME`), `apiKey`, `apiKeyFile` or `apiKeyEnv`, or there is none.
 
 | Field | Meaning |
 | --- | --- |
-| `api` | `"openai"` (OpenAI-compatible chat completions) or `"anthropic"` |
+| `provider` | A pi-ai provider id, for example `anthropic`, `openai`, `openai-codex`, `github-copilot`, `openrouter`, `mistral` (`pair auth list` lists all). Takes no `api`, `baseUrl` or key fields |
+| `api` | `"openai"` (OpenAI-compatible chat completions) or `"anthropic"`, for an entry without a `provider` |
 | `baseUrl` | The server's base URL, usually ending in `/v1`. Required for `openai`; `anthropic` defaults to the Anthropic API |
-| `model` | The model id the server expects |
-| `apiKey`, `apiKeyFile`, `apiKeyEnv` | Where the key comes from: inline, a file, or an environment variable. A local server without a key needs none. The service does not see your shell's variables: with `apiKeyEnv`, add it with `systemctl --user edit pairing-buddy` (`[Service]` and `Environment=NAME=value`), or use `apiKeyFile` |
-| `contextWindow` | Tokens the server serves for this model (default 32768, at least 16384 for the Partner); Pair compacts the conversation before it crowds out the reply |
+| `model` | The model id the provider or server expects |
+| `auth` | The name of a key stored with `pair auth login NAME`, for an endpoint (a name pi-ai does not know stores a key for your own server; a provider's id uses that provider's stored key) |
+| `apiKey`, `apiKeyFile`, `apiKeyEnv` | Or the key inline, in a file, or in an environment variable. A local server without a key needs none. The service does not see your shell's variables: with `apiKeyEnv`, add it with `systemctl --user edit pairing-buddy` (`[Service]` and `Environment=NAME=value`), or use `auth` or `apiKeyFile` |
+| `contextWindow` | Tokens of conversation Pair keeps for this model (default 32768, also for a provider's model with a larger window; at least 16384 for the Partner); Pair compacts the conversation before it crowds out the reply |
 | `maxTokens` | The Partner's longest answer, its thinking included (default 2048 plus room for its most thinking: 10240 with the default levels, and at most a third of `contextWindow`); the Watcher always answers with one number |
-| `reasoning` | Whether Pair sets the model's thinking. The Partner's default is `true`, so it thinks as `thinking` says; set `false` for a model that cannot think. The Watcher's default is `false`: set `true` for a model that thinks by default, so Pair can switch its thinking off |
+| `reasoning` | Whether Pair sets the model's thinking. The Partner's default is `true`, so it thinks as `thinking` says; set `false` for a model that cannot think. The Watcher's default is `false`: set `true` for a model that thinks by default, so Pair can switch its thinking off. A provider's model has it from pi-ai's catalog, whatever the role |
 | `thinking` | The Partner only: how much it thinks, `off`, `minimal`, `low`, `medium`, `high` or `xhigh`. One level for every turn, or levels by kind of turn: `navigator` (answers to your questions), `scout`, `driver` and `remark` (what it says unasked). Default `{"navigator": "medium", "scout": "medium", "driver": "medium", "remark": "low"}`. On an OpenAI-compatible server a level is sent only with `compat.supportsReasoningEffort` or `compat.thinkingTokenBudgetField`; without them it only switches thinking on |
 | `samplingParams` | Extra sampling fields sent with each request to an OpenAI-compatible server, for example `{"temperature": 0.3}` when the server's default is high |
 | `compat` | OpenAI-compatibility flags passed to pi-ai (see its "OpenAI Compatibility Settings"): for example `thinkingFormat` for a model whose chat template has a thinking switch, `supportsReasoningEffort: true` for a server that takes the thinking level as `reasoning_effort`, or `thinkingTokenBudgetField` for one that takes a token budget |
@@ -182,6 +193,27 @@ remarks think more, `"thinking": "off"` switches it off everywhere. `pair doctor
 and that the Watcher does not. See [docs/watcher.md](docs/watcher.md#thinking-the-partner-not-the-watcher).
 
 Other settings: `level` (`quiet`, `normal` or `chatty`), `autoTune` (your feedback tunes the bars and budget, default `true`; see [Memory and feedback](#memory-and-feedback)), `keepWarm` (while you work, ask the Watcher's model for one token every 4 min so a server that unloads idle models keeps it loaded; default `true` for an `openai` Watcher, `false` for an `anthropic` one; see [docs/watcher.md](docs/watcher.md)), `typingPauseMs` (how long after a keystroke you count as typing, default 2000), `socket` and `dataDir`.
+
+### Logins and keys
+
+`pair auth` keeps the logins and keys of every provider in one file, `auth.json` next to the config (or `$PAIR_AUTH`), readable by you only (mode 600). It holds the secrets in plain text, as other command-line tools do, and nothing ever prints them.
+
+```sh
+pair auth login anthropic   # pick a subscription login or an API key; also `pair login anthropic`
+pair auth list              # every provider: logged in, key stored, key from its environment variable, or not set
+pair auth models anthropic  # the models it offers, for "model"
+pair auth logout anthropic  # also `pair logout anthropic`
+```
+
+- **Subscriptions** (OAuth): providers that offer one in pi-ai, for example Anthropic (Claude Pro/Max), OpenAI (Sign in with ChatGPT), OpenAI Codex (ChatGPT Plus/Pro, which pi-ai marks as legacy), GitHub Copilot, xAI and others; `pair auth list` says `subscription` where there is one. The login opens the provider's sign-in page in your browser (or prints the link) and finishes on a local callback; on a machine without a browser, choose the copy-code or device-code login where the provider offers one. The token renews itself before it expires, under a lock, so the daemon, `pair doctor` and `pair auth` never renew it twice.
+- **API keys**: every provider takes one. The key is typed at a prompt that does not echo it. A key for your own server: `pair auth login my-server` (any name pi-ai does not know), then `"auth": "my-server"` in its model entry.
+- The daemon reads the file as it needs a key, so a login takes effect without a restart. A change to the config still needs one.
+
+Honest notes on subscriptions:
+
+- **Terms.** Whether a subscription may be used from a tool like Pair is up to the provider's terms, and they change. Anthropic's Claude Pro/Max plans are meant for Anthropic's own apps and Claude Code; pi-ai's login sends requests the way Claude Code does (its identity line and tool names), which Anthropic may not allow for other tools and may block. The OpenAI Codex login does the same for the Codex CLI, while Sign in with ChatGPT is OpenAI's sign-in for other agents. Read the current terms before you use a subscription here; an API key is the route every provider supports.
+- **Limits.** Requests count against your plan's usage limits, shared with the provider's own apps, and the plan's rate limits apply. The Watcher asks its model about every candidate remark: on a subscription, that adds up fast. Keep the Watcher on a small local or pay-per-use model and give the subscription to the Partner.
+- **Expiry.** A login can end (a password change, a revoked session, a plan that lapsed). Pair then says the model is down, and `pair doctor` names the fix: `pair auth login PROVIDER` again.
 
 Tips for local models:
 
@@ -312,7 +344,7 @@ Several projects at once work: each project (git root) has its own session, chat
 
 If the daemon restarts, the chat pane says so, waits for it and carries on, without printing the history again.
 
-Other commands: `pair stats` shows how often Pair spoke unasked and what you made of it ([below](#memory-and-feedback)). `pair daemon` runs the daemon in the foreground. Its log goes to the journal under the service (`journalctl --user -u pairing-buddy`), and to `daemon.log` in the data directory when `pair` started it.
+Other commands: `pair auth` logs in to model providers and lists what is set ([Logins and keys](#logins-and-keys)). `pair stats` shows how often Pair spoke unasked and what you made of it ([below](#memory-and-feedback)). `pair daemon` runs the daemon in the foreground. Its log goes to the journal under the service (`journalctl --user -u pairing-buddy`), and to `daemon.log` in the data directory when `pair` started it.
 
 ## Check it: `pair doctor`
 
@@ -337,7 +369,8 @@ Other commands: `pair stats` shows how often Pair spoke unasked and what you mad
 | plugin | Neovim, started headless with your config, loads the plugin |
 | neovim | How many Neovims are connected, in which projects |
 | herdr | herdr answers on its socket (only checked when run inside herdr) |
-| watcher, partner | The server answers and lists the model, one short completion works, and how long it took (about 1 s is the aim for the Watcher). One line, `models`, when both use the same model |
+| logins | `auth.json` is readable by you only (shown when there is one) |
+| watcher, partner | The login or key the model needs is there and, for a subscription, still renews (with the token's expiry); the server answers and lists the model; one short completion works, and how long it took (about 1 s is the aim for the Watcher). One line, `models`, when both use the same model |
 | thinking | The Partner thinks when asked to, and its levels reach the server |
 | roles | When both roles share a server: how [one model](#one-model) serves both, and how the Watcher fared since the daemon started |
 | context | The Partner's reply has the room its thinking needs, and the window is not so small that compaction comes every few turns |
@@ -375,7 +408,7 @@ Details in [docs/memory.md](docs/memory.md).
 
 ## Data
 
-Everything lives in the data directory (default `~/.local/state/pairing-buddy`, or under `$XDG_STATE_HOME`): `partner.sqlite` holds the Partner's conversations (pi-durable), `sessions.sqlite` the sessions, goals, chat history, session notes, active time, and the remarks with your verdicts, and `daemon.lock` makes sure one daemon owns them. Nothing is written to your repository, and nothing leaves your machine except the requests to the model endpoints you configured.
+Logins and keys live in `auth.json` next to the config (see [Logins and keys](#logins-and-keys)). Everything else lives in the data directory (default `~/.local/state/pairing-buddy`, or under `$XDG_STATE_HOME`): `partner.sqlite` holds the Partner's conversations (pi-durable), `sessions.sqlite` the sessions, goals, chat history, session notes, active time, and the remarks with your verdicts, and `daemon.lock` makes sure one daemon owns them. Nothing is written to your repository, and nothing leaves your machine except the requests to the model endpoints you configured and, for a login, to the provider's sign-in service.
 
 ## Tests
 
@@ -383,7 +416,7 @@ Everything lives in the data directory (default `~/.local/state/pairing-buddy`, 
 npm test
 ```
 
-runs the model-free tests: event folding, triggers, the budget and speak gate, the tool policy per role (including with file-writing tools installed by mistake, and an edit after the wheel was taken back), the command policy, the test-output parsers (on real output of each runner), Pair's pane and role switching against a fake herdr, hand-over and take-back, `type` (only after a yes, only into your terminal pane, never Enter), the daemon end to end with scripted models, the Neovim plugin in a headless Neovim (suggestions accepted and ignored and struck from their first character, a Driver edit undone with one `u` and never saved, a key taking the wheel back, the hand-over end to end: the edit typed as ghost text with only whole lines ever in the buffer, the tests run on a copy of the project with the buffer's text, the hand-back line with `✓` and `u undoes it`, and a key halfway leaving no change and doing nothing else, the wrong turn end to end: Pair's words under your line, `Alt-j` to the cause, your next edit counting as seen; tests on save end to end: the spinner, the failing test named, signs on the test functions and the failure after its line, `Alt-j` to Pair's suggestion and `Alt-y`, and the passing run; a note moving under its line when the window narrows, and a question about selected lines), and the bash hook. Also the install and daily use: the config with comments and the first run's example, the systemd unit, `pair doctor` against a fake model server (fast, slow, dead, a wrong model name), model health (one notice, no remarks while down, back after a probe), several projects and Neovims at once, and Neovim and the chat pane reconnecting after a daemon restart. And memory and feedback: the note the next session starts from (in the chat and the Partner's instructions, per project, never a failed note), remarks stored with their verdicts (`+`, `Alt-n`, an accepted suggestion), ignored remarks counting as noise and seen ones as neither, the tuning and its bounds, active time, and `pair stats`. And the Watcher's speed: the prefilter's rules, the one-number answer, drift checked once per file, keep-warm, and the Watcher following the model a one-model server has loaded. And the wrong turn's trigger: raised once per red run and file, never for the code the failure names, its test, notes, or a run that passed since. And tests on save: the JSON reports of go test (subtests, panics, build failures), jest and vitest, each test placed at its line, runs in Pair's pane one at a time, and the regression trigger raised once per run with new failures. And the tests on unsaved text: a real `go test -overlay` passing on the buffer's fix while the file on disk fails, a copy of the project for other runners (git's files and ignored files copied, dependency folders linked at any depth without their caches, builds into ignored folders staying in the copy, a file in a dependency folder refused), and the Driver hearing the result. And [one model](#one-model): each role's request to it (no thinking and 8 tokens for the Watcher, thinking for the Partner), the Watcher waiting while the Partner works in another project and its remark saying how long it waited, a question cancelling the remark still being written (dropped, and no failure of the model), and the context budget: the reply's room, compaction, and the instructions, tools and longest note fitting the smallest window.
+runs the model-free tests: event folding, triggers, the budget and speak gate, the tool policy per role (including with file-writing tools installed by mistake, and an edit after the wheel was taken back), the command policy, the test-output parsers (on real output of each runner), Pair's pane and role switching against a fake herdr, hand-over and take-back, `type` (only after a yes, only into your terminal pane, never Enter), the daemon end to end with scripted models, the Neovim plugin in a headless Neovim (suggestions accepted and ignored and struck from their first character, a Driver edit undone with one `u` and never saved, a key taking the wheel back, the hand-over end to end: the edit typed as ghost text with only whole lines ever in the buffer, the tests run on a copy of the project with the buffer's text, the hand-back line with `✓` and `u undoes it`, and a key halfway leaving no change and doing nothing else, the wrong turn end to end: Pair's words under your line, `Alt-j` to the cause, your next edit counting as seen; tests on save end to end: the spinner, the failing test named, signs on the test functions and the failure after its line, `Alt-j` to Pair's suggestion and `Alt-y`, and the passing run; a note moving under its line when the window narrows, and a question about selected lines), and the bash hook. Also the install and daily use: the config with comments and the first run's example, model entries that name a provider or a stored key, the credential store (owner-only, a token renewed once when two processes need it at the same time, a lock left by a dead process), `pair auth` with fake providers (subscription or key, a key for your own server, logout, the list without secrets, a typed key not echoed), the systemd unit, `pair doctor` against a fake model server (fast, slow, dead, a wrong model name, a stored key it needs, a login that no longer renews), model health (one notice, no remarks while down, back after a probe), several projects and Neovims at once, and Neovim and the chat pane reconnecting after a daemon restart. And memory and feedback: the note the next session starts from (in the chat and the Partner's instructions, per project, never a failed note), remarks stored with their verdicts (`+`, `Alt-n`, an accepted suggestion), ignored remarks counting as noise and seen ones as neither, the tuning and its bounds, active time, and `pair stats`. And the Watcher's speed: the prefilter's rules, the one-number answer, drift checked once per file, keep-warm, and the Watcher following the model a one-model server has loaded. And the wrong turn's trigger: raised once per red run and file, never for the code the failure names, its test, notes, or a run that passed since. And tests on save: the JSON reports of go test (subtests, panics, build failures), jest and vitest, each test placed at its line, runs in Pair's pane one at a time, and the regression trigger raised once per run with new failures. And the tests on unsaved text: a real `go test -overlay` passing on the buffer's fix while the file on disk fails, a copy of the project for other runners (git's files and ignored files copied, dependency folders linked at any depth without their caches, builds into ignored folders staying in the copy, a file in a dependency folder refused), and the Driver hearing the result. And [one model](#one-model): each role's request to it (no thinking and 8 tokens for the Watcher, thinking for the Partner), the Watcher waiting while the Partner works in another project and its remark saying how long it waited, a question cancelling the remark still being written (dropped, and no failure of the model), and the context budget: the reply's room, compaction, and the instructions, tools and longest note fitting the smallest window.
 
 ```sh
 PAIR_LIVE_CONFIG=/path/to/stacks.json npm run test:live
@@ -397,7 +430,7 @@ runs the same decisions against real models: Watcher scores for worth-it and noi
 
 A stack with `"model"` in place of `watcher` and `partner` runs every test with one model in both roles, and also `test/live/one-model.test.mjs`: the daemon end to end behind a local proxy that lets one request through at a time, as many local servers do. It checks that a question cancels the remark still being written and is answered, and that while the Partner answers in one project the Watcher of another waits instead of queueing behind it; it prints when each request queued and ran.
 
-Without `PAIR_LIVE_CONFIG` (or a gitignored `test/live/config.json`) the live tests are skipped. The Anthropic path has a test of its own, run when `ANTHROPIC_API_KEY` and `PAIR_LIVE_ANTHROPIC_MODEL` are set: the cloud model answers the probe as both roles, scores a repeated failure above the bar, and answers a short question as Partner.
+Without `PAIR_LIVE_CONFIG` (or a gitignored `test/live/config.json`) the live tests are skipped. Stacks can name a `provider` too, with its login or key from `pair auth`. A login has a test of its own, run when `PAIR_LIVE_LOGIN="provider/model"` is set and that provider is logged in with `pair auth login`: the model answers as both roles and a subscription's token renews and is kept. No test makes a subscription login: it needs a browser and your account. The Anthropic path has a test of its own, run when `ANTHROPIC_API_KEY` and `PAIR_LIVE_ANTHROPIC_MODEL` are set: the cloud model answers the probe as both roles, scores a repeated failure above the bar, and answers a short question as Partner.
 
 ## Known limits of v0.9
 

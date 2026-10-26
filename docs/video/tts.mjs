@@ -4,9 +4,9 @@
 import {existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 
 const MODEL = 'elevenlabs/eleven-v4';
-const VOICE = 'george';
+const VOICE = 'daniel'; // steady and unhurried: the slowest of the voices tried, so the screen can keep up
 // How the voice should say words it would otherwise spell out or misread; the script keeps the real names.
-const SAY = [[/\bherdr\b/g, 'herder'], [/\bsystemd\b/g, 'system D']];
+const SAY = [[/\bherdr\b/g, 'herder'], [/\bsystemd\b/g, 'system D'], [/\bNeovim\b/g, 'Neo-vim'], [/\bnpm\b/g, 'N P M'], [/\band u\./g, 'and U.']];
 const spoken = text => SAY.reduce((said, [word, sound]) => said.replace(word, sound), text);
 const here = new URL('.', import.meta.url).pathname;
 const key = readFileSync(process.env.OPENROUTER_KEY_FILE ?? '/tmp/openrouter.key', 'utf8').trim();

@@ -6,16 +6,21 @@ import {connect} from 'node:net';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {test} from 'node:test';
-import {createModels, fauxProvider} from '@earendil-works/pi-ai';
+import {createModels, fauxProvider, InMemoryCredentialStore, ModelsError} from '@earendil-works/pi-ai';
 import {loadConfig, parseConfig} from '../src/config.mjs';
 import {startDaemon} from '../src/daemon.mjs';
-import {contextCheck, daemonCheck, doctor, rolesCheck, serviceCheck} from '../src/doctor.mjs';
+import {fileCredentialStore} from '../src/credentials.mjs';
+import {contextCheck, daemonCheck, doctor, loginCheck, loginsCheck, rolesCheck, serviceCheck} from '../src/doctor.mjs';
 import {sendMessage} from '../src/protocol.mjs';
 import {VERSION} from '../src/version.mjs';
 
-/** An OpenAI-compatible server that serves `model` and answers each completion after `delayMs`, thinking first if it `thinks`. */
-async function fakeServer({model, delayMs = 0, thinks = false}) {
+/**
+ * An OpenAI-compatible server that serves `model` and answers each completion after `delayMs`, thinking first if it
+ * `thinks`; only with `key`, if given.
+ */
+async function fakeServer({model, delayMs = 0, thinks = false, key}) {
   const server = createServer((request, response) => {
+    if (key && request.headers.authorization !== `Bearer ${key}`) { response.writeHead(401); return response.end('{"error": "bad key"}'); }
     if (request.url === '/v1/models') return response.end(JSON.stringify({data: [{id: model}]}));
     request.resume().on('end', () => setTimeout(() => {
       response.writeHead(200, {'content-type': 'text/event-stream'});
@@ -28,9 +33,11 @@ async function fakeServer({model, delayMs = 0, thinks = false}) {
   return {url: `http://127.0.0.1:${server.address().port}/v1`, close: () => server.close()};
 }
 
+/** Every check by name; logins and keys from a file of the test's own (none unless it says), never the user's. */
 async function run(options) {
   const checks = [];
-  for await (const check of doctor(options)) checks.push(check);
+  const auth = join(mkdtempSync(join(tmpdir(), 'pair-doctor-')), 'auth.json');
+  for await (const check of doctor({auth, ...options})) checks.push(check);
   // The last check of each name, and every line of the thinking check, which can say more than one thing.
   return {...Object.fromEntries(checks.map(check => [check.name, check])), thinking: checks.filter(check => check.name === 'thinking')};
 }
@@ -174,4 +181,51 @@ test('the service and daemon checks name the fix', () => {
   assert.match(serviceCheck({installed: true, active: true, enabled: true, node: '/gone/node'}).text, /which is gone: run `pair setup` again/);
   assert.match(serviceCheck({installed: true, active: false, enabled: true, node: process.execPath}).text, /not running: see `journalctl --user -u pairing-buddy.service/);
   assert.match(daemonCheck({version: '0.0.1', startedAt: Date.now(), sessions: []}, {}).text, /runs version 0\.0\.1 .*systemctl --user restart pairing-buddy\.service/);
+});
+
+test('a model entry with "auth" uses the stored key; without one, doctor says how to store it', {timeout: 20_000}, async () => {
+  const server = await fakeServer({model: 'small', key: 'sk-stored'});
+  const dir = mkdtempSync(join(tmpdir(), 'pair-doctor-'));
+  const path = join(dir, 'config.json');
+  const auth = join(dir, 'auth.json');
+  const entry = {api: 'openai', baseUrl: server.url, model: 'small', auth: 'my-server'};
+  writeFileSync(path, JSON.stringify({socket: join(dir, 'pair.sock'), models: {watcher: entry, partner: entry}}));
+  const saved = process.env.PAIR_AUTH;
+  process.env.PAIR_AUTH = auth; // where apiKeyOf reads the key, as the daemon does
+  try {
+    const options = {path, auth, env: {PATH: ''}, service: async () => ({installed: false}), nvimPlugin: async () => 'no'};
+    let checks = await run(options);
+    assert.equal(checks.models.text, `small at ${server.url}: no key stored as "my-server": run \`pair auth login my-server\``);
+    assert.equal(checks.logins, undefined, 'no file yet');
+
+    await fileCredentialStore(auth).modify('my-server', async () => ({type: 'api_key', key: 'sk-stored'}));
+    checks = await run(options);
+    assert.equal(checks.logins.text, `${auth}, readable by you only`);
+    assert.match(checks.models.text, /^small at .* answers in \d\.\d s$/);
+    assert.doesNotMatch(JSON.stringify(checks), /sk-stored/);
+  } finally {
+    if (saved === undefined) delete process.env.PAIR_AUTH; else process.env.PAIR_AUTH = saved;
+    server.close();
+  }
+});
+
+test('the login check: none, an expired login that no longer renews, and a live one with its expiry', async () => {
+  const credentials = new InMemoryCredentialStore();
+  const models = {checkAuth: async () => undefined, getAuth: async () => ({auth: {apiKey: 'a'}})};
+  assert.deepEqual(await loginCheck({provider: 'anthropic'}, models, credentials), {error: 'no login or key for anthropic: run `pair auth login anthropic`'});
+  assert.deepEqual(await loginCheck({provider: 'anthropic'}, {...models, checkAuth: async () => ({source: 'ANTHROPIC_API_KEY'})}, credentials), {});
+  assert.deepEqual(await loginCheck({api: 'openai'}, models, credentials), {}, 'a key of its own, or none: nothing to check');
+
+  await credentials.modify('anthropic', async () => ({type: 'oauth', access: 'a', refresh: 'r', expires: Date.now() + 3_600_000}));
+  assert.match((await loginCheck({provider: 'anthropic'}, models, credentials)).note, /^logged in; the token renews itself \(this one until \d\d:\d\d\)$/);
+  const revoked = {...models, getAuth: async () => { throw new ModelsError('oauth', 'refresh failed: invalid_grant'); }};
+  assert.deepEqual(await loginCheck({provider: 'anthropic'}, revoked, credentials),
+    {error: 'the anthropic login has expired or was revoked (refresh failed: invalid_grant): run `pair auth login anthropic` again'});
+});
+
+test('a logins file others can read fails, with the chmod', () => {
+  const path = join(mkdtempSync(join(tmpdir(), 'pair-doctor-')), 'auth.json');
+  writeFileSync(path, '{}', {mode: 0o644});
+  assert.equal(loginsCheck(path).level, 'fail');
+  assert.match(loginsCheck(path).text, /others can read it: chmod 600 /);
 });

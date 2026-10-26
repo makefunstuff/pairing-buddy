@@ -16,7 +16,8 @@ import {oneSlot} from './one-slot.mjs';
 import {project} from './project.mjs';
 import {liveStacks, SKIP_REASON} from './stacks.mjs';
 
-const stacks = liveStacks().filter(stack => sameModel(stack.config.models.watcher, stack.config.models.partner));
+// A provider brings its own endpoint, which the proxy cannot stand in front of.
+const stacks = liveStacks().filter(({config: {models}}) => sameModel(models.watcher, models.partner) && !models.partner.provider);
 
 /** Resolves once `check()` holds, looking every 100 ms; fails after `ms`. */
 async function until(check, ms = 120_000) {

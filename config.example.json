@@ -21,7 +21,7 @@
   // asks it with thinking. Its server needs to hold only this model, and may answer one request at a time: the
   // Watcher then waits while the Partner works, and your questions go first.
   "model": {
-    "api": "openai",                        // "openai" (any OpenAI-compatible server) or "anthropic"
+    "api": "openai",                        // "openai" (any OpenAI-compatible server) or "anthropic"; or a "provider"
     "baseUrl": "http://localhost:8080/v1",
     "model": "your-model",
     "contextWindow": 32768                  // what the server serves; at least 16384
@@ -33,9 +33,12 @@
     // every level is just "on"; `pair doctor` says which it is):
     // "compat": {"thinkingFormat": "...", "supportsReasoningEffort": true},
     // "samplingParams": {"temperature": 0.3}, // steadier Partner answers when the server's default is high
-    // "apiKeyEnv": "MY_SERVER_KEY"         // or "apiKey", or "apiKeyFile": "~/.config/my-server.key"
-    // A cloud model instead:
-    // "api": "anthropic", "model": "your-cloud-model", "apiKeyEnv": "ANTHROPIC_API_KEY"
+    // "auth": "my-server"                  // a key stored by `pair auth login my-server`; or "apiKeyEnv", "apiKey", "apiKeyFile"
+    // A cloud model instead: a provider pi-ai knows, with a subscription login or an API key from
+    // `pair auth login PROVIDER` (`pair auth list` lists the providers, `pair auth models PROVIDER` their models).
+    // A subscription's requests count against its plan's limits, and its terms decide whether a tool like this
+    // may use it (see "Logins and keys" in the README).
+    // "provider": "anthropic", "model": "your-cloud-model"
   }
 
   // Or a model for each role, in place of "model": a small fast Watcher (under 1 s per answer) and a larger

@@ -3,14 +3,17 @@
 import {spawn} from 'node:child_process';
 import {existsSync, mkdirSync, openSync, realpathSync} from 'node:fs';
 import {connect} from 'node:net';
-import {join} from 'node:path';
+import {dirname, join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {parseArgs} from 'node:util';
+import {authStates, login, logout, providerModels} from '../src/auth.mjs';
 import {runChat} from '../src/chat.mjs';
-import {configPath, createConfig, defaultSocketPath, loadConfig, rolesText, sameModel} from '../src/config.mjs';
+import {authPath, configPath, createConfig, defaultSocketPath, loadConfig, rolesText, sameModel} from '../src/config.mjs';
+import {deviceId, fileCredentialStore} from '../src/credentials.mjs';
 import {startDaemon} from '../src/daemon.mjs';
 import {doctor, tilde} from '../src/doctor.mjs';
 import {herdrRequest} from '../src/herdr.mjs';
+import {terminalInteraction} from '../src/prompt.mjs';
 import {requestDaemon, sendMessage} from '../src/protocol.mjs';
 import {installService, removeService, systemctl, UNIT, unitPath} from '../src/service.mjs';
 import {shellHook} from '../src/shell-hook.mjs';
@@ -25,6 +28,10 @@ const USAGE = `usage:
   pair chat         run the chat pane here
   pair setup        create the config if there is none, install and start the daemon as a systemd user service
   pair doctor       check the daemon, Neovim, herdr and the models, and say what is wrong
+  pair auth login PROVIDER    log in with a subscription or store an API key (also \`pair login PROVIDER\`)
+  pair auth logout PROVIDER   remove that login or key (also \`pair logout PROVIDER\`)
+  pair auth list              every provider and whether a login or key is set (never the secrets)
+  pair auth models PROVIDER   the models a provider offers, for a model entry's "model"
   pair stats [--days N]   remarks per hour, useful vs dismissed, per trigger, and the tuning (default: 7 days)
   pair uninstall    stop and remove the service (the config and data stay)
   pair daemon       run the daemon in the foreground
@@ -75,8 +82,64 @@ function firstRunConfig() {
   if (createConfig()) console.error(`pair: created ${tilde(configPath())} from the example; set your models there, then run \`pair doctor\``);
 }
 
+const credentials = () => fileCredentialStore(authPath());
+
+/** `pair auth login ID`: the provider's own login flow in this terminal, then how to use it in the config. */
+async function authLogin(id) {
+  if (!id) throw new Error('name the provider: `pair auth login PROVIDER` (`pair auth list` lists them)');
+  const interaction = terminalInteraction();
+  let how;
+  try {
+    how = await login({id, credentials: credentials(), interaction, getDeviceId: () => deviceId(join(dirname(authPath()), 'device-id'))});
+  } finally {
+    interaction.close();
+  }
+  console.log(how === 'key'
+    ? `Stored the key as "${id}" in ${tilde(authPath())}. Use it in a model entry with an "api" and a "baseUrl": "auth": "${id}"`
+    : `${how === 'oauth' ? `Logged in to ${id}` : `Stored the API key of ${id}`} in ${tilde(authPath())}. Use it in a model entry: {"provider": "${id}", "model": "…"}; \`pair auth models ${id}\` lists the models.
+The daemon reads logins as it needs them; after a change to the config: systemctl --user restart ${UNIT}`);
+}
+
+async function authLogout(id) {
+  if (!id) throw new Error('name the provider: `pair auth logout PROVIDER`');
+  console.log(await logout({id, credentials: credentials()}) ? `Logged out of ${id}.` : `No login or key stored for ${id}.`);
+}
+
+async function authList() {
+  const rows = await authStates({credentials: credentials()});
+  const width = Math.max(...rows.map(row => row.id.length));
+  for (const row of rows) console.log(`${row.set ? SYMBOLS.ok : ' '} ${row.id.padEnd(width)}  ${row.state}`);
+  console.log(`\nLogins and keys: ${tilde(authPath())}. Log in with \`pair auth login PROVIDER\`.
+A key from an environment variable reaches the service only if the service has it too: \`systemctl --user edit ${UNIT}\`.`);
+}
+
+async function auth([action, id]) {
+  if (action === 'login') return authLogin(id);
+  if (action === 'logout') return authLogout(id);
+  if (action === 'list' || action === undefined) return authList();
+  if (action === 'models') {
+    if (!id) throw new Error('name the provider: `pair auth models PROVIDER`');
+    return console.log(providerModels(id).join('\n'));
+  }
+  throw new Error(`\`pair auth ${action}\`: the actions are login, logout, list and models`);
+}
+
+/** In a terminal, `pair setup` offers to log in to a provider; Enter skips it. */
+async function offerLogin() {
+  if (!process.stdin.isTTY) return;
+  const interaction = terminalInteraction();
+  let id;
+  try {
+    id = await interaction.prompt({type: 'text', message: `Log in to a model provider now? Its id (for example anthropic, openai, github-copilot, openrouter; \`pair auth list\` lists all), a name of your own to store your server's key, or Enter to skip:`});
+  } finally {
+    interaction.close();
+  }
+  if (id) await authLogin(id);
+}
+
 async function setup() {
   firstRunConfig();
+  await offerLogin();
   const config = loadConfig();
   // A daemon started by `pair` before the service existed holds the data directory: hand it over to systemd.
   const running = await requestDaemon(config.socket, {type: 'status'}).catch(() => null);
@@ -85,7 +148,7 @@ async function setup() {
     process.kill(running.pid, 'SIGTERM');
     await waitFor(async () => !(await reachable(config.socket)));
   }
-  const env = process.env.PAIR_CONFIG ? {PAIR_CONFIG: process.env.PAIR_CONFIG} : {};
+  const env = Object.fromEntries(['PAIR_CONFIG', 'PAIR_AUTH'].filter(name => process.env[name]).map(name => [name, process.env[name]]));
   await installService({node: process.execPath, script: SCRIPT, env});
   if (!(await waitFor(() => reachable(config.socket)))) throw new Error(`The service did not start; see \`journalctl --user -u ${UNIT} -n 20\``);
   console.log(`The daemon runs as ${UNIT}: it starts at login and restarts when it fails.
@@ -143,7 +206,7 @@ async function daemon(config) {
 async function openChatPane(config) {
   await ensureDaemon(config);
   if (!process.env.HERDR_ENV) return runChat(config.socket);
-  const env = Object.fromEntries(['PAIR_CONFIG', 'PAIR_SOCKET'].filter(name => process.env[name]).map(name => [name, process.env[name]]));
+  const env = Object.fromEntries(['PAIR_CONFIG', 'PAIR_SOCKET', 'PAIR_AUTH'].filter(name => process.env[name]).map(name => [name, process.env[name]]));
   const {pane} = await herdrRequest(process.env.HERDR_SOCKET_PATH, 'pane.split', {
     target_pane_id: process.env.HERDR_PANE_ID, direction: 'right', ratio: 0.7, cwd: process.cwd(), env, focus: false,
   });
@@ -173,6 +236,10 @@ try {
     await setup();
   } else if (command === 'uninstall') {
     await uninstall();
+  } else if (command === 'auth') {
+    await auth(args);
+  } else if (command === 'login' || command === 'logout') {
+    await auth([command, ...args]);
   } else if (command === 'doctor') {
     await runDoctor();
   } else if (command === 'stats') {
