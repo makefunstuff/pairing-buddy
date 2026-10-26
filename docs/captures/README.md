@@ -17,11 +17,14 @@ recording comes out the same each time.
   - The user's shell is Neovim's `:terminal`, with Pair's shell hook.
 - **The project** is [hookd/](hookd/), a small Go webhook service with a retry bug. Each scene starts it at its
   own point. The held thought is in C instead: [ringbuf/](ringbuf/), a ring buffer with a Makefile, and `clangd`
-  gives its diagnostics. The blank page's scenes start in an empty folder, `ticks`, with no git yet.
+  gives its diagnostics; so is the crash scene: [probe/](probe/), a small C hash table built and run with `make run`
+  and AddressSanitizer. The blank page's scenes start in an empty folder, `ticks`, with no git yet.
 - **The blank page's words** are not written for the capture: [ticks.json](ticks.json) holds a real `:Pair new`
   with a cloud model, unedited. It has the three questions (each asked after the answer before it), the slice and the
   two files the Driver typed. Its first slice broke the 90-character rule, so the daemon asked again; the slice
   here is the second answer, the one the note showed.
+- **No core dumps.** The crash scene crashes a program on purpose. `record.sh` sets the core limit to 1 byte for
+  everything it starts, so nothing reaches the machine's crash reporter (see [test/no-core.mjs](../../test/no-core.mjs)).
 - **Neovim** is clean: [init.lua](init.lua), the ayu colorscheme (fetched at a pinned commit), and scratch XDG
   directories. The search-trail scene also fetches Telescope and plenary at pinned commits; Telescope's history goes
   to the scratch directories too.
@@ -41,11 +44,12 @@ recording comes out the same each time.
 | [held-thought](tapes/held-thought.tape) | the held thought, and one look on a grey palette |
 | [push-to-talk](tapes/push-to-talk.tape) | hold `Alt-t`, ask aloud, and Pair answers under your line |
 | [context-card](tapes/context-card.tape) | `:Pair context`, with the goal from the board task, and `x` on a source |
+| [crash](tapes/crash.tape) | a compiler error, a crash and its frame, and a new warning, from `make run` on save |
 
 ## Recording
 
-Needs [VHS](https://github.com/charmbracelet/vhs) 0.11 with ttyd, Neovim 0.11+, Go, clangd, Node.js, curl, FFmpeg
-and the JetBrainsMono Nerd Font.
+Needs [VHS](https://github.com/charmbracelet/vhs) 0.11 with ttyd, Neovim 0.11+, Go, clangd, a C compiler with
+AddressSanitizer, make, Node.js, curl, FFmpeg, util-linux's `prlimit` and the JetBrainsMono Nerd Font.
 
 ```sh
 npm ci                                  # in the repo root

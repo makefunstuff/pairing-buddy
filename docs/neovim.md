@@ -25,6 +25,7 @@ run is real `go test`; only the models' words are scripted. It is recorded from 
 | `◉` and a meter | under your line, and the statusline | it listens while you hold `Alt-t` ([push-to-talk](voice.md)) |
 | `⠹` | the statusline | it thinks before it answers, or runs your tests |
 | `✓` `✗` | the statusline, and the sign column of your tests | tests it ran for you when you saved |
+| `✗` `△` | the sign column, and the words after the line | a crash or a compiler error, and a new warning, from your last build or run |
 
 **One accent, from your colorscheme.** Pair takes its colour from the colorscheme you use, so it fits in light and
 dark: of the colorscheme's own colours for regular expressions, its terminal cyan, its hints and its specials, it
@@ -121,6 +122,44 @@ can. Details in [docs/watcher.md](watcher.md#regressions).
   or under it when the line is too long for the window.
 
 ![A failing test in Neovim's own light colorscheme](images/tests-light.png)
+
+## A crash and a compiler error
+
+Most days have no test suite: you build and run, `make run`, and read what it prints. Pair reads it too, from your
+terminal or from its run on save (`"testOnSave": {"~/src/probe": "make run"}`).
+
+![On save, Pair runs make: a missing semicolon marks its line; the fix crashes, Alt-j goes to the frame, and Pair says why; a new warning gets a note](images/crash.gif)
+
+*The plugin and the daemon as shipped, in a clean Neovim with ayu. The builds and runs are real (`make run` with gcc
+and AddressSanitizer); only the models' words are scripted.*
+
+1. You take the mask out of `hash()` and forget the semicolon. You save: the statusline spins `⠹ make run`, then
+   says `✗ does not build · probe.c:11`, and line 11 gets `✗` with gcc's words after it.
+2. You add the semicolon and save. It builds, and crashes: `✗ AddressSanitizer: SEGV · probe.c:19`. The frame in
+   your code, `keys[i] = key;` on line 19, gets the `✗` and the words; libc's frames are left out. `Alt-j` goes
+   there.
+3. Pair reads, points at `key * 31` on line 11 and says under your line why it crashes there. `Alt-j` now goes to
+   its point, the newer of the two.
+4. You undo, and add `unsigned worst = 0;` for later. It builds clean but for one warning no build before printed:
+   `✓ make run · 1 new warning`, `△` on its line and the words after it. Pair says nothing: an unused variable
+   while exploring is no bug. Built again, the same warning is no news: a quiet `△`, no words.
+
+![The build error on line 11](images/build-error.png)
+
+![The crash on line 19, after Alt-j](images/crash-jump.png)
+
+![Pair's words under the crash, pointing at the hash](images/crash.png)
+
+![A new warning: △ and its words, and the statusline](images/new-warning.png)
+
+**What shows.** The last build or run that crashed or printed compiler errors or warnings shows until the same
+command runs clean, in every buffer of a file it names, and in files you open later. A crash's or error's place gets
+`✗` (`PairFail`) and its words after the line, or under it when the line is too long for the window; a new warning
+`△` (`PairWarn`) and its words; an old warning only a quiet `△` (`PairWarnQuiet`). A place that is new since the
+last run fades in. A crash with no stack in your code (a bare segfault without a sanitizer) has no line: the
+statusline still names it. `Alt-j` goes to the crash, else the first error, else the first new warning, at its
+column; a newer point or suggestion of Pair's takes the key over, as usual. A run in your terminal shows the same
+marks; the statusline speaks only for the run on save.
 
 ## The visible hand-over
 
@@ -395,7 +434,7 @@ require('pair').setup({
 Every key option takes `false` for none; the commands work either way. The keys are mapped only where you have no
 mapping of your own, and all but `listen_key` only while there is something for them to act on. The glyphs are plain
 Unicode, so they show in any font: `voice` `●`, `mark` `▎`, `held` `•`, `away` `◌`, `wheel` `◎`, `listen` `◉`, `pass`
-`✓` and `fail` `✗`. The
+`✓`, `fail` `✗` and `warn` `△`. The
 spinner is braille, `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`.
 
 Once connected, the plugin stays connected: when the daemon restarts (an upgrade, `systemctl --user restart`, a
@@ -472,7 +511,10 @@ vim.o.statusline = "%f %m%=%{%v:lua.require'pair'.statusline()%}  %l:%c "
 | `PairStatusPass` | `✓` in the statusline after a passing run | your colorscheme's "ok" colour (`DiagnosticOk`) |
 | `PairPass` | `✓` on a passing test | the "ok" colour, faded toward the background |
 | `PairFail` | `✗` on a failing test, and in the statusline | your colorscheme's error colour (`DiagnosticError`) |
-| `PairFailNote` | why a test failed, after its line | your foreground toward the error colour |
+| `PairFailNote` | why a test failed, after its line; a crash's or compiler error's words | your foreground toward the error colour |
+| `PairWarn` | `△` on a warning no build before printed | your colorscheme's warning colour (`DiagnosticWarn`) |
+| `PairWarnQuiet` | `△` on a warning the builds before printed too | the warning colour, faded toward the background |
+| `PairWarnNote` | a new warning's words, after its line | your foreground toward the warning colour |
 | `PairHeard` | your words as Pair heard them, in italics | between background and foreground |
 
 ## Ask about lines

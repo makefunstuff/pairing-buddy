@@ -1,0 +1,4 @@
+ld.lld: error: undefined symbol: foo
+>>> referenced by l.c
+>>>               /tmp/l-000000.o:(main)
+clang: error: linker command failed with exit code 1 (use -v to see invocation)

@@ -13,6 +13,8 @@ import {gitStatus} from './git.mjs';
 import {Breakpoints, placeOf, stillTrue, urgent} from './held.mjs';
 import {plainLine} from './herdr.mjs';
 import {keptOutput, Ledger, ledgerDetail, today} from './ledger.mjs';
+import {placeRun} from './run-places.mjs';
+import {crashText, hasNews, readingSummary, readRun} from './run-output.mjs';
 import {RUN_TIMEOUT_MS, shellQuote} from './scout-pane.mjs';
 import {parseTestOutput, testSummary} from './test-output.mjs';
 import {TestRuns} from './test-runs.mjs';
@@ -47,6 +49,12 @@ const CHECKS = {
     + 'is failing and what the project has for their words, work out what they look for, read the code, and point at the place '
     + '(file, line, and as code the code\'s own word for it). Then say in one sentence where it is, in the code\'s own word, '
     + 'and, if something fails, how that place causes it. If you cannot tell what they look for, answer exactly SILENT.',
+  crash: 'The program crashed. Read the code at the innermost place of its stack in the project (if it printed no stack, '
+    + 'the code the run executes that the user changed last) and find why it crashes there, with the real values if you can. '
+    + 'Point at that line, with the few characters that are wrong as code, and say why in one sentence.',
+  new_warning: 'A build printed a warning that was not there before. Read its line. Only if it points at a real bug, point '
+    + 'at it and say why in one sentence; if it is harmless while exploring (an unused variable, a parameter not used yet), '
+    + 'answer exactly SILENT.',
 };
 
 export function watchInput(trigger, description) {
@@ -79,11 +87,13 @@ const RUN_OUTPUT_CHARS = 3000;
 /** The last `max` characters of `text`, saying so when it is cut. */
 const tail = (text, max) => (text.length > max ? `(earlier output cut)\n${text.slice(-max)}` : text);
 
-/** What the Partner is told about a command Scout ran. */
-export function runReport(result) {
+/** What the Partner is told about a command Scout ran in the project at `root`. */
+export function runReport(result, root = null) {
   const lines = [result.timedOut ? `Still running after ${RUN_TIMEOUT_MS / 1000} s, so it was stopped with Ctrl-C.` : `exit ${result.exit}`];
   const tests = parseTestOutput(result.output);
   if (tests) lines.push(`Tests (${tests.runner}): ${testSummary(tests)}`);
+  const reading = readRun(result.output, {exit: result.exit, root});
+  if (!tests && hasNews(reading)) lines.push(`${reading.crash ? 'Crashed' : 'Build'}: ${readingSummary(reading)}`);
   lines.push(tail(result.output, RUN_OUTPUT_CHARS) || '(no output)');
   return lines.join('\n');
 }
@@ -98,15 +108,24 @@ export function selectionInput({file, from, to}, text) {
 
 const NAME_CHARS = 32; // of a failing test's name in the statusline
 
-/** Whether a finished test run failed: its exit code, a timeout or a failing test say so. */
-const isRed = ({exit, timedOut, tests}) => exit !== 0 || timedOut || !!tests?.failedCount;
+/** Whether a finished test run failed: its exit code, a timeout, a failing test or a crash (a sanitizer's, also with exit 0) say so. */
+const isRed = ({exit, timedOut, tests, reading}) => exit !== 0 || timedOut || !!tests?.failedCount || !!reading?.crash;
 
 const count = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`;
 
-/** One short line for the statusline about a finished run: "4 tests, 3 packages" or "1 failing · TestX". */
-export function runText({exit, timedOut, tests}) {
+const fileLine = place => `${place.file.split('/').at(-1)}:${place.line}`;
+
+/**
+ * One short line for the statusline about a finished run: "4 tests, 3 packages", "1 failing · TestX",
+ * "Segmentation fault · probe.c:10" or "does not build · bad.c:3 +1".
+ */
+export function runText({exit, timedOut, tests, reading}) {
   if (timedOut) return 'stopped after 2 min';
   if (!tests?.failedCount) {
+    const {crash, errors = []} = reading ?? {};
+    if (crash) return `${crashText(crash)}${crash.at ? ` · ${fileLine(crash.at)}` : ''}`;
+    const placed = errors.filter(error => error.file);
+    if (errors.length) return `does not build${placed.length ? ` · ${fileLine(placed[0])}` : ''}${errors.length > 1 ? ` +${errors.length - 1}` : ''}`;
     if (exit !== 0) return `exit ${exit}`;
     const scope = tests?.packages ? `, ${count(tests.packages, 'package')}` : tests?.files ? `, ${count(tests.files, 'file')}` : '';
     return tests?.passed ? `${count(tests.passed, 'test')}${scope}` : 'passed';
@@ -116,6 +135,9 @@ export function runText({exit, timedOut, tests}) {
   const name = first.length > NAME_CHARS ? `${first.slice(0, NAME_CHARS - 1)}…` : first;
   return `${tests.failedCount} failing · ${name}${tests.failedCount > 1 ? ` +${tests.failedCount - 1}` : ''}`;
 }
+
+/** What a finished run found, for the chat and the models: its tests, else its crash or compiler errors, else `text`. */
+const summaryOf = (run, text) => (run.tests ? testSummary(run.tests) : (run.reading && readingSummary(run.reading)) || text);
 
 /** What the gate made of the search trail, for `:Pair trail`. */
 export function verdictLine({verdict, reason, score, bar}, level) {
@@ -208,6 +230,7 @@ export class PairSession {
     // The tests run on save, with `testOnSave` ({command, outputFile}); what the editors last heard of them.
     this.testRuns = testOnSave && new TestRuns({...testOnSave, root: record.root, pane: () => this.scout, report: run => this.testRun(run)});
     this.testsShown = null;
+    this.runShown = null; // the places of the last build or run that the editors show (see showRun)
     this.runError = null; // the last run that could not run, said once in the chat
     this.wasRed = false; // the last run failed
     this.usedAt = null; // when the user last did something in this session (see USER_EVENTS), since the daemon loaded it
@@ -224,11 +247,24 @@ export class PairSession {
 
   receive(event) {
     const file = event.file && isAbsolute(event.file) ? relative(this.root, event.file) : event.file;
+    const {run} = this.state;
     const folded = {at: this.now(), ...event, ...(file ? {file} : {})};
     this.state = fold(this.state, folded);
     this.breakpoints.see(folded);
     if (USER_EVENTS.has(event.kind)) this.usedAt = this.now();
     if (event.kind === 'save' && file && !file.startsWith('..')) this.testRuns?.saved(file);
+    if (this.state.run !== run) this.showRun(this.state.run);
+  }
+
+  /**
+   * Shows a build or run that crashed or printed compiler errors or warnings on the lines it names, in every
+   * editor (see run-places.mjs); a clean run of the same command clears them. Kept for editors that connect later.
+   */
+  async showRun(run) {
+    const places = await placeRun(run, this.root);
+    if (this.state.run !== run) return; // a newer run came while this one was placed
+    this.runShown = {type: 'run', cmd: run.cmd, places};
+    this.notify('editors', this.runShown);
   }
 
   /** A test run on save starts or ends (see test-runs.mjs): the editors show it, and the session state takes it in. */
@@ -248,12 +284,14 @@ export class PairSession {
     const red = isRed(run);
     const failing = run.placed.filter(test => !test.ok);
     const files = [...new Set(failing.map(test => relative(this.root, test.failure?.file ?? test.file)))];
-    this.receive({kind: 'test_run', cmd: run.label, tests: run.tests, files, saved: run.saved});
-    const text = runText(run);
+    const last = this.state.run;
+    this.receive({kind: 'test_run', cmd: run.label, tests: run.tests, files, saved: run.saved, reading: run.reading});
+    const fresh = this.state.run !== last ? this.state.run.newWarnings.length : 0; // this run's
+    const text = !red && fresh ? `${fresh} new warning${fresh === 1 ? '' : 's'}` : runText(run);
     this.ledger.add('ran', run.label, {data: {note: text, result: red ? 'fail' : 'pass'}, detail: {output: keptOutput(run.output)}});
     this.showTests({type: 'tests', state: red ? 'fail' : 'pass', label: run.label, text, results: run.placed});
     // The chat hears of a run when it turns red or green, or finds new failures; a run like the last one is no news.
-    if (red && (!this.wasRed || (run.tests && this.state.tests.newly.length))) this.message('system', `\`${run.label}\` after you saved ${run.saved}: ${run.tests ? testSummary(run.tests) : text}`);
+    if (red && (!this.wasRed || (run.tests && this.state.tests.newly.length))) this.message('system', `\`${run.label}\` after you saved ${run.saved}: ${summaryOf(run, text)}`);
     else if (!red && this.wasRed) this.message('system', `\`${run.label}\` passes again: ${text}.`);
     this.wasRed = red;
   }
@@ -272,7 +310,7 @@ export class PairSession {
     const text = runText(run);
     this.ledger.add('ran', run.label, {data: {note: `${text} · unsaved`, result: isRed(run) ? 'fail' : 'pass'}, detail: {output: keptOutput(run.output)}});
     this.showTests({type: 'tests', state: isRed(run) ? 'fail' : 'pass', label, text, results: run.placed});
-    this.message('system', `\`${label}\` after Pair's edit: ${run.tests ? testSummary(run.tests) : text}`);
+    this.message('system', `\`${label}\` after Pair's edit: ${summaryOf(run, text)}`);
   }
 
   /** The editor's accent (see style.lua), which the chat pane prints Pair in too; one that is no #rrggbb is ignored. */
@@ -915,7 +953,7 @@ export class PairSession {
     const tests = parseTestOutput(result.output);
     const note = result.timedOut ? 'stopped after 2 min' : tests ? runText({...result, tests}) : result.exit ? `exit ${result.exit}` : undefined;
     this.ledger.add('ran', command, {data: {note, result: result.exit === 0 && !result.timedOut ? 'pass' : 'fail'}, detail: {output: keptOutput(result.output)}});
-    return runReport(result);
+    return runReport(result, this.root);
   }
 
   // The Driver's tools: they work only while the user hands Pair the wheel, and only in plain sight.
@@ -958,7 +996,7 @@ export class PairSession {
     const run = await this.testRuns.unsaved(path, await this.bufferText(path));
     if (run.state === 'error') return `${done}. The tests could not run on the unsaved buffer: ${run.error}.`;
     this.handback.tests = isRed(run) ? 'fail' : 'pass';
-    return `${done}, and whether the tests pass. \`${run.label}\` on the unsaved buffer: ${run.tests ? testSummary(run.tests) : runText(run)}.`;
+    return `${done}, and whether the tests pass. \`${run.label}\` on the unsaved buffer: ${summaryOf(run, runText(run))}.`;
   }
 
   /** Types one line into the user's terminal pane once they allow it; Enter stays with them. */

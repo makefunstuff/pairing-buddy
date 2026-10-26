@@ -31,6 +31,8 @@ and read back is in [scout.md](scout.md#tests-on-save).
 - With a JSON report (`go test -json`, `jest --json`, `vitest --reporter=json`), each test function gets `✓` or `✗`
   in the sign column, and a failure's message shows after the line it failed on.
 - The chat says when the run turns red or green.
+- A build or a run works too (`"~/src/probe": "make run"`): a crash or a compiler error shows on its line and in the
+  statusline (`✗ does not build · probe.c:11`, `✗ Segmentation fault · probe.c:19`), see [builds.md](builds.md).
 - Other runners work too (`cargo test`, `pytest`, `npm test`): the statusline and the regressions use their output,
   without signs ([#40](https://github.com/makefunstuff/pairing-buddy/issues/40)).
 

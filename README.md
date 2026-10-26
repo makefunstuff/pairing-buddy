@@ -126,6 +126,11 @@ without a result you opened), Pair says where the thing is, in the code's own wo
 **Runs your tests on save.** Set a test command per project, and each save runs it in Pair's pane; a test your change
 broke gets a remark and a suggested fix. [docs/tests-on-save.md](docs/tests-on-save.md)
 
+**Sees a crash and a compiler error.** Builds and runs are read like test runs, from your terminal or a `make run` on
+save: a segfault, a sanitizer report, a failed assert or a panic on the line of its frame in your code, and gcc, clang,
+zig, odin and c3c errors and warnings on theirs, with `Alt-j` to the first. A warning your edit brought gets a word,
+an old one stays quiet. [docs/builds.md](docs/builds.md)
+
 **Holds a thought.** A remark that can wait waits for your next save or pause, with a `•` in the margin meanwhile.
 [docs/neovim.md](docs/neovim.md#the-held-thought)
 
@@ -163,6 +168,7 @@ Off until you set `"voice"` in the config. [docs/voice.md](docs/voice.md)
 - [The blank page](docs/blank-page.md): `:Pair new`, three questions, a first slice of two files
 - [Driver and suggestions](docs/driver.md): handing over, tests on the unsaved buffer, taking the wheel back
 - [Tests on save](docs/tests-on-save.md)
+- [Builds and crashes](docs/builds.md): crashes, compiler errors and new warnings, read from your runs
 - [Push-to-talk](docs/voice.md): asking aloud, whisper.cpp, answers read aloud
 - [The Watcher](docs/watcher.md): the speak gate, held thoughts, thinking, keep-warm
 - [Memory and feedback](docs/memory.md): session notes, verdicts, tuning, `pair stats`

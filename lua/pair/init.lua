@@ -30,7 +30,7 @@ local config = {
 local state = {
   channel = nil, partial = '', attached = {}, pending = {}, open_request = nil, level = nil, role = nil,
   points = {}, -- the lines Pair points at: {buf, ids (see draw.point), note, code}, oldest first
-  target = nil, -- where the jump key goes: {buf, ns, id, code} of Pair's last point, or of its suggestion
+  target = nil, -- where the jump key goes: {buf, ns, id, code, col} of Pair's last point, its suggestion, or a run's crash or error
   words = nil, -- Pair's words under your line: {buf, row, id, remark, text, key, sign, span}, until your next edit
   reading = nil, -- the file Pair reads now, for the statusline: {name, till}
   suggestion = nil, -- the change Pair suggested: {buf, ids, old, new, remark}
@@ -43,6 +43,8 @@ local state = {
   run = nil, -- the test run on save, for the statusline: {state = 'run'|'pass'|'fail'|'error'|'idle', label, text, till}
   thinking = false, -- a Partner turn that thinks is running, for the statusline
   results = {}, -- what the last finished run found: {name, file, line, ok, failure}, absolute paths
+  places = {}, -- where the last build or run crashed or printed errors and warnings: {file, line, col, kind, text, new}
+  place_mark = nil, -- {buf, id}: the place of those the jump key goes to
   typing = nil, -- while the Driver's edit is being typed: the function that stops it and undoes what it typed
 }
 local RETRY_MS = {1000, 2000, 5000, 10000, 30000} -- then every 30 s
@@ -173,7 +175,8 @@ function M.jump()
   local ok, err = pcall(vim.api.nvim_win_set_buf, 0, target.buf)
   if not ok then return vim.notify('Pair: ' .. err, vim.log.levels.ERROR) end
   vim.bo[target.buf].buflisted = true
-  vim.api.nvim_win_set_cursor(0, {row + 1, draw.column(target.buf, row, target.code)})
+  local col = target.col and math.min(target.col - 1, #vim.api.nvim_buf_get_lines(target.buf, row, row + 1, false)[1])
+  vim.api.nvim_win_set_cursor(0, {row + 1, col or draw.column(target.buf, row, target.code)})
   vim.cmd('normal! zz')
 end
 
@@ -192,10 +195,12 @@ local function point(message)
 end
 
 local show_all_tests -- defined with the tests below
+local show_all_places -- and the builds and runs
 
 --- Places notes and words again for the windows' new widths.
 local function relayout()
   show_all_tests()
+  show_all_places()
   for _, p in ipairs(state.points) do
     local mark = vim.api.nvim_buf_is_valid(p.buf) and vim.api.nvim_buf_get_extmark_by_id(p.buf, ns, p.ids.mark, {details = true})
     if mark and mark[1] then
@@ -494,6 +499,50 @@ local function on_tests(message)
   redraw_status()
 end
 
+-- Builds and runs: where the last one that crashed or printed compiler errors or warnings says (yours in the
+-- terminal, or Pair's on save), until the next run of the same command. The jump key goes to the crash, else the
+-- first error, else the first new warning.
+
+local function show_places(buf)
+  if not vim.api.nvim_buf_is_loaded(buf) then return end
+  local name = vim.api.nvim_buf_get_name(buf)
+  local here = vim.tbl_filter(function(place) return place.file == name end, state.places)
+  draw.runs(buf, here)
+  for _, place in ipairs(here) do place.changed = false end -- it rises once, where it first shows
+end
+
+show_all_places = function()
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do show_places(buf) end
+end
+
+--- The jump key goes to `place`, which an invisible mark follows through your edits. Nil: back to Pair's last
+--- point, if the jump key went to the last run's place.
+local function aim_at_place(place)
+  local old = state.place_mark
+  state.place_mark = nil
+  if old then draw.erase(old.buf, {old.id}) end
+  if state.target and state.target.place then aim(nil) end
+  if not place then return end
+  local buf = load(place.file)
+  local row = math.min(place.line, vim.api.nvim_buf_line_count(buf)) - 1
+  state.place_mark = {buf = buf, id = vim.api.nvim_buf_set_extmark(buf, ns, row, 0, {})}
+  state.target = {buf = buf, ns = ns, id = state.place_mark.id, col = place.col ~= vim.NIL and place.col or nil, place = true}
+  map_keys('jump', {{config.jump_key, M.jump, 'Go where Pair points'}})
+end
+
+local function on_run(message)
+  local before = {}
+  for _, place in ipairs(state.places) do before[place.file .. ':' .. place.line .. ':' .. place.text] = true end
+  state.places = message.places or {}
+  local news
+  for _, place in ipairs(state.places) do
+    place.changed = not before[place.file .. ':' .. place.line .. ':' .. place.text]
+    if not news and (place.kind ~= 'warning' or place.new) then news = place end
+  end
+  aim_at_place(news)
+  show_all_places()
+end
+
 local function open_split(file, line)
   local window = vim.api.nvim_get_current_win()
   vim.cmd('belowright split ' .. vim.fn.fnameescape(file))
@@ -641,6 +690,7 @@ local handlers = {
   held = on_held,
   unheld = forget_held,
   tests = on_tests,
+  run = on_run,
   context = card.update,
   trail = function(message) trail.show(message, function() send({type = 'forget_trail'}) end) end,
   thinking = function(message)
@@ -760,6 +810,7 @@ function M.disconnect()
   state.results, state.run, state.thinking = {}, nil, false
   spin()
   show_all_tests()
+  on_run({places = {}})
 end
 
 -- The statusline: one quiet segment. The voice glyph lights up in the accent while Pair's words show; the role
@@ -931,8 +982,11 @@ function M.setup(opts)
     local file = state.channel and project_path(args.buf)
     if file then event({kind = 'save', file = file}) end
   end})
-  -- A test file you open after a run shows its results too.
-  vim.api.nvim_create_autocmd('BufReadPost', {group = group, callback = function(args) show_tests(args.buf) end})
+  -- A file you open after a run shows its results too.
+  vim.api.nvim_create_autocmd('BufReadPost', {group = group, callback = function(args)
+    show_tests(args.buf)
+    show_places(args.buf)
+  end})
   -- CursorHold never fires in Visual mode, so a selection is sent once it stops changing.
   local selection_timer = vim.uv.new_timer()
   vim.api.nvim_create_autocmd({'CursorMoved', 'ModeChanged'}, {group = group, callback = function()

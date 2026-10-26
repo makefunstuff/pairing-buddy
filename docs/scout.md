@@ -82,8 +82,8 @@ The session keeps the last test run (who ran it, when, what failed) and shows it
 
 With a command for the project in `testOnSave` (see [tests-on-save.md](tests-on-save.md)), Pair runs it in this
 pane each time you save a source file there (not notes or docs, and not files outside the project). It is typed as
-`cd <project> && <command> > <data dir>/runs/<session>.out 2>&1` (from the root, whatever a Scout command's `cd`
-did to the pane's shell): the pane shows the command line and its exit code in the prompt, and
+`cd <project> && (<command>) > <data dir>/runs/<session>.out 2>&1` (from the root, whatever a Scout command's `cd`
+did to the pane's shell; in parentheses, so all of `cc -o probe probe.c && ./probe` goes to the file): the pane shows the command line and its exit code in the prompt, and
 the daemon reads the output back from the file, whole, however long it is. Then:
 
 - A JSON report also gives each test (`src/test-places.mjs`): a Go test's function is found as `func Name(` in the
@@ -93,6 +93,11 @@ the daemon reads the output back from the file, whole, however long it is. Then:
 - The run becomes the session's last test run, by Pair, with the file you saved and the tests that fail now and did
   not in Pair's run on save before it. Those raise the `regression` trigger
   ([docs/watcher.md](watcher.md#regressions)).
+- A build or a run is read too (`src/run-output.mjs`): a crash, with the signal from the exit code when the shell
+  said it in the pane rather than in the file, and the compiler's errors and warnings. Neovim shows them on their
+  lines and in the statusline ([docs/neovim.md](neovim.md#a-crash-and-a-compiler-error)), and they raise the
+  `crash` and `new_warning` triggers ([docs/watcher.md](watcher.md#crashes-and-new-warnings)). Scout's own commands
+  are read for its report to the model: `Crashed: Segmentation fault` or `Build: 2 errors: probe.c:11: ...`.
 - The command is yours, from your config: it does not go through the command policy, and the model can neither
   start nor change it. As with Scout's commands, the pane is not a sandbox.
 - One run at a time, sharing the pane's queue with Scout; a save during a run starts one more run after it, for the
