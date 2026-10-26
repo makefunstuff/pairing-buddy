@@ -117,7 +117,7 @@ export function runChat(socketPath) {
       say('pair', `${message.text} [y/N]`);
     }
     if (message.type === 'confirmed' && message.id === confirming) confirming = null; // answered, or timed out
-    if (message.type === 'first') {
+    if (message.type === 'first' && message.step) {
       first = message.step;
       print(dim('·· e edits tomorrow\'s first step', look));
     }

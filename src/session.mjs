@@ -838,13 +838,12 @@ export class PairSession {
     return lines ? {...place, text: lines[place.line - 1] ?? ''} : null;
   }
 
-  /** The debrief in the chat, and in Neovim for `:Pair end`: its heading, its lines and what Pair learned. */
+  /** The debrief in the chat, or in Neovim when no chat pane is open: its heading, its lines and what Pair learned. */
   showDebrief(debrief, first) {
     const lesson = lessonLine(this.store.sessionRemarks(this.id), this.now(), {tuned: this.autoTune});
     const text = [heading(this.now(), this.store.sessionActiveMs(this.id), basename(this.root)), ...debrief.lines, lesson].filter(Boolean).join('\n');
     this.message('pair', text);
-    if (first?.step) this.notify('chat', {type: 'first', step: first.step});
-    this.notify('editors', {type: 'debrief', text});
+    if (!this.notify('chat', {type: 'first', step: first?.step ?? null})) this.notify('editors', {type: 'debrief', text});
   }
 
   /**

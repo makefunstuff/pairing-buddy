@@ -13,7 +13,7 @@ TELESCOPE=40aedd8a68c78a656a10a8d62d80c54af59420fb # nvim-telescope/telescope.nv
 PLENARY=74b06c6c75e4eeb3108ec01852001636d85a932b # nvim-lua/plenary.nvim, MIT: Telescope needs it
 MINI=561751e839b99a4baca36b9d963166b66d2536a6 # echasnovski/mini.nvim, MIT: only mini.base16
 SCENES=("$@")
-[ ${#SCENES[@]} -gt 0 ] || SCENES=(wrong-turn tests-on-save hand-over take-back held-thought search-trail ledger context-card crash delight)
+[ ${#SCENES[@]} -gt 0 ] || SCENES=(wrong-turn tests-on-save hand-over take-back held-thought search-trail ledger context-card crash delight pickup debrief)
 mkdir -p "$HERE/out"
 
 fetch() { # fetch <github repo> <commit> <dir>: one commit, no history

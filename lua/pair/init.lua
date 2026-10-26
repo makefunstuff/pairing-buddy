@@ -6,6 +6,7 @@
 -- undo step, and refused or undone as soon as you press any key. Once connected, it stays connected: when the
 -- daemon restarts, it reconnects by itself.
 local card = require('pair.card')
+local debrief = require('pair.debrief')
 local draw = require('pair.draw')
 local drive = require('pair.drive')
 local ledger = require('pair.ledger')
@@ -768,7 +769,7 @@ end
 local handlers = {
   land = land,
   pickup = pickup,
-  debrief = function(message) vim.notify('Pair: ' .. message.text) end,
+  debrief = function(message) debrief.show(message.text) end,
   delight = on_delight,
   earcon = function(message) earcons.play(message.sound) end,
   look = look,

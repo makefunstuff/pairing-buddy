@@ -91,7 +91,7 @@ to do:
 | any key | Take the wheel back while Pair drives |
 
 The main commands are `:Pair ask <question>`, `:Pair drive [what]`, `:Pair scout`, `:Pair navigate`, `:Pair context`, `:Pair today`
-and `:Pair end`.
+and `:Pair end` (with its debrief; `:Pair first` changes tomorrow's first step).
 All options, commands, the statusline segment and the highlight groups are in [docs/neovim.md](docs/neovim.md), with
 captures of each moment.
 
@@ -134,6 +134,13 @@ an old one stays quiet. [docs/builds.md](docs/builds.md)
 **Holds a thought.** A remark that can wait waits for your next save or pause, with a `•` in the margin meanwhile.
 [docs/neovim.md](docs/neovim.md#the-held-thought)
 
+**Picks up where you stopped.** At the day's end, `/end` (or the session ending by itself) gives a debrief: what is
+now true, what is left, and tomorrow's first step as a place. The next morning, Neovim opens on that line, Pair reads
+it again and says in one line what is left; a test that was red is still red "since yesterday". Break hints come only
+at a natural end, after long focus. [docs/neovim.md](docs/neovim.md#the-morning-pick-up-and-the-days-end)
+
+![Neovim opens on queue.go:18 the next morning, with one line about what is left](docs/images/pickup.png)
+
 **Shows what it knows.** `:Pair context` shows, on one card, everything that goes with a remark or a question: the
 goal, the board task of your branch (matched by repo and number), git, the commands you ran, your buffers, jumps and
 searches. `x` takes a source out for the session. [docs/neovim.md](docs/neovim.md#what-it-knows-the-context-card)
@@ -170,7 +177,7 @@ Off until you set `"voice"` in the config. [docs/voice.md](docs/voice.md)
 - [Builds and crashes](docs/builds.md): crashes, compiler errors and new warnings, read from your runs
 - [Push-to-talk](docs/voice.md): asking aloud, whisper.cpp, answers read aloud
 - [The Watcher](docs/watcher.md): the speak gate, held thoughts, thinking, keep-warm
-- [Memory and feedback](docs/memory.md): session notes, verdicts, tuning, `pair stats`
+- [Memory and feedback](docs/memory.md): session notes and the day's end debrief, verdicts, tuning, `pair stats`
 - [herdr](docs/herdr.md): what Pair gets from herdr and what is missing
 - [Data and privacy](docs/data.md): what is stored where, and what leaves your machine
 - [Tests](docs/testing.md): `npm test` and the live tests against real models

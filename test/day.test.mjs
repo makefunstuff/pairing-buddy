@@ -26,7 +26,7 @@ function project() {
 }
 
 /** A session of `root` on `store` at `clock`, whose Partner answers from `answers` in turn. */
-function pairSession({store, root, clock, answers = [], autoTune = true}) {
+function pairSession({store, root, clock, answers = [], autoTune = true, chats = 1}) {
   const record = store.activeSession(root) ?? store.createSession({root, conversationId: 'c', goal: 'retries reach the budget', level: 'normal', at: clock.now});
   const sent = [];
   const asked = [];
@@ -41,7 +41,7 @@ function pairSession({store, root, clock, answers = [], autoTune = true}) {
     },
     score: async () => ({value: 9, reason: 'test'}),
     typingPauseMs: 2000,
-    notify: (target, message) => { sent.push({target, ...message}); return 1; },
+    notify: (target, message) => { sent.push({target, ...message}); return target === 'chat' ? chats : 1; },
     requestEditor: async () => null,
     now: () => clock.now,
   });
@@ -79,7 +79,7 @@ test('the day\'s end: a debrief from the wins, kept as the note and a place; the
   const debrief = day.sent.find(message => message.type === 'message' && message.sender === 'pair').text;
   assert.equal(debrief, `Day's end: 3 h 05 min in ${root.split('/').at(-1)}.\n${DEBRIEF}\n2 of my 3 remarks were noise, both about drift: I'll keep quieter there.`);
   assert.deepEqual(day.sent.find(message => message.type === 'first'), {target: 'chat', type: 'first', step: 'give `send()` a context with that timeout, in worker.go:4.'});
-  assert.ok(day.sent.some(message => message.target === 'editors' && message.type === 'debrief' && message.text === debrief), ':Pair end shows it in Neovim too');
+  assert.ok(!day.sent.some(message => message.type === 'debrief'), 'the chat pane shows it, so Neovim does not');
   const last = store.lastSession(root, Infinity);
   assert.equal(last.note, DEBRIEF, 'the note the next session starts from');
   assert.deepEqual(last.pickup.first, {step: 'give `send()` a context with that timeout, in worker.go:4.', file: 'internal/delivery/worker.go', line: 4, text: '\terr := send()'});
@@ -178,4 +178,16 @@ test('a break hint at a natural end after long focus: in the chat, and with the 
   const delight = sent.find(message => message.type === 'delight');
   assert.equal(delight.text, '`TestDeliver` passes again, after 12 min of red. 54 min of focus, and green: a good moment for a short break.');
   assert.ok(sent.some(message => message.type === 'message' && message.text === '54 min of focus, and green: a good moment for a short break.'));
+});
+
+test('without a chat pane, Neovim shows the debrief', async () => {
+  const root = project();
+  const store = openStore(':memory:');
+  const clock = {now: EVENING};
+  const {pair, sent} = pairSession({store, root, clock, answers: [DEBRIEF], chats: 0});
+  pair.receive({kind: 'typing'});
+  await pair.end();
+  const shown = sent.find(message => message.type === 'debrief');
+  assert.equal(shown.target, 'editors');
+  assert.match(shown.text, /\nTomorrow, first: give `send\(\)` a context/);
 });
