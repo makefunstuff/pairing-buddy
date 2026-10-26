@@ -1,0 +1,4 @@
+# The :terminal's shell in the captures: a short prompt, no history file, and Pair's shell hook.
+HISTFILE=
+PS1='hookd $ '
+eval "$(node "$CAP_REPO/bin/pair.mjs" shell-hook bash)"
