@@ -11,14 +11,14 @@ const configOf = (watcher, partner) => parseConfig({models: {watcher, partner}})
 
 test('a provider entry gets the catalog model with the config limits, and its key from the store', async () => {
   const credentials = new InMemoryCredentialStore();
-  await credentials.modify('deepseek', async () => ({type: 'api_key', key: 'sk-stored'}));
-  const config = configOf({provider: 'deepseek', model: providerModels('deepseek')[0]}, {api: 'openai', baseUrl: 'http://x/v1', model: 'p'});
+  await credentials.modify('mistral', async () => ({type: 'api_key', key: 'sk-stored'}));
+  const config = configOf({provider: 'mistral', model: providerModels('mistral')[0]}, {api: 'openai', baseUrl: 'http://x/v1', model: 'p'});
   const pairModels = createPairModels(config, {credentials});
-  assert.equal(pairModels.watcher.provider, 'deepseek', "pi-ai's own provider id: its API depends on it");
+  assert.equal(pairModels.watcher.provider, 'mistral', "pi-ai's own provider id: its API depends on it");
   assert.equal(pairModels.watcher.contextWindow, config.models.watcher.contextWindow);
   assert.equal(pairModels.watcher.maxTokens, config.models.watcher.maxTokens);
   assert.equal(pairModels.partner.provider, 'pair-partner');
-  assert.equal((await pairModels.models.getAuth('deepseek')).auth.apiKey, 'sk-stored');
+  assert.equal((await pairModels.models.getAuth('mistral')).auth.apiKey, 'sk-stored');
 });
 
 test("one provider for both roles: the Partner's limits win for a shared model", () => {

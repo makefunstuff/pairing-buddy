@@ -13,19 +13,19 @@ const scratch = () => mkdtempSync(join(tmpdir(), 'pair-auth-'));
 test('credentials are written owner-only, read back, listed without secrets and deleted', async () => {
   const path = join(scratch(), 'pairing-buddy', 'auth.json');
   const store = fileCredentialStore(path);
-  assert.equal(await store.read('deepseek'), undefined, 'no file yet: nothing stored');
-  await store.modify('deepseek', async () => ({type: 'api_key', key: 'sk-secret'}));
+  assert.equal(await store.read('mistral'), undefined, 'no file yet: nothing stored');
+  await store.modify('mistral', async () => ({type: 'api_key', key: 'sk-secret'}));
   await store.modify('anthropic', async () => ({type: 'oauth', access: 'a1', refresh: 'r1', expires: 1}));
   assert.equal(statSync(path).mode & 0o777, 0o600);
   assert.equal(statSync(join(path, '..')).mode & 0o777, 0o700);
   assert.equal(readableByOthers(path), false);
-  assert.deepEqual(await store.read('deepseek'), {type: 'api_key', key: 'sk-secret'});
-  assert.equal(storedKey(path, 'deepseek'), 'sk-secret');
+  assert.deepEqual(await store.read('mistral'), {type: 'api_key', key: 'sk-secret'});
+  assert.equal(storedKey(path, 'mistral'), 'sk-secret');
   assert.equal(storedKey(path, 'anthropic'), undefined, 'a login is not a key');
   const listed = await store.list();
-  assert.deepEqual(listed, [{providerId: 'deepseek', type: 'api_key'}, {providerId: 'anthropic', type: 'oauth'}]);
+  assert.deepEqual(listed, [{providerId: 'mistral', type: 'api_key'}, {providerId: 'anthropic', type: 'oauth'}]);
   assert.doesNotMatch(JSON.stringify(listed), /secret|a1|r1/);
-  await store.delete('deepseek');
+  await store.delete('mistral');
   assert.deepEqual(Object.keys(readCredentials(path)), ['anthropic']);
 });
 

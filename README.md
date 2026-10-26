@@ -160,7 +160,7 @@ A model entry says where its requests go in one of two ways:
 
 | Field | Meaning |
 | --- | --- |
-| `provider` | A pi-ai provider id, for example `anthropic`, `openai`, `openai-codex`, `github-copilot`, `openrouter`, `deepseek` (`pair auth list` lists all). Takes no `api`, `baseUrl` or key fields |
+| `provider` | A pi-ai provider id, for example `anthropic`, `openai`, `openai-codex`, `github-copilot`, `openrouter`, `mistral` (`pair auth list` lists all). Takes no `api`, `baseUrl` or key fields |
 | `api` | `"openai"` (OpenAI-compatible chat completions) or `"anthropic"`, for an entry without a `provider` |
 | `baseUrl` | The server's base URL, usually ending in `/v1`. Required for `openai`; `anthropic` defaults to the Anthropic API |
 | `model` | The model id the provider or server expects |
