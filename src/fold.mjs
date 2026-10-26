@@ -36,6 +36,7 @@ export function initialState({root = null, goal = null} = {}) {
     jumps: [],
     hidden: [],
     launches: 0,
+    notes: {}, // the Markdown notes Pair has read, by file: {title}
   };
 }
 
@@ -213,6 +214,9 @@ const handlers = {
   places: (state, event) => ({...state, buffers: (event.buffers ?? []).slice(0, KEEP.places), jumps: (event.jumps ?? []).slice(0, KEEP.places)}),
 
   hide: (state, event) => ({...state, hidden: event.hidden ? [...new Set([...state.hidden, event.source])] : state.hidden.filter(source => source !== event.source)}),
+
+  // A note Pair read for its margin (see margin.mjs).
+  note: (state, event) => ({...state, notes: {...state.notes, [event.file]: {title: event.title}}}),
 };
 
 export function fold(state, event) {

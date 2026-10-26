@@ -81,6 +81,7 @@ the Watcher does not. Details in [watcher.md](watcher.md#thinking-the-partner-no
 | `sessionRoots` | Folders that are projects of their own, for a monorepo ([session roots](#session-roots)) |
 | `agents` | The relay of your other agents' news, from herdr and the `board`: `false` turns it off ([agents.md](agents.md#configure)) |
 | `voice` | Push-to-talk with whisper.cpp; off until set ([voice.md](voice.md)) |
+| `taskCommand` | What `:Pair tasks` runs for each task you say yes to, as a list of words with `{title}` and `{description}`, never through a shell, for example `["gh", "issue", "create", "--title", "{title}", "--body", "{description}"]`. Without it, the tasks are copied as a checklist ([notes.md](notes.md#tasks-only-when-you-ask)) |
 | `board` | The herdr work board's command, default `"herdr-projects"`: the goal and the [context card](neovim.md#what-it-knows-the-context-card) read the board task of your branch. `null` turns it off |
 | `socket` | The daemon's socket path |
 | `dataDir` | Where Pair keeps its data ([data.md](data.md)) |

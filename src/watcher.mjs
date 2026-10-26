@@ -1,6 +1,7 @@
 // The Watcher: a small fast model that scores whether a remark is worth interrupting for.
 // It answers with the score alone: every token it writes costs latency on each candidate remark.
 import {describeBriefly} from './describe.mjs';
+import {PROSE_WATCH} from './prose-triggers.mjs';
 import {trailLines} from './trail.mjs';
 
 // Every token here is read again on each candidate remark, so the instructions are as short as they can be.
@@ -29,6 +30,7 @@ const WHAT_HAPPENED = {
     + 'Score how much hearing where and why it crashed would save them: 0 if the output already names the line and the cause plainly, 10 if they would have to hunt for it.',
   new_warning: trigger => `A build printed a warning that was not there before: ${trigger.warnings.slice(0, 3).map(warning => warning.message).join('; ')}\n`
     + 'Score how likely this is a real bug worth a word now: 0 for something untidy while exploring (an unused variable or parameter), 10 for a likely bug (an uninitialised value, a wrong format, an overflow, a missing return).',
+  ...PROSE_WATCH,
 };
 
 const MAX_TOKENS = 8; // a number, with room for a model that wraps it in a word or two

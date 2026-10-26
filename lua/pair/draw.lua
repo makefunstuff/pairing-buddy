@@ -176,11 +176,12 @@ local TEACH_LINES = 4 -- of the idea behind its words
 --- The pair's words under row `row` of `buf`, indented with the code, the mark in the sign column or `opts.sign`
 --- ({glyph, group}). With `opts.teaching`, the idea behind them follows under them: {text, key}, or {} while it is
 --- asked, shown as a dimmed ellipsis. Only what is new rises from the background: all of it, or with `opts.still`
---- nothing, or with `opts.teaching_rises` only the idea. Returns the extmark id.
+--- nothing, or with `opts.teaching_rises` only the idea. `opts.glyph` goes before them instead of the voice glyph,
+--- and the extmark is in namespace `opts.ns`, by default the pair's. Returns the extmark id.
 function M.remark(buf, row, text, key, opts)
   opts = opts or {}
   local indent, width = indent_of(buf, row), text_width(window_of(buf))
-  local lines = voice(text, indent, width, key)
+  local lines = voice(text, indent, width, key, opts.glyph)
   local said = #lines
   local teaching = opts.teaching
   if teaching and teaching.text then
@@ -190,8 +191,8 @@ function M.remark(buf, row, text, key, opts)
   end
   local sign = opts.sign or {style.glyphs.mark, 'PairSign'}
   local spec = {virt_lines = lines, sign_text = sign[1], sign_hl_group = sign[2], priority = 20}
-  if opts.still then return vim.api.nvim_buf_set_extmark(buf, M.ns, row, 0, spec) end
-  return place(buf, M.ns, row, 0, spec, opts.teaching_rises and said or 0)
+  if opts.still then return vim.api.nvim_buf_set_extmark(buf, opts.ns or M.ns, row, 0, spec) end
+  return place(buf, opts.ns or M.ns, row, 0, spec, opts.teaching_rises and said or 0)
 end
 
 --- The mark in the sign column of rows `first`..`last`, under any other mark of the pair. Returns the extmark id.

@@ -1,6 +1,6 @@
 # The Watcher: fast and well-judged
 
-Every candidate remark (a failed command you missed, the same error again, a new diagnostic, a stall, drift, the wrong turn, a regression, a crash, a new warning) goes through the speak gate before the Partner writes a word. The gate asks the Watcher model for a score from 0 to 10, so the Watcher must answer in well under a second, and must not make the Partner's model slower. This page says how Pair keeps it that way.
+Every candidate remark (a failed command you missed, the same error again, a new diagnostic, a stall, drift, the wrong turn, a regression, a crash, a new warning, and in a Markdown note a stall after a question or a section that drifts) goes through the speak gate before the Partner writes a word. The gate asks the Watcher model for a score from 0 to 10, so the Watcher must answer in well under a second, and must not make the Partner's model slower. This page says how Pair keeps it that way.
 
 ## The order of the gate
 
@@ -118,6 +118,17 @@ one sentence where it is and, if something fails, how that place causes it. The 
 project with and without the failing test: with it, the cue named `ErrBudget` and the `>=` at `worker.go:35` in
 every run; from the trail alone it pointed at the attempt limit, line 31, which is why the failure always goes
 with it.
+
+## In a note
+
+Two triggers are about prose ([docs/notes.md](notes.md#what-the-triggers-mean-in-prose)). `note_stall` is raised
+when you wrote a line that ends with `?` in a Markdown note and then nothing for 90 s (but not after five minutes:
+then you are away); `note_drift` a minute after you begin a section whose heading and words share no word with
+the note's title or the goal. Each is judged once. The Watcher gets a question of its own for each: would one
+question back help them answer their question themselves, and is the section about something other than the
+note's title. Asked only whether a remark would save time, a tested model scored them 3 and 2, under the normal
+bar; asked this way, 7 and 8, and 2 for a section on the note's own subject. The Partner asks one question back,
+never the answer, or asks once whether the section still belongs in the note; it answers SILENT when it does.
 
 ## Keep-warm
 
