@@ -88,6 +88,7 @@ export class PairSession {
     this.unasked = false; // the running turn is a remark nobody asked for
     this.held = []; // parts of an unasked remark that came while the user was typing
     this.panes = null; // the user's herdr panes (a PaneWatch), for the Driver's type
+    this.edited = false; // the Driver made its one edit in this hand-over
   }
 
   get id() { return this.record.id; }
@@ -197,23 +198,34 @@ export class PairSession {
       return false;
     }
     this.role = role;
-    if (role !== 'driver') this.store.setRole(this.id, role); // the wheel is never handed over across a restart
     await this.partner.setRole(this.conversationId, role);
+    this.announce(role);
+    return true;
+  }
+
+  /** Tells the chat about the new role, and stores it unless it is the Driver's. */
+  announce(role) {
+    if (role !== 'driver') this.store.setRole(this.id, role); // the wheel is never handed over across a restart
     this.notify('chat', {type: 'role', role});
     this.message('system', ROLE_NOTES[role]);
-    return true;
   }
 
   /**
    * The user hands Pair the wheel for one change (:Pair drive, "you take it", "your turn"). Pair answers as
-   * Driver and goes back to Navigator after its edit, or when the turn ends without one.
+   * Driver, with at most one edit (it may still check it, say by running the tests), and is Navigator again
+   * when the answer is done.
    */
   async drive(words = '') {
     if (words) this.message('user', words);
     if (this.busy) return this.message('system', 'Pair is still answering; hand over again once it is done.');
     if (!(await this.setRole('driver'))) return;
+    this.edited = false;
     await this.talk(driveInput(words, describeState(this.state, this.now())));
     await this.handBack();
+    // Only now does the conversation lose the Driver's tools. After a take-back during the answer, the policy
+    // hook refused edit and type with a reason; a tool that vanished mid-answer leaves small models writing
+    // the call as plain text, and the user sees nothing.
+    await this.partner.setRole(this.conversationId, this.role);
   }
 
   /** Pair goes back to Navigator, if it is driving. */
@@ -221,7 +233,9 @@ export class PairSession {
     if (this.role !== 'driver') return;
     this.role = 'navigator'; // at once: an edit or type still on its way is refused from here on
     if (note) this.message('system', note);
-    await this.setRole('navigator');
+    this.notify('editor', {type: 'role', role: 'navigator'});
+    await this.scout?.close();
+    this.announce('navigator');
   }
 
   /** A key the user pressed in Neovim while Pair was driving. */
@@ -364,18 +378,22 @@ export class PairSession {
     return null;
   }
 
-  /** One change in the user's buffer, as one undo step and unsaved; then Pair hands the wheel back. */
+  /** The Driver's one change in the user's buffer, as one undo step and unsaved. */
   async edit({file, line, endLine, text}) {
     const path = await projectFile(this.root, file);
     if (!path) return `No file ${file} in the project`;
     if (endLine < line) return `end_line ${endLine} is before line ${line}`;
     const refused = this.wheel(); // after the await: the user may have taken the wheel back meanwhile
     if (refused) return refused;
+    if (this.edited) return 'You already made your one change. Say in one sentence what you changed.';
+    this.edited = true; // before the await, so two calls in one step cannot both pass
     const reply = await this.requestEditor({type: 'edit', file: path, line, endLine, text}).catch(error => ({error: error.message}));
-    if (reply?.error) return `Not changed: ${reply.error}.`;
+    if (reply?.error) {
+      this.edited = false;
+      return `Not changed: ${reply.error}.`;
+    }
     this.message('pair', `Changed ${file}:${line}${endLine > line ? `-${endLine}` : ''} (u undoes it).`);
-    await this.handBack();
-    return 'Changed, as one undo step; not saved. The wheel is back with the user. Say in one sentence what you changed.';
+    return 'Changed, as one undo step; not saved. That was your one edit. Check it if needed, then say in one sentence what you changed.';
   }
 
   /** Types one line into the user's terminal pane once they allow it; Enter stays with them. */

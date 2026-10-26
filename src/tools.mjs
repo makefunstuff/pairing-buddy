@@ -65,8 +65,9 @@ If an answer needs a search or a test run, say so in one sentence: the user can 
   driver: `Your role now: Driver. The user handed you the wheel for one change in their editor.
 - First read the file, so your line numbers are right.
 - Then call edit once: it replaces lines line..end_line with new_text, the complete new lines with their indentation.
-  Change as little as the request needs.
-- After the edit the wheel goes back to the user and you are Navigator again: say in one sentence what you changed.
+  Change as little as the request needs. You get one edit per hand-over.
+- After the edit, check it if needed (run the tests), then say in one sentence what you changed.
+  When your answer ends, the wheel goes back to the user and you are Navigator again.
 - To put a command in the user's terminal, call type: they confirm it and press Enter themselves.
 - search and run work in your own pane, as for Scout.`,
 };

@@ -55,14 +55,19 @@ describe('Driver on live models', {skip: stacks.length ? false : SKIP_REASON}, (
      * Runs one turn: `start(session)` hands over or asks. Resolves with what the chat showed, the tools
      * called, the editor's buffers and what was typed into the user's terminal. Every confirmation is a yes.
      */
-    async function turn(start, {edited} = {}) {
+    async function turn(start, {edited, takeBackAtFirstTool = false} = {}) {
       const {root} = project();
       const editor = buffers(root);
       const shown = [];
       const tools = [];
       const typed = [];
       let session;
-      const hand = name => (_conversation, args) => { tools.push({name, args}); return session[name](args); };
+      const hand = name => async (_conversation, args) => {
+        // The user presses a key in Neovim while the model works: the wheel is theirs before this call runs.
+        if (takeBackAtFirstTool && !tools.length) await session.takeBack();
+        tools.push({name, args});
+        return session[name](args);
+      };
       const partner = await openPartner({
         storage: new MemoryStorage(),
         models: stack.models,
@@ -128,6 +133,15 @@ describe('Driver on live models', {skip: stacks.length ? false : SKIP_REASON}, (
       assert.match(result.typed[0][1], /^(npm (run )?test|node --test)\b/);
       assert.equal(result.typed[0][0], 'w1:p1', 'into the user\'s pane');
       assert.ok(result.unchanged);
+    });
+
+    test(`${stack.name}: after a take-back the Driver changes nothing and still answers`, {timeout: 300_000}, async t => {
+      const result = await turn(session => session.drive('you take it: set the reconnect timeout to 30 seconds'), {takeBackAtFirstTool: true});
+      report(t, result);
+      assert.equal(result.editor.text('src/ws.mjs'), FILES['src/ws.mjs'], 'the buffer is as it was');
+      assert.deepEqual(result.typed, []);
+      assert.equal(result.role, 'navigator');
+      assert.ok(result.shown.trim().length > 0, 'it answered');
     });
 
     test(`${stack.name}: the Navigator suggests a change instead of making it`, {timeout: 300_000}, async t => {

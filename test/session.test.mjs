@@ -244,10 +244,11 @@ function driverSession({turn = async () => 'ok', editor = true, role = 'navigato
   const typed = [];
   const roles = [];
   const edits = [];
+  const toolsOf = []; // the roles whose tools the conversation was given, in order
   const pair = new PairSession({
     record: {id: 1, root: process.cwd(), conversation_id: 7, goal: 'fix it', level: 'normal', role},
     store: {addMessage() {}, setRole: (_id, stored) => roles.push(stored)},
-    partner: {ask: async (_id, input) => turn(pair, input), setRole: async () => {}},
+    partner: {ask: async (_id, input) => turn(pair, input), setRole: async (_id, given) => { toolsOf.push(given); }},
     score: async () => ({value: 9, reason: 'worth it'}),
     typingPauseMs: 2000,
     notify: (to, message) => { sent.push({to, ...message}); return to === 'editor' && !editor ? 0 : 1; },
@@ -256,17 +257,19 @@ function driverSession({turn = async () => 'ok', editor = true, role = 'navigato
   });
   pair.panes = {type: async (pane, text) => typed.push([pane, text])};
   const roleChanges = () => sent.filter(message => message.type === 'role' && message.to === 'editor').map(message => message.role);
-  return {pair, sent, typed, roles, edits, roleChanges};
+  return {pair, sent, typed, roles, edits, toolsOf, roleChanges};
 }
 
 const lastConfirm = sent => sent.filter(message => message.type === 'confirm').at(-1);
 
-test('handing over makes Pair the Driver for one turn; its edit goes to the editor and it hands back by itself', async () => {
+test('handing over makes Pair the Driver for one answer with one edit, which goes to the editor; then it hands back by itself', async () => {
   let input;
   let replies;
+  let roleAfterEdit;
   const {pair, edits, roles, roleChanges} = driverSession({turn: async (pair, given) => {
     input = given;
     const reply = await pair.edit({file: 'package.json', line: 2, endLine: 2, text: '  "name": "x",'});
+    roleAfterEdit = pair.role;
     const again = await pair.edit({file: 'package.json', line: 3, endLine: 3, text: 'more'});
     replies = [reply, again];
     return 'Renamed the package.';
@@ -275,11 +278,31 @@ test('handing over makes Pair the Driver for one turn; its edit goes to the edit
   assert.match(input, /^\[drive\] The user handed you the wheel for one change\. The user said: "your turn"/);
   assert.match(input, /make it pass by changing the code, not the test/);
   assert.deepEqual(edits.map(({type, line, endLine, text}) => ({type, line, endLine, text})), [{type: 'edit', line: 2, endLine: 2, text: '  "name": "x",'}]);
-  assert.match(replies[0], /^Changed, as one undo step; not saved\. The wheel is back with the user/);
-  assert.match(replies[1], /^The user has the wheel now/, 'one change per hand-over');
+  assert.match(replies[0], /^Changed, as one undo step; not saved\. That was your one edit/);
+  assert.match(replies[1], /^You already made your one change/, 'one edit per hand-over');
+  assert.equal(roleAfterEdit, 'driver', 'it may still check its edit, say by running the tests');
   assert.deepEqual(roleChanges(), ['driver', 'navigator']);
   assert.equal(pair.role, 'navigator');
   assert.deepEqual(roles, ['navigator'], 'the Driver role is never stored');
+});
+
+test('an edit the editor refuses does not use up the one edit, and two at once cannot both pass', async () => {
+  let replies;
+  const {pair, edits} = driverSession({turn: async pair => {
+    const failed = pair.requestEditor;
+    pair.requestEditor = async () => ({error: 'line 99 is past the end of the buffer (3 lines)'});
+    const first = await pair.edit({file: 'package.json', line: 99, endLine: 99, text: 'x'});
+    pair.requestEditor = failed;
+    replies = [first, ...await Promise.all([
+      pair.edit({file: 'package.json', line: 1, endLine: 1, text: 'a'}),
+      pair.edit({file: 'package.json', line: 2, endLine: 2, text: 'b'}),
+    ])];
+    return 'ok';
+  }});
+  await pair.drive('you take it');
+  assert.match(replies[0], /^Not changed: line 99 is past the end/);
+  assert.equal(replies.filter(reply => reply.startsWith('Changed')).length, 1);
+  assert.equal(edits.length, 1);
 });
 
 test('a turn without an edit also ends with Pair back as Navigator', async () => {
@@ -291,16 +314,22 @@ test('a turn without an edit also ends with Pair back as Navigator', async () =>
 
 test('a key from the user takes the wheel back at once: an edit still on its way is refused', async () => {
   let reply;
-  const {pair, edits, sent, roleChanges} = driverSession({turn: async pair => {
+  let toolsDuring;
+  const {pair, edits, sent, toolsOf, roleChanges} = driverSession({turn: async pair => {
     await pair.takeBack(); // the user pressed a key while the model was thinking
     reply = await pair.edit({file: 'package.json', line: 1, endLine: 1, text: 'x'});
+    toolsDuring = [...toolsOf];
     return 'ok';
   }});
   await pair.drive('you take it');
   assert.match(reply, /^The user has the wheel now/);
   assert.deepEqual(edits, []);
   assert.deepEqual(roleChanges(), ['driver', 'navigator']);
+  assert.equal(pair.role, 'navigator');
   assert.ok(sent.some(message => message.text === 'You have the wheel back.'));
+  // The answer keeps its tools, so the policy refuses with a reason; they change once it ends.
+  assert.deepEqual(toolsDuring, ['driver']);
+  assert.deepEqual(toolsOf, ['driver', 'navigator']);
 });
 
 test('without Neovim there is no wheel to hand over', async () => {

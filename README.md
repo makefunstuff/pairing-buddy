@@ -44,7 +44,7 @@ Pair has one role at a time. It shows in the chat pane's prompt and in Neovim's 
 | --- | --- | --- |
 | Navigator (default) | Watches, comments, answers and points at lines | `/navigate` in the chat, `:Pair navigate` |
 | Scout | Also searches and runs commands in its own herdr pane: tests, builds, `git log`, `git diff` | `/scout` in the chat, `:Pair scout` |
-| Driver | Makes one change in your buffer while you watch, then hands back | You hand over: `:Pair drive`, `/drive`, or say "you take it" or "your turn" in the chat |
+| Driver | Makes one change in your buffer while you watch, then hands back by itself | You hand over: `:Pair drive`, `/drive`, or say "you take it" or "your turn" in the chat |
 
 Switching to Scout opens Pair's pane below the chat pane; switching back closes it. The role is kept with the session, also across a daemon restart. The Driver role never is: it lasts one turn.
 
@@ -53,7 +53,7 @@ In every role Pair can **suggest** a change: the old lines are marked in your bu
 **Driving** ([details](docs/driver.md)): hand over with `:Pair drive [what to do]` in Neovim, `/drive [what to do]` in the chat, or a chat line that starts with "you take it" or "your turn". Pair becomes the Driver for that one answer:
 
 - It reads the code and makes one `edit`: the lines change in your buffer as one undo step, so `u` takes it back. The buffer is not saved; the disk changes when you `:w`.
-- After the edit, or when it answers without one, it goes back to Navigator by itself.
+- It gets one edit per hand-over. It may still check it (run the tests in its pane), says what it changed, and then is Navigator again by itself, also when it answered without an edit.
 - Any key you press in Neovim while Pair has the wheel takes it back at once: an edit still on its way is refused.
 - It may `type` one command line into your terminal pane (the one you last used), after you allow it in the chat. It never presses Enter, and never types what Scout's policy refuses (`git commit`, `git push`, ...).
 - Ping-pong TDD: write a failing test, say "your turn", and Pair changes the code (not the test) to make it pass, then hands back. Run the tests, write the next one.
@@ -226,7 +226,8 @@ Without `PAIR_LIVE_CONFIG` (or a gitignored `test/live/config.json`) the live te
 - A Partner answer that is running when the daemon stops is finished by pi-durable on restart, but is not shown in the chat.
 - One session per project (git root); Pair works with one Neovim per session.
 - Typing in a shell pane does not count as typing: herdr does not report keystrokes. For the same reason, only a key in Neovim takes the wheel back from the Driver; typing in the chat or a shell pane does not.
-- The Driver makes one edit per hand-over, in whole lines. After it, Pair is Navigator again, also when you handed over in Scout (Pair's pane then closes).
+- The Driver makes one edit per hand-over, in whole lines. After its answer, Pair is Navigator again, also when you handed over in Scout (Pair's pane then closes).
 - One suggestion shows at a time; a new one replaces it.
 - `type` needs herdr and goes to the terminal pane you last looked at or ran a command in.
+- When the Driver checks its edit by running the tests, they read the files on disk, not your unsaved buffer.
 - Test output is parsed from what the pane shows: a user's command's output is read from the last 400 lines of its pane.

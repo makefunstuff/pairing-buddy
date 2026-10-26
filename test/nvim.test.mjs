@@ -190,7 +190,7 @@ test('suggestions show as a ghost diff that one key accepts; handing over gives 
     ]);
     keys(':Pair drive set x to 7<CR>');
     await answered('Okay, yours.');
-    assert.match(refused, /not available|wheel/, 'the edit was refused');
+    assert.match(refused, /only while the user hands you the wheel/, 'the policy refused the edit, with a reason');
     assert.equal(lines()[0], 'const x = 1');
     assert.equal(status(), 'Pair: navigator · normal');
   } finally {

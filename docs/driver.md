@@ -34,9 +34,10 @@ The accept key is mapped in Normal mode, only in that buffer, and only while the
 Then:
 
 1. Pair becomes the Driver for one answer. The chat prompt and `require('pair').status()` show `driver`.
-2. It reads the code and calls `edit` once: the lines are replaced through Neovim's buffer API as one undo step. If the file is not shown in a window, it opens in a split.
-3. Right after the edit it is Navigator again, and it says in one sentence what it changed. A second `edit` in the same answer is refused.
-4. If it answers without an edit, for example with a question, it goes back to Navigator just the same.
+2. It reads the code and calls `edit` once: the lines are replaced through Neovim's buffer API as one undo step. If the file is not shown in a window, it opens in a split. The chat says `Changed src/ws.mjs:1 (u undoes it).`
+3. A second `edit` in the same answer is refused: one change per hand-over. An edit Neovim could not apply (a line past the end of the buffer) does not count.
+4. It may check its edit, for example by running the tests in its pane, and says in one sentence what it changed.
+5. When the answer ends, Pair is Navigator again by itself, also when it answered without an edit, for example with a question.
 
 A hand-over needs Neovim connected (`:Pair start`), and is refused while Pair is still answering something else. No remark nobody asked for starts while Pair has the wheel.
 
@@ -45,7 +46,7 @@ A hand-over needs Neovim connected (`:Pair start`), and is refused while Pair is
 Any key you press in Neovim while Pair has the wheel takes it back:
 
 - The plugin refuses edits from that key on, before the daemon has even heard of it.
-- The daemon switches Pair back to Navigator: the conversation loses `edit` and `type`, and the policy hook refuses them for a call already on its way.
+- The daemon switches Pair back to Navigator: from then on the policy hook refuses `edit` and `type`, telling the model the user has the wheel, so it can suggest the change instead. The conversation is offered Navigator's tools from its next answer on (tools that vanish in the middle of an answer make some local models write the call as plain text).
 - The chat says "You have the wheel back."
 
 Typing in the chat pane or in a shell pane does not take the wheel back: herdr does not report keystrokes, and the chat is where you talk to Pair while it drives.
@@ -76,7 +77,7 @@ As Driver Pair also has `search` and `run` in its own pane (the same command pol
 | --- | --- | --- | --- |
 | `say`, `point`, `open`, `read`, `suggest` | yes | yes | yes |
 | `search`, `run` | no | yes | yes |
-| `edit` | no | no | once, then Navigator |
+| `edit` | no | no | once per hand-over |
 | `type` | no | no | after a yes, without Enter |
 
 Each conversation is offered only its role's tools, and the `beforeTool` hook refuses any other name (`src/tools.mjs`). The session checks again that Pair still has the wheel when the edit or the typing happens (`src/session.mjs`), and the Neovim plugin refuses an edit once you have pressed a key (`lua/pair/init.lua`). The Driver role is never stored: after a daemon restart Pair is Navigator or Scout, as before the hand-over.
