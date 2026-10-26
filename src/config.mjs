@@ -1,11 +1,15 @@
 // One config file for the daemon: the two models, the talk level and where things live.
-import {readFileSync} from 'node:fs';
+// It is JSON with // and /* */ comments; the first run writes the commented example there.
+import {copyFileSync, existsSync, mkdirSync, readFileSync} from 'node:fs';
 import {homedir} from 'node:os';
-import {join} from 'node:path';
+import {dirname, join} from 'node:path';
+import {fileURLToPath} from 'node:url';
+
+const EXAMPLE = fileURLToPath(new URL('../config.example.json', import.meta.url));
 
 export const LEVELS = ['quiet', 'normal', 'chatty'];
 
-function xdg(name, fallback) {
+export function xdg(name, fallback) {
   return process.env[name] || join(homedir(), fallback);
 }
 
@@ -55,8 +59,23 @@ export function parseConfig(raw) {
   };
 }
 
+/** `text` without its // and /* *\/ comments; strings are kept as they are. */
+export function stripComments(text) {
+  return text.replace(/("(?:[^"\\\n]|\\.)*")|\/\/[^\n]*|\/\*[\s\S]*?\*\//g, (match, string) => string ?? '');
+}
+
+/** Writes the commented example to `path` if there is no config yet; true when it did. */
+export function createConfig(path = configPath()) {
+  if (existsSync(path)) return false;
+  mkdirSync(dirname(path), {recursive: true});
+  copyFileSync(EXAMPLE, path);
+  return true;
+}
+
 export function loadConfig(path = configPath()) {
   let text;
-  try { text = readFileSync(path, 'utf8'); } catch { throw new Error(`No config at ${path}; see README "Configure the models"`); }
-  return parseConfig(JSON.parse(text));
+  try { text = readFileSync(path, 'utf8'); } catch { throw new Error(`No config at ${path}; run \`pair setup\``); }
+  let raw;
+  try { raw = JSON.parse(stripComments(text)); } catch (error) { throw new Error(`config: ${path} is not valid JSON (${error.message})`); }
+  return parseConfig(raw);
 }

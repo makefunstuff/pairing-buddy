@@ -202,7 +202,7 @@ test('switching to Scout opens Pair\'s pane and tells the editor and the chat; s
   pair.role = 'navigator';
   await pair.setRole('scout');
   assert.equal(pane.opened, true);
-  assert.deepEqual(sent.filter(message => message.type === 'role').map(message => [message.to, message.role]), [['editor', 'scout'], ['chat', 'scout']]);
+  assert.deepEqual(sent.filter(message => message.type === 'role').map(message => [message.to, message.role]), [['editors', 'scout'], ['chat', 'scout']]);
   await pair.setRole('navigator');
   assert.equal(pane.opened, false);
   assert.deepEqual(roles, ['scout', 'navigator']);
@@ -252,12 +252,12 @@ function driverSession({turn = async () => 'ok', editor = true, role = 'navigato
     partner: {ask: async (_id, input) => turn(pair, input), setRole: async (_id, given) => { toolsOf.push(given); }},
     score: async () => ({value: 9, reason: 'worth it'}),
     typingPauseMs: 2000,
-    notify: (to, message) => { sent.push({to, ...message}); return to === 'editor' && !editor ? 0 : 1; },
+    notify: (to, message) => { sent.push({to, ...message}); return to === 'editors' && !editor ? 0 : 1; },
     requestEditor: async message => { edits.push(message); return {ok: true}; },
     now: () => 100_000,
   });
   pair.panes = {type: async (pane, text) => typed.push([pane, text])};
-  const roleChanges = () => sent.filter(message => message.type === 'role' && message.to === 'editor').map(message => message.role);
+  const roleChanges = () => sent.filter(message => message.type === 'role' && message.to === 'editors').map(message => message.role);
   return {pair, sent, typed, roles, edits, toolsOf, roleChanges};
 }
 

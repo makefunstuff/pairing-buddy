@@ -1,27 +1,40 @@
-// The long-lived daemon: one Unix socket for Neovim, the chat pane and the shell hook; one session per project.
+// The long-lived daemon: one Unix socket for Neovim, the chat pane and the shell hook; one session per project,
+// shared by every Neovim and chat pane open in it.
 import {chmodSync, mkdirSync, unlinkSync} from 'node:fs';
 import {realpath} from 'node:fs/promises';
 import {createServer} from 'node:net';
 import {basename, join, sep} from 'node:path';
 import {gitBranch, gitRoot} from './git.mjs';
+import {ModelHealth} from './health.mjs';
 import {PaneWatch} from './herdr.mjs';
 import {createPairModels} from './models.mjs';
 import {acquireOwner} from './owner.mjs';
 import {openPartner} from './partner.mjs';
+import {probeModel} from './probe.mjs';
 import {readMessages, sendMessage} from './protocol.mjs';
 import {ScoutPane} from './scout-pane.mjs';
 import {PairSession} from './session.mjs';
 import {openStore} from './store.mjs';
 import {ROLE_TOOLS, ROLES} from './tools.mjs';
+import {VERSION} from './version.mjs';
 import {createWatcher} from './watcher.mjs';
 
 const EDITOR_REPLY_MS = 2000;
 const TICK_MS = 1000;
+const MODEL_NAMES = {watcher: 'Watcher', partner: 'Partner'};
+
+/** What the chat says when a model goes down (`reason`) or answers again (null). */
+export function healthNote(role, reason) {
+  return reason
+    ? `The ${MODEL_NAMES[role]} model is not answering (${reason}). Pair stays quiet until it answers again; \`pair doctor\` checks it.`
+    : `The ${MODEL_NAMES[role]} model answers again.`;
+}
 
 const timestamp = () => new Date().toTimeString().slice(0, 8);
 const defaultLog = line => process.stderr.write(`${timestamp()} ${line}\n`);
 
-export async function startDaemon(config, {pairModels = createPairModels(config), log = defaultLog} = {}) {
+/** `probe(role)` checks that a model answers (see probe.mjs); tests pass their own. */
+export async function startDaemon(config, {pairModels = createPairModels(config), probe, log = defaultLog} = {}) {
   mkdirSync(config.dataDir, {recursive: true, mode: 0o700});
   const owner = acquireOwner(config.dataDir);
   const store = openStore(join(config.dataDir, 'sessions.sqlite'));
@@ -31,6 +44,22 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
   const clients = new Set();
   const replies = new Map();
   let nextRequest = 0;
+  const startedAt = Date.now();
+
+  const health = new ModelHealth({
+    probe: probe ?? (role => probeModel(pairModels.models, pairModels[role])),
+    onChange(role, reason) {
+      log(reason ? `${role} model down: ${reason}` : `${role} model answers again`);
+      for (const client of clients) {
+        if (client.role) sendMessage(client.socket, {type: 'health', models: health.snapshot(), text: healthNote(role, reason)});
+      }
+    },
+  });
+  /** `promise`, reported to the health of `role`'s model as it settles. */
+  const reported = (role, promise) => promise.then(
+    value => { health.report(role); return value; },
+    error => { health.report(role, error.message); throw error; },
+  );
 
   const sessionOfConversation = id => [...live.values()].find(session => session.conversationId === id);
   const hand = name => (conversationId, args) => {
@@ -48,24 +77,48 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
       roleOf: conversationId => sessionOfConversation(conversationId)?.role ?? 'navigator',
     },
   });
-  const score = createWatcher({models: pairModels.models, model: pairModels.watcher});
+  const scoreRemark = createWatcher({models: pairModels.models, model: pairModels.watcher});
+  const score = async (trigger, state) => {
+    const result = await scoreRemark(trigger, state);
+    health.report('watcher', result.error);
+    return result;
+  };
+  const sessionPartner = {...partner, ask: (conversationId, content) => reported('partner', partner.ask(conversationId, content))};
 
-  /** Sends `message` to the clients of `session` in `role` ("editor" or "chat"); returns how many got it. */
-  function notify(session, role, message) {
-    const to = [...clients].filter(client => client.session === session && client.role === role);
-    for (const client of to) sendMessage(client.socket, message);
-    return to.length;
+  const clientsOf = (session, role) => [...clients].filter(client => client.session === session && client.role === role);
+  /** The Neovims attached to `session`, the one the user used last first. */
+  const editorsOf = session => clientsOf(session, 'editor').sort((a, b) => b.activeAt - a.activeAt);
+
+  /**
+   * Sends `message` to the clients of `session` named by `to`: "chat", all "editors", or the "editor" the user
+   * used last (so with two Neovims open in one project, a point shows in the one you are working in).
+   * Returns how many got it.
+   */
+  function notify(session, to, message) {
+    const targets = to === 'chat' ? clientsOf(session, 'chat') : editorsOf(session).slice(0, to === 'editors' ? undefined : 1);
+    for (const client of targets) sendMessage(client.socket, message);
+    return targets.length;
   }
 
-  function requestEditor(session, message) {
-    const editor = [...clients].find(client => client.session === session && client.role === 'editor');
-    if (!editor) return Promise.reject(new Error('No editor attached'));
+  function askEditor(editor, message) {
     const id = ++nextRequest;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { replies.delete(id); reject(new Error('The editor did not reply')); }, EDITOR_REPLY_MS);
       replies.set(id, result => { clearTimeout(timer); resolve(result); });
       sendMessage(editor.socket, {...message, id});
     });
+  }
+
+  /** Asks the editor the user used last; a read asks the others too until one has the file loaded. */
+  async function requestEditor(session, message) {
+    const editors = editorsOf(session);
+    if (!editors.length) throw new Error('No editor attached');
+    if (message.type !== 'read') return askEditor(editors[0], message);
+    for (const editor of editors) {
+      const reply = await askEditor(editor, message).catch(() => null);
+      if (typeof reply?.text === 'string') return reply;
+    }
+    return {text: null};
   }
 
   async function refreshBranch(session) {
@@ -86,7 +139,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
       const record = store.activeSession(root)
         ?? store.createSession({root, conversationId: await partner.createConversation(), goal: null, level: config.level, at: Date.now()});
       const session = new PairSession({
-        record, store, partner, score,
+        record, store, partner: sessionPartner, score, health,
         typingPauseMs: config.typingPauseMs,
         notify: (role, message) => notify(session, role, message),
         requestEditor: message => requestEditor(session, message),
@@ -140,14 +193,38 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
 
   async function hello(client, message) {
     client.role = message.role;
+    client.activeAt = Date.now();
     client.session = await loadSession(await rootOf(message.cwd));
     const {session} = client;
-    sendMessage(client.socket, {type: 'welcome', root: session.root, goal: session.state.goal, level: session.budget.level, role: session.role});
+    sendMessage(client.socket, {
+      type: 'welcome', root: session.root, goal: session.state.goal, level: session.budget.level, role: session.role, models: health.snapshot(),
+    });
     if (client.role !== 'chat') return;
     watchHerdr(session, message.herdr);
+    // A chat pane that reconnects after a daemon restart already shows the history.
+    if (message.resume) return;
     const history = store.messages(session.id);
     for (const old of history) sendMessage(client.socket, {type: 'message', history: true, ...old});
     if (!history.length) session.greet();
+  }
+
+  /** What `pair doctor` asks the daemon. */
+  function status() {
+    return {
+      type: 'status',
+      version: VERSION,
+      pid: process.pid,
+      startedAt,
+      models: health.snapshot(),
+      sessions: [...live.values()].map(session => ({
+        root: session.root,
+        role: session.role,
+        goal: session.state.goal,
+        editors: editorsOf(session).length,
+        chats: clientsOf(session, 'chat').length,
+        herdr: watches.has(session.root),
+      })),
+    };
   }
 
   /** A command the shell hook saw end, with its exit code. Ignored when its project has no session. */
@@ -162,12 +239,15 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
 
   async function handle(client, message) {
     if (message.type === 'hello') return (client.ready = hello(client, message));
+    if (message.type === 'status') return sendMessage(client.socket, status());
     if (message.type === 'command') return shellCommand(message);
     if (message.type === 'reply') return replies.get(message.id)?.(message.result);
     // A client may send right after its hello; wait until the hello has found its session.
     await client.ready;
     const {session} = client;
     if (!session) return sendMessage(client.socket, {type: 'message', sender: 'system', text: 'No active session; send hello first', at: Date.now()});
+    // What you do in a Neovim makes it the one Pair shows things in; its LSP's diagnostics do not.
+    if (client.role === 'editor' && message.event?.kind !== 'diagnostics') client.activeAt = Date.now();
     if (message.type === 'event') return receive(session, message.event);
     if (message.type === 'ask') return session.ask(message.text);
     if (message.type === 'goal') return session.setGoal(message.text);
@@ -180,7 +260,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
   }
 
   const server = createServer(socket => {
-    const client = {socket, role: null, session: null, ready: Promise.resolve()};
+    const client = {socket, role: null, session: null, activeAt: 0, ready: Promise.resolve()};
     clients.add(client);
     socket.on('close', () => clients.delete(client));
     socket.on('error', () => {});
@@ -199,11 +279,13 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     for (const session of live.values()) session.tick().catch(error => log(`tick failed: ${error.stack ?? error}`));
   }, TICK_MS);
 
-  log(`pair daemon listening on ${config.socket}`);
+  health.start();
+  log(`pair daemon ${VERSION} listening on ${config.socket}`);
 
   return {
     async close() {
       clearInterval(ticker);
+      health.stop();
       for (const watch of watches.values()) watch.stop();
       for (const client of clients) client.socket.destroy();
       await new Promise(resolve => server.close(resolve));

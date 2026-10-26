@@ -15,6 +15,7 @@ import {fakeHerdr} from './fake-herdr.mjs';
 
 const REPO = fileURLToPath(new URL('..', import.meta.url));
 const hasNvim = (() => { try { execFileSync('nvim', ['--version']); return true; } catch { return false; } })();
+const answers = async () => ({ok: true}); // the scripted models are not probed
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 async function until(check, what, timeoutMs = 8000) {
@@ -45,7 +46,8 @@ async function pairInNvim(goal) {
   const models = createModels();
   models.setProvider(watcher.provider);
   models.setProvider(partner.provider);
-  const daemon = await startDaemon(config, {pairModels: {models, watcher: watcher.getModel(), partner: partner.getModel()}, log: () => {}});
+  const pairModels = {models, watcher: watcher.getModel(), partner: partner.getModel()};
+  let daemon = await startDaemon(config, {pairModels, probe: answers, log: () => {}});
   const herdrSocket = join(dataDir, 'herdr.sock');
   const herdr = await fakeHerdr(herdrSocket);
 
@@ -73,6 +75,12 @@ async function pairInNvim(goal) {
     send: message => sendMessage(chat, message),
     lines: () => JSON.parse(remote('json_encode(getline(1, "$"))')),
     status: () => remote('luaeval("require(\'pair\').status()")'),
+    /** Stops the daemon, waits `downMs`, and starts a new one that probes the models with `probe`. */
+    async restartDaemon({downMs = 0, probe = answers} = {}) {
+      await daemon.close();
+      await sleep(downMs);
+      daemon = await startDaemon(config, {pairModels, probe, log: () => {}});
+    },
     async stop() {
       chat.destroy();
       nvim.kill();
@@ -199,6 +207,34 @@ test('suggestions show as a ghost diff that one key accepts; handing over gives 
     assert.match(refused, /only while the user hands you the wheel/, 'the policy refused the edit, with a reason');
     assert.equal(lines()[0], 'const x = 1');
     assert.equal(status(), 'Pair: navigator · normal');
+  } finally {
+    await stop();
+  }
+});
+
+test('after a daemon restart the plugin reconnects by itself; a model that is down shows in the statusline', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
+  const {partner, remote, status, restartDaemon, stop} = await pairInNvim('survive restarts');
+  try {
+    await until(() => status() === 'Pair: navigator · normal', 'the first connection');
+    const down = async role => (role === 'partner' ? {ok: false, error: 'connect ECONNREFUSED'} : {ok: true});
+    const restarted = restartDaemon({downMs: 1500, probe: down});
+    await until(() => status() === 'Pair: reconnecting', 'the statusline to say it is reconnecting');
+    await restarted;
+    await until(() => status() === 'Pair: navigator · normal · partner down', 'the reconnect, with the warning', 10_000);
+
+    // The new daemon gets the editor's buffers again: a question reads the unsaved text.
+    remote('execute("normal! ggccconst x = 5")');
+    let read;
+    partner.setResponses([
+      fauxAssistantMessage([fauxToolCall('read', {file: 'a.js'})], {stopReason: 'toolUse'}),
+      context => {
+        read = context.messages.filter(message => message.role === 'toolResult').at(-1).content[0].text;
+        return fauxAssistantMessage([fauxText('ok')]);
+      },
+    ]);
+    remote('execute("Pair ask what is x?")');
+    await until(() => read, 'the Partner to read the buffer through the new daemon');
+    assert.match(read, /1: const x = 5/);
   } finally {
     await stop();
   }

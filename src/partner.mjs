@@ -4,6 +4,8 @@ import {createRegistry, Harness} from '@earendil-works/pi-durable';
 import {openNodeSqliteStorage} from '@earendil-works/pi-durable/storage/sqlite/node';
 import {pairExtension, ROLE_PROMPTS, ROLE_TOOLS} from './tools.mjs';
 
+const STREAM_TIMEOUT_MS = 90_000;
+
 // Small local context windows need smaller margins than the library's cloud-sized defaults.
 function compactionFor(contextWindow) {
   return {
@@ -37,7 +39,14 @@ export async function openPartner({storage, models, model, thinking = 'off', han
     models,
     registry,
     identity: {attribution: null},
-    settings: {extensions: [extension], compaction: compactionFor(model.contextWindow), afterFailedRun: 'continue'},
+    settings: {
+      extensions: [extension],
+      compaction: compactionFor(model.contextWindow),
+      afterFailedRun: 'continue',
+      // A model that does not answer fails the turn within minutes, not the SDK's default of hours.
+      stream: {timeoutMs: STREAM_TIMEOUT_MS, maxRetries: 0},
+      retry: {maxRetries: 2},
+    },
   }, C);
   harness.resume();
   // The model is offered only its role's tools; the policy hook refuses the others anyway.

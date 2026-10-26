@@ -23,7 +23,7 @@ export function parseScore(text) {
 
 /**
  * A `score(trigger, state)` for the speak gate. A Watcher that fails or answers nonsense scores 0,
- * so a broken small model keeps Pair quiet instead of noisy.
+ * so a broken small model keeps Pair quiet instead of noisy; a failure also carries its `error`.
  */
 export function createWatcher({models, model, now = Date.now, timeoutMs = 10_000}) {
   return async function score(trigger, state) {
@@ -36,6 +36,7 @@ export function createWatcher({models, model, now = Date.now, timeoutMs = 10_000
     const text = message.content.filter(block => block.type === 'text').map(block => block.text).join('');
     const parsed = parseScore(text);
     if (parsed) return parsed;
-    return {value: 0, reason: message.errorMessage ? `watcher failed: ${message.errorMessage}` : 'watcher gave no score'};
+    if (message.errorMessage) return {value: 0, reason: `watcher failed: ${message.errorMessage}`, error: message.errorMessage};
+    return {value: 0, reason: 'watcher gave no score'};
   };
 }
