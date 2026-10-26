@@ -79,6 +79,7 @@ the Watcher does not. Details in [watcher.md](watcher.md#thinking-the-partner-no
 | `typingPauseMs` | How long after a keystroke you count as typing, default 2000 |
 | `testOnSave` | A test command per project, run when you save ([tests-on-save.md](tests-on-save.md)) |
 | `sessionRoots` | Folders that are projects of their own, for a monorepo ([session roots](#session-roots)) |
+| `agents` | The relay of your other agents' news, from herdr and the `board`: `false` turns it off ([agents.md](agents.md#configure)) |
 | `voice` | Push-to-talk with whisper.cpp; off until set ([voice.md](voice.md)) |
 | `board` | The herdr work board's command, default `"herdr-projects"`: the goal and the [context card](neovim.md#what-it-knows-the-context-card) read the board task of your branch. `null` turns it off |
 | `socket` | The daemon's socket path |

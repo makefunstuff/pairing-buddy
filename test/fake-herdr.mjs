@@ -8,12 +8,14 @@ import {readMessages, sendMessage} from '../src/protocol.mjs';
  * function of the command line that resolves with them, to really run commands. The workspace starts
  * with the user's pane `w1:p1` and the chat pane `w1:p2`; `w1:p1` has focus until `focus(pane)` moves it. The panes in
  * `nvims` run Neovim. `sent` records every send_text as [pane, text].
+ * `agents` is what agent.list answers (change it in place); `focused` records the targets of agent.focus.
  */
-export async function fakeHerdr(socketPath, {commands = {}, nvims = []} = {}) {
+export async function fakeHerdr(socketPath, {commands = {}, agents = [], nvims = []} = {}) {
   const panes = new Map([['w1:p1', {label: null, lines: ['$ ']}], ['w1:p2', {label: null, lines: ['› ']}]]);
   for (const pane of nvims) if (!panes.has(pane)) panes.set(pane, {label: null, lines: ['']});
-  let focused = 'w1:p1';
+  let focusedPane = 'w1:p1';
   const sent = [];
+  const focused = [];
   let next = 3;
 
   async function type(pane, text) {
@@ -34,7 +36,7 @@ export async function fakeHerdr(socketPath, {commands = {}, nvims = []} = {}) {
   const lastLines = (pane, lines = 1000) => panes.get(pane).lines.slice(-lines).join('\n');
 
   const methods = {
-    'pane.list': () => ({panes: [...panes].map(([pane_id, pane]) => ({pane_id, label: pane.label, focused: pane_id === focused}))}),
+    'pane.list': () => ({panes: [...panes].map(([pane_id, pane]) => ({pane_id, label: pane.label, focused: pane_id === focusedPane}))}),
     'pane.split': () => {
       const pane_id = `w1:p${next++}`;
       panes.set(pane_id, {label: null, lines: ['$ ']});
@@ -52,6 +54,12 @@ export async function fakeHerdr(socketPath, {commands = {}, nvims = []} = {}) {
       }
       return {};
     },
+    'agent.list': () => ({type: 'agent_list', agents}),
+    'agent.focus': ({target}) => {
+      if (!agents.some(agent => agent.pane_id === target)) throw new Error(`agent target ${target} not found`);
+      focused.push(target);
+      return {};
+    },
     'pane.process_info': ({pane_id}) => ({process_info: {
       pane_id, shell_pid: 1, foreground_processes: [{pid: 1, name: 'bash'}, ...(nvims.includes(pane_id) ? [{pid: 2, name: 'nvim', argv: ['nvim']}] : [])],
     }}),
@@ -65,5 +73,5 @@ export async function fakeHerdr(socketPath, {commands = {}, nvims = []} = {}) {
     }
   }));
   await new Promise(resolve => server.listen(socketPath, resolve));
-  return {panes, sent, focus: pane => { focused = pane; }, close: () => new Promise(resolve => server.close(resolve))};
+  return {panes, sent, agents, focused, focus: pane => { focusedPane = pane; }, close: () => new Promise(resolve => server.close(resolve))};
 }

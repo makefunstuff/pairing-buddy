@@ -196,6 +196,7 @@ export function parseConfig(raw) {
   const level = raw.level ?? 'normal';
   if (!LEVELS.includes(level)) throw new Error(`config: level must be one of ${LEVELS.join(', ')}`);
   const models = parseModels(raw);
+  if (raw.agents !== undefined && typeof raw.agents !== 'boolean') throw new Error('config: agents must be true or false');
   return {
     level,
     typingPauseMs: raw.typingPauseMs ?? 2000,
@@ -208,6 +209,7 @@ export function parseConfig(raw) {
     sessionRoots: sessionRoots(raw.sessionRoots),
     voice: voiceConfig(raw.voice), // push-to-talk; null when off (see voice.mjs)
     board: boardCommand(raw.board),
+    agents: raw.agents ?? true, // relays your other agents' news (see agents.mjs)
     models,
   };
 }

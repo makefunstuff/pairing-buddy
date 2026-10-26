@@ -25,6 +25,11 @@
   // "<folder>/*" makes each folder in it one.
   // "sessionRoots": ["~/src/shop/packages/*"],
 
+  // Your other agents: when one needs you, is ready to approve or is done, Pair says so in one line at your next
+  // breakpoint (a save, a run that ended, a stop to look). It reads herdr's agents and the board above, if there is
+  // one. false turns the relay off.
+  // "agents": false,
+
   // One model for both roles: the Watcher asks it for one number without thinking, so it stays fast; the Partner
   // asks it with thinking. Its server needs to hold only this model, and may answer one request at a time: the
   // Watcher then waits while the Partner works, and your questions go first.

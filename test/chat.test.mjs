@@ -75,7 +75,7 @@ test('the chat pane waits through a daemon restart and carries on, without showi
   const dir = mkdtempSync(join(tmpdir(), 'pair-chat-'));
   const path = join(dir, 'config.json');
   const entry = {api: 'openai', baseUrl: 'http://unused', model: 'm'};
-  writeFileSync(path, JSON.stringify({dataDir: dir, socket: join(dir, 'pair.sock'), models: {watcher: entry, partner: entry}}));
+  writeFileSync(path, JSON.stringify({dataDir: dir, socket: join(dir, 'pair.sock'), agents: false, models: {watcher: entry, partner: entry}}));
   const config = loadConfig(path);
   const partner = fauxProvider();
   const models = createModels();

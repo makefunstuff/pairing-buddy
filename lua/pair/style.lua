@@ -15,6 +15,7 @@ M.glyphs = {
   fail = '✗', -- a test failed, a build failed, a run crashed
   warn = '△', -- a compiler warning
   listen = '◉', -- it listens while you hold the listen key
+  agents = '◇', -- another agent's news, after Pair's own part of the statusline
 }
 
 -- The statusline while Pair runs your tests or thinks.
@@ -188,6 +189,7 @@ local function palette()
     PairPoint = {bg = M.mix(bg, accent, 0.07)}, -- a line it points at
     PairSpan = {bg = M.mix(bg, accent, 0.16), sp = accent, underline = true}, -- the code it means there
     PairGaze = {fg = accent, bold = true}, -- line numbers where it reads
+    PairGazeLine = {bg = M.mix(bg, accent, 0.14)}, -- lines where it reads, in a window without numbers
     PairSuggestDelete = {fg = dim, strikethrough = true},
     PairSuggestAdd = {fg = fg, bg = M.mix(bg, accent, 0.1)}, -- also the text the Driver is typing
     PairCursor = {fg = bg, bg = accent}, -- the Driver's cursor
@@ -213,7 +215,7 @@ end
 local LINKS = {
   PairAccent = 'DiagnosticHint', PairNote = 'DiagnosticHint', PairCode = 'Special', PairKey = 'Comment',
   PairSign = 'DiagnosticHint', PairPoint = 'CursorLine', PairSpan = 'Visual', PairGaze = 'DiagnosticHint',
-  PairSuggestDelete = 'Comment', PairSuggestAdd = 'DiffAdd', PairCursor = 'Cursor',
+  PairGazeLine = 'CursorLine', PairSuggestDelete = 'Comment', PairSuggestAdd = 'DiffAdd', PairCursor = 'Cursor',
   PairStatus = 'StatusLine', PairStatusDim = 'StatusLine', PairStatusWarn = 'StatusLine',
   PairPass = 'DiagnosticOk', PairStatusPass = 'DiagnosticOk', PairGlow = 'DiagnosticOk', PairGlowLine = 'CursorLine', PairStatusGlow = 'DiagnosticOk', PairFail = 'DiagnosticError', PairFailNote = 'DiagnosticError',
   PairHeard = 'Comment',

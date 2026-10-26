@@ -4,6 +4,8 @@ import {chmodSync, mkdirSync, unlinkSync} from 'node:fs';
 import {realpath} from 'node:fs/promises';
 import {createServer} from 'node:net';
 import {basename, join} from 'node:path';
+import {AgentRelay, itemName} from './agent-relay.mjs';
+import {AgentBoard, STATUSES} from './agents.mjs';
 import {sameServer} from './config.mjs';
 import {goalFromContext, SOURCES} from './context-card.mjs';
 import {byUse, herdrFocus, noteEditor} from './editors.mjs';
@@ -52,8 +54,11 @@ export function healthNote(role, reason) {
 const timestamp = () => new Date().toTimeString().slice(0, 8);
 const defaultLog = line => process.stderr.write(`${timestamp()} ${line}\n`);
 
-/** `probe(role)` checks that a model answers (see probe.mjs); tests pass their own, and a short `keepWarmMs`. */
-export async function startDaemon(config, {pairModels = createPairModels(config), probe, log = defaultLog, keepWarmMs = KEEP_WARM_MS, idleEndMs = IDLE_END_MS, aloneEndMs = ALONE_END_MS} = {}) {
+/**
+ * `probe(role)` checks that a model answers (see probe.mjs); tests pass their own, a short `keepWarmMs`, and a short
+ * `agentsPollMs` for the agent relay's board and herdr.
+ */
+export async function startDaemon(config, {pairModels = createPairModels(config), probe, log = defaultLog, keepWarmMs = KEEP_WARM_MS, idleEndMs = IDLE_END_MS, aloneEndMs = ALONE_END_MS, agentsPollMs} = {}) {
   mkdirSync(config.dataDir, {recursive: true, mode: 0o700});
   mkdirSync(join(config.dataDir, 'runs'), {recursive: true}); // the output of the tests run on save, one file per session
   const owner = acquireOwner(config.dataDir);
@@ -63,6 +68,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
   const live = new Map(); // root -> PairSession, once loaded
   const watches = new Map(); // root -> PaneWatch
   const listeners = new Map(); // root -> Listener, once someone holds the listen key there
+  const relays = new Map(); // root -> AgentRelay
   const clients = new Set();
   const replies = new Map();
   let nextRequest = 0;
@@ -91,6 +97,11 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     value => { health.report(role); return value; },
     error => { health.report(role, error.message); throw error; },
   );
+
+  // Your other agents, read from the board and herdr; each session relays their news at its breakpoints.
+  const agents = config.agents
+    ? new AgentBoard({board: config.board, pollMs: agentsPollMs, log, wanted: () => [...clients].some(client => client.session), onChange: change => { for (const relay of relays.values()) relay.hear(change); }})
+    : null;
 
   const sessionOfConversation = id => [...live.values()].find(session => session.conversationId === id);
   const hand = name => (conversationId, args) => {
@@ -212,6 +223,12 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
       // No ceremony: a session starts with the goal of its board task, or of its branch, instead of asking.
       const goal = !session.state.goal && goalFromContext(session.state);
       if (goal) session.setGoal(goal.text, goal.from);
+      if (agents) {
+        const send = message => notify(session, 'editors', message) + notify(session, 'chat', message);
+        const breakpoint = () => session.breakpoints.last(session.state, Date.now());
+        const wait = () => session.typing() || session.busy || session.role === 'driver';
+        relays.set(root, new AgentRelay({root, send, breakpoint, wait}));
+      }
       return session;
     })();
     sessions.set(root, loading);
@@ -278,6 +295,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     watches.delete(session.root);
     sessions.delete(session.root);
     live.delete(session.root);
+    relays.delete(session.root);
     for (const client of clients) {
       if (client.session !== session) continue;
       sendMessage(client.socket, {type: 'ended', why});
@@ -298,6 +316,9 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     // A Neovim that connects (or reconnects) after a test run shows its result too.
     if (client.role === 'editor' && session.testsShown) sendMessage(client.socket, session.testsShown);
     if (client.role === 'editor' && session.runShown) sendMessage(client.socket, session.runShown);
+    if (message.herdr?.socket) agents?.useHerdr(message.herdr.socket);
+    const relayed = relays.get(session.root)?.last;
+    if (client.role === 'editor' && relayed) sendMessage(client.socket, relayed);
     if (client.role !== 'chat') return;
     watchHerdr(session, message.herdr);
     // A chat pane that reconnects after a daemon restart already shows the history.
@@ -325,6 +346,32 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
         herdr: watches.has(session.root),
       })),
     };
+  }
+
+  /** Every task and agent but this session's own task, the most urgent first, for `:Pair agents` and `/agents`. */
+  function agentList(session) {
+    const project = basename(session.root);
+    const items = (agents?.list() ?? [])
+      .filter(item => item.where !== session.root)
+      .sort((a, b) => STATUSES.indexOf(a.status) - STATUSES.indexOf(b.status))
+      .map(item => ({...item, name: itemName(item, project)}));
+    return {type: 'agent_list', items, off: !agents};
+  }
+
+  /**
+   * Focuses the agent's pane in herdr. Either way the relayed line about it is answered: the key also puts away a
+   * line whose agent has no pane any more (a finished task's).
+   */
+  async function goToAgent(client, session, key) {
+    const relay = relays.get(session.root);
+    const shown = relay?.shown?.key === key;
+    try {
+      const went = await agents?.focus(key);
+      if (!went && !shown) sendMessage(client.socket, {type: 'message', sender: 'system', text: 'Cannot go there: its agent has no pane open now.', at: Date.now()});
+    } catch (error) {
+      sendMessage(client.socket, {type: 'message', sender: 'system', text: `Cannot go there: ${error.message}.`, at: Date.now()});
+    }
+    if (shown) relay.clear();
   }
 
   /** A command the shell hook saw end, with its exit code. Ignored when its project has no session. */
@@ -368,6 +415,8 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     if (message.type === 'end') return endSession(session);
     if (message.type === 'listen') return listen(client, session, message);
     if (message.type === 'focus') return listenerOf(session)?.focus(message.on === true);
+    if (message.type === 'agents') return sendMessage(client.socket, agentList(session));
+    if (message.type === 'agent_go') return goToAgent(client, session, message.key);
     if (message.type === 'context') return sendCard(client, session);
     if (message.type === 'hide' && SOURCES.includes(message.source)) {
       session.receive({kind: 'hide', source: message.source, hidden: message.hidden !== false});
@@ -431,16 +480,19 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
       session.tick().catch(error => log(`tick failed: ${error.stack ?? error}`));
       refreshContext(session, CONTEXT_EVERY_MS);
     }
+    for (const relay of relays.values()) relay.tick();
     keepWarm();
   }, TICK_MS);
 
   health.start();
+  agents?.start();
   log(`pair daemon ${VERSION} listening on ${config.socket}`);
 
   return {
     async close() {
       clearInterval(ticker);
       health.stop();
+      agents?.stop();
       for (const watch of watches.values()) watch.stop();
       for (const listener of listeners.values()) listener.close();
       for (const client of clients) client.socket.destroy();

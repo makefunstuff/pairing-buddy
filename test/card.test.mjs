@@ -32,7 +32,7 @@ test(':Pair context shows the goal and every source, where you have been, and x 
   execFileSync('git', ['-c', 'user.name=dev', '-c', 'user.email=dev@example.com', 'commit', '-q', '--allow-empty', '-m', 'start'], {cwd: project});
   const dataDir = mkdtempSync(join(tmpdir(), 'pair-data-'));
   const config = parseConfig({
-    dataDir, socket: join(dataDir, 'pair.sock'), board: null,
+    dataDir, socket: join(dataDir, 'pair.sock'), board: null, agents: false,
     models: {watcher: {api: 'openai', baseUrl: 'http://unused', model: 'w'}, partner: {api: 'openai', baseUrl: 'http://unused', model: 'p'}},
   });
   const watcher = fauxProvider({provider: 'faux-watcher'});
