@@ -31,7 +31,8 @@ async function fakeServer({model, delayMs = 0, thinks = false}) {
 async function run(options) {
   const checks = [];
   for await (const check of doctor(options)) checks.push(check);
-  return Object.fromEntries(checks.map(check => [check.name, check]));
+  // The last check of each name, and every line of the thinking check, which can say more than one thing.
+  return {...Object.fromEntries(checks.map(check => [check.name, check])), thinking: checks.filter(check => check.name === 'thinking')};
 }
 
 const installed = async () => ({installed: true, enabled: true, active: true, node: process.execPath});
@@ -42,7 +43,8 @@ test('all well: each check says ok, and a slow Watcher gets advice', {timeout: 2
   const dir = mkdtempSync(join(tmpdir(), 'pair-doctor-'));
   const path = join(dir, 'config.json');
   const entry = (url, model) => ({api: 'openai', baseUrl: url, model});
-  writeFileSync(path, JSON.stringify({dataDir: dir, socket: join(dir, 'pair.sock'), models: {watcher: entry(slow.url, 'big'), partner: entry(fast.url, 'small')}}));
+  const partner = {...entry(fast.url, 'small'), compat: {supportsReasoningEffort: true}}; // each level reaches it
+  writeFileSync(path, JSON.stringify({dataDir: dir, socket: join(dir, 'pair.sock'), models: {watcher: entry(slow.url, 'big'), partner}}));
   const config = loadConfig(path);
   const faux = fauxProvider();
   const models = createModels();
@@ -63,8 +65,9 @@ test('all well: each check says ok, and a slow Watcher gets advice', {timeout: 2
     assert.match(checks.partner.text, /^small at http:\/\/127\.0\.0\.1:\d+\/v1 answers in \d\.\d s$/);
     assert.equal(checks.watcher.level, 'warn');
     assert.match(checks.watcher.text, /takes \d+\.\d s: the Watcher scores every candidate remark and should take about 1 s/);
-    assert.equal(checks.thinking.level, 'ok');
-    assert.match(checks.thinking.text, /^the Partner thinks \(up to "medium"\), \d\.\d s for a short sum$/);
+    assert.equal(checks.thinking.length, 1);
+    assert.equal(checks.thinking[0].level, 'ok');
+    assert.match(checks.thinking[0].text, /^the Partner thinks \(up to "medium"\), \d\.\d s for a short sum$/);
   } finally {
     editor.destroy();
     await daemon.close();
@@ -97,23 +100,34 @@ test('broken: no daemon, a dead endpoint and a model the server does not serve, 
   }
 });
 
-test('thinking: a Watcher that thinks anyway and a Partner that shows no thinking each get the fix', {timeout: 20_000}, async () => {
+test('thinking: a model that thinks anyway, one that does not, and levels the server cannot tell apart each get the fix', {timeout: 30_000}, async () => {
   const thinker = await fakeServer({model: 'thinker', thinks: true});
   const plain = await fakeServer({model: 'plain'});
   const dir = mkdtempSync(join(tmpdir(), 'pair-doctor-'));
   const path = join(dir, 'config.json');
-  const config = partner => JSON.stringify({socket: join(dir, 'pair.sock'), models: {watcher: {api: 'openai', baseUrl: thinker.url, model: 'thinker'}, partner}});
+  /** The thinking lines for a Partner `entry` (the Watcher thinks anyway), and the Watcher's last line. */
+  const doctorFor = async entry => {
+    const server = entry.model === 'thinker' ? thinker : plain;
+    writeFileSync(path, JSON.stringify({socket: join(dir, 'pair.sock'), models: {watcher: {api: 'openai', baseUrl: thinker.url, model: 'thinker'}, partner: {api: 'openai', baseUrl: server.url, ...entry}}}));
+    const checks = await run({path, env: {PATH: ''}, service: installed, nvimPlugin: async () => 'yes'});
+    return {watcher: checks.watcher, thinking: checks.thinking.map(({level, text}) => [level, text])};
+  };
   try {
-    writeFileSync(path, config({api: 'openai', baseUrl: plain.url, model: 'plain'}));
-    let checks = await run({path, env: {PATH: ''}, service: installed, nvimPlugin: async () => 'yes'});
-    assert.equal(checks.watcher.level, 'warn');
-    assert.match(checks.watcher.text, /thinks although the Watcher's thinking is off/);
-    assert.equal(checks.thinking.level, 'warn');
-    assert.match(checks.thinking.text, /^plain answered with no thinking at "medium": if it can think, set its server's thinking switch/);
+    const plainDefault = await doctorFor({model: 'plain'});
+    assert.equal(plainDefault.watcher.level, 'warn');
+    assert.match(plainDefault.watcher.text, /thinks although the Watcher's thinking is off/);
+    assert.equal(plainDefault.thinking.length, 1);
+    assert.match(plainDefault.thinking[0][1], /^plain answered with no thinking at "medium": if it can think, set its server's thinking switch/);
 
-    writeFileSync(path, config({api: 'openai', baseUrl: plain.url, model: 'plain', thinking: 'off'}));
-    checks = await run({path, env: {PATH: ''}, service: installed, nvimPlugin: async () => 'yes'});
-    assert.deepEqual(checks.thinking, {level: 'ok', name: 'thinking', text: 'off for every kind of turn, as configured'});
+    const [thinks, same] = (await doctorFor({model: 'thinker'})).thinking;
+    assert.equal(thinks[0], 'ok');
+    assert.deepEqual(same, ['warn', '"medium", "low" send thinker the same request, so thinking is only on or off: if its server takes a level, '
+      + 'set "compat": {"supportsReasoningEffort": true} (it is then sent as reasoning_effort) or {"thinkingTokenBudgetField": "<the server\'s field>"} (a token budget)']);
+
+    assert.deepEqual((await doctorFor({model: 'plain', thinking: 'off'})).thinking, [['ok', 'off for every kind of turn, as configured']]);
+    assert.match((await doctorFor({model: 'thinker', thinking: 'off'})).thinking[0][1], /^thinker thinks although "thinking" is off/);
+    assert.match((await doctorFor({model: 'thinker', reasoning: false})).thinking[0][1], /^"reasoning" is false: thinker thinks as it always does/);
+    assert.match((await doctorFor({model: 'plain', reasoning: false})).thinking[0][1], /^"reasoning" is false and plain answered without thinking/);
   } finally {
     thinker.close();
     plain.close();

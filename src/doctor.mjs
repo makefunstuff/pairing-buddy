@@ -7,7 +7,7 @@ import {configPath, loadConfig, mostThinking} from './config.mjs';
 import {herdrRequest} from './herdr.mjs';
 import {listModels} from './loaded-model.mjs';
 import {createPairModels} from './models.mjs';
-import {probeModel, probeThinking} from './probe.mjs';
+import {levelGroups, probeModel, probeThinking} from './probe.mjs';
 import {requestDaemon} from './protocol.mjs';
 import {serviceState, UNIT} from './service.mjs';
 import {VERSION} from './version.mjs';
@@ -151,22 +151,47 @@ async function* modelChecks(config, status) {
     for (const seen of shared ? ['watcher', 'partner'] : [role]) {
       if (status?.models?.[seen]) yield warn(name, `the daemon still has the ${seen} as down (${status.models[seen]}); it checks again within 30 s`);
     }
-    if (role === 'partner' || shared) yield await thinkingCheck(pairModels, partner);
+    if (role === 'partner' || shared) yield* thinkingChecks(pairModels, partner);
   }
 }
 
-/** Whether the Partner thinks as configured: a model that cannot think, or whose switch Pair does not know, says so. */
-async function thinkingCheck(pairModels, entry) {
+/**
+ * Whether the Partner thinks as configured: a model that thinks whatever it is told, one that cannot think, one whose
+ * switch Pair does not know, and levels the server cannot tell apart each say so.
+ */
+async function* thinkingChecks(pairModels, entry) {
+  const {models, partner: model} = pairModels;
+  const levels = [...new Set(Object.values(entry.thinking))].filter(level => level !== 'off');
+  if (!entry.reasoning || !levels.length) {
+    const probe = await probeModel(models, model);
+    if (!probe.ok) return; // the models check said why
+    if (!entry.reasoning) {
+      yield probe.thought
+        ? ok('thinking', `"reasoning" is false: ${entry.model} thinks as it always does, at its own level`)
+        : warn('thinking', `"reasoning" is false and ${entry.model} answered without thinking: the Partner does not think. If the model can, remove "reasoning": false`);
+    } else {
+      yield probe.thought
+        ? warn('thinking', `${entry.model} thinks although "thinking" is off: set its server's thinking switch ("compat": {"thinkingFormat": ...}), or let it think`)
+        : ok('thinking', 'off for every kind of turn, as configured');
+    }
+    return;
+  }
   const level = mostThinking(entry.thinking);
-  if (level === 'off') return ok('thinking', 'off for every kind of turn, as configured');
-  if (!entry.reasoning) return ok('thinking', `"reasoning" is false: the Partner thinks as its model always does`);
-  const probe = await probeThinking(pairModels.models, pairModels.partner, level);
+  const probe = await probeThinking(models, model, level);
   if (!probe.ok) {
-    return fail('thinking', `${entry.model} fails when asked to think (${probe.error}): for a model that cannot think, set "reasoning": false`);
+    yield fail('thinking', `${entry.model} fails when asked to think (${probe.error}): for a model that cannot think, set "reasoning": false`);
+    return;
   }
   if (!probe.thought) {
-    return warn('thinking', `${entry.model} answered with no thinking at "${level}": if it can think, set its server's thinking switch `
+    yield warn('thinking', `${entry.model} answered with no thinking at "${level}": if it can think, set its server's thinking switch `
       + '("compat": {"thinkingFormat": ...}); if it cannot, set "reasoning": false');
+    return;
   }
-  return ok('thinking', `the Partner thinks (up to "${level}"), ${seconds(probe.ms)} for a short sum`);
+  yield ok('thinking', `the Partner thinks (up to "${level}"), ${seconds(probe.ms)} for a short sum`);
+  const same = (await levelGroups(models, model, levels)).find(group => group.length > 1);
+  if (same) {
+    yield warn('thinking', `${same.map(name => `"${name}"`).join(', ')} send ${entry.model} the same request, so thinking is only on or off: `
+      + 'if its server takes a level, set "compat": {"supportsReasoningEffort": true} (it is then sent as reasoning_effort) '
+      + 'or {"thinkingTokenBudgetField": "<the server\'s field>"} (a token budget)');
+  }
 }

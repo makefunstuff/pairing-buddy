@@ -77,7 +77,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
   const hand = name => (conversationId, args) => {
     const session = sessionOfConversation(conversationId);
     if (!session) throw new Error('This pairing session has ended');
-    return session[name](args);
+    return session.useTool(name, args);
   };
   const partner = await openPartner({
     storage: join(config.dataDir, 'partner.sqlite'),

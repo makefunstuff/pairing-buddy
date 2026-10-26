@@ -100,18 +100,28 @@ the default. Off, the wrong turn and the regression checks trace the code badly 
   the answer and Pair says nothing.
 - **Time for it.** While the Partner thinks, the model may take up to four minutes to start its reply instead of 90
   seconds, for servers that send nothing until the thinking is done.
+- **Levels, or only on and off.** With the `anthropic` API each level is a thinking budget of its own. An
+  OpenAI-compatible server gets a level only if it says it takes one: `"compat": {"supportsReasoningEffort": true}`
+  sends it as `reasoning_effort` (OpenAI's API and many cloud servers take it), and
+  `"compat": {"thinkingTokenBudgetField": "<field>"}` sends the level's token budget in the field the server names.
+  Pair leaves both off for an OpenAI-compatible server, since most local servers reject or ignore them. Then
+  `compat.thinkingFormat` (the thinking switch of the model's chat template; see pi-ai's "OpenAI Compatibility
+  Settings") only switches thinking on or off, and `low`, `medium` and `high` are the same request.
 - **Models that cannot switch it.** With `"reasoning": false` Pair sends no thinking level, and the model thinks as
-  it always does. On an OpenAI-compatible server a model whose chat template has a thinking switch needs
-  `compat.thinkingFormat` (for example `"qwen-chat-template"`); without it Pair cannot set the level.
-  `pair doctor` asks the Partner a short sum with thinking on and says when it answered without thinking, or failed
-  because the model cannot think.
+  it always does. A model with a thinking switch in its chat template needs `compat.thinkingFormat`, or Pair cannot
+  switch it at all.
+- **`pair doctor` checks it.** It asks the Partner a short sum with thinking on and says whether it failed (the model
+  cannot think) or answered without thinking. It also says whether your levels send the model different requests,
+  or only switch thinking on. With thinking off, or `"reasoning": false`, it says whether the model thinks anyway.
 - **What it bought.** Against a fast cloud model, three runs each of the live suite and the scripted session, with
   thinking off and then with these defaults: real drift was named in 0 of 3 runs without thinking and 3 of 3 with it;
   the regression's fix landed in the right file 2 of 3 times without and 3 of 3 with; the whole suite went from 92 to
   95 passes of 96. Answers to questions took about 1 to 4 s longer, remarks about the same, and the Watcher's
   median stayed under a second (789 ms before, 839 ms after, both within the run-to-run noise).
-- **What you see.** While a turn that thinks runs, the Neovim statusline spins `⠹ pair · thinking` (or
-  `◎ pair has the wheel · thinking` as Driver), and goes back to rest with the answer, or silence.
+- **What you see.** While the model of a turn that thinks is at work, the Neovim statusline spins
+  `⠹ pair · thinking` (or `◎ pair has the wheel · thinking` as Driver). While one of its tools runs, the statusline
+  shows that instead: what it reads, or as Driver, `any key takes it back` while it types. It goes back to rest with
+  the answer, or silence.
 
 ## Measuring it
 

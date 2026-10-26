@@ -28,7 +28,7 @@
       "model": "your-small-model",
       "contextWindow": 32768
       // "reasoning": true,                 // for a model that thinks by default, so Pair can switch it off
-      // "compat": {"thinkingFormat": "qwen-chat-template"},  // the thinking switch of its chat template, if it has one
+      // "compat": {"thinkingFormat": "..."},  // the thinking switch of its chat template, if it has one (see the README)
       // "apiKeyEnv": "MY_SERVER_KEY"       // or "apiKey", or "apiKeyFile": "~/.config/my-server.key"
     },
 
@@ -42,7 +42,9 @@
       // Levels: off, minimal, low, medium, high, xhigh. A remark comes a few seconds later; that is fine.
       // "thinking": {"navigator": "medium", "scout": "medium", "driver": "medium", "remark": "low"},
       // "reasoning": false,                // for a model that cannot think: Pair then sends it no thinking level
-      // "compat": {"thinkingFormat": "qwen-chat-template"},  // the thinking switch of its chat template, if it has one
+      // Its chat template's thinking switch, and a server that takes the level as reasoning_effort (without that,
+      // every level is just "on"; `pair doctor` says which it is):
+      // "compat": {"thinkingFormat": "...", "supportsReasoningEffort": true},
       // "samplingParams": {"temperature": 0.3}   // steadier answers when the server's default is high
       // A cloud Partner instead:
       // "api": "anthropic", "model": "your-cloud-model", "apiKeyEnv": "ANTHROPIC_API_KEY"

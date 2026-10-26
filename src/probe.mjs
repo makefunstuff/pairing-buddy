@@ -28,3 +28,25 @@ export function probeThinking(models, model, level, {timeoutMs = 60_000} = {}) {
     {reasoning: level, maxTokens: 4096, signal: AbortSignal.timeout(timeoutMs)},
   );
 }
+
+/** The request body pi-ai builds for `model` with thinking at `level`, caught before it is sent. */
+async function requestAt(models, model, level) {
+  let body = null;
+  const fetch = async (_url, init) => { body = init.body; throw new Error('not sent'); };
+  await models.completeSimple(model, {messages: [{role: 'user', content: 'x', timestamp: 0}]}, {reasoning: level, fetch, maxRetries: 0})
+    .catch(() => {});
+  return body;
+}
+
+/**
+ * Which of `levels` reach the model as a level of their own: the levels in groups that send the same request, one
+ * group per request. A server whose thinking switch is only on or off puts every level in one group.
+ */
+export async function levelGroups(models, model, levels) {
+  const groups = new Map(); // request body -> its levels
+  for (const level of levels) {
+    const body = await requestAt(models, model, level);
+    groups.set(body, [...(groups.get(body) ?? []), level]);
+  }
+  return [...groups.values()];
+}

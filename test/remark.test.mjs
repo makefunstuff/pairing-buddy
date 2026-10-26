@@ -91,3 +91,15 @@ test('a question about selected lines gives the Partner those lines, as the edit
   assert.ok(sent.some(message => message.type === 'message' && message.text === 'what does this do? (backoff.go:3-5)'));
   assert.ok(sent.some(message => message.text === 'It doubles each time.'));
 });
+
+test('the statusline says Pair thinks while its model works, not while one of its tools runs', async () => {
+  const {pair, clock, sent} = pairSession([async pair => {
+    await pair.useTool('read', {file: 'backoff.go'});
+    return 'SILENT';
+  }]);
+  pair.receive({kind: 'command_end', cmd: 'npm test', exit: 1, output: 'Error: boom', at: clock.now - 10_000});
+  pair.receive({kind: 'command_end', cmd: 'npm test', exit: 1, output: 'Error: boom', at: clock.now - 5000});
+  await pair.tick();
+  const shown = sent.filter(message => message.type === 'thinking' || message.type === 'look').map(message => message.type === 'look' ? 'look' : message.on);
+  assert.deepEqual(shown, [true, false, 'look', true, false]);
+});

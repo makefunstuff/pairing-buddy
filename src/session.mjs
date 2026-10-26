@@ -154,6 +154,7 @@ export class PairSession {
     this.fired = new Set();
     this.deferred = new Set(); // keys of lasting triggers the budget holds back
     this.busy = false; // a Partner turn is running
+    this.thinks = false; // that turn thinks
     this.ticking = false;
     this.spoke = false; // anything reached the user this turn
     this.said = false; // the say tool was used this turn
@@ -348,8 +349,9 @@ export class PairSession {
   }
 
   /**
-   * Runs one Partner turn (`options` as for the Partner's ask); true when anything reached the user. While a turn
-   * that thinks runs, the statusline says so: thinking takes seconds, and the user should not take it for silence.
+   * Runs one Partner turn (`options` as for the Partner's ask); true when anything reached the user. While the model
+   * of a turn that thinks is at work, the statusline says so: thinking takes seconds, and the user should not take
+   * it for silence. While one of its tools runs (it types an edit, reads, runs a command) it says what that does.
    */
   async talk(input, options = {}) {
     this.busy = true;
@@ -358,8 +360,8 @@ export class PairSession {
     this.paneUses = 0;
     this.words = [];
     this.target = null;
-    const thinking = this.partner.thinkingOf(this.conversationId, options.kind) !== 'off';
-    if (thinking) this.notify('editors', {type: 'thinking', on: true});
+    this.thinks = this.partner.thinkingOf(this.conversationId, options.kind) !== 'off';
+    this.showThinking(true);
     try {
       const answer = await this.partner.ask(this.conversationId, input, options);
       // After a say, local models tend to end with filler or a repeat; the say already was the answer.
@@ -374,9 +376,25 @@ export class PairSession {
       else this.message('system', `Pair could not answer: ${error.message}`);
     } finally {
       this.busy = false;
-      if (thinking) this.notify('editors', {type: 'thinking', on: false});
+      this.showThinking(false);
+      this.thinks = false;
     }
     return this.spoke;
+  }
+
+  /** Tells the editors whether the Partner's model is thinking now, in a turn that thinks. */
+  showThinking(on) {
+    if (this.thinks) this.notify('editors', {type: 'thinking', on});
+  }
+
+  /** Carries out one of the Partner's tools: the model waits for it meanwhile, and is not thinking. */
+  async useTool(name, args) {
+    this.showThinking(false);
+    try {
+      return await this[name](args);
+    } finally {
+      if (this.busy) this.showThinking(true);
+    }
   }
 
   setGoal(goal) {

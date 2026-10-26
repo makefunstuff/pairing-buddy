@@ -428,6 +428,30 @@ test('while the Partner thinks, the statusline says so, and lets it go with the 
   }
 });
 
+test('as Driver, the statusline says it thinks while its model works and keeps the take-back hint while it types', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
+  const {partner, messages, send, status, lines, stop} = await pairInNvim('make x two', {thinks: true});
+  const seen = [];
+  const sampler = setInterval(() => { try { const now = status(); if (seen.at(-1) !== now) seen.push(now); } catch {} }, 20);
+  try {
+    partner.setResponses([
+      async () => {
+        await until(() => status() === '◎ pair has the wheel · thinking', 'the Driver thinking');
+        return fauxAssistantMessage([fauxToolCall('edit', {file: 'a.js', line: 1, new_text: 'const x = 2'})], {stopReason: 'toolUse'});
+      },
+      fauxAssistantMessage([fauxText('Set x to 2.')]),
+    ]);
+    send({type: 'drive', text: 'your turn'});
+    await until(() => messages.some(message => message.text === 'Set x to 2.'), 'the answer');
+    await until(() => status() === '● pair', 'Pair to hand back');
+    assert.equal(lines()[0], 'const x = 2');
+    const hint = seen.indexOf('◎ pair has the wheel · any key takes it back');
+    assert.ok(hint > seen.indexOf('◎ pair has the wheel · thinking'), `the hint while it types, after the thinking: ${JSON.stringify(seen)}`);
+  } finally {
+    clearInterval(sampler);
+    await stop();
+  }
+});
+
 test('after a daemon restart the plugin reconnects by itself; a model that is down shows in the statusline', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
   const {partner, remote, status, restartDaemon, stop} = await pairInNvim('survive restarts');
   try {
