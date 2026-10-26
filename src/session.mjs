@@ -1,4 +1,5 @@
 // One pairing session: folds its events, decides when Pair speaks and carries out the Partner's tools.
+import {readFile} from 'node:fs/promises';
 import {isAbsolute, relative} from 'node:path';
 import {Budget} from './budget.mjs';
 import {commandPolicy} from './command-policy.mjs';
@@ -205,7 +206,8 @@ export class PairSession {
 
   /** Tells the chat about the new role, and stores it unless it is the Driver's. */
   announce(role) {
-    if (role !== 'driver') this.store.setRole(this.id, role); // the wheel is never handed over across a restart
+    // The wheel is never handed over across a restart: a drive ends in Navigator, so a restart during one does too.
+    this.store.setRole(this.id, role === 'driver' ? 'navigator' : role);
     this.notify('chat', {type: 'role', role});
     this.message('system', ROLE_NOTES[role]);
   }
@@ -315,6 +317,8 @@ export class PairSession {
     const path = await projectFile(this.root, file);
     if (!path) return `No file ${file} in the project`;
     if (endLine < line) return `end_line ${endLine} is before line ${line}`;
+    const count = (await this.bufferText(path)).split('\n').length;
+    if (line > count) return `Line ${line} is past the end of ${file}, which has ${count} lines. Read it first.`;
     this.spoke = true;
     this.show(() => {
       this.notify('editor', {type: 'suggest', file: path, line, endLine, text, note});
@@ -326,9 +330,13 @@ export class PairSession {
   async read({file, from, to}) {
     const source = await readProjectPath(this.root, file);
     if (source.error || source.listing !== undefined) return source.error ?? source.listing;
-    // The editor's buffer wins over the disk: it holds what the user sees, unsaved changes included.
-    const buffer = await this.requestEditor({type: 'read', file: await projectFile(this.root, file)}).catch(() => null);
-    return numberedLines(typeof buffer?.text === 'string' ? buffer.text : source.text, from, to);
+    return numberedLines(await this.bufferText(await projectFile(this.root, file), source.text), from, to);
+  }
+
+  /** The text of the file at `path` as the user sees it: the editor's buffer wins over the disk, unsaved changes included. */
+  async bufferText(path, onDisk) {
+    const buffer = await this.requestEditor({type: 'read', file: path}).catch(() => null);
+    return typeof buffer?.text === 'string' ? buffer.text : onDisk ?? (await readFile(path, 'utf8'));
   }
 
   // Scout's tools: they work only in Pair's own pane, where the user sees each command typed and run.

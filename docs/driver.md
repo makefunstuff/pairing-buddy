@@ -17,19 +17,19 @@ Neither saves anything. Your buffer changes, and the disk changes only when you 
 
 | You | What happens |
 | --- | --- |
-| Press the accept key (`<Tab>` by default) or `:Pair accept` | The lines are replaced, as your own change: one `u` undoes it |
+| Press the accept key (`Alt-y`, `<M-y>`, by default) or `:Pair accept` | The lines are replaced, as your own change: one `u` undoes it |
 | Edit those lines yourself | The suggestion goes away: you ignored it |
 | `:Pair dismiss` | The suggestion goes away |
 | Do nothing | It stays until one of the above, or until Pair suggests something else |
 
-The accept key is mapped in Normal mode, only in that buffer, and only while the suggestion shows (`accept_key` in `setup`; `false` maps nothing). If the lines changed under the suggestion when you accept, nothing is replaced and you are told so. Lines added above it move it along.
+The accept key is mapped in Normal mode, only in that buffer, and only while the suggestion shows (`accept_key` in `setup`; `false` maps nothing). Avoid `<Tab>`: terminals send it as Ctrl-I, so jumping forward in the jumplist would accept. A suggestion for a line past the end of the buffer is refused, and the model is told so. If the lines changed under the suggestion when you accept, nothing is replaced and you are told so. Lines added above it move it along.
 
 ## Handing over
 
 | From | How |
 | --- | --- |
 | Neovim | `:Pair drive` or `:Pair drive <what to do>` |
-| The chat | `/drive` or `/drive <what to do>`, or a line that starts with "you take it" or "your turn" (`you take it: set the timeout to 30 s`) |
+| The chat | `/drive` or `/drive <what to do>`, or a line that is "you take it" or "your turn", alone or followed by punctuation and a request (`you take it: set the timeout to 30 s`); "your turn to explain ..." stays a question |
 
 Then:
 
@@ -43,7 +43,7 @@ A hand-over needs Neovim connected (`:Pair start`), and is refused while Pair is
 
 ## Taking the wheel back
 
-Any key you press in Neovim while Pair has the wheel takes it back:
+Any key you press in Neovim while Pair has the wheel takes it back (scrolling, clicking and the terminal's focus reports are not keys, so you can scroll to watch):
 
 - The plugin refuses edits from that key on, before the daemon has even heard of it.
 - The daemon switches Pair back to Navigator: from then on the policy hook refuses `edit` and `type`, telling the model the user has the wheel, so it can suggest the change instead. The conversation is offered Navigator's tools from its next answer on (tools that vanish in the middle of an answer make some local models write the call as plain text).
@@ -80,4 +80,4 @@ As Driver Pair also has `search` and `run` in its own pane (the same command pol
 | `edit` | no | no | once per hand-over |
 | `type` | no | no | after a yes, without Enter |
 
-Each conversation is offered only its role's tools, and the `beforeTool` hook refuses any other name (`src/tools.mjs`). The session checks again that Pair still has the wheel when the edit or the typing happens (`src/session.mjs`), and the Neovim plugin refuses an edit once you have pressed a key (`lua/pair/init.lua`). The Driver role is never stored: after a daemon restart Pair is Navigator or Scout, as before the hand-over.
+Each conversation is offered only its role's tools, and the `beforeTool` hook refuses any other name (`src/tools.mjs`). The session checks again that Pair still has the wheel when the edit or the typing happens (`src/session.mjs`), and the Neovim plugin refuses an edit once you have pressed a key (`lua/pair/init.lua`). The Driver role is never stored: a hand-over is stored as Navigator, which is where every drive ends, so a daemon restart during one also brings back Navigator.

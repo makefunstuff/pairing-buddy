@@ -139,11 +139,14 @@ test('suggestions show as a ghost diff that one key accepts; handing over gives 
     await answered('Try 20.');
     await until(() => ghosts() === 2, 'the ghost diff');
     assert.deepEqual(lines(), ['const x = 1', 'const y = 2', 'const z = 3']);
-    keys('<Tab>');
+    keys('ggG<C-o><C-i>'); // the jumplist's Ctrl-I is <Tab> to a terminal: it must not accept
+    await sleep(200);
+    assert.deepEqual(lines(), ['const x = 1', 'const y = 2', 'const z = 3']);
+    keys('<M-y>');
     await until(() => lines()[1] === 'const y = 20', 'the accepted suggestion');
     assert.equal(ghosts(), 0);
 
-    // Editing the suggested lines yourself ignores the suggestion; the accept key then does nothing.
+    // Editing the suggested lines yourself ignores the suggestion; accepting then does nothing.
     partner.setResponses([
       fauxAssistantMessage([fauxToolCall('suggest', {file: 'a.js', line: 3, new_text: 'const z = 30', note: 'thirty'})], {stopReason: 'toolUse'}),
       fauxAssistantMessage([fauxText('Try 30.')]),
@@ -153,7 +156,7 @@ test('suggestions show as a ghost diff that one key accepts; handing over gives 
     await until(() => ghosts() === 2, 'the second ghost diff');
     keys('3Gccconst z = 4<Esc>');
     await until(() => ghosts() === 0, 'the ignored suggestion to go');
-    keys('<Tab>');
+    keys(':Pair accept<CR>');
     await sleep(200);
     assert.deepEqual(lines(), ['const x = 1', 'const y = 20', 'const z = 4']);
 
@@ -177,11 +180,14 @@ test('suggestions show as a ghost diff that one key accepts; handing over gives 
     await until(() => lines()[0] === 'const x = 1', 'one undo to remove Pair\'s edit');
     assert.deepEqual(lines(), ['const x = 1', 'const y = 20', 'const z = 4'], 'and only Pair\'s edit');
 
-    // A key pressed while Pair has the wheel takes it back before the edit lands.
+    // Scrolling to watch Pair drive keeps the wheel with Pair; a key pressed takes it back before the edit lands.
     let refused;
     partner.setResponses([
       async () => {
         await until(() => status() === 'Pair: driver · normal', 'the statusline to show the Driver');
+        keys('<ScrollWheelDown><ScrollWheelUp>');
+        await sleep(300);
+        assert.equal(status(), 'Pair: driver · normal', 'a scroll is not a key');
         keys('j');
         await until(() => messages.some(message => message.text === 'You have the wheel back.'), 'the take-back');
         return fauxAssistantMessage([fauxToolCall('edit', {file: 'a.js', line: 1, new_text: 'const x = 7'})], {stopReason: 'toolUse'});

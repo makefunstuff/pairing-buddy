@@ -5,7 +5,8 @@ local M = {}
 
 local ns = vim.api.nvim_create_namespace('pair')
 local suggest_ns = vim.api.nvim_create_namespace('pair_suggest')
-local config = {socket = nil, debounce_ms = 2000, max_points = 5, accept_key = '<Tab>'}
+-- Alt-y: no built-in meaning in Normal mode. <Tab> would be the same byte as Ctrl-I, the jumplist's forward jump.
+local config = {socket = nil, debounce_ms = 2000, max_points = 5, accept_key = '<M-y>'}
 local state = {
   channel = nil, partial = '', attached = {}, pending = {}, points = {}, open_request = nil, level = nil, role = nil,
   suggestion = nil, -- the change Pair suggested: {buf, mark, old, new}
@@ -92,7 +93,9 @@ local function suggest(message)
   local buf = vim.fn.bufadd(message.file)
   vim.fn.bufload(buf)
   local count = vim.api.nvim_buf_line_count(buf)
-  local first = math.min(message.line, count) - 1
+  -- The daemon checked the line against the buffer; it may have shrunk since. A wrong line marks nothing.
+  if message.line > count then return vim.notify('Pair: its suggestion is past the end of the buffer, so it was dropped') end
+  local first = message.line - 1
   local last = math.max(first, math.min(message.endLine or message.line, count) - 1)
   local old = vim.api.nvim_buf_get_lines(buf, first, last + 1, false)
   local new = text_lines(message.text)
@@ -234,9 +237,15 @@ end
 
 -- Driving: while Pair has the wheel, any key you press takes it back, here at once and then in the daemon.
 
+-- Scrolling or clicking to watch Pair drive, and the terminal's focus reports, are not keys.
+local function pressed(key)
+  local name = vim.fn.keytrans(key)
+  return not (name:find('Mouse') or name:find('ScrollWheel') or name:find('Drag') or name:find('Release') or name:find('Focus'))
+end
+
 local function watch_keys(on)
-  vim.on_key(on and function()
-    if state.role ~= 'driver' then return end -- a burst of keys takes the wheel back once
+  vim.on_key(on and function(key)
+    if state.role ~= 'driver' or not pressed(key) then return end -- a burst of keys takes the wheel back once
     state.role = 'navigator' -- edits on their way are refused from this key on
     vim.schedule(function()
       vim.on_key(nil, ns)

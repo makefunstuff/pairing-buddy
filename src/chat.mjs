@@ -15,8 +15,9 @@ const HELP = `/goal <text>   set the session goal
 /quit          close this pane (the session goes on)
 anything else  ask Pair`;
 
-// Saying one of these hands Pair the wheel, the way you would to a person next to you.
-const HAND_OVER = /^(you take it|your turn)\b/i;
+// Saying one of these hands Pair the wheel, the way you would to a person next to you: alone, or followed by
+// a request after punctuation ("you take it: set the timeout"). "your turn to explain: ..." stays a question.
+const HAND_OVER = /^(you take it|your turn)\s*([.!,:;-]|$)/i;
 
 /** The parsed form of one typed line: a daemon message, or a local action. */
 export function parseInput(line) {

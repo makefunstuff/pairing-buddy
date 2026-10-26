@@ -18,6 +18,10 @@ test('/drive, "you take it" and "your turn" hand Pair the wheel; the words go al
   assert.deepEqual(parseInput('your turn'), {type: 'drive', text: 'your turn'});
   assert.deepEqual(parseInput('can you take it from here?'), {type: 'ask', text: 'can you take it from here?'});
   assert.deepEqual(parseInput('your turnout logic is off'), {type: 'ask', text: 'your turnout logic is off'});
+  assert.deepEqual(parseInput('Your turn.'), {type: 'drive', text: 'Your turn.'});
+  assert.deepEqual(parseInput('you take it, rename the flag'), {type: 'drive', text: 'you take it, rename the flag'});
+  assert.deepEqual(parseInput('your turn to explain: why does this fail?'), {type: 'ask', text: 'your turn to explain: why does this fail?'});
+  assert.deepEqual(parseInput('you take it from here or should I?'), {type: 'ask', text: 'you take it from here or should I?'});
 });
 
 test('only y or yes allows a command', () => {

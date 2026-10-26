@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
 import {test} from 'node:test';
 import {PairSession} from '../src/session.mjs';
 
@@ -283,7 +284,7 @@ test('handing over makes Pair the Driver for one answer with one edit, which goe
   assert.equal(roleAfterEdit, 'driver', 'the wheel stays until the answer ends, so tools do not vanish mid-answer');
   assert.deepEqual(roleChanges(), ['driver', 'navigator']);
   assert.equal(pair.role, 'navigator');
-  assert.deepEqual(roles, ['navigator'], 'the Driver role is never stored');
+  assert.deepEqual(roles, ['navigator', 'navigator'], 'a drive is stored as Navigator, where it ends, so a restart during one does too');
 });
 
 test('an edit the editor refuses does not use up the one edit, and two at once cannot both pass', async () => {
@@ -370,6 +371,9 @@ test('a suggestion goes to the editor as an inline diff, in any role', async () 
   assert.ok(shown.file.endsWith('package.json'));
   assert.ok(sent.some(message => message.text === 'package.json:2-3 suggestion: rename\na\nb'));
   assert.match(await pair.suggest({file: 'package.json', line: 3, endLine: 2, text: '', note: 'x'}), /before line/);
+  const count = (await readFile('package.json', 'utf8')).split('\n').length;
+  assert.match(await pair.suggest({file: 'package.json', line: count + 1, endLine: count + 1, text: 'x', note: 'x'}), /past the end of package\.json/);
+  assert.equal(sent.filter(message => message.type === 'suggest').length, 1, 'a line past the end is not shown');
 });
 
 test('the Driver types into the user\'s terminal only after a yes, never Enter, and never what the policy refuses', async () => {

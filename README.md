@@ -48,13 +48,13 @@ Pair has one role at a time. It shows in the chat pane's prompt and in Neovim's 
 
 Switching to Scout opens Pair's pane below the chat pane; switching back closes it. The role is kept with the session, also across a daemon restart; the Driver role is not, since it lasts one answer.
 
-In every role Pair can **suggest** a change: the old lines are marked in your buffer and the new ones appear below them as ghost text, with a note. `<Tab>` (or `:Pair accept`) applies it as your own change; editing those lines yourself, `:Pair dismiss`, or the next suggestion drops it. Nothing changes until you accept.
+In every role Pair can **suggest** a change: the old lines are marked in your buffer and the new ones appear below them as ghost text, with a note. `Alt-y` (`<M-y>`, or `:Pair accept`) applies it as your own change; editing those lines yourself, `:Pair dismiss`, or the next suggestion drops it. Nothing changes until you accept.
 
-**Driving** ([details](docs/driver.md)): hand over with `:Pair drive [what to do]` in Neovim, `/drive [what to do]` in the chat, or a chat line that starts with "you take it" or "your turn". Pair becomes the Driver for that one answer:
+**Driving** ([details](docs/driver.md)): hand over with `:Pair drive [what to do]` in Neovim, `/drive [what to do]` in the chat, or a chat line that is "you take it" or "your turn", alone or followed by punctuation and a request (`you take it: set the timeout to 30 s`; "your turn to explain ..." stays a question). Pair becomes the Driver for that one answer:
 
 - It reads the code and makes one `edit`: the lines change in your buffer as one undo step, so `u` takes it back. The buffer is not saved; the disk changes when you `:w`.
 - It gets one edit per hand-over, says what it changed, and then is Navigator again by itself, also when it answered without an edit. You save and run the tests.
-- Any key you press in Neovim while Pair has the wheel takes it back at once: an edit still on its way is refused.
+- Any key you press in Neovim while Pair has the wheel takes it back at once: an edit still on its way is refused. Scrolling or clicking to watch it does not.
 - It may `type` one command line into your terminal pane (the one you last used), after you allow it in the chat. It never presses Enter, and never types what Scout's policy refuses (`git commit`, `git push`, ...).
 - Ping-pong TDD: write a failing test, say "your turn", and Pair changes the code (not the test) to make it pass, then hands back. Run the tests, write the next one.
 
@@ -140,7 +140,7 @@ With lazy.nvim:
 
 Or without a plugin manager: `vim.opt.rtp:append('/path/to/pairing-buddy')` and `require('pair').setup({})` in your config.
 
-Options for `setup`: `socket` (default: the daemon's default socket), `debounce_ms` (2000), `max_points` (highlights kept at once, 5), `accept_key` (accepts a suggestion; mapped in Normal mode, only in the buffer and only while a suggestion shows; default `'<Tab>'`, `false` for none), `auto_connect` (connect at startup, `false`).
+Options for `setup`: `socket` (default: the daemon's default socket), `debounce_ms` (2000), `max_points` (highlights kept at once, 5), `accept_key` (accepts a suggestion; mapped in Normal mode, only in the buffer and only while a suggestion shows; default `'<M-y>'`, `false` for none; avoid `<Tab>`, which terminals send for Ctrl-I, the jumplist's forward jump), `auto_connect` (connect at startup, `false`).
 
 Commands:
 
