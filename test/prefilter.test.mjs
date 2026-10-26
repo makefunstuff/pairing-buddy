@@ -41,4 +41,8 @@ test('what was typed, prefixes and common words do not make an unrelated file lo
   }
   assert.equal(onGoal('fix the login form validation', 'src/billing/formatted.ts'), false, '"form" is not "formatted"');
   assert.equal(onGoal('fix the test for the ui', 'test/billing.test.ts'), false, '"test" is too common');
+  for (const [goal, file] of [['speed up the search index', 'src/billing/index.ts'], ['fix the server crash on startup', 'src/server/billing/invoice.ts'],
+    ['add user avatars to the profile page', 'src/users/billing.ts'], ['make the main menu keyboard accessible', 'src/billing/main.go']]) {
+    assert.equal(onGoal(goal, file), false, `${goal}: words in the paths of any project`);
+  }
 });

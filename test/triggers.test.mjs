@@ -97,6 +97,8 @@ test('drift is checked once for each file the user moves into, only with a goal 
   assert.deepEqual(kinds(fold(state, edit('docs/x.md', 3000)), 4000, fired), [], 'more edits in the same file');
   assert.deepEqual(kinds(fold(state, edit('src/billing.ts', 3000)), 4000, fired), ['drift'], 'a new file');
   assert.deepEqual(kinds(state, 1000 + TIMING.driftWindowMs + 1), [], 'no recent edits');
+  const newGoal = fold(fold(state, {kind: 'goal', text: 'fix rounding in billing totals', at: 3000}), edit('docs/x.md', 4000));
+  assert.deepEqual(kinds(newGoal, 5000, fired), ['drift'], 'a new goal judges the same file again');
 });
 
 test('fired keys are not raised again', () => {

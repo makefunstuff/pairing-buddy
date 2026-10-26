@@ -5,9 +5,11 @@
 const ANSWERS_WITH_EXIT_1 = new Set(['grep', 'egrep', 'fgrep', 'rg', 'ag', 'diff', 'cmp', 'test', '[', 'which', 'pgrep', 'git diff', 'git grep']);
 const INTERRUPTED = new Set([130, 143]); // Ctrl-C, or a kill: the user stopped it themselves
 
-// Goal words too common in programming to tell one piece of work from another.
+// Goal words too common in programming, or in the paths of any project, to tell one piece of work from another.
 const COMMON = new Set(['after', 'before', 'should', 'would', 'could', 'with', 'from', 'into', 'that', 'this', 'when', 'then', 'than',
-  'make', 'does', 'work', 'code', 'file', 'files', 'test', 'tests', 'change', 'update', 'issue', 'error', 'function', 'feature']);
+  'make', 'does', 'work', 'code', 'file', 'files', 'test', 'tests', 'change', 'update', 'issue', 'error', 'function', 'feature',
+  'index', 'main', 'server', 'client', 'user', 'users', 'core', 'common', 'util', 'utils', 'helper', 'helpers', 'module',
+  'service', 'services', 'model', 'models', 'type', 'types', 'config', 'page', 'pages', 'component', 'components']);
 
 /** The words of `text`, split at punctuation, underscores and camelCase humps, lowercased. */
 export function words(text) {

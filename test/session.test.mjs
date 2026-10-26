@@ -447,3 +447,24 @@ test('drift the budget holds back is judged once the budget allows, if the user 
   await pair.tick();
   assert.deepEqual(scored, ['drift'], 'and only once');
 });
+
+test('after a new goal, a file judged under the old one is judged again', async () => {
+  let clock = 100_000;
+  const scored = [];
+  const pair = new PairSession({
+    record: {id: 1, root: '/project', conversation_id: 7, goal: 'fix rounding in billing totals', level: 'normal'},
+    store: {addMessage() {}, setGoal() {}, addRemark: () => 1, dropRemark() {}},
+    partner: {ask: async () => 'SILENT'},
+    score: async trigger => { scored.push(trigger.kind); return {value: 2}; },
+    typingPauseMs: 2000, notify: () => 1, requestEditor: async () => null, now: () => clock,
+  });
+  pair.receive({kind: 'edit', file: 'src/billing/totals.ts', from: 1, to: 1, text: 'x', at: clock});
+  clock += 5000;
+  await pair.tick();
+  assert.deepEqual(scored, [], 'on-goal by its path: dropped without the Watcher');
+  pair.setGoal('reconnect waits 30 s after the phone sleeps');
+  pair.receive({kind: 'edit', file: 'src/billing/totals.ts', from: 2, to: 2, text: 'y', at: clock});
+  clock += 5000;
+  await pair.tick();
+  assert.deepEqual(scored, ['drift'], 'judged again under the new goal');
+});

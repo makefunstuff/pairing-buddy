@@ -21,7 +21,7 @@ The rules only ever drop; anything they are unsure of goes to the Watcher.
 | A command you stopped yourself | exit 130 (Ctrl-C) or 143 |
 | Drift into a file whose path shares a word with the goal | goal "reconnect waits 30 s after the phone sleeps", editing `src/power/sleepWatch.ts` or `src/net/reconnecting.ts` |
 
-Paths are split into words at slashes, dots, underscores and camelCase. A path word must be a goal word, give or take a plural or verb ending ("sleep" matches "sleeps", "cache" matches "caches"), never just share a prefix ("form" does not match "formatted"). Goal words shorter than four letters, and common ones like "test", "code", "file" or "error", do not count. What you typed in the file is not looked at: code is full of ordinary words ("wait", "user", "index") that any goal may share.
+Paths are split into words at slashes, dots, underscores and camelCase. A path word must be a goal word, give or take a plural or verb ending ("sleep" matches "sleeps", "cache" matches "caches"), never just share a prefix ("form" does not match "formatted"). Goal words shorter than four letters, common ones like "test", "code", "file" or "error", and words found in the paths of most projects ("index", "main", "server", "users", "utils", "config" and the like) do not count. What you typed in the file is not looked at: code is full of ordinary words ("wait", "user", "index") that any goal may share.
 
 ## A short question, a short answer
 
@@ -29,7 +29,7 @@ Paths are split into words at slashes, dots, underscores and camelCase. A path w
 - It answers with the score alone, a single number, and may write at most 8 tokens. A JSON answer with a reason took about ten times as many tokens, and on a local server every token written adds to the wait.
 - Drift gets a question of its own: how clearly the file you now edit is unrelated to the goal, with the goal named in the question. Asked whether you would want a remark, models score how important the work is instead.
 - A smaller Watcher model than the Partner's is faster, but small models tend to judge drift badly (scoring it 0 or 1), and on a server that keeps one model loaded every swap costs far more than it saves. One mid-sized model for both roles is the tested setup.
-- Drift is checked once for each file you move into (and again on another branch), right when you start editing it, not once every ten minutes.
+- Drift is checked once for each file you move into, right when you start editing it, and again on another branch or after a new goal (`/goal`), not once every ten minutes.
 
 ## Keep-warm
 
