@@ -9,9 +9,9 @@ const SYSTEM = `Score 0-10 how much a pair programmer would want a short remark 
 Answer with one number.`;
 
 // What happened, for triggers whose detail is written for the Partner. Drift: the file and what it is about (its
-// gist: words of a path say little, `billing/ranking.ts` is no search ranking), and a question with the goal right
-// next to it. Asked whether you would want a remark, models score how important the work
-// is, not whether it drifted; and the Partner's longer detail costs tokens without helping the score.
+// gist: the words of a path say little, `billing/ranking.ts` is no search ranking), and a question with the goal
+// right next to it. Asked whether you would want a remark, models score how important the work is, not whether it
+// drifted; and the Partner's longer detail costs tokens without helping the score.
 // The wrong turn: the Watcher cannot see the code, so it is asked whether a check of the file would save time.
 // A regression: whether hearing of it now saves time, since the user has not run the tests that found it.
 // The search trail: whether the user is going in circles, with what fails now, which says what they are after.
