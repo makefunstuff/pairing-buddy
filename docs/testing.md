@@ -78,6 +78,13 @@ Runs every test that needs no model, in under a minute, with scripted models and
 - **The ledger.** What a session books (reads in a row as one line, the place a remark pointed at, its verdict,
   commands with their output, what it asked and was refused, the moments it stayed quiet and why), today from local
   midnight, the three-way merge that undoes an edit, details forgotten after a week, and `/today` in the chat.
+- **Notes in the margin.** The repeat a rule finds, and the near-repeats and parallel paragraphs (two allocators, three
+  build targets, option A and B) it leaves alone; decisions and their section; the code a note names found where it is
+  defined (C and Go); the model's marks kept only where they hold up (a contradiction needs its other side); marks
+  following their lines and going with an edit; the decision log (its entry, the question it quotes, a decision
+  superseded, going back to one, never logged twice); tasks added only after the yes, as whole words; the prose
+  triggers, the Watcher's questions for them, and a stall remark held to one question; and the plugin end to end:
+  five marks, `Alt-l` to the code, `Alt-d` putting the entry in the log's buffer and not on disk, the tasks panel.
 - **[One model](config.md#one-model).** Each role's request to it (no thinking and 8 tokens for the Watcher, thinking
   for the Partner); the Watcher waiting while the Partner works in another project, and its remark saying how long it
   waited; a question cancelling the remark still being written (dropped, and no failure of the model); the context
@@ -119,6 +126,9 @@ Stacks can name a `provider` too, with its login or key from `pair auth`. Withou
   we leave open?" from it; the note not turning a noise moment into a remark.
 - **Builds and runs** (`test/live/runs.test.mjs`): a C program built and run for real with `cc`. A segfault gets a
   point at its cause, a `-Wformat` warning a point at the `printf`, and an unused variable silence.
+- **Notes in the margin:** at most five specific marks on a design note, with its contradiction and a mark on what
+  the code does; tasks with its open question as one; after a stalled question, one question back about it, through
+  a real session; one question about a section that left the note, and silence for one that did not.
 - **The probe** `pair doctor` and the daemon's health check use, and the Watcher answering it within 3 s.
 - **A scripted session** (`test/live/dogfood.test.mjs`): twelve minutes of edits, failing tests, a stall, a question
   and drift, played through a real Pair session on a simulated clock and printed like a transcript. It checks that
