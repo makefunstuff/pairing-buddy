@@ -5,9 +5,10 @@
 import {execFile} from 'node:child_process';
 import {createServer} from 'node:net';
 import {readMessages, sendMessage} from '../../src/protocol.mjs';
+import {bashWithoutCores} from '../../test/no-core.mjs';
 
 const run = (command, cwd) => new Promise(resolve => {
-  execFile('bash', ['-c', command], {cwd, maxBuffer: 1 << 24}, (error, stdout, stderr) => resolve({output: (stdout + stderr).replace(/\n$/, ''), exit: error ? error.code ?? 1 : 0}));
+  execFile(...bashWithoutCores(command), {cwd, maxBuffer: 1 << 24}, (error, stdout, stderr) => resolve({output: (stdout + stderr).replace(/\n$/, ''), exit: error ? error.code ?? 1 : 0}));
 });
 
 /** The lines of the first terminal buffer in the Neovim listening on `server`. */

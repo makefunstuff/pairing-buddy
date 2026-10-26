@@ -1,0 +1,14 @@
+AddressSanitizer:DEADLYSIGNAL
+=================================================================
+==4242==ERROR: AddressSanitizer: SEGV on unknown address 0x00000000c000 (pc 0x55714a48a2bb bp 0x7ffd21093f40 sp 0x7ffd21093f20 T0)
+==4242==The signal is caused by a READ memory access.
+    #0 0x55714a48a2bb in probe /home/dev/probe/probe.c:10
+    #1 0x55714a48a426 in main /home/dev/probe/probe.c:17
+    #2 0x7fdce1c27780  (/usr/lib/libc.so.6+0x27780) (BuildId: d320029ad1a23be2f4bce117fd321cbd23a2014b)
+    #3 0x7fdce1c278b8 in __libc_start_main (/usr/lib/libc.so.6+0x278b8) (BuildId: d320029ad1a23be2f4bce117fd321cbd23a2014b)
+    #4 0x55714a48a124 in _start (/home/dev/probe/pa+0x1124) (BuildId: 17445e96572e212813c17f5250804de8b19d0d30)
+
+==4242==Register values:
+AddressSanitizer can not provide additional info.
+SUMMARY: AddressSanitizer: SEGV /home/dev/probe/probe.c:10 in probe
+==4242==ABORTING

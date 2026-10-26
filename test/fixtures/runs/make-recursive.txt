@@ -1,0 +1,15 @@
+make -C src all
+make[1]: Entering directory '/home/dev/probe/src'
+cc -Wall -o a a.c && ./a
+In file included from a.c:2:
+b.h: In function ‘helper’:
+b.h:1:47: error: expected ‘;’ before ‘}’ token
+    1 | static int helper(void) { int unused; return 1 }
+      |                                               ^~
+      |                                               ;
+b.h:1:31: warning: unused variable ‘unused’ [-Wunused-variable]
+    1 | static int helper(void) { int unused; return 1 }
+      |                               ^~~~~~
+make[1]: *** [Makefile:2: all] Error 1
+make[1]: Leaving directory '/home/dev/probe/src'
+make: *** [Makefile:2: run] Error 2

@@ -14,6 +14,7 @@ Answer with one number.`;
 // The wrong turn: the Watcher cannot see the code, so it is asked whether a check of the file would save time.
 // A regression: whether hearing of it now saves time, since the user has not run the tests that found it.
 // The search trail: whether the user is going in circles, with what fails now, which says what they are after.
+// A crash: whether hearing where and why saves a hunt. A new warning: whether it is a bug, not just untidy.
 const WHAT_HAPPENED = {
   drift: (trigger, state) => `The user now edits ${trigger.file}.\n`
     + `Score how clearly this file is unrelated to the goal "${state.goal}": 0 if it could be part of it, 10 if it is plainly other work.`,
@@ -24,6 +25,10 @@ const WHAT_HAPPENED = {
   search_trail: trigger => `The user searched ${trigger.searches.length} times for one thing and has not edited since:\n${trailLines(trigger.searches)}\n`
     + `${trigger.failing ? `Failing now: ${trigger.failing}` : 'Nothing is failing.'}\n`
     + 'Score how much being told where it is in the code would save them: 0 if the last search plainly found it, 10 if their words are not the code\'s and they go in circles.',
+  crash: trigger => `${trigger.detail}\n`
+    + 'Score how much hearing where and why it crashed would save them: 0 if the output already names the line and the cause plainly, 10 if they would have to hunt for it.',
+  new_warning: trigger => `A build printed a warning that was not there before: ${trigger.warnings.slice(0, 3).map(warning => warning.message).join('; ')}\n`
+    + 'Score how likely this is a real bug worth a word now: 0 for something untidy while exploring (an unused variable or parameter), 10 for a likely bug (an uninitialised value, a wrong format, an overflow, a missing return).',
 };
 
 const MAX_TOKENS = 8; // a number, with room for a model that wraps it in a word or two

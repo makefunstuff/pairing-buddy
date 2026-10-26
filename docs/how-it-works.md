@@ -24,6 +24,8 @@ its role's tools.
   last commit, changed files, pull request). The [context card](neovim.md#what-it-knows-the-context-card) shows all of
   it, and what you hide there is not sent.
 - **The shell hook** (optional) adds exit codes, and catches commands too short for herdr's polling.
+- **Builds and runs** are read for a crash and where in your code it happened, and for the compiler's errors and
+  warnings with their file and line ([builds.md](builds.md)). A segfault counts as a failure also without an exit code.
 - **Test output** is parsed (cargo, go test, jest, vitest, pytest, `node --test`): which tests failed and the first
   error line ([scout.md](scout.md#test-results)). With [tests on save](tests-on-save.md), the runner's JSON report
   also says where each test is.
@@ -41,6 +43,8 @@ A remark can come from one of these moments (its **trigger**):
 | `drift` | You edit a file that looks unrelated to the session goal |
 | `edit_while_red` | The wrong turn: while a test is red, you edit a source file the failure does not name (a test and the code it tests, like `worker_test.go` and `worker.go`, count as one) |
 | `regression` | The tests Pair ran when you saved fail where its run before did not |
+| `crash` | A build or run died of a signal or reported a fault (a sanitizer, a failed assert, a panic), also while you look at it: the terminal says that it crashed, not why ([builds.md](builds.md)) |
+| `new_warning` | A build printed a warning in a file you edited that no build before it printed; Pair speaks only for a bug ([builds.md](builds.md)) |
 | `search_trail` | Three or more Telescope or snacks.picker searches since your last edit, one of them closed with nothing opened, or repeated. The remark gets what fails now, so it can say where the thing is in the code's own word ([neovim.md](neovim.md#the-search-trail)) |
 
 A failed test run counts as failed even without an exit code, and the remark names the failed tests and the first
