@@ -12,7 +12,8 @@ M.glyphs = {
   away = '◌', -- not connected, or a model is down
   wheel = '◎', -- it has the wheel
   pass = '✓', -- a test passed, on its line and in the statusline
-  fail = '✗', -- a test failed
+  fail = '✗', -- a test failed, a build failed, a run crashed
+  warn = '△', -- a compiler warning
   listen = '◉', -- it listens while you hold the listen key
 }
 
@@ -171,6 +172,7 @@ local function palette()
   local dim = readable(M.mix(bg, fg, 0.42), bg, fg, 2.2)
   local ok = readable(hl('DiagnosticOk').fg or accent, bg, fg, 3)
   local fail = readable(hl('DiagnosticError').fg or hl('ErrorMsg').fg or 0xe06c75, bg, fg, 3)
+  local warn = readable(hl('DiagnosticWarn').fg or hl('WarningMsg').fg or 0xe5c07b, bg, fg, 3)
   return {
     PairAccent = {fg = accent},
     PairNote = {fg = readable(M.mix(fg, accent, 0.45), bg, fg, 4.5)}, -- the pair's words
@@ -192,6 +194,9 @@ local function palette()
     PairStatusPass = {fg = ok}, -- a passing run, for a moment, in the statusline
     PairFailNote = {fg = readable(M.mix(fg, fail, 0.35), bg, fg, 4.5)}, -- why a test failed, after the line it failed on
     PairHeard = {fg = readable(dim, bg, fg, 3), italic = true}, -- your words, as Pair heard them
+    PairWarn = {fg = warn}, -- a compiler warning the builds before did not print
+    PairWarnQuiet = {fg = readable(M.mix(bg, warn, 0.45), bg, warn, 1.6)}, -- one they did: no news
+    PairWarnNote = {fg = readable(M.mix(fg, warn, 0.35), bg, fg, 4.5)}, -- a new warning's words, after its line
   }
 end
 
@@ -203,6 +208,7 @@ local LINKS = {
   PairStatus = 'StatusLine', PairStatusDim = 'StatusLine', PairStatusWarn = 'StatusLine',
   PairPass = 'DiagnosticOk', PairStatusPass = 'DiagnosticOk', PairFail = 'DiagnosticError', PairFailNote = 'DiagnosticError',
   PairHeard = 'Comment',
+  PairWarn = 'DiagnosticWarn', PairWarnQuiet = 'Comment', PairWarnNote = 'DiagnosticWarn',
 }
 
 local ours = {} -- each group as this module last left it: a group that differs now was set by someone else

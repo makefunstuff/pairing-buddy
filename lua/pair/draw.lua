@@ -8,6 +8,7 @@ local M = {}
 M.ns = vim.api.nvim_create_namespace('pair')
 M.suggest_ns = vim.api.nvim_create_namespace('pair_suggest')
 M.tests_ns = vim.api.nvim_create_namespace('pair_tests')
+M.runs_ns = vim.api.nvim_create_namespace('pair_runs')
 local gaze_ns = vim.api.nvim_create_namespace('pair_gaze')
 local gaze_line_ns = vim.api.nvim_create_namespace('pair_gaze_line') -- shown only in windows without numbers
 
@@ -240,21 +241,45 @@ function M.suggestion(buf, first, old, new, note, key)
   return ids
 end
 
--- Tests: what the run on save found, on the lines of the tests in `buf`.
+-- Tests and runs: what a run on save found on the lines of the tests in `buf`, and what a build or run printed
+-- on the lines it names.
+
+--- Why something failed on `note.line`, after it with `glyph` when it fits the window, else wrapped under it.
+--- `set(mark, spec)` places it.
+local function failure_note(buf, note, glyph, glyph_group, text_group, set)
+  local width = text_width(window_of(buf))
+  local after = {{'   ' .. glyph .. ' ', glyph_group}, {note.text, text_group}}
+  if note.line > vim.api.nvim_buf_line_count(buf) or vim.fn.strdisplaywidth(line_of(buf, note.line - 1)) + width_of(after) <= width then
+    set(note, {virt_text = after, virt_text_pos = 'eol', priority = 15})
+    return
+  end
+  local indent = indent_of(buf, note.line - 1)
+  local lines = wrap(note.text, math.max(20, width - indent - 2), text_group)
+  for i, line in ipairs(lines) do
+    table.insert(line, 1, i == 1 and {glyph .. ' ', glyph_group} or {'  '})
+    table.insert(line, 1, {string.rep(' ', indent)})
+  end
+  set(note, {virt_lines = lines, priority = 15})
+end
+
+--- A function that places a mark of `ns` in `buf` on its line, rising from the background when it `changed`.
+local function setter(buf, ns, rise)
+  local count = vim.api.nvim_buf_line_count(buf)
+  return function(mark, spec)
+    if mark.line > count then return end
+    local how = mark.changed and rise and place or vim.api.nvim_buf_set_extmark
+    how(buf, ns, mark.line - 1, 0, spec)
+  end
+end
 
 --- What a test run found in `buf`: `signs` ({line, ok, changed}) put ✓ or ✗ in the sign column of each test,
 --- `notes` ({line, text, changed}) say why a test failed there: after the line when it fits, else under it. What `changed` since the last run
 --- rises from the background; with `stale` (the next run is on) everything shows half faded.
 function M.tests(buf, signs, notes, opts)
   vim.api.nvim_buf_clear_namespace(buf, M.tests_ns, 0, -1)
-  local count = vim.api.nvim_buf_line_count(buf)
   local stale = opts and opts.stale
   local function group(name) return stale and style.fade(name, 0.4) or name end
-  local function set(mark, spec)
-    if mark.line > count then return end
-    local how = mark.changed and not stale and place or vim.api.nvim_buf_set_extmark
-    how(buf, M.tests_ns, mark.line - 1, 0, spec)
-  end
+  local set = setter(buf, M.tests_ns, not stale)
   for _, sign in ipairs(signs) do
     set(sign, {
       sign_text = sign.ok and style.glyphs.pass or style.glyphs.fail,
@@ -262,20 +287,21 @@ function M.tests(buf, signs, notes, opts)
       priority = 15, -- under the pair's own mark
     })
   end
-  local width = text_width(window_of(buf))
-  for _, note in ipairs(notes) do
-    local after = {{'   ' .. style.glyphs.fail .. ' ', group('PairFail')}, {note.text, group('PairFailNote')}}
-    if note.line > count or vim.fn.strdisplaywidth(line_of(buf, note.line - 1)) + width_of(after) <= width then
-      set(note, {virt_text = after, virt_text_pos = 'eol', priority = 15})
-    else
-      local indent = indent_of(buf, note.line - 1)
-      local lines = wrap(note.text, math.max(20, width - indent - 2), group('PairFailNote'))
-      for i, line in ipairs(lines) do
-        table.insert(line, 1, i == 1 and {style.glyphs.fail .. ' ', group('PairFail')} or {'  '})
-        table.insert(line, 1, {string.rep(' ', indent)})
-      end
-      set(note, {virt_lines = lines, priority = 15})
-    end
+  for _, note in ipairs(notes) do failure_note(buf, note, style.glyphs.fail, group('PairFail'), group('PairFailNote'), set) end
+end
+
+--- What a build or run printed, on its `places` in `buf` ({line, kind, text, new, changed}): a crash and each
+--- compiler error get ✗ in the sign column and their words after the line; a new warning gets △ and its words;
+--- a warning the builds before printed too is no news: a quiet △, no words. What `changed` rises from the background.
+function M.runs(buf, places)
+  vim.api.nvim_buf_clear_namespace(buf, M.runs_ns, 0, -1)
+  local set = setter(buf, M.runs_ns, true)
+  for _, mark in ipairs(places) do
+    local warning = mark.kind == 'warning'
+    local glyph = warning and style.glyphs.warn or style.glyphs.fail
+    local group = not warning and 'PairFail' or mark.new and 'PairWarn' or 'PairWarnQuiet'
+    set(mark, {sign_text = glyph, sign_hl_group = group, priority = 14}) -- under a test's sign
+    if not warning or mark.new then failure_note(buf, mark, glyph, group, warning and 'PairWarnNote' or 'PairFailNote', set) end
   end
 end
 
