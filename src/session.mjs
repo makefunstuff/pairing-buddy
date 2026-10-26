@@ -447,13 +447,18 @@ export class PairSession {
 
   /**
    * A question from the user, in the chat pane or Neovim: always answered, outside the budget. `selection`
-   * ({file, from, to}) is the lines they asked about.
+   * ({file, from, to}) is the lines they asked about. Resolves with what Pair said, '' when it only pointed or the
+   * text became the goal.
    */
   async ask(text, selection = null) {
     this.message('user', selection ? `${text} (${relative(this.root, selection.file)}:${selection.from}-${selection.to})` : text);
-    if (!this.state.goal && !selection) return this.setGoal(text);
+    if (!this.state.goal && !selection) {
+      this.setGoal(text);
+      return '';
+    }
     await this.yieldRemark();
     await this.talk(`[user] ${text}${await this.selected(selection)}\n\nNow:\n${describeState(this.state, this.now())}`);
+    return this.words.join('\n');
   }
 
   /** The lines the user selected, for the Partner's input; '' without a selection. */

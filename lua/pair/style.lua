@@ -13,6 +13,7 @@ M.glyphs = {
   wheel = '◎', -- it has the wheel
   pass = '✓', -- a test passed, on its line and in the statusline
   fail = '✗', -- a test failed
+  listen = '◉', -- it listens while you hold the listen key
 }
 
 -- The statusline while Pair runs your tests or thinks.
@@ -189,6 +190,7 @@ local function palette()
     PairFail = {fg = fail},
     PairStatusPass = {fg = ok}, -- a passing run, for a moment, in the statusline
     PairFailNote = {fg = readable(M.mix(fg, fail, 0.35), bg, fg, 4.5)}, -- why a test failed, after the line it failed on
+    PairHeard = {fg = readable(dim, bg, fg, 3), italic = true}, -- your words, as Pair heard them
   }
 end
 
@@ -199,6 +201,7 @@ local LINKS = {
   PairSuggestDelete = 'Comment', PairSuggestAdd = 'DiffAdd', PairCursor = 'Cursor',
   PairStatus = 'StatusLine', PairStatusDim = 'StatusLine', PairStatusWarn = 'StatusLine',
   PairPass = 'DiagnosticOk', PairStatusPass = 'DiagnosticOk', PairFail = 'DiagnosticError', PairFailNote = 'DiagnosticError',
+  PairHeard = 'Comment',
 }
 
 local ours = {} -- each group as this module last left it: a group that differs now was set by someone else

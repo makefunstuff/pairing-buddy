@@ -7,6 +7,7 @@ import {fileURLToPath} from 'node:url';
 import {thinkingBudgetForLevel} from '@earendil-works/pi-ai/api/simple-options';
 import {MIN_CONTEXT, replyRoom} from './context.mjs';
 import {storedKey} from './credentials.mjs';
+import {voiceConfig} from './voice.mjs';
 
 const EXAMPLE = fileURLToPath(new URL('../config.example.json', import.meta.url));
 
@@ -186,6 +187,7 @@ export function parseConfig(raw) {
     socket: raw.socket ?? defaultSocketPath(),
     dataDir: raw.dataDir ?? join(xdg('XDG_STATE_HOME', '.local/state'), 'pairing-buddy'),
     testOnSave: testCommands(raw.testOnSave),
+    voice: voiceConfig(raw.voice), // push-to-talk; null when off (see voice.mjs)
     models,
   };
 }

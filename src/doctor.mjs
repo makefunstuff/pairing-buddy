@@ -1,7 +1,7 @@
 // `pair doctor`: checks each part Pair needs, one line each, and says what is wrong in plain words.
 import {execFile} from 'node:child_process';
-import {existsSync} from 'node:fs';
-import {homedir} from 'node:os';
+import {existsSync, mkdtempSync, rmSync} from 'node:fs';
+import {homedir, tmpdir} from 'node:os';
 import {basename, delimiter, join} from 'node:path';
 import {credentialState} from './auth.mjs';
 import {authPath, configPath, loadConfig, mostThinking, replyTokens, sameModel, sameServer, whereIs} from './config.mjs';
@@ -14,6 +14,7 @@ import {levelGroups, probeModel, probeThinking} from './probe.mjs';
 import {requestDaemon} from './protocol.mjs';
 import {serviceState, UNIT} from './service.mjs';
 import {VERSION} from './version.mjs';
+import {RATE, recorderOf, transcribe} from './voice.mjs';
 
 const WATCHER_MS = 1500; // the Watcher scores every candidate remark: about a second is the aim
 const PARTNER_MS = 20_000;
@@ -53,6 +54,7 @@ export async function* doctor({
   if (status) yield editorsCheck(status);
   yield await herdrCheck(env);
   if (existsSync(auth)) yield loginsCheck(auth);
+  yield await voiceCheck(config.voice);
   yield* modelChecks(config, status, credentials);
 }
 
@@ -119,6 +121,31 @@ export function loginsCheck(path) {
   return readableByOthers(path)
     ? fail('logins', `${tilde(path)} holds your logins and keys and others can read it: chmod 600 ${tilde(path)}`)
     : ok('logins', `${tilde(path)}, readable by you only`);
+}
+
+/**
+ * Push-to-talk: a recorder, the whisper.cpp model, and how long whisper takes for a second of audio on the CPU; and the
+ * speech command, if one is set.
+ */
+export async function voiceCheck(voice, found = name => onPath(name, process.env)) {
+  if (!voice) return ok('voice', 'off: to speak to Pair, set "voice" in the config (see docs/voice.md)');
+  const recorder = recorderOf(voice, found);
+  if (!recorder) return fail('voice', 'no recorder found: install pw-record (pipewire), parec (pulseaudio-utils) or arecord (alsa-utils), or set voice.record');
+  if (!existsSync(voice.model)) return fail('voice', `no whisper.cpp model at ${tilde(voice.model)}: see docs/voice.md`);
+  const speech = voice.speak?.trim().split(/\s+/)[0];
+  if (speech && !found(speech)) return warn('voice', `the speech command \`${speech}\` is not on PATH: answers are not read aloud when you are away`);
+  const dir = mkdtempSync(join(tmpdir(), 'pair-doctor-voice-'));
+  const started = Date.now();
+  try {
+    await transcribe(voice, Buffer.alloc(RATE * 2), {dir});
+  } catch (error) {
+    return fail('voice', `whisper.cpp fails: ${error.message}`);
+  } finally {
+    rmSync(dir, {recursive: true, force: true});
+  }
+  const records = voice.record ? 'your record command' : recorder[0];
+  const speaks = speech ? `, and \`${speech}\` reads answers aloud when you are away` : '';
+  return ok('voice', `${records} records, whisper.cpp hears a second in ${seconds(Date.now() - started)} on the CPU${speaks}`);
 }
 
 /**
