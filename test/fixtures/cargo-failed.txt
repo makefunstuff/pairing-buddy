@@ -1,0 +1,32 @@
+   Compiling crt v0.1.0 (/home/you/project)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.13s
+     Running unittests src/lib.rs (target/debug/deps/crt-7d99406aa55e7722)
+
+running 3 tests
+test tests::ok ... ok
+test tests::other ... FAILED
+test tests::waits_long ... FAILED
+
+failures:
+
+---- tests::other stdout ----
+
+thread 'tests::other' (41) panicked at src/lib.rs:7:26:
+boom here
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- tests::waits_long stdout ----
+
+thread 'tests::waits_long' (42) panicked at src/lib.rs:5:31:
+assertion `left == right` failed
+  left: 5000
+ right: 30000
+
+
+failures:
+    tests::other
+    tests::waits_long
+
+test result: FAILED. 1 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--lib`

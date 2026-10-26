@@ -1,10 +1,13 @@
 // One pairing session: folds its events, decides when Pair speaks and carries out the Partner's tools.
 import {isAbsolute, relative} from 'node:path';
 import {Budget} from './budget.mjs';
+import {commandPolicy} from './command-policy.mjs';
 import {describeState} from './describe.mjs';
-import {numberedLines, projectFile, readProjectPath} from './files.mjs';
+import {insideRoot, numberedLines, projectFile, readProjectPath} from './files.mjs';
 import {fold, initialState} from './fold.mjs';
 import {decide} from './gate.mjs';
+import {RUN_TIMEOUT_MS, shellQuote} from './scout-pane.mjs';
+import {parseTestOutput, testSummary} from './test-output.mjs';
 import {detectTriggers} from './triggers.mjs';
 
 const SILENT = /^\W*silent\W*$/i;
@@ -23,18 +26,46 @@ export function watchInput(trigger, description) {
   return `[watch] ${trigger.kind}: ${trigger.detail}\n\nNow:\n${description}\n\n${CHECKS[trigger.kind]} If no remark would help, answer exactly SILENT.`;
 }
 
+const ROLE_NOTES = {
+  navigator: 'Role: Navigator. Pair watches, comments and points at code.',
+  scout: 'Role: Scout. Pair can also search and run read-only, test and build commands in its own pane; anything else asks you first.',
+};
+
+const CONFIRM_MS = 60_000;
+const PANE_USES_PER_TURN = 4; // small steps: a few searches or commands per question, not a long plan
+const SEARCH_LINES = 50;
+const RUN_OUTPUT_CHARS = 3000;
+
+/** The last `max` characters of `text`, saying so when it is cut. */
+const tail = (text, max) => (text.length > max ? `(earlier output cut)\n${text.slice(-max)}` : text);
+
+/** What the Partner is told about a command Scout ran. */
+export function runReport(result) {
+  const lines = [result.timedOut ? `Still running after ${RUN_TIMEOUT_MS / 1000} s, so it was stopped with Ctrl-C.` : `exit ${result.exit}`];
+  const tests = parseTestOutput(result.output);
+  if (tests) lines.push(`Tests (${tests.runner}): ${testSummary(tests)}`);
+  lines.push(tail(result.output, RUN_OUTPUT_CHARS) || '(no output)');
+  return lines.join('\n');
+}
+
 const NOTE_REQUEST = `[end] The session is over. Write a short session note in plain text, at most 6 lines:
 the goal, what changed, and loose ends. No tool calls.`;
 
 export class PairSession {
   /**
    * `record` is the stored session row. `notify(target, message)` sends to the "editor" or the "chat"
-   * clients of this session; `requestEditor(message)` asks the editor and resolves with its reply.
+   * clients of this session and returns how many got it; `requestEditor(message)` asks the editor and
+   * resolves with its reply.
    */
   constructor({record, store, partner, score, typingPauseMs, notify, requestEditor, log = () => {}, now = Date.now}) {
     Object.assign(this, {record, store, partner, score, typingPauseMs, notify, requestEditor, log, now});
     this.state = initialState({root: record.root, goal: record.goal});
     this.budget = new Budget(record.level);
+    this.role = record.role ?? 'navigator';
+    this.scout = null; // Pair's own pane (a ScoutPane), once herdr is known
+    this.confirmations = new Map(); // id -> resolve(ok), for commands waiting for the user's yes or no
+    this.lastConfirmation = 0;
+    this.paneUses = 0; // searches and commands in the running turn
     this.fired = new Set();
     this.busy = false; // a Partner turn is running
     this.ticking = false;
@@ -101,6 +132,7 @@ export class PairSession {
     this.busy = true;
     this.spoke = false;
     this.said = false;
+    this.paneUses = 0;
     try {
       const answer = await this.partner.ask(this.conversationId, input);
       // After a say, local models tend to end with filler or a repeat; the say already was the answer.
@@ -128,7 +160,50 @@ export class PairSession {
     this.message('system', `Talk level: ${level}`);
   }
 
+  /** Switches Pair's role; Scout needs Pair's own herdr pane, which opens with the switch. */
+  async setRole(role) {
+    if (role === 'scout' && !this.scout) {
+      return this.message('system', 'Scout needs its own herdr pane: start Pair with `pair` inside herdr.');
+    }
+    if (role === 'scout') {
+      const opened = await this.scout.open().then(() => true, error => {
+        this.message('system', `Could not open Pair's pane: ${error.message}`);
+        return false;
+      });
+      if (!opened) return;
+    } else {
+      await this.scout?.close();
+    }
+    this.role = role;
+    this.store.setRole(this.id, role);
+    await this.partner.setRole(this.conversationId, role);
+    this.notify('editor', {type: 'role', role});
+    this.notify('chat', {type: 'role', role});
+    this.message('system', ROLE_NOTES[role]);
+  }
+
+  /** Asks the user in the chat pane; resolves false without a chat pane, on no, or after a minute. */
+  confirm(text) {
+    const id = ++this.lastConfirmation;
+    if (!this.notify('chat', {type: 'confirm', id, text})) return Promise.resolve(false);
+    return new Promise(resolve => {
+      const timer = setTimeout(() => this.answer(id, false, 'No answer, so no.'), CONFIRM_MS);
+      this.confirmations.set(id, ok => { clearTimeout(timer); resolve(ok); });
+    });
+  }
+
+  /** The user's answer to confirmation `id`. */
+  answer(id, ok, note = ok ? 'Allowed.' : 'Not allowed.') {
+    const resolve = this.confirmations.get(id);
+    if (!resolve) return;
+    this.confirmations.delete(id);
+    this.notify('chat', {type: 'confirmed', id});
+    this.message('system', note);
+    resolve(ok);
+  }
+
   async end() {
+    await this.scout?.close();
     const note = await this.partner.ask(this.conversationId, NOTE_REQUEST).catch(error => `(no note: ${error.message})`);
     this.store.endSession(this.id, note, this.now());
     this.message('pair', `Session note:\n${note}`);
@@ -181,5 +256,42 @@ export class PairSession {
     // The editor's buffer wins over the disk: it holds what the user sees, unsaved changes included.
     const buffer = await this.requestEditor({type: 'read', file: await projectFile(this.root, file)}).catch(() => null);
     return numberedLines(typeof buffer?.text === 'string' ? buffer.text : source.text, from, to);
+  }
+
+  // Scout's tools: they work only in Pair's own pane, where the user sees each command typed and run.
+
+  async inPane(command) {
+    // Also covers a turn that started as Scout when the user has switched back since: its pane is closed.
+    if (this.role !== 'scout') throw new Error('Searching and running need the Scout role; the user can switch with /scout.');
+    if (!this.scout) throw new Error('Pair has no pane of its own: start Pair with `pair` inside herdr');
+    if (++this.paneUses > PANE_USES_PER_TURN) throw new Error(`That is ${PANE_USES_PER_TURN} commands for this question. Answer with what you found.`);
+    const result = await this.scout.run(command);
+    this.receive({kind: 'scout_run', cmd: command, exit: result.exit, output: result.output});
+    return result;
+  }
+
+  async search({pattern, path = '.'}) {
+    if (!(await insideRoot(this.root, path))) return `Cannot search ${path}: not inside the project`;
+    // Always with a path: rg without one searches its stdin when that is not a terminal.
+    const result = await this.inPane(`rg --line-number --no-heading --color never --max-columns 200 --max-count 20 -- ${shellQuote(pattern)} ${shellQuote(path)}`);
+    if (result.exit === 1) return 'No matches.';
+    const lines = result.output.split('\n');
+    const more = lines.length > SEARCH_LINES ? `\n(${lines.length - SEARCH_LINES} more lines; search a narrower path)` : '';
+    // Small models follow an instruction next to the result far better than one in the system prompt.
+    return `${result.exit === 0 ? '' : `exit ${result.exit}\n`}${lines.slice(0, SEARCH_LINES).join('\n')}${more}\n\nName these places (file:line) in your answer.`;
+  }
+
+  async run({command}) {
+    // A remark nobody asked for may read and search, but not start commands.
+    if (this.unasked) return 'Not now: run commands only when the user asks. Read and search instead.';
+    const policy = commandPolicy(command);
+    if (policy.verdict === 'refuse') {
+      this.message('system', `Pair may not run \`${command}\`: ${policy.reason}.`);
+      return `Refused: ${policy.reason}. Do not try another way; tell the user.`;
+    }
+    if (policy.verdict === 'ask' && !(await this.confirm(`Pair wants to run \`${command}\` in its pane (${policy.reason}). Allow?`))) {
+      return 'The user did not allow it. Do not run it another way.';
+    }
+    return runReport(await this.inPane(command));
   }
 }

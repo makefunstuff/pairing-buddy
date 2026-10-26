@@ -104,3 +104,11 @@ test('a failure while the user is in another workspace is missed', () => {
   const state = foldAll([{kind: 'focus', target: 'elsewhere', pane: null, at: 0}, failure(1000)]);
   assert.deepEqual(kinds(state, 1000 + TIMING.lookGraceMs), ['failed_command']);
 });
+
+test('a failed test run names the failed tests and the first error in its trigger', () => {
+  const output = '--- FAIL: TestReconnect (0.00s)\n    ws_test.go:12: timeout = 5000, want 30000\nFAIL\texample.com/ws\t0.002s';
+  const state = foldAll([{kind: 'focus', target: 'editor', pane: 'w1:p1', at: 0}, failure(1000, output)]);
+  const [trigger] = detectTriggers(state, 1000 + TIMING.lookGraceMs);
+  assert.equal(trigger.kind, 'failed_command');
+  assert.equal(trigger.detail, '`npm test` failed (exit 1) and you are not looking at it: 1 failed (TestReconnect): ws_test.go:12: timeout = 5000, want 30000');
+});

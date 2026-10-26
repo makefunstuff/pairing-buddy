@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   conversation_id TEXT NOT NULL,
   goal TEXT,
   level TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'navigator',
   started_at INTEGER NOT NULL,
   ended_at INTEGER,
   note TEXT
@@ -23,6 +24,10 @@ export function openStore(path) {
   const db = new DatabaseSync(path);
   db.exec('PRAGMA journal_mode = WAL');
   db.exec(SCHEMA);
+  // Databases from v0.1 have no role column.
+  if (!db.prepare('SELECT 1 FROM pragma_table_info(\'sessions\') WHERE name = \'role\'').get()) {
+    db.exec('ALTER TABLE sessions ADD COLUMN role TEXT NOT NULL DEFAULT \'navigator\'');
+  }
   const toSession = row => row && {...row, conversation_id: JSON.parse(row.conversation_id)};
 
   return {
@@ -37,6 +42,7 @@ export function openStore(path) {
 
     setGoal: (id, goal) => db.prepare('UPDATE sessions SET goal = ? WHERE id = ?').run(goal, id),
     setLevel: (id, level) => db.prepare('UPDATE sessions SET level = ? WHERE id = ?').run(level, id),
+    setRole: (id, role) => db.prepare('UPDATE sessions SET role = ? WHERE id = ?').run(role, id),
     endSession: (id, note, at) => db.prepare('UPDATE sessions SET ended_at = ?, note = ? WHERE id = ?').run(at, note, id),
 
     addMessage: (sessionId, sender, text, at) => db.prepare('INSERT INTO messages (session_id, at, sender, text) VALUES (?, ?, ?, ?)').run(sessionId, at, sender, text),

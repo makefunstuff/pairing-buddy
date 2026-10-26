@@ -43,6 +43,7 @@ function recordingHands(root) {
   const calls = [];
   const record = (name, result) => async (_conversation, args) => { calls.push({name, args}); return result; };
   return {calls, hands: {
+    roleOf: () => 'navigator',
     say: record('say', 'shown'),
     point: record('point', 'highlighted'),
     open: record('open', 'opened in a split'),
@@ -131,7 +132,7 @@ describe('Partner on live models', {skip: stacks.length ? false : SKIP_REASON}, 
       await partner.close();
       t.diagnostic(`answer: ${answer} · tools: ${calls.map(call => call.name).join(', ')}`);
       assert.ok(calls.some(call => call.name === 'read' && call.args.file.endsWith('ws.ts')), 'it reads the file');
-      const said = [answer, ...calls.filter(call => call.name === 'say').map(call => call.args.text)].join(' ');
+      const said = [answer, ...calls.filter(call => call.name === 'say').map(call => call.args)].join(' ');
       assert.match(said, /5000|5,000|5 ?s/);
     });
 

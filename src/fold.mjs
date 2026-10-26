@@ -1,5 +1,6 @@
 // Folds raw editor, terminal and chat events into one small session state.
 // Pure: `fold(state, event)` returns a new state and never looks at the clock.
+import {parseTestOutput, testSummary} from './test-output.mjs';
 
 const KEEP = {edits: 20, commands: 10, outputChars: 2000, diagnostics: 30};
 
@@ -18,14 +19,19 @@ export function initialState({root = null, goal = null} = {}) {
     commands: [],
     errors: {},
     focus: {target: 'unknown', pane: null, scrolled: false, at: 0},
+    tests: null, // the last test run, the user's or Scout's: parsed by test-output.mjs, plus cmd, by and at
   };
 }
 
 const keepLast = (list, item, max) => [...list, item].slice(-max);
 
-/** Whether a finished command failed. Without an exit code (herdr alone gives none), its output decides. */
+/**
+ * Whether a finished command failed. Without an exit code (herdr alone gives none), its parsed test results
+ * decide, else its output.
+ */
 export function failed(command) {
   if (command.exit !== null && command.exit !== undefined) return command.exit !== 0;
+  if (command.tests) return command.tests.failedCount > 0;
   return /(error|exception)\b|\bfail(ed|ure)?\b|\bpanic|\btraceback/i.test(command.output ?? '');
 }
 
@@ -35,9 +41,15 @@ export function errorLine(output = '') {
   return lines.find(line => /error|fail|exception|panic|traceback|assert/i.test(line)) ?? lines.at(-1) ?? '';
 }
 
-/** Two failures with the same error line share a signature, whatever numbers, times or ids they print. */
-export function errorSignature(output) {
-  return errorLine(output).toLowerCase().replace(/0x[0-9a-f]+|\d+/g, '#').replace(/\s+/g, ' ').slice(0, 120);
+/** What a failed command says went wrong: its failed tests and first error when it ran tests, else its error line. */
+export function failureLine(command) {
+  return command.tests?.failedCount ? testSummary(command.tests) : errorLine(command.output);
+}
+
+/** Two failures with the same failure line share a signature, whatever numbers, times or ids they print. */
+export function errorSignature(command) {
+  const line = failureLine(command).toLowerCase().replace(/0x[0-9a-f]+|\d+/g, '#').replace(/\s+/g, ' ').slice(0, 120);
+  return line || `exit ${command.exit} ${command.cmd}`;
 }
 
 /** Whether the user's eyes are on the pane of `command`, at its bottom. */
@@ -45,20 +57,28 @@ export function lookingAt(focus, command) {
   return focus.target === 'terminal' && focus.pane === command.pane && !focus.scrolled;
 }
 
+/** The state's `tests` after a run of `cmd` by `by` ("you" or "pair"), if its output was a test run. */
+function testsAfter(state, tests, event, by) {
+  return tests ? {...tests, cmd: event.cmd ?? '', by, at: event.at} : state.tests;
+}
+
 function foldCommandEnd(state, event) {
+  // Parsed from the whole output: the failed tests' names are often far above the kept tail.
+  const tests = parseTestOutput(event.output);
   const command = {
     pane: event.pane ?? null,
     cmd: event.cmd ?? '',
     exit: event.exit ?? null,
     output: (event.output ?? '').slice(-KEEP.outputChars),
+    tests,
     endedAt: event.at,
   };
   command.seen = lookingAt(state.focus, command);
-  const next = {...state, commands: keepLast(state.commands, command, KEEP.commands)};
+  const next = {...state, commands: keepLast(state.commands, command, KEEP.commands), tests: testsAfter(state, tests, event, 'you')};
   if (!failed(command)) return next;
-  const signature = errorSignature(command.output) || `exit ${command.exit} ${command.cmd}`;
+  const signature = errorSignature(command);
   const known = state.errors[signature];
-  return {...next, errors: {...state.errors, [signature]: {count: (known?.count ?? 0) + 1, text: errorLine(command.output), lastAt: event.at}}};
+  return {...next, errors: {...state.errors, [signature]: {count: (known?.count ?? 0) + 1, text: failureLine(command), lastAt: event.at}}};
 }
 
 const handlers = {
@@ -90,6 +110,9 @@ const handlers = {
   },
 
   command_end: foldCommandEnd,
+
+  // A command Scout ran in its own pane: Pair already has its result, so only its test results count.
+  scout_run: (state, event) => ({...state, tests: testsAfter(state, parseTestOutput(event.output), event, 'pair')}),
 
   focus: (state, event) => {
     const focus = {target: event.target, pane: event.pane ?? null, scrolled: !!event.scrolled, at: event.at};

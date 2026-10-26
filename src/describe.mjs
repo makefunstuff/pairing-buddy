@@ -1,10 +1,11 @@
 // The session state as a few short lines of text: what both models see instead of raw events.
-import {errorLine, failed} from './fold.mjs';
+import {failed, failureLine} from './fold.mjs';
+import {testSummary} from './test-output.mjs';
 
 const ago = (now, at) => `${Math.max(0, Math.round((now - at) / 1000))} s ago`;
 
 function commandLine(command, now) {
-  const result = failed(command) ? `failed${command.exit ? ` (exit ${command.exit})` : ''}: ${errorLine(command.output)}` : 'ok';
+  const result = failed(command) ? `failed${command.exit ? ` (exit ${command.exit})` : ''}: ${failureLine(command)}` : 'ok';
   return `\`${command.cmd}\` ${result}, ${ago(now, command.endedAt)}`;
 }
 
@@ -12,6 +13,8 @@ function currentFile(state) {
   const selection = state.selection ? `, selected lines ${state.selection.from}-${state.selection.to}` : '';
   return `Current file: ${state.file}${state.cursor ? `, cursor at line ${state.cursor.line}` : ''}${selection}`;
 }
+
+const testsLine = (tests, now) => `Last test run: \`${tests.cmd}\` by ${tests.by === 'pair' ? 'Pair' : 'the user'}, ${ago(now, tests.at)}: ${testSummary(tests)}`;
 
 const looking = state => `The user is looking at: ${state.focus.target}${state.focus.scrolled ? ' (scrolled up)' : ''}`;
 const lastKey = (state, now) => `Last keystroke: ${state.lastKeyAt ? ago(now, state.lastKeyAt) : 'none yet'}`;
@@ -30,6 +33,7 @@ export function describeState(state, now) {
   if (diagnostics.length) lines.push(`Diagnostics:\n${diagnostics.map(line => `- ${line}`).join('\n')}`);
   const commands = state.commands.slice(-3).map(command => `- ${commandLine(command, now)}`);
   if (commands.length) lines.push(`Recent commands:\n${commands.join('\n')}`);
+  if (state.tests) lines.push(testsLine(state.tests, now));
   if (state.focus.target !== 'unknown') lines.push(looking(state));
   lines.push(lastKey(state, now));
   return lines.join('\n');

@@ -9,8 +9,10 @@ import {createPairModels} from './models.mjs';
 import {acquireOwner} from './owner.mjs';
 import {openPartner} from './partner.mjs';
 import {readMessages, sendMessage} from './protocol.mjs';
+import {ScoutPane} from './scout-pane.mjs';
 import {PairSession} from './session.mjs';
 import {openStore} from './store.mjs';
+import {ROLES} from './tools.mjs';
 import {createWatcher} from './watcher.mjs';
 
 const EDITOR_REPLY_MS = 2000;
@@ -41,12 +43,18 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     models: pairModels.models,
     model: pairModels.partner,
     thinking: config.models.partner.thinking,
-    hands: {say: hand('say'), point: hand('point'), open: hand('open'), read: hand('read')},
+    hands: {
+      say: hand('say'), point: hand('point'), open: hand('open'), read: hand('read'), search: hand('search'), run: hand('run'),
+      roleOf: conversationId => sessionOfConversation(conversationId)?.role ?? 'navigator',
+    },
   });
   const score = createWatcher({models: pairModels.models, model: pairModels.watcher});
 
+  /** Sends `message` to the clients of `session` in `role` ("editor" or "chat"); returns how many got it. */
   function notify(session, role, message) {
-    for (const client of clients) if (client.session === session && client.role === role) sendMessage(client.socket, message);
+    const to = [...clients].filter(client => client.session === session && client.role === role);
+    for (const client of to) sendMessage(client.socket, message);
+    return to.length;
   }
 
   function requestEditor(session, message) {
@@ -84,6 +92,8 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
         requestEditor: message => requestEditor(session, message),
         log: line => log(`[${basename(root)}] ${line}`),
       });
+      // Also gives conversations from v0.1, which had no roles, their role's tools.
+      await partner.setRole(session.conversationId, session.role);
       live.set(root, session);
       refreshBranch(session);
       return session;
@@ -99,12 +109,15 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
 
   function watchHerdr(session, herdr) {
     if (watches.has(session.root) || !herdr?.socket) return;
+    const sessionLog = line => log(`[${basename(session.root)}] ${line}`);
+    session.scout = new ScoutPane({socketPath: herdr.socket, workspaceId: herdr.workspace, besidePane: herdr.pane, cwd: session.root, log: sessionLog});
     const watch = new PaneWatch({
       socketPath: herdr.socket,
       workspaceId: herdr.workspace,
       chatPane: herdr.pane,
+      scout: session.scout,
       emit: event => receive(session, event),
-      log: line => log(`[${basename(session.root)}] ${line}`),
+      log: sessionLog,
     });
     watches.set(session.root, watch);
     watch.start();
@@ -128,7 +141,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     client.role = message.role;
     client.session = await loadSession(await rootOf(message.cwd));
     const {session} = client;
-    sendMessage(client.socket, {type: 'welcome', root: session.root, goal: session.state.goal, level: session.budget.level});
+    sendMessage(client.socket, {type: 'welcome', root: session.root, goal: session.state.goal, level: session.budget.level, role: session.role});
     if (client.role !== 'chat') return;
     watchHerdr(session, message.herdr);
     const history = store.messages(session.id);
@@ -158,6 +171,8 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     if (message.type === 'ask') return session.ask(message.text);
     if (message.type === 'goal') return session.setGoal(message.text);
     if (message.type === 'level') return session.setLevel(message.level);
+    if (message.type === 'role' && ROLES.includes(message.role)) return session.setRole(message.role);
+    if (message.type === 'confirm') return session.answer(message.id, message.ok === true);
     if (message.type === 'end') return endSession(session);
   }
 

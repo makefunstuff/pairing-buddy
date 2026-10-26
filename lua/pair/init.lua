@@ -4,7 +4,7 @@ local M = {}
 
 local ns = vim.api.nvim_create_namespace('pair')
 local config = {socket = nil, debounce_ms = 2000, max_points = 5}
-local state = {channel = nil, partial = '', attached = {}, pending = {}, points = {}, open_request = nil, level = nil}
+local state = {channel = nil, partial = '', attached = {}, pending = {}, points = {}, open_request = nil, level = nil, role = nil}
 
 local function default_socket()
   if vim.env.PAIR_SOCKET then return vim.env.PAIR_SOCKET end
@@ -166,7 +166,14 @@ local handlers = {
   open = open,
   read = read,
   clear = clear_points,
-  welcome = function(message) state.level = message.level end,
+  welcome = function(message)
+    state.level = message.level
+    state.role = message.role
+  end,
+  role = function(message)
+    state.role = message.role
+    vim.cmd.redrawstatus()
+  end,
   message = function(message)
     if message.sender == 'system' then vim.notify('Pair: ' .. message.text) end
   end,
@@ -208,7 +215,7 @@ end
 
 function M.status()
   if not state.channel then return '' end
-  return 'Pair: navigator' .. (state.level and (' · ' .. state.level) or '')
+  return 'Pair: ' .. (state.role or 'navigator') .. (state.level and (' · ' .. state.level) or '')
 end
 
 local commands = {
@@ -221,6 +228,8 @@ local commands = {
     state.level = arg
     send({type = 'level', level = arg})
   end,
+  scout = function() send({type = 'role', role = 'scout'}) end,
+  navigate = function() send({type = 'role', role = 'navigator'}) end,
   ['end'] = function() send({type = 'end'}) end,
   open = function()
     if state.open_request then open_split(state.open_request.file, state.open_request.line) end
