@@ -40,6 +40,8 @@ const SCENARIOS = {
       {kind: 'edit', file: 'src/backoff.js', from: 4, to: 4, at: sec(20)},
     ]),
     'a regression: the tests Pair ran on save fail in another file than the one saved': scenario([
+      {kind: 'test_run', cmd: 'node --test', saved: 'src/backoff.js', files: [], at: sec(90),
+        tests: {runner: 'node', failed: [], passed: 2, failedCount: 0, firstError: null}},
       {kind: 'edit', file: 'src/worker.js', from: 10, to: 10, at: sec(30)},
       {kind: 'save', file: 'src/worker.js', at: sec(20)},
       {kind: 'test_run', cmd: 'node --test', saved: 'src/worker.js', files: ['test/queue.test.js'], at: sec(5),

@@ -27,7 +27,7 @@ local state = {
   wanted = false, -- connect was asked for (:Pair start or auto_connect) and not undone by :Pair stop
   retry = nil, -- the reconnect timer
   models = {}, -- why each model is down, per role: the daemon's health
-  run = nil, -- the test run on save, for the statusline: {state = 'run'|'pass'|'fail'|'idle', label, text, till}
+  run = nil, -- the test run on save, for the statusline: {state = 'run'|'pass'|'fail'|'error'|'idle', label, text, till}
   results = {}, -- what the last finished run found: {name, file, line, ok, failure}, absolute paths
 }
 local RETRY_MS = {1000, 2000, 5000, 10000, 30000} -- then every 30 s
@@ -641,6 +641,8 @@ local function status_parts()
     return {glyph = style.spinner[spinner.frame], text = run.label, hl = 'PairStatus', text_hl = 'PairStatusDim'}
   elseif run and run.state == 'fail' then
     return {glyph = g.fail, text = run.text, hl = 'PairFail', text_hl = 'PairStatusDim'}
+  elseif run and run.state == 'error' then
+    return {glyph = g.away, text = run.label .. ' · ' .. run.text, hl = 'PairStatusWarn', text_hl = 'PairStatusDim'}
   elseif run and run.state == 'pass' and now_ms() < run.till then
     return {glyph = g.pass, text = run.label .. ' · ' .. run.text, hl = 'PairStatusPass', text_hl = 'PairStatusDim'}
   end

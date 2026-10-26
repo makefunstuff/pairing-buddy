@@ -164,9 +164,10 @@ test('a regression: the tests Pair ran on save fail where the run before did not
   const [trigger] = detectTriggers(red, 4000);
   assert.equal(trigger.kind, 'regression');
   assert.equal(trigger.file, 'internal/delivery/worker.go');
-  assert.match(trigger.detail, /^Pair ran `go test \.\/\.\.\.` when the user saved internal\/delivery\/worker\.go\. Now failing, and not in the run before: TestNoDoubleDelivery\. 1 failed/);
+  assert.match(trigger.detail, /^Pair ran `go test \.\/\.\.\.` when the user saved internal\/delivery\/worker\.go\. Now failing, and not in Pair's run before: TestNoDoubleDelivery\. 1 failed/);
   assert.match(trigger.detail, /names internal\/queue\/queue_test\.go/);
   assert.deepEqual(kinds(red, 4000, new Set([trigger.key])), []);
   assert.deepEqual(kinds(fold(red, run(['TestNoDoubleDelivery'], 5000)), 6000), [], 'red the same way again is no news');
   assert.deepEqual(kinds(red, 3000 + TIMING.recentMs + 1), [], 'old runs are history');
+  assert.deepEqual(kinds(foldAll([run(['TestNoDoubleDelivery'], 1000)]), 2000), [], 'the session\'s first run, red already, is no regression');
 });

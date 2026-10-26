@@ -384,7 +384,6 @@ test('saving runs the tests: the statusline spins, then names what fails; signs 
     writeFileSync(join(project, 'cart/cart.go'), 'package cart\n\n// Total adds the prices, in cents.\nfunc Total(prices []int) int {\n\tsum := 0\n\tfor i := 1; i < len(prices); i++ {\n\t\tsum += prices[i]\n\t}\n\treturn sum\n}\n');
     writeFileSync(join(project, 'cart/cart_test.go'), `package cart\n\nimport "testing"\n\nfunc TestTotal(t *testing.T) {\n${'\t// a case\n'.repeat(15)}}\n\nfunc TestEmptyCart(t *testing.T) {\n}\n`);
     writeFileSync(join(project, 'tax/tax_test.go'), 'package tax\n\nimport "testing"\n\nfunc TestRate(t *testing.T) {\n}\n');
-    report('go-test');
     watcher.setResponses([fauxAssistantMessage([fauxText('9')]), ...Array.from({length: 10}, () => fauxAssistantMessage([fauxText('0')]))]);
     partner.setResponses([
       fauxAssistantMessage([fauxToolCall('read', {file: 'cart/cart.go'})], {stopReason: 'toolUse'}),
@@ -392,8 +391,13 @@ test('saving runs the tests: the statusline spins, then names what fails; signs 
       fauxAssistantMessage([fauxText('`Total` starts at the second price: `cart.go:6`')]),
     ]);
 
+    // The session's first run is green: the baseline the next run is compared with.
+    report('go-test-pass');
     keys(':edit cart/cart_test.go<CR>:w<CR>');
     await until(() => /^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] sleep 0\.6 && cat report\.json$/.test(status()), 'the spinner while the tests run');
+    await until(() => status() === '✓ sleep 0.6 && cat report.json · 4 tests, 2 packages', 'the green baseline');
+    report('go-test');
+    keys(':w<CR>');
     await until(() => status() === '✗ 2 failing · TestRate +1', 'the run\'s failures in the statusline');
     assert.deepEqual(signs(), [[5, '✗', 'PairFail'], [23, '✓', 'PairPass']], 'a sign on each test function of this file');
     assert.deepEqual(notes(), [[17, '   ✗ Total([250 100]) = 100, want 350']], 'why it failed, after the line it failed on');

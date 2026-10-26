@@ -111,8 +111,9 @@ function redTriggers(state, now) {
 }
 
 /**
- * A regression: the tests Pair ran when the user saved fail where the run before did not. Raised once per run;
- * a run that is still red with the same failures is no news (the statusline says it).
+ * A regression: the tests Pair ran when the user saved fail where its run before did not. Raised once per run;
+ * a run that is still red with the same failures is no news (the statusline says it), and the session's first run
+ * has nothing to compare with.
  */
 function regressionTriggers(state, now) {
   const {tests} = state;
@@ -121,7 +122,7 @@ function regressionTriggers(state, now) {
   return [{
     kind: 'regression',
     key: `regression:${tests.at}`,
-    detail: `Pair ran \`${tests.cmd}\` when the user saved ${tests.saved}. Now failing, and not in the run before: ${newly}. ${testSummary(tests)}`
+    detail: `Pair ran \`${tests.cmd}\` when the user saved ${tests.saved}. Now failing, and not in Pair's run before: ${newly}. ${testSummary(tests)}`
       + `${tests.files.length ? ` The failure names ${tests.files.slice(0, 4).join(', ')}.` : ''}`,
     file: tests.saved,
     newly: tests.newly,

@@ -143,13 +143,16 @@ test('the user\'s terminal pane is the one they last looked at or ran a command 
   assert.equal(state.terminalPane, 'w1:p5');
 });
 
-test('a test run on save is the last test run, with the tests that fail now and did not in the run before', () => {
+test('a test run on save is the last test run, with the tests that fail now and did not in Pair\'s run on save before', () => {
   const run = (failed, at) => ({kind: 'test_run', cmd: 'go test ./...', saved: 'worker.go', files: ['queue_test.go'], at,
     tests: {runner: 'go', failed, passed: 3, failedCount: failed.length, firstError: null, tests: [], packages: 3}});
-  const first = foldAll([{kind: 'command_end', cmd: 'go test ./internal/delivery/', exit: 1, output: '--- FAIL: TestDeliver (0.00s)\nFAIL', at: 1}, run(['TestDeliver', 'TestNoDouble'], 5)]);
+  // The user's own narrower run says nothing about the tests it did not run: the first run on save is the baseline.
+  const first = foldAll([{kind: 'command_end', cmd: 'go test ./internal/delivery/', exit: 0, output: 'ok  \texample.com/x/delivery\t0.1s', at: 1}, run(['TestDeliver', 'TestNoDouble'], 5)]);
   assert.deepEqual(first.commands.length, 1, 'Pair\'s run is not one of the user\'s commands');
-  assert.deepEqual(first.tests.newly, ['TestNoDouble'], 'compared with the user\'s run before it');
+  assert.deepEqual(first.tests.newly, [], 'the first run has nothing to compare with: what fails in it failed already');
   assert.deepEqual([first.tests.by, first.tests.saved, first.tests.files, first.tests.tests], ['pair', 'worker.go', ['queue_test.go'], undefined]);
-  assert.deepEqual(fold(first, run(['TestNoDouble'], 9)).tests.newly, [], 'still red the same way: nothing new');
+  const second = fold(first, run(['TestNoDouble', 'TestLease'], 9));
+  assert.deepEqual(second.tests.newly, ['TestLease'], 'compared with the run on save before it');
+  assert.deepEqual(fold(second, run(['TestNoDouble', 'TestLease'], 12)).tests.newly, [], 'still red the same way: nothing new');
   assert.equal(fold(first, {kind: 'test_run', cmd: 'make', saved: 'a.go', tests: null, at: 9}), first, 'output that is no test run changes nothing');
 });

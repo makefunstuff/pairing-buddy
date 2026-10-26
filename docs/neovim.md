@@ -65,9 +65,10 @@ save, in its own pane, and finds what your fix broke somewhere you were not look
 *The plugin and the daemon as shipped, in a clean Neovim with ayu. Both test runs are real `go test -json ./...`
 runs on the project; only the models' words are scripted.*
 
-1. You change `>=` to `>` in `worker.go`, the fix from the wrong turn, and save. The statusline spins:
-   `⠹ go test ./...`.
-2. It turns to `✗ 1 failing · TestNoDoubleDelivery`. In `queue_test.go`, below, the test function gets a `✗` and its
+1. You save `worker.go` as it is, and the statusline spins: `⠹ go test ./...`. This first run of the session is the
+   baseline: it is red on the delivery test, the bug from the wrong turn, and that raises nothing.
+2. You change `>=` to `>`, the fix, and save. The delivery test passes now, but the statusline turns to
+   `✗ 1 failing · TestNoDoubleDelivery`: a test that passed in the run before. In `queue_test.go`, below, the test function gets a `✗` and its
    neighbour a quiet `✓`; the message `t.Fatalf` printed sits under line 34, where it failed.
 3. Pair reads the test, then `queue.go` (the statusline names each file; where the file is on screen, its gaze
    crosses the line numbers), and two lines appear under your change: attempt 5 now starts at 15 s, the moment the
@@ -83,7 +84,7 @@ runs on the project; only the models' words are scripted.*
 ![The statusline while the tests run, when one fails, and when they pass](images/test-statusline.png)
 
 The run on save is never a remark by itself: the statusline and the signs say how it went, and the chat says when it
-turns red or green. Only a **regression**, a test that fails now and did not in the run before, goes through the
+turns red or green. Only a **regression**, a test that fails now and did not in Pair's run before, goes through the
 speak gate as an unasked remark, so a suite that stays red the same way stays quiet. The Partner is asked to keep
 your change working (you made it for a reason) and to suggest the fix where it breaks, thinking first if its model
 can. Details in [docs/watcher.md](watcher.md#regressions).
@@ -93,7 +94,8 @@ can. Details in [docs/watcher.md](watcher.md#regressions).
 - **Statusline.** `⠹ go test ./...` while it runs, with the flags that only ask for JSON left out. Then
   `✗ 1 failing · TestNoDoubleDelivery` (`+2` when more fail, `does not build` for a Go build error) until the next
   run, or `✓ go test ./... · 4 tests, 3 packages` for six seconds before it rests at `● pair` again. Pair reading,
-  driving, or away comes first.
+  driving, or away comes first. Without Pair's pane (no `pair` in herdr) it says `◌ go test ./... · needs \`pair\` in
+  herdr` instead, until a run can start.
 - **Signs.** With a JSON report (`go test -json`, `jest --json`, `vitest --reporter=json`), each test that ran gets
   `✓` or `✗` in the sign column of its function (Go) or its `test(...)` line (jest, vitest), in every buffer you have
   open and in test files you open later. Passing signs are quiet; failing ones are your colorscheme's error colour.

@@ -190,7 +190,7 @@ export class PairSession {
       this.log(`tests on save: ${run.error}`);
       if (run.error !== this.runError) this.message('system', `Pair could not run \`${run.label}\`: ${run.error}.`);
       this.runError = run.error;
-      return this.showTests({type: 'tests', state: 'idle'});
+      return this.showTests({type: 'tests', state: 'error', label: run.label, text: run.short});
     }
     this.runError = null;
     if (run.state === 'run') return this.showTests({type: 'tests', state: 'run', label: run.label});

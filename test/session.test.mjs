@@ -533,7 +533,7 @@ test('saving a source file runs the project\'s tests in Pair\'s pane, and the ed
   pair.receive({kind: 'save', file: join(root, 'cart/cart.go')});
   pair.receive({kind: 'save', file: join(root, 'docs.md')}); // notes are no reason to run the tests
   await until(() => tests().length === 2, 'the run to end');
-  assert.deepEqual(ran, [`go test -json ./... > '${outputFile}' 2>&1`]);
+  assert.deepEqual(ran, [`cd '${root}' && go test -json ./... > '${outputFile}' 2>&1`], 'from the root, whatever Scout\'s cd did');
   const [start, end] = tests();
   assert.deepEqual(start, {to: 'editors', type: 'tests', state: 'run', label: 'go test ./...'});
   assert.deepEqual([end.state, end.label, end.text], ['fail', 'go test ./...', '2 failing · TestRate +1']);
@@ -571,21 +571,35 @@ test('a regression found on save: Pair checks it with thinking, suggests the fix
       return 'Total skips the first price.';
     },
   };
-  const {pair, root, sent, setReport, advance} = saveSession({partner});
+  const {pair, root, sent, setReport, advance, tests} = saveSession({partner});
+  setReport('go-test-pass'); // the session's first run: green, the baseline
+  pair.receive({kind: 'save', file: join(root, 'cart/cart_test.go')});
+  await until(() => tests().length === 2, 'the first run to end');
   setReport('go-test');
   pair.receive({kind: 'save', file: join(root, 'cart/cart.go')});
-  await until(() => pair.state.tests, 'the run to end');
+  await until(() => tests().length === 4, 'the second run to end');
   advance(3000);
   await pair.tick();
-  assert.match(input, /^\[watch\] regression: Pair ran `go test \.\/\.\.\.` when the user saved cart\/cart\.go\. Now failing, and not in the run before: TestRate, TestTotal\/two_items/);
+  assert.match(input, /^\[watch\] regression: Pair ran `go test \.\/\.\.\.` when the user saved cart\/cart\.go\. Now failing, and not in Pair's run before: TestRate, TestTotal\/two_items/);
   assert.match(input, /If a small change fixes it, call suggest/);
   assert.deepEqual(options, {thinking: 'low'});
   const remark = sent.find(message => message.type === 'remark' && message.to === 'editor');
   assert.deepEqual([remark.text, remark.target.suggestion, remark.target.line], ['Total skips the first price.', true, 5]);
 });
 
-test('without Pair\'s pane, a save says once why the tests did not run', async () => {
-  const {pair, root, sent} = saveSession();
+test('the session\'s first run is the baseline: tests that were red already raise no regression', async () => {
+  const {pair, root, sent, setReport, advance} = saveSession();
+  setReport('go-test');
+  pair.receive({kind: 'save', file: join(root, 'cart/cart.go')});
+  await until(() => pair.state.tests, 'the run to end');
+  assert.deepEqual(pair.state.tests.newly, []);
+  advance(3000);
+  await pair.tick();
+  assert.equal(sent.some(message => message.type === 'remark'), false);
+});
+
+test('without Pair\'s pane, a save says once in the chat why the tests did not run, and the editors say it too', async () => {
+  const {pair, root, sent, tests} = saveSession();
   pair.scout = null;
   pair.receive({kind: 'save', file: join(root, 'a.go')});
   pair.receive({kind: 'save', file: join(root, 'a.go')});
@@ -593,4 +607,5 @@ test('without Pair\'s pane, a save says once why the tests did not run', async (
   assert.deepEqual(sent.filter(message => message.to === 'chat').map(message => message.text), [
     'Pair could not run `go test ./...`: tests on save need Pair\'s own herdr pane: start Pair with `pair` inside herdr.',
   ]);
+  assert.deepEqual(tests().at(-1), {to: 'editors', type: 'tests', state: 'error', label: 'go test ./...', text: 'needs `pair` in herdr'});
 });

@@ -98,3 +98,11 @@ test('a JSON report among other lines (npm\'s header, a runner\'s own output) is
   const text = `> project@1.0.0 test\n> jest --json\n\n${readFileSync(new URL('./fixtures/jest.json', import.meta.url), 'utf8')}\nTest Suites: 1 failed, 1 total\n`;
   assert.equal(parseTestOutput(text).tests.length, 3);
 });
+
+test('a test file that fails to load is one failed test, marked on its first line', () => {
+  const tests = report('vitest-broken');
+  assert.deepEqual(tests.tests, [{
+    name: 'broken.test.js', file: '/home/you/project/test/broken.test.js', line: 1, status: 'failed',
+    failure: {file: '/home/you/project/test/broken.test.js', line: 1, text: 'Cannot find module \'./missing.js\' imported from \'/home/you/project/test/broken.test.js\''},
+  }]);
+});

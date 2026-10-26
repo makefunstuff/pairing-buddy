@@ -213,7 +213,9 @@ function jsJson(text) {
   const tests = report.testResults.flatMap(suite => {
     // A file that fails as a whole (a syntax error, a failed import) has no tests of its own to name.
     if (!suite.assertionResults?.length && suite.status === 'failed') {
-      return [{name: suite.name.split('/').at(-1), file: suite.name, line: null, status: 'failed', failure: jsFailure(suite.message || 'failed to run', suite.name)}];
+      // Its mark goes on the first line, and its error there too unless the stack names a line of its own.
+      const failure = jsFailure(suite.message || 'failed to run', suite.name);
+      return [{name: suite.name.split('/').at(-1), file: suite.name, line: 1, status: 'failed', failure: {...failure, line: failure.line ?? 1}}];
     }
     return (suite.assertionResults ?? []).map(result => ({
       name: [...result.ancestorTitles, result.title].join(' › '),

@@ -9,14 +9,17 @@ import {placeTests} from './test-places.mjs';
 /** How a command reads in the statusline: without the flags that only ask for a JSON report. */
 export const runLabel = command => command.replace(/\s+(?:-json|--json|--reporter[= ]json)(?=\s|$)/g, '');
 
-/** What the pane runs: `command`, its output and errors to `outputFile`. */
-export const runLine = (command, outputFile) => `${command} > ${shellQuote(outputFile)} 2>&1`;
+/**
+ * What the pane runs: `command` in `root`, its output and errors to `outputFile`. The pane's shell is shared with
+ * Scout, whose commands may have changed its directory.
+ */
+export const runLine = (command, root, outputFile) => `cd ${shellQuote(root)} && ${command} > ${shellQuote(outputFile)} 2>&1`;
 
 export class TestRuns {
   /**
    * `pane()` is Pair's pane (a ScoutPane), or null without herdr. `report(run)` hears of each run twice:
    * `{state: 'run', label, saved}` as it starts, then `{state: 'done', label, saved, exit, timedOut, tests, placed}`
-   * (`tests` as parseTestOutput gives them, `placed` as placeTests does), or `{state: 'error', label, saved, error}`.
+   * (`tests` as parseTestOutput gives them, `placed` as placeTests does), or `{state: 'error', label, saved, error, short}`.
    */
   constructor({root, command, outputFile, pane, report}) {
     Object.assign(this, {root, command, outputFile, pane, report});
@@ -34,16 +37,16 @@ export class TestRuns {
 
   async run(saved) {
     const pane = this.pane();
-    if (!pane) return this.report({state: 'error', label: this.label, saved, error: 'tests on save need Pair\'s own herdr pane: start Pair with `pair` inside herdr'});
+    if (!pane) return this.report({state: 'error', label: this.label, saved, error: 'tests on save need Pair\'s own herdr pane: start Pair with `pair` inside herdr', short: 'needs `pair` in herdr'});
     this.running = true;
     this.report({state: 'run', label: this.label, saved});
     try {
-      const {exit, timedOut} = await pane.run(runLine(this.command, this.outputFile));
+      const {exit, timedOut} = await pane.run(runLine(this.command, this.root, this.outputFile));
       const tests = parseTestOutput(await readFile(this.outputFile, 'utf8').catch(() => ''));
       const placed = tests?.tests ? await placeTests(tests.tests, this.root) : [];
       this.report({state: 'done', label: this.label, saved, exit, timedOut, tests, placed});
     } catch (error) {
-      this.report({state: 'error', label: this.label, saved, error: error.message});
+      this.report({state: 'error', label: this.label, saved, error: error.message, short: 'could not run'});
     } finally {
       this.running = false;
       const next = this.next;

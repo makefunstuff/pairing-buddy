@@ -316,12 +316,12 @@ footer a { color: var(--muted); }
         <source data-src="media/m2.webm" type="video/webm"><source data-src="media/m2.mp4" type="video/mp4">
       </video></div>
       <div class="beats" data-for="m2">
-        <button class="beat" data-t="0"><b>0:01</b>the fix, saved</button>
-        <button class="beat" data-t="2"><b>0:02</b>go test ./... spins in the statusline</button>
-        <button class="beat" data-t="5.5"><b>0:06</b>TestNoDoubleDelivery fails, in another package</button>
-        <button class="beat" data-t="9"><b>0:09</b>why, under the line you just changed</button>
-        <button class="beat" data-t="11.5"><b>0:12</b>M-j: queue.go:18 with the change in place</button>
-        <button class="beat" data-t="14"><b>0:14</b>M-y, save: 4 tests, 3 packages pass</button>
+        <button class="beat" data-t="0.5"><b>0:01</b>a save: go test ./... spins in the statusline</button>
+        <button class="beat" data-t="3.5"><b>0:04</b>red on the delivery test, the bug you know</button>
+        <button class="beat" data-t="5.5"><b>0:06</b>the fix, saved: TestNoDoubleDelivery fails instead</button>
+        <button class="beat" data-t="9.5"><b>0:10</b>why, under the line you just changed</button>
+        <button class="beat" data-t="15.5"><b>0:16</b>M-j: queue.go:18 with the change in place</button>
+        <button class="beat" data-t="19"><b>0:19</b>M-y, save: 4 tests, 3 packages pass</button>
       </div>
     </div>
     <p class="col why"><b>Why it matters.</b> A second person keeps an eye on everything you aren't looking at. Here that's a double-delivered webhook, the kind of bug that otherwise reaches you a week later as a customer's duplicate charge. It doesn't arrive as a test log: it arrives as one sentence, under the line that caused it.</p>

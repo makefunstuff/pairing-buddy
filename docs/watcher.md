@@ -43,7 +43,8 @@ For this check the Partner thinks first: if its model can think (`"reasoning": t
 ## Regressions
 
 `regression` is raised when the tests Pair ran on save ([docs/scout.md](scout.md#tests-on-save)) fail where the run
-before did not: a test that fails now and did not fail in the last run, yours or Pair's. It is raised once per run,
+before did not: a test that fails now and did not fail in Pair's last run on save. The session's first run (also
+after a daemon restart) has nothing to compare with: it is the baseline, and raises nothing. It is raised once per run,
 within two minutes of it, and is judged before the wrong turn. A run that is red the same way again is no news:
 the statusline already says so.
 

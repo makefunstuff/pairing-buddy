@@ -82,19 +82,23 @@ The session keeps the last test run (who ran it, when, what failed) and shows it
 
 With a command for the project in `testOnSave` (see the [README](../README.md#tests-on-save)), Pair runs it in this
 pane each time you save a source file there (not notes or docs, and not files outside the project). It is typed as
-`<command> > <data dir>/runs/<session>.out 2>&1`: the pane shows the command line and its exit code in the prompt, and
+`cd <project> && <command> > <data dir>/runs/<session>.out 2>&1` (from the root, whatever a Scout command's `cd`
+did to the pane's shell): the pane shows the command line and its exit code in the prompt, and
 the daemon reads the output back from the file, whole, however long it is. Then:
 
 - A JSON report also gives each test (`src/test-places.mjs`): a Go test's function is found as `func Name(` in the
   `_test.go` files of its package (the package's directory from `go.mod`), a jest or vitest test by its title in
-  quotes in its file, or the location the runner gives. Tests outside the project, skipped ones and ones not found
-  are left out. Neovim shows them in the sign column (see [docs/neovim.md](neovim.md#it-runs-what-youd-skip)).
+  quotes in its file, or the location the runner gives; a test file that fails to load (a broken import) is marked on
+  its first line. Tests outside the project, skipped ones and ones not found (a `test.each` row) are left out. Neovim shows them in the sign column (see [docs/neovim.md](neovim.md#it-runs-what-youd-skip)).
 - The run becomes the session's last test run, by Pair, with the file you saved and the tests that fail now and did
-  not in the run before, yours or Pair's. Those raise the `regression` trigger
+  not in Pair's run on save before it. Those raise the `regression` trigger
   ([docs/watcher.md](watcher.md#regressions)).
 - The command is yours, from your config: it does not go through the command policy, and the model can neither
   start nor change it. As with Scout's commands, the pane is not a sandbox.
 - One run at a time, sharing the pane's queue with Scout; a save during a run starts one more run after it, for the
   last file saved. After two minutes a run is stopped with Ctrl-C.
 - Switching back to Navigator keeps the pane open while the project has a command; ending the session closes it.
-  Without herdr there is no pane: the chat says so once, and nothing runs.
+  The session's first run (also after a daemon restart) is the baseline: what fails in it failed already, so it
+  raises no regression. A run of your own is no baseline: it may have run other tests.
+  Without herdr there is no pane: nothing runs, the chat says why once, and Neovim's statusline says
+  `◌ go test ./... · needs \`pair\` in herdr`.

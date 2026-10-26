@@ -203,6 +203,7 @@ function regression() {
     {kind: 'command_end', pane: 'w1:p2', cmd: 'npm test', exit: 1, output: red(15), at: now - 120_000},
     {kind: 'edit', file: 'src/worker.js', from: 10, to: 10, at: now - 30_000},
     {kind: 'cursor', file: 'src/worker.js', line: 10, at: now - 25_000},
+    {kind: 'test_run', cmd: 'node --test', saved: 'src/backoff.js', files: [], tests: {...tests, failed: [], failedCount: 0, passed: 2, firstError: null}, at: now - 60_000},
     {kind: 'save', file: 'src/worker.js', at: now - 20_000},
     {kind: 'test_run', cmd: 'node --test', saved: 'src/worker.js', files: ['test/queue.test.js'], tests, at: now - 15_000},
   ].reduce(fold, initialState({root, goal: 'retries use the whole budget'}));
