@@ -83,7 +83,7 @@ test('the most careful verdict of a chain wins, and its reason says why', () => 
 });
 
 test('quotes hide operators and dollars from the policy', () => {
-  assert.deepEqual(tokenize(`rg 'a|b; rm -rf /' src`).tokens, [{word: 'rg'}, {word: 'a|b; rm -rf /'}, {word: 'src'}]);
+  assert.deepEqual(tokenize(`rg 'a|b; rm -rf /' src`).tokens, [{word: 'rg'}, {word: 'a|b; rm -rf /', quoted: true}, {word: 'src'}]);
   assert.equal(verdictOf(`rg 'price: $5' src`), 'allow');
   assert.equal(verdictOf('rg "price: $5" src'), 'ask', 'double quotes still expand variables');
   assert.deepEqual(tokenize('npm test 2>&1').tokens, [{word: 'npm'}, {word: 'test'}, {op: '>&'}, {word: '1'}]);
@@ -112,5 +112,13 @@ test('with the user\'s rc file, an alias is judged by what it stands for and a f
   assert.equal(chained('g p').verdict, 'refuse');
   assert.equal(chained('l c').verdict, 'allow', 'the next word that is no alias is a plain word');
   assert.equal(chained('gl -3').verdict, 'allow');
+
+  // A quoted or escaped name is the program in bash, whatever the alias says.
+  const harmless = command => commandPolicy(command, {aliases: {rm: 'echo no rm here', g: 'git ', p: 'push'}, functions: []});
+  assert.equal(harmless('rm -rf victim').verdict, 'allow', 'the alias runs echo');
+  for (const command of ["'rm' -rf victim", "r''m -rf victim", '\\rm -rf victim', '"rm" -rf victim']) {
+    assert.deepEqual(harmless(command), {verdict: 'ask', reason: 'rm writes or deletes files'}, command);
+  }
+  assert.equal(harmless("g 'p'").verdict, 'ask', "a quoted word after an alias ending in a space stays 'p'");
   assert.equal(commandPolicy('ls').verdict, 'allow', 'without an rc file names mean the programs');
 });

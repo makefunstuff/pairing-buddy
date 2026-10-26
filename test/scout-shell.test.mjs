@@ -20,7 +20,7 @@ export FROM_RC=yes
 PS1='me> '
 PROMPT_COMMAND='PS1="mine $? > "'
 trap 'echo before' DEBUG
-set -e
+set -euo pipefail
 echo "rc loaded"
 `;
 
@@ -106,9 +106,9 @@ test('with the rc file the pane has its aliases, functions and environment, and 
   const rc = join(dir, 'bashrc');
   writeFileSync(rc, RC);
   const {line} = shellLine({setup: scoutPaneConfig({rc, sandbox: false}), cwd: dir});
-  const results = await runInShell(line, dir, ['ll -d .', 'greet you', 'echo $FROM_RC', 'false', 'sh -c "exit 7"', 'echo $HISTFILE.']);
-  assert.deepEqual(results.map(result => result.exit), [0, 0, 0, 1, 7, 0]);
-  assert.deepEqual(results.map(result => result.output), ['.', 'hi you', 'yes', '', '', '.'], 'no DEBUG trap output, and no history file');
+  const results = await runInShell(line, dir, ['ll -d .', 'greet you', 'echo $FROM_RC', 'false', 'sh -c "exit 7"', 'echo $HISTFILE.', 'false | true', 'echo $UNSET.']);
+  assert.deepEqual(results.map(result => result.exit), [0, 0, 0, 1, 7, 0, 0, 0], 'a pipeline ends as its last command, as without the rc file');
+  assert.deepEqual(results.map(result => result.output), ['.', 'hi you', 'yes', '', '', '.', '', '.'], 'no DEBUG trap output, and no history file');
 });
 
 test('the rc file\'s aliases and functions are listed for the command policy', async () => {
