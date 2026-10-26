@@ -13,14 +13,15 @@ import {daemonCheck, doctor, serviceCheck} from '../src/doctor.mjs';
 import {sendMessage} from '../src/protocol.mjs';
 import {VERSION} from '../src/version.mjs';
 
-/** An OpenAI-compatible server that serves `model` and answers each completion after `delayMs`. */
-async function fakeServer({model, delayMs = 0}) {
+/** An OpenAI-compatible server that serves `model` and answers each completion after `delayMs`, thinking first if it `thinks`. */
+async function fakeServer({model, delayMs = 0, thinks = false}) {
   const server = createServer((request, response) => {
     if (request.url === '/v1/models') return response.end(JSON.stringify({data: [{id: model}]}));
     request.resume().on('end', () => setTimeout(() => {
       response.writeHead(200, {'content-type': 'text/event-stream'});
       const chunk = delta => `data: ${JSON.stringify({id: '1', object: 'chat.completion.chunk', created: 0, model, choices: [{index: 0, ...delta}]})}\n\n`;
-      response.end(`${chunk({delta: {role: 'assistant', content: 'OK'}})}${chunk({delta: {}, finish_reason: 'stop'})}data: [DONE]\n\n`);
+      const thinking = thinks ? chunk({delta: {role: 'assistant', reasoning_content: 'Let me see.'}}) : '';
+      response.end(`${thinking}${chunk({delta: {role: 'assistant', content: 'OK'}})}${chunk({delta: {}, finish_reason: 'stop'})}data: [DONE]\n\n`);
     }, delayMs));
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -36,7 +37,7 @@ async function run(options) {
 const installed = async () => ({installed: true, enabled: true, active: true, node: process.execPath});
 
 test('all well: each check says ok, and a slow Watcher gets advice', {timeout: 20_000}, async () => {
-  const fast = await fakeServer({model: 'small'});
+  const fast = await fakeServer({model: 'small', thinks: true});
   const slow = await fakeServer({model: 'big', delayMs: 1700});
   const dir = mkdtempSync(join(tmpdir(), 'pair-doctor-'));
   const path = join(dir, 'config.json');
@@ -62,6 +63,8 @@ test('all well: each check says ok, and a slow Watcher gets advice', {timeout: 2
     assert.match(checks.partner.text, /^small at http:\/\/127\.0\.0\.1:\d+\/v1 answers in \d\.\d s$/);
     assert.equal(checks.watcher.level, 'warn');
     assert.match(checks.watcher.text, /takes \d+\.\d s: the Watcher scores every candidate remark and should take about 1 s/);
+    assert.equal(checks.thinking.level, 'ok');
+    assert.match(checks.thinking.text, /^the Partner thinks \(up to "medium"\), \d\.\d s for a short sum$/);
   } finally {
     editor.destroy();
     await daemon.close();
@@ -91,6 +94,29 @@ test('broken: no daemon, a dead endpoint and a model the server does not serve, 
     assert.equal(checks.partner.text, `nothing answers at ${dead.url} (ECONNREFUSED): is the server running?`);
   } finally {
     server.close();
+  }
+});
+
+test('thinking: a Watcher that thinks anyway and a Partner that shows no thinking each get the fix', {timeout: 20_000}, async () => {
+  const thinker = await fakeServer({model: 'thinker', thinks: true});
+  const plain = await fakeServer({model: 'plain'});
+  const dir = mkdtempSync(join(tmpdir(), 'pair-doctor-'));
+  const path = join(dir, 'config.json');
+  const config = partner => JSON.stringify({socket: join(dir, 'pair.sock'), models: {watcher: {api: 'openai', baseUrl: thinker.url, model: 'thinker'}, partner}});
+  try {
+    writeFileSync(path, config({api: 'openai', baseUrl: plain.url, model: 'plain'}));
+    let checks = await run({path, env: {PATH: ''}, service: installed, nvimPlugin: async () => 'yes'});
+    assert.equal(checks.watcher.level, 'warn');
+    assert.match(checks.watcher.text, /thinks although the Watcher's thinking is off/);
+    assert.equal(checks.thinking.level, 'warn');
+    assert.match(checks.thinking.text, /^plain answered with no thinking at "medium": if it can think, set its server's thinking switch/);
+
+    writeFileSync(path, config({api: 'openai', baseUrl: plain.url, model: 'plain', thinking: 'off'}));
+    checks = await run({path, env: {PATH: ''}, service: installed, nvimPlugin: async () => 'yes'});
+    assert.deepEqual(checks.thinking, {level: 'ok', name: 'thinking', text: 'off for every kind of turn, as configured'});
+  } finally {
+    thinker.close();
+    plain.close();
   }
 });
 

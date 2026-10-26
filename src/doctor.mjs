@@ -3,11 +3,11 @@ import {execFile} from 'node:child_process';
 import {existsSync} from 'node:fs';
 import {homedir} from 'node:os';
 import {basename, delimiter, join} from 'node:path';
-import {configPath, loadConfig} from './config.mjs';
+import {configPath, loadConfig, mostThinking} from './config.mjs';
 import {herdrRequest} from './herdr.mjs';
 import {listModels} from './loaded-model.mjs';
 import {createPairModels} from './models.mjs';
-import {probeModel} from './probe.mjs';
+import {probeModel, probeThinking} from './probe.mjs';
 import {requestDaemon} from './protocol.mjs';
 import {serviceState, UNIT} from './service.mjs';
 import {VERSION} from './version.mjs';
@@ -144,8 +144,29 @@ async function* modelChecks(config, status) {
     } else {
       yield ok(name, `${where} answers in ${seconds(probe.ms)}`);
     }
+    if (role === 'watcher' && probe.thought) {
+      yield warn(name, `${where} thinks although the Watcher's thinking is off, so it is slow and may give no score: set "reasoning": true `
+        + 'and, on an OpenAI-compatible server, "compat": {"thinkingFormat": ...} for its thinking switch, or use a model that does not think');
+    }
     for (const seen of shared ? ['watcher', 'partner'] : [role]) {
       if (status?.models?.[seen]) yield warn(name, `the daemon still has the ${seen} as down (${status.models[seen]}); it checks again within 30 s`);
     }
+    if (role === 'partner' || shared) yield await thinkingCheck(pairModels, partner);
   }
+}
+
+/** Whether the Partner thinks as configured: a model that cannot think, or whose switch Pair does not know, says so. */
+async function thinkingCheck(pairModels, entry) {
+  const level = mostThinking(entry.thinking);
+  if (level === 'off') return ok('thinking', 'off for every kind of turn, as configured');
+  if (!entry.reasoning) return ok('thinking', `"reasoning" is false: the Partner thinks as its model always does`);
+  const probe = await probeThinking(pairModels.models, pairModels.partner, level);
+  if (!probe.ok) {
+    return fail('thinking', `${entry.model} fails when asked to think (${probe.error}): for a model that cannot think, set "reasoning": false`);
+  }
+  if (!probe.thought) {
+    return warn('thinking', `${entry.model} answered with no thinking at "${level}": if it can think, set its server's thinking switch `
+      + '("compat": {"thinkingFormat": ...}); if it cannot, set "reasoning": false');
+  }
+  return ok('thinking', `the Partner thinks (up to "${level}"), ${seconds(probe.ms)} for a short sum`);
 }

@@ -40,10 +40,6 @@ const CHECKS = {
     + 'one or two short sentences, without a trace.',
 };
 
-// Triggers whose check needs the Partner to work something out before it may speak: it thinks at least this
-// much for them, if its model can think. Without it, fast models trace a test through code wrongly, and remark.
-export const THINKING = {edit_while_red: 'low', regression: 'low'};
-
 export function watchInput(trigger, description) {
   return `[watch] ${trigger.kind}: ${trigger.detail}\n\nNow:\n${description}\n\n${CHECKS[trigger.kind]} If no remark would help, answer exactly SILENT.`;
 }
@@ -302,7 +298,7 @@ export class PairSession {
     const id = this.remarkId = this.store.addRemark({sessionId: this.id, trigger: trigger.kind, score, at: this.now()});
     try {
       const input = watchInput(trigger, describeState(this.state, this.now()));
-      if (!(await this.talk(input, {thinking: THINKING[trigger.kind]}))) return this.store.dropRemark(id);
+      if (!(await this.talk(input, {kind: 'remark'}))) return this.store.dropRemark(id);
       this.budget.spend(this.now());
       this.lastRemark = id;
       // After the remark's own words, also when they wait for a pause in the user's typing. The editor shows
@@ -351,7 +347,10 @@ export class PairSession {
     return selectionInput({...selection, file: relative(this.root, path)}, await this.bufferText(path));
   }
 
-  /** Runs one Partner turn (`options` as for the Partner's ask); true when anything reached the user. */
+  /**
+   * Runs one Partner turn (`options` as for the Partner's ask); true when anything reached the user. While a turn
+   * that thinks runs, the statusline says so: thinking takes seconds, and the user should not take it for silence.
+   */
   async talk(input, options = {}) {
     this.busy = true;
     this.spoke = false;
@@ -359,6 +358,8 @@ export class PairSession {
     this.paneUses = 0;
     this.words = [];
     this.target = null;
+    const thinking = this.partner.thinkingOf(this.conversationId, options.kind) !== 'off';
+    if (thinking) this.notify('editors', {type: 'thinking', on: true});
     try {
       const answer = await this.partner.ask(this.conversationId, input, options);
       // After a say, local models tend to end with filler or a repeat; the say already was the answer.
@@ -373,6 +374,7 @@ export class PairSession {
       else this.message('system', `Pair could not answer: ${error.message}`);
     } finally {
       this.busy = false;
+      if (thinking) this.notify('editors', {type: 'thinking', on: false});
     }
     return this.spoke;
   }

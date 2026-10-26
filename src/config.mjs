@@ -4,6 +4,7 @@ import {copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync} from 'n
 import {homedir} from 'node:os';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {thinkingBudgetForLevel} from '@earendil-works/pi-ai/api/simple-options';
 
 const EXAMPLE = fileURLToPath(new URL('../config.example.json', import.meta.url));
 
@@ -23,21 +24,50 @@ export function configPath() {
   return process.env.PAIR_CONFIG || join(xdg('XDG_CONFIG_HOME', '.config'), 'pairing-buddy', 'config.json');
 }
 
-/** Checks one model entry and fills its defaults. */
+export const THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'];
+
+// How much the Partner thinks for each kind of turn: an answer as Navigator, as Scout or as Driver, and a remark
+// nobody asked for. A remark may come a few seconds later; a wrong one costs the user more than the wait.
+export const THINKING_DEFAULTS = {navigator: 'medium', scout: 'medium', driver: 'medium', remark: 'low'};
+
+const ANSWER_TOKENS = 2048; // the Partner's words and tool calls, on top of its thinking
+
+/** The Partner's `thinking`: one level for every kind of turn, or some kinds' levels with the defaults for the rest. */
+export function thinkingConfig(raw = {}) {
+  const levels = typeof raw === 'string' ? Object.fromEntries(Object.keys(THINKING_DEFAULTS).map(kind => [kind, raw])) : raw;
+  if (!levels || typeof levels !== 'object' || Array.isArray(levels)) throw new Error('config: models.partner.thinking must be a level or map kinds to levels');
+  for (const [kind, level] of Object.entries(levels)) {
+    if (!(kind in THINKING_DEFAULTS)) throw new Error(`config: models.partner.thinking.${kind}: the kinds are ${Object.keys(THINKING_DEFAULTS).join(', ')}`);
+    if (!THINKING_LEVELS.includes(level)) throw new Error(`config: models.partner.thinking: "${level}" is not one of ${THINKING_LEVELS.join(', ')}`);
+  }
+  return {...THINKING_DEFAULTS, ...levels};
+}
+
+/** The highest of `thinking`'s levels. */
+export function mostThinking(thinking) {
+  return Object.values(thinking).reduce((most, level) => (THINKING_LEVELS.indexOf(level) > THINKING_LEVELS.indexOf(most) ? level : most), 'off');
+}
+
+/**
+ * Checks one model entry and fills its defaults. The Partner thinks (`reasoning`, so Pair can set its level); the
+ * Watcher never does, and answers with one number whatever its `maxTokens` (see watcher.mjs).
+ */
 export function modelConfig(role, entry) {
   if (!entry || typeof entry !== 'object') throw new Error(`config: models.${role} is missing`);
   if (!['openai', 'anthropic'].includes(entry.api)) throw new Error(`config: models.${role}.api must be "openai" or "anthropic"`);
   if (typeof entry.model !== 'string' || !entry.model) throw new Error(`config: models.${role}.model is missing`);
   if (entry.api === 'openai' && !entry.baseUrl) throw new Error(`config: models.${role}.baseUrl is missing`);
+  const base = {baseUrl: entry.api === 'anthropic' ? 'https://api.anthropic.com' : undefined, contextWindow: 32768};
+  if (role !== 'partner') return {...base, maxTokens: ANSWER_TOKENS, reasoning: false, ...entry};
+  const thinking = thinkingConfig(entry.thinking);
+  const most = mostThinking(thinking);
   return {
-    baseUrl: entry.api === 'anthropic' ? 'https://api.anthropic.com' : undefined,
-    contextWindow: 32768,
-    // The Partner's; the Watcher answers with one number (see watcher.mjs). Thinking counts toward it, and the
-    // checks that need it (see THINKING in session.mjs) think even when the config says off.
-    maxTokens: entry.reasoning ? 8192 : 2048,
-    reasoning: false,
-    thinking: 'off',
+    ...base,
+    // Thinking counts toward it: room for the most thinking any turn does, and the answer after it.
+    maxTokens: ANSWER_TOKENS + (most === 'off' ? 0 : thinkingBudgetForLevel(most)),
+    reasoning: true,
     ...entry,
+    thinking,
   };
 }
 

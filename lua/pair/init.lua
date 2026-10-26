@@ -30,6 +30,7 @@ local state = {
   retry = nil, -- the reconnect timer
   models = {}, -- why each model is down, per role: the daemon's health
   run = nil, -- the test run on save, for the statusline: {state = 'run'|'pass'|'fail'|'error'|'idle', label, text, till}
+  thinking = false, -- a Partner turn that thinks is running, for the statusline
   results = {}, -- what the last finished run found: {name, file, line, ok, failure}, absolute paths
   typing = nil, -- while the Driver's edit is being typed: the function that stops it and undoes what it typed
 }
@@ -390,7 +391,9 @@ end
 
 local spinner = {timer = nil, frame = 1}
 
-local function spin(on)
+-- The spinner turns while Pair runs your tests or thinks.
+local function spin()
+  local on = state.thinking or (state.run ~= nil and state.run.state == 'run')
   if on and not spinner.timer then
     spinner.timer = vim.uv.new_timer()
     spinner.timer:start(0, 80, vim.schedule_wrap(function()
@@ -436,7 +439,7 @@ local function on_tests(message)
   end
   state.run = {state = message.state, label = message.label, text = message.text, till = now_ms() + PASS_MS}
   if message.state == 'pass' then vim.defer_fn(redraw_status, PASS_MS + 50) end
-  spin(message.state == 'run')
+  spin()
   show_all_tests()
   redraw_status()
 end
@@ -560,6 +563,11 @@ local handlers = {
   handback = handback,
   remark = on_remark,
   tests = on_tests,
+  thinking = function(message)
+    state.thinking = message.on
+    spin()
+    redraw_status()
+  end,
   clear = function()
     clear_points()
     clear_suggestion()
@@ -623,6 +631,8 @@ disconnected = function()
   state.channel = nil
   if state.run and state.run.state == 'run' then on_tests({state = 'idle'}) end -- that run's end will not come
   if state.typing then state.typing() end -- no daemon waits for the edit any more
+  state.thinking = false -- nor does any turn of its Partner
+  spin()
   if state.role == 'driver' then set_role('navigator') end -- a restarted daemon has ended the hand-over
   redraw_status()
   if state.wanted then schedule_retry(1) end
@@ -650,8 +660,8 @@ function M.disconnect()
   clear_suggestion()
   forget_words(false)
   unmap_feedback()
-  state.results, state.run = {}, nil
-  spin(false)
+  state.results, state.run, state.thinking = {}, nil, false
+  spin()
   show_all_tests()
 end
 
@@ -669,13 +679,16 @@ local function status_parts()
   end
   local run = state.run
   if state.role == 'driver' and not (run and run.state == 'run') then
-    return {glyph = g.wheel, text = 'pair has the wheel · any key takes it back', hl = 'PairStatus', text_hl = 'PairStatusDim'}
+    local doing = state.thinking and 'thinking' or 'any key takes it back'
+    return {glyph = g.wheel, text = 'pair has the wheel · ' .. doing, hl = 'PairStatus', text_hl = 'PairStatusDim'}
   end
   if state.reading and now_ms() < state.reading.till then
     return {glyph = g.voice, text = 'reading ' .. state.reading.name, hl = 'PairStatus', text_hl = 'PairStatusDim'}
   end
   if run and run.state == 'run' then
     return {glyph = style.spinner[spinner.frame], text = run.label, hl = 'PairStatus', text_hl = 'PairStatusDim'}
+  elseif state.thinking then
+    return {glyph = style.spinner[spinner.frame], text = 'pair · thinking', hl = 'PairStatus', text_hl = 'PairStatusDim'}
   elseif run and run.state == 'fail' then
     return {glyph = g.fail, text = run.text, hl = 'PairFail', text_hl = 'PairStatusDim'}
   elseif run and run.state == 'error' then
@@ -689,7 +702,7 @@ local function status_parts()
   return {glyph = g.voice, text = table.concat(parts, ' · '), hl = state.words and 'PairStatus' or 'PairStatusDim', text_hl = 'PairStatusDim'}
 end
 
---- The statusline's text, for example `● pair`, `● reading worker.go`, `⠹ go test ./...`, `✗ 1 failing · TestX` or
+--- The statusline's text, for example `● pair`, `● reading worker.go`, `⠹ go test ./...`, `⠹ pair · thinking`, `✗ 1 failing · TestX` or
 --- `◌ pair · partner down`.
 function M.status()
   local parts = status_parts()

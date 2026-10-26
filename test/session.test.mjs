@@ -10,7 +10,7 @@ function session({score = async () => ({value: 9, reason: 'worth it'}), answer =
   const asked = [];
   const sent = [];
   const store = {addMessage() {}, setGoal() {}, setLevel() {}, endSession() {}, addRemark: () => 1, dropRemark() {}};
-  const partner = {ask: async (_id, input) => { asked.push(input); return answer; }};
+  const partner = {thinkingOf: () => 'off', ask: async (_id, input) => { asked.push(input); return answer; }};
   const pair = new PairSession({
     record: {id: 1, root: '/project', conversation_id: 7, goal: 'fix it', level: 'normal'},
     store, partner, score, typingPauseMs: 2000,
@@ -69,7 +69,7 @@ test('an unasked remark that arrives while the user types again waits for their 
     record: {id: 1, root: process.cwd(), conversation_id: 7, goal: 'fix it', level: 'normal'},
     store: {addMessage() {}, addRemark: () => 1, dropRemark() {}},
     // The Partner takes 6 s; the user types again half a second before it answers.
-    partner: {ask: async () => {
+    partner: {thinkingOf: () => 'off', ask: async () => {
       clock += 5500;
       pair.receive({kind: 'typing'});
       clock += 500;
@@ -125,7 +125,7 @@ function scoutSession({results = {}, chat = true} = {}) {
   const pair = new PairSession({
     record: {id: 1, root: process.cwd(), conversation_id: 7, goal: 'fix it', level: 'normal', role: 'scout'},
     store: {addMessage() {}, setRole: (_id, role) => roles.push(role)},
-    partner: {ask: async () => 'ok', setRole: async () => {}},
+    partner: {thinkingOf: () => 'off', ask: async () => 'ok', setRole: async () => {}},
     score: async () => ({value: 9, reason: 'worth it'}),
     typingPauseMs: 2000,
     notify: (to, message) => { sent.push({to, ...message}); return to === 'chat' && !chat ? 0 : 1; },
@@ -255,7 +255,7 @@ function driverSession({turn = async () => 'ok', editor = true, role = 'navigato
   const pair = new PairSession({
     record: {id: 1, root: process.cwd(), conversation_id: 7, goal: 'fix it', level: 'normal', role},
     store: {addMessage() {}, setRole: (_id, stored) => roles.push(stored)},
-    partner: {ask: async (_id, input) => turn(pair, input), setRole: async (_id, given) => { toolsOf.push(given); }},
+    partner: {thinkingOf: () => 'off', ask: async (_id, input) => turn(pair, input), setRole: async (_id, given) => { toolsOf.push(given); }},
     score: async () => ({value: 9, reason: 'worth it'}),
     typingPauseMs: 2000,
     notify: (to, message) => { sent.push({to, ...message}); return to === 'editors' && !editor ? 0 : 1; },
@@ -440,7 +440,7 @@ test('drift the budget holds back is judged once the budget allows, if the user 
   const pair = new PairSession({
     record: {id: 1, root: '/project', conversation_id: 7, goal: 'fix reconnect after sleep', level: 'normal'},
     store: {addMessage() {}, addRemark: () => 1, dropRemark() {}},
-    partner: {ask: async () => 'SILENT'},
+    partner: {thinkingOf: () => 'off', ask: async () => 'SILENT'},
     score: async trigger => { scored.push(trigger.kind); return {value: 2}; },
     typingPauseMs: 2000, notify: () => 1, requestEditor: async () => null, now: () => clock, log: line => logged.push(line),
   });
@@ -462,7 +462,7 @@ test('after a new goal, a file judged under the old one is judged again', async 
   const pair = new PairSession({
     record: {id: 1, root: '/project', conversation_id: 7, goal: 'fix rounding in billing totals', level: 'normal'},
     store: {addMessage() {}, setGoal() {}, addRemark: () => 1, dropRemark() {}},
-    partner: {ask: async () => 'SILENT'},
+    partner: {thinkingOf: () => 'off', ask: async () => 'SILENT'},
     score: async trigger => { scored.push(trigger.kind); return {value: 2}; },
     typingPauseMs: 2000, notify: () => 1, requestEditor: async () => null, now: () => clock,
   });
@@ -481,7 +481,7 @@ test('after a new goal, a file judged under the old one is judged again', async 
  * A session with tests on save in a small Go project, and a stand-in for Pair's pane that writes `report` (a
  * fixture of go test -json, as the project's real run would print it) to the output file the command names.
  */
-function saveSession({partner = {ask: async () => 'SILENT', setRole: async () => {}}, requestEditor = async () => null} = {}) {
+function saveSession({partner = {thinkingOf: () => 'off', ask: async () => 'SILENT', setRole: async () => {}}, requestEditor = async () => null} = {}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'pair-save-')));
   for (const [path, text] of Object.entries({
     'go.mod': 'module example.com/shop\n',
@@ -564,10 +564,11 @@ test('a save during a run starts one more run after it; switching back to Naviga
   assert.equal(pane.closed, undefined);
 });
 
-test('a regression found on save: Pair checks it with thinking, suggests the fix, and the jump key goes to the suggestion', async () => {
+test('a regression found on save: Pair checks it as a remark, suggests the fix, and the jump key goes to the suggestion', async () => {
   let input;
   let options;
   const partner = {
+    thinkingOf: () => 'off',
     setRole: async () => {},
     ask: async (_id, text, opts) => {
       input = text;
@@ -587,7 +588,7 @@ test('a regression found on save: Pair checks it with thinking, suggests the fix
   await pair.tick();
   assert.match(input, /^\[watch\] regression: Pair ran `go test \.\/\.\.\.` when the user saved cart\/cart\.go\. Now failing, and not in Pair's run before: TestRate, TestTotal\/two_items/);
   assert.match(input, /If a small change fixes it, call suggest/);
-  assert.deepEqual(options, {thinking: 'low'});
+  assert.deepEqual(options, {kind: 'remark'});
   const remark = sent.find(message => message.type === 'remark' && message.to === 'editor');
   assert.deepEqual([remark.text, remark.target.suggestion, remark.target.line], ['Total skips the first price.', true, 5]);
 });
@@ -619,6 +620,7 @@ test('after the Driver\'s edit, the tests run on the unsaved buffer: the Partner
   const buffer = 'package cart\n\nimport "testing"\n\nfunc TestTotal(t *testing.T) {\n}\n\nfunc TestEmptyCart(t *testing.T) {\n}\n';
   let reply;
   const partner = {
+    thinkingOf: () => 'off',
     setRole: async () => {},
     ask: async () => { reply = await pair.edit({file: 'cart/cart_test.go', line: 6, endLine: 6, text: '\t// a case\n}'}); return 'Added a case; the tests pass.'; },
   };
@@ -641,7 +643,7 @@ test('after the Driver\'s edit, the tests run on the unsaved buffer: the Partner
 
 test('when the tests cannot run on the buffer, the Partner is told why, and the statusline keeps the last run on save', async () => {
   let reply;
-  const partner = {setRole: async () => {}, ask: async () => { reply = await pair.edit({file: 'notes.txt', line: 1, endLine: 1, text: 'x'}); return 'Done.'; }};
+  const partner = {thinkingOf: () => 'off', setRole: async () => {}, ask: async () => { reply = await pair.edit({file: 'notes.txt', line: 1, endLine: 1, text: 'x'}); return 'Done.'; }};
   const {pair, root, sent, tests} = saveSession({partner, requestEditor: async message => (message.type === 'read' ? {text: 'x\n'} : {ok: true})});
   writeFileSync(join(root, 'notes.txt'), 'old\n');
   pair.testRuns.command = 'npm test'; // not go test: it runs in a copy of the project, which needs git

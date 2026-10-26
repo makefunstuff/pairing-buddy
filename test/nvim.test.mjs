@@ -37,9 +37,9 @@ const runIn = cwd => command => new Promise(resolve => {
 /**
  * The daemon with scripted models, a fake herdr, a headless Neovim with the plugin editing a.js and running
  * `:Pair start <goal>`, and a chat client. With `testOnSave`, saving runs that command in the project, for real,
- * in the fake herdr's pane. `stop()` ends them all.
+ * in the fake herdr's pane. With `thinks`, the Partner's model can think. `stop()` ends them all.
  */
-async function pairInNvim(goal, {testOnSave} = {}) {
+async function pairInNvim(goal, {testOnSave, thinks = false} = {}) {
   const project = realpathSync(mkdtempSync(join(tmpdir(), 'pair-nvim-')));
   writeFileSync(join(project, 'a.js'), 'const x = 1\nconst y = 2\nconst z = 3\n');
   const dataDir = mkdtempSync(join(tmpdir(), 'pair-data-'));
@@ -50,7 +50,7 @@ async function pairInNvim(goal, {testOnSave} = {}) {
     models: {watcher: {api: 'openai', baseUrl: 'http://unused', model: 'w'}, partner: {api: 'openai', baseUrl: 'http://unused', model: 'p'}},
   });
   const watcher = fauxProvider({provider: 'faux-watcher'});
-  const partner = fauxProvider({provider: 'faux-partner'});
+  const partner = fauxProvider({provider: 'faux-partner', models: [{id: 'p', reasoning: thinks}]});
   const models = createModels();
   models.setProvider(watcher.provider);
   models.setProvider(partner.provider);
@@ -408,6 +408,21 @@ test('Alt-n rates an unasked remark as noise; accepting its suggestion rates it 
     keys('<M-y>');
     await until(() => lines()[1] === 'const y = 20', 'the accepted suggestion');
     await until(() => verdict()[0] === 'useful', 'accepting to count as useful');
+  } finally {
+    await stop();
+  }
+});
+
+test('while the Partner thinks, the statusline says so, and lets it go with the answer', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
+  const {partner, messages, send, status, stop} = await pairInNvim('make x two', {thinks: true});
+  try {
+    let answer;
+    partner.setResponses([() => new Promise(resolve => { answer = resolve; })]);
+    send({type: 'ask', text: 'is it right?'});
+    await until(() => /^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] pair · thinking$/.test(status()), 'the statusline to show the thinking');
+    answer(fauxAssistantMessage([fauxText('Looks right.')]));
+    await until(() => messages.some(message => message.text === 'Looks right.'), 'the answer');
+    await until(() => status() === '● pair', 'the statusline back to rest');
   } finally {
     await stop();
   }

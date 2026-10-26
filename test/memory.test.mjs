@@ -22,6 +22,7 @@ function pairSession({store = openStore(':memory:'), root = '/project', answers 
     record, store, autoTune,
     previousNote: store.previousNote(root, record.id),
     partner: {
+      thinkingOf: () => 'off',
       ask: async (_id, input) => { asked.push(input); const answer = answers.shift(); return typeof answer === 'function' ? answer() : answer; },
       setRole: async () => {},
     },

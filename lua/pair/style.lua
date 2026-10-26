@@ -12,7 +12,7 @@ M.glyphs = {
   fail = '✗', -- a test failed
 }
 
--- The statusline while Pair runs your tests.
+-- The statusline while Pair runs your tests or thinks.
 M.spinner = {'⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'}
 
 -- Colours are 0xRRGGBB numbers, as nvim_get_hl gives them.
