@@ -2,7 +2,7 @@
 import {errorSignature, failed, failureLine} from './fold.mjs';
 import {isSourceFile, testSummary} from './test-output.mjs';
 
-export const TRIGGER_KINDS = ['failed_command', 'repeated_error', 'new_code_diagnostic', 'stall', 'drift', 'edit_while_red'];
+export const TRIGGER_KINDS = ['failed_command', 'repeated_error', 'new_code_diagnostic', 'stall', 'drift', 'edit_while_red', 'regression'];
 
 export const TIMING = {
   lookGraceMs: 4_000, // a failure gets this long to be noticed before Pair counts it as missed
@@ -110,8 +110,26 @@ function redTriggers(state, now) {
   }];
 }
 
+/**
+ * A regression: the tests Pair ran when the user saved fail where the run before did not. Raised once per run;
+ * a run that is still red with the same failures is no news (the statusline says it).
+ */
+function regressionTriggers(state, now) {
+  const {tests} = state;
+  if (!tests?.saved || !tests.newly?.length || now - tests.at > TIMING.recentMs) return [];
+  const newly = tests.newly.slice(0, 4).join(', ');
+  return [{
+    kind: 'regression',
+    key: `regression:${tests.at}`,
+    detail: `Pair ran \`${tests.cmd}\` when the user saved ${tests.saved}. Now failing, and not in the run before: ${newly}. ${testSummary(tests)}`
+      + `${tests.files.length ? ` The failure names ${tests.files.slice(0, 4).join(', ')}.` : ''}`,
+    file: tests.saved,
+    newly: tests.newly,
+  }];
+}
+
 /** The candidate remarks for this moment whose keys have not fired yet. */
 export function detectTriggers(state, now, fired = new Set()) {
-  return [...commandTriggers(state, now), ...diagnosticTriggers(state), ...redTriggers(state, now), ...driftTriggers(state, now)]
+  return [...commandTriggers(state, now), ...diagnosticTriggers(state), ...regressionTriggers(state, now), ...redTriggers(state, now), ...driftTriggers(state, now)]
     .filter(trigger => !fired.has(trigger.key));
 }

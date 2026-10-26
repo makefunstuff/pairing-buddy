@@ -20,7 +20,7 @@ export function initialState({root = null, goal = null} = {}) {
     errors: {},
     focus: {target: 'unknown', pane: null, scrolled: false, at: 0},
     terminalPane: null, // the user's terminal pane they used last: where the Driver's type goes
-    tests: null, // the last test run, the user's or Scout's: parsed by test-output.mjs, plus cmd, by, at and the files it names
+    tests: null, // the last test run, the user's or Pair's: parsed by test-output.mjs, plus cmd, by, at and the files it names
   };
 }
 
@@ -119,6 +119,16 @@ const handlers = {
 
   // A command Scout ran in its own pane: Pair already has its result, so only its test results count.
   scout_run: (state, event) => ({...state, tests: testsAfter(state, parseTestOutput(event.output), event, 'pair')}),
+
+  // The tests Pair ran when the user saved `saved` (see test-runs.mjs), already parsed, with the files of the
+  // failed tests. `newly` names the tests that fail now and did not in the last run, the user's or Pair's.
+  test_run: (state, event) => {
+    if (!event.tests) return state;
+    const {tests: _list, ...tests} = event.tests;
+    const before = new Set(state.tests?.failed ?? []);
+    const newly = tests.failed.filter(name => !before.has(name));
+    return {...state, tests: {...tests, cmd: event.cmd, by: 'pair', at: event.at, files: event.files ?? [], saved: event.saved, newly}};
+  },
 
   focus: (state, event) => {
     const focus = {target: event.target, pane: event.pane ?? null, scrolled: !!event.scrolled, at: event.at};

@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
+import {mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync} from 'node:fs';
 import {readFile} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 import {test} from 'node:test';
 import {PairSession} from '../src/session.mjs';
 
@@ -467,4 +470,127 @@ test('after a new goal, a file judged under the old one is judged again', async 
   clock += 5000;
   await pair.tick();
   assert.deepEqual(scored, ['drift'], 'judged again under the new goal');
+});
+
+/**
+ * A session with tests on save in a small Go project, and a stand-in for Pair's pane that writes `report` (a
+ * fixture of go test -json, as the project's real run would print it) to the run's output file.
+ */
+function saveSession({partner = {ask: async () => 'SILENT', setRole: async () => {}}} = {}) {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'pair-save-')));
+  for (const [path, text] of Object.entries({
+    'go.mod': 'module example.com/shop\n',
+    'cart/cart_test.go': 'package cart\n\nimport "testing"\n\nfunc TestTotal(t *testing.T) {\n}\n\nfunc TestEmptyCart(t *testing.T) {\n}\n',
+    'tax/tax_test.go': 'package tax\n\nimport "testing"\n\nfunc TestRate(t *testing.T) {\n}\n',
+  })) {
+    mkdirSync(join(root, path, '..'), {recursive: true});
+    writeFileSync(join(root, path), text);
+  }
+  const outputFile = join(root, 'run.out');
+  const ran = [];
+  const sent = [];
+  let report = '';
+  let clock = 100_000;
+  const pane = {
+    close: async () => { pane.closed = true; },
+    run: async command => {
+      ran.push(command);
+      writeFileSync(outputFile, report.replaceAll('/home/you/shop', root));
+      return {exit: report.includes('"Action":"fail"') ? 1 : 0, output: '', timedOut: false};
+    },
+  };
+  const pair = new PairSession({
+    record: {id: 1, root, conversation_id: 7, goal: 'totals', level: 'normal'},
+    store: {addMessage() {}, setRole() {}, addRemark: () => 1, dropRemark() {}},
+    partner,
+    score: async () => ({value: 9, reason: 'worth it'}),
+    typingPauseMs: 2000,
+    testOnSave: {command: 'go test -json ./...', outputFile},
+    notify: (to, message) => { sent.push({to, ...message}); return 1; },
+    requestEditor: async () => null,
+    now: () => clock,
+  });
+  pair.scout = pane;
+  return {
+    pair, pane, root, ran, sent, outputFile,
+    setReport: name => { report = readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), 'utf8'); },
+    advance: ms => { clock += ms; },
+    tests: () => sent.filter(message => message.type === 'tests'),
+  };
+}
+
+async function until(check, what) {
+  for (let i = 0; i < 200; i++) {
+    if (check()) return;
+    await new Promise(resolve => setTimeout(resolve, 5));
+  }
+  throw new Error(`timed out waiting for ${what}`);
+}
+
+test('saving a source file runs the project\'s tests in Pair\'s pane, and the editors see the run and each test\'s line', async () => {
+  const {pair, ran, root, outputFile, sent, setReport, tests} = saveSession();
+  setReport('go-test');
+  pair.receive({kind: 'save', file: join(root, 'cart/cart.go')});
+  pair.receive({kind: 'save', file: join(root, 'docs.md')}); // notes are no reason to run the tests
+  await until(() => tests().length === 2, 'the run to end');
+  assert.deepEqual(ran, [`go test -json ./... > '${outputFile}' 2>&1`]);
+  const [start, end] = tests();
+  assert.deepEqual(start, {to: 'editors', type: 'tests', state: 'run', label: 'go test ./...'});
+  assert.deepEqual([end.state, end.label, end.text], ['fail', 'go test ./...', '2 failing · TestRate +1']);
+  assert.deepEqual(end.results.map(test => [test.name, test.file.slice(root.length), test.line, test.ok, test.failure?.line]), [
+    ['TestTotal', '/cart/cart_test.go', 5, false, 17],
+    ['TestRate', '/tax/tax_test.go', 5, false, 7],
+    ['TestEmptyCart', '/cart/cart_test.go', 8, true, undefined],
+  ]);
+  assert.deepEqual(pair.state.tests.files, ['cart/cart_test.go', 'tax/tax_test.go']);
+  assert.deepEqual(sent.filter(message => message.to === 'chat').map(message => message.text), [
+    '`go test ./...` after you saved cart/cart.go: 2 failed (TestRate, TestTotal/two_items): cart_test.go:17: Total([250 100]) = 100, want 350',
+  ]);
+  assert.deepEqual({to: 'editors', ...pair.testsShown}, end, 'kept for an editor that connects later');
+});
+
+test('a save during a run starts one more run after it; switching back to Navigator keeps the pane open', async () => {
+  const {pair, pane, ran, root, setReport, tests} = saveSession();
+  setReport('go-test');
+  for (const file of ['a.go', 'b.go', 'c.go']) pair.receive({kind: 'save', file: join(root, file)});
+  await until(() => tests().length === 4, 'two runs');
+  assert.equal(ran.length, 2);
+  await pair.setRole('navigator');
+  assert.equal(pane.closed, undefined);
+});
+
+test('a regression found on save: Pair checks it with thinking, suggests the fix, and the jump key goes to the suggestion', async () => {
+  let input;
+  let options;
+  const partner = {
+    setRole: async () => {},
+    ask: async (_id, text, opts) => {
+      input = text;
+      options = opts;
+      await pair.suggest({file: 'cart/cart_test.go', line: 5, endLine: 5, text: 'func TestTotal(t *testing.T) {', note: 'start at 0'});
+      return 'Total skips the first price.';
+    },
+  };
+  const {pair, root, sent, setReport, advance} = saveSession({partner});
+  setReport('go-test');
+  pair.receive({kind: 'save', file: join(root, 'cart/cart.go')});
+  await until(() => pair.state.tests, 'the run to end');
+  advance(3000);
+  await pair.tick();
+  assert.match(input, /^\[watch\] regression: Pair ran `go test \.\/\.\.\.` when the user saved cart\/cart\.go\. Now failing, and not in the run before: TestRate, TestTotal\/two_items/);
+  assert.match(input, /If a small change fixes it, call suggest/);
+  assert.deepEqual(options, {thinking: 'low'});
+  const remark = sent.find(message => message.type === 'remark' && message.to === 'editor');
+  assert.deepEqual([remark.text, remark.target.suggestion, remark.target.line], ['Total skips the first price.', true, 5]);
+});
+
+test('without Pair\'s pane, a save says once why the tests did not run', async () => {
+  const {pair, root, sent} = saveSession();
+  pair.scout = null;
+  pair.receive({kind: 'save', file: join(root, 'a.go')});
+  pair.receive({kind: 'save', file: join(root, 'a.go')});
+  await until(() => sent.length >= 3, 'both saves');
+  assert.deepEqual(sent.filter(message => message.to === 'chat').map(message => message.text), [
+    'Pair could not run `go test ./...`: tests on save need Pair\'s own herdr pane: start Pair with `pair` inside herdr.',
+  ]);
 });

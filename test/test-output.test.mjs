@@ -54,3 +54,47 @@ test('testSummary is one line for the models', () => {
   assert.equal(testSummary(parseTestOutput(fixture('pytest'))), '2 failed (test_ws.py::test_waits_long, test_ws.py::test_raises): assert 5000 == 30000');
   assert.equal(testSummary({failed: [], failedCount: 0, passed: 7}), '7 passed');
 });
+
+// JSON reports, also real output (test/fixtures/*.json): each test, its status and where it failed.
+const report = name => parseTestOutput(readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), 'utf8'));
+
+test('go test -json: each test function, a failed subtest named, and the failure from t.Errorf or a panic', () => {
+  const tests = report('go-test');
+  assert.deepEqual(tests.failed, ['TestRate', 'TestTotal/two_items']);
+  assert.equal(tests.passed, 1);
+  assert.equal(tests.packages, 2, 'packages without test files are not counted');
+  assert.equal(tests.firstError, 'cart_test.go:17: Total([250 100]) = 100, want 350');
+  assert.deepEqual(tests.tests, [
+    {name: 'TestTotal', package: 'example.com/shop/cart', status: 'failed', failure: {file: 'cart_test.go', line: 17, text: 'Total([250 100]) = 100, want 350'}},
+    {name: 'TestRate', package: 'example.com/shop/tax', status: 'failed', failure: {file: '/home/you/shop/tax/tax_test.go', line: 7, text: 'panic: assignment to entry in nil map'}},
+    {name: 'TestEmptyCart', package: 'example.com/shop/cart', status: 'passed', failure: null},
+  ]);
+});
+
+test('go test -json: a build failure fails with the compiler error', () => {
+  const tests = report('go-test-build');
+  assert.deepEqual({failed: tests.failed, failedCount: tests.failedCount, tests: tests.tests}, {failed: [], failedCount: 1, tests: []});
+  assert.equal(tests.firstError, 'internal/retry/backoff.go:31:17: undefined: x');
+});
+
+test('jest --json and vitest --reporter=json: each test with its file, and the line it failed on from the stack', () => {
+  const jest = report('jest');
+  assert.equal(jest.runner, 'jest');
+  assert.deepEqual(jest.failed, ['reconnect › waits up to 30 s after sleep', 'reconnect › throws nothing']);
+  assert.equal(jest.firstError, 'Error: expect(received).toBe(expected) // Object.is equality (Expected: 30000, Received: 5000) at ws.test.js:3');
+  assert.deepEqual(jest.tests[2], {
+    name: 'reconnect › throws nothing', title: 'throws nothing', file: '/home/you/project/test/ws.test.js', line: null, status: 'failed',
+    failure: {file: '/home/you/project/test/ws.test.js', line: 5, text: 'TypeError: socket is undefined'},
+  });
+
+  const vitest = report('vitest');
+  assert.equal(vitest.runner, 'vitest');
+  assert.deepEqual(vitest.tests.map(test => test.status), ['failed', 'passed', 'skipped']);
+  assert.deepEqual(vitest.tests[0].failure, {file: '/home/you/project/test/ws.test.ts', line: 7, text: 'AssertionError: expected 5000 to be 30000 // Object.is equality'});
+  assert.equal(vitest.files, 1);
+});
+
+test('a JSON report among other lines (npm\'s header, a runner\'s own output) is still found', () => {
+  const text = `> project@1.0.0 test\n> jest --json\n\n${readFileSync(new URL('./fixtures/jest.json', import.meta.url), 'utf8')}\nTest Suites: 1 failed, 1 total\n`;
+  assert.equal(parseTestOutput(text).tests.length, 3);
+});

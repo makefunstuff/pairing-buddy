@@ -1,7 +1,7 @@
 // The Lua plugin in a headless Neovim against the daemon, with scripted models. Skips without nvim.
 import assert from 'node:assert/strict';
-import {execFileSync, spawn} from 'node:child_process';
-import {mkdtempSync, readFileSync, writeFileSync} from 'node:fs';
+import {execFile, execFileSync, spawn} from 'node:child_process';
+import {mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync} from 'node:fs';
 import {connect} from 'node:net';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -29,17 +29,24 @@ async function until(check, what, timeoutMs = 8000) {
   throw new Error(`timed out waiting for ${what}`);
 }
 
+/** Runs a command line in `cwd` with bash, as Pair's pane would: its output and exit code. */
+const runIn = cwd => command => new Promise(resolve => {
+  execFile('bash', ['-c', command], {cwd}, (error, stdout, stderr) => resolve({output: stdout + stderr, exit: error ? error.code ?? 1 : 0}));
+});
+
 /**
  * The daemon with scripted models, a fake herdr, a headless Neovim with the plugin editing a.js and running
- * `:Pair start <goal>`, and a chat client. `stop()` ends them all.
+ * `:Pair start <goal>`, and a chat client. With `testOnSave`, saving runs that command in the project, for real,
+ * in the fake herdr's pane. `stop()` ends them all.
  */
-async function pairInNvim(goal) {
-  const project = mkdtempSync(join(tmpdir(), 'pair-nvim-'));
+async function pairInNvim(goal, {testOnSave} = {}) {
+  const project = realpathSync(mkdtempSync(join(tmpdir(), 'pair-nvim-')));
   writeFileSync(join(project, 'a.js'), 'const x = 1\nconst y = 2\nconst z = 3\n');
   const dataDir = mkdtempSync(join(tmpdir(), 'pair-data-'));
   const config = parseConfig({
     dataDir,
     socket: join(dataDir, 'pair.sock'),
+    testOnSave: testOnSave ? {[project]: testOnSave} : undefined,
     models: {watcher: {api: 'openai', baseUrl: 'http://unused', model: 'w'}, partner: {api: 'openai', baseUrl: 'http://unused', model: 'p'}},
   });
   const watcher = fauxProvider({provider: 'faux-watcher'});
@@ -50,7 +57,7 @@ async function pairInNvim(goal) {
   const pairModels = {models, watcher: watcher.getModel(), partner: partner.getModel()};
   let daemon = await startDaemon(config, {pairModels, probe: answers, log: () => {}});
   const herdrSocket = join(dataDir, 'herdr.sock');
-  const herdr = await fakeHerdr(herdrSocket);
+  const herdr = await fakeHerdr(herdrSocket, {commands: testOnSave ? runIn(project) : {}});
 
   const server = join(mkdtempSync('/tmp/pair-'), 'nvim.sock'); // short: socket paths max out near 100 bytes
   const nvim = spawn('nvim', [
@@ -358,6 +365,54 @@ test('after a daemon restart the plugin reconnects by itself; a model that is do
     remote('execute("Pair ask what is x?")');
     await until(() => read, 'the Partner to read the buffer through the new daemon');
     assert.match(read, /1: const x = 5/);
+  } finally {
+    await stop();
+  }
+});
+
+test('saving runs the tests: the statusline spins, then names what fails; signs on the tests; Pair\'s fix is one jump and one key away', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
+  const command = 'sleep 0.6 && cat report.json';
+  const {project, watcher, partner, remote, keys, status, stop} = await pairInNvim('totals', {testOnSave: command});
+  const marks = namespace => JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('${namespace}'), 0, -1, {details = true}))")`));
+  const signs = () => marks('pair_tests').filter(([, , , details]) => details.sign_text).map(([, row, , details]) => [row + 1, details.sign_text.trim(), details.sign_hl_group]);
+  const notes = () => marks('pair_tests').filter(([, , , details]) => details.virt_text).map(([, row, , details]) => [row + 1, details.virt_text.map(chunk => chunk[0]).join('')]);
+  const report = name => writeFileSync(join(project, 'report.json'), readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), 'utf8').replaceAll('/home/you/shop', project));
+  try {
+    mkdirSync(join(project, 'cart'));
+    mkdirSync(join(project, 'tax'));
+    writeFileSync(join(project, 'go.mod'), 'module example.com/shop\n');
+    writeFileSync(join(project, 'cart/cart.go'), 'package cart\n\n// Total adds the prices, in cents.\nfunc Total(prices []int) int {\n\tsum := 0\n\tfor i := 1; i < len(prices); i++ {\n\t\tsum += prices[i]\n\t}\n\treturn sum\n}\n');
+    writeFileSync(join(project, 'cart/cart_test.go'), `package cart\n\nimport "testing"\n\nfunc TestTotal(t *testing.T) {\n${'\t// a case\n'.repeat(15)}}\n\nfunc TestEmptyCart(t *testing.T) {\n}\n`);
+    writeFileSync(join(project, 'tax/tax_test.go'), 'package tax\n\nimport "testing"\n\nfunc TestRate(t *testing.T) {\n}\n');
+    report('go-test');
+    watcher.setResponses([fauxAssistantMessage([fauxText('9')]), ...Array.from({length: 10}, () => fauxAssistantMessage([fauxText('0')]))]);
+    partner.setResponses([
+      fauxAssistantMessage([fauxToolCall('read', {file: 'cart/cart.go'})], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxToolCall('suggest', {file: 'cart/cart.go', line: 6, new_text: '\tfor i := 0; i < len(prices); i++ {', note: 'the first price counts too'})], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxText('`Total` starts at the second price: `cart.go:6`')]),
+    ]);
+
+    keys(':edit cart/cart_test.go<CR>:w<CR>');
+    await until(() => /^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] sleep 0\.6 && cat report\.json$/.test(status()), 'the spinner while the tests run');
+    await until(() => status() === '✗ 2 failing · TestRate +1', 'the run\'s failures in the statusline');
+    assert.deepEqual(signs(), [[5, '✗', 'PairFail'], [23, '✓', 'PairPass']], 'a sign on each test function of this file');
+    assert.deepEqual(notes(), [[17, '   ✗ Total([250 100]) = 100, want 350']], 'why it failed, after the line it failed on');
+
+    // Pair's remark about the regression: its words under your line, and the jump key goes to its suggestion.
+    const words = await until(() => marks('pair').find(([, , , details]) => details.virt_lines), 'Pair\'s words');
+    assert.equal(words[3].virt_lines.map(line => line.map(chunk => chunk[0]).join('')).join('|').trim(), '● Total starts at the second price: cart.go:6   M-j');
+    keys('<M-j>');
+    await until(() => remote('expand("%:t")') === 'cart.go' && remote('line(".")') === '6', 'the jump to the suggestion');
+    keys('<M-y>');
+    await until(() => JSON.parse(remote('json_encode(getline(6))')) === '\tfor i := 0; i < len(prices); i++ {', 'the accepted fix');
+
+
+    // Saving the fix: the run passes, the statusline says so for a moment, and the signs turn.
+    report('go-test-pass');
+    keys(':w<CR>:edit cart/cart_test.go<CR>');
+    await until(() => status() === '✓ sleep 0.6 && cat report.json · 4 tests, 2 packages', 'the passing run in the statusline');
+    await until(() => signs().every(([, sign]) => sign === '✓') && signs().length === 2, 'the signs to turn');
+    assert.deepEqual(notes(), []);
   } finally {
     await stop();
   }

@@ -11,11 +11,14 @@ Answer with one number.`;
 // with the goal right next to it. Asked whether you would want a remark, models score how important the work
 // is, not whether it drifted; and the Partner's longer detail costs tokens without helping the score.
 // The wrong turn: the Watcher cannot see the code, so it is asked whether a check of the file would save time.
+// A regression: whether hearing of it now saves time, since the user has not run the tests that found it.
 const WHAT_HAPPENED = {
   drift: (trigger, state) => `The user now edits ${trigger.file}.\n`
     + `Score how clearly this file is unrelated to the goal "${state.goal}": 0 if it could be part of it, 10 if it is plainly other work.`,
   edit_while_red: trigger => `The tests are red. The failure points at ${trigger.named.slice(0, 4).join(', ')}, but the user is changing ${trigger.file}, a file it does not name.\n`
     + `Score how much a quick check of whether ${trigger.file} can cause this failure would save them: 0 if ${trigger.file} is plainly the code that fails, 10 if they may be fixing the wrong file.`,
+  regression: trigger => `The user saved ${trigger.file}. The tests Pair ran right after show ${trigger.newly.slice(0, 4).join(', ')} failing, which did not fail before. The user has not run them.\n`
+    + 'Score how much hearing now what broke would save them: 0 if it is plainly the test they are working on, 10 if their change broke something elsewhere.',
 };
 
 const MAX_TOKENS = 8; // a number, with room for a model that wraps it in a word or two

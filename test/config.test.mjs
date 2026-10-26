@@ -1,10 +1,10 @@
 // The config file: JSON with comments, written from the commented example on the first run.
 import assert from 'node:assert/strict';
 import {mkdtempSync, readFileSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {homedir, tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {test} from 'node:test';
-import {createConfig, loadConfig, stripComments} from '../src/config.mjs';
+import {createConfig, loadConfig, parseConfig, stripComments} from '../src/config.mjs';
 
 test('comments are stripped, strings with slashes are kept', () => {
   const text = '{\n  // a comment\n  "url": "http://host/v1", /* another */ "say": "a \\" // not a comment"\n}';
@@ -32,4 +32,14 @@ test('a broken config says which file and why', () => {
   writeFileSync(path, '{"level": "normal",, }');
   assert.throws(() => loadConfig(path), new RegExp(`config: ${path} is not valid JSON`));
   assert.throws(() => loadConfig(join(path, 'missing')), /run `pair setup`/);
+});
+
+test('testOnSave maps project folders, ~ included, to the command run on save', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pair-config-'));
+  const config = (testOnSave) => parseConfig({testOnSave, models: {watcher: {api: 'anthropic', model: 'w'}, partner: {api: 'anthropic', model: 'p'}}});
+  assert.deepEqual(config({[dir]: ' go test -json ./... '}).testOnSave, {[dir]: 'go test -json ./...'});
+  assert.deepEqual(Object.keys(config({'~/src/shop': 'npm test'}).testOnSave), [join(homedir(), 'src/shop')]);
+  assert.deepEqual(config(undefined).testOnSave, {});
+  assert.throws(() => config({[dir]: ''}), /testOnSave\[".*"\] must be a command/);
+  assert.throws(() => config(['npm test']), /testOnSave must map project folders to commands/);
 });

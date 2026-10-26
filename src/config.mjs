@@ -1,8 +1,8 @@
 // One config file for the daemon: the two models, the talk level and where things live.
 // It is JSON with // and /* */ comments; the first run writes the commented example there.
-import {copyFileSync, existsSync, mkdirSync, readFileSync} from 'node:fs';
+import {copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync} from 'node:fs';
 import {homedir} from 'node:os';
-import {dirname, join} from 'node:path';
+import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 const EXAMPLE = fileURLToPath(new URL('../config.example.json', import.meta.url));
@@ -47,6 +47,21 @@ export function apiKeyOf(entry) {
   return undefined;
 }
 
+/** `path` with `~` expanded, as the real path the daemon names projects by when it exists. */
+function projectPath(path) {
+  const full = resolve(path.replace(/^~(?=\/|$)/, homedir()));
+  try { return realpathSync(full); } catch { return full; }
+}
+
+/** `testOnSave` maps a project's folder to the command Pair runs in its pane when you save a source file there. */
+function testCommands(raw = {}) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('config: testOnSave must map project folders to commands');
+  return Object.fromEntries(Object.entries(raw).map(([path, command]) => {
+    if (typeof command !== 'string' || !command.trim()) throw new Error(`config: testOnSave["${path}"] must be a command`);
+    return [projectPath(path), command.trim()];
+  }));
+}
+
 export function parseConfig(raw) {
   const level = raw.level ?? 'normal';
   if (!LEVELS.includes(level)) throw new Error(`config: level must be one of ${LEVELS.join(', ')}`);
@@ -59,6 +74,7 @@ export function parseConfig(raw) {
     keepWarm: raw.keepWarm ?? models.watcher.api === 'openai',
     socket: raw.socket ?? defaultSocketPath(),
     dataDir: raw.dataDir ?? join(xdg('XDG_STATE_HOME', '.local/state'), 'pairing-buddy'),
+    testOnSave: testCommands(raw.testOnSave),
     models,
   };
 }
