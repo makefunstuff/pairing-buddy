@@ -182,11 +182,12 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
 
   /**
    * The project a working directory belongs to: the session root the config gives it (see session-root.mjs), else
-   * an open session containing it, else its git root, else itself.
+   * its git root (so a worktree inside the main checkout is a project of its own), else an open session containing
+   * it, else itself.
    */
   async function rootOf(cwd) {
     const dir = await realpath(cwd ?? process.cwd());
-    return sessionRootOf(dir, config.sessionRoots) ?? openRootOf(dir, sessions.keys()) ?? (await gitRoot(dir)) ?? dir;
+    return sessionRootOf(dir, config.sessionRoots) ?? (await gitRoot(dir)) ?? openRootOf(dir, sessions.keys()) ?? dir;
   }
 
   function loadSession(root) {

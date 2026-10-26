@@ -444,7 +444,7 @@ test('two Neovims in one project: Pair shows things in the one with focus, from 
   }
 });
 
-test('session roots: in a monorepo each configured folder has its own session; each git worktree has its own too', {timeout: 20_000}, async () => {
+test('session roots: in a monorepo each configured folder has its own session; each git worktree has its own too, also one inside the checkout', {timeout: 20_000}, async () => {
   const mono = realpathSync(mkdtempSync(join(tmpdir(), 'pair-mono-')));
   for (const dir of ['packages/api/src', 'packages/web', 'tools']) mkdirSync(join(mono, dir), {recursive: true});
   const git = (...args) => execFileSync('git', ['-C', mono, '-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], {stdio: 'ignore'});
@@ -454,6 +454,8 @@ test('session roots: in a monorepo each configured folder has its own session; e
   git('commit', '-qm', 'start');
   const worktree = `${mono}-feature`;
   git('worktree', 'add', '-q', worktree);
+  const inner = join(mono, '.worktrees', 'fix');
+  git('worktree', 'add', '-q', inner);
   const config = testConfig(mkdtempSync(join(tmpdir(), 'pair-data-')), {sessionRoots: [`${mono}/packages/*`]});
   const {pairModels} = scriptedModels();
   const daemon = await startDaemon(config, {pairModels, probe: answers, log: () => {}});
@@ -463,6 +465,9 @@ test('session roots: in a monorepo each configured folder has its own session; e
     const roots = [];
     for (const editor of editors) roots.push((await editor.next(message => message.type === 'welcome')).root);
     assert.deepEqual(roots, [join(mono, 'packages/api'), join(mono, 'packages/api'), join(mono, 'packages/web'), mono, mono, worktree]);
+    // The checkout's session is open now; a worktree inside it still has its own.
+    editors.push(client(config.socket, {type: 'hello', role: 'editor', cwd: inner}));
+    assert.equal((await editors.at(-1).next(message => message.type === 'welcome')).root, inner);
   } finally {
     for (const editor of editors) editor.close();
     await daemon.close();
