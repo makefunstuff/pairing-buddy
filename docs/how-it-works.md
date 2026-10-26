@@ -23,7 +23,7 @@ its role's tools.
 - **Where you have been.** Your buffers and jumplist, the herdr work board's task for your branch, and git (branch,
   last commit, changed files, pull request). The [context card](neovim.md#what-it-knows-the-context-card) shows all of
   it, and what you hide there is not sent.
-- **The shell hook** (optional) adds exit codes, and catches commands too short for herdr's polling.
+- **The shell hook** (optional, bash, zsh or fish) adds exit codes, and catches every command however short.
 - **Builds and runs** are read for a crash and where in your code it happened, and for the compiler's errors and
   warnings with their file and line ([builds.md](builds.md)). A segfault counts as a failure also without an exit code.
 - **Test output** is parsed (cargo, go test, jest, vitest, pytest, `node --test`): which tests failed and the first

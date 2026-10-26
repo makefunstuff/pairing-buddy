@@ -163,7 +163,7 @@ export class PaneWatch {
   /** The output of `cmd`, which just ended in `pane`. Test runners print the failed tests far above their summary. */
   async output(pane, cmd) {
     const state = this.paneState(pane);
-    return commandOutput(await this.read(pane, OUTPUT_LINES), {before: state.anchor ?? state.before, cmd});
+    return commandOutput(await this.read(pane, OUTPUT_LINES), {before: state.anchor ?? state.before, cmd}).output;
   }
 
   async pollPane(pane) {
@@ -181,7 +181,8 @@ export class PaneWatch {
       const ended = state.running;
       state.running = null;
       const text = await this.read(pane, OUTPUT_LINES);
-      this.emit({kind: 'command_end', pane, cmd: ended, exit: null, output: commandOutput(text, {before: state.anchor, cmd: ended})});
+      // Named as typed when its line is found: herdr names only the process it saw first (`sleep 2` of `sleep 2; make`).
+      this.emit({kind: 'command_end', pane, exit: null, ...commandOutput(text, {before: state.anchor, cmd: ended, prompt: state.prompt})});
       Object.assign(state, {before: text, prompt: linesOf(text).at(-1)});
       return;
     }
@@ -191,6 +192,8 @@ export class PaneWatch {
   /** The focused pane's shell waits at the prompt: whether the user typed, or ran a command too short to be seen. */
   async atPrompt(pane, state, hooked) {
     let text = await this.read(pane, PROMPT_LINES);
+    // At the first look the last line is taken for the empty prompt; each Enter shows it anew.
+    if (state.before === null) state.prompt = linesOf(text).at(-1);
     let change = state.before === null ? null : promptChange(state.before, text, state.prompt);
     if (change?.lost) {
       text = await this.read(pane, OUTPUT_LINES);

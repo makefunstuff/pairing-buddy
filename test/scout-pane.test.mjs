@@ -4,7 +4,7 @@ import {mkdtempSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {test} from 'node:test';
-import {PaneRuns} from '../src/pane-runs.mjs';
+import {PaneRuns, shown} from '../src/pane-runs.mjs';
 import {ScoutPane, shellQuote} from '../src/scout-pane.mjs';
 import {fakeHerdr} from './fake-herdr.mjs';
 
@@ -22,6 +22,11 @@ test('the pane\'s shell writes each command\'s whole output and exit code, not t
   assert.equal(long.output.split('\n')[0], '1');
   assert.deepEqual(await runs.result(4), {exit: 0, output: '/'}, 'a cd stays: commands run in the pane\'s own shell');
   assert.equal(await runs.next(), 5, 'empty lines are no commands');
+});
+
+test('the output reads as the pane shows it: no escape sequences, a progress bar at its last state', () => {
+  assert.equal(shown('\x1b[H\x1b[2J\x1b[3Jafter\n\x1b[31mred\x1b[0m \x1b]8;;http://x\x07link\x1b]8;;\x07'), 'after\nred link');
+  assert.equal(shown('10%\r50%\r100%\r\ndone\r\n'), '100%\ndone\n');
 });
 
 test('shellQuote makes one word of anything', () => {

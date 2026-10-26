@@ -27,12 +27,19 @@ export function commandLine(lines, {before = null, cmd = ''} = {}) {
   return ends !== -1 ? ends : search(line => line.includes(command.slice(0, 40)));
 }
 
-/** The output of the command from the pane's recent text: the lines after its command line, without the new prompt. */
-export function commandOutput(text, {before = null, cmd = ''} = {}) {
+/** What was typed on `line`, a line that starts with the empty prompt `prompt`; '' when that is not known. */
+const typedOn = (line, prompt) => (prompt && line?.startsWith(prompt) ? line.slice(prompt.length).trim() : '');
+
+/**
+ * The command from the pane's recent text: what was typed on its command line (else `cmd`), and its output, the
+ * lines after that line without the new prompt.
+ */
+export function commandOutput(text, {before = null, cmd = '', prompt = null} = {}) {
   const lines = linesOf(text);
   const start = commandLine(lines, {before, cmd});
   const output = lines.slice(start + 1, -1).join('\n');
-  return start === -1 ? `(the command's line was not found: the pane's recent lines)\n${output}` : output;
+  if (start === -1) return {cmd, output: `(the command's line was not found: the pane's recent lines)\n${output}`};
+  return {cmd: typedOn(lines[start], prompt) || cmd, output};
 }
 
 /**
@@ -52,7 +59,7 @@ export function promptChange(before, after, prompt) {
   if (at === -1) return lines.at(-1) === was.at(-1) ? {entered: true} : {lost: true};
   const line = lines[at];
   if (line === lines.at(-1) && line !== prompt) return {typed: true}; // the line shown again below: Tab listed completions
-  const cmd = prompt !== null && line.startsWith(prompt) ? line.slice(prompt.length).trim() : '';
+  const cmd = typedOn(line, prompt);
   if (!cmd || cmd.endsWith('^C')) return {entered: true};
   return {ran: {cmd, output: lines.slice(at + 1, -1).join('\n')}};
 }

@@ -4,14 +4,16 @@ import {commandLine, commandOutput, linesOf, promptChange} from '../src/pane-tex
 
 test('commandOutput keeps the lines after the command, without the next prompt', () => {
   const text = '$ ls\nREADME.md\n$ node test.js\nAssertionError: expected 30000\n    at test.js:4\n$ \n\n';
-  assert.equal(commandOutput(text, {cmd: 'node test.js'}), 'AssertionError: expected 30000\n    at test.js:4');
+  assert.equal(commandOutput(text, {cmd: 'node test.js'}).output, 'AssertionError: expected 30000\n    at test.js:4');
 });
 
 test('the line the command was typed on wins over output that names the command', () => {
   // npm prints the script it runs; an alias (`t`) is not what herdr names (the argv).
   const text = 'README.md\n~/p $ t\n> p@1.0.0 test\n> node --test\nnot ok 1 - adds\n~/p $ ';
   const before = 'README.md\n~/p $ t';
-  assert.equal(commandOutput(text, {before, cmd: 'node /usr/bin/npm test'}), '> p@1.0.0 test\n> node --test\nnot ok 1 - adds');
+  assert.deepEqual(commandOutput(text, {before, cmd: 'node /usr/bin/npm test'}), {cmd: 'node /usr/bin/npm test', output: '> p@1.0.0 test\n> node --test\nnot ok 1 - adds'});
+  // With the empty prompt known, the command is named as typed.
+  assert.equal(commandOutput(text, {before, cmd: 'node /usr/bin/npm test', prompt: '~/p $'}).cmd, 't');
   // Without what was typed, the line that ends with the command beats an output line that only contains it.
   const echoed = '$ make test\nmake test: running\nFAIL\n$ ';
   assert.equal(commandLine(linesOf(echoed), {cmd: 'make test'}), 0);
@@ -19,11 +21,11 @@ test('the line the command was typed on wins over output that names the command'
 
 test('what was typed by the last look is enough: the command line starts with it', () => {
   const text = 'old\n$ npm test\nok 1\n$ ';
-  assert.equal(commandOutput(text, {before: 'old\n$ npm te', cmd: 'npm test'}), 'ok 1');
+  assert.equal(commandOutput(text, {before: 'old\n$ npm te', cmd: 'npm test'}).output, 'ok 1');
 });
 
 test('a command whose line is gone says so instead of passing the pane\'s text off as its output', () => {
-  assert.match(commandOutput('line 1\nline 2\n$ ', {cmd: 'clear && make'}), /^\(the command's line was not found/);
+  assert.match(commandOutput('line 1\nline 2\n$ ', {cmd: 'clear && make'}).output, /^\(the command's line was not found/);
 });
 
 test('promptChange: keys at the prompt are typing', () => {

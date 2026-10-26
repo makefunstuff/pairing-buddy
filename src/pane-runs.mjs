@@ -82,12 +82,20 @@ export class PaneRuns {
   /** The exit code and the whole output of command `number`, which has ended; its files are removed. */
   async result(number) {
     const exit = Number(await readFile(join(this.dir, `${number}.exit`), 'utf8'));
-    const output = (await readCapped(join(this.dir, `${number}.out`))).replace(/\n$/, '');
+    const output = shown(await readCapped(join(this.dir, `${number}.out`))).replace(/\n$/, '');
     await rm(join(this.dir, `${number}.exit`), {force: true});
     await rm(join(this.dir, `${number}.out`), {force: true});
     return {exit, output};
   }
 }
+
+/**
+ * What a terminal shows of `text`: without escape sequences (colours, `clear`) and, of a line a progress bar
+ * rewrote with carriage returns, its last version.
+ */
+export const shown = text => text
+  .replace(/\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-_]/g, '')
+  .split('\n').map(line => line.replace(/\r+$/, '').split('\r').at(-1)).join('\n');
 
 const exists = path => readFile(path).then(() => true, () => false);
 
