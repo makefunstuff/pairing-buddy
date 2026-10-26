@@ -163,7 +163,7 @@ section { padding-block: 72px 8px; }
 .points li { padding-left: 22px; position: relative; color: var(--muted); font-size: 16px; }
 .points li::before { content: ""; position: absolute; left: 2px; top: .62em; width: 8px; height: 8px; border-radius: 2px; background: var(--pair); }
 .points b { color: var(--ink); font-weight: 700; }
-.code { position: relative; background: var(--bezel); border-radius: 10px; color: var(--code-fg); }
+.code { min-width: 0; position: relative; background: var(--bezel); border-radius: 10px; color: var(--code-fg); }
 .code .tab { font: 400 12px/1 var(--mono); color: #5C6773; padding: 12px 16px 0; }
 .code pre code { white-space: pre; background: none; padding: 0; font-size: 1em; color: inherit; }
 .code pre { margin: 0; padding: 12px 16px 16px; overflow-x: auto; font-size: 13.5px; line-height: 1.6; }
@@ -174,7 +174,7 @@ section { padding-block: 72px 8px; }
 .step { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 4px 14px; }
 .step::before { counter-increment: s; content: counter(s); grid-row: span 2; font: 700 14px/30px var(--mono); width: 30px; height: 30px; text-align: center; border-radius: 50%; background: var(--pair-tint); color: var(--pair); }
 .step h3 { font-size: 18px; font-weight: 700; line-height: 30px; letter-spacing: -.01em; }
-.step > div { min-width: 0; display: grid; gap: 10px; }
+.step > div { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
 .step p { color: var(--muted); font-size: 15.5px; }
 .req { font-size: 14.5px; color: var(--muted); margin-top: 26px; }
 
@@ -448,6 +448,7 @@ footer a { color: var(--muted); }
       <h3>Install the daemon and set it up</h3>
       <div>
         <div class="code">
+          <div class="tab">shell</div>
           <button class="copy" type="button" data-copy="sh">copy</button>
           <pre id="sh"><code><span class="p">$</span> npm install -g github:makefunstuff/pairing-buddy
 <span class="p">$</span> pair setup</code></pre>
