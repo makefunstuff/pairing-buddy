@@ -1,22 +1,36 @@
-// Pair's hands and the roles that may use them. The Navigator has say, point, open and a read-only read;
-// Scout adds search and run, which work only in Pair's own herdr pane. Nothing here can write a file or save
-// a buffer. Each conversation is offered only its role's tools, and the policy hook refuses any other name,
-// so a model that invents `bash` or `write` gets an error, not an effect.
+// Pair's hands and the roles that may use them. The Navigator has say, point, open, a read-only read and
+// suggest, which only shows a change for the user to accept; Scout adds search and run, which work only in
+// Pair's own herdr pane. The Driver, which Pair is only while the user hands it the wheel, also has edit
+// (one change in the user's buffer, never saved) and type (into the user's terminal, after a yes, without
+// Enter). Nothing here can write a file or save a buffer. Each conversation is offered only its role's
+// tools, and the policy hook refuses any other name, so a model that invents `bash` or `write` gets an
+// error, not an effect.
 import {Type} from '@earendil-works/pi-ai';
 import {defineExtension, defineTool, hook, section, ToolTask} from '@earendil-works/pi-durable';
 
+/** The roles the user switches between; Driver is entered only by handing over (see PairSession.drive). */
 export const ROLES = ['navigator', 'scout'];
 
+const NAVIGATOR_TOOLS = ['say', 'point', 'open', 'read', 'suggest'];
+
 export const ROLE_TOOLS = {
-  navigator: ['say', 'point', 'open', 'read'],
-  scout: ['say', 'point', 'open', 'read', 'search', 'run'],
+  navigator: NAVIGATOR_TOOLS,
+  scout: [...NAVIGATOR_TOOLS, 'search', 'run'],
+  driver: [...NAVIGATOR_TOOLS, 'search', 'run', 'edit', 'type'],
+};
+
+// What the model is told when it calls a tool its role does not have.
+const NEEDS_ROLE = {
+  search: 'search needs the Scout role; the user can switch with /scout.',
+  run: 'run needs the Scout role; the user can switch with /scout.',
+  edit: 'edit works only while the user hands you the wheel; call suggest instead.',
+  type: 'type works only while the user hands you the wheel; say the command instead.',
 };
 
 /** The `beforeTool` policy: a block reason for anything outside the tools of the conversation's role. */
 export function toolPolicy(call, role) {
   if (ROLE_TOOLS[role].includes(call.name)) return undefined;
-  if (ROLE_TOOLS.scout.includes(call.name)) return {block: `${call.name} needs the Scout role; the user can switch with /scout.`};
-  return {block: `Pair has no tool "${call.name}". It can only ${ROLE_TOOLS[role].join(', ')}.`};
+  return {block: NEEDS_ROLE[call.name] ?? `Pair has no tool "${call.name}". It can only ${ROLE_TOOLS[role].join(', ')}.`};
 }
 
 const PAIR = `You are Pair, a pair programmer in the second chair. The user drives: they edit, save and commit.
@@ -32,7 +46,8 @@ How to answer:
 - To mark code, call point with the file, the line and a note of a few words.
 - Before you talk about code, call read. Never guess what a file says. read(".") lists the project.
 - Call open only when the user asks to see a place.
-- You cannot edit or save files. Say what to change and let the user do it.`;
+- To propose a change, call suggest with the lines and their new text: the user sees it in the editor and accepts it with one key.
+- You never save files, and you change the user's code only when they hand you the wheel.`;
 
 // The role part of the prompt, sent as the conversation's instructions so a switch takes effect on the next turn.
 export const ROLE_PROMPTS = {
@@ -47,9 +62,27 @@ If an answer needs a search or a test run, say so in one sentence: the user can 
   git commit, push and reset are refused: the user does those. If a command is refused or not allowed, do not try another way.
 - For [watch] messages, do not run commands: read and search only.
 - After a search, name the places it found as file:line. After a run, say what it showed. Then point at the most relevant line.`,
+  driver: `Your role now: Driver. The user handed you the wheel for one change in their editor.
+- First read the file, so your line numbers are right.
+- Then call edit once: it replaces lines line..end_line with new_text, the complete new lines with their indentation.
+  Change as little as the request needs.
+- After the edit the wheel goes back to the user and you are Navigator again: say in one sentence what you changed.
+- To put a command in the user's terminal, call type: they confirm it and press Enter themselves.
+- search and run work in your own pane, as for Scout.`,
 };
 
 const text = value => ({output: [{type: 'text', text: value}]});
+
+/** The arguments of suggest and edit: which lines of which file, and what they become. */
+const lineChange = (extra = {}) => Type.Object({
+  file: Type.String({description: 'Path relative to the project root'}),
+  line: Type.Integer({minimum: 1, description: 'First line to replace'}),
+  end_line: Type.Optional(Type.Integer({minimum: 1, description: 'Last line to replace; default: line'})),
+  new_text: Type.String({description: 'The complete new lines, with their indentation; "" deletes the lines'}),
+  ...extra,
+});
+
+const changeOf = args => ({file: args.file, line: args.line, endLine: args.end_line ?? args.line, text: args.new_text});
 
 function tools(hands) {
   return [
@@ -88,6 +121,12 @@ function tools(hands) {
       execute: async (args, api) => text(await hands.read(api.conversationId, {file: args.file, from: args.start_line, to: args.end_line})),
     }),
     defineTool({
+      name: 'suggest',
+      description: 'Show a change in the editor as an inline diff: lines line..end_line would become new_text. The user accepts it with one key or ignores it; nothing changes until they accept.',
+      parameters: lineChange({note: Type.String({description: 'A few words on why'})}),
+      execute: async (args, api) => text(await hands.suggest(api.conversationId, {...changeOf(args), note: args.note})),
+    }),
+    defineTool({
       name: 'search',
       description: 'Search the project\'s files for a pattern with ripgrep, in your pane. Answers file:line:text lines.',
       parameters: Type.Object({
@@ -101,6 +140,18 @@ function tools(hands) {
       description: 'Run one shell command line in your pane, in the project root, and get its exit code and output.',
       parameters: Type.Object({command: Type.String({description: 'For example: npm test, cargo test, git log --oneline -5'})}),
       execute: async (args, api) => text(await hands.run(api.conversationId, {command: args.command})),
+    }),
+    defineTool({
+      name: 'edit',
+      description: 'Replace lines line..end_line of a file in the user\'s editor with new_text, as one undo step. The buffer is not saved.',
+      parameters: lineChange(),
+      execute: async (args, api) => text(await hands.edit(api.conversationId, changeOf(args))),
+    }),
+    defineTool({
+      name: 'type',
+      description: 'Type one command line into the user\'s terminal, once they allow it. Enter is not pressed: the user runs it.',
+      parameters: Type.Object({text: Type.String({description: 'One line, for example: npm test'})}),
+      execute: async (args, api) => text(await hands.type(api.conversationId, {text: args.text})),
     }),
   ];
 }

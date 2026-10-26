@@ -1,7 +1,7 @@
 // Pair's own herdr pane, where Scout's commands are typed and run in plain sight.
 // Its shell is a plain bash whose prompt carries the command number and the last exit code
 // ("scout[3] exit 1 $ "): that is how Pair knows when a command ended and how, which herdr cannot say.
-// Text is only ever sent to this pane, never to one of the user's.
+// Scout's text is only ever sent to this pane, never to one of the user's.
 import {herdrRequest} from './herdr.mjs';
 
 const LABEL = 'pair scout';

@@ -6,6 +6,7 @@ import {describeState} from './describe.mjs';
 import {insideRoot, numberedLines, projectFile, readProjectPath} from './files.mjs';
 import {fold, initialState} from './fold.mjs';
 import {decide} from './gate.mjs';
+import {plainLine} from './herdr.mjs';
 import {RUN_TIMEOUT_MS, shellQuote} from './scout-pane.mjs';
 import {parseTestOutput, testSummary} from './test-output.mjs';
 import {detectTriggers} from './triggers.mjs';
@@ -26,9 +27,22 @@ export function watchInput(trigger, description) {
   return `[watch] ${trigger.kind}: ${trigger.detail}\n\nNow:\n${description}\n\n${CHECKS[trigger.kind]} If no remark would help, answer exactly SILENT.`;
 }
 
+/**
+ * What the Partner is asked when the user hands over the wheel: `words` are theirs ("you take it, ...",
+ * "your turn"), or empty for a bare :Pair drive.
+ */
+export function driveInput(words, description) {
+  const request = words ? `The user said: "${words}"` : 'The user gave no request: make the change you two talked about last.';
+  return `[drive] The user handed you the wheel for one change. ${request}\n\nNow:\n${description}\n\n`
+    + 'If they said "your turn", they just wrote a failing test (see the recent edits): read it and the code it tests, '
+    + 'and make it pass by changing the code, not the test. Read before you edit. If you do not know what to change, '
+    + 'ask one short question instead of editing.';
+}
+
 const ROLE_NOTES = {
   navigator: 'Role: Navigator. Pair watches, comments and points at code.',
   scout: 'Role: Scout. Pair can also search and run read-only, test and build commands in its own pane; anything else asks you first.',
+  driver: 'Role: Driver. Pair has the wheel for one change; any key in Neovim takes it back.',
 };
 
 const CONFIRM_MS = 60_000;
@@ -73,6 +87,7 @@ export class PairSession {
     this.said = false; // the say tool was used this turn
     this.unasked = false; // the running turn is a remark nobody asked for
     this.held = []; // parts of an unasked remark that came while the user was typing
+    this.panes = null; // the user's herdr panes (a PaneWatch), for the Driver's type
   }
 
   get id() { return this.record.id; }
@@ -97,7 +112,7 @@ export class PairSession {
   /** Looks for a trigger worth a remark; called about once a second. Ticks never overlap. */
   async tick() {
     if (this.held.length && !this.typing()) this.held.splice(0).forEach(action => action());
-    if (this.ticking || this.busy) return;
+    if (this.ticking || this.busy || this.role === 'driver') return;
     this.ticking = true;
     try {
       const now = this.now();
@@ -160,26 +175,58 @@ export class PairSession {
     this.message('system', `Talk level: ${level}`);
   }
 
-  /** Switches Pair's role; Scout needs Pair's own herdr pane, which opens with the switch. */
+  /**
+   * Switches Pair's role; true when it did. Scout needs Pair's own herdr pane, which opens with the switch
+   * and closes with the switch back to Navigator. Driver needs Neovim, where any key takes the wheel back.
+   */
   async setRole(role) {
     if (role === 'scout' && !this.scout) {
-      return this.message('system', 'Scout needs its own herdr pane: start Pair with `pair` inside herdr.');
+      this.message('system', 'Scout needs its own herdr pane: start Pair with `pair` inside herdr.');
+      return false;
     }
     if (role === 'scout') {
       const opened = await this.scout.open().then(() => true, error => {
         this.message('system', `Could not open Pair's pane: ${error.message}`);
         return false;
       });
-      if (!opened) return;
-    } else {
-      await this.scout?.close();
+      if (!opened) return false;
+    }
+    if (role === 'navigator') await this.scout?.close();
+    if (!this.notify('editor', {type: 'role', role}) && role === 'driver') {
+      this.message('system', 'Pair drives only in Neovim: run :Pair start there first.');
+      return false;
     }
     this.role = role;
-    this.store.setRole(this.id, role);
+    if (role !== 'driver') this.store.setRole(this.id, role); // the wheel is never handed over across a restart
     await this.partner.setRole(this.conversationId, role);
-    this.notify('editor', {type: 'role', role});
     this.notify('chat', {type: 'role', role});
     this.message('system', ROLE_NOTES[role]);
+    return true;
+  }
+
+  /**
+   * The user hands Pair the wheel for one change (:Pair drive, "you take it", "your turn"). Pair answers as
+   * Driver and goes back to Navigator after its edit, or when the turn ends without one.
+   */
+  async drive(words = '') {
+    if (words) this.message('user', words);
+    if (this.busy) return this.message('system', 'Pair is still answering; hand over again once it is done.');
+    if (!(await this.setRole('driver'))) return;
+    await this.talk(driveInput(words, describeState(this.state, this.now())));
+    await this.handBack();
+  }
+
+  /** Pair goes back to Navigator, if it is driving. */
+  async handBack(note) {
+    if (this.role !== 'driver') return;
+    this.role = 'navigator'; // at once: an edit or type still on its way is refused from here on
+    if (note) this.message('system', note);
+    await this.setRole('navigator');
+  }
+
+  /** A key the user pressed in Neovim while Pair was driving. */
+  takeBack() {
+    return this.handBack('You have the wheel back.');
   }
 
   /** Asks the user in the chat pane; resolves false without a chat pane, on no, or after a minute. */
@@ -250,6 +297,19 @@ export class PairSession {
     return typing ? 'The user is typing; they were asked to open it.' : 'opened in a split';
   }
 
+  /** Shows a change as an inline diff in the editor; the user accepts it with one key or ignores it. */
+  async suggest({file, line, endLine, text, note}) {
+    const path = await projectFile(this.root, file);
+    if (!path) return `No file ${file} in the project`;
+    if (endLine < line) return `end_line ${endLine} is before line ${line}`;
+    this.spoke = true;
+    this.show(() => {
+      this.notify('editor', {type: 'suggest', file: path, line, endLine, text, note});
+      this.message('pair', `${file}:${line}${endLine > line ? `-${endLine}` : ''} suggestion: ${note}\n${text}`);
+    });
+    return 'Shown in the editor. The user accepts it with one key or ignores it.';
+  }
+
   async read({file, from, to}) {
     const source = await readProjectPath(this.root, file);
     if (source.error || source.listing !== undefined) return source.error ?? source.listing;
@@ -262,7 +322,7 @@ export class PairSession {
 
   async inPane(command) {
     // Also covers a turn that started as Scout when the user has switched back since: its pane is closed.
-    if (this.role !== 'scout') throw new Error('Searching and running need the Scout role; the user can switch with /scout.');
+    if (!['scout', 'driver'].includes(this.role)) throw new Error('Searching and running need the Scout role; the user can switch with /scout.');
     if (!this.scout) throw new Error('Pair has no pane of its own: start Pair with `pair` inside herdr');
     if (++this.paneUses > PANE_USES_PER_TURN) throw new Error(`That is ${PANE_USES_PER_TURN} commands for this question. Answer with what you found.`);
     const result = await this.scout.run(command);
@@ -293,5 +353,46 @@ export class PairSession {
       return 'The user did not allow it. Do not run it another way.';
     }
     return runReport(await this.inPane(command));
+  }
+
+  // The Driver's tools: they work only while the user hands Pair the wheel, and only in plain sight.
+
+  /** Whether this turn may still change something for the user; a reason for the model when not. */
+  wheel() {
+    if (this.role !== 'driver') return 'The user has the wheel now: suggest the change or say it instead.';
+    if (this.unasked) return 'Not in a remark nobody asked for.';
+    return null;
+  }
+
+  /** One change in the user's buffer, as one undo step and unsaved; then Pair hands the wheel back. */
+  async edit({file, line, endLine, text}) {
+    const path = await projectFile(this.root, file);
+    if (!path) return `No file ${file} in the project`;
+    if (endLine < line) return `end_line ${endLine} is before line ${line}`;
+    const refused = this.wheel(); // after the await: the user may have taken the wheel back meanwhile
+    if (refused) return refused;
+    const reply = await this.requestEditor({type: 'edit', file: path, line, endLine, text}).catch(error => ({error: error.message}));
+    if (reply?.error) return `Not changed: ${reply.error}.`;
+    this.message('pair', `Changed ${file}:${line}${endLine > line ? `-${endLine}` : ''} (u undoes it).`);
+    await this.handBack();
+    return 'Changed, as one undo step; not saved. The wheel is back with the user. Say in one sentence what you changed.';
+  }
+
+  /** Types one line into the user's terminal pane once they allow it; Enter stays with them. */
+  async type({text}) {
+    const refused = this.wheel();
+    if (refused) return refused;
+    if (!plainLine(text)) return 'Refused: type takes one line of plain text, and the user presses Enter.';
+    const pane = this.state.terminalPane;
+    if (!this.panes || !pane) return 'No terminal pane of the user is known yet; say the command instead.';
+    const policy = commandPolicy(text);
+    if (policy.verdict === 'refuse') return `Refused: ${policy.reason}. Do not try another way; tell the user.`;
+    if (!(await this.confirm(`Pair wants to type \`${text}\` into your terminal (pane ${pane}), without pressing Enter. Allow?`))) {
+      return 'The user did not allow it.';
+    }
+    const after = this.wheel();
+    if (after) return after;
+    await this.panes.type(pane, text);
+    return 'Typed. The user decides whether to press Enter.';
   }
 }

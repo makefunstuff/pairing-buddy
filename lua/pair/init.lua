@@ -1,10 +1,15 @@
--- pairing-buddy for Neovim: sends what you do to the pair daemon and shows what Pair points at.
--- Pair never edits or saves a buffer: the daemon can only ask this plugin to highlight, open or read.
+-- pairing-buddy for Neovim: sends what you do to the pair daemon and shows what Pair points at and suggests.
+-- Pair never saves a buffer. It changes one only while you hand it the wheel (the Driver role): one edit,
+-- as one undo step, refused here as soon as you press any key.
 local M = {}
 
 local ns = vim.api.nvim_create_namespace('pair')
-local config = {socket = nil, debounce_ms = 2000, max_points = 5}
-local state = {channel = nil, partial = '', attached = {}, pending = {}, points = {}, open_request = nil, level = nil, role = nil}
+local suggest_ns = vim.api.nvim_create_namespace('pair_suggest')
+local config = {socket = nil, debounce_ms = 2000, max_points = 5, accept_key = '<Tab>'}
+local state = {
+  channel = nil, partial = '', attached = {}, pending = {}, points = {}, open_request = nil, level = nil, role = nil,
+  suggestion = nil, -- the change Pair suggested: {buf, mark, old, new}
+}
 
 local function default_socket()
   if vim.env.PAIR_SOCKET then return vim.env.PAIR_SOCKET end
@@ -45,6 +50,69 @@ local function flush(buf)
   event({kind = 'cursor', file = file, line = cursor[1], col = cursor[2]})
 end
 
+-- Suggestions: an inline diff (the old lines highlighted, the new ones as ghost text below) until you accept or edit them.
+
+local function text_lines(text)
+  if text == '' then return {} end
+  return vim.split((text:gsub('\n$', '')), '\n', {plain = true})
+end
+
+local function clear_suggestion()
+  local suggestion = state.suggestion
+  state.suggestion = nil
+  if not suggestion or not vim.api.nvim_buf_is_valid(suggestion.buf) then return end
+  vim.api.nvim_buf_clear_namespace(suggestion.buf, suggest_ns, 0, -1)
+  if config.accept_key then pcall(vim.keymap.del, 'n', config.accept_key, {buffer = suggestion.buf}) end
+end
+
+-- The lines under the suggestion now, which may have moved since it was shown.
+local function suggested_range(suggestion)
+  local mark = vim.api.nvim_buf_get_extmark_by_id(suggestion.buf, suggest_ns, suggestion.mark, {})
+  if not mark[1] then return nil end
+  return mark[1], mark[1] + #suggestion.old
+end
+
+local function still_suggested(suggestion)
+  local first, last = suggested_range(suggestion)
+  return first and vim.deep_equal(vim.api.nvim_buf_get_lines(suggestion.buf, first, last, false), suggestion.old)
+end
+
+function M.accept()
+  local suggestion = state.suggestion
+  if not suggestion then return end
+  local unchanged = still_suggested(suggestion)
+  local first, last = suggested_range(suggestion)
+  clear_suggestion()
+  if not unchanged then return vim.notify('Pair: those lines changed, so the suggestion was dropped') end
+  vim.api.nvim_buf_set_lines(suggestion.buf, first, last, false, suggestion.new)
+end
+
+local function suggest(message)
+  clear_suggestion()
+  local buf = vim.fn.bufadd(message.file)
+  vim.fn.bufload(buf)
+  local count = vim.api.nvim_buf_line_count(buf)
+  local first = math.min(message.line, count) - 1
+  local last = math.max(first, math.min(message.endLine or message.line, count) - 1)
+  local old = vim.api.nvim_buf_get_lines(buf, first, last + 1, false)
+  local new = text_lines(message.text)
+  local ghost = {}
+  for _, line in ipairs(new) do table.insert(ghost, {{line, 'PairSuggestAdd'}}) end
+  local accept = config.accept_key and (' · ' .. config.accept_key .. ' accepts') or ''
+  local mark = vim.api.nvim_buf_set_extmark(buf, suggest_ns, first, 0, {
+    end_row = last,
+    end_col = #old[#old],
+    hl_group = 'PairSuggestDelete',
+    virt_text = {{'  ◇ ' .. message.note .. accept, 'PairNote'}},
+    virt_text_pos = 'eol',
+  })
+  vim.api.nvim_buf_set_extmark(buf, suggest_ns, last, 0, {virt_lines = ghost})
+  state.suggestion = {buf = buf, mark = mark, old = old, new = new}
+  if config.accept_key then
+    vim.keymap.set('n', config.accept_key, M.accept, {buffer = buf, desc = 'Accept Pair\'s suggestion'})
+  end
+end
+
 local typing_sent = 0
 local function on_lines(_, buf, _, first, _, new_last)
   local pending = state.pending[buf] or {from = first + 1, to = new_last}
@@ -56,6 +124,13 @@ local function on_lines(_, buf, _, first, _, new_last)
     pending.timer:close()
     flush(buf)
   end))
+  -- Editing the suggested lines yourself is how you ignore a suggestion.
+  local suggestion = state.suggestion
+  if suggestion and suggestion.buf == buf then
+    vim.schedule(function()
+      if state.suggestion == suggestion and not still_suggested(suggestion) then clear_suggestion() end
+    end)
+  end
   -- A cheap "still typing" signal, at most every half second, so Pair never interrupts mid-thought.
   if now_ms() - typing_sent > 500 then
     typing_sent = now_ms()
@@ -157,6 +232,40 @@ local function read(message)
   send({type = 'reply', id = message.id, result = {text = text}})
 end
 
+-- Driving: while Pair has the wheel, any key you press takes it back, here at once and then in the daemon.
+
+local function watch_keys(on)
+  vim.on_key(on and function()
+    if state.role ~= 'driver' then return end -- a burst of keys takes the wheel back once
+    state.role = 'navigator' -- edits on their way are refused from this key on
+    vim.schedule(function()
+      vim.on_key(nil, ns)
+      send({type = 'take_back'})
+      vim.cmd.redrawstatus()
+    end)
+  end or nil, ns)
+end
+
+local function set_role(role)
+  state.role = role
+  watch_keys(role == 'driver')
+  vim.cmd.redrawstatus()
+end
+
+local function edit(message)
+  local function reply(result) send({type = 'reply', id = message.id, result = result}) end
+  if state.role ~= 'driver' then return reply({error = 'the user has taken the wheel back'}) end
+  local buf = vim.fn.bufadd(message.file)
+  vim.fn.bufload(buf)
+  local count = vim.api.nvim_buf_line_count(buf)
+  if message.line > count then return reply({error = ('line %d is past the end of the buffer (%d lines)'):format(message.line, count)}) end
+  -- Setting 'undolevels' starts a new undo step, so `u` undoes Pair's change and nothing of yours.
+  vim.api.nvim_buf_call(buf, function() vim.o.undolevels = vim.o.undolevels end)
+  vim.api.nvim_buf_set_lines(buf, message.line - 1, math.min(message.endLine, count), false, text_lines(message.text))
+  if vim.fn.bufwinid(buf) == -1 then open_split(message.file, message.line) end
+  reply({ok = true})
+end
+
 local function hello()
   send({type = 'hello', role = 'editor', cwd = vim.fn.getcwd()})
 end
@@ -165,15 +274,17 @@ local handlers = {
   point = point,
   open = open,
   read = read,
-  clear = clear_points,
+  suggest = suggest,
+  edit = edit,
+  clear = function()
+    clear_points()
+    clear_suggestion()
+  end,
   welcome = function(message)
     state.level = message.level
-    state.role = message.role
+    set_role(message.role)
   end,
-  role = function(message)
-    state.role = message.role
-    vim.cmd.redrawstatus()
-  end,
+  role = function(message) set_role(message.role) end,
   message = function(message)
     if message.sender == 'system' then vim.notify('Pair: ' .. message.text) end
   end,
@@ -210,7 +321,9 @@ end
 function M.disconnect()
   if state.channel then vim.fn.chanclose(state.channel) end
   state.channel = nil
+  set_role(nil)
   clear_points()
+  clear_suggestion()
 end
 
 function M.status()
@@ -230,6 +343,9 @@ local commands = {
   end,
   scout = function() send({type = 'role', role = 'scout'}) end,
   navigate = function() send({type = 'role', role = 'navigator'}) end,
+  drive = function(arg) send({type = 'drive', text = arg}) end,
+  accept = M.accept,
+  dismiss = clear_suggestion,
   ['end'] = function() send({type = 'end'}) end,
   open = function()
     if state.open_request then open_split(state.open_request.file, state.open_request.line) end
@@ -254,6 +370,8 @@ function M.setup(opts)
   config = vim.tbl_extend('force', config, opts or {})
   vim.api.nvim_set_hl(0, 'PairPoint', {default = true, link = 'Visual'})
   vim.api.nvim_set_hl(0, 'PairNote', {default = true, link = 'DiagnosticVirtualTextInfo'})
+  vim.api.nvim_set_hl(0, 'PairSuggestDelete', {default = true, link = 'DiffDelete'})
+  vim.api.nvim_set_hl(0, 'PairSuggestAdd', {default = true, link = 'DiffAdd'})
   local group = vim.api.nvim_create_augroup('pair', {clear = true})
   vim.api.nvim_create_autocmd('BufEnter', {group = group, callback = function(args)
     if not state.channel then return end

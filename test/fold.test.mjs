@@ -130,3 +130,15 @@ test('Scout\'s own runs update the last test run, not the user\'s commands or er
   assert.deepEqual(state.errors, {});
   assert.deepEqual([state.tests.runner, state.tests.by, state.tests.failedCount], ['cargo', 'pair', 1]);
 });
+
+test('the user\'s terminal pane is the one they last looked at or ran a command in, never Pair\'s', () => {
+  const at = 1000;
+  let state = foldAll([{kind: 'focus', target: 'terminal', pane: 'w1:p1', at}]);
+  assert.equal(state.terminalPane, 'w1:p1');
+  state = foldAll([{kind: 'focus', target: 'chat', pane: 'w1:p2', at}, {kind: 'focus', target: 'editor', pane: 'w1:p4', at}], state);
+  assert.equal(state.terminalPane, 'w1:p1');
+  state = foldAll([{kind: 'command_end', pane: 'w1:p5', cmd: 'ls', exit: 0, output: '', at}, {kind: 'command_end', pane: null, cmd: 'ls', exit: 0, output: '', at}], state);
+  assert.equal(state.terminalPane, 'w1:p5');
+  state = foldAll([{kind: 'scout_run', cmd: 'ls', output: '', at}], state);
+  assert.equal(state.terminalPane, 'w1:p5');
+});

@@ -19,6 +19,7 @@ export function initialState({root = null, goal = null} = {}) {
     commands: [],
     errors: {},
     focus: {target: 'unknown', pane: null, scrolled: false, at: 0},
+    terminalPane: null, // the user's terminal pane they used last: where the Driver's type goes
     tests: null, // the last test run, the user's or Scout's: parsed by test-output.mjs, plus cmd, by and at
   };
 }
@@ -74,7 +75,12 @@ function foldCommandEnd(state, event) {
     endedAt: event.at,
   };
   command.seen = lookingAt(state.focus, command);
-  const next = {...state, commands: keepLast(state.commands, command, KEEP.commands), tests: testsAfter(state, tests, event, 'you')};
+  const next = {
+    ...state,
+    commands: keepLast(state.commands, command, KEEP.commands),
+    tests: testsAfter(state, tests, event, 'you'),
+    terminalPane: command.pane ?? state.terminalPane,
+  };
   if (!failed(command)) return next;
   const signature = errorSignature(command);
   const known = state.errors[signature];
@@ -119,7 +125,7 @@ const handlers = {
     // A failure the user looked at once stays seen when they look away again.
     const last = state.commands.at(-1);
     const commands = last && !last.seen && lookingAt(focus, last) ? [...state.commands.slice(0, -1), {...last, seen: true}] : state.commands;
-    return {...state, focus, commands};
+    return {...state, focus, commands, terminalPane: focus.target === 'terminal' ? focus.pane : state.terminalPane};
   },
 
   goal: (state, event) => ({...state, goal: event.text}),

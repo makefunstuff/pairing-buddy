@@ -185,3 +185,44 @@ test('in Scout, Pair runs tests in its own pane, asks before deleting and is ref
     await herdr.close();
   }
 });
+
+test('handed the wheel from the chat, Pair types into the user\'s pane after a yes, without Enter, and hands back', {timeout: 20_000}, async () => {
+  const project = mkdtempSync(join(tmpdir(), 'pair-project-'));
+  const config = testConfig(mkdtempSync(join(tmpdir(), 'pair-data-')));
+  const herdrSocket = join(mkdtempSync(join(tmpdir(), 'pair-herdr-')), 'herdr.sock');
+  const herdr = await fakeHerdr(herdrSocket);
+  const {partner, pairModels} = scriptedModels();
+  const daemon = await startDaemon(config, {pairModels, log: () => {}});
+  const editor = client(config.socket, {type: 'hello', role: 'editor', cwd: project});
+  const chat = client(config.socket, {type: 'hello', role: 'chat', cwd: project, herdr: {socket: herdrSocket, workspace: 'w1', pane: 'w1:p2'}});
+  try {
+    await chat.next(message => message.type === 'welcome');
+    await editor.next(message => message.type === 'welcome');
+    chat.send({type: 'goal', text: 'fix reconnect'});
+    await new Promise(resolve => setTimeout(resolve, 1500)); // a herdr poll: the user's pane w1:p1 has focus
+
+    let result;
+    partner.setResponses([
+      fauxAssistantMessage([fauxToolCall('type', {text: 'npm test'})], {stopReason: 'toolUse'}),
+      context => {
+        result = context.messages.filter(message => message.role === 'toolResult').at(-1).content[0].text;
+        return fauxAssistantMessage([fauxText('It is in your terminal; press Enter to run it.')]);
+      },
+    ]);
+    chat.send({type: 'drive', text: 'you take it: put the test command in my terminal'});
+    await editor.next(message => message.type === 'role' && message.role === 'driver');
+    const question = await chat.next(message => message.type === 'confirm');
+    assert.match(question.text, /type `npm test` into your terminal \(pane w1:p1\)/);
+    chat.send({type: 'confirm', id: question.id, ok: true});
+    await chat.next(message => message.text === 'It is in your terminal; press Enter to run it.');
+    await editor.next(message => message.type === 'role' && message.role === 'navigator');
+
+    assert.match(result, /^Typed/);
+    assert.deepEqual(herdr.sent, [['w1:p1', 'npm test']], 'typed once, into the user\'s pane, without Enter');
+  } finally {
+    editor.close();
+    chat.close();
+    await daemon.close();
+    await herdr.close();
+  }
+});

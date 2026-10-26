@@ -17,7 +17,7 @@ const project = () => mkdtempSync(join(tmpdir(), 'pair-tools-'));
 function recordingHands(role = 'navigator') {
   const calls = [];
   const hand = name => async (conversationId, args) => { calls.push([name, args]); return `${name} done`; };
-  const hands = Object.fromEntries(ROLE_TOOLS.scout.map(name => [name, hand(name)]));
+  const hands = Object.fromEntries(ROLE_TOOLS.driver.map(name => [name, hand(name)]));
   return {calls, hands: {...hands, roleOf: () => role}};
 }
 
@@ -28,51 +28,52 @@ function fauxModels() {
   return {faux, models, model: faux.getModel()};
 }
 
-test('the Navigator has say, point, open and read; Scout adds search and run, and nothing else exists', () => {
+test('the Navigator has say, point, open, read and suggest; Scout adds search and run; the Driver edit and type; nothing else exists', () => {
   const {hands} = recordingHands();
-  assert.deepEqual(ROLE_TOOLS.navigator, ['say', 'point', 'open', 'read']);
-  assert.deepEqual(ROLE_TOOLS.scout, ['say', 'point', 'open', 'read', 'search', 'run']);
-  assert.deepEqual(pairExtension(hands).tools.map(tool => tool.name), ROLE_TOOLS.scout);
+  assert.deepEqual(ROLE_TOOLS.navigator, ['say', 'point', 'open', 'read', 'suggest']);
+  assert.deepEqual(ROLE_TOOLS.scout, ['say', 'point', 'open', 'read', 'suggest', 'search', 'run']);
+  assert.deepEqual(ROLE_TOOLS.driver, ['say', 'point', 'open', 'read', 'suggest', 'search', 'run', 'edit', 'type']);
+  assert.deepEqual(pairExtension(hands).tools.map(tool => tool.name), ROLE_TOOLS.driver);
 });
 
 test('the policy blocks every tool outside the role', () => {
-  for (const name of ROLE_TOOLS.navigator) assert.equal(toolPolicy({name}, 'navigator'), undefined);
-  for (const name of ROLE_TOOLS.scout) assert.equal(toolPolicy({name}, 'scout'), undefined);
+  for (const role of ['navigator', 'scout', 'driver']) {
+    for (const name of ROLE_TOOLS[role]) assert.equal(toolPolicy({name}, role), undefined, `${role} ${name}`);
+  }
   for (const name of ['search', 'run']) assert.match(toolPolicy({name}, 'navigator').block, /needs the Scout role/);
-  for (const name of ['write', 'edit', 'bash', 'save', 'Say', 'read_file']) {
-    assert.match(toolPolicy({name}, 'navigator').block, /only say, point, open, read\.$/);
-    assert.match(toolPolicy({name}, 'scout').block, /only say, point, open, read, search, run\.$/);
+  for (const role of ['navigator', 'scout']) {
+    assert.match(toolPolicy({name: 'edit'}, role).block, /only while the user hands you the wheel; call suggest instead/);
+    assert.match(toolPolicy({name: 'type'}, role).block, /only while the user hands you the wheel; say the command instead/);
+  }
+  for (const name of ['write', 'bash', 'save', 'Say', 'read_file', 'Edit']) {
+    assert.match(toolPolicy({name}, 'navigator').block, /only say, point, open, read, suggest\.$/);
+    assert.match(toolPolicy({name}, 'scout').block, /only say, point, open, read, suggest, search, run\.$/);
+    assert.match(toolPolicy({name}, 'driver').block, /only say, point, open, read, suggest, search, run, edit, type\.$/);
   }
 });
 
-test('the policy holds even if file-writing tools are installed and selected by mistake', async () => {
-  const root = project();
+test('edit runs only while driving: not offered otherwise, and refused by the hook once the wheel is taken back', async () => {
   const {faux, models, model} = fauxModels();
+  let role = 'navigator';
   const {calls, hands} = recordingHands();
-  const navigator = pairExtension(hands);
-  const registry = createRegistry();
-  registry.install(CodingTools);
-  registry.install(navigator);
-  const harness = await Harness.open(new MemoryStorage(), {
-    models, registry,
-    settings: {extensions: [CodingTools, navigator]},
-    env: () => new NodeExecutionEnv({cwd: root}),
-  }, C);
-  const conversation = await harness.createConversation({ownership: {kind: 'ownerless'}, agent: {model: {provider: model.provider, modelId: model.id}}}, C);
-  faux.setResponses([
-    fauxAssistantMessage([
-      fauxToolCall('write', {path: join(root, 'pwned.txt'), content: 'x'}),
-      fauxToolCall('bash', {command: `touch ${join(root, 'bashed.txt')}`}),
-      fauxToolCall('say', {text: 'hello'}),
-    ], {stopReason: 'toolUse'}),
-    fauxAssistantMessage([fauxText('ok')]),
-  ]);
-  await (await conversation.submit({type: 'input', content: 'go'}, C)).wait(C);
-  await harness.close(C);
+  const partner = await openPartner({storage: new MemoryStorage(), models, model, hands: {...hands, roleOf: () => role}});
+  const id = await partner.createConversation();
+  const results = [];
+  const edit = fauxAssistantMessage([fauxToolCall('edit', {file: 'a.js', line: 1, new_text: 'x'})], {stopReason: 'toolUse'});
+  const answer = context => { results.push(context.messages.at(-1).content[0].text); return fauxAssistantMessage([fauxText('ok')]); };
+  faux.setResponses([edit, answer, edit, answer, edit, answer]);
 
-  assert.equal(existsSync(join(root, 'pwned.txt')), false);
-  assert.equal(existsSync(join(root, 'bashed.txt')), false);
-  assert.deepEqual(calls, [['say', 'hello']]);
+  await partner.ask(id, '[user] change it'); // a Navigator conversation is not offered edit at all
+  await partner.setRole(id, 'driver');
+  await partner.ask(id, '[drive] change it'); // still offered, but the user took the wheel back: the hook says no
+  role = 'driver';
+  await partner.ask(id, '[drive] change it');
+  await partner.close();
+
+  assert.match(results[0], /not available/);
+  assert.match(results[1], /only while the user hands you the wheel/);
+  assert.equal(results[2], 'edit done');
+  assert.deepEqual(calls, [['edit', {file: 'a.js', line: 1, endLine: 1, text: 'x'}]]);
 });
 
 test('the Partner offers the model only its role\'s tools and answers with its final text', async () => {
@@ -91,7 +92,7 @@ test('the Partner offers the model only its role\'s tools and answers with its f
   ]);
   assert.equal(await partner.ask(id, '[user] what is wrong?'), 'Line 3 loops one too far.');
   assert.deepEqual(calls, [['point', {file: 'a.js', line: 3, endLine: 3, note: 'off by one'}]]);
-  assert.deepEqual(offered, ['open', 'point', 'read', 'say']);
+  assert.deepEqual(offered, ['open', 'point', 'read', 'say', 'suggest']);
   await partner.close();
 });
 
@@ -111,19 +112,23 @@ test('switching the role changes the tools offered and the instructions, from th
     seen.push({offered: [...offered].sort(), system: JSON.stringify(context.messages.filter(message => message.role === 'system'))});
     return fauxAssistantMessage([fauxText('ok')]);
   };
-  faux.setResponses([look, look, look]);
+  faux.setResponses([look, look, look, look]);
   await partner.ask(id, '[user] hi');
   await partner.setRole(id, 'scout');
   await partner.ask(id, '[user] where else?');
+  await partner.setRole(id, 'driver');
+  await partner.ask(id, '[drive] your turn');
   await partner.setRole(id, 'navigator');
   await partner.ask(id, '[user] and now?');
   await partner.close();
 
-  assert.deepEqual(seen[0].offered, ['open', 'point', 'read', 'say']);
-  assert.deepEqual(seen[1].offered, ['open', 'point', 'read', 'run', 'say', 'search']);
+  assert.deepEqual(seen[0].offered, ['open', 'point', 'read', 'say', 'suggest']);
+  assert.deepEqual(seen[1].offered, ['open', 'point', 'read', 'run', 'say', 'search', 'suggest']);
   assert.match(seen[1].system, /Your role now: Scout/);
-  assert.deepEqual(seen[2].offered, ['open', 'point', 'read', 'say']);
-  assert.match(seen[2].system, /Your role now: Navigator/);
+  assert.deepEqual(seen[2].offered, ['edit', 'open', 'point', 'read', 'run', 'say', 'search', 'suggest', 'type']);
+  assert.match(seen[2].system, /Your role now: Driver/);
+  assert.deepEqual(seen[3].offered, ['open', 'point', 'read', 'say', 'suggest']);
+  assert.match(seen[3].system, /Your role now: Navigator/);
 });
 
 test('read is confined to the project root, symlinks included', async () => {
