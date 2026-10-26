@@ -80,6 +80,19 @@ export const scenes = {
       {wait: 200, say: 'line 26 wraps the head with `capacity`, which nothing declares: the ring keeps its size in `r->cap`'},
     ],
   },
+  // A build and run on save in a C project (probe/, `make run` with AddressSanitizer): a missing semicolon, then a
+  // crash whose frame Alt-j goes to, and Pair says why; then a new warning, which Pair leaves to the margin.
+  'crash': {
+    project: 'probe',
+    goal: 'see how well the table spreads its keys',
+    testOnSave: 'make run',
+    watcher: score('crash'),
+    partner: [
+      {when: /crash/, wait: 300, call: ['read', {file: 'probe.c'}]},
+      {wait: 1400, call: ['point', {file: 'probe.c', line: 11, note: '64 * 31 = 1984: past the table', code: 'key * 31'}]},
+      {wait: 200, say: 'insert writes `keys[1984]`: without the mask, the second key already lands past `CAP`'},
+    ],
+  },
   // The same hand-over, taken back with a key while Pair types.
   'take-back': {
     goal: 'retries reach the budget',

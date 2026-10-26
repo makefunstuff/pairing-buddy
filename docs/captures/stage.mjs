@@ -1,4 +1,4 @@
-// Sets the stage for one capture in a scratch directory: the sample project at the scene's starting point, the
+// Sets the stage for one capture in a scratch directory: the scene's sample project at its starting point, the
 // fake model server, the herdr stand-in, the real daemon (`pair daemon`, as the service runs it) with a config
 // that points at them, and a chat client, as the chat pane would be. Writes `ready` when Neovim may start.
 // usage: node stage.mjs <scene> <scratch dir under /tmp/paircap.*>
