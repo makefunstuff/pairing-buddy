@@ -54,7 +54,7 @@ test('the wrong turn: Pair reads, says why under your line, and points at the re
   assert.deepEqual(sent.filter(message => message.type === 'thinking').map(message => [message.via, message.on]), [['editors', true], ['editors', false]],
     'the statusline says Pair thinks while the turn runs');
   const editor = sent.filter(message => message.via === 'editor');
-  assert.deepEqual(editor.map(message => message.type), ['look', 'look', 'point', 'remark']);
+  assert.deepEqual(editor.map(message => message.type), ['look', 'look', 'point', 'remark', 'earcon']);
   assert.deepEqual(editor.slice(0, 2).map(({file, from, to}) => [file, from, to]), [[join(root, 'backoff.go'), 1, 6], [join(root, 'worker.go'), 3, 5]],
     'the gaze covers the lines read: the whole file, or the range asked for');
   const target = {file: join(root, 'worker.go'), line: 4, endLine: 4, note: '7s + 8s = 15s: still inside the budget', code: '>='};

@@ -30,7 +30,11 @@ and read back is in [scout.md](scout.md#tests-on-save).
   seconds.
 - With a JSON report (`go test -json`, `jest --json`, `vitest --reporter=json`), each test function gets `✓` or `✗`
   in the sign column, and a failure's message shows after the line it failed on.
-- The chat says when the run turns red or green.
+- The chat says when the run turns red or green, and after a long red, for how long it was red.
+- When the run turns green after a red, Neovim lights up once; after ten minutes of red, or a regression, one line
+  under yours says what passes again. [When it goes green](neovim.md#when-it-goes-green).
+- A number in the output of a passing run without a test report, `make -s run` or a benchmark, that held still and
+  then moved the right way gets the same moment.
 - A build or a run works too (`"~/src/probe": "make run"`): a crash or a compiler error shows on its line and in the
   statusline (`✗ does not build · probe.c:11`, `✗ Segmentation fault · probe.c:19`), see [builds.md](builds.md).
 - Other runners work too (`cargo test`, `pytest`, `npm test`): the statusline and the regressions use their output,

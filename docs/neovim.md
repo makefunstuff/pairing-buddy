@@ -26,6 +26,7 @@ run is real `go test`; only the models' words are scripted. It is recorded from 
 | `⠹` | the statusline | it thinks before it answers, or runs your tests |
 | `✓` `✗` | the statusline, and the sign column of your tests | tests it ran for you when you saved |
 | `✗` `△` | the sign column, and the words after the line | a crash or a compiler error, and a new warning, from your last build or run |
+| a glow, and one line | the statusline, a `✓`, under your line | it went green after a red, or a number finally moved ([below](#when-it-goes-green)) |
 
 **One accent, from your colorscheme.** Pair takes its colour from the colorscheme you use, so it fits in light and
 dark: of the colorscheme's own colours for regular expressions, its terminal cyan, its hints and its specials, it
@@ -324,6 +325,67 @@ The list is today's, from local midnight, across the sessions of this project; t
 `sessions.sqlite`; what they open to (the output of each command, its last 20 000 characters, and the text before
 and after each edit) for a week.
 
+## When it goes green
+
+A small win lifts a day only when you notice it. So when the red ends, the screen notices, briefly, and the
+celebration is sized to the event: never confetti, never praise, only what is now true.
+
+![Exploring in C: the table grows twice and the average probe holds still; the hash fix moves it, the statusline lights up once, and one line says what moved](images/delight.gif)
+
+*The plugin and the daemon as shipped, in a clean Neovim with ayu. Pair runs `make -s run` on each save (the
+project's `testOnSave`); the build and the benchmark are real, and no model is asked anything.*
+
+1. You are making a string-interning table faster. Pair runs the benchmark when you save: `avg probe 1893.7`.
+2. You double the table, and save: `1893.7`. You double it again: `1893.7`. The number holds still.
+3. The hash was the problem: it sums the bytes. You change it to FNV-1a, and save. The statusline lights up once and
+   settles, and one line under yours says what moved: `avg probe 1893.7 → 1.0, after 2 runs at 1893.7.` Five
+   seconds later it is gone.
+
+![The line under yours after the hash fix](images/delight.png)
+
+**What lights up, and when.**
+
+- **Tests turning green.** When the tests on save pass after a red run, the statusline lights up once (700 ms) and
+  settles, and the `✓` of each test that turned green glows on a tinted line for 650 ms, then turns as quiet as its
+  neighbours. A test that was already passing just stays quiet.
+- **One line, only when it was worth it.** When the red lasted ten minutes or more, or began with a regression (a
+  test that passed in the run before), one line under yours says what passes again:
+  `` `TestNoDoubleDelivery` passes again, after 23 min of red. `` or `` `TestRate` passes again: the regression is
+  fixed. `` While it is red that long, the statusline says so: `✗ 1 failing · TestNoDoubleDelivery · red 23 min`.
+- **A number that finally moved.** When a command's output (the tests on save without a test report, or a command
+  you run in your terminal) has a number that held still for two runs or more, and it then moves by a quarter or more
+  the right way. Which way is right comes from its unit or its words: `ms`, `bytes`, `misses`, `probe` or `latency`
+  are better lower, `/s`, `ops`, `hits` or `speedup` higher. A number that says neither, such as a count of files,
+  never lights anything up, nor does one that got worse or jitters from run to run.
+- **A command red for long.** When a command you run in your terminal failed for ten minutes or more and passes
+  again: `` `make` passes again, after 23 min of red. ``
+
+The line comes in Pair's voice, under the line you are on, and goes after five seconds, or with your next edit.
+Words Pair is saying already stay: then only the statusline lights up. While you are away from Neovim, the five
+seconds start when you come back. With `motion = false` nothing glows; the line still shows.
+
+## Sounds while you are away
+
+When you are reading docs in the browser and the tests turn green, or a test breaks, a sound tells you without
+pulling you back. A run that stays as it was makes no sound. While Neovim has the focus there is no sound at all:
+the screen already says it. They are off until you turn them on:
+
+```lua
+require('pair').setup({sounds = true, sound_volume = 0.5})
+```
+
+| Sound | When |
+| --- | --- |
+| [two notes up](../sounds/green.wav) | a green after a red, or a number that moved |
+| [one low note](../sounds/red.wav) | a regression: a test that passed in the run before fails |
+| [a felt tick](../sounds/tick.wav) | Pair speaks unasked |
+| [a fifth down](../sounds/handback.wav) | the Driver is done and hands back |
+
+Each is under a second, with its peak below −10 dB, so they sit under your music; Pair adds no ambience. They play
+in the Neovim you used last, with `pw-play`, `paplay`, `afplay` or `aplay`, whichever is installed first. Away means
+Neovim lost the terminal's focus: your terminal and herdr tell Neovim, and a terminal that does not leaves Pair
+silent. The sounds are made from sine waves by [sounds/make.sh](../sounds/make.sh) (CC0).
+
 ## What each thing looks like
 
 **Words.** One or two lines under the line you are on, indented with your code, with `●` before them. At most
@@ -405,6 +467,8 @@ require('pair').setup({
   motion = true,       -- false: no fades, the gaze lights one line at a time without its trail, and the Driver's edit lands at once
   glyphs = {},         -- for example {voice = '\u{f444}', wheel = '\u{f030c}'} with a Nerd Font
   searches = true,     -- false: your Telescope and snacks.picker searches stay in Neovim, and there is no search trail
+  sounds = false,      -- true: short sounds while you are away from Neovim (see above)
+  sound_volume = 0.5,  -- 0 to 1
 })
 ```
 
@@ -418,8 +482,10 @@ require('pair').setup({
 | `accept_key` | `'<M-y>'` | Accepts a suggestion. Mapped in Normal mode, only in that buffer and only while a suggestion shows. Avoid `<Tab>`: terminals send it for Ctrl-I, the jumplist's forward jump |
 | `listen_key` | `'<M-t>'` | Hold it to speak to Pair ([voice.md](voice.md)). Mapped in Normal and Visual mode from the start |
 | `useful_key`, `noise_key` | `'<M-u>'`, `'<M-n>'` | Your verdict on Pair's last unasked remark. Mapped in Normal mode only while a remark waits for one |
-| `motion` | `true` | Fades, and the trail behind the gaze; without it the gaze still steps line by line |
+| `motion` | `true` | Fades, the glow of a green, and the trail behind the gaze; without it the gaze still steps line by line |
 | `searches` | `true` | Read your Telescope and snacks.picker searches for the [search trail](#the-search-trail) |
+| `sounds` | `false` | Short [sounds](#sounds-while-you-are-away) for a green, a regression, a remark and the hand-back, only while Neovim does not have the focus |
+| `sound_volume` | `0.5` | Their volume, 0 to 1 |
 | `glyphs` | plain Unicode | Pair's marks (below) |
 
 Every key option takes `false` for none; the commands work either way. The keys are mapped only where you have no
@@ -499,6 +565,8 @@ vim.o.statusline = "%f %m%=%{%v:lua.require'pair'.statusline()%}  %l:%c "
 | `PairCursor` | the Driver's cursor | the background on the accent |
 | `PairStatus`, `PairStatusDim`, `PairStatusWarn` | the statusline segment | the accent, the statusline's own colours, your colorscheme's warning colour |
 | `PairStatusPass` | `✓` in the statusline after a passing run | your colorscheme's "ok" colour (`DiagnosticOk`) |
+| `PairStatusGlow` | the statusline as it lights up for a green | the "ok" colour on the statusline, tinted toward it |
+| `PairGlow`, `PairGlowLine` | the `✓` of a test that turned green, and its line, as they glow | the "ok" colour, and the background toward it |
 | `PairPass` | `✓` on a passing test | the "ok" colour, faded toward the background |
 | `PairFail` | `✗` on a failing test, and in the statusline | your colorscheme's error colour (`DiagnosticError`) |
 | `PairFailNote` | why a test failed, after its line; a crash's or compiler error's words | your foreground toward the error colour |
