@@ -1,6 +1,6 @@
 // One pairing session: folds its events, decides when Pair speaks and carries out the Partner's tools.
 import {readFile} from 'node:fs/promises';
-import {isAbsolute, relative} from 'node:path';
+import {isAbsolute, join, relative} from 'node:path';
 import {Budget} from './budget.mjs';
 import {commandPolicy} from './command-policy.mjs';
 import {contextCard} from './context-card.mjs';
@@ -14,6 +14,8 @@ import {gitStatus} from './git.mjs';
 import {Breakpoints, placeOf, stillTrue, urgent} from './held.mjs';
 import {plainLine} from './herdr.mjs';
 import {keptOutput, Ledger, ledgerDetail, today} from './ledger.mjs';
+import {DebugLines, printedBy} from './debug-lines.mjs';
+import {changeLine, headline, runLine, verdictText} from './run-log.mjs';
 import {placeRun} from './run-places.mjs';
 import {crashText, hasNews, readingSummary, readRun} from './run-output.mjs';
 import {RUN_TIMEOUT_MS, shellQuote} from './scout-pane.mjs';
@@ -58,6 +60,12 @@ const CHECKS = {
   new_warning: 'A build printed a warning that was not there before. Read its line. Only if it points at a real bug, point '
     + 'at it and say why in one sentence; if it is harmless while exploring (an unused variable, a parameter not used yet), '
     + 'answer exactly SILENT.',
+  same_result: 'The user changed the code and ran it again, and the numbers did not move. Read their change and the code the run goes '
+    + 'through, and find why the change makes no difference, with the real numbers from the runs. Point at the line that '
+    + 'explains it and say why in one or two short sentences; if it is clear, add the next thing to try. If you cannot tell why, answer exactly SILENT.',
+  number_moved: 'A number in the run\'s output moved. Read the change before this run and the code it touches, and say in one or two '
+    + 'short sentences what is now true and why the change did it, with the numbers before and after. If it got worse, point at '
+    + 'what in the change made it worse. If the change plainly explains it, answer exactly SILENT.',
   ...PROSE_CHECKS,
 };
 
@@ -248,6 +256,10 @@ export class PairSession {
     this.ledger = new Ledger({store, sessionId: record.id, changed: () => this.notify('editors', {type: 'ledger_changed'}), now});
     this.trailVerdict = null; // what the gate decided on the search trail last: {start, verdict, reason, score, bar}
     this.delight = new Delight(); // the moments worth a glow, and the sounds while the user is away
+    this.debugLines = new DebugLines({root: record.root, read: path => this.bufferText(path)}); // the prints of the hunt
+    this.debugOffered = false; // the hunt is over and its debug lines were offered for clean-up
+    this.printed = new Map(); // run number -> how many lines of its output the user's debug lines printed
+    this.runLineShown = null; // the statusline's line about the last run (see showRunLine)
   }
 
   /** Runs the tests on each save with `testOnSave` ({command, outputFile}) from now on, or none when it is null. */
@@ -262,14 +274,54 @@ export class PairSession {
 
   receive(event) {
     const file = event.file && isAbsolute(event.file) ? relative(this.root, event.file) : event.file;
-    const {run} = this.state;
+    const {run, runs} = this.state;
     const folded = {at: this.now(), ...event, ...(file ? {file} : {})};
     this.state = fold(this.state, folded);
+    if (event.kind === 'edit' && file && !file.startsWith('..')) {
+      this.debugLines.edited(file, event.text ?? '', (runs.at(-1)?.n ?? 0) + 1).catch(error => this.log(`debug lines: ${error.message}`));
+    }
     this.breakpoints.see(folded);
     if (USER_EVENTS.has(event.kind)) this.usedAt = this.now();
     if (event.kind === 'save' && file && !file.startsWith('..')) this.testRuns?.saved(file);
     if (event.kind === 'command_end') this.delighted(this.delight.command({cmd: event.cmd ?? '', failed: failed(this.state.commands.at(-1)), output: event.output}, folded.at));
     if (this.state.run !== run) this.showRun(this.state.run);
+    if (this.state.runs !== runs) this.showRunLine(this.state.runs.at(-1));
+  }
+
+  /**
+   * Says what a run of the run log found in every editor's statusline (see run-log.mjs). Once the hunt is over (a
+   * number moved the right way, or a run went through after a crash or a broken build), the debug lines the user
+   * added for it are offered for clean-up: the line counts them, and the jump key goes to the first.
+   */
+  async showRunLine(run) {
+    const left = await this.debugLines.left();
+    this.printed.set(run.n, left.reduce((sum, debug) => sum + (printedBy(debug.text, run.output) ?? 0), 0));
+    const before = this.state.runs.findLast(other => other.cmd === run.cmd && other.n < run.n);
+    const better = run.verdict.kind === 'moved' && run.verdict.moves.some(move => move.better);
+    const through = !run.crash && !run.errors && !!(before?.crash || before?.errors);
+    this.debugOffered = left.length > 0 && (this.debugOffered || better || through);
+    const debug = this.debugOffered ? {count: left.length, run: left[0].run, file: join(this.root, left[0].file), line: left[0].line} : null;
+    if (this.state.runs.at(-1) !== run) return; // a newer run came meanwhile
+    this.runLineShown = {type: 'run_line', n: run.n, kind: run.verdict.kind, text: runLine(run), debug};
+    this.notify('editors', this.runLineShown);
+  }
+
+  /** What `:Pair runs` shows: the session's runs, newest last, and the debug lines still in the code. */
+  async runs() {
+    const left = await this.debugLines.left();
+    return {
+      type: 'runs',
+      runs: this.state.runs.map(run => {
+        const top = headline(run.numbers);
+        const time = Object.values(run.numbers).find(number => number.time);
+        return {
+          n: run.n, cmd: run.cmd, by: run.by, change: changeLine(run), said: verdictText(run), kind: run.verdict.kind,
+          number: top ? `${top.label} ${top.text}` : '', time: time ? `${time.text} ${time.unit}` : '', printed: this.printed.get(run.n) ?? 0,
+          output: run.output, changes: run.changes.map(edit => `${edit.file}:${edit.from}-${edit.to}\n${edit.text}`).join('\n\n'),
+        };
+      }),
+      debug: left.map(debug => ({...debug, file: join(this.root, debug.file)})),
+    };
   }
 
   /**
@@ -315,7 +367,7 @@ export class PairSession {
     const failing = run.placed.filter(test => !test.ok);
     const files = [...new Set(failing.map(test => relative(this.root, test.failure?.file ?? test.file)))];
     const last = this.state.run;
-    this.receive({kind: 'test_run', cmd: run.label, tests: run.tests, files, saved: run.saved, reading: run.reading});
+    this.receive({kind: 'test_run', cmd: run.label, tests: run.tests, files, saved: run.saved, reading: run.reading, exit: run.exit, output: run.output});
     const fresh = this.state.run !== last ? this.state.run.newWarnings.length : 0; // this run's
     const text = !red && fresh ? `${fresh} new warning${fresh === 1 ? '' : 's'}` : runText(run);
     const moment = this.delight.testRun({red, failed: run.tests?.failed, newly: run.tests ? this.state.tests.newly : []}, this.now())

@@ -463,6 +463,7 @@ export async function startDaemon(config, {
     // A Neovim that connects (or reconnects) after a test run shows its result too, and a late answer it missed.
     if (client.role === 'editor' && session.testsShown) sendMessage(client.socket, session.testsShown);
     if (client.role === 'editor' && session.runShown) sendMessage(client.socket, session.runShown);
+    if (client.role === 'editor' && session.runLineShown) sendMessage(client.socket, session.runLineShown);
     if (message.herdr?.socket) agents?.useHerdr(message.herdr.socket);
     const relayed = relays.get(session.root)?.last;
     if (client.role === 'editor' && relayed) sendMessage(client.socket, relayed);
@@ -564,6 +565,7 @@ export async function startDaemon(config, {
     if (message.type === 'applied') return session.applied(message.action, message.before, message.after);
     if (message.type === 'trail') return sendMessage(client.socket, session.trail());
     if (message.type === 'forget_trail') return session.forgetTrail();
+    if (message.type === 'runs') return session.runs().then(runs => sendMessage(client.socket, runs));
     if (message.type === 'release') return session.release();
     if (message.type === 'accent') return session.setAccent(message.color);
     if (message.type === 'decision') return margins.get(session.root).decide(message.file, message.line);
