@@ -44,8 +44,27 @@ test('testOnSave maps project folders, ~ included, to the command run on save', 
   assert.throws(() => config(['npm test']), /testOnSave must map project folders to commands/);
 });
 
-test('a model that can think gets room for its thinking in the answer', () => {
-  assert.equal(parseConfig({models: {watcher: {api: 'anthropic', model: 'w'}, partner: {api: 'anthropic', model: 'p'}}}).models.partner.maxTokens, 2048);
-  assert.equal(parseConfig({models: {watcher: {api: 'anthropic', model: 'w'}, partner: {api: 'anthropic', model: 'p', reasoning: true}}}).models.partner.maxTokens, 8192);
-  assert.equal(parseConfig({models: {watcher: {api: 'anthropic', model: 'w'}, partner: {api: 'anthropic', model: 'p', reasoning: true, maxTokens: 4000}}}).models.partner.maxTokens, 4000);
+test('the Partner thinks by default, remarks a little less; the Watcher never does', () => {
+  const models = parseConfig({models: {watcher: {api: 'anthropic', model: 'w'}, partner: {api: 'anthropic', model: 'p'}}}).models;
+  assert.deepEqual(models.partner.thinking, {navigator: 'medium', scout: 'medium', driver: 'medium', remark: 'low'});
+  assert.equal(models.partner.reasoning, true);
+  assert.equal(models.watcher.reasoning, false);
+  assert.equal(models.watcher.thinking, undefined);
+});
+
+test('thinking is one level for every turn, or levels for some kinds; off is a choice', () => {
+  const partner = thinking => parseConfig({models: {watcher: {api: 'anthropic', model: 'w'}, partner: {api: 'anthropic', model: 'p', thinking}}}).models.partner;
+  assert.deepEqual(partner('off').thinking, {navigator: 'off', scout: 'off', driver: 'off', remark: 'off'});
+  assert.deepEqual(partner({driver: 'high', remark: 'medium'}).thinking, {navigator: 'medium', scout: 'medium', driver: 'high', remark: 'medium'});
+  assert.throws(() => partner({answer: 'low'}), /thinking\.answer: the kinds are navigator, scout, driver, remark/);
+  assert.throws(() => partner('lots'), /"lots" is not one of off, minimal, low/);
+  assert.throws(() => partner(['low']), /must be a level or map kinds to levels/);
+});
+
+test('maxTokens has room for the most thinking a turn does, and the answer after it', () => {
+  const partner = entry => parseConfig({models: {watcher: {api: 'anthropic', model: 'w'}, partner: {api: 'anthropic', model: 'p', ...entry}}}).models.partner;
+  assert.equal(partner({}).maxTokens, 2048 + 8192, 'medium');
+  assert.equal(partner({thinking: {driver: 'high'}}).maxTokens, 2048 + 16384);
+  assert.equal(partner({thinking: 'off'}).maxTokens, 2048);
+  assert.equal(partner({maxTokens: 4000}).maxTokens, 4000);
 });

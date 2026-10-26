@@ -24,7 +24,7 @@ function pairSession(turns = []) {
   const pair = new PairSession({
     record: store.createSession({root, conversationId: 'c1', goal: 'retries pass', level: 'normal', at: clock.now}),
     store,
-    partner: {ask: async (_id, input, opts) => { asked.push(input); options.push(opts); return turns.shift()?.(pair) ?? 'SILENT'; }, setRole: async () => {}},
+    partner: {thinkingOf: (_id, kind) => (kind === 'remark' ? 'low' : 'off'), ask: async (_id, input, opts) => { asked.push(input); options.push(opts); return turns.shift()?.(pair) ?? 'SILENT'; }, setRole: async () => {}},
     score: async () => ({value: 9, reason: 'test'}),
     typingPauseMs: 2000,
     notify: (to, message) => { sent.push({via: to, ...message}); return 1; },
@@ -50,7 +50,9 @@ test('the wrong turn: Pair reads, says why under your line, and points at the re
 
   assert.match(asked[0], /^\[watch\] edit_while_red: The user edits backoff\.go:4-4 while `go test \.\/\.\.\.` is red/);
   assert.match(asked[0], /trace the test through the code as it is now/);
-  assert.deepEqual(options[0], {thinking: 'low'}, 'the trace needs a Partner that thinks first');
+  assert.deepEqual(options[0], {kind: 'remark'}, 'it thinks as remarks do');
+  assert.deepEqual(sent.filter(message => message.type === 'thinking').map(message => [message.via, message.on]), [['editors', true], ['editors', false]],
+    'the statusline says Pair thinks while the turn runs');
   const editor = sent.filter(message => message.via === 'editor');
   assert.deepEqual(editor.map(message => message.type), ['look', 'look', 'point', 'remark']);
   assert.deepEqual(editor.slice(0, 2).map(({file, from, to}) => [file, from, to]), [[join(root, 'backoff.go'), 1, 6], [join(root, 'worker.go'), 3, 5]],
@@ -72,7 +74,7 @@ test('the wrong turn: Pair reads, says why under your line, and points at the re
 });
 
 test('the words of a remark are what Pair said, also through say; a turn starts with no words and no target', async () => {
-  const {pair, clock, sent, options} = pairSession([
+  const {pair, clock, sent} = pairSession([
     async pair => { pair.say('Two places changed.'); return ''; },
   ]);
   pair.receive({kind: 'command_end', cmd: 'npm test', exit: 1, output: 'Error: boom', at: clock.now - 10_000});
@@ -80,7 +82,6 @@ test('the words of a remark are what Pair said, also through say; a turn starts 
   await pair.tick();
   const remark = sent.find(message => message.via === 'editor' && message.type === 'remark');
   assert.deepEqual([remark.text, remark.target], ['Two places changed.', null]);
-  assert.deepEqual(options[0], {thinking: undefined}, 'other remarks think as configured');
 });
 
 test('a question about selected lines gives the Partner those lines, as the editor has them', async () => {
@@ -89,4 +90,16 @@ test('a question about selected lines gives the Partner those lines, as the edit
   assert.match(asked[0], /^\[user\] what does this do\?\n\nAbout lines 3-5 of backoff\.go, which the user selected:\n3: func Next\(attempt int\) int \{\n4: \treturn 1 << attempt\n5: \}\n\(1 more lines; ask for start_line 6\)\n\nNow:/);
   assert.ok(sent.some(message => message.type === 'message' && message.text === 'what does this do? (backoff.go:3-5)'));
   assert.ok(sent.some(message => message.text === 'It doubles each time.'));
+});
+
+test('the statusline says Pair thinks while its model works, not while one of its tools runs', async () => {
+  const {pair, clock, sent} = pairSession([async pair => {
+    await pair.useTool('read', {file: 'backoff.go'});
+    return 'SILENT';
+  }]);
+  pair.receive({kind: 'command_end', cmd: 'npm test', exit: 1, output: 'Error: boom', at: clock.now - 10_000});
+  pair.receive({kind: 'command_end', cmd: 'npm test', exit: 1, output: 'Error: boom', at: clock.now - 5000});
+  await pair.tick();
+  const shown = sent.filter(message => message.type === 'thinking' || message.type === 'look').map(message => message.type === 'look' ? 'look' : message.on);
+  assert.deepEqual(shown, [true, false, 'look', true, false]);
 });

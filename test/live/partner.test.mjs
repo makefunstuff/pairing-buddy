@@ -11,7 +11,7 @@ import {numberedLines, readProjectPath} from '../../src/files.mjs';
 import {openPartner} from '../../src/partner.mjs';
 import {describeState} from '../../src/describe.mjs';
 import {fold, initialState} from '../../src/fold.mjs';
-import {THINKING, watchInput} from '../../src/session.mjs';
+import {watchInput} from '../../src/session.mjs';
 import {parseTestOutput} from '../../src/test-output.mjs';
 import {detectTriggers} from '../../src/triggers.mjs';
 import {liveStacks, SKIP_REASON} from './stacks.mjs';
@@ -225,7 +225,7 @@ describe('Partner on live models', {skip: stacks.length ? false : SKIP_REASON}, 
     test(`${stack.name}: a repeated failure gets a point at the mismatch`, {timeout: 180_000}, async t => {
       const root = project();
       const {calls, partner, conversation} = await partnerFor(root);
-      const answer = await partner.ask(conversation, FAILURE);
+      const answer = await partner.ask(conversation, FAILURE, {kind: 'remark'});
       await partner.close();
       t.diagnostic(`tools: ${calls.map(call => `${call.name}(${JSON.stringify(call.args)})`).join(', ')}`);
       t.diagnostic(`answer: ${answer}`);
@@ -241,7 +241,7 @@ describe('Partner on live models', {skip: stacks.length ? false : SKIP_REASON}, 
       // The user raises the backoff's cap; the worker's >= is what fails the test.
       const {root, input} = wrongTurn({budget: 15, edited: 'src/backoff.js', line: 2});
       const {calls, partner, conversation} = await partnerFor(root);
-      const answer = await partner.ask(conversation, input, {thinking: THINKING.edit_while_red}); // as the session asks it
+      const answer = await partner.ask(conversation, input, {kind: 'remark'}); // as the session asks it
       await partner.close();
       t.diagnostic(`tools: ${calls.map(call => `${call.name}(${JSON.stringify(call.args)})`).join(', ')}`);
       t.diagnostic(`answer: ${answer}`);
@@ -255,7 +255,7 @@ describe('Partner on live models', {skip: stacks.length ? false : SKIP_REASON}, 
       // has just fixed it; with 20 s of budget nothing else can fail the test.
       const {root, input} = wrongTurn({budget: 20, edited: 'src/backoff.js', line: 4});
       const {calls, partner, conversation} = await partnerFor(root);
-      const answer = await partner.ask(conversation, input, {thinking: THINKING.edit_while_red});
+      const answer = await partner.ask(conversation, input, {kind: 'remark'});
       await partner.close();
       t.diagnostic(`answer: ${answer} · tools: ${calls.map(call => `${call.name}(${JSON.stringify(call.args)})`).join(', ')}`);
       assert.match(answer, /^\W*silent\W*$/i);
@@ -266,7 +266,7 @@ describe('Partner on live models', {skip: stacks.length ? false : SKIP_REASON}, 
     test(`${stack.name}: a regression found on save gets the fix suggested where it breaks`, {timeout: 180_000}, async t => {
       const {root, input} = regression();
       const {calls, partner, conversation} = await partnerFor(root);
-      const answer = await partner.ask(conversation, input, {thinking: THINKING.regression});
+      const answer = await partner.ask(conversation, input, {kind: 'remark'});
       await partner.close();
       t.diagnostic(`tools: ${calls.map(call => `${call.name}(${JSON.stringify(call.args)})`).join(', ')}`);
       t.diagnostic(`answer: ${answer}`);
@@ -285,7 +285,7 @@ describe('Partner on live models', {skip: stacks.length ? false : SKIP_REASON}, 
 
     test(`${stack.name}: noise gets SILENT`, {timeout: 180_000}, async t => {
       const {calls, partner, conversation} = await partnerFor(project({fixed: true}));
-      const answer = await partner.ask(conversation, NOISE);
+      const answer = await partner.ask(conversation, NOISE, {kind: 'remark'});
       await partner.close();
       t.diagnostic(`answer: ${answer} · tools: ${calls.map(call => call.name).join(', ') || 'none'}`);
       assert.match(answer, /^\W*silent\W*$/i);
@@ -295,7 +295,7 @@ describe('Partner on live models', {skip: stacks.length ? false : SKIP_REASON}, 
 
     test(`${stack.name}: real drift from the goal is named`, {timeout: 180_000}, async t => {
       const {calls, partner, conversation} = await partnerFor(project());
-      const answer = await partner.ask(conversation, DRIFT);
+      const answer = await partner.ask(conversation, DRIFT, {kind: 'remark'});
       await partner.close();
       // What the user sees: the say if there was one, else the final answer (see PairSession.talk).
       const said = calls.filter(call => call.name === 'say').map(call => call.args);

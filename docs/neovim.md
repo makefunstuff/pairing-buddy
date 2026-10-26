@@ -20,7 +20,8 @@ run is real `go test`; only the models' words are scripted. It is recorded from 
 | `◎` | the statusline | it has the wheel (the Driver); any key takes it back |
 | a block after ghost text | where it types | its cursor, while it types the change you handed over |
 | `◌` | the statusline | it is not there: reconnecting, or a model is down |
-| `⠹` `✓` `✗` | the statusline, and the sign column of your tests | tests it ran for you when you saved |
+| `⠹` | the statusline | it thinks before it answers, or runs your tests |
+| `✓` `✗` | the statusline, and the sign column of your tests | tests it ran for you when you saved |
 
 **One accent, from your colorscheme.** Pair takes its colour from the colorscheme you use, so it fits in light and
 dark: of the colorscheme's own colours for regular expressions, its terminal cyan, its hints and its specials, it
