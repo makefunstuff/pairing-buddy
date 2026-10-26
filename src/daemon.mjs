@@ -10,7 +10,7 @@ import {sameServer} from './config.mjs';
 import {goalFromContext, SOURCES} from './context-card.mjs';
 import {byUse, herdrFocus, noteEditor} from './editors.mjs';
 import {gitRoot} from './git.mjs';
-import {ModelHealth} from './health.mjs';
+import {MODEL_ROLES, ModelHealth} from './health.mjs';
 import {NoteMargin} from './margin.mjs';
 import {oneAnswer} from './note-reading.mjs';
 import {PaneWatch} from './herdr.mjs';
@@ -23,6 +23,7 @@ import {openPartner} from './partner.mjs';
 import {probeModel} from './probe.mjs';
 import {projectContext} from './project-context.mjs';
 import {readMessages, sendMessage} from './protocol.mjs';
+import {configChanges, RESTART_FIELDS, watchConfig} from './reload.mjs';
 import {ScoutPane} from './scout-pane.mjs';
 import {PairSession} from './session.mjs';
 import {openRootOf, sessionRootOf} from './session-root.mjs';
@@ -58,9 +59,13 @@ const defaultLog = line => process.stderr.write(`${timestamp()} ${line}\n`);
 
 /**
  * `probe(role)` checks that a model answers (see probe.mjs); tests pass their own, a short `keepWarmMs`, and a short
- * `agentsPollMs` for the agent relay's board and herdr.
+ * `agentsPollMs` for the agent relay's board and herdr. With `configFile`, the daemon takes changes to it as they are
+ * saved (see reload.mjs); `modelsFor(config)` builds the models of a config, at start and after a change.
  */
-export async function startDaemon(config, {pairModels = createPairModels(config), probe, log = defaultLog, keepWarmMs = KEEP_WARM_MS, idleEndMs = IDLE_END_MS, aloneEndMs = ALONE_END_MS, agentsPollMs} = {}) {
+export async function startDaemon(config, {
+  configFile = null, modelsFor = createPairModels, pairModels = modelsFor(config), probe, log = defaultLog, keepWarmMs = KEEP_WARM_MS,
+  idleEndMs = IDLE_END_MS, aloneEndMs = ALONE_END_MS, agentsPollMs,
+} = {}) {
   mkdirSync(config.dataDir, {recursive: true, mode: 0o700});
   mkdirSync(join(config.dataDir, 'runs'), {recursive: true}); // the output of the tests run on save, one file per session
   const owner = acquireOwner(config.dataDir);
@@ -77,17 +82,14 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
   let nextRequest = 0;
   const startedAt = Date.now();
 
-  // Two models on one server: the Watcher follows what the server has loaded (see loaded-model.mjs).
-  const chooseWatcherModel = shareServer(config.models.watcher, config.models.partner)
-    ? followLoaded({entries: config.models, watcher: pairModels.watcher, partner: pairModels.partner, log})
-    : async () => pairModels.watcher;
-  const modelOf = role => (role === 'watcher' ? chooseWatcherModel() : pairModels.partner);
   // Both roles on one server, which may answer one request at a time: the slot puts their requests in order.
-  const oneServer = sameServer(config.models.watcher, config.models.partner);
-  const slot = new ModelSlot({exclusive: oneServer});
+  const slot = new ModelSlot({exclusive: sameServer(config.models.watcher, config.models.partner)});
+  let models; // what the daemon builds on the config's models (see buildModels); a config change rebuilds it
+  let rebuilt = Promise.resolve(); // a rebuild of the models under way, which a Partner turn waits for
+  const modelOf = role => (role === 'watcher' ? models.chooseWatcherModel() : models.pairModels.partner);
 
   const health = new ModelHealth({
-    probe: probe ?? (async role => probeModel(pairModels.models, await modelOf(role))),
+    probe: probe ?? (async role => probeModel(models.pairModels.models, await modelOf(role))),
     onChange(role, reason) {
       log(reason ? `${role} model down: ${reason}` : `${role} model answers again`);
       for (const client of clients) {
@@ -112,38 +114,57 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     if (!session) throw new Error('This pairing session has ended');
     return session.useTool(name, args);
   };
-  const partner = await openPartner({
-    storage: join(config.dataDir, 'partner.sqlite'),
-    models: pairModels.models,
-    model: pairModels.partner,
-    thinking: config.models.partner.thinking,
-    backgroundCompaction: !oneServer,
-    hands: {
-      ...Object.fromEntries(ROLE_TOOLS.driver.map(name => [name, hand(name)])), // the Driver has every tool
-      roleOf: conversationId => sessionOfConversation(conversationId)?.role ?? 'navigator',
-    },
-  });
-  const scoreRemark = createWatcher({models: pairModels.models, model: pairModels.watcher, chooseModel: chooseWatcherModel});
+
+  /** The Watcher's scoring and the Partner on `pairModels`, as the config sets them. */
+  async function buildModels(pairModels) {
+    // Two models on one server: the Watcher follows what the server has loaded (see loaded-model.mjs).
+    const chooseWatcherModel = shareServer(config.models.watcher, config.models.partner)
+      ? followLoaded({entries: config.models, watcher: pairModels.watcher, partner: pairModels.partner, log})
+      : async () => pairModels.watcher;
+    slot.exclusive = sameServer(config.models.watcher, config.models.partner);
+    const partner = await openPartner({
+      storage: join(config.dataDir, 'partner.sqlite'),
+      models: pairModels.models,
+      model: pairModels.partner,
+      thinking: config.models.partner.thinking,
+      backgroundCompaction: !slot.exclusive,
+      hands: {
+        ...Object.fromEntries(ROLE_TOOLS.driver.map(name => [name, hand(name)])), // the Driver has every tool
+        roleOf: conversationId => sessionOfConversation(conversationId)?.role ?? 'navigator',
+      },
+    });
+    const scoreRemark = createWatcher({models: pairModels.models, model: pairModels.watcher, chooseModel: chooseWatcherModel});
+    return {pairModels, chooseWatcherModel, partner, scoreRemark};
+  }
+  models = await buildModels(pairModels);
+
   const score = async (trigger, state) => {
-    const result = await slot.watch(signal => scoreRemark(trigger, state, {signal}));
+    const result = await slot.watch(signal => models.scoreRemark(trigger, state, {signal}));
     if (!result) return {deferred: true, reason: 'the Partner has the model'};
     health.report('watcher', result.error);
     return result;
   };
+  // The sessions' Partner: always the one on the config's models, its turns put in order by the slot.
   const sessionPartner = {
-    ...partner,
+    createConversation: () => models.partner.createConversation(),
+    setRole: (...args) => models.partner.setRole(...args),
+    thinkingOf: (...args) => models.partner.thinkingOf(...args),
     cancel: conversationId => slot.cancel(conversationId),
-    ask: (conversationId, content, options) => slot.turn(
-      {
-        conversation: conversationId,
-        asked: options?.kind !== 'remark',
-        cancel: () => partner.cancel(conversationId).catch(error => log(`cancelling a remark failed: ${error.message}`)),
-      },
-      () => reported('partner', partner.ask(conversationId, content, options)),
-    ),
+    ask: async (conversationId, content, options) => {
+      await rebuilt;
+      const {partner} = models;
+      return slot.turn(
+        {
+          conversation: conversationId,
+          asked: options?.kind !== 'remark',
+          cancel: () => partner.cancel(conversationId).catch(error => log(`cancelling a remark failed: ${error.message}`)),
+        },
+        () => reported('partner', partner.ask(conversationId, content, options)),
+      );
+    },
     finish: (conversationId, submissionId) => slot.turn(
       {conversation: conversationId, asked: true, cancel: () => {}},
-      () => reported('partner', partner.finish(conversationId, submissionId)),
+      () => reported('partner', models.partner.finish(conversationId, submissionId)),
     ),
   };
 
@@ -153,11 +174,76 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
    */
   function askNoteModel(systemPrompt, content, {asked = false} = {}) {
     const controller = new AbortController();
-    const read = () => oneAnswer({models: pairModels.models, model: pairModels.partner, signal: controller.signal}, systemPrompt, content).then(
+    const read = () => oneAnswer({models: models.pairModels.models, model: models.pairModels.partner, signal: controller.signal}, systemPrompt, content).then(
       text => { health.report('partner'); return text; },
       error => { if (!controller.signal.aborted) health.report('partner', error.message); throw error; },
     );
     return slot.turn({conversation: null, asked, cancel: async () => controller.abort()}, read);
+  }
+
+  /**
+   * Builds the models of the config anew, between the Partner's turns: it waits for the turns at work, and turns
+   * that start meanwhile wait for it. Each session's conversation then gets the new model.
+   */
+  function rebuildModels(pairModels) {
+    rebuilt = (async () => {
+      do await new Promise(resolve => setTimeout(resolve, 50)); while (slot.busy());
+      await models.partner.close(); // its SQLite file is the new Partner's
+      models = await buildModels(pairModels);
+      await models.partner.resume();
+      for (const session of live.values()) await session.configurePartner(session.role);
+      health.check(MODEL_ROLES);
+    })();
+    return rebuilt;
+  }
+
+  /** Says `text` in every chat pane and Neovim, as a line from the system. */
+  function tellAll(text) {
+    for (const client of clients) {
+      if (client.role) sendMessage(client.socket, {type: 'message', sender: 'system', text, at: Date.now()});
+    }
+  }
+
+  /**
+   * Takes a changed config: new sessions get all of it; the open ones get the typing pause, auto-tuning and tests on
+   * save at once, and the models between turns. The socket and the data directory move only with a restart.
+   */
+  async function reload(next) {
+    const changed = configChanges(config, next);
+    if (!changed.length) return;
+    let nextModels = null;
+    if (changed.includes('models')) {
+      try {
+        nextModels = modelsFor(next);
+      } catch (error) {
+        return refuse(error.message);
+      }
+    }
+    config = {...next, socket: config.socket, dataDir: config.dataDir};
+    for (const session of live.values()) {
+      session.typingPauseMs = config.typingPauseMs;
+      session.autoTune = config.autoTune;
+      session.setTestOnSave(testOnSaveOf(session.root, session.id));
+    }
+    if (changed.includes('voice')) {
+      for (const listener of listeners.values()) listener.close();
+      listeners.clear();
+    }
+    if (nextModels) await rebuildModels(nextModels);
+    const now = changed.filter(field => !RESTART_FIELDS.includes(field));
+    const later = changed.filter(field => RESTART_FIELDS.includes(field));
+    const notes = [
+      now.length && `Config reloaded: ${now.join(', ')}.`,
+      now.includes('level') && 'The talk level is for new sessions; /level sets this one\'s.',
+      later.length && `${later.join(' and ')} change${later.length === 1 ? 's' : ''} only when the daemon restarts.`,
+    ].filter(Boolean);
+    log(`config: ${changed.join(', ')} changed`);
+    tellAll(notes.join(' '));
+  }
+
+  function refuse(message) {
+    log(`config not reloaded: ${message}`);
+    tellAll(`The config has an error, so Pair keeps the one it runs: ${message}`);
   }
 
   const clientsOf = (session, role) => [...clients].filter(client => client.session === session && client.role === role);
@@ -221,17 +307,22 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     return sessionRootOf(dir, config.sessionRoots) ?? (await gitRoot(dir)) ?? openRootOf(dir, sessions.keys()) ?? dir;
   }
 
+  /** The tests on save of the project at `root`, for its session `id`: `{command, outputFile}`, or null. */
+  function testOnSaveOf(root, id) {
+    return config.testOnSave[root] ? {command: config.testOnSave[root], outputFile: join(config.dataDir, 'runs', `${id}.out`)} : null;
+  }
+
   function loadSession(root) {
     if (sessions.has(root)) return sessions.get(root);
     const loading = (async () => {
       const record = store.activeSession(root)
-        ?? store.createSession({root, conversationId: await partner.createConversation(), goal: null, level: config.level, at: Date.now()});
+        ?? store.createSession({root, conversationId: await sessionPartner.createConversation(), goal: null, level: config.level, at: Date.now()});
       const session = new PairSession({
         record, store, partner: sessionPartner, score, health,
         previousNote: store.previousNote(root, record.id),
         autoTune: config.autoTune,
         typingPauseMs: config.typingPauseMs,
-        testOnSave: config.testOnSave[root] ? {command: config.testOnSave[root], outputFile: join(config.dataDir, 'runs', `${record.id}.out`)} : null,
+        testOnSave: testOnSaveOf(root, record.id),
         notify: (role, message) => notify(session, role, message),
         requestEditor: message => requestEditor(session, message),
         log: line => log(`[${basename(root)}] ${line}`),
@@ -503,13 +594,13 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
   // goes on, so its tool calls find them; a question whose session ended is dropped.
   const late = [];
   const orphans = [];
-  for (const turn of partner.interrupted) {
+  for (const turn of models.partner.interrupted) {
     const record = store.activeSessionOf(turn.conversationId);
     if (record) late.push({...turn, session: await loadSession(record.root)});
     else orphans.push(turn.conversationId);
   }
-  for (const conversationId of orphans) await partner.cancel(conversationId);
-  await partner.resume();
+  for (const conversationId of orphans) await models.partner.cancel(conversationId);
+  await models.partner.resume();
 
   // The owner lock is held, so a socket file left behind is from a daemon that died.
   try { unlinkSync(config.socket); } catch {}
@@ -522,10 +613,10 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
    */
   function keepWarm() {
     const now = Date.now();
-    if (!config.keepWarm || now - scoreRemark.lastCallAt < keepWarmMs || !health.ok('watcher')) return;
+    if (!config.keepWarm || now - models.scoreRemark.lastCallAt < keepWarmMs || !health.ok('watcher')) return;
     if (slot.exclusive && slot.busy()) return;
     if (![...live.values()].some(session => session.active(now))) return;
-    scoreRemark.warm().then(result => health.report('watcher', result.error));
+    models.scoreRemark.warm().then(result => health.report('watcher', result.error));
   }
 
   const ticker = setInterval(() => {
@@ -544,6 +635,10 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
 
   health.start();
   agents?.start();
+  const configWatch = configFile && watchConfig(configFile, {
+    onChange: next => reload(next).catch(error => refuse(error.message)),
+    onError: refuse,
+  });
   log(`pair daemon ${VERSION} listening on ${config.socket}`);
   for (const {session, conversationId, submissionId, question} of late) {
     log(`[${basename(session.root)}] finishing the answer the restart interrupted`);
@@ -553,6 +648,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
 
   return {
     async close() {
+      configWatch?.close();
       clearInterval(ticker);
       health.stop();
       agents?.stop();
@@ -560,7 +656,8 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
       for (const listener of listeners.values()) listener.close();
       for (const client of clients) client.socket.destroy();
       await new Promise(resolve => server.close(resolve));
-      await partner.close();
+      await rebuilt;
+      await models.partner.close();
       store.close();
       owner.release();
     },

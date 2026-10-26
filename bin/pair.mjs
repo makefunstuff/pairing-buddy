@@ -104,7 +104,7 @@ async function authLogin(id) {
   console.log(how === 'key'
     ? `Stored the key as "${id}" in ${tilde(authPath())}. Use it in a model entry with an "api" and a "baseUrl": "auth": "${id}"`
     : `${how === 'oauth' ? `Logged in to ${id}` : `Stored the API key of ${id}`} in ${tilde(authPath())}. Use it in a model entry: {"provider": "${id}", "model": "…"}; \`pair auth models ${id}\` lists the models.
-The daemon reads logins as it needs them; after a change to the config: ${SERVICE?.restart ?? 'stop the daemon and run `pair`'}`);
+The daemon reads logins as it needs them, and takes a change to the config as you save it.`);
 }
 
 async function authLogout(id) {
@@ -177,7 +177,7 @@ async function setup() {
   const config = loadConfig();
   storeKeyVariables(config);
   console.log(`${SERVICE ? await installService(config) : await withoutService(config)}
-Config: ${tilde(configPath())} (after a change: ${SERVICE?.restart ?? 'stop the daemon and run `pair`'})
+Config: ${tilde(configPath())} (the daemon takes a change as you save it)
 Models: ${rolesText(config.models)}. ${sameModel(config.models.watcher, config.models.partner) ? ONE_MODEL : TWO_MODELS}
 
 Next:
@@ -223,7 +223,7 @@ function stats(args) {
 }
 
 async function daemon(config) {
-  const running = await startDaemon(config);
+  const running = await startDaemon(config, {configFile: configPath()});
   const stop = async () => { await running.close(); process.exit(0); };
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);

@@ -141,7 +141,9 @@ as its LSP's diagnostics or a file it reloads while you are elsewhere, never mak
 whichever Neovim has it loaded, the one you are in first.
 
 **Restarts.** If the daemon restarts, the chat pane says so, waits for it and carries on, without printing the
-history again. Neovim reconnects by itself too ([neovim.md](neovim.md#setup)).
+history again. Neovim reconnects by itself too ([neovim.md](neovim.md#setup)). If you had asked something the
+restart cut off, Pair finishes that answer and shows it marked as late, in the chat and in Neovim, also when they
+reconnect after it. A remark Pair was making unasked, or a hand-over, is dropped instead.
 
 **The chat pane's colours.** It prints Pair's name and the `code` in its words in Pair's accent from Neovim, in true
 colour, so the two read as one; long lines wrap under the words. Until a Neovim with `termguicolors` connects it uses

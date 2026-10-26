@@ -14,7 +14,8 @@ Runs every test that needs no model, in under a minute, with scripted models and
 - **Panes and roles.** Pair's pane and role switching against a fake herdr; hand-over and take-back; `type` (only after
   a yes, only into your terminal pane, never Enter); the bash hook.
 - **The daemon end to end** with scripted models; several projects and Neovims at once; Neovim and the chat pane
-  reconnecting after a daemon restart.
+  reconnecting after a daemon restart; a question the restart cut off answered late, a remark dropped; a saved config
+  taken without a restart (a new model between turns, one with an error refused).
 - **The Neovim plugin** in a headless Neovim:
   - suggestions accepted and ignored, struck from their first character;
   - a Driver edit undone with one `u` and never saved, and a key taking the wheel back;

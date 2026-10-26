@@ -73,7 +73,7 @@ and the **Partner**, which thinks and writes what Pair says. One model can do bo
 }
 ```
 
-Restart the daemon after a change (`systemctl --user restart pairing-buddy`) and run `pair doctor`. Every field, two
+The daemon takes a change as you save it, without a restart; run `pair doctor` to check the models. Every field, two
 models, logins and keys, tips for local models and the talk levels are in [docs/config.md](docs/config.md).
 
 ## The Neovim plugin

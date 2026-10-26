@@ -233,7 +233,8 @@ export class PairSession {
     this.activeMs = 0; // active time not yet stored
     this.activeAt = 0; // when active time was last counted: what it is stored under
     // The tests run on save, with `testOnSave` ({command, outputFile}); what the editors last heard of them.
-    this.testRuns = testOnSave && new TestRuns({...testOnSave, root: record.root, pane: () => this.scout, report: run => this.testRun(run)});
+    this.testRuns = null;
+    this.setTestOnSave(testOnSave);
     this.testsShown = null;
     this.runShown = null; // the places of the last build or run that the editors show (see showRun)
     this.lateForEditors = null; // a late answer no editor was there for, shown to the next one that connects
@@ -245,6 +246,12 @@ export class PairSession {
     this.ledger = new Ledger({store, sessionId: record.id, changed: () => this.notify('editors', {type: 'ledger_changed'}), now});
     this.trailVerdict = null; // what the gate decided on the search trail last: {start, verdict, reason, score, bar}
     this.delight = new Delight(); // the moments worth a glow, and the sounds while the user is away
+  }
+
+  /** Runs the tests on each save with `testOnSave` ({command, outputFile}) from now on, or none when it is null. */
+  setTestOnSave(testOnSave) {
+    if (testOnSave?.command === this.testRuns?.command) return;
+    this.testRuns = testOnSave && new TestRuns({...testOnSave, root: this.record.root, pane: () => this.scout, report: run => this.testRun(run)});
   }
 
   get id() { return this.record.id; }
@@ -594,8 +601,7 @@ export class PairSession {
     this.thinks = this.partner.thinkingOf(this.conversationId, options.kind) !== 'off';
     this.showThinking(true);
     try {
-      const answer = this.voiced(await this.partner.ask(this.conversationId, input, options));
-      const answer = await answering();
+      const answer = this.voiced(await answering());
       // After a say, local models tend to end with filler or a repeat; the say already was the answer.
       if (answer && !silent(answer) && !this.said) {
         this.show(() => this.message('pair', answer));
