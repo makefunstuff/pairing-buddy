@@ -1,6 +1,6 @@
 // Folds raw editor, terminal and chat events into one small session state.
 // Pure: `fold(state, event)` returns a new state and never looks at the clock.
-import {parseTestOutput, testSummary} from './test-output.mjs';
+import {namedFiles, parseTestOutput, testSummary} from './test-output.mjs';
 
 const KEEP = {edits: 20, commands: 10, outputChars: 2000, diagnostics: 30};
 
@@ -20,7 +20,7 @@ export function initialState({root = null, goal = null} = {}) {
     errors: {},
     focus: {target: 'unknown', pane: null, scrolled: false, at: 0},
     terminalPane: null, // the user's terminal pane they used last: where the Driver's type goes
-    tests: null, // the last test run, the user's or Scout's: parsed by test-output.mjs, plus cmd, by and at
+    tests: null, // the last test run, the user's or Scout's: parsed by test-output.mjs, plus cmd, by, at and the files it names
   };
 }
 
@@ -60,7 +60,7 @@ export function lookingAt(focus, command) {
 
 /** The state's `tests` after a run of `cmd` by `by` ("you" or "pair"), if its output was a test run. */
 function testsAfter(state, tests, event, by) {
-  return tests ? {...tests, cmd: event.cmd ?? '', by, at: event.at} : state.tests;
+  return tests ? {...tests, cmd: event.cmd ?? '', by, at: event.at, files: namedFiles(event.output)} : state.tests;
 }
 
 function foldCommandEnd(state, event) {

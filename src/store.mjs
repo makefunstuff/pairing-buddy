@@ -79,6 +79,8 @@ export function openStore(path) {
     dropRemark: id => db.prepare('DELETE FROM remarks WHERE id = ?').run(id),
     /** Records the user's verdict on remark `id`, "useful" or "dismissed"; false when there is no such remark. */
     rateRemark: (id, verdict) => db.prepare('UPDATE remarks SET verdict = ? WHERE id = ?').run(verdict, id).changes > 0,
+    /** Records that the user saw remark `id` (they edited after it showed), unless it has a verdict already. */
+    seeRemark: id => db.prepare('UPDATE remarks SET verdict = \'seen\' WHERE id = ? AND verdict IS NULL').run(id),
     /** Every remark since `since`, newest first. */
     remarks: since => db.prepare('SELECT id, trigger, score, at, verdict FROM remarks WHERE at >= ? ORDER BY id DESC').all(since),
     /** Adds `ms` of active pairing, just before `at`, to its hour. */

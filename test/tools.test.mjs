@@ -86,12 +86,12 @@ test('the Partner offers the model only its role\'s tools and answers with its f
     context => {
       // pi-durable announces tools in system messages, so only changes are sent again.
       offered = context.messages.flatMap(message => message.toolsAdded ?? []).map(tool => tool.name).sort();
-      return fauxAssistantMessage([fauxToolCall('edit', {path: 'a.js', oldText: 'a', newText: 'b'}), fauxToolCall('point', {file: 'a.js', line: 3, note: 'off by one'})], {stopReason: 'toolUse'});
+      return fauxAssistantMessage([fauxToolCall('edit', {path: 'a.js', oldText: 'a', newText: 'b'}), fauxToolCall('point', {file: 'a.js', line: 3, note: 'off by one', code: 'i <= n'})], {stopReason: 'toolUse'});
     },
     fauxAssistantMessage([fauxText('Line 3 loops one too far.')]),
   ]);
   assert.equal(await partner.ask(id, '[user] what is wrong?'), 'Line 3 loops one too far.');
-  assert.deepEqual(calls, [['point', {file: 'a.js', line: 3, endLine: 3, note: 'off by one'}]]);
+  assert.deepEqual(calls, [['point', {file: 'a.js', line: 3, endLine: 3, note: 'off by one', code: 'i <= n'}]]);
   assert.deepEqual(offered, ['open', 'point', 'read', 'say', 'suggest']);
   await partner.close();
 });

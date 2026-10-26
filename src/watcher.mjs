@@ -10,9 +10,12 @@ Answer with one number.`;
 // What happened, for triggers whose detail is written for the Partner. Drift: the file alone, and a question
 // with the goal right next to it. Asked whether you would want a remark, models score how important the work
 // is, not whether it drifted; and the Partner's longer detail costs tokens without helping the score.
+// The wrong turn: the Watcher cannot see the code, so it is asked how far the file is from what failed.
 const WHAT_HAPPENED = {
   drift: (trigger, state) => `The user now edits ${trigger.file}.\n`
     + `Score how clearly this file is unrelated to the goal "${state.goal}": 0 if it could be part of it, 10 if it is plainly other work.`,
+  edit_while_red: trigger => `A test run failed. The failure names ${trigger.named.slice(0, 4).join(', ')}; the user now edits ${trigger.file} to fix it.\n`
+    + `Score how likely the cause is somewhere else, so a pointer would save them time: 0 if ${trigger.file} is plainly where it fails, 10 if the failure points elsewhere.`,
 };
 
 const MAX_TOKENS = 8; // a number, with room for a model that wraps it in a word or two

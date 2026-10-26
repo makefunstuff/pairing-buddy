@@ -138,6 +138,14 @@ export function parseTestOutput(text = '') {
   return null;
 }
 
+// Source files as test runners print them: `worker_test.go:35`, `at test/ws.test.ts:14:28`, `File "test_ws.py"`.
+const SOURCE_FILE = /(?:^|[\s("'\[])(\/?(?:[\w.@-]+\/)*[\w@-][\w.@-]*\.(?:go|[cm]?js|jsx|tsx?|py|rs|rb|java|kt|swift|cs|c|cc|cpp|h|hpp|php|exs?|lua|zig))\b/gm;
+
+/** The source files a test run's output names, as written (at most 20). */
+export function namedFiles(text = '') {
+  return unique([...text.matchAll(SOURCE_FILE)].map(match => match[1]).filter(file => !file.includes('node_modules/')));
+}
+
 /** One line for the models: "2 failed (a, b): first error", or "12 passed". */
 export function testSummary(tests) {
   if (!tests.failedCount) return `${tests.passed ?? 'all'} passed`;

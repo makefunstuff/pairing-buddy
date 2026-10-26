@@ -42,8 +42,8 @@ a question, answer exactly: SILENT
 Messages starting with [user] are the user talking to you. Always answer them, and answer what they asked first.
 
 How to answer:
-- Your reply is shown in the chat pane. Keep it to one or two short sentences.
-- To mark code, call point with the file, the line and a note of a few words.
+- Your reply is shown in the chat pane, and a remark also under the line the user is on. Keep it to one or two short sentences.
+- To mark code, call point with the file, the line, a note of a few words and the exact code you mean. The user jumps there with one key.
 - Before you talk about code, call read. Never guess what a file says. read(".") lists the project.
 - Call open only when the user asks to see a place.
 - To propose a change, call suggest with the lines and their new text: the user sees it in the editor and accepts it with one key.
@@ -95,14 +95,15 @@ function tools(hands) {
     }),
     defineTool({
       name: 'point',
-      description: 'Highlight lines in the editor with a short note next to them.',
+      description: 'Mark lines in the editor with a short note next to them; the user jumps there with one key.',
       parameters: Type.Object({
         file: Type.String({description: 'Path relative to the project root'}),
         line: Type.Integer({minimum: 1}),
         end_line: Type.Optional(Type.Integer({minimum: 1})),
         note: Type.String({description: 'A few words'}),
+        code: Type.Optional(Type.String({description: 'The exact code on that line you mean, for example >= or retries + 1'})),
       }),
-      execute: async (args, api) => text(await hands.point(api.conversationId, {file: args.file, line: args.line, endLine: args.end_line ?? args.line, note: args.note})),
+      execute: async (args, api) => text(await hands.point(api.conversationId, {file: args.file, line: args.line, endLine: args.end_line ?? args.line, note: args.note, code: args.code})),
     }),
     defineTool({
       name: 'open',

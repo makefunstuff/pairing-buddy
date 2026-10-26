@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {fold, initialState} from '../src/fold.mjs';
-import {detectTriggers, TIMING} from '../src/triggers.mjs';
+import {detectTriggers, fileStem, TIMING} from '../src/triggers.mjs';
 
 const foldAll = (events, state = initialState()) => events.reduce(fold, state);
 const kinds = (state, now, fired) => detectTriggers(state, now, fired).map(trigger => trigger.kind);
@@ -118,4 +118,38 @@ test('a failed test run names the failed tests and the first error in its trigge
   const [trigger] = detectTriggers(state, 1000 + TIMING.lookGraceMs);
   assert.equal(trigger.kind, 'failed_command');
   assert.equal(trigger.detail, '`npm test` failed (exit 1) and you are not looking at it: 1 failed (TestReconnect): ws_test.go:12: timeout = 5000, want 30000');
+});
+
+const RED = '--- FAIL: TestRetries (0.00s)\n    worker_test.go:35: attempts = 4, want 5\nFAIL\texample.com/delivery\t0.001s';
+const edit = (file, at) => ({kind: 'edit', file, from: 17, to: 17, at});
+
+test('the wrong turn: editing, while a test is red, a file the failure does not name', () => {
+  const red = foldAll([{kind: 'focus', target: 'terminal', pane: 'w1:p2', at: 0}, failure(1000, RED)]);
+  assert.deepEqual(kinds(red, 2000), [], 'a red run alone is no wrong turn');
+  const [trigger] = detectTriggers(fold(red, edit('internal/retry/backoff.go', 5000)), 6000);
+  assert.equal(trigger.kind, 'edit_while_red');
+  assert.equal(trigger.line, 17);
+  assert.equal(trigger.detail, 'The user edits internal/retry/backoff.go:17-17 while `npm test` is red: 1 failed (TestRetries): '
+    + 'worker_test.go:35: attempts = 4, want 5. The failure names worker_test.go, not internal/retry/backoff.go.');
+  assert.deepEqual(kinds(fold(red, edit('internal/delivery/worker.go', 5000)), 6000), [], 'the code under the failing test is where it fails');
+  assert.deepEqual(kinds(fold(red, edit('internal/delivery/worker_test.go', 5000)), 6000), [], 'and so is the test itself');
+});
+
+test('a wrong turn needs a red run that names files, an edit after it, and is raised once per run and file', () => {
+  const unnamed = foldAll([failure(1000, '--- FAIL: TestRetries (0.00s)\nFAIL\texample.com/delivery\t0.001s'), edit('backoff.go', 5000)]);
+  assert.ok(!kinds(unnamed, 6000).includes('edit_while_red'), 'a failure that names no file says nothing about where');
+  const before = foldAll([edit('backoff.go', 500), failure(1000, RED)]);
+  assert.ok(!kinds(before, 6000).includes('edit_while_red'), 'an edit before the run is not a turn taken after it');
+  const green = foldAll([failure(1000, RED), {kind: 'command_end', pane: 'w1:p2', cmd: 'go test ./...', exit: 0, output: 'ok  \texample.com/delivery\t0.002s', at: 2000}, edit('backoff.go', 5000)]);
+  assert.ok(!kinds(green, 6000).includes('edit_while_red'), 'a passing run since then: nothing is red');
+  const red = foldAll([failure(1000, RED), edit('backoff.go', 5000)]);
+  assert.ok(!kinds(red, 1000 + TIMING.redMs + 1).includes('edit_while_red'), 'a run red for longer than redMs is old news');
+  const [trigger] = detectTriggers(red, 6000).filter(found => found.kind === 'edit_while_red');
+  assert.deepEqual(detectTriggers(fold(red, edit('backoff.go', 7000)), 8000, new Set([trigger.key])).filter(found => found.kind === 'edit_while_red'), []);
+  assert.ok(kinds(fold(red, edit('retry.go', 7000)), 8000).includes('edit_while_red'), 'another file is another turn');
+});
+
+test('file stems pair a test with its code across runners', () => {
+  assert.deepEqual(['worker_test.go', 'src/worker.go', 'test/ws.test.ts', 'test_ws.py', 'WsTest.java', 'ws.spec.js', 'contest.go'].map(fileStem),
+    ['worker', 'worker', 'ws', 'ws', 'ws', 'ws', 'contest']);
 });
