@@ -3,7 +3,7 @@ import {mkdtempSync, readdirSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {test} from 'node:test';
-import {cleanQuestion, parseSlice, questionInput, questionProblem, sliceInput, sliceNote, sliceProblems, sliceText, stackOf} from '../src/blank-page.mjs';
+import {cleanQuestion, longLines, parseSlice, questionInput, questionProblem, sliceInput, sliceNote, sliceProblems, sliceText, stackOf} from '../src/blank-page.mjs';
 import {PairSession} from '../src/session.mjs';
 
 const SLICE = {
@@ -92,6 +92,10 @@ test('a slice with scaffolding, too many files or a library nobody named breaks 
   assert.deepEqual(sliceProblems({...SLICE, run: '', probes: ['one']}, words), ['It does not say how to run it.', 'It needs 2 to 4 probes.']);
   assert.deepEqual(sliceProblems({...SLICE, files: SLICE.files.slice(1)}, words), ['It has one file; a first slice has two: the build or run file and one source file.']);
   assert.deepEqual(sliceProblems(null, words), ['That was not the JSON asked for.']);
+  const long = {...SLICE, test: 'x'.repeat(91)};
+  assert.deepEqual(sliceProblems(long, words), [], 'a long line is no broken rule');
+  assert.match(longLines(long), /longer than 90 characters: "x{30}…"/, 'but it is asked about once more');
+  assert.equal(longLines(SLICE), null);
 });
 
 /** A session in `root` whose Partner answers from `answers` in order; what the chat and the editor get. */

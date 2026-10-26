@@ -122,9 +122,13 @@ export function sliceProblems(slice, userWords) {
   }
   if (!slice.run) problems.push('It does not say how to run it.');
   if (slice.probes.length < 2) problems.push('It needs 2 to 4 probes.');
-  const long = [slice.run, slice.shows, slice.test, ...slice.probes, ...slice.later, ...slice.files.map(file => file.does)].filter(item => item.length > ITEM_CHARS);
-  if (long.length) problems.push(`Some lines are longer than ${ITEM_CHARS} characters: ${long.map(item => `"${item.slice(0, 30)}…"`).join(', ')}.`);
   return problems;
+}
+
+/** The slice's lines that are too long, as a sentence for the Partner's second try; null when none are. Long lines are asked about, never refused. */
+export function longLines(slice) {
+  const long = [slice.run, slice.shows, slice.test, ...slice.probes, ...slice.later, ...slice.files.map(file => file.does)].filter(item => item.length > ITEM_CHARS);
+  return long.length ? `Some lines are longer than ${ITEM_CHARS} characters: ${long.map(item => `"${item.slice(0, 30)}…"`).join(', ')}.` : null;
 }
 
 const NUMBERS = ['No', 'One', 'Two', 'Three', 'Four', 'Five'];
@@ -208,7 +212,9 @@ export class BlankPage {
 
   async slice(listing) {
     const said = [this.idea, ...this.qa.map(item => item.answer)].join(' ');
-    const slice = await this.consult(sliceInput({idea: this.idea, qa: this.qa, listing}), parseSlice, found => sliceProblems(found, said).join(' ') || null);
+    // The second try hears of long lines too; only the rules can keep a slice from being shown.
+    const wrong = found => [...sliceProblems(found, said), found && longLines(found)].filter(Boolean).join(' ') || null;
+    const slice = await this.consult(sliceInput({idea: this.idea, qa: this.qa, listing}), parseSlice, wrong);
     this.close();
     if (!slice) return this.session.message('system', 'Pair could not put a first slice together. :Pair new starts again.');
     const problems = sliceProblems(slice, said);

@@ -66,7 +66,7 @@ The Partner writes the slice as JSON. The daemon checks it against the rules and
 | No library or tool you did not name | Every dependency in the first slice is one you chose |
 | How to run it, and 2 to 4 probes | What to try once it runs, and what to watch |
 | One test, for the first piece with an answer you can write down without running the program | Exploring comes first. A test comes when one piece is settled |
-| Every line at most 90 characters | It is a note, not a spec |
+| Every line at most 90 characters (asked for again, never refused) | It is a note, not a spec |
 
 A slice that breaks a rule gets one more try, with what was wrong. If the second try breaks a rule too, the chat
 says which, and nothing is shown.
