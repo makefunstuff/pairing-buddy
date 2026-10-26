@@ -68,3 +68,15 @@ test('the Watcher asks for a short answer, a drift question of its own, and the 
   faux.setResponses([]);
   assert.equal((await score.warm()).ok, false);
 });
+
+test('the Watcher never asks for thinking, also of a model that can think, as the Partner\'s model often is', async () => {
+  const faux = fauxProvider({models: [{id: 'thinker', reasoning: true}]});
+  const models = createModels();
+  models.setProvider(faux.provider);
+  const asked = [];
+  faux.setResponses(Array(2).fill(null).map(() => (_context, options) => { asked.push(options?.reasoning ?? 'off'); return fauxAssistantMessage([fauxText('4')]); }));
+  const score = createWatcher({models, model: faux.getModel()});
+  await score({kind: 'stall', detail: 'nothing for 90 s'}, initialState());
+  await score.warm();
+  assert.deepEqual(asked, ['off', 'off']);
+});

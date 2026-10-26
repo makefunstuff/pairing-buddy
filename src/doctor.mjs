@@ -3,11 +3,13 @@ import {execFile} from 'node:child_process';
 import {existsSync} from 'node:fs';
 import {homedir} from 'node:os';
 import {basename, delimiter, join} from 'node:path';
-import {configPath, loadConfig} from './config.mjs';
+import {credentialState} from './auth.mjs';
+import {authPath, configPath, loadConfig, mostThinking} from './config.mjs';
+import {fileCredentialStore, readableByOthers} from './credentials.mjs';
 import {herdrRequest} from './herdr.mjs';
 import {listModels} from './loaded-model.mjs';
 import {createPairModels} from './models.mjs';
-import {probeModel} from './probe.mjs';
+import {levelGroups, probeModel, probeThinking} from './probe.mjs';
 import {requestDaemon} from './protocol.mjs';
 import {serviceState, UNIT} from './service.mjs';
 import {VERSION} from './version.mjs';
@@ -26,7 +28,9 @@ const seconds = ms => `${(ms / 1000).toFixed(1)} s`;
 const onPath = (name, env) => (env.PATH ?? '').split(delimiter).some(dir => existsSync(join(dir, name)));
 
 /** Every check, in order, as `{level: ok|warn|fail, name, text}`; yields each as soon as it is known. */
-export async function* doctor({path = configPath(), env = process.env, service = serviceState, nvimPlugin = nvimHasPlugin} = {}) {
+export async function* doctor({
+  path = configPath(), env = process.env, service = serviceState, nvimPlugin = nvimHasPlugin, auth = authPath(), credentials = fileCredentialStore(auth),
+} = {}) {
   let config;
   try {
     config = loadConfig(path);
@@ -46,7 +50,8 @@ export async function* doctor({path = configPath(), env = process.env, service =
   yield connected ? ok('plugin', 'loaded in the connected Neovims') : pluginCheck(await nvimPlugin(env));
   if (status) yield editorsCheck(status);
   yield await herdrCheck(env);
-  yield* modelChecks(config, status);
+  if (existsSync(auth)) yield loginsCheck(auth);
+  yield* modelChecks(config, status, credentials);
 }
 
 export function serviceCheck(state) {
@@ -108,6 +113,32 @@ export async function herdrCheck(env) {
   }
 }
 
+export function loginsCheck(path) {
+  return readableByOthers(path)
+    ? fail('logins', `${tilde(path)} holds your logins and keys and others can read it: chmod 600 ${tilde(path)}`)
+    : ok('logins', `${tilde(path)}, readable by you only`);
+}
+
+/**
+ * Whether the login or key a model entry needs is there and, for a subscription, still renews: `{error}` with the fix
+ * when not, else `{note}` on the login (nothing for an entry with its own key or none).
+ */
+export async function loginCheck(entry, models, credentials) {
+  const id = entry.provider ?? entry.auth;
+  if (!id) return {};
+  const relogin = `run \`pair auth login ${id}\``;
+  const stored = await credentials.read(id);
+  if (entry.auth) return stored?.type === 'api_key' ? {} : {error: `no key stored as "${id}": ${relogin}`};
+  if (!stored) return (await models.checkAuth(id)) ? {} : {error: `no login or key for ${id}: ${relogin}`};
+  if (stored.type !== 'oauth') return {note: 'key stored'};
+  try {
+    await models.getAuth(id); // renews an expired token, as the daemon would
+  } catch (error) {
+    return {error: `the ${id} login has expired or was revoked (${error.message}): ${relogin} again`};
+  }
+  return {note: credentialState(await credentials.read(id))};
+}
+
 /** The model ids an OpenAI-compatible server lists (null when it does not list), or `{error}` when it does not answer. */
 async function listedModels(entry) {
   try {
@@ -118,14 +149,20 @@ async function listedModels(entry) {
   }
 }
 
-async function* modelChecks(config, status) {
-  const pairModels = createPairModels(config);
+async function* modelChecks(config, status, credentials) {
+  let pairModels;
+  try {
+    pairModels = createPairModels(config, {credentials});
+  } catch (error) {
+    yield fail('models', error.message);
+    return;
+  }
   const {watcher, partner} = config.models;
-  const shared = watcher.api === partner.api && watcher.baseUrl === partner.baseUrl && watcher.model === partner.model;
+  const shared = ['provider', 'api', 'baseUrl', 'model'].every(field => watcher[field] === partner[field]);
   for (const role of shared ? ['watcher'] : ['watcher', 'partner']) {
     const name = shared ? 'models' : role;
     const entry = config.models[role];
-    const where = `${entry.model} at ${entry.baseUrl}`;
+    const where = entry.provider ? `${entry.model} on ${entry.provider}` : `${entry.model} at ${entry.baseUrl}`;
     if (entry.api === 'openai') {
       const listed = await listedModels(entry);
       if (listed.error) { yield fail(name, `nothing answers at ${entry.baseUrl} (${listed.error}): is the server running?`); continue; }
@@ -134,6 +171,8 @@ async function* modelChecks(config, status) {
         continue;
       }
     }
+    const login = await loginCheck(entry, pairModels.models, credentials);
+    if (login.error) { yield fail(name, `${where}: ${login.error}`); continue; }
     const probe = await probeModel(pairModels.models, pairModels[role]);
     if (!probe.ok) { yield fail(name, `${where} fails: ${probe.error}`); continue; }
     const limit = role === 'watcher' ? WATCHER_MS : PARTNER_MS;
@@ -142,10 +181,64 @@ async function* modelChecks(config, status) {
         ? `${where} answers, but takes ${seconds(probe.ms)}: the Watcher scores every candidate remark and should take about 1 s. Use a smaller model, or set "reasoning": true if it thinks by default`
         : `${where} answers, but takes ${seconds(probe.ms)} for one word`);
     } else {
-      yield ok(name, `${where} answers in ${seconds(probe.ms)}`);
+      yield ok(name, `${where} answers in ${seconds(probe.ms)}${login.note ? `; ${login.note}` : ''}`);
+    }
+    if (role === 'watcher' && probe.thought) {
+      yield warn(name, `${where} thinks although the Watcher's thinking is off, so it is slow and may give no score: set "reasoning": true `
+        + 'and, on an OpenAI-compatible server, "compat": {"thinkingFormat": ...} for its thinking switch, or use a model that does not think');
     }
     for (const seen of shared ? ['watcher', 'partner'] : [role]) {
       if (status?.models?.[seen]) yield warn(name, `the daemon still has the ${seen} as down (${status.models[seen]}); it checks again within 30 s`);
     }
+    if (role === 'partner' || shared) yield* thinkingChecks(pairModels, partner);
+  }
+}
+
+/**
+ * Whether the Partner thinks as configured: a model that thinks whatever it is told, one that cannot think, one whose
+ * switch Pair does not know, and levels the server cannot tell apart each say so. A provider's model can think if
+ * pi-ai's catalog says so, and the catalog maps its levels.
+ */
+async function* thinkingChecks(pairModels, entry) {
+  const {models, partner: model} = pairModels;
+  const levels = [...new Set(Object.values(entry.thinking))].filter(level => level !== 'off');
+  if (entry.provider && !model.reasoning) {
+    yield ok('thinking', `${entry.model} does not think, says pi-ai's catalog: the Partner answers without`);
+    return;
+  }
+  if (!model.reasoning || !levels.length) {
+    const probe = await probeModel(models, model);
+    if (!probe.ok) return; // the models check said why
+    if (!model.reasoning) {
+      yield probe.thought
+        ? ok('thinking', `"reasoning" is false: ${entry.model} thinks as it always does, at its own level`)
+        : warn('thinking', `"reasoning" is false and ${entry.model} answered without thinking: the Partner does not think. If the model can, remove "reasoning": false`);
+    } else {
+      yield probe.thought
+        ? warn('thinking', `${entry.model} thinks although "thinking" is off: set its server's thinking switch ("compat": {"thinkingFormat": ...}), or let it think`)
+        : ok('thinking', 'off for every kind of turn, as configured');
+    }
+    return;
+  }
+  const level = mostThinking(entry.thinking);
+  const probe = await probeThinking(models, model, level);
+  if (!probe.ok) {
+    yield fail('thinking', `${entry.model} fails when asked to think (${probe.error}): for a model that cannot think, set "reasoning": false`);
+    return;
+  }
+  if (!probe.thought) {
+    yield warn('thinking', `${entry.model} answered with no thinking at "${level}": if it can think, set its server's thinking switch `
+      + '("compat": {"thinkingFormat": ...}); if it cannot, set "reasoning": false');
+    return;
+  }
+  yield ok('thinking', `the Partner thinks (up to "${level}"), ${seconds(probe.ms)} for a short sum`);
+  const same = (await levelGroups(models, model, levels)).find(group => group.length > 1);
+  if (same) {
+    const names = same.map(name => `"${name}"`).join(', ');
+    yield entry.provider
+      ? ok('thinking', `${names} are one level for ${entry.model} (pi-ai's catalog maps them so)`)
+      : warn('thinking', `${names} send ${entry.model} the same request, so thinking is only on or off: `
+        + 'if its server takes a level, set "compat": {"supportsReasoningEffort": true} (it is then sent as reasoning_effort) '
+        + 'or {"thinkingTokenBudgetField": "<the server\'s field>"} (a token budget)');
   }
 }

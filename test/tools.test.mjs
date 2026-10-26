@@ -165,22 +165,25 @@ test('numberedLines numbers the lines and says how to read on', () => {
   assert.equal(first.at(-1), '(200 more lines; ask for start_line 301)');
 });
 
-test('an input can ask a model that thinks to think at least so much, for that input only; one that cannot is left alone', async () => {
+test('each kind of turn thinks at its level, a remark for its turn only; a model that cannot is left alone', async () => {
   const thinking = async reasoning => {
     const faux = fauxProvider({models: [{id: 'm', reasoning}]});
     const models = createModels();
     models.setProvider(faux.provider);
     const seen = [];
     const answer = (_context, options) => { seen.push(options?.reasoning ?? 'off'); return fauxAssistantMessage([fauxText('ok')]); };
-    faux.setResponses([answer, answer, answer]);
-    const partner = await openPartner({storage: new MemoryStorage(), models, model: faux.getModel(), hands: recordingHands().hands});
+    faux.setResponses([answer, answer, answer, answer]);
+    const thinking = {navigator: 'medium', scout: 'high', driver: 'medium', remark: 'low'};
+    const partner = await openPartner({storage: new MemoryStorage(), models, model: faux.getModel(), thinking, hands: recordingHands().hands});
     const id = await partner.createConversation();
     await partner.ask(id, 'a');
-    await partner.ask(id, 'b', {thinking: 'low'});
+    await partner.ask(id, 'b', {kind: 'remark'});
     await partner.ask(id, 'c');
+    await partner.setRole(id, 'scout');
+    await partner.ask(id, 'd');
     await partner.close();
     return seen;
   };
-  assert.deepEqual(await thinking(true), ['off', 'low', 'off']);
-  assert.deepEqual(await thinking(false), ['off', 'off', 'off']);
+  assert.deepEqual(await thinking(true), ['medium', 'low', 'medium', 'high']);
+  assert.deepEqual(await thinking(false), ['off', 'off', 'off', 'off']);
 });

@@ -37,9 +37,9 @@ const runIn = cwd => command => new Promise(resolve => {
 /**
  * The daemon with scripted models, a fake herdr, a headless Neovim with the plugin editing a.js and running
  * `:Pair start <goal>`, and a chat client. With `testOnSave`, saving runs that command in the project, for real,
- * in the fake herdr's pane. `stop()` ends them all.
+ * in the fake herdr's pane. With `thinks`, the Partner's model can think. `stop()` ends them all.
  */
-async function pairInNvim(goal, {testOnSave} = {}) {
+async function pairInNvim(goal, {testOnSave, thinks = false} = {}) {
   const project = realpathSync(mkdtempSync(join(tmpdir(), 'pair-nvim-')));
   writeFileSync(join(project, 'a.js'), 'const x = 1\nconst y = 2\nconst z = 3\n');
   const dataDir = mkdtempSync(join(tmpdir(), 'pair-data-'));
@@ -50,7 +50,7 @@ async function pairInNvim(goal, {testOnSave} = {}) {
     models: {watcher: {api: 'openai', baseUrl: 'http://unused', model: 'w'}, partner: {api: 'openai', baseUrl: 'http://unused', model: 'p'}},
   });
   const watcher = fauxProvider({provider: 'faux-watcher'});
-  const partner = fauxProvider({provider: 'faux-partner'});
+  const partner = fauxProvider({provider: 'faux-partner', models: [{id: 'p', reasoning: thinks}]});
   const models = createModels();
   models.setProvider(watcher.provider);
   models.setProvider(partner.provider);
@@ -409,6 +409,45 @@ test('Alt-n rates an unasked remark as noise; accepting its suggestion rates it 
     await until(() => lines()[1] === 'const y = 20', 'the accepted suggestion');
     await until(() => verdict()[0] === 'useful', 'accepting to count as useful');
   } finally {
+    await stop();
+  }
+});
+
+test('while the Partner thinks, the statusline says so, and lets it go with the answer', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
+  const {partner, messages, send, status, stop} = await pairInNvim('make x two', {thinks: true});
+  try {
+    let answer;
+    partner.setResponses([() => new Promise(resolve => { answer = resolve; })]);
+    send({type: 'ask', text: 'is it right?'});
+    await until(() => /^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] pair · thinking$/.test(status()), 'the statusline to show the thinking');
+    answer(fauxAssistantMessage([fauxText('Looks right.')]));
+    await until(() => messages.some(message => message.text === 'Looks right.'), 'the answer');
+    await until(() => status() === '● pair', 'the statusline back to rest');
+  } finally {
+    await stop();
+  }
+});
+
+test('as Driver, the statusline says it thinks while its model works and keeps the take-back hint while it types', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
+  const {partner, messages, send, status, lines, stop} = await pairInNvim('make x two', {thinks: true});
+  const seen = [];
+  const sampler = setInterval(() => { try { const now = status(); if (seen.at(-1) !== now) seen.push(now); } catch {} }, 20);
+  try {
+    partner.setResponses([
+      async () => {
+        await until(() => status() === '◎ pair has the wheel · thinking', 'the Driver thinking');
+        return fauxAssistantMessage([fauxToolCall('edit', {file: 'a.js', line: 1, new_text: 'const x = 2'})], {stopReason: 'toolUse'});
+      },
+      fauxAssistantMessage([fauxText('Set x to 2.')]),
+    ]);
+    send({type: 'drive', text: 'your turn'});
+    await until(() => messages.some(message => message.text === 'Set x to 2.'), 'the answer');
+    await until(() => status() === '● pair', 'Pair to hand back');
+    assert.equal(lines()[0], 'const x = 2');
+    const hint = seen.indexOf('◎ pair has the wheel · any key takes it back');
+    assert.ok(hint > seen.indexOf('◎ pair has the wheel · thinking'), `the hint while it types, after the thinking: ${JSON.stringify(seen)}`);
+  } finally {
+    clearInterval(sampler);
     await stop();
   }
 });
