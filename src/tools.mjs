@@ -7,6 +7,7 @@
 // error, not an effect.
 import {Type} from '@earendil-works/pi-ai';
 import {defineExtension, defineTool, hook, section, ToolTask} from '@earendil-works/pi-durable';
+import {TONE} from './tone.mjs';
 
 /** The roles the user switches between; Driver is entered only by handing over (see PairSession.drive). */
 export const ROLES = ['navigator', 'scout'];
@@ -42,12 +43,14 @@ a question, answer exactly: SILENT
 Messages starting with [user] are the user talking to you. Always answer them, and answer what they asked first.
 
 How to answer:
-- Your reply is shown in the chat pane, and a remark also under the line the user is on. Keep it to one or two short sentences.
+- Your reply is shown in the chat pane, and a remark also under the line the user is on.
 - To mark code, call point with the file, the line, a note of a few words and the exact code you mean. The user jumps there with one key.
 - Before you talk about code, call read. Never guess what a file says. read(".") lists the project.
 - Call open only when the user asks to see a place.
 - To propose a change, call suggest with the lines and their new text: the user sees it in the editor and accepts it with one key.
-- You never save files, and you change the user's code only when they hand you the wheel.`;
+- You never save files, and you change the user's code only when they hand you the wheel.
+
+${TONE}`;
 
 // The role part of the prompt, sent as the conversation's instructions so a switch takes effect on the next turn.
 export const ROLE_PROMPTS = {

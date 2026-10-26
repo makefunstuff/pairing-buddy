@@ -38,9 +38,11 @@ const runIn = cwd => command => new Promise(resolve => {
 /**
  * The daemon with scripted models, a fake herdr, a headless Neovim with the plugin editing a.js and running
  * `:Pair start <goal>`, and a chat client. With `testOnSave`, saving runs that command in the project, for real,
- * in the fake herdr's pane. With `thinks`, the Partner's model can think. `voice` is the config's. `stop()` ends them all.
+ * in the fake herdr's pane. With `thinks`, the Partner's model can think. `voice` is the config's. `knownKeys`
+ * (labels such as M-j) are the keys the plugin remembers you have used, which show without their first-use hints.
+ * `stop()` ends them all.
  */
-async function pairInNvim(goal, {testOnSave, thinks = false, voice, rtp = []} = {}) {
+async function pairInNvim(goal, {testOnSave, thinks = false, voice, rtp = [], knownKeys = []} = {}) {
   const project = realpathSync(mkdtempSync(join(tmpdir(), 'pair-nvim-')));
   writeFileSync(join(project, 'a.js'), 'const x = 1\nconst y = 2\nconst z = 3\n');
   const dataDir = mkdtempSync(join(tmpdir(), 'pair-data-'));
@@ -63,6 +65,12 @@ async function pairInNvim(goal, {testOnSave, thinks = false, voice, rtp = []} = 
   const herdr = await fakeHerdr(herdrSocket, {commands: testOnSave ? runIn(project) : {}});
 
   const server = join(mkdtempSync('/tmp/pair-'), 'nvim.sock'); // short: socket paths max out near 100 bytes
+  // Its own state directory, where the plugin keeps the keys you have used (lua/pair/hints.lua).
+  const state = mkdtempSync(join(tmpdir(), 'pair-state-'));
+  if (knownKeys.length) {
+    mkdirSync(join(state, 'nvim', 'pair'), {recursive: true});
+    writeFileSync(join(state, 'nvim', 'pair', 'keys.json'), JSON.stringify(Object.fromEntries(knownKeys.map(key => [key, true]))));
+  }
   const nvim = spawn('nvim', [
     '--headless', '--clean', '--listen', server,
     '--cmd', `set rtp+=${[REPO, ...rtp].join(',')}`,
@@ -70,7 +78,7 @@ async function pairInNvim(goal, {testOnSave, thinks = false, voice, rtp = []} = 
     '-c', `cd ${project}`,
     '-c', 'edit a.js',
     '-c', `Pair start ${goal}`,
-  ], {stdio: 'ignore'});
+  ], {stdio: 'ignore', env: {...process.env, XDG_STATE_HOME: state}});
   const remote = expr => execFileSync('nvim', ['--server', server, '--remote-expr', expr], {encoding: 'utf8'}).trim();
   const keys = text => execFileSync('nvim', ['--server', server, '--remote-send', text]);
 
@@ -82,7 +90,7 @@ async function pairInNvim(goal, {testOnSave, thinks = false, voice, rtp = []} = 
   await until(() => messages.some(message => message.text === `Goal: ${goal}`), 'the goal from :Pair start');
 
   return {
-    project, dataDir, watcher, partner, messages, remote, keys,
+    project, dataDir, state, watcher, partner, messages, remote, keys,
     send: message => sendMessage(chat, message),
     lines: () => JSON.parse(remote('json_encode(getline(1, "$"))')),
     status: () => remote('luaeval("require(\'pair\').status()")'),
@@ -168,8 +176,8 @@ test('the wrong turn: Pair\'s words show under your line, the jump key goes to t
     await sleep(200);
     keys('3Gccconst z = 4<Esc>'); // a wrong turn in a.js
     const shown = await until(() => words().length && words(), 'Pair\'s words under the line');
-    assert.deepEqual(shown, [[2, ['● The shift is fine.', 'Attempt 5 lands at exactly 15, and worker.js:2 gives up on >=.   M-j']]],
-      'under the line you are on, the code without backticks, the jump key at the end');
+    assert.deepEqual(shown, [[2, ['● The shift is fine.', 'Attempt 5 lands at exactly 15, and worker.js:2', 'gives up on >=.   M-j goes there · M-? why']]],
+      'under the line you are on, the code without backticks, the keys at the end, with what they do the first time');
     assert.equal(remote('mode()'), 'n', 'nothing moved you');
     assert.equal(remote('expand("%:t")'), 'a.js');
 
@@ -314,7 +322,7 @@ test('suggestions show as a ghost diff that one key accepts; handing over gives 
 });
 
 test('the hand-over in plain sight: the edit is typed as ghost text, whole lines at a time; the tests run on the unsaved buffer; the hand-back line; a key halfway leaves no change', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
-  const {project, partner, messages, remote, keys, send, lines, status, stop} = await pairInNvim('tune the numbers', {testOnSave: 'node report.mjs'});
+  const {project, partner, messages, remote, keys, send, lines, status, stop} = await pairInNvim('tune the numbers', {testOnSave: 'node report.mjs', knownKeys: ['M-?']});
   const marks = namespace => JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('${namespace}'), 0, -1, {details = true}))")`));
   const text = chunks => chunks.map(chunk => chunk[0]).join('');
   const answered = reply => until(() => messages.some(message => message.text === reply), `the answer "${reply}"`);
@@ -416,6 +424,59 @@ test('Alt-n rates an unasked remark as noise; accepting its suggestion rates it 
   }
 });
 
+test('Alt-? on Pair\'s words asks for the idea behind them, shows it under them and then opens its link; a key says what it does until you use it', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
+  const {project, dataDir, state, watcher, partner, messages, remote, keys, send, stop} = await pairInNvim('grow the table');
+  const extmarks = () => JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('pair'), 0, -1, {details = true}))")`));
+  // Every virtual line under the line, in the order Neovim draws them: by extmark.
+  const words = () => extmarks().filter(([, , , details]) => details.virt_lines).sort(([a], [b]) => a - b)
+    .flatMap(([, , , details]) => details.virt_lines.map(line => line.map(chunk => chunk[0]).join('').trim()));
+  const verdicts = () => {
+    const store = openStore(join(dataDir, 'sessions.sqlite'));
+    try { return store.remarks(0).map(remark => remark.verdict); } finally { store.close(); }
+  };
+  try {
+    writeFileSync(join(project, 'table.c'), 'int should_grow(int len, int cap) {\n    return len / cap > 0.7;\n}\n');
+    watcher.setResponses([fauxAssistantMessage([fauxText('9')])]);
+    partner.setResponses([
+      fauxAssistantMessage([fauxToolCall('point', {file: 'table.c', line: 2, note: 'always 0 below a full table', code: 'len / cap'})], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxText('`len / cap` is integer division in `table.c:2`: 0 until the table is full, so it never grows.')]),
+    ]);
+    const failure = {type: 'command', cwd: project, pane: null, cmd: 'make run', exit: 134};
+    send(failure);
+    send(failure);
+    await until(() => words().length, 'the remark under the line');
+    assert.match(words().at(-1), /\.   M-j goes there · M-\? why$/, 'the first time, each key says what it does');
+
+    let input;
+    partner.setResponses([context => {
+      input = context.messages.at(-1).content;
+      return fauxAssistantMessage([fauxText('C divides two ints as ints, before any compare with a double: scale instead, as `len * 10 > cap * 7`.\nhttps://en.cppreference.com/w/c/language/operator_arithmetic')]);
+    }]);
+    remote(`luaeval("(function() vim.ui.open = function(url) vim.g.opened = url end end)() or 0")`); // no browser here
+    keys('<M-?>');
+    await until(() => input, 'the teach request reaching the Partner');
+    assert.match(input, /^\[teach\] The user asks for the idea behind what you said: "`len \/ cap` is integer division in `table.c:2`/);
+    const taught = await until(() => words().some(line => line.startsWith('∴ C divides')) && words(), 'the idea under the words');
+    assert.deepEqual(taught.slice(-4), [
+      'table is full, so it never grows.   M-j goes there',
+      '∴ C divides two ints as ints, before any',
+      'compare with a double: scale instead, as',
+      'len * 10 > cap * 7.   M-? opens en.cppreference.com',
+    ], 'after the words, without the hint it no longer needs; the link apart, as the key that opens it');
+    assert.ok(messages.some(message => message.sender === 'pair' && message.text.startsWith('C divides')), 'the chat has it too, link and all');
+    await until(() => verdicts()[0] === 'seen', 'asking about a remark to count as having seen it');
+    assert.deepEqual(JSON.parse(readFileSync(join(state, 'nvim', 'pair', 'keys.json'), 'utf8')), {'M-?': true}, 'the plugin remembers the key you used');
+
+    keys('<M-?>');
+    await until(() => remote('get(g:, "opened", "")') === 'https://en.cppreference.com/w/c/language/operator_arithmetic', 'the link opened');
+
+    keys('3Go<Esc>');
+    await until(() => words().length === 0, 'your edit taking the words and the idea away');
+  } finally {
+    await stop();
+  }
+});
+
 test('while the Partner thinks, the statusline says so, and lets it go with the answer', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
   const {partner, messages, send, status, stop} = await pairInNvim('make x two', {thinks: true});
   try {
@@ -485,7 +546,7 @@ test('after a daemon restart the plugin reconnects by itself; a model that is do
 
 test('saving runs the tests: the statusline spins, then names what fails; signs on the tests; Pair\'s fix is one jump and one key away', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
   const command = 'sleep 0.6 && cat report.json';
-  const {project, watcher, partner, remote, keys, status, stop} = await pairInNvim('totals', {testOnSave: command});
+  const {project, watcher, partner, remote, keys, status, stop} = await pairInNvim('totals', {testOnSave: command, knownKeys: ['M-j', 'M-?', 'M-y']});
   const marks = namespace => JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('${namespace}'), 0, -1, {details = true}))")`));
   const signs = () => marks('pair_tests').filter(([, , , details]) => details.sign_text).map(([, row, , details]) => [row + 1, details.sign_text.trim(), details.sign_hl_group]);
   const notes = () => marks('pair_tests').filter(([, , , details]) => details.virt_text).map(([, row, , details]) => [row + 1, details.virt_text.map(chunk => chunk[0]).join('')]);
@@ -741,7 +802,7 @@ test('push-to-talk: hold Alt-t, a meter under your line; let go, your words, the
   writeFileSync(join(bin, 'whisper-cli'), '#!/bin/sh\nprintf " Why does attempt 5 give up?\\n"\n', {mode: 0o755});
   const record = `node -e 'const b = Buffer.alloc(3200); for (let i = 0; i < 1600; i++) b.writeInt16LE(i % 8 < 4 ? 9000 : -9000, i * 2); setInterval(() => process.stdout.write(b), 100)'`;
   const voice = {model: 'unused.bin', whisper: join(bin, 'whisper-cli'), record};
-  const {partner, messages, remote, status, stop} = await pairInNvim('retries pass', {voice});
+  const {partner, messages, remote, status, stop} = await pairInNvim('retries pass', {voice, knownKeys: ['M-j', 'M-?']});
   const listenLine = () => {
     const marks = JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, require('pair.listen').ns, 0, -1, {details = true}))")`));
     const line = marks.find(([, , , details]) => details.virt_lines)?.[3].virt_lines[0];
