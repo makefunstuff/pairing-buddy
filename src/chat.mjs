@@ -40,8 +40,12 @@ export function parseInput(line) {
 /** The answer to a "may Pair run this?" question: only y or yes allows it. */
 export const allows = line => /^\s*y(es)?\s*$/i.test(line);
 
+const RECONNECT_MS = 1000;
+
 export function runChat(socketPath) {
-  const socket = connect(socketPath);
+  let socket;
+  let welcomed = false; // the daemon has greeted this pane once: a reconnect skips the history it shows
+  let away = false; // the daemon went away and the pane is reconnecting
   const rl = createInterface({input: process.stdin, output: process.stdout, prompt: '› '});
   let confirming = null; // the id of the question the next line answers
   const showRole = role => rl.setPrompt(`${role} › `);
@@ -52,23 +56,46 @@ export function runChat(socketPath) {
     rl.prompt(true);
   };
 
-  const hello = () => sendMessage(socket, {
+  const hello = resume => sendMessage(socket, {
     type: 'hello',
     role: 'chat',
     cwd: process.cwd(),
+    resume,
     herdr: process.env.HERDR_SOCKET_PATH
       ? {socket: process.env.HERDR_SOCKET_PATH, workspace: process.env.HERDR_WORKSPACE_ID, pane: process.env.HERDR_PANE_ID}
       : null,
   });
-  socket.on('connect', hello);
-  socket.on('error', error => { print(`Cannot reach the pair daemon: ${error.message}`); process.exit(1); });
-  socket.on('close', () => { print('The pair daemon went away.'); process.exit(0); });
 
-  readMessages(socket, message => {
+  // When the daemon restarts (systemd, an upgrade), the pane waits for it and carries on.
+  function connectDaemon() {
+    socket = connect(socketPath);
+    socket.on('connect', () => hello(welcomed));
+    socket.on('error', error => {
+      if (welcomed) return; // the close that follows retries
+      print(`Cannot reach the pair daemon: ${error.message}`);
+      process.exit(1);
+    });
+    socket.on('close', () => {
+      if (!welcomed) return;
+      if (!away) print(`${STYLE.system} the pair daemon went away; reconnecting…`);
+      away = true;
+      setTimeout(connectDaemon, RECONNECT_MS);
+    });
+    readMessages(socket, onMessage);
+  }
+
+  function onMessage(message) {
     if (message.type === 'welcome') {
       showRole(message.role);
-      print(`${STYLE.system} pairing on ${message.root} (${message.level}) · /help`);
+      if (away) print(`${STYLE.system} reconnected`);
+      else print(`${STYLE.system} pairing on ${message.root} (${message.level}) · /help`);
+      welcomed = true;
+      away = false;
+      for (const role of ['watcher', 'partner']) {
+        if (message.models?.[role]) print(`${STYLE.system} The ${role} model is not answering (${message.models[role]}).`);
+      }
     }
+    if (message.type === 'health') print(`${STYLE.system} ${message.text}`);
     if (message.type === 'role') {
       showRole(message.role);
       rl.prompt(true);
@@ -83,9 +110,10 @@ export function runChat(socketPath) {
     if (message.type === 'message' && !echo) print(`${STYLE[message.sender] ?? message.sender} ${message.text}`);
     if (message.type === 'ended') {
       print(`${STYLE.system} session ended`);
-      hello(); // starts the next session, which asks for its goal
+      hello(false); // starts the next session, which asks for its goal
     }
-  });
+  }
+  connectDaemon();
 
   rl.on('line', line => {
     if (confirming !== null) {
@@ -96,6 +124,7 @@ export function runChat(socketPath) {
     const input = parseInput(line);
     if (input?.local === 'quit') return rl.close();
     if (input?.local === 'help') print(HELP);
+    else if (input && away) print(`${STYLE.system} not sent: the daemon is not back yet`);
     else if (input) sendMessage(socket, input);
     rl.prompt();
   });

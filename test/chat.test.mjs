@@ -1,6 +1,17 @@
+// The chat pane: what a typed line means, and the pane itself across a daemon restart.
 import assert from 'node:assert/strict';
+import {spawn} from 'node:child_process';
+import {mkdtempSync, writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {test} from 'node:test';
+import {createModels, fauxAssistantMessage, fauxProvider, fauxText} from '@earendil-works/pi-ai';
 import {allows, parseInput} from '../src/chat.mjs';
+import {loadConfig} from '../src/config.mjs';
+import {startDaemon} from '../src/daemon.mjs';
+
+const BIN = fileURLToPath(new URL('../bin/pair.mjs', import.meta.url));
 
 test('/scout and /navigate switch the role; other lines keep their meaning', () => {
   assert.deepEqual(parseInput('/scout'), {type: 'role', role: 'scout'});
@@ -27,4 +38,44 @@ test('/drive, "you take it" and "your turn" hand Pair the wheel; the words go al
 test('only y or yes allows a command', () => {
   for (const line of ['y', 'Y', 'yes', ' YES ']) assert.equal(allows(line), true, line);
   for (const line of ['', 'n', 'no', 'yes please', 'sure', 'yy']) assert.equal(allows(line), false, line);
+});
+
+test('the chat pane waits through a daemon restart and carries on, without showing the history twice', {timeout: 20_000}, async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pair-chat-'));
+  const path = join(dir, 'config.json');
+  const entry = {api: 'openai', baseUrl: 'http://unused', model: 'm'};
+  writeFileSync(path, JSON.stringify({dataDir: dir, socket: join(dir, 'pair.sock'), models: {watcher: entry, partner: entry}}));
+  const config = loadConfig(path);
+  const partner = fauxProvider();
+  const models = createModels();
+  models.setProvider(partner.provider);
+  const start = () => startDaemon(config, {pairModels: {models, watcher: partner.getModel(), partner: partner.getModel()}, probe: async () => ({ok: true}), log: () => {}});
+  let daemon = await start();
+  const chat = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', BIN, 'chat'], {
+    cwd: dir,
+    env: {...process.env, PAIR_CONFIG: path, XDG_CONFIG_HOME: dir, HERDR_SOCKET_PATH: ''},
+  });
+  let out = '';
+  chat.stdout.on('data', data => { out += data; });
+  const shown = async (text, count = 1) => {
+    for (let i = 0; i < 100 && out.split(text).length - 1 < count; i++) await new Promise(resolve => setTimeout(resolve, 50));
+    assert.equal(out.split(text).length - 1, count, `"${text}" shown ${count} times in:\n${out}`);
+  };
+  try {
+    await shown('What are we doing this session?');
+    chat.stdin.write('make the cart total right\n');
+    await shown('Goal: make the cart total right');
+
+    await daemon.close();
+    await shown('the pair daemon went away; reconnecting…');
+    daemon = await start();
+    await shown('reconnected');
+    partner.setResponses([fauxAssistantMessage([fauxText('Look at cart.js.')])]);
+    chat.stdin.write('where do I start?\n');
+    await shown('Look at cart.js.');
+    await shown('Goal: make the cart total right', 1);
+  } finally {
+    chat.kill();
+    await daemon.close();
+  }
 });

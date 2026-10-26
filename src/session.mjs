@@ -68,12 +68,12 @@ the goal, what changed, and loose ends. No tool calls.`;
 
 export class PairSession {
   /**
-   * `record` is the stored session row. `notify(target, message)` sends to the "editor" or the "chat"
-   * clients of this session and returns how many got it; `requestEditor(message)` asks the editor and
-   * resolves with its reply.
+   * `record` is the stored session row. `notify(target, message)` sends to this session's "chat" clients,
+   * all its "editors", or the "editor" the user used last, and returns how many got it; `requestEditor(message)`
+   * asks the editor and resolves with its reply. While `health` says a model is down, Pair makes no remarks.
    */
-  constructor({record, store, partner, score, typingPauseMs, notify, requestEditor, log = () => {}, now = Date.now}) {
-    Object.assign(this, {record, store, partner, score, typingPauseMs, notify, requestEditor, log, now});
+  constructor({record, store, partner, score, typingPauseMs, notify, requestEditor, health = {ok: () => true}, log = () => {}, now = Date.now}) {
+    Object.assign(this, {record, store, partner, score, typingPauseMs, notify, requestEditor, health, log, now});
     this.state = initialState({root: record.root, goal: record.goal});
     this.budget = new Budget(record.level);
     this.role = record.role ?? 'navigator';
@@ -114,7 +114,7 @@ export class PairSession {
   /** Looks for a trigger worth a remark; called about once a second. Ticks never overlap. */
   async tick() {
     if (this.held.length && !this.typing()) this.held.splice(0).forEach(action => action());
-    if (this.ticking || this.busy || this.role === 'driver') return;
+    if (this.ticking || this.busy || this.role === 'driver' || !this.health.ok()) return;
     this.ticking = true;
     try {
       const now = this.now();
@@ -158,7 +158,9 @@ export class PairSession {
         this.spoke = true;
       }
     } catch (error) {
-      this.message('system', `Pair could not answer: ${error.message}`);
+      // A remark nobody asked for fails quietly: the statusline already says that the model is down.
+      if (this.unasked) this.log(`remark failed: ${error.message}`);
+      else this.message('system', `Pair could not answer: ${error.message}`);
     } finally {
       this.busy = false;
     }
@@ -194,7 +196,7 @@ export class PairSession {
       if (!opened) return false;
     }
     if (role === 'navigator') await this.scout?.close();
-    if (!this.notify('editor', {type: 'role', role}) && role === 'driver') {
+    if (!this.notify('editors', {type: 'role', role}) && role === 'driver') {
       this.message('system', 'Pair drives only in Neovim: run :Pair start there first.');
       return false;
     }
@@ -234,7 +236,7 @@ export class PairSession {
     if (this.role !== 'driver') return;
     this.role = 'navigator'; // at once: an edit or type still on its way is refused from here on
     if (note) this.message('system', note);
-    this.notify('editor', {type: 'role', role: 'navigator'});
+    this.notify('editors', {type: 'role', role: 'navigator'});
     await this.scout?.close();
     this.announce('navigator');
   }
@@ -269,7 +271,7 @@ export class PairSession {
     const note = await this.partner.ask(this.conversationId, NOTE_REQUEST).catch(error => `(no note: ${error.message})`);
     this.store.endSession(this.id, note, this.now());
     this.message('pair', `Session note:\n${note}`);
-    this.notify('editor', {type: 'clear'});
+    this.notify('editors', {type: 'clear'});
   }
 
   greet() {

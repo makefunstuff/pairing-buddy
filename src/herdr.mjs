@@ -55,10 +55,15 @@ export class PaneWatch {
     this.hooked = new Set();
     this.editors = new Set();
     this.focus = null;
+    this.failing = null; // the error of the last poll, if it failed
   }
 
   start() {
-    this.timer = setInterval(() => this.poll().catch(error => this.log(`herdr: ${error.message}`)), POLL_MS);
+    // One line when herdr starts failing (it was closed, say) and one when it is back, not one per poll.
+    this.timer = setInterval(() => this.poll().then(
+      () => { if (this.failing) this.log('herdr answers again'); this.failing = null; },
+      error => { if (this.failing !== error.message) this.log(`herdr: ${error.message}`); this.failing = error.message; },
+    ), POLL_MS);
   }
 
   stop() {

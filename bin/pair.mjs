@@ -1,23 +1,40 @@
 #!/usr/bin/env -S node --disable-warning=ExperimentalWarning
-// pair: the daemon, the chat pane and the shell hook in one command.
+// pair: the daemon, the chat pane, setup and checks, and the shell hook in one command.
 import {spawn} from 'node:child_process';
-import {mkdirSync, openSync} from 'node:fs';
+import {existsSync, mkdirSync, openSync, realpathSync} from 'node:fs';
 import {connect} from 'node:net';
 import {join} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {parseArgs} from 'node:util';
 import {runChat} from '../src/chat.mjs';
-import {defaultSocketPath, loadConfig} from '../src/config.mjs';
+import {configPath, createConfig, defaultSocketPath, loadConfig} from '../src/config.mjs';
 import {startDaemon} from '../src/daemon.mjs';
+import {doctor, tilde} from '../src/doctor.mjs';
 import {herdrRequest} from '../src/herdr.mjs';
-import {sendMessage} from '../src/protocol.mjs';
+import {requestDaemon, sendMessage} from '../src/protocol.mjs';
+import {installService, removeService, systemctl, UNIT, unitPath} from '../src/service.mjs';
 import {shellHook} from '../src/shell-hook.mjs';
+
+const SCRIPT = realpathSync(fileURLToPath(import.meta.url));
 
 const USAGE = `usage:
   pair              open the chat pane next to this one (in herdr), starting the daemon if needed
   pair chat         run the chat pane here
+  pair setup        create the config if there is none, install and start the daemon as a systemd user service
+  pair doctor       check the daemon, Neovim, herdr and the models, and say what is wrong
+  pair uninstall    stop and remove the service (the config and data stay)
   pair daemon       run the daemon in the foreground
   pair shell-hook bash|zsh   print the shell hook that reports exit codes
   pair report --exit N --cmd TEXT   (used by the shell hook)`;
+
+const LAZY_SPEC = `  {
+    'makefunstuff/pairing-buddy',
+    main = 'pair',
+    lazy = false,
+    opts = {auto_connect = true},
+  },`;
+
+const SYMBOLS = {ok: '\x1b[32m✓\x1b[0m', warn: '\x1b[33m!\x1b[0m', fail: '\x1b[31m✗\x1b[0m'};
 
 const reachable = socketPath => new Promise(resolve => {
   const socket = connect(socketPath);
@@ -25,16 +42,68 @@ const reachable = socketPath => new Promise(resolve => {
   socket.on('error', () => resolve(false));
 });
 
-async function ensureDaemon(config) {
-  if (await reachable(config.socket)) return;
-  mkdirSync(config.dataDir, {recursive: true, mode: 0o700});
-  const log = openSync(join(config.dataDir, 'daemon.log'), 'a');
-  spawn(process.execPath, ['--disable-warning=ExperimentalWarning', process.argv[1], 'daemon'], {detached: true, stdio: ['ignore', log, log]}).unref();
-  for (let i = 0; i < 50; i++) {
-    if (await reachable(config.socket)) return;
+async function waitFor(check, tries = 50) {
+  for (let i = 0; i < tries; i++) {
+    if (await check()) return true;
     await new Promise(resolve => setTimeout(resolve, 100));
   }
-  throw new Error(`The daemon did not start; see ${join(config.dataDir, 'daemon.log')}`);
+  return false;
+}
+
+/** Starts the daemon if it is not running: through systemd once `pair setup` installed it, else in the background. */
+async function ensureDaemon(config) {
+  if (await reachable(config.socket)) return;
+  if (existsSync(unitPath())) {
+    await systemctl('start', UNIT);
+    if (await waitFor(() => reachable(config.socket))) return;
+    throw new Error(`The service did not start; see \`journalctl --user -u ${UNIT} -n 20\``);
+  }
+  mkdirSync(config.dataDir, {recursive: true, mode: 0o700});
+  const log = openSync(join(config.dataDir, 'daemon.log'), 'a');
+  spawn(process.execPath, ['--disable-warning=ExperimentalWarning', SCRIPT, 'daemon'], {detached: true, stdio: ['ignore', log, log]}).unref();
+  if (!(await waitFor(() => reachable(config.socket)))) throw new Error(`The daemon did not start; see ${join(config.dataDir, 'daemon.log')}`);
+}
+
+/** Writes the example config on the first run, and says so. */
+function firstRunConfig() {
+  if (createConfig()) console.error(`pair: created ${tilde(configPath())} from the example; set your models there, then run \`pair doctor\``);
+}
+
+async function setup() {
+  firstRunConfig();
+  const config = loadConfig();
+  // A daemon started by `pair` before the service existed holds the data directory: hand it over to systemd.
+  const running = await requestDaemon(config.socket, {type: 'status'}).catch(() => null);
+  const service = await systemctl('is-active', UNIT);
+  if (running && !service.ok) {
+    process.kill(running.pid, 'SIGTERM');
+    await waitFor(async () => !(await reachable(config.socket)));
+  }
+  const env = process.env.PAIR_CONFIG ? {PAIR_CONFIG: process.env.PAIR_CONFIG} : {};
+  await installService({node: process.execPath, script: SCRIPT, env});
+  if (!(await waitFor(() => reachable(config.socket)))) throw new Error(`The service did not start; see \`journalctl --user -u ${UNIT} -n 20\``);
+  console.log(`The daemon runs as ${UNIT}: it starts at login and restarts when it fails.
+Config: ${tilde(configPath())} (after a change: systemctl --user restart ${UNIT})
+
+Next:
+  1. Add the Neovim plugin with lazy.nvim:
+${LAZY_SPEC}
+  2. Optional, for exit codes: eval "$(pair shell-hook bash)" in your shell's rc file (or zsh)
+  3. Run \`pair doctor\` to check everything, then \`pair\` in a herdr pane next to Neovim.`);
+}
+
+async function uninstall() {
+  await removeService();
+  console.log(`Removed ${UNIT}. The config (${tilde(configPath())}) and the data directory are kept.`);
+}
+
+async function runDoctor() {
+  let failed = false;
+  for await (const check of doctor()) {
+    console.log(`${SYMBOLS[check.level]} ${check.name.padEnd(8)} ${check.text}`);
+    failed ||= check.level === 'fail';
+  }
+  process.exitCode = failed ? 1 : 0;
 }
 
 async function daemon(config) {
@@ -51,7 +120,7 @@ async function openChatPane(config) {
   const {pane} = await herdrRequest(process.env.HERDR_SOCKET_PATH, 'pane.split', {
     target_pane_id: process.env.HERDR_PANE_ID, direction: 'right', ratio: 0.7, cwd: process.cwd(), env, focus: false,
   });
-  await herdrRequest(process.env.HERDR_SOCKET_PATH, 'pane.send_text', {pane_id: pane.pane_id, text: `${process.argv[1]} chat\r`});
+  await herdrRequest(process.env.HERDR_SOCKET_PATH, 'pane.send_text', {pane_id: pane.pane_id, text: `${SCRIPT} chat\r`});
 }
 
 // Runs after every shell command, so it stays silent: no config or no daemon means nothing to report.
@@ -73,12 +142,21 @@ try {
     process.stdout.write(shellHook(args[0], process.argv[1]));
   } else if (command === 'report') {
     report(args);
-  } else {
+  } else if (command === 'setup') {
+    await setup();
+  } else if (command === 'uninstall') {
+    await uninstall();
+  } else if (command === 'doctor') {
+    await runDoctor();
+  } else if ([undefined, 'chat', 'daemon'].includes(command)) {
+    firstRunConfig();
     const config = loadConfig();
     if (command === undefined) await openChatPane(config);
     else if (command === 'chat') { await ensureDaemon(config); runChat(config.socket); }
-    else if (command === 'daemon') await daemon(config);
-    else { console.log(USAGE); process.exitCode = command === 'help' || command === '--help' ? 0 : 2; }
+    else await daemon(config);
+  } else {
+    console.log(USAGE);
+    process.exitCode = command === 'help' || command === '--help' ? 0 : 2;
   }
 } catch (error) {
   console.error(`pair: ${error.message}`);

@@ -8,12 +8,15 @@ import {test} from 'node:test';
 import {createModels, fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall} from '@earendil-works/pi-ai';
 import {parseConfig} from '../src/config.mjs';
 import {startDaemon} from '../src/daemon.mjs';
-import {readMessages, sendMessage} from '../src/protocol.mjs';
+import {readMessages, requestDaemon, sendMessage} from '../src/protocol.mjs';
 import {fakeHerdr} from './fake-herdr.mjs';
 
-function scriptedModels() {
+const answers = async () => ({ok: true}); // the scripted models are not probed
+
+/** Scripted Watcher and Partner; `partnerModel` names the Partner's model, as the config would. */
+function scriptedModels(partnerModel) {
   const watcher = fauxProvider({provider: 'faux-watcher'});
-  const partner = fauxProvider({provider: 'faux-partner'});
+  const partner = fauxProvider({provider: 'faux-partner', ...(partnerModel ? {models: [{id: partnerModel}]} : {})});
   const models = createModels();
   models.setProvider(watcher.provider);
   models.setProvider(partner.provider);
@@ -55,7 +58,7 @@ test('a repeated failure becomes a pointed remark; a question is answered; :Pair
   writeFileSync(join(project, 'ws.test.js'), 'test("reconnect", () => {\n  expect(timeout).toBe(30)\n})\n');
   const config = testConfig(mkdtempSync(join(tmpdir(), 'pair-data-')));
   const {watcher, partner, pairModels} = scriptedModels();
-  const daemon = await startDaemon(config, {pairModels, log: () => {}});
+  const daemon = await startDaemon(config, {pairModels, probe: answers, log: () => {}});
 
   const editor = client(config.socket, {type: 'hello', role: 'editor', cwd: project});
   const chat = client(config.socket, {type: 'hello', role: 'chat', cwd: project});
@@ -99,7 +102,7 @@ test('the session, its chat and its conversation survive a daemon restart', {tim
   const config = testConfig(mkdtempSync(join(tmpdir(), 'pair-data-')));
 
   const first = scriptedModels();
-  let daemon = await startDaemon(config, {pairModels: first.pairModels, log: () => {}});
+  let daemon = await startDaemon(config, {pairModels: first.pairModels, probe: answers, log: () => {}});
   let chat = client(config.socket, {type: 'hello', role: 'chat', cwd: project});
   first.partner.setResponses([fauxAssistantMessage([fauxText('It is in ws.ts.')])]);
   await chat.next(message => message.type === 'welcome');
@@ -110,7 +113,7 @@ test('the session, its chat and its conversation survive a daemon restart', {tim
   await daemon.close();
 
   const second = scriptedModels();
-  daemon = await startDaemon(config, {pairModels: second.pairModels, log: () => {}});
+  daemon = await startDaemon(config, {pairModels: second.pairModels, probe: answers, log: () => {}});
   chat = client(config.socket, {type: 'hello', role: 'chat', cwd: project});
   try {
     const welcome = await chat.next(message => message.type === 'welcome');
@@ -138,7 +141,7 @@ test('in Scout, Pair runs tests in its own pane, asks before deleting and is ref
   const tests = 'FAIL ws.test.js\n  ● reconnect › waits\n\n    Expected: 30000\n\nTests:       1 failed, 1 passed, 2 total';
   const herdr = await fakeHerdr(herdrSocket, {commands: {'npm test': {output: tests, exit: 1}}});
   const {partner, pairModels} = scriptedModels();
-  const daemon = await startDaemon(config, {pairModels, log: () => {}});
+  const daemon = await startDaemon(config, {pairModels, probe: answers, log: () => {}});
   const editor = client(config.socket, {type: 'hello', role: 'editor', cwd: project});
   const chat = client(config.socket, {type: 'hello', role: 'chat', cwd: project, herdr: {socket: herdrSocket, workspace: 'w1', pane: 'w1:p2'}});
   const toolResults = context => context.messages.filter(message => message.role === 'toolResult').map(message => message.content[0].text);
@@ -192,7 +195,7 @@ test('handed the wheel from the chat, Pair types into the user\'s pane after a y
   const herdrSocket = join(mkdtempSync(join(tmpdir(), 'pair-herdr-')), 'herdr.sock');
   const herdr = await fakeHerdr(herdrSocket);
   const {partner, pairModels} = scriptedModels();
-  const daemon = await startDaemon(config, {pairModels, log: () => {}});
+  const daemon = await startDaemon(config, {pairModels, probe: answers, log: () => {}});
   const editor = client(config.socket, {type: 'hello', role: 'editor', cwd: project});
   const chat = client(config.socket, {type: 'hello', role: 'chat', cwd: project, herdr: {socket: herdrSocket, workspace: 'w1', pane: 'w1:p2'}});
   try {
@@ -224,5 +227,122 @@ test('handed the wheel from the chat, Pair types into the user\'s pane after a y
     chat.close();
     await daemon.close();
     await herdr.close();
+  }
+});
+
+test('a dead Partner is said once, to the chat and the statusline; Pair then stays quiet instead of failing on every remark', {timeout: 30_000}, async () => {
+  const project = mkdtempSync(join(tmpdir(), 'pair-project-'));
+  const config = testConfig(mkdtempSync(join(tmpdir(), 'pair-data-')));
+  const {watcher, partner, pairModels} = scriptedModels();
+  const daemon = await startDaemon(config, {pairModels, probe: answers, log: () => {}});
+  const editor = client(config.socket, {type: 'hello', role: 'editor', cwd: project});
+  const chat = client(config.socket, {type: 'hello', role: 'chat', cwd: project});
+  try {
+    assert.deepEqual((await chat.next(message => message.type === 'welcome')).models, {watcher: null, partner: null});
+    chat.send({type: 'goal', text: 'fix reconnect'});
+    partner.setResponses([]); // every Partner call fails from here on
+    chat.send({type: 'ask', text: 'where is the timeout?'});
+    await chat.next(message => message.text?.startsWith('Pair could not answer'));
+    const notice = await chat.next(message => message.type === 'health');
+    assert.equal(notice.models.partner !== null, true);
+    assert.match(notice.text, /^The Partner model is not answering \(.+\)\. Pair stays quiet until it answers again/);
+    assert.deepEqual((await editor.next(message => message.type === 'health')).models, notice.models);
+
+    // Failures that would each be a remark: the Watcher is not even asked while the Partner is down.
+    watcher.setResponses(Array(5).fill(fauxAssistantMessage([fauxText('{"score": 9, "reason": "failing"}')])));
+    for (const cmd of ['npm test', 'npm test', 'cargo build', 'cargo build']) editor.send({type: 'command', cwd: project, pane: null, cmd, exit: 1});
+    await new Promise(resolve => setTimeout(resolve, 2500)); // two ticks
+    assert.equal(watcher.state.callCount, 0);
+    assert.equal(chat.received.filter(message => message.type === 'health').length, 1, 'one notice, not one per failure');
+    assert.equal(chat.received.filter(message => message.text?.startsWith('Pair could not answer')).length, 1, 'only the question got an error');
+
+    const status = await requestDaemon(config.socket, {type: 'status'});
+    assert.equal(status.models.partner, notice.models.partner);
+  } finally {
+    editor.close();
+    chat.close();
+    await daemon.close();
+  }
+});
+
+test('several Neovims and projects at once: each project has its own session, and Pair shows things in the Neovim you used last', {timeout: 20_000}, async () => {
+  const shop = mkdtempSync(join(tmpdir(), 'pair-shop-'));
+  const blog = mkdtempSync(join(tmpdir(), 'pair-blog-'));
+  writeFileSync(join(shop, 'cart.js'), 'const total = 0\n');
+  const config = testConfig(mkdtempSync(join(tmpdir(), 'pair-data-')));
+  const {partner, pairModels} = scriptedModels();
+  const daemon = await startDaemon(config, {pairModels, probe: answers, log: () => {}});
+  const shopVim = client(config.socket, {type: 'hello', role: 'editor', cwd: shop});
+  const shopVim2 = client(config.socket, {type: 'hello', role: 'editor', cwd: shop});
+  const blogVim = client(config.socket, {type: 'hello', role: 'editor', cwd: blog});
+  const shopChat = client(config.socket, {type: 'hello', role: 'chat', cwd: shop});
+  const blogChat = client(config.socket, {type: 'hello', role: 'chat', cwd: blog});
+  try {
+    for (const each of [shopVim, shopVim2, blogVim, shopChat, blogChat]) await each.next(message => message.type === 'welcome');
+    shopChat.send({type: 'goal', text: 'fix the cart'});
+    blogChat.send({type: 'goal', text: 'write a post'});
+    await blogChat.next(message => message.text === 'Goal: write a post');
+    assert.equal(shopChat.received.some(message => message.text === 'Goal: write a post'), false, 'the blog\'s chat stays in the blog');
+
+    shopVim.send({type: 'event', event: {kind: 'typing'}});
+    await new Promise(resolve => setTimeout(resolve, 50));
+    shopVim2.send({type: 'event', event: {kind: 'cursor', file: join(shop, 'cart.js'), line: 1, col: 0}}); // the one used last
+    let read;
+    partner.setResponses([
+      fauxAssistantMessage([fauxToolCall('read', {file: 'cart.js'})], {stopReason: 'toolUse'}),
+      context => {
+        read = context.messages.filter(message => message.role === 'toolResult').at(-1).content[0].text;
+        return fauxAssistantMessage([fauxToolCall('point', {file: 'cart.js', line: 1, note: 'starts at 10'})], {stopReason: 'toolUse'});
+      },
+      fauxAssistantMessage([fauxText('See line 1.')]),
+    ]);
+    // The Neovim used last does not have cart.js loaded; the other one does, unsaved.
+    shopVim2.next(message => message.type === 'read').then(read => shopVim2.send({type: 'reply', id: read.id, result: {text: null}}));
+    shopVim.next(message => message.type === 'read').then(read => shopVim.send({type: 'reply', id: read.id, result: {text: 'const total = 10\n'}}));
+    shopChat.send({type: 'ask', text: 'why is the total wrong?'});
+    await shopChat.next(message => message.text === 'See line 1.');
+    assert.match(read, /1: const total = 10/, 'the read came from the Neovim that has the file');
+    await shopVim2.next(message => message.type === 'point');
+    assert.equal(shopVim.received.some(message => message.type === 'point'), false, 'the point shows in one Neovim only');
+    assert.equal(blogVim.received.some(message => message.type === 'point'), false);
+
+    const status = await requestDaemon(config.socket, {type: 'status'});
+    const sessions = Object.fromEntries(status.sessions.map(session => [session.goal, session]));
+    assert.deepEqual([sessions['fix the cart'].editors, sessions['fix the cart'].chats], [2, 1]);
+    assert.deepEqual([sessions['write a post'].editors, sessions['write a post'].chats], [1, 1]);
+  } finally {
+    for (const each of [shopVim, shopVim2, blogVim, shopChat, blogChat]) each.close();
+    await daemon.close();
+  }
+});
+
+test('after the Partner model is changed in the config, an open session answers with the new model', {timeout: 20_000}, async () => {
+  const project = mkdtempSync(join(tmpdir(), 'pair-project-'));
+  const config = testConfig(mkdtempSync(join(tmpdir(), 'pair-data-')));
+  const health = [];
+  const first = scriptedModels('your-larger-model');
+  let daemon = await startDaemon(config, {pairModels: first.pairModels, probe: answers, log: () => {}});
+  let chat = client(config.socket, {type: 'hello', role: 'chat', cwd: project});
+  await chat.next(message => message.type === 'welcome');
+  chat.send({type: 'goal', text: 'fix reconnect'});
+  await chat.next(message => message.text === 'Goal: fix reconnect');
+  chat.close();
+  await daemon.close();
+
+  const second = scriptedModels('the-real-model');
+  daemon = await startDaemon(config, {pairModels: second.pairModels, probe: answers, log: line => health.push(line)});
+  chat = client(config.socket, {type: 'hello', role: 'chat', cwd: project});
+  try {
+    await chat.next(message => message.type === 'welcome');
+    let asked;
+    second.partner.setResponses([(context, options, state, model) => { asked = model.id; return fauxAssistantMessage([fauxText('In ws.ts.')]); }]);
+    chat.send({type: 'ask', text: 'where is the timeout?'});
+    await chat.next(message => message.text === 'In ws.ts.' || message.text?.startsWith('Pair could not answer'));
+    assert.equal(asked, 'the-real-model');
+    assert.equal(chat.received.some(message => message.type === 'health'), false, 'the Partner was never marked down');
+    assert.deepEqual(health.filter(line => /model down/.test(line)), []);
+  } finally {
+    chat.close();
+    await daemon.close();
   }
 });

@@ -1,6 +1,7 @@
 -- pairing-buddy for Neovim: sends what you do to the pair daemon and shows what Pair points at and suggests.
 -- Pair never saves a buffer. It changes one only while you hand it the wheel (the Driver role): one edit,
 -- as one undo step, refused here as soon as you press any key.
+-- Once connected, it stays connected: when the daemon restarts, the plugin reconnects by itself.
 local M = {}
 
 local ns = vim.api.nvim_create_namespace('pair')
@@ -10,7 +11,11 @@ local config = {socket = nil, debounce_ms = 2000, max_points = 5, accept_key = '
 local state = {
   channel = nil, partial = '', attached = {}, pending = {}, points = {}, open_request = nil, level = nil, role = nil,
   suggestion = nil, -- the change Pair suggested: {buf, mark, old, new}
+  wanted = false, -- connect was asked for (:Pair start or auto_connect) and not undone by :Pair stop
+  retry = nil, -- the reconnect timer
+  models = {}, -- why each model is down, per role: the daemon's health
 }
+local RETRY_MS = {1000, 2000, 5000, 10000, 30000} -- then every 30 s
 
 local function default_socket()
   if vim.env.PAIR_SOCKET then return vim.env.PAIR_SOCKET end
@@ -279,6 +284,15 @@ local function hello()
   send({type = 'hello', role = 'editor', cwd = vim.fn.getcwd()})
 end
 
+-- `models` maps each role to why its model is down, or to null (vim.NIL here) when it answers.
+local function set_models(models)
+  state.models = {}
+  for role, reason in pairs(models or {}) do
+    if type(reason) == 'string' then state.models[role] = reason end
+  end
+  vim.cmd.redrawstatus()
+end
+
 local handlers = {
   point = point,
   open = open,
@@ -291,8 +305,10 @@ local handlers = {
   end,
   welcome = function(message)
     state.level = message.level
+    set_models(message.models)
     set_role(message.role)
   end,
+  health = function(message) set_models(message.models) end,
   role = function(message) set_role(message.role) end,
   message = function(message)
     if message.sender == 'system' then vim.notify('Pair: ' .. message.text) end
@@ -300,7 +316,11 @@ local handlers = {
   ended = hello,
 }
 
+local disconnected
+
 local function on_data(_, data)
+  -- A lone empty item is the end of the stream: the daemon went away.
+  if #data == 1 and data[1] == '' then return disconnected() end
   -- Neovim splits channel data on newlines; the last item is the start of the next line.
   data[1] = state.partial .. data[1]
   state.partial = table.remove(data)
@@ -310,24 +330,53 @@ local function on_data(_, data)
   end
 end
 
-function M.connect()
-  if state.channel then return true end
+local function try_connect()
   local ok, channel = pcall(vim.fn.sockconnect, 'pipe', config.socket or default_socket(), {
     on_data = vim.schedule_wrap(on_data),
   })
-  if not ok or channel == 0 then
-    vim.notify('Pair: no daemon at ' .. (config.socket or default_socket()) .. ' (start it with `pair`)', vim.log.levels.WARN)
-    return false
-  end
+  if not ok or channel == 0 then return false end
   state.channel = channel
+  state.partial = ''
   hello()
   for _, buf in ipairs(vim.api.nvim_list_bufs()) do
     if vim.api.nvim_buf_is_loaded(buf) then attach(buf) end
   end
+  local file = project_path(0)
+  if file then event({kind = 'enter', file = file}) end
   return true
 end
 
+-- Tries again after 1, 2, 5, 10 and then every 30 seconds, quietly: the statusline says "reconnecting".
+local function schedule_retry(attempt)
+  state.retry = state.retry or vim.uv.new_timer()
+  state.retry:start(RETRY_MS[math.min(attempt, #RETRY_MS)], 0, vim.schedule_wrap(function()
+    if not state.wanted or state.channel then return end
+    if not try_connect() then schedule_retry(attempt + 1) end
+  end))
+end
+
+disconnected = function()
+  state.channel = nil
+  if state.role == 'driver' then set_role('navigator') end -- a restarted daemon has ended the hand-over
+  vim.cmd.redrawstatus()
+  if state.wanted then schedule_retry(1) end
+end
+
+function M.connect()
+  if state.channel then return true end
+  local first = not state.wanted
+  state.wanted = true
+  if try_connect() then return true end
+  if first then
+    vim.notify('Pair: no daemon at ' .. (config.socket or default_socket()) .. ' yet; it connects when one starts (see `pair doctor`)', vim.log.levels.WARN)
+  end
+  schedule_retry(1)
+  return false
+end
+
 function M.disconnect()
+  state.wanted = false
+  if state.retry then state.retry:stop() end
   if state.channel then vim.fn.chanclose(state.channel) end
   state.channel = nil
   set_role(nil)
@@ -335,9 +384,13 @@ function M.disconnect()
   clear_suggestion()
 end
 
+-- The statusline's text: the role and talk level, plus a warning while a model is down or the daemon is away.
 function M.status()
-  if not state.channel then return '' end
-  return 'Pair: ' .. (state.role or 'navigator') .. (state.level and (' · ' .. state.level) or '')
+  if not state.channel then return state.wanted and 'Pair: reconnecting' or '' end
+  local down = vim.tbl_keys(state.models)
+  table.sort(down)
+  local warning = #down == 2 and ' · models down' or (#down == 1 and (' · ' .. down[1] .. ' down') or '')
+  return 'Pair: ' .. (state.role or 'navigator') .. (state.level and (' · ' .. state.level) or '') .. warning
 end
 
 local commands = {

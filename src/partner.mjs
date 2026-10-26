@@ -4,6 +4,8 @@ import {createRegistry, Harness} from '@earendil-works/pi-durable';
 import {openNodeSqliteStorage} from '@earendil-works/pi-durable/storage/sqlite/node';
 import {pairExtension, ROLE_PROMPTS, ROLE_TOOLS} from './tools.mjs';
 
+const STREAM_TIMEOUT_MS = 90_000;
+
 // Small local context windows need smaller margins than the library's cloud-sized defaults.
 function compactionFor(contextWindow) {
   return {
@@ -37,21 +39,33 @@ export async function openPartner({storage, models, model, thinking = 'off', han
     models,
     registry,
     identity: {attribution: null},
-    settings: {extensions: [extension], compaction: compactionFor(model.contextWindow), afterFailedRun: 'continue'},
+    settings: {
+      extensions: [extension],
+      compaction: compactionFor(model.contextWindow),
+      afterFailedRun: 'continue',
+      // A model that does not answer fails the turn within minutes, not the SDK's default of hours.
+      stream: {timeoutMs: STREAM_TIMEOUT_MS, maxRetries: 0},
+      retry: {maxRetries: 2},
+    },
   }, C);
   harness.resume();
   // The model is offered only its role's tools; the policy hook refuses the others anyway.
-  const roleAgent = role => ({tools: extension.tools.filter(tool => ROLE_TOOLS[role].includes(tool.name)), instructions: ROLE_PROMPTS[role]});
+  // Always with the configured model: a conversation stored under a model since renamed in the config gets the new one.
+  const roleAgent = role => ({
+    model: {provider: model.provider, modelId: model.id},
+    thinkingLevel: thinking,
+    tools: extension.tools.filter(tool => ROLE_TOOLS[role].includes(tool.name)),
+    instructions: ROLE_PROMPTS[role],
+  });
 
   return {
     /** A new conversation, in the Navigator role. */
     async createConversation() {
-      const agent = {model: {provider: model.provider, modelId: model.id}, thinkingLevel: thinking, ...roleAgent('navigator')};
-      const conversation = await harness.createConversation({ownership: {kind: 'ownerless'}, agent}, C);
+      const conversation = await harness.createConversation({ownership: {kind: 'ownerless'}, agent: roleAgent('navigator')}, C);
       return conversation.id;
     },
 
-    /** Gives the conversation the tools and instructions of `role`, from its next request on. */
+    /** Gives the conversation the configured model and the tools and instructions of `role`, from its next request on. */
     async setRole(conversationId, role) {
       const conversation = await harness.conversation(conversationId, C);
       await conversation.configure(roleAgent(role), C);

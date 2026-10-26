@@ -1,17 +1,31 @@
+// pairing-buddy config. JSON with // comments. After a change: systemctl --user restart pairing-buddy
+// (or `pair setup` again), then `pair doctor` to check it.
 {
+  // How often Pair speaks unasked: "quiet", "normal" or "chatty".
   "level": "normal",
+
   "models": {
+    // The Watcher scores every candidate remark, so it must be fast: a small model, about 1 s per answer.
     "watcher": {
-      "api": "openai",
+      "api": "openai",                      // "openai" (any OpenAI-compatible server) or "anthropic"
       "baseUrl": "http://localhost:8080/v1",
       "model": "your-small-model",
       "contextWindow": 32768
+      // "reasoning": true,                 // for a model that thinks by default, so Pair can switch it off
+      // "apiKeyEnv": "MY_SERVER_KEY"       // or "apiKey", or "apiKeyFile": "~/.config/my-server.key"
     },
+
+    // The Partner writes the words and calls the tools. One model can serve both roles.
     "partner": {
       "api": "openai",
       "baseUrl": "http://localhost:8080/v1",
       "model": "your-larger-model",
       "contextWindow": 65536
+      // "samplingParams": {"temperature": 0.3}   // steadier answers when the server's default is high
+      // A cloud Partner instead:
+      // "api": "anthropic", "model": "your-cloud-model", "apiKeyEnv": "ANTHROPIC_API_KEY"
     }
   }
+
+  // Also: "typingPauseMs" (default 2000), "socket" and "dataDir" (see the README).
 }
