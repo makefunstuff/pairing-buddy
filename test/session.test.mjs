@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
 import {test} from 'node:test';
 import {PairSession} from '../src/session.mjs';
 
@@ -233,4 +234,182 @@ test('after a switch back to Navigator, a call still in flight does not reopen P
   await assert.rejects(pair.run({command: 'npm test'}), /need the Scout role/);
   assert.deepEqual(ran, []);
   assert.equal(pane.opened, false);
+});
+
+/**
+ * A session with an editor that applies edits to `buffer` (unless `editorRefuses`), a stand-in for the
+ * user's herdr panes that records what is typed, and a Partner that runs `turn(pair)` as its answer.
+ */
+function driverSession({turn = async () => 'ok', editor = true, role = 'navigator'} = {}) {
+  const sent = [];
+  const typed = [];
+  const roles = [];
+  const edits = [];
+  const toolsOf = []; // the roles whose tools the conversation was given, in order
+  const pair = new PairSession({
+    record: {id: 1, root: process.cwd(), conversation_id: 7, goal: 'fix it', level: 'normal', role},
+    store: {addMessage() {}, setRole: (_id, stored) => roles.push(stored)},
+    partner: {ask: async (_id, input) => turn(pair, input), setRole: async (_id, given) => { toolsOf.push(given); }},
+    score: async () => ({value: 9, reason: 'worth it'}),
+    typingPauseMs: 2000,
+    notify: (to, message) => { sent.push({to, ...message}); return to === 'editor' && !editor ? 0 : 1; },
+    requestEditor: async message => { edits.push(message); return {ok: true}; },
+    now: () => 100_000,
+  });
+  pair.panes = {type: async (pane, text) => typed.push([pane, text])};
+  const roleChanges = () => sent.filter(message => message.type === 'role' && message.to === 'editor').map(message => message.role);
+  return {pair, sent, typed, roles, edits, toolsOf, roleChanges};
+}
+
+const lastConfirm = sent => sent.filter(message => message.type === 'confirm').at(-1);
+
+test('handing over makes Pair the Driver for one answer with one edit, which goes to the editor; then it hands back by itself', async () => {
+  let input;
+  let replies;
+  let roleAfterEdit;
+  const {pair, edits, roles, roleChanges} = driverSession({turn: async (pair, given) => {
+    input = given;
+    const reply = await pair.edit({file: 'package.json', line: 2, endLine: 2, text: '  "name": "x",'});
+    roleAfterEdit = pair.role;
+    const again = await pair.edit({file: 'package.json', line: 3, endLine: 3, text: 'more'});
+    replies = [reply, again];
+    return 'Renamed the package.';
+  }});
+  await pair.drive('your turn');
+  assert.match(input, /^\[drive\] The user handed you the wheel for one change\. The user said: "your turn"/);
+  assert.match(input, /make it pass by changing the code, not the test/);
+  assert.deepEqual(edits.map(({type, line, endLine, text}) => ({type, line, endLine, text})), [{type: 'edit', line: 2, endLine: 2, text: '  "name": "x",'}]);
+  assert.match(replies[0], /^Changed, as one undo step\. The file on disk changes only when the user saves, so do not run the tests now\. That was your one edit/);
+  assert.match(replies[1], /^You already made your one change/, 'one edit per hand-over');
+  assert.equal(roleAfterEdit, 'driver', 'the wheel stays until the answer ends, so tools do not vanish mid-answer');
+  assert.deepEqual(roleChanges(), ['driver', 'navigator']);
+  assert.equal(pair.role, 'navigator');
+  assert.deepEqual(roles, ['navigator', 'navigator'], 'a drive is stored as Navigator, where it ends, so a restart during one does too');
+});
+
+test('an edit the editor refuses does not use up the one edit, and two at once cannot both pass', async () => {
+  let replies;
+  const {pair, edits} = driverSession({turn: async pair => {
+    const failed = pair.requestEditor;
+    pair.requestEditor = async () => ({error: 'line 99 is past the end of the buffer (3 lines)'});
+    const first = await pair.edit({file: 'package.json', line: 99, endLine: 99, text: 'x'});
+    pair.requestEditor = failed;
+    replies = [first, ...await Promise.all([
+      pair.edit({file: 'package.json', line: 1, endLine: 1, text: 'a'}),
+      pair.edit({file: 'package.json', line: 2, endLine: 2, text: 'b'}),
+    ])];
+    return 'ok';
+  }});
+  await pair.drive('you take it');
+  assert.match(replies[0], /^Not changed: line 99 is past the end/);
+  assert.equal(replies.filter(reply => reply.startsWith('Changed')).length, 1);
+  assert.equal(edits.length, 1);
+});
+
+test('a turn without an edit also ends with Pair back as Navigator', async () => {
+  const {pair, roleChanges} = driverSession({turn: async () => 'What should I change?'});
+  await pair.drive('');
+  assert.deepEqual(roleChanges(), ['driver', 'navigator']);
+  assert.equal(pair.role, 'navigator');
+});
+
+test('a key from the user takes the wheel back at once: an edit still on its way is refused', async () => {
+  let reply;
+  let toolsDuring;
+  const {pair, edits, sent, toolsOf, roleChanges} = driverSession({turn: async pair => {
+    await pair.takeBack(); // the user pressed a key while the model was thinking
+    reply = await pair.edit({file: 'package.json', line: 1, endLine: 1, text: 'x'});
+    toolsDuring = [...toolsOf];
+    return 'ok';
+  }});
+  await pair.drive('you take it');
+  assert.match(reply, /^The user has the wheel now/);
+  assert.deepEqual(edits, []);
+  assert.deepEqual(roleChanges(), ['driver', 'navigator']);
+  assert.equal(pair.role, 'navigator');
+  assert.ok(sent.some(message => message.text === 'You have the wheel back.'));
+  // The answer keeps its tools, so the policy refuses with a reason; they change once it ends.
+  assert.deepEqual(toolsDuring, ['driver']);
+  assert.deepEqual(toolsOf, ['driver', 'navigator']);
+});
+
+test('without Neovim there is no wheel to hand over', async () => {
+  let asked = false;
+  const {pair, sent} = driverSession({editor: false, turn: async () => { asked = true; return 'ok'; }});
+  await pair.drive('you take it');
+  assert.equal(asked, false);
+  assert.equal(pair.role, 'navigator');
+  assert.ok(sent.some(message => /drives only in Neovim/.test(message.text ?? '')));
+});
+
+test('an edit outside the Driver role, or in a remark nobody asked for, changes nothing', async () => {
+  const {pair, edits} = driverSession();
+  assert.match(await pair.edit({file: 'package.json', line: 1, endLine: 1, text: 'x'}), /^The user has the wheel now/);
+  pair.role = 'driver';
+  pair.unasked = true;
+  assert.match(await pair.edit({file: 'package.json', line: 1, endLine: 1, text: 'x'}), /^Not in a remark nobody asked for/);
+  pair.unasked = false;
+  assert.match(await pair.edit({file: '../outside.js', line: 1, endLine: 1, text: 'x'}), /^No file/);
+  assert.deepEqual(edits, []);
+});
+
+test('no remark starts while Pair has the wheel', async () => {
+  const {pair} = driverSession();
+  let asked = 0;
+  pair.partner.ask = async () => { asked++; return 'remark'; };
+  failTwice(pair);
+  pair.role = 'driver';
+  await pair.tick();
+  assert.equal(asked, 0);
+});
+
+test('a suggestion goes to the editor as an inline diff, in any role', async () => {
+  const {pair, sent} = driverSession();
+  assert.match(await pair.suggest({file: 'package.json', line: 2, endLine: 3, text: 'a\nb', note: 'rename'}), /accepts it with one key/);
+  const shown = sent.find(message => message.type === 'suggest');
+  assert.deepEqual({line: shown.line, endLine: shown.endLine, text: shown.text, note: shown.note}, {line: 2, endLine: 3, text: 'a\nb', note: 'rename'});
+  assert.ok(shown.file.endsWith('package.json'));
+  assert.ok(sent.some(message => message.text === 'package.json:2-3 suggestion: rename\na\nb'));
+  assert.match(await pair.suggest({file: 'package.json', line: 3, endLine: 2, text: '', note: 'x'}), /before line/);
+  const count = (await readFile('package.json', 'utf8')).split('\n').length;
+  assert.match(await pair.suggest({file: 'package.json', line: count + 1, endLine: count + 1, text: 'x', note: 'x'}), /past the end of package\.json/);
+  assert.equal(sent.filter(message => message.type === 'suggest').length, 1, 'a line past the end is not shown');
+});
+
+test('the Driver types into the user\'s terminal only after a yes, never Enter, and never what the policy refuses', async () => {
+  const {pair, sent, typed} = driverSession();
+  pair.role = 'driver';
+  pair.receive({kind: 'focus', target: 'terminal', pane: 'w1:p1', scrolled: false});
+  pair.receive({kind: 'focus', target: 'chat', pane: 'w1:p2', scrolled: false});
+
+  const denied = pair.type({text: 'npm test'});
+  await Promise.resolve();
+  assert.match(lastConfirm(sent).text, /type `npm test` into your terminal \(pane w1:p1\), without pressing Enter/);
+  pair.answer(lastConfirm(sent).id, false);
+  assert.match(await denied, /did not allow/);
+
+  const allowed = pair.type({text: 'npm test'});
+  await Promise.resolve();
+  pair.answer(lastConfirm(sent).id, true);
+  assert.match(await allowed, /^Typed/);
+
+  for (const text of ['npm test\r', 'npm test\n', 'rm -rf x\x03', '\x1b[A', '   ']) {
+    assert.match(await pair.type({text}), /one line of plain text/, JSON.stringify(text));
+  }
+  assert.match(await pair.type({text: 'git push --force'}), /^Refused: git push/);
+  assert.deepEqual(typed, [['w1:p1', 'npm test']]);
+});
+
+test('type needs the Driver role, a known terminal pane, and the wheel still in Pair\'s hands after the yes', async () => {
+  const {pair, sent, typed} = driverSession();
+  assert.match(await pair.type({text: 'npm test'}), /^The user has the wheel now/);
+  pair.role = 'driver';
+  assert.match(await pair.type({text: 'npm test'}), /No terminal pane/);
+  pair.receive({kind: 'command_end', pane: 'w1:p3', cmd: 'ls', exit: 0, output: ''});
+  const reply = pair.type({text: 'npm test'});
+  await Promise.resolve();
+  await pair.takeBack();
+  pair.answer(lastConfirm(sent).id, true);
+  assert.match(await reply, /^The user has the wheel now/);
+  assert.deepEqual(typed, []);
 });

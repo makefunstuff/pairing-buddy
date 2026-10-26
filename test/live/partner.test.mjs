@@ -47,6 +47,7 @@ function recordingHands(root) {
     say: record('say', 'shown'),
     point: record('point', 'highlighted'),
     open: record('open', 'opened in a split'),
+    suggest: record('suggest', 'Shown in the editor. The user accepts it with one key or ignores it.'),
     read: async (_conversation, {file, from, to}) => {
       calls.push({name: 'read', args: {file}});
       const source = await readProjectPath(root, file);
@@ -97,10 +98,11 @@ describe('Partner on live models', {skip: stacks.length ? false : SKIP_REASON}, 
       await partner.close();
       t.diagnostic(`tools: ${calls.map(call => `${call.name}(${JSON.stringify(call.args)})`).join(', ')}`);
       t.diagnostic(`answer: ${answer}`);
-      const points = calls.filter(call => call.name === 'point');
-      assert.ok(points.length >= 1, 'it points at code');
+      // A suggestion marks the line in the editor too, with the fix.
+      const points = calls.filter(call => call.name === 'point' || call.name === 'suggest');
+      assert.ok(points.length >= 1, 'it points at code or suggests a fix');
       assert.ok(points.some(({args}) => (args.file.endsWith('ws.ts') && args.line === 1) || (args.file.endsWith('ws.test.ts') && args.line === 4)),
-        'it points at the constant or the failing assertion');
+        'it marks the constant or the failing assertion');
       assert.doesNotMatch(answer, /^\W*silent\W*$/i);
     });
 

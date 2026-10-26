@@ -10,9 +10,14 @@ const HELP = `/goal <text>   set the session goal
 /level ${LEVELS.join('|')}   how often Pair speaks unasked
 /scout         Pair may search and run commands in its own pane
 /navigate      back to watching and pointing (the default)
+/drive [what]  hand Pair the wheel for one change (or say "you take it" or "your turn")
 /end           end the session and write a session note
 /quit          close this pane (the session goes on)
 anything else  ask Pair`;
+
+// Saying one of these hands Pair the wheel, the way you would to a person next to you: alone, or followed by
+// a request after punctuation ("you take it: set the timeout"). "your turn to explain: ..." stays a question.
+const HAND_OVER = /^(you take it|your turn)\s*([.!,:;-]|$)/i;
 
 /** The parsed form of one typed line: a daemon message, or a local action. */
 export function parseInput(line) {
@@ -24,9 +29,11 @@ export function parseInput(line) {
   if (command === '/level' && LEVELS.includes(arg)) return {type: 'level', level: arg};
   if (command === '/scout') return {type: 'role', role: 'scout'};
   if (command === '/navigate') return {type: 'role', role: 'navigator'};
+  if (command === '/drive') return {type: 'drive', text: arg};
   if (command === '/end') return {type: 'end'};
   if (command === '/quit') return {local: 'quit'};
   if (command.startsWith('/')) return {local: 'help'};
+  if (HAND_OVER.test(text)) return {type: 'drive', text};
   return {type: 'ask', text};
 }
 

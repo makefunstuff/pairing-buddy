@@ -1,6 +1,7 @@
 // What Pair learns from herdr: which pane has focus, which commands run in the user's panes, and their output.
 // herdr's socket API has no command boundaries or exit codes (see docs/herdr.md), so commands are found
 // by polling each pane's foreground process, and exit codes come from the optional shell hook.
+// The one thing Pair sends to a user's pane is the Driver's `type`: plain text, never Enter.
 import {connect} from 'node:net';
 import {readMessages, sendMessage} from './protocol.mjs';
 
@@ -39,6 +40,9 @@ export function commandOutput(text, cmd) {
   const start = probe ? lines.findLastIndex(line => line.includes(probe)) : -1;
   return lines.slice(start + 1, -1).join('\n');
 }
+
+/** Whether `text` is one line of plain text: no Enter, no Ctrl-C or other control keys, no escape sequences. */
+export const plainLine = text => text.trim() !== '' && !/[\x00-\x1f\x7f]/.test(text);
 
 export class PaneWatch {
   /**
@@ -105,6 +109,13 @@ export class PaneWatch {
     if (key === this.focus) return;
     this.focus = key;
     this.emit(event);
+  }
+
+  /** Types `text` at the prompt of the user's terminal pane `pane`. Enter stays with the user. */
+  async type(pane, text) {
+    if (!plainLine(text)) throw new Error('Only one line of plain text can be typed');
+    if (this.targetOf(pane) !== 'terminal') throw new Error(`Pane ${pane} is not one of the user's terminals`);
+    await herdrRequest(this.socketPath, 'pane.send_text', {pane_id: pane, text});
   }
 
   targetOf(pane) {

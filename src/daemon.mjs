@@ -12,7 +12,7 @@ import {readMessages, sendMessage} from './protocol.mjs';
 import {ScoutPane} from './scout-pane.mjs';
 import {PairSession} from './session.mjs';
 import {openStore} from './store.mjs';
-import {ROLES} from './tools.mjs';
+import {ROLE_TOOLS, ROLES} from './tools.mjs';
 import {createWatcher} from './watcher.mjs';
 
 const EDITOR_REPLY_MS = 2000;
@@ -44,7 +44,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     model: pairModels.partner,
     thinking: config.models.partner.thinking,
     hands: {
-      say: hand('say'), point: hand('point'), open: hand('open'), read: hand('read'), search: hand('search'), run: hand('run'),
+      ...Object.fromEntries(ROLE_TOOLS.driver.map(name => [name, hand(name)])), // the Driver has every tool
       roleOf: conversationId => sessionOfConversation(conversationId)?.role ?? 'navigator',
     },
   });
@@ -119,6 +119,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
       emit: event => receive(session, event),
       log: sessionLog,
     });
+    session.panes = watch;
     watches.set(session.root, watch);
     watch.start();
     log(`[${basename(session.root)}] watching herdr workspace ${herdr.workspace}`);
@@ -172,6 +173,8 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     if (message.type === 'goal') return session.setGoal(message.text);
     if (message.type === 'level') return session.setLevel(message.level);
     if (message.type === 'role' && ROLES.includes(message.role)) return session.setRole(message.role);
+    if (message.type === 'drive') return session.drive(message.text ?? '');
+    if (message.type === 'take_back') return session.takeBack();
     if (message.type === 'confirm') return session.answer(message.id, message.ok === true);
     if (message.type === 'end') return endSession(session);
   }
