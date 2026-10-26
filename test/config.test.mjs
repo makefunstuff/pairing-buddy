@@ -22,7 +22,9 @@ test('the first run writes the commented example, which loads; later runs keep t
   writeFileSync(path, '{"level": "quiet", "models": {"watcher": {"api": "openai", "baseUrl": "http://x/v1", "model": "w"}, "partner": {"api": "anthropic", "model": "p"}}}');
   assert.equal(createConfig(path), false);
   assert.equal(loadConfig(path).level, 'quiet');
-  assert.equal(loadConfig(path).keepWarm, true, 'on unless turned off');
+  assert.equal(loadConfig(path).keepWarm, true, 'on for a local Watcher unless turned off');
+  writeFileSync(path, '{"models": {"watcher": {"api": "anthropic", "model": "w"}, "partner": {"api": "anthropic", "model": "p"}}}');
+  assert.equal(loadConfig(path).keepWarm, false, 'off for a cloud Watcher: nothing to keep loaded, and each ping is paid');
 });
 
 test('a broken config says which file and why', () => {

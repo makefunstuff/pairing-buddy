@@ -8,7 +8,7 @@ export const TIMING = {
   recentMs: 120_000, // older failures are history, not news
   stallMs: 90_000,
   newCodeMs: 60_000, // an edit this close before a diagnostic counts as the code that caused it
-  driftWindowMs: 10 * 60_000, // the edits a drift check looks at
+  driftWindowMs: 10 * 60_000, // drift is looked at only while the last edit is this recent
 };
 
 /** Not looked at: never seen at the bottom of its pane, or the user scrolled away from it since (scrolled past). */
@@ -71,12 +71,11 @@ function diagnosticTriggers(state) {
 function driftTriggers(state, now) {
   const latest = state.edits.at(-1);
   if (!state.goal || !latest || now - latest.at > TIMING.driftWindowMs) return [];
-  const recent = state.edits.filter(edit => now - edit.at <= TIMING.driftWindowMs);
-  const others = [...new Set(recent.map(edit => edit.file))].filter(file => file !== latest.file);
-  const detail = `Possible drift from the goal "${state.goal}": the user now edits ${latest.file}`
-    + `${others.length ? ` (recently also ${others.join(', ')})` : ''} on branch ${state.branch ?? 'unknown'}.`;
-  // Once per file and branch: moving into a file is when work drifts, and staying in it is no news.
-  return [{kind: 'drift', key: `drift:${state.branch}:${latest.file}`, detail, file: latest.file}];
+  // Short: the goal is in the state both models get, and the file now edited is the news.
+  const detail = `Possible drift from the goal: the user now edits ${latest.file}${state.branch ? ` on branch ${state.branch}` : ''}.`;
+  // Judged once per file and branch: moving into a file is when work drifts, and staying in it is no news.
+  // It lasts while the user stays in that file, so a budget that holds it back does not lose it.
+  return [{kind: 'drift', key: `drift:${state.branch}:${latest.file}`, detail, file: latest.file, lasting: true}];
 }
 
 /** The candidate remarks for this moment whose keys have not fired yet. */

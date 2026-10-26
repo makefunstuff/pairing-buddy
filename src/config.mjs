@@ -50,14 +50,16 @@ export function apiKeyOf(entry) {
 export function parseConfig(raw) {
   const level = raw.level ?? 'normal';
   if (!LEVELS.includes(level)) throw new Error(`config: level must be one of ${LEVELS.join(', ')}`);
+  const models = {watcher: modelConfig('watcher', raw.models?.watcher), partner: modelConfig('partner', raw.models?.partner)};
   return {
     level,
     typingPauseMs: raw.typingPauseMs ?? 2000,
     autoTune: raw.autoTune ?? true,
-    keepWarm: raw.keepWarm ?? true,
+    // A cloud model is never unloaded, and each ping would be a paid request.
+    keepWarm: raw.keepWarm ?? models.watcher.api === 'openai',
     socket: raw.socket ?? defaultSocketPath(),
     dataDir: raw.dataDir ?? join(xdg('XDG_STATE_HOME', '.local/state'), 'pairing-buddy'),
-    models: {watcher: modelConfig('watcher', raw.models?.watcher), partner: modelConfig('partner', raw.models?.partner)},
+    models,
   };
 }
 

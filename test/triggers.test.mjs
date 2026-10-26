@@ -91,7 +91,8 @@ test('drift is checked once for each file the user moves into, only with a goal 
   const [trigger] = detectTriggers(state, 2000);
   assert.equal(trigger.kind, 'drift');
   assert.equal(trigger.file, 'docs/x.md');
-  assert.match(trigger.detail, /fix reconnect.*now edits docs\/x\.md \(recently also src\/ws\.ts\)/);
+  assert.equal(trigger.detail, 'Possible drift from the goal: the user now edits docs/x.md.');
+  assert.equal(trigger.lasting, true);
   const fired = new Set([trigger.key]);
   assert.deepEqual(kinds(fold(state, edit('docs/x.md', 3000)), 4000, fired), [], 'more edits in the same file');
   assert.deepEqual(kinds(fold(state, edit('src/billing.ts', 3000)), 4000, fired), ['drift'], 'a new file');

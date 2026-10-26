@@ -9,7 +9,7 @@ Every candidate remark (a failed command you missed, the same error again, a new
 3. **Prefilter.** Cheap rules drop what is plainly noise, without a model (below).
 4. **Watcher.** The model scores what is left. Below the trigger's bar the trigger is dropped; at or above it, the Partner gets it.
 
-Each trigger is looked at once: a dropped trigger does not come back.
+Each trigger is looked at once: a dropped trigger does not come back. Drift is the exception for the budget: it lasts as long as you stay in that file, so when the budget holds it back it is looked at again on each tick (logged once) until the budget allows, and then judged.
 
 ## The prefilter
 
@@ -19,9 +19,9 @@ The rules only ever drop; anything they are unsure of goes to the Watcher.
 | --- | --- |
 | Exit 1 of a command whose exit 1 is an answer, not a failure | `grep`, `rg`, `ag`, `diff`, `cmp`, `test`, `[`, `which`, `pgrep`, `git diff`, `git grep` finding nothing or a difference |
 | A command you stopped yourself | exit 130 (Ctrl-C) or 143 |
-| Drift into a file that shares a word with the goal, by its path or by what you just wrote in it | goal "reconnect waits 30 s after the phone sleeps", editing `src/power/sleepWatch.ts`, or a line with `RECONNECT_TIMEOUT_MS` |
+| Drift into a file whose path shares a word with the goal | goal "reconnect waits 30 s after the phone sleeps", editing `src/power/sleepWatch.ts` or `src/net/reconnecting.ts` |
 
-Words are split at punctuation, underscores and camelCase; words shorter than four letters, and common ones like "test", "code", "file" or "error", do not count; "sleep" matches "sleeps".
+Paths are split into words at slashes, dots, underscores and camelCase. A path word must be a goal word, give or take a plural or verb ending ("sleep" matches "sleeps", "cache" matches "caches"), never just share a prefix ("form" does not match "formatted"). Goal words shorter than four letters, and common ones like "test", "code", "file" or "error", do not count. What you typed in the file is not looked at: code is full of ordinary words ("wait", "user", "index") that any goal may share.
 
 ## A short question, a short answer
 
@@ -34,7 +34,7 @@ Words are split at punctuation, underscores and camelCase; words shorter than fo
 
 Many local servers unload a model that has not been asked for a few minutes, and loading it again takes from seconds to minutes: the Watcher's call then times out, and Pair stays quiet until the model is back. While you work (a key, an edit or a command in the last five minutes), the daemon makes sure the Watcher's model has been asked something in the last four minutes: if not, it sends the Watcher's own instructions with a one-token answer. When you stop working, the pings stop too, and the server may unload the model as it likes.
 
-`"keepWarm": false` turns this off, for example for a cloud Watcher, where nothing is unloaded.
+`"keepWarm": false` turns this off. With an `anthropic` Watcher it is off unless you set it: a cloud model is never unloaded, and each ping would be a paid request.
 
 ## Two roles, one loaded model
 

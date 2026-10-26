@@ -110,6 +110,7 @@ export class PairSession {
     this.lastConfirmation = 0;
     this.paneUses = 0; // searches and commands in the running turn
     this.fired = new Set();
+    this.deferred = new Set(); // keys of lasting triggers the budget holds back
     this.busy = false; // a Partner turn is running
     this.ticking = false;
     this.spoke = false; // anything reached the user this turn
@@ -156,8 +157,12 @@ export class PairSession {
       if (triggers.length && this.autoTune) this.budget.tune(tuning(this.store.remarks(now - WINDOW_MS), now));
       for (const trigger of triggers) {
         const decision = await decide({trigger, state: this.state, now, budget: this.budget, score: this.score, typingPauseMs: this.typingPauseMs});
-        this.log(`${trigger.kind}: ${decision.verdict} (${decision.reason})`);
+        if (decision.verdict !== 'later' || !this.deferred.has(trigger.key)) this.log(`${trigger.kind}: ${decision.verdict} (${decision.reason})`);
         if (decision.verdict === 'wait') return;
+        if (decision.verdict === 'later') {
+          this.deferred.add(trigger.key); // logged once, looked at again each tick until the budget allows
+          continue;
+        }
         this.fired.add(trigger.key);
         if (decision.verdict === 'speak') return await this.remark(trigger, decision.score);
       }

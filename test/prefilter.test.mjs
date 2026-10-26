@@ -22,16 +22,23 @@ test('a search that finds nothing, or a command the user stopped, is not a failu
   assert.equal(prefilter({...failure('rg x', 1), kind: 'stall'}, state)?.value, 0, 'also for a stall after it');
 });
 
-test('drift into a file that shares words with the goal, by its path or its new text, is noise', () => {
-  const state = edited(['src/ws.mjs', 'export const RECONNECT_TIMEOUT_MS = 30000;'], ['src/power/sleepWatch.ts', ''], ['src/billing.mjs', 'export const tax = 0.2;']);
-  assert.equal(onGoal(state, 'src/ws.mjs'), true, 'by what was written');
-  assert.equal(onGoal(state, 'src/power/sleepWatch.ts'), true, 'by the path, "sleep" for "sleeps"');
-  assert.equal(onGoal(state, 'src/billing.mjs'), false);
-  assert.match(prefilter({kind: 'drift', key: 'd', detail: '', file: 'src/ws.mjs'}, state).reason, /shares words with the goal/);
-  assert.equal(prefilter({kind: 'drift', key: 'd', detail: '', file: 'src/billing.mjs'}, state), null, 'the Watcher judges it');
+test('drift into a file whose path shares a word with the goal is noise', () => {
+  assert.equal(onGoal(GOAL, 'src/power/sleepWatch.ts'), true, '"sleep" for "sleeps"');
+  assert.equal(onGoal('reconnect waits', 'src/net/reconnecting.ts'), true);
+  assert.equal(onGoal('update caches', 'src/cache.ts'), true);
+  assert.equal(onGoal(GOAL, 'src/ws.mjs'), false, 'no word in common: the Watcher judges it');
+  const state = fold(initialState({goal: GOAL}), {kind: 'edit', file: 'src/power/sleepWatch.ts', from: 1, to: 1, text: '', at: 0});
+  assert.match(prefilter({kind: 'drift', key: 'd', detail: '', file: 'src/power/sleepWatch.ts'}, state).reason, /shares a word with the goal/);
+  assert.equal(prefilter({kind: 'drift', key: 'd', detail: '', file: 'src/billing.mjs'}, state), null);
 });
 
-test('common words and short ones do not make a file look on-goal', () => {
-  const state = fold(initialState({goal: 'fix the test for the ui after login'}), {kind: 'edit', file: 'test/billing.test.ts', from: 1, to: 1, text: 'build()', at: 0});
-  assert.equal(onGoal(state, 'test/billing.test.ts'), false);
+test('what was typed, prefixes and common words do not make an unrelated file look on-goal', () => {
+  const typed = 'const formatted = parseFloat(user.total); await wait(10); indexOfLine(a)';
+  for (const goal of ['fix the login form validation', 'reconnect waits 30 s after the phone sleeps', 'speed up the search index',
+    'add user avatars to the profile page', 'make the parser handle tabs', 'fix the test for the ui after login']) {
+    const state = fold(initialState({goal}), {kind: 'edit', file: 'src/billing/invoice.ts', from: 1, to: 1, text: typed, at: 0});
+    assert.equal(prefilter({kind: 'drift', key: 'd', detail: '', file: 'src/billing/invoice.ts'}, state), null, goal);
+  }
+  assert.equal(onGoal('fix the login form validation', 'src/billing/formatted.ts'), false, '"form" is not "formatted"');
+  assert.equal(onGoal('fix the test for the ui', 'test/billing.test.ts'), false, '"test" is too common');
 });

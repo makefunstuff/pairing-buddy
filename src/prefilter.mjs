@@ -15,14 +15,18 @@ export function words(text) {
 }
 
 const goalWords = goal => words(goal).filter(word => word.length >= 4 && !COMMON.has(word));
-// "sleep" matches "sleeps" and "reconnect" matches "reconnecting"; short words must match exactly.
-const sameWord = (a, b) => a === b || (Math.min(a.length, b.length) >= 4 && (a.startsWith(b) || b.startsWith(a)));
+/** `word` and what it may be without a plural or verb ending: "sleeps" may be "sleep", "caches" "cache" or "cach". */
+const forms = word => [word, ...['s', 'es', 'ed', 'ing'].filter(end => word.endsWith(end) && word.length - end.length >= 3).map(end => word.slice(0, -end.length))];
+// Whole words only, give or take an ending: a prefix ("form" in "formatted") says nothing about the work.
+const sameWord = (a, b) => forms(a).some(form => forms(b).includes(form));
 
-/** Whether `file`, by its path or the text just written in it, shares a word with the goal. */
-export function onGoal(state, file) {
-  const written = state.edits.filter(edit => edit.file === file).map(edit => edit.text).join(' ');
-  const fileWords = new Set(words(`${file} ${written}`));
-  return goalWords(state.goal ?? '').some(goal => [...fileWords].some(word => sameWord(goal, word)));
+/**
+ * Whether the path of `file` shares a word with the goal. Only the path: what was typed in a file is full of
+ * ordinary words ("wait", "index", "user") that any goal may share.
+ */
+export function onGoal(goal, file) {
+  const pathWords = words(file);
+  return goalWords(goal ?? '').some(word => pathWords.some(part => sameWord(word, part)));
 }
 
 function exitIsAnAnswer(command) {
@@ -35,6 +39,6 @@ export function prefilter(trigger, state) {
   const {command} = trigger;
   if (command && exitIsAnAnswer(command)) return {value: 0, reason: `exit 1 of \`${command.cmd}\` is an answer, not a failure`};
   if (command && INTERRUPTED.has(command.exit)) return {value: 0, reason: `\`${command.cmd}\` was stopped by the user`};
-  if (trigger.kind === 'drift' && onGoal(state, trigger.file)) return {value: 0, reason: `${trigger.file} shares words with the goal`};
+  if (trigger.kind === 'drift' && onGoal(state.goal, trigger.file)) return {value: 0, reason: `the path ${trigger.file} shares a word with the goal`};
   return null;
 }

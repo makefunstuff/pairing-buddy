@@ -52,6 +52,14 @@ test('the gate drops a remark when the budget is spent, without asking the Watch
   assert.equal(asked.length, 0);
 });
 
+test('a lasting trigger the budget holds back is for later, not dropped', async () => {
+  const budget = new Budget('normal');
+  budget.spend(10 * MIN - 1000);
+  const drift = {kind: 'drift', key: 'd', detail: '', file: 'src/billing.ts', lasting: true};
+  const decision = await decide({trigger: drift, state: initialState({goal: 'fix reconnect'}), now: 10 * MIN, budget, score: async () => ({value: 9}), typingPauseMs: 2000});
+  assert.deepEqual(decision, {verdict: 'later', reason: 'spoke too recently'});
+});
+
 test('the gate drops what the prefilter knows for noise, without asking the Watcher', async () => {
   const asked = [];
   const grep = {kind: 'failed_command', key: 'g', detail: '`rg x` failed', command: {cmd: 'rg x', exit: 1}};

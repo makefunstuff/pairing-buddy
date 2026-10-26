@@ -2,16 +2,15 @@
 // It answers with the score alone: every token it writes costs latency on each candidate remark.
 import {describeBriefly} from './describe.mjs';
 
-const SYSTEM = `You help a pair programmer decide when to speak up.
-You get a short session state and one thing that just happened.
-Score from 0 to 10 how much the programmer would want a short remark about it right now.
-0-3: noise, obvious, or they are already on it. 4-6: maybe useful. 7-10: they will lose time without it.
-Answer with the score alone: one number.`;
+// Every token here is read again on each candidate remark, so the instructions are as short as they can be.
+const SYSTEM = `Score 0-10 how much a pair programmer would want a short remark about what just happened.
+0-3: noise, obvious, or they are already on it. 7-10: they will lose time without it.
+Answer with one number.`;
 
 // What to score, for triggers where "would they want a remark" is the wrong question: models then score how
 // important the work is, not whether it drifted.
 const QUESTIONS = {
-  drift: 'Score how clearly the file now edited is unrelated to the goal: 0 if it could be part of the goal, 10 if it is plainly something else.',
+  drift: 'Score how clearly this file is unrelated to the goal: 0 if it could be part of it, 10 if it is plainly other work.',
 };
 
 const MAX_TOKENS = 8; // a number, with room for a model that wraps it in a word or two

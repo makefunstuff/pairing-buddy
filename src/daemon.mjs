@@ -37,8 +37,8 @@ export function healthNote(role, reason) {
 const timestamp = () => new Date().toTimeString().slice(0, 8);
 const defaultLog = line => process.stderr.write(`${timestamp()} ${line}\n`);
 
-/** `probe(role)` checks that a model answers (see probe.mjs); tests pass their own. */
-export async function startDaemon(config, {pairModels = createPairModels(config), probe, log = defaultLog} = {}) {
+/** `probe(role)` checks that a model answers (see probe.mjs); tests pass their own, and a short `keepWarmMs`. */
+export async function startDaemon(config, {pairModels = createPairModels(config), probe, log = defaultLog, keepWarmMs = KEEP_WARM_MS} = {}) {
   mkdirSync(config.dataDir, {recursive: true, mode: 0o700});
   const owner = acquireOwner(config.dataDir);
   const store = openStore(join(config.dataDir, 'sessions.sqlite'));
@@ -291,7 +291,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
   /** Keeps the Watcher's model loaded while someone works, unless it is down: then the health probe checks it. */
   function keepWarm() {
     const now = Date.now();
-    if (!config.keepWarm || now - scoreRemark.lastCallAt < KEEP_WARM_MS || !health.ok('watcher')) return;
+    if (!config.keepWarm || now - scoreRemark.lastCallAt < keepWarmMs || !health.ok('watcher')) return;
     if (![...live.values()].some(session => session.active(now))) return;
     scoreRemark.warm().then(result => health.report('watcher', result.error));
   }
