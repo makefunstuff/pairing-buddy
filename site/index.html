@@ -276,7 +276,7 @@ footer a { color: var(--muted); }
   </div>
   <div class="col proto" role="note">
     <span class="tag">Captures</span>
-    <p><b>All three moments ship in v0.9:</b> their captures are the released plugin and daemon in a clean Neovim, with real <code>go test</code> runs; only the models' words and their timing are scripted.</p>
+    <p><b>Recorded from v0.9 as it ships:</b> the plugin and the daemon in a clean Neovim, with real <code>go test</code> runs. Only the models are scripted: a stand-in server answers the daemon with fixed words and timing, so <a href="https://github.com/makefunstuff/pairing-buddy/tree/main/docs/captures">the tapes</a> record the same clips every time.</p>
   </div>
 
   <article class="moment" id="wrong-turn" aria-labelledby="m1-h">
@@ -286,21 +286,21 @@ footer a { color: var(--muted); }
       <p>A retry test wants five attempts and gets four. It looks like an off-by-one in the backoff, so you go and fix the shift. As you pause, the pair reads your edit and the worker. Two quiet lines under your edit: the shift is fine, attempt five lands at exactly 15&nbsp;s, and the worker gives up on <code>&gt;=</code>.</p>
     </div>
     <div>
-      <div class="stage loop"><video data-v="m1" muted loop playsinline preload="none" poster="media/m1-still1.webp" width="1280" height="768" aria-label="Capture of v0.7: the pair corrects a wrong turn in backoff.go">
+      <div class="stage loop"><video data-v="m1" muted loop playsinline preload="none" poster="media/m1-still1.webp" width="1280" height="768" aria-label="Capture of v0.9: the pair corrects a wrong turn in backoff.go">
         <source data-src="media/m1.webm" type="video/webm"><source data-src="media/m1.mp4" type="video/mp4">
       </video></div>
       <div class="beats" data-for="m1">
         <button class="beat" data-t="0"><b>0:00</b>the test fails: 4 attempts, want 5</button>
-        <button class="beat" data-t="5"><b>0:05</b>you open backoff.go and change the shift</button>
+        <button class="beat" data-t="6.5"><b>0:07</b>you open backoff.go and change the shift</button>
         <button class="beat" data-t="10"><b>0:10</b>it reads backoff.go, then worker.go</button>
-        <button class="beat" data-t="13"><b>0:13</b>two quiet lines under your edit</button>
-        <button class="beat" data-t="16"><b>0:16</b>you undo; M-j goes to worker.go:33</button>
-        <button class="beat" data-t="20"><b>0:20</b>&gt;= becomes &gt;; the test passes</button>
+        <button class="beat" data-t="12.6"><b>0:13</b>two quiet lines under your edit</button>
+        <button class="beat" data-t="16.5"><b>0:17</b>you undo; M-j goes to worker.go:35</button>
+        <button class="beat" data-t="20.3"><b>0:20</b>&gt;= becomes &gt;; the test passes</button>
       </div>
     </div>
     <p class="col why"><b>Why it matters.</b> It did the arithmetic (1+2+4+8 = 15) across two files at the moment you committed to the wrong one, then got out of the way. No chat window opened and nothing moved your cursor: its words sit where your eyes already are.</p>
     <div class="stills">
-      <figure><img src="media/m1-still1.webp" width="1280" height="768" loading="lazy" decoding="async" alt="Two quiet lines under the edited shift in backoff.go, naming worker.go:33"><figcaption>The remark under your edit: the arithmetic, and where the real cause is.</figcaption></figure>
+      <figure><img src="media/m1-still1.webp" width="1280" height="768" loading="lazy" decoding="async" alt="Two quiet lines under the edited shift in backoff.go, naming worker.go:35"><figcaption>The remark under your edit: the arithmetic, and where the real cause is.</figcaption></figure>
       <figure><img src="media/m1-still2.webp" width="1280" height="768" loading="lazy" decoding="async" alt="worker.go line 33 tinted, with the >= underlined and a short note"><figcaption>After M-j: the line is tinted, <code>&gt;=</code> underlined, one note at the end.</figcaption></figure>
     </div>
   </article>
@@ -312,16 +312,16 @@ footer a { color: var(--muted); }
       <p>The delivery tests pass, so you'd push. The pair ran <code>go test -json ./...</code> in its own pane as you saved: the statusline spins, then names the one test that fails, and a ✗ marks it in the test file. Attempt five now starts the instant the queue's lease on the job expires, so a second worker can take the same webhook. It shows a one-line fix in <code>queue.go</code>, and M-y takes it.</p>
     </div>
     <div>
-      <div class="stage loop"><video data-v="m2" muted loop playsinline preload="none" poster="media/m2-still1.webp" width="1280" height="768" aria-label="Capture of v0.8: the pair runs all tests on save and suggests the fix in the queue lease">
+      <div class="stage loop"><video data-v="m2" muted loop playsinline preload="none" poster="media/m2-still1.webp" width="1280" height="768" aria-label="Capture of v0.9: the pair runs all tests on save and suggests the fix in the queue lease">
         <source data-src="media/m2.webm" type="video/webm"><source data-src="media/m2.mp4" type="video/mp4">
       </video></div>
       <div class="beats" data-for="m2">
         <button class="beat" data-t="0.5"><b>0:01</b>a save: go test ./... spins in the statusline</button>
-        <button class="beat" data-t="3.5"><b>0:04</b>red on the delivery test, the bug you know</button>
-        <button class="beat" data-t="5.5"><b>0:06</b>the fix, saved: TestNoDoubleDelivery fails instead</button>
+        <button class="beat" data-t="1"><b>0:01</b>red on the delivery test, the bug you know</button>
+        <button class="beat" data-t="5.3"><b>0:05</b>the fix, saved: TestNoDoubleDelivery fails instead</button>
         <button class="beat" data-t="9.5"><b>0:10</b>why, under the line you just changed</button>
-        <button class="beat" data-t="15.5"><b>0:16</b>M-j: queue.go:18 with the change in place</button>
-        <button class="beat" data-t="19"><b>0:19</b>M-y, save: 4 tests, 3 packages pass</button>
+        <button class="beat" data-t="15"><b>0:15</b>M-j: queue.go:18 with the change in place</button>
+        <button class="beat" data-t="18"><b>0:18</b>M-y, save: 4 tests, 3 packages pass</button>
       </div>
     </div>
     <p class="col why"><b>Why it matters.</b> A second person keeps an eye on everything you aren't looking at. Here that's a double-delivered webhook, the kind of bug that otherwise reaches you a week later as a customer's duplicate charge. It doesn't arrive as a test log: it arrives as one sentence, under the line that caused it.</p>
@@ -343,11 +343,11 @@ footer a { color: var(--muted); }
       </video></div>
       <div class="beats" data-for="m3">
         <button class="beat" data-t="0"><b>0:00</b>you wrote the first case</button>
-        <button class="beat" data-t="2"><b>0:02</b>:Pair drive the edge cases: it has the wheel</button>
-        <button class="beat" data-t="5"><b>0:05</b>ghost text, a whole line at a time</button>
-        <button class="beat" data-t="9.6"><b>0:10</b>tests the unsaved buffer, hands back</button>
-        <button class="beat" data-t="14.3"><b>0:14</b>u removes all six</button>
-        <button class="beat" data-t="16"><b>0:16</b>Ctrl-R brings them back</button>
+        <button class="beat" data-t="1.2"><b>0:01</b>:Pair drive the edge cases: it has the wheel</button>
+        <button class="beat" data-t="5.3"><b>0:05</b>ghost text, a whole line at a time</button>
+        <button class="beat" data-t="11"><b>0:11</b>tests the unsaved buffer, hands back</button>
+        <button class="beat" data-t="15.8"><b>0:16</b>u removes all six</button>
+        <button class="beat" data-t="17.8"><b>0:18</b>Ctrl-R brings them back</button>
       </div>
     </div>
     <p class="col why"><b>Why it matters.</b> A hand-over feels safe when you can see it happen. The statusline says who has the wheel, the lines arrive at reading speed, and any key you press takes it back. At the end there is one change, one undo step and a tested result, and nothing is saved until you decide.</p>
@@ -372,6 +372,7 @@ footer a { color: var(--muted); }
         <li>Remarks in the chat pane, highlights with a note in Neovim</li>
         <li>Opens a file in a split, asking first while you type</li>
         <li>Suggests a change as an inline diff: <code>Alt-y</code> takes it</li>
+        <li>Runs your tests on each save in its own pane, and marks what fails on its line</li>
       </ul>
       <div class="switch"><code>/navigate</code> · <code>:Pair navigate</code></div>
     </div>
@@ -389,7 +390,7 @@ footer a { color: var(--muted); }
       <h3>Driver <span>when you hand over</span></h3>
       <p>Makes one change in your buffer while you watch, then hands back by itself.</p>
       <ul>
-        <li>One edit, one undo step, unsaved until you <code>:w</code></li>
+        <li>One edit, one undo step, unsaved until you <code>:w</code>; your tests run on the unsaved buffer</li>
         <li>Any key you press takes the wheel back</li>
         <li>Ping-pong TDD: write a failing test, say "your turn"</li>
       </ul>
@@ -431,7 +432,9 @@ footer a { color: var(--muted); }
       <span class="k">"baseUrl"</span>: <span class="s">"http://localhost:8080/v1"</span>,
       <span class="k">"model"</span>: <span class="s">"your-larger-model"</span>
     }
-  }
+  },
+  <span class="c">// tests Pair runs in its own pane when you save</span>
+  <span class="k">"testOnSave"</span>: {<span class="s">"~/src/shop"</span>: <span class="s">"go test -json ./..."</span>}
 }</code></pre>
     </div>
   </div>
@@ -478,7 +481,7 @@ footer a { color: var(--muted); }
       </div>
     </div>
   </div>
-  <p class="req">Needs Node.js 22.19+, Neovim 0.10+, and <a href="https://herdr.dev">herdr</a> for the chat pane and Scout (without herdr, Pair runs as Navigator in any terminal). Scout also uses <code>bash</code> and ripgrep.</p>
+  <p class="req">Needs Node.js 22.19+, Neovim 0.11+, and <a href="https://herdr.dev">herdr</a> for the chat pane and Scout (without herdr, Pair runs as Navigator in any terminal). Scout also uses <code>bash</code> and ripgrep.</p>
 </section>
 
 <section class="wide" id="docs" aria-labelledby="docs-h">
@@ -488,6 +491,7 @@ footer a { color: var(--muted); }
   </div>
   <div class="docs">
     <a class="doc" href="https://github.com/makefunstuff/pairing-buddy#readme"><b>README</b><span>How it works, configuration, every command, known limits.</span></a>
+    <a class="doc" href="https://github.com/makefunstuff/pairing-buddy/blob/main/docs/neovim.md"><b>In Neovim</b><span>Its marks and words, tests on save, and the visible hand-over.</span></a>
     <a class="doc" href="https://github.com/makefunstuff/pairing-buddy/tree/main/docs/video"><b>Video tutorial</b><span>The 3-minute tour above, with its sources and how to render it.</span></a>
     <a class="doc" href="https://github.com/makefunstuff/pairing-buddy/blob/main/docs/driver.md"><b>Driver and suggestions</b><span>Hand-over, take-back, and inline suggestions.</span></a>
     <a class="doc" href="https://github.com/makefunstuff/pairing-buddy/blob/main/docs/scout.md"><b>Scout</b><span>What it may run, what it asks first, what it refuses.</span></a>
@@ -501,7 +505,7 @@ footer a { color: var(--muted); }
   <span>pairing-buddy · MIT</span>
   <a href="https://github.com/makefunstuff/pairing-buddy">GitHub</a>
   <a href="https://github.com/makefunstuff/pairing-buddy/issues">Issues</a>
-  <span>The captures in “Three moments” are v0.9, with scripted model words.</span>
+  <span>The captures in “Three moments” are v0.9 with scripted model words, recorded from <a href="https://github.com/makefunstuff/pairing-buddy/tree/main/docs/captures">tapes in the repo</a>.</span>
 </footer>
 
 <script>
