@@ -1,24 +1,35 @@
--- pairing-buddy for Neovim: sends what you do to the pair daemon and shows what Pair points at and suggests.
--- Pair never saves a buffer. It changes one only while you hand it the wheel (the Driver role): one edit,
--- as one undo step, refused here as soon as you press any key.
--- Once connected, it stays connected: when the daemon restarts, the plugin reconnects by itself.
+-- pairing-buddy for Neovim: sends what you do to the pair daemon and shows what Pair says, points at and
+-- suggests, in the visual language of style.lua, drawn by draw.lua.
+-- Pair never saves a buffer, and never moves your cursor: its jump key does, when you press it. It changes a
+-- buffer only while you hand it the wheel (the Driver role): one edit, as one undo step, refused here as soon
+-- as you press any key. Once connected, it stays connected: when the daemon restarts, it reconnects by itself.
+local draw = require('pair.draw')
+local style = require('pair.style')
+
 local M = {}
 
-local ns = vim.api.nvim_create_namespace('pair')
-local suggest_ns = vim.api.nvim_create_namespace('pair_suggest')
+local ns = draw.ns
 -- Alt-y: no built-in meaning in Normal mode. <Tab> would be the same byte as Ctrl-I, the jumplist's forward jump.
--- Alt-u and Alt-n rate Pair's last unasked remark: useful, or noise.
-local config = {socket = nil, debounce_ms = 2000, max_points = 5, accept_key = '<M-y>', useful_key = '<M-u>', noise_key = '<M-n>'}
+-- Alt-j goes where Pair points. Alt-u and Alt-n rate Pair's last unasked remark: useful, or noise.
+local config = {
+  socket = nil, debounce_ms = 2000, max_points = 5, motion = true, glyphs = {},
+  accept_key = '<M-y>', jump_key = '<M-j>', useful_key = '<M-u>', noise_key = '<M-n>',
+}
 local state = {
-  channel = nil, partial = '', attached = {}, pending = {}, points = {}, open_request = nil, level = nil, role = nil,
-  suggestion = nil, -- the change Pair suggested: {buf, mark, old, new, remark}
+  channel = nil, partial = '', attached = {}, pending = {}, open_request = nil, level = nil, role = nil,
+  points = {}, -- the lines Pair points at: {buf, ids (see draw.point), note, code}, oldest first
+  target = nil, -- the point the jump key goes to: Pair's last
+  words = nil, -- Pair's words under your line: {buf, row, id, remark, text, key}, until your next edit
+  reading = nil, -- the file Pair reads now, for the statusline: {name, till}
+  suggestion = nil, -- the change Pair suggested: {buf, ids, old, new, remark}
   remark = nil, -- the id of Pair's last unasked remark, until you rate it
-  feedback_keys = {}, -- the feedback keys this plugin mapped, to unmap them again
+  keys = {}, -- the keys this plugin mapped while something waits for them, by purpose
   wanted = false, -- connect was asked for (:Pair start or auto_connect) and not undone by :Pair stop
   retry = nil, -- the reconnect timer
   models = {}, -- why each model is down, per role: the daemon's health
 }
 local RETRY_MS = {1000, 2000, 5000, 10000, 30000} -- then every 30 s
+local READING_MS = 2000 -- how long the statusline names the file Pair reads
 
 local function default_socket()
   if vim.env.PAIR_SOCKET then return vim.env.PAIR_SOCKET end
@@ -59,12 +70,120 @@ local function flush(buf)
   event({kind = 'cursor', file = file, line = cursor[1], col = cursor[2]})
 end
 
+local function redraw_status()
+  pcall(vim.cmd, 'redrawstatus!')
+end
+
+--- The loaded buffer of `file` (an absolute path from the daemon), named relative to the working directory.
+local function load(file)
+  local buf = vim.fn.bufadd(vim.fn.fnamemodify(file, ':.'))
+  vim.fn.bufload(buf)
+  return buf
+end
+
+-- Keys that act on something Pair shows are mapped in Normal mode only while it shows, and only where you have
+-- no mapping of your own. `purpose` names the set, to unmap it again.
+
+local function map_keys(purpose, keys)
+  for _, key in ipairs(state.keys[purpose] or {}) do pcall(vim.keymap.del, 'n', key) end
+  state.keys[purpose] = {}
+  for _, entry in ipairs(keys) do
+    local key, run, desc = unpack(entry)
+    if key and key ~= '' and vim.fn.maparg(key, 'n') == '' then
+      vim.keymap.set('n', key, run, {desc = desc})
+      table.insert(state.keys[purpose], key)
+    end
+  end
+end
+
+local function unmap_keys(purpose) map_keys(purpose, {}) end
+
+--- How a mapped key reads in Pair's words: <M-j> as M-j. Nil when this plugin did not map it.
+local function key_label(purpose, key)
+  return key and vim.tbl_contains(state.keys[purpose] or {}, key) and (key:gsub('^<(.*)>$', '%1')) or nil
+end
+
+-- Pair's words under your line: they go with your next edit, which counts as having seen them.
+
+local function forget_words(seen)
+  local words = state.words
+  state.words = nil
+  if not words then return end
+  draw.erase(words.buf, {words.id})
+  if seen and words.remark then send({type = 'seen', remark = words.remark}) end
+  redraw_status()
+end
+
+local function draw_words(words, still)
+  words.id = draw.remark(words.buf, words.row, words.text, words.key, {still = still})
+end
+
+-- Points: the lines Pair points at. The last one is where the jump key goes.
+
+local function forget_point(point)
+  draw.erase(point.buf, vim.tbl_values(point.ids))
+  for i, other in ipairs(state.points) do
+    if other == point then table.remove(state.points, i) end
+  end
+  if state.target == point then
+    state.target = state.points[#state.points]
+    if not state.target then unmap_keys('jump') end
+  end
+end
+
+local function clear_points()
+  for _, point in ipairs(vim.list_slice(state.points)) do forget_point(point) end
+end
+
+--- Goes to the place Pair pointed at last, leaving a mark in the jumplist: Ctrl-O comes back.
+function M.jump()
+  local point = state.target
+  local row = point and draw.row(point.buf, point.ids.mark)
+  if not row then return vim.notify('Pair: it points at nothing now') end
+  forget_words(true) -- going there answers what it said
+  vim.cmd("normal! m'")
+  local ok, err = pcall(vim.api.nvim_win_set_buf, 0, point.buf)
+  if not ok then return vim.notify('Pair: ' .. err, vim.log.levels.ERROR) end
+  vim.bo[point.buf].buflisted = true
+  vim.api.nvim_win_set_cursor(0, {row + 1, draw.column(point.buf, row, point.code)})
+  vim.cmd('normal! zz')
+end
+
+local function point(message)
+  local buf = load(message.file)
+  local count = vim.api.nvim_buf_line_count(buf)
+  local first = math.min(message.line, count) - 1
+  local last = math.max(first, math.min(message.endLine or message.line, count) - 1)
+  local code = type(message.code) == 'string' and message.code or nil
+  local new = {buf = buf, ids = draw.point(buf, first, last, message.note, code), note = message.note, code = code}
+  state.reading = nil -- it has read what it needed
+  table.insert(state.points, new)
+  state.target = new
+  map_keys('jump', {{config.jump_key, M.jump, 'Go where Pair points'}})
+  while #state.points > config.max_points do forget_point(state.points[1]) end
+end
+
+--- Places notes and words again for the windows' new widths.
+local function relayout()
+  for _, p in ipairs(state.points) do
+    local mark = vim.api.nvim_buf_is_valid(p.buf) and vim.api.nvim_buf_get_extmark_by_id(p.buf, ns, p.ids.mark, {details = true})
+    if mark and mark[1] then
+      draw.erase(p.buf, {p.ids.note})
+      p.ids.note = draw.note(p.buf, mark[3].end_row or mark[1], p.note, {still = true})
+    end
+  end
+  local words = state.words
+  local row = words and draw.row(words.buf, words.id)
+  if row then
+    draw.erase(words.buf, {words.id})
+    words.row = row
+    draw_words(words, true)
+  end
+end
+
 -- Feedback: whether Pair's unasked remark was useful. Accepting or dismissing its suggestion says so too.
 
-local function unmap_feedback()
-  for _, key in ipairs(state.feedback_keys) do pcall(vim.keymap.del, 'n', key) end
-  state.feedback_keys = {}
-end
+local function unmap_feedback() unmap_keys('feedback') end
 
 -- `id` is the remark's, or nil for the last one; `implicit` feedback is not confirmed in the chat.
 local function feedback(useful, id, implicit)
@@ -76,19 +195,27 @@ local function feedback(useful, id, implicit)
   end
 end
 
--- The feedback keys are mapped while a remark waits for a verdict, and only where you have no mapping of your own.
+-- An unasked remark: its words go under the line you are on, and the feedback keys wait for your verdict.
 local function on_remark(message)
-  unmap_feedback()
   state.remark = message.id
-  for key, useful in pairs({[config.useful_key or ''] = true, [config.noise_key or ''] = false}) do
-    if key ~= '' and vim.fn.maparg(key, 'n') == '' then
-      vim.keymap.set('n', key, function() feedback(useful, state.remark) end, {desc = useful and 'Pair\'s remark was useful' or 'Pair\'s remark was noise'})
-      table.insert(state.feedback_keys, key)
-    end
-  end
+  map_keys('feedback', {
+    {config.useful_key, function() feedback(true, state.remark) end, 'Pair\'s remark was useful'},
+    {config.noise_key, function() feedback(false, state.remark) end, 'Pair\'s remark was noise'},
+  })
+  forget_words(false)
+  local target = type(message.target) == 'table' and state.target or nil
+  local text = type(message.text) == 'string' and message.text or ''
+  -- A remark that only pointed: its note, and where.
+  if text == '' and target then text = ('`%s:%d` %s'):format(vim.fn.fnamemodify(message.target.file, ':.'), message.target.line, target.note) end
+  local buf = vim.api.nvim_get_current_buf()
+  if text == '' or not project_path(buf) then return end
+  state.words = {buf = buf, row = vim.api.nvim_win_get_cursor(0)[1] - 1, text = text, remark = message.id, key = target and key_label('jump', config.jump_key)}
+  draw_words(state.words)
+  state.reading = nil
+  redraw_status()
 end
 
--- Suggestions: an inline diff (the old lines highlighted, the new ones as ghost text below) until you accept or edit them.
+-- Suggestions: the old lines struck through, the new ones under them, until you accept or edit them.
 
 local function text_lines(text)
   if text == '' then return {} end
@@ -99,15 +226,15 @@ local function clear_suggestion()
   local suggestion = state.suggestion
   state.suggestion = nil
   if not suggestion or not vim.api.nvim_buf_is_valid(suggestion.buf) then return end
-  vim.api.nvim_buf_clear_namespace(suggestion.buf, suggest_ns, 0, -1)
+  draw.erase(suggestion.buf, suggestion.ids, draw.suggest_ns)
   if config.accept_key then pcall(vim.keymap.del, 'n', config.accept_key, {buffer = suggestion.buf}) end
 end
 
 -- The lines under the suggestion now, which may have moved since it was shown.
 local function suggested_range(suggestion)
-  local mark = vim.api.nvim_buf_get_extmark_by_id(suggestion.buf, suggest_ns, suggestion.mark, {})
-  if not mark[1] then return nil end
-  return mark[1], mark[1] + #suggestion.old
+  local first = draw.row(suggestion.buf, suggestion.ids[1], draw.suggest_ns)
+  if not first then return nil end
+  return first, first + #suggestion.old
 end
 
 local function still_suggested(suggestion)
@@ -134,8 +261,7 @@ end
 
 local function suggest(message)
   clear_suggestion()
-  local buf = vim.fn.bufadd(message.file)
-  vim.fn.bufload(buf)
+  local buf = load(message.file)
   local count = vim.api.nvim_buf_line_count(buf)
   -- The daemon checked the line against the buffer; it may have shrunk since. A wrong line marks nothing.
   if message.line > count then return vim.notify('Pair: its suggestion is past the end of the buffer, so it was dropped') end
@@ -143,27 +269,28 @@ local function suggest(message)
   local last = math.max(first, math.min(message.endLine or message.line, count) - 1)
   local old = vim.api.nvim_buf_get_lines(buf, first, last + 1, false)
   local new = text_lines(message.text)
-  local ghost = {}
-  for _, line in ipairs(new) do table.insert(ghost, {{line, 'PairSuggestAdd'}}) end
-  local accept = config.accept_key and (' · ' .. config.accept_key .. ' accepts') or ''
-  local mark = vim.api.nvim_buf_set_extmark(buf, suggest_ns, first, 0, {
-    end_row = last,
-    end_col = #old[#old],
-    hl_group = 'PairSuggestDelete',
-    virt_text = {{'  ◇ ' .. message.note .. accept, 'PairNote'}},
-    virt_text_pos = 'eol',
-  })
-  vim.api.nvim_buf_set_extmark(buf, suggest_ns, last, 0, {virt_lines = ghost})
-  -- JSON null arrives as vim.NIL: a suggestion in an answer to you is no remark.
-  local remark = message.remark ~= vim.NIL and message.remark or nil
-  state.suggestion = {buf = buf, mark = mark, old = old, new = new, remark = remark}
+  local key = config.accept_key and (config.accept_key:gsub('^<(.*)>$', '%1'))
   if config.accept_key then
     vim.keymap.set('n', config.accept_key, M.accept, {buffer = buf, desc = 'Accept Pair\'s suggestion'})
+  end
+  -- JSON null arrives as vim.NIL: a suggestion in an answer to you is no remark.
+  local remark = message.remark ~= vim.NIL and message.remark or nil
+  state.suggestion = {buf = buf, ids = draw.suggestion(buf, first, old, new, message.note, key), old = old, new = new, remark = remark}
+  state.reading = nil
+  redraw_status()
+end
+
+--- Your edit of rows `first`..`last` answers what Pair said: its words go, and so does a point on those lines.
+local function edited(buf, first, last)
+  forget_words(true)
+  for _, p in ipairs(vim.list_slice(state.points)) do
+    local mark = p.buf == buf and vim.api.nvim_buf_get_extmark_by_id(buf, ns, p.ids.mark, {details = true})
+    if mark and mark[1] and mark[1] <= last and (mark[3].end_row or mark[1]) >= first then forget_point(p) end
   end
 end
 
 local typing_sent = 0
-local function on_lines(_, buf, _, first, _, new_last)
+local function on_lines(_, buf, _, first, last, new_last)
   local pending = state.pending[buf] or {from = first + 1, to = new_last}
   pending.from = math.min(pending.from, first + 1)
   pending.to = math.max(pending.to, new_last)
@@ -175,11 +302,10 @@ local function on_lines(_, buf, _, first, _, new_last)
   end))
   -- Editing the suggested lines yourself is how you ignore a suggestion.
   local suggestion = state.suggestion
-  if suggestion and suggestion.buf == buf then
-    vim.schedule(function()
-      if state.suggestion == suggestion and not still_suggested(suggestion) then clear_suggestion() end
-    end)
-  end
+  vim.schedule(function()
+    if suggestion and suggestion.buf == buf and state.suggestion == suggestion and not still_suggested(suggestion) then clear_suggestion() end
+    edited(buf, first, math.max(last, new_last))
+  end)
   -- A cheap "still typing" signal, at most every half second, so Pair never interrupts mid-thought.
   if now_ms() - typing_sent > 500 then
     typing_sent = now_ms()
@@ -229,31 +355,13 @@ end
 
 -- What the daemon asks for.
 
-local function clear_points()
-  for _, point in ipairs(state.points) do
-    if vim.api.nvim_buf_is_valid(point.buf) then pcall(vim.api.nvim_buf_del_extmark, point.buf, ns, point.id) end
-  end
-  state.points = {}
-end
-
-local function point(message)
-  local buf = vim.fn.bufadd(message.file)
-  vim.fn.bufload(buf)
-  local count = vim.api.nvim_buf_line_count(buf)
-  local line = math.min(message.line, count) - 1
-  local end_line = math.min(message.endLine or message.line, count) - 1
-  local id = vim.api.nvim_buf_set_extmark(buf, ns, line, 0, {
-    end_row = end_line,
-    end_col = #vim.api.nvim_buf_get_lines(buf, end_line, end_line + 1, false)[1],
-    hl_group = 'PairPoint',
-    virt_text = {{'  ◆ ' .. message.note, 'PairNote'}},
-    virt_text_pos = 'eol',
-  })
-  table.insert(state.points, {buf = buf, id = id})
-  while #state.points > config.max_points do
-    local old = table.remove(state.points, 1)
-    pcall(vim.api.nvim_buf_del_extmark, old.buf, ns, old.id)
-  end
+-- Pair reads a file: its gaze crosses the line numbers you see, and the statusline names the file a moment.
+local function look(message)
+  local buf = vim.fn.bufnr(message.file)
+  if buf ~= -1 and vim.api.nvim_buf_is_loaded(buf) then draw.gaze(buf, message.from, message.to) end
+  state.reading = {name = vim.fn.fnamemodify(message.file, ':t'), till = now_ms() + READING_MS}
+  redraw_status()
+  vim.defer_fn(redraw_status, READING_MS + 50)
 end
 
 local function open_split(file, line)
@@ -296,7 +404,7 @@ local function watch_keys(on)
     vim.schedule(function()
       vim.on_key(nil, ns)
       send({type = 'take_back'})
-      vim.cmd.redrawstatus()
+      redraw_status()
     end)
   end or nil, ns)
 end
@@ -304,14 +412,13 @@ end
 local function set_role(role)
   state.role = role
   watch_keys(role == 'driver')
-  vim.cmd.redrawstatus()
+  redraw_status()
 end
 
 local function edit(message)
   local function reply(result) send({type = 'reply', id = message.id, result = result}) end
   if state.role ~= 'driver' then return reply({error = 'the user has taken the wheel back'}) end
-  local buf = vim.fn.bufadd(message.file)
-  vim.fn.bufload(buf)
+  local buf = load(message.file)
   local count = vim.api.nvim_buf_line_count(buf)
   if message.line > count then return reply({error = ('line %d is past the end of the buffer (%d lines)'):format(message.line, count)}) end
   -- Setting 'undolevels' starts a new undo step, so `u` undoes Pair's change and nothing of yours.
@@ -331,10 +438,11 @@ local function set_models(models)
   for role, reason in pairs(models or {}) do
     if type(reason) == 'string' then state.models[role] = reason end
   end
-  vim.cmd.redrawstatus()
+  redraw_status()
 end
 
 local handlers = {
+  look = look,
   point = point,
   open = open,
   read = read,
@@ -344,6 +452,7 @@ local handlers = {
   clear = function()
     clear_points()
     clear_suggestion()
+    forget_words(false)
     state.remark = nil
     unmap_feedback()
   end,
@@ -402,7 +511,7 @@ end
 disconnected = function()
   state.channel = nil
   if state.role == 'driver' then set_role('navigator') end -- a restarted daemon has ended the hand-over
-  vim.cmd.redrawstatus()
+  redraw_status()
   if state.wanted then schedule_retry(1) end
 end
 
@@ -426,31 +535,62 @@ function M.disconnect()
   set_role(nil)
   clear_points()
   clear_suggestion()
+  forget_words(false)
   unmap_feedback()
 end
 
--- The statusline's text: the role and talk level, plus a warning while a model is down or the daemon is away.
-function M.status()
-  if not state.channel then return state.wanted and 'Pair: reconnecting' or '' end
+-- The statusline: one quiet segment. The voice glyph lights up in the accent while Pair's words show; the role
+-- and talk level show only when they are not the usual ones. Nil when there is nothing to show.
+local function status_parts()
+  local g = style.glyphs
+  if not state.channel then
+    return state.wanted and {glyph = g.away, text = 'pair · reconnecting', hl = 'PairStatusDim', text_hl = 'PairStatusDim'} or nil
+  end
   local down = vim.tbl_keys(state.models)
   table.sort(down)
-  local warning = #down == 2 and ' · models down' or (#down == 1 and (' · ' .. down[1] .. ' down') or '')
-  return 'Pair: ' .. (state.role or 'navigator') .. (state.level and (' · ' .. state.level) or '') .. warning
+  if #down > 0 then
+    return {glyph = g.away, text = 'pair · ' .. (#down == 2 and 'models' or down[1]) .. ' down', hl = 'PairStatusWarn', text_hl = 'PairStatusWarn'}
+  end
+  if state.role == 'driver' then
+    return {glyph = g.wheel, text = 'pair has the wheel · any key takes it back', hl = 'PairStatus', text_hl = 'PairStatusDim'}
+  end
+  if state.reading and now_ms() < state.reading.till then
+    return {glyph = g.voice, text = 'reading ' .. state.reading.name, hl = 'PairStatus', text_hl = 'PairStatusDim'}
+  end
+  local parts = {'pair'}
+  if state.role and state.role ~= 'navigator' then table.insert(parts, state.role) end
+  if state.level and state.level ~= 'normal' then table.insert(parts, state.level) end
+  return {glyph = g.voice, text = table.concat(parts, ' · '), hl = state.words and 'PairStatus' or 'PairStatusDim', text_hl = 'PairStatusDim'}
 end
 
+--- The statusline's text, for example `● pair`, `● pair · scout`, `● reading worker.go` or `◌ pair · partner down`.
+function M.status()
+  local parts = status_parts()
+  return parts and (parts.glyph .. ' ' .. parts.text) or ''
+end
+
+--- The same with its highlight groups, for a 'statusline' expression or a statusline plugin's section.
+function M.statusline()
+  local parts = status_parts()
+  if not parts then return '' end
+  return ('%%#%s#%s %%#%s#%s%%*'):format(parts.hl, parts.glyph, parts.text_hl, (parts.text:gsub('%%', '%%%%')))
+end
+
+-- Each command gets the words after its name and, with a range (:'<,'>Pair ask ...), the lines it covers.
 local commands = {
   start = function(arg)
     if M.connect() and arg ~= '' then send({type = 'goal', text = arg}) end
   end,
   goal = function(arg) send({type = 'goal', text = arg}) end,
-  ask = function(arg) send({type = 'ask', text = arg}) end,
+  ask = function(arg, selection) send({type = 'ask', text = arg, selection = selection}) end,
   level = function(arg)
     state.level = arg
     send({type = 'level', level = arg})
   end,
   scout = function() send({type = 'role', role = 'scout'}) end,
   navigate = function() send({type = 'role', role = 'navigator'}) end,
-  drive = function(arg) send({type = 'drive', text = arg}) end,
+  drive = function(arg, selection) send({type = 'drive', text = arg, selection = selection}) end,
+  jump = function() M.jump() end,
   accept = M.accept,
   dismiss = M.dismiss,
   useful = function() feedback(true, state.remark) end,
@@ -460,7 +600,10 @@ local commands = {
     if state.open_request then open_split(state.open_request.file, state.open_request.line) end
     state.open_request = nil
   end,
-  clear = clear_points,
+  clear = function()
+    clear_points()
+    forget_words(false)
+  end,
   stop = M.disconnect,
 }
 
@@ -468,7 +611,8 @@ function M.command(opts)
   local name, arg = opts.args:match('^(%S+)%s*(.*)$')
   local run = commands[name or 'start']
   if not run then return vim.notify('Pair: unknown command ' .. name, vim.log.levels.ERROR) end
-  run(arg or '')
+  local file = opts.range > 0 and project_path(0)
+  run(arg or '', file and {file = file, from = opts.line1, to = opts.line2} or nil)
 end
 
 function M.complete()
@@ -477,13 +621,17 @@ end
 
 function M.setup(opts)
   config = vim.tbl_extend('force', config, opts or {})
-  vim.api.nvim_set_hl(0, 'PairPoint', {default = true, link = 'Visual'})
-  vim.api.nvim_set_hl(0, 'PairNote', {default = true, link = 'DiagnosticVirtualTextInfo'})
-  vim.api.nvim_set_hl(0, 'PairSuggestDelete', {default = true, link = 'DiffDelete'})
-  vim.api.nvim_set_hl(0, 'PairSuggestAdd', {default = true, link = 'DiffAdd'})
+  style.glyphs = vim.tbl_extend('force', style.glyphs, config.glyphs)
+  draw.motion = config.motion
+  style.apply()
   local group = vim.api.nvim_create_augroup('pair', {clear = true})
+  vim.api.nvim_create_autocmd('ColorScheme', {group = group, callback = style.apply})
+  vim.api.nvim_create_autocmd('OptionSet', {group = group, pattern = {'termguicolors', 'background'}, callback = style.apply})
+  -- A note's place depends on the width of the window that shows it.
+  vim.api.nvim_create_autocmd({'WinResized', 'VimResized', 'BufWinEnter'}, {group = group, callback = relayout})
   vim.api.nvim_create_autocmd('BufEnter', {group = group, callback = function(args)
-    if not state.channel then return end
+    -- Loading a file Pair points at enters it in Neovim's hidden autocommand window: you did not go there.
+    if not state.channel or vim.fn.win_gettype() == 'autocmd' then return end
     attach(args.buf)
     local file = project_path(args.buf)
     if file then event({kind = 'enter', file = file}) end

@@ -12,7 +12,7 @@ const HELP = `/goal <text>   set the session goal
 /navigate      back to watching and pointing (the default)
 /drive [what]  hand Pair the wheel for one change (or say "you take it" or "your turn")
 +  or /useful  Pair's last remark was useful
--  or /noise   it was not (a remark you ignore counts as not useful too)
+-  or /noise   it was not (a remark you never see counts as not useful too)
 /end           end the session and write a session note
 /quit          close this pane (the session goes on)
 anything else  ask Pair`;

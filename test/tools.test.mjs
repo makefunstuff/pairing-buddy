@@ -86,12 +86,12 @@ test('the Partner offers the model only its role\'s tools and answers with its f
     context => {
       // pi-durable announces tools in system messages, so only changes are sent again.
       offered = context.messages.flatMap(message => message.toolsAdded ?? []).map(tool => tool.name).sort();
-      return fauxAssistantMessage([fauxToolCall('edit', {path: 'a.js', oldText: 'a', newText: 'b'}), fauxToolCall('point', {file: 'a.js', line: 3, note: 'off by one'})], {stopReason: 'toolUse'});
+      return fauxAssistantMessage([fauxToolCall('edit', {path: 'a.js', oldText: 'a', newText: 'b'}), fauxToolCall('point', {file: 'a.js', line: 3, note: 'off by one', code: 'i <= n'})], {stopReason: 'toolUse'});
     },
     fauxAssistantMessage([fauxText('Line 3 loops one too far.')]),
   ]);
   assert.equal(await partner.ask(id, '[user] what is wrong?'), 'Line 3 loops one too far.');
-  assert.deepEqual(calls, [['point', {file: 'a.js', line: 3, endLine: 3, note: 'off by one'}]]);
+  assert.deepEqual(calls, [['point', {file: 'a.js', line: 3, endLine: 3, note: 'off by one', code: 'i <= n'}]]);
   assert.deepEqual(offered, ['open', 'point', 'read', 'say', 'suggest']);
   await partner.close();
 });
@@ -163,4 +163,24 @@ test('numberedLines numbers the lines and says how to read on', () => {
   const first = numberedLines(text).split('\n');
   assert.equal(first.length, 301);
   assert.equal(first.at(-1), '(200 more lines; ask for start_line 301)');
+});
+
+test('an input can ask a model that thinks to think at least so much, for that input only; one that cannot is left alone', async () => {
+  const thinking = async reasoning => {
+    const faux = fauxProvider({models: [{id: 'm', reasoning}]});
+    const models = createModels();
+    models.setProvider(faux.provider);
+    const seen = [];
+    const answer = (_context, options) => { seen.push(options?.reasoning ?? 'off'); return fauxAssistantMessage([fauxText('ok')]); };
+    faux.setResponses([answer, answer, answer]);
+    const partner = await openPartner({storage: new MemoryStorage(), models, model: faux.getModel(), hands: recordingHands().hands});
+    const id = await partner.createConversation();
+    await partner.ask(id, 'a');
+    await partner.ask(id, 'b', {thinking: 'low'});
+    await partner.ask(id, 'c');
+    await partner.close();
+    return seen;
+  };
+  assert.deepEqual(await thinking(true), ['off', 'low', 'off']);
+  assert.deepEqual(await thinking(false), ['off', 'off', 'off']);
 });

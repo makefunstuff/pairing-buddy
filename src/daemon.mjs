@@ -93,7 +93,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     health.report('watcher', result.error);
     return result;
   };
-  const sessionPartner = {...partner, ask: (conversationId, content) => reported('partner', partner.ask(conversationId, content))};
+  const sessionPartner = {...partner, ask: (conversationId, content, options) => reported('partner', partner.ask(conversationId, content, options))};
 
   const clientsOf = (session, role) => [...clients].filter(client => client.session === session && client.role === role);
   /** The Neovims attached to `session`, the one the user used last first. */
@@ -261,14 +261,15 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     // What you do in a Neovim makes it the one Pair shows things in; its LSP's diagnostics do not.
     if (client.role === 'editor' && message.event?.kind !== 'diagnostics') client.activeAt = Date.now();
     if (message.type === 'event') return receive(session, message.event);
-    if (message.type === 'ask') return session.ask(message.text);
+    if (message.type === 'ask') return session.ask(message.text, message.selection ?? null);
     if (message.type === 'goal') return session.setGoal(message.text);
     if (message.type === 'level') return session.setLevel(message.level);
     if (message.type === 'role' && ROLES.includes(message.role)) return session.setRole(message.role);
-    if (message.type === 'drive') return session.drive(message.text ?? '');
+    if (message.type === 'drive') return session.drive(message.text ?? '', message.selection ?? null);
     if (message.type === 'take_back') return session.takeBack();
     if (message.type === 'confirm') return session.answer(message.id, message.ok === true);
     if (message.type === 'feedback') return session.feedback({useful: message.useful === true, id: message.remark ?? undefined, implicit: message.implicit === true});
+    if (message.type === 'seen') return session.seen(message.remark);
     if (message.type === 'end') return endSession(session);
   }
 

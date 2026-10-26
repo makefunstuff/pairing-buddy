@@ -4,7 +4,7 @@ import {isAbsolute, relative} from 'node:path';
 import {Budget} from './budget.mjs';
 import {commandPolicy} from './command-policy.mjs';
 import {describeState} from './describe.mjs';
-import {insideRoot, numberedLines, projectFile, readProjectPath} from './files.mjs';
+import {insideRoot, MAX_LINES, numberedLines, projectFile, readProjectPath} from './files.mjs';
 import {fold, initialState} from './fold.mjs';
 import {decide} from './gate.mjs';
 import {gitStatus} from './git.mjs';
@@ -27,7 +27,16 @@ const CHECKS = {
   stall: 'The user seems stuck on this failure. Give one concrete next step.',
   drift: 'Do not help with the goal itself: the only question is whether the file the user now edits belongs to the goal. '
     + 'If it could, answer exactly SILENT. If it is unrelated, that drift is the problem: say in one sentence what drifted.',
+  edit_while_red: 'The test run is older than the user\'s change. Read the lines they changed, the failing test and the code it tests, '
+    + 'then trace the test through the code as it is now, step by step with the real numbers. If the trace passes, their change '
+    + 'fixed it; if you are not sure, say nothing: in both cases answer exactly SILENT. Only if the trace still fails, somewhere other '
+    + 'than their change, point at that place (file, line, and as code the few characters that are wrong, such as an operator) '
+    + 'and say why in one or two short sentences, without the trace.',
 };
+
+// Triggers whose check needs the Partner to work something out before it may speak: it thinks at least this
+// much for them, if its model can think. Without it, fast models trace a test through code wrongly, and remark.
+export const THINKING = {edit_while_red: 'low'};
 
 export function watchInput(trigger, description) {
   return `[watch] ${trigger.kind}: ${trigger.detail}\n\nNow:\n${description}\n\n${CHECKS[trigger.kind]} If no remark would help, answer exactly SILENT.`;
@@ -37,9 +46,9 @@ export function watchInput(trigger, description) {
  * What the Partner is asked when the user hands over the wheel: `words` are theirs ("you take it, ...",
  * "your turn"), or empty for a bare :Pair drive.
  */
-export function driveInput(words, description) {
+export function driveInput(words, description, selection = '') {
   const request = words ? `The user said: "${words}"` : 'The user gave no request: make the change you two talked about last.';
-  return `[drive] The user handed you the wheel for one change. ${request}\n\nNow:\n${description}\n\n`
+  return `[drive] The user handed you the wheel for one change. ${request}${selection}\n\nNow:\n${description}\n\n`
     + 'If they said "your turn", they just wrote a failing test (see the recent edits): read it and the code it tests, '
     + 'and make it pass by changing the code, not the test. Read before you edit. If you do not know what to change, '
     + 'ask one short question instead of editing.';
@@ -66,6 +75,14 @@ export function runReport(result) {
   if (tests) lines.push(`Tests (${tests.runner}): ${testSummary(tests)}`);
   lines.push(tail(result.output, RUN_OUTPUT_CHARS) || '(no output)');
   return lines.join('\n');
+}
+
+const SELECTION_LINES = 80; // of a selection the user asks about, the Partner gets this many lines at most
+
+/** What the Partner is told about the lines the user selected: where they are, and the lines themselves. */
+export function selectionInput({file, from, to}, text) {
+  const shown = numberedLines(text, from, Math.min(to, from + SELECTION_LINES - 1));
+  return `\n\nAbout lines ${from}-${to} of ${file}, which the user selected:\n${shown}`;
 }
 
 const NOTE_CHANGES = 20; // lines of git status the note request shows
@@ -118,6 +135,8 @@ export class PairSession {
     this.spoke = false; // anything reached the user this turn
     this.said = false; // the say tool was used this turn
     this.unasked = false; // the running turn is a remark nobody asked for
+    this.words = []; // what Pair said this turn: an unasked remark shows it under the user's line too
+    this.target = null; // where Pair pointed last this turn: where the user's jump key goes
     this.held = []; // parts of an unasked remark that came while the user was typing
     this.panes = null; // the user's herdr panes (a PaneWatch), for the Driver's type
     this.edited = false; // the Driver made its one edit in this hand-over
@@ -203,13 +222,16 @@ export class PairSession {
     this.unasked = true;
     const id = this.remarkId = this.store.addRemark({sessionId: this.id, trigger: trigger.kind, score, at: this.now()});
     try {
-      if (!(await this.talk(watchInput(trigger, describeState(this.state, this.now()))))) return this.store.dropRemark(id);
+      const input = watchInput(trigger, describeState(this.state, this.now()));
+      if (!(await this.talk(input, {thinking: THINKING[trigger.kind]}))) return this.store.dropRemark(id);
       this.budget.spend(this.now());
       this.lastRemark = id;
-      // After the remark's own words, also when they wait for a pause in the user's typing.
+      // After the remark's own words, also when they wait for a pause in the user's typing. The editor shows
+      // the words under the line the user is on, with a way to the place Pair pointed at.
+      const {words, target} = this;
       this.show(() => {
         this.notify('chat', {type: 'remark', id});
-        this.notify('editors', {type: 'remark', id});
+        this.notify('editor', {type: 'remark', id, text: words.join('\n'), target});
       });
     } finally {
       this.unasked = false;
@@ -228,24 +250,42 @@ export class PairSession {
     this.message('system', useful ? 'Noted: useful.' : 'Noted: not useful.');
   }
 
-  /** A message from the user in the chat pane: always answered, outside the budget. */
-  async ask(text) {
-    this.message('user', text);
-    if (!this.state.goal) return this.setGoal(text);
-    await this.talk(`[user] ${text}\n\nNow:\n${describeState(this.state, this.now())}`);
+  /** The user's remark seen: they edited after it showed. Neither useful nor noise; a verdict still replaces it. */
+  seen(id) {
+    this.store.seeRemark(id);
   }
 
-  /** Runs one Partner turn; true when anything reached the user. */
-  async talk(input) {
+  /**
+   * A question from the user, in the chat pane or Neovim: always answered, outside the budget. `selection`
+   * ({file, from, to}) is the lines they asked about.
+   */
+  async ask(text, selection = null) {
+    this.message('user', selection ? `${text} (${relative(this.root, selection.file)}:${selection.from}-${selection.to})` : text);
+    if (!this.state.goal && !selection) return this.setGoal(text);
+    await this.talk(`[user] ${text}${await this.selected(selection)}\n\nNow:\n${describeState(this.state, this.now())}`);
+  }
+
+  /** The lines the user selected, for the Partner's input; '' without a selection. */
+  async selected(selection) {
+    const path = selection && (await projectFile(this.root, selection.file));
+    if (!path) return '';
+    return selectionInput({...selection, file: relative(this.root, path)}, await this.bufferText(path));
+  }
+
+  /** Runs one Partner turn (`options` as for the Partner's ask); true when anything reached the user. */
+  async talk(input, options = {}) {
     this.busy = true;
     this.spoke = false;
     this.said = false;
     this.paneUses = 0;
+    this.words = [];
+    this.target = null;
     try {
-      const answer = await this.partner.ask(this.conversationId, input);
+      const answer = await this.partner.ask(this.conversationId, input, options);
       // After a say, local models tend to end with filler or a repeat; the say already was the answer.
       if (answer && !silent(answer) && !this.said) {
         this.show(() => this.message('pair', answer));
+        this.words.push(answer);
         this.spoke = true;
       }
     } catch (error) {
@@ -309,12 +349,12 @@ export class PairSession {
    * The user hands Pair the wheel for one change (:Pair drive, "you take it", "your turn"). Pair answers as
    * Driver, with at most one edit, and is Navigator again when the answer is done.
    */
-  async drive(words = '') {
+  async drive(words = '', selection = null) {
     if (words) this.message('user', words);
     if (this.busy) return this.message('system', 'Pair is still answering; hand over again once it is done.');
     if (!(await this.setRole('driver'))) return;
     this.edited = false;
-    await this.talk(driveInput(words, describeState(this.state, this.now())));
+    await this.talk(driveInput(words, describeState(this.state, this.now()), await this.selected(selection)));
     await this.handBack();
     // Only now does the conversation lose the Driver's tools. After a take-back during the answer, the policy
     // hook refused edit and type with a reason; a tool that vanished mid-answer leaves small models writing
@@ -394,16 +434,19 @@ export class PairSession {
     if (silent(text)) return 'shown'; // some models say their SILENT instead of answering it
     this.spoke = true;
     this.said = true;
+    this.words.push(text);
     this.show(() => this.message('pair', text));
     return 'shown';
   }
 
-  async point({file, line, endLine, note}) {
+  /** Marks lines in the editor, with `code` on the first one underlined; the last point of a turn is where the jump key goes. */
+  async point({file, line, endLine, note, code}) {
     const path = await projectFile(this.root, file);
     if (!path) return `No file ${file} in the project`;
     this.spoke = true;
+    this.target = {file: path, line, endLine, note, code};
     this.show(() => {
-      this.notify('editor', {type: 'point', file: path, line, endLine, note});
+      this.notify('editor', {type: 'point', file: path, line, endLine, note, code});
       this.message('pair', `${file}:${line} ${note}`);
     });
     return 'highlighted';
@@ -433,10 +476,15 @@ export class PairSession {
     return 'Shown in the editor. The user accepts it with one key or ignores it.';
   }
 
+  /** Reads a file as the editor has it; the editor shows where Pair reads (its gaze) as it does. */
   async read({file, from, to}) {
     const source = await readProjectPath(this.root, file);
     if (source.error || source.listing !== undefined) return source.error ?? source.listing;
-    return numberedLines(await this.bufferText(await projectFile(this.root, file), source.text), from, to);
+    const path = await projectFile(this.root, file);
+    const text = await this.bufferText(path, source.text);
+    const first = Math.max(1, from ?? 1);
+    this.notify('editor', {type: 'look', file: path, from: first, to: Math.min(text.split('\n').length, to ?? first + MAX_LINES - 1)});
+    return numberedLines(text, from, to);
   }
 
   /** The text of the file at `path` as the user sees it: the editor's buffer wins over the disk, unsaved changes included. */

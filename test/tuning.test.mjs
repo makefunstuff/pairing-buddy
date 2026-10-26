@@ -17,7 +17,7 @@ test('a remark without a verdict is waiting at first, and counts as ignored afte
 
 test('ignored and dismissed remarks both count as not kept', () => {
   const counts = tally([...remarks('stall', ['useful', 'dismissed', null]), {trigger: 'stall', verdict: null, at: NOW}], NOW);
-  assert.deepEqual(counts, {remarks: 4, useful: 1, dismissed: 1, ignored: 1, waiting: 1});
+  assert.deepEqual(counts, {remarks: 4, useful: 1, dismissed: 1, seen: 0, ignored: 1, waiting: 1});
   assert.equal(keptShare(counts), 1 / 3);
   assert.equal(keptShare(tally([], NOW)), null);
 });

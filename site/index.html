@@ -237,7 +237,7 @@ footer a { color: var(--muted); }
       Source on GitHub
     </a>
   </div>
-  <div class="facts"><span><b>v0.6</b> Navigator, Scout, Driver</span><span>local or cloud models</span><span>MIT</span></div>
+  <div class="facts"><span><b>v0.7</b> Navigator, Scout, Driver</span><span>local or cloud models</span><span>MIT</span></div>
 </header>
 
 <!-- Hero video slot. Today: the v0.6 tutorial from docs/video. A remade video replaces it: swap the
@@ -276,32 +276,32 @@ footer a { color: var(--muted); }
   </div>
   <div class="col proto" role="note">
     <span class="tag">Prototype</span>
-    <p><b>These are prototype captures</b> of the next Neovim UI, recorded from a running prototype in real Neovim. The editor, gopls and every test run are real; the pair's words and their timing are scripted. Today's v0.6 does the same jobs with plainer visuals (remarks in the chat pane, highlights and inline suggestions in Neovim). Real captures replace these when the new UI ships.</p>
+    <p><b>The first moment ships in v0.7:</b> its capture is the released plugin and daemon in a clean Neovim, with a real <code>go test</code>; only the models' words and their timing are scripted. <b>The other two are prototype captures</b> of what comes next, recorded from a running prototype in real Neovim, with real gopls and test runs. Real captures replace them as they ship.</p>
   </div>
 
   <article class="moment" id="wrong-turn" aria-labelledby="m1-h">
     <div class="col moment-head">
       <div class="num">01 · it stops the wrong turn</div>
       <h3 id="m1-h">It stops the wrong turn before it costs you twenty minutes</h3>
-      <p>A retry test wants five attempts and gets four. It looks like an off-by-one in the backoff, so you go and fix the shift. The pair has already read the test and the worker. Two quiet lines under your edit: the shift is fine, attempt five lands at exactly 15&nbsp;s, and the worker gives up on <code>&gt;=</code>.</p>
+      <p>A retry test wants five attempts and gets four. It looks like an off-by-one in the backoff, so you go and fix the shift. As you pause, the pair reads your edit and the worker. Two quiet lines under your edit: the shift is fine, attempt five lands at exactly 15&nbsp;s, and the worker gives up on <code>&gt;=</code>.</p>
     </div>
     <div>
-      <div class="stage loop"><video data-v="m1" muted loop playsinline preload="none" poster="media/m1-still1.webp" width="1280" height="768" aria-label="Prototype capture: the pair corrects a wrong turn in backoff.go">
+      <div class="stage loop"><video data-v="m1" muted loop playsinline preload="none" poster="media/m1-still1.webp" width="1280" height="768" aria-label="Capture of v0.7: the pair corrects a wrong turn in backoff.go">
         <source data-src="media/m1.webm" type="video/webm"><source data-src="media/m1.mp4" type="video/mp4">
       </video></div>
       <div class="beats" data-for="m1">
         <button class="beat" data-t="0"><b>0:00</b>the test fails: 4 attempts, want 5</button>
         <button class="beat" data-t="5"><b>0:05</b>you open backoff.go and change the shift</button>
-        <button class="beat" data-t="8"><b>0:08</b>it reads backoff.go, then worker.go</button>
-        <button class="beat" data-t="10"><b>0:10</b>two quiet lines under your edit</button>
-        <button class="beat" data-t="13"><b>0:13</b>you undo; M-j goes to worker.go:59</button>
-        <button class="beat" data-t="17"><b>0:17</b>&gt;= becomes &gt;; the test passes</button>
+        <button class="beat" data-t="10"><b>0:10</b>it reads backoff.go, then worker.go</button>
+        <button class="beat" data-t="13"><b>0:13</b>two quiet lines under your edit</button>
+        <button class="beat" data-t="16"><b>0:16</b>you undo; M-j goes to worker.go:33</button>
+        <button class="beat" data-t="20"><b>0:20</b>&gt;= becomes &gt;; the test passes</button>
       </div>
     </div>
     <p class="col why"><b>Why it matters.</b> It did the arithmetic (1+2+4+8 = 15) across two files at the moment you committed to the wrong one, then got out of the way. No chat window opened and nothing moved your cursor: its words sit where your eyes already are.</p>
     <div class="stills">
-      <figure><img src="media/m1-still1.webp" width="1280" height="768" loading="lazy" decoding="async" alt="Two quiet lines under the edited shift in backoff.go, naming worker.go:59"><figcaption>The remark under your edit: the arithmetic, and where the real cause is.</figcaption></figure>
-      <figure><img src="media/m1-still2.webp" width="1280" height="768" loading="lazy" decoding="async" alt="worker.go line 59 tinted, with the >= underlined and a short note"><figcaption>After M-j: the line is tinted, <code>&gt;=</code> underlined, one note at the end.</figcaption></figure>
+      <figure><img src="media/m1-still1.webp" width="1280" height="768" loading="lazy" decoding="async" alt="Two quiet lines under the edited shift in backoff.go, naming worker.go:33"><figcaption>The remark under your edit: the arithmetic, and where the real cause is.</figcaption></figure>
+      <figure><img src="media/m1-still2.webp" width="1280" height="768" loading="lazy" decoding="async" alt="worker.go line 33 tinted, with the >= underlined and a short note"><figcaption>After M-j: the line is tinted, <code>&gt;=</code> underlined, one note at the end.</figcaption></figure>
     </div>
   </article>
 
@@ -501,7 +501,7 @@ footer a { color: var(--muted); }
   <span>pairing-buddy · MIT</span>
   <a href="https://github.com/makefunstuff/pairing-buddy">GitHub</a>
   <a href="https://github.com/makefunstuff/pairing-buddy/issues">Issues</a>
-  <span>Captures in “Three moments” are from a prototype.</span>
+  <span>In “Three moments”, the first capture is v0.7; the other two are from a prototype.</span>
 </footer>
 
 <script>

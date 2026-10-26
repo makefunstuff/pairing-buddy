@@ -1,7 +1,8 @@
 // Finds the moments where a remark might help. Pure: the caller passes the clock and the keys already fired.
 import {errorSignature, failed, failureLine} from './fold.mjs';
+import {isSourceFile, testSummary} from './test-output.mjs';
 
-export const TRIGGER_KINDS = ['failed_command', 'repeated_error', 'new_code_diagnostic', 'stall', 'drift'];
+export const TRIGGER_KINDS = ['failed_command', 'repeated_error', 'new_code_diagnostic', 'stall', 'drift', 'edit_while_red'];
 
 export const TIMING = {
   lookGraceMs: 4_000, // a failure gets this long to be noticed before Pair counts it as missed
@@ -9,6 +10,7 @@ export const TIMING = {
   stallMs: 90_000,
   newCodeMs: 60_000, // an edit this close before a diagnostic counts as the code that caused it
   driftWindowMs: 10 * 60_000, // drift is looked at only while the last edit is this recent
+  redMs: 10 * 60_000, // a failed test run counts as still red for this long, unless a newer run passed
 };
 
 /** Not looked at: never seen at the bottom of its pane, or the user scrolled away from it since (scrolled past). */
@@ -81,8 +83,35 @@ function driftTriggers(state, now) {
   return [{kind: 'drift', key: `drift:${state.goal}:${state.branch}:${latest.file}`, detail, file: latest.file, lasting: true}];
 }
 
+/** A file's name without its directory, extension and test marker: worker_test.go, worker.go and test_worker.py are all "worker". */
+export function fileStem(file) {
+  const name = file.split('/').at(-1).replace(/\.[^.]+$/, '');
+  return (name.replace(/^test_|(_test|\.test|\.spec|_spec|Tests?)$/, '') || name).toLowerCase();
+}
+
+/**
+ * The wrong turn: the user edits while a test run is red, in a file the failure does not name. Raised once per
+ * run and file, after the first edit there; a failure that names no file says nothing about where the cause is.
+ */
+function redTriggers(state, now) {
+  const {tests} = state;
+  const edit = state.edits.at(-1);
+  if (!tests?.failedCount || !tests.files?.length || !edit || edit.at <= tests.at || now - tests.at > TIMING.redMs) return [];
+  const named = new Set(tests.files.map(fileStem));
+  if (!isSourceFile(edit.file) || named.has(fileStem(edit.file))) return []; // notes and docs are no attempt at a fix
+  return [{
+    kind: 'edit_while_red',
+    key: `red:${tests.at}:${edit.file}`,
+    detail: `The user edits ${edit.file}:${edit.from}-${edit.to} while \`${tests.cmd}\` is red: ${testSummary(tests)}. `
+      + `The failure names ${tests.files.slice(0, 4).join(', ')}, not ${edit.file}.`,
+    file: edit.file,
+    named: tests.files,
+    line: edit.to,
+  }];
+}
+
 /** The candidate remarks for this moment whose keys have not fired yet. */
 export function detectTriggers(state, now, fired = new Set()) {
-  return [...commandTriggers(state, now), ...diagnosticTriggers(state), ...driftTriggers(state, now)]
+  return [...commandTriggers(state, now), ...diagnosticTriggers(state), ...redTriggers(state, now), ...driftTriggers(state, now)]
     .filter(trigger => !fired.has(trigger.key));
 }

@@ -39,7 +39,8 @@ Every remark Pair makes unasked can get your verdict: useful, or noise. Answers 
 - In the chat, a remark ends with a dim `+ useful  - noise` line. The verdict goes to the last remark.
 - In Neovim, `Alt-u` and `Alt-n` are mapped (in Normal mode) only while a remark waits for a verdict, and only if you have no mapping of your own on them; they go away after the verdict. Change them with the plugin's `useful_key` and `noise_key` options, or `false` for none; the commands work either way.
 - A later verdict replaces an earlier one: `-`, then accepting the suggestion after all, counts as useful.
-- **A remark you ignore counts as not useful.** With no verdict after ten minutes, a remark is counted as ignored. Before that it is "waiting" and counts for nothing.
+- **A remark you see and work on is neither.** In Neovim, Pair's words go with your next edit, and that edit (or `Alt-j` to where it points) counts the remark as seen: neither useful nor noise, and it does not move the tuning. A verdict still replaces it.
+- **A remark you never see counts as not useful.** With no verdict after ten minutes, and not seen, a remark is counted as ignored. Before that it is "waiting" and counts for nothing.
 - A remark that ends in SILENT never reached you, so it is not stored and cannot count as ignored.
 
 ## Learning when to talk
@@ -73,8 +74,8 @@ The safe bounds hold whatever the numbers say: a bar moves at most 1 down and 2 
 `pair stats` shows the last 7 days (`--days N` for another span), across all projects. It reads the data directory, so it works whether the daemon runs or not.
 
 ```
-Last 7 days, all projects: 6.5 h of active pairing, 14 unasked remarks (2.2 per hour)
-useful 6 · dismissed 3 · ignored 4 · waiting 1 · kept 46%
+Last 7 days, all projects: 6.5 h of active pairing, 15 unasked remarks (2.3 per hour)
+useful 7 · dismissed 3 · ignored 4 · waiting 1 · kept 50%
 
 trigger              remarks  per hour  useful  dismissed  ignored  kept     bar
 failed_command             5       0.8       4          0        1   80%  5 (-1)
@@ -82,12 +83,13 @@ repeated_error             2       0.3       1          1        0   50%       6
 new_code_diagnostic        1       0.2       1          0        0  100%       6
 stall                      1       0.2       0          0        0     -       6
 drift                      5       0.8       0          2        3    0%  8 (+2)
+edit_while_red             1       0.2       1          0        0  100%       6
 
 Budget at level normal: at most 5 remarks per hour, 4 min apart (the level's default: 6, 3 min)
 Tuning follows your verdicts of the last 30 days: a trigger needs 5 of them to move its bar, the budget 10.
 ```
 
 - **Active pairing** is the time in which you typed, edited or ran a command in the last five minutes, while a session was open. It is stored per clock hour, when it happened, so a session left open for days counts toward each day you used it, and `--days 1` shows today's work even in a session started last week. Remarks per hour are counted against it, not against the hours a session stood open, and shown from six minutes of it on.
-- **kept** is useful ÷ (useful + dismissed + ignored); remarks still waiting do not count.
+- **kept** is useful ÷ (useful + dismissed + ignored); remarks still waiting, and seen ones, do not count. The first line also counts the seen remarks, when there are any.
 - **bar** is the Watcher score each trigger needs now, with the tuning's change from the level's bar in brackets.
 - **Budget** is what the tuned budget allows now at your configured level.

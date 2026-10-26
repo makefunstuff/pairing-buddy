@@ -102,7 +102,7 @@ test('test output is parsed into the command and the session\'s last test run', 
   assert.deepEqual(state.tests, {
     runner: 'jest', failed: ['reconnect › waits up to 30 s'], passed: 2, failedCount: 1,
     firstError: 'expect(received).toBe(expected) // Object.is equality (Expected: 30000, Received: 5000)',
-    cmd: 'npm test', by: 'you', at: 100,
+    cmd: 'npm test', by: 'you', at: 100, files: ['src/ws.test.js'],
   });
 });
 

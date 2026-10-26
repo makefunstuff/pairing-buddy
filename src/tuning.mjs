@@ -3,7 +3,7 @@
 
 const DAY = 24 * 60 * 60_000;
 
-export const IGNORED_AFTER_MS = 10 * 60_000; // a remark with no verdict by then was ignored: not useful
+export const IGNORED_AFTER_MS = 10 * 60_000; // a remark with no verdict by then, and never seen, was ignored: not useful
 export const WINDOW_MS = 30 * DAY; // older verdicts no longer count
 const PER_TRIGGER = 20; // the latest judged remarks of each trigger that count, so tuning follows recent habits
 const MIN_PER_TRIGGER = 5; // fewer judged remarks of a trigger leave its bar alone
@@ -12,7 +12,10 @@ const MIN_OVERALL = 10; // fewer judged remarks in all leave the budget alone
 /** The safe bounds: a bar moves at most this far from its level's, and the budget scales at most this much. */
 export const BOUNDS = {barOffset: {min: -1, max: 2}, bar: {min: 3, max: 9}, factor: {min: 0.5, max: 1.5}};
 
-/** What became of a remark: "useful", "dismissed", "ignored", or "waiting" while it is too young to tell. */
+/**
+ * What became of a remark: "useful", "dismissed", "seen" (the user edited on after it, without a verdict: neither
+ * useful nor noise), "ignored", or "waiting" while it is too young to tell.
+ */
 export function outcome(remark, now) {
   if (remark.verdict) return remark.verdict;
   return now - remark.at >= IGNORED_AFTER_MS ? 'ignored' : 'waiting';
@@ -20,12 +23,12 @@ export function outcome(remark, now) {
 
 /** How many of `remarks` ended each way. */
 export function tally(remarks, now) {
-  const counts = {remarks: remarks.length, useful: 0, dismissed: 0, ignored: 0, waiting: 0};
+  const counts = {remarks: remarks.length, useful: 0, dismissed: 0, seen: 0, ignored: 0, waiting: 0};
   for (const remark of remarks) counts[outcome(remark, now)] += 1;
   return counts;
 }
 
-/** The share of judged remarks that were useful; null when none were judged. */
+/** The share of judged remarks that were useful; null when none were judged. Seen remarks are not judged. */
 export function keptShare({useful, dismissed, ignored}) {
   const judged = useful + dismissed + ignored;
   return judged ? useful / judged : null;
@@ -53,7 +56,7 @@ function budgetFactor(kept) {
 export function tuning(remarks, now) {
   const byTrigger = new Map();
   for (const remark of remarks) {
-    if (now - remark.at > WINDOW_MS || outcome(remark, now) === 'waiting') continue;
+    if (now - remark.at > WINDOW_MS || ['waiting', 'seen'].includes(outcome(remark, now))) continue;
     const judged = byTrigger.get(remark.trigger) ?? [];
     if (judged.length < PER_TRIGGER) byTrigger.set(remark.trigger, [...judged, remark]);
   }

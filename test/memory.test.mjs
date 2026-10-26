@@ -39,13 +39,13 @@ const failTwice = (pair, at) => {
 };
 const chatTexts = sent => sent.filter(message => message.type === 'message').map(message => message.text);
 
-test('a remark that reaches the user is stored with its trigger and score, and the chat and editors learn its id', async () => {
+test('a remark that reaches the user is stored with its trigger and score; the chat learns its id, the editor also its words', async () => {
   const {pair, store, clock, sent} = pairSession({answers: ['Line 2 is off.']});
   failTwice(pair, clock.now);
   await pair.tick();
   const [remark] = store.remarks(0);
   assert.deepEqual({trigger: remark.trigger, score: remark.score, verdict: remark.verdict}, {trigger: 'repeated_error', score: 9, verdict: null});
-  assert.deepEqual(sent.filter(message => message.type === 'remark').map(message => [message.to, message.id]), [['chat', remark.id], ['editors', remark.id]]);
+  assert.deepEqual(sent.filter(message => message.type === 'remark').map(message => [message.to, message.id]), [['chat', remark.id], ['editor', remark.id]]);
 });
 
 test('a SILENT remark is not stored, so it cannot count as ignored', async () => {

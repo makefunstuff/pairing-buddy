@@ -2,7 +2,7 @@
 import {readdir, readFile, realpath, stat} from 'node:fs/promises';
 import {isAbsolute, relative, resolve} from 'node:path';
 
-const MAX_LINES = 300;
+export const MAX_LINES = 300; // of a file, read shows this many lines at most
 const MAX_ENTRIES = 200;
 
 /** The real path of `file` if it is `root` or lies inside it (symlinks resolved), else null. */

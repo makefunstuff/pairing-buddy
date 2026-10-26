@@ -96,7 +96,7 @@ test('an unasked remark that arrives while the user types again waits for their 
     ['chat', 'message', 'package.json:1 look here'],
     ['chat', 'message', 'The name is wrong.'],
     ['chat', 'remark', undefined],
-    ['editors', 'remark', undefined],
+    ['editor', 'remark', 'The name is wrong.'],
   ]);
   assert.ok(sent.every(message => message.at - lastKey >= 2000), 'everything waited for a 2 s pause');
 });
