@@ -13,6 +13,7 @@ Pair uses herdr's socket API (protocol 22, herdr 0.9.5) to see the user's termin
 | Editors among the panes | `pane.process_info` | A pane whose foreground process is `nvim`, `vim` or `vi` counts as the editor |
 | Pair's own pane (Scout) | `pane.split`, `pane.rename`, `pane.close`, `pane.list` (`label`) | Opened below the chat pane and labelled `pair scout`, so a restarted daemon finds it again; closed when the role goes back to Navigator |
 | Running a command there | `pane.send_text`, `pane.wait_for_output` (regex), `pane.read` | The command is typed with Enter; Pair waits for the next `scout[N] exit X $ ` prompt, then reads up to 1000 lines (herdr's maximum) and cuts out the output; Ctrl-C (`\x03`) stops a command that runs too long |
+| The Driver's `type` | `pane.send_text` | One line of plain text, without `\r`, sent to the user's terminal pane after a yes in the chat; never to the chat, Scout or editor pane |
 
 Each request is its own connection: herdr answers one request per connection and then closes it.
 
