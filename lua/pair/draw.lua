@@ -208,9 +208,14 @@ function M.point(buf, first, last, note, code)
     end_row = last, sign_text = style.glyphs.mark, sign_hl_group = 'PairSign', line_hl_group = 'PairPoint', priority = 20,
   })
   ids.note = M.note(buf, last, note)
-  local start = code and code ~= '' and line_of(buf, first):find(code, 1, true)
-  if start then ids.span = place(buf, M.ns, first, start - 1, {end_col = start - 1 + #code, hl_group = 'PairSpan', priority = 200}) end
+  ids.span = M.code(buf, first, code)
   return ids
+end
+
+--- Underlines `code` where it first shows on row `row`. Returns the extmark id, or nil when it is not there.
+function M.code(buf, row, code)
+  local start = code and code ~= '' and line_of(buf, row):find(code, 1, true)
+  if start then return place(buf, M.ns, row, start - 1, {end_col = start - 1 + #code, hl_group = 'PairSpan', priority = 200}) end
 end
 
 --- Where `code` starts on row `row`, else its first non-blank: where a jump to a point lands.

@@ -133,7 +133,7 @@ test('the session note is written from the goal and the uncommitted changes, and
   const first = pairSession({store, root, answers: ['Goal: fix reconnect. Changed: ws.ts timeout. Loose end: test on a phone.']});
   await first.pair.end();
   assert.match(first.asked[0], /^\[end\][\s\S]*Goal: fix reconnect\nUncommitted changes \(git status\): \n\?\? ws\.ts$/);
-  assert.equal(chatTexts(first.sent).at(-1), 'Session note:\nGoal: fix reconnect. Changed: ws.ts timeout. Loose end: test on a phone.');
+  assert.match(chatTexts(first.sent).at(-1), /^(Day|Session)'s end: under a minute in pair-memory-\w+\.\nGoal: fix reconnect\. Changed: ws\.ts timeout\. Loose end: test on a phone\.$/);
 
   const other = pairSession({store, root: '/elsewhere'});
   assert.equal(other.pair.previousNote, null, 'another project has its own memory');

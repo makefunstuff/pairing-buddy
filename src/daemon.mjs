@@ -193,6 +193,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
       const session = new PairSession({
         record, store, partner: sessionPartner, score, health,
         previousNote: store.previousNote(root, record.id),
+        lastSession: store.lastSession(root, record.id),
         autoTune: config.autoTune,
         typingPauseMs: config.typingPauseMs,
         testOnSave: config.testOnSave[root] ? {command: config.testOnSave[root], outputFile: join(config.dataDir, 'runs', `${record.id}.out`)} : null,
@@ -291,6 +292,8 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     // A Neovim that connects (or reconnects) after a test run shows its result too.
     if (client.role === 'editor' && session.testsShown) sendMessage(client.socket, session.testsShown);
     if (client.role === 'editor' && session.runShown) sendMessage(client.socket, session.runShown);
+    // The first Neovim after a long gap picks up where the last session stopped (see pickup.mjs).
+    if (client.role === 'editor') session.pickUp().catch(error => log(`pick-up failed: ${error.stack ?? error}`));
     if (client.role !== 'chat') return;
     watchHerdr(session, message.herdr);
     // A chat pane that reconnects after a daemon restart already shows the history.
@@ -344,6 +347,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     if (message.type === 'event') return receive(session, message.event);
     if (message.type === 'ask') return session.ask(message.text, message.selection ?? null);
     if (message.type === 'goal') return session.setGoal(message.text);
+    if (message.type === 'first' && typeof message.text === 'string' && message.text.trim()) return session.setFirst(message.text.trim());
     if (message.type === 'level') return session.setLevel(message.level);
     if (message.type === 'role' && ROLES.includes(message.role)) return session.setRole(message.role);
     if (message.type === 'drive') return session.drive(message.text ?? '', message.selection ?? null);

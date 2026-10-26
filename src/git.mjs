@@ -16,6 +16,12 @@ export const gitBranch = root => git(root, ['rev-parse', '--abbrev-ref', 'HEAD']
 export const gitStatus = root => git(root, ['status', '--short']).catch(() => null);
 /** The last commit as "abc1234 subject", or null in a repository without one. */
 export const gitLastCommit = root => git(root, ['log', '-1', '--format=%h %s']).catch(() => null);
+/** The commits made since `since` (ms), newest first, as "abc1234 subject" lines; [] when unknown. */
+export const gitCommitsSince = (root, since) => git(root, ['log', '-10', `--since=@${Math.floor(since / 1000)}`, '--format=%h %s'])
+  .then(out => out.split('\n').filter(Boolean), () => []);
+/** The files git tracks in `root` whose path ends in `name` ("worker.go", "delivery/worker.go"), relative to it. */
+export const gitFilesNamed = (root, name) => git(root, ['ls-files', '--', `:(glob)**/${name}`])
+  .then(out => out.split('\n').filter(Boolean), () => []);
 
 /**
  * The names the repository of `root` goes by: the folder of its main checkout (also from one of its worktrees) and
