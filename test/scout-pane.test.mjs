@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
-import {mkdtempSync} from 'node:fs';
+import {existsSync, mkdtempSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {test} from 'node:test';
@@ -53,6 +53,7 @@ test('the pane opens beside the chat, runs commands one at a time and types only
 
     await pane.close();
     assert.equal(herdr.panes.has(again.paneId), false);
+    assert.equal(existsSync(join(dir, 'panes', again.paneId.replace(':', '-'))), false, 'its files go with it');
   } finally {
     await herdr.close();
   }

@@ -105,6 +105,7 @@ export class PaneWatch {
     if (this.refreshing) return (this.again = true);
     this.refreshing = this.listPanes().then(() => this.answered(), error => this.failed(error)).finally(() => {
       this.refreshing = null;
+      this.schedule();
       if (this.again) { this.again = false; this.refresh(); }
     });
   }
@@ -121,11 +122,11 @@ export class PaneWatch {
     this.focused = focused ? {pane: focused.pane_id, scrolled: (focused.scroll?.offset_from_bottom ?? 0) > 0} : null;
     if (!this.stopped && (this.focused?.pane ?? null) !== this.scrollPane) this.listen(this.focused?.pane ?? null);
     this.emitFocus();
-    this.schedule();
   }
 
   /** Looks again in FOCUSED_MS or RUNNING_MS, or not before the next event when nothing needs looking at. */
   schedule() {
+    if (this.ticking) return; // the look under way schedules the next one when it is done
     clearTimeout(this.timer);
     const focused = this.focused && this.isUsers(this.focused.pane);
     const running = [...this.panes.values()].some(pane => pane.running);
@@ -134,12 +135,15 @@ export class PaneWatch {
   }
 
   async tick() {
+    this.ticking = true;
     const panes = [...this.panes].filter(([id, pane]) => pane.running || id === this.focused?.pane).map(([id]) => id);
     try {
       for (const pane of panes) await this.pollPane(pane);
       this.answered();
     } catch (error) {
       this.failed(error);
+    } finally {
+      this.ticking = false;
     }
     this.schedule();
   }

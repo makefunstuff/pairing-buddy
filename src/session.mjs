@@ -254,7 +254,7 @@ export class PairSession {
     if (USER_EVENTS.has(event.kind)) this.usedAt = this.now();
     if (event.kind === 'save' && file && !file.startsWith('..')) this.testRuns?.saved(file);
     // A key at a shell prompt (herdr.mjs tells it from the pane's text) takes the wheel back, as one in Neovim does.
-    if (event.kind === 'typing' && event.source === 'terminal' && this.role === 'driver') this.takeBack();
+    if (event.kind === 'typing' && event.source === 'terminal' && this.role === 'driver') this.takeBack().catch(error => this.log(`take-back: ${error.message}`));
     if (event.kind === 'command_end') this.delighted(this.delight.command({cmd: event.cmd ?? '', failed: failed(this.state.commands.at(-1)), output: event.output}, folded.at));
     if (this.state.run !== run) this.showRun(this.state.run);
   }

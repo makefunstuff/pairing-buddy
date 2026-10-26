@@ -53,9 +53,10 @@ export class ScoutPane {
 
   async close() {
     if (!this.paneId) return;
-    const paneId = this.paneId;
+    const {paneId, runs} = this;
     this.paneId = null;
     await this.request('pane.close', {pane_id: paneId}).catch(() => {});
+    await runs.remove();
   }
 
   /**

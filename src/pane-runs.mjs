@@ -55,11 +55,16 @@ export class PaneRuns {
 
   /** Writes the rc file and returns the line that starts the shell with it. No rc files of yours, no history file. */
   async shellLine() {
-    await rm(this.dir, {recursive: true, force: true});
+    await this.remove();
     await mkdir(this.dir, {recursive: true, mode: 0o700});
     await writeFile(join(this.dir, 'pane.bash'), RC);
     const quote = text => `'${text.replaceAll("'", "'\\''")}'`;
     return `exec env PAIR_RUNS=${quote(this.dir)} bash --noprofile --rcfile ${quote(join(this.dir, 'pane.bash'))} -i`;
+  }
+
+  /** Removes the files, once the pane is closed. */
+  remove() {
+    return rm(this.dir, {recursive: true, force: true});
   }
 
   /** The number of the next command when the shell waits at its prompt; null while a command runs or without the shell. */
