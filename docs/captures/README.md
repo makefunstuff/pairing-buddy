@@ -20,6 +20,8 @@ recording comes out the same each time.
 - **No core dumps.** The crash scene crashes a program on purpose. `record.sh` sets the core limit to 1 byte for
   everything it starts, so nothing reaches the machine's crash reporter (see [test/no-core.mjs](../../test/no-core.mjs)).
 - **Neovim** is clean: [init.lua](init.lua), the ayu colorscheme (fetched at a pinned commit), and scratch XDG
+  directories. The search-trail scene also fetches Telescope and plenary at pinned commits; Telescope's history goes
+  to the scratch directories too.
   directories. The held thought uses mini.base16 (also fetched at a pinned commit) on a grey palette with one
   warm red, and shows the real chat pane (`pair chat`) in a `:terminal` on the right.
 
@@ -29,7 +31,9 @@ recording comes out the same each time.
 | [tests-on-save](tapes/tests-on-save.tape) | 02 · it runs what you'd skip |
 | [hand-over](tapes/hand-over.tape) | 03 · the visible hand-over |
 | [take-back](tapes/take-back.tape) | a key while Pair drives takes the wheel back |
+| [search-trail](tapes/search-trail.tape) | the search trail: three Telescope searches, the cue, `:Pair trail` |
 | [held-thought](tapes/held-thought.tape) | the held thought, and one look on a grey palette |
+| [push-to-talk](tapes/push-to-talk.tape) | hold `Alt-t`, ask aloud, and Pair answers under your line |
 | [crash](tapes/crash.tape) | a compiler error, a crash and its frame, and a new warning, from `make run` on save |
 
 ## Recording
@@ -39,8 +43,15 @@ AddressSanitizer, make, Node.js, curl, FFmpeg, util-linux's `prlimit` and the Je
 
 ```sh
 npm ci                                  # in the repo root
-docs/captures/record.sh                 # all six scenes into docs/captures/out/, or name some
+docs/captures/record.sh                 # all the scenes into docs/captures/out/, or name some
 docs/captures/encode.sh                 # out/ -> site/media/ and docs/images/
+```
+
+The push-to-talk scene is not in the default four: it also needs [whisper.cpp](../voice.md#1-build-whispercpp-cpu-only),
+espeak-ng and FFmpeg. espeak-ng says the scene's question into the recorder, and whisper.cpp hears it for real:
+
+```sh
+CAP_WHISPER_MODEL=/path/to/ggml-base.en.bin CAP_WHISPER=/path/to/whisper-cli docs/captures/record.sh push-to-talk
 ```
 
 Each scene runs in its own scratch directory under `/tmp/paircap.*`, which holds:

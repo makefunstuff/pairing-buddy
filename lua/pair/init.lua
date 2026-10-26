@@ -6,16 +6,21 @@
 -- daemon restarts, it reconnects by itself.
 local draw = require('pair.draw')
 local drive = require('pair.drive')
+local listen = require('pair.listen')
+local searches = require('pair.searches')
 local style = require('pair.style')
+local trail = require('pair.trail')
 
 local M = {}
 
 local ns = draw.ns
 -- Alt-y: no built-in meaning in Normal mode. <Tab> would be the same byte as Ctrl-I, the jumplist's forward jump.
--- Alt-j goes where Pair points. Alt-u and Alt-n rate Pair's last unasked remark: useful, or noise.
+-- Alt-j goes where Pair points. Alt-u and Alt-n rate Pair's last unasked remark: useful, or noise. Hold Alt-t to
+-- speak to Pair (push-to-talk, see listen.lua).
 local config = {
   socket = nil, debounce_ms = 2000, max_points = 5, motion = true, glyphs = {},
-  accept_key = '<M-y>', jump_key = '<M-j>', useful_key = '<M-u>', noise_key = '<M-n>',
+  accept_key = '<M-y>', jump_key = '<M-j>', useful_key = '<M-u>', noise_key = '<M-n>', listen_key = '<M-t>',
+  searches = true, -- your Telescope and snacks.picker searches go to the daemon, for the search trail
 }
 local state = {
   channel = nil, partial = '', attached = {}, pending = {}, open_request = nil, level = nil, role = nil,
@@ -653,6 +658,7 @@ local handlers = {
   unheld = forget_held,
   tests = on_tests,
   run = on_run,
+  trail = function(message) trail.show(message, function() send({type = 'forget_trail'}) end) end,
   thinking = function(message)
     state.thinking = message.on
     spin()
@@ -677,6 +683,18 @@ local handlers = {
     if message.sender == 'system' then vim.notify('Pair: ' .. message.text) end
   end,
   ended = hello,
+  listening = function(message) listen.level(message.level) end,
+  heard = listen.heard,
+  -- The answer to what you said: Pair's words under the line you asked on, in place of yours.
+  answer = function(message)
+    if message.text == '' and not message.pointed then return listen.unanswered() end
+    local buf, row = listen.answered()
+    if not buf or type(message.text) ~= 'string' or message.text == '' then return end
+    forget_words(false)
+    state.words = {buf = buf, row = row, text = message.text, key = message.pointed and key_label('jump', config.jump_key) or nil}
+    draw_words(state.words)
+    redraw_status()
+  end,
 }
 
 local disconnected
@@ -723,6 +741,7 @@ disconnected = function()
   if state.run and state.run.state == 'run' then on_tests({state = 'idle'}) end -- that run's end will not come
   if state.typing then state.typing() end -- no daemon waits for the edit any more
   state.thinking = false -- nor does any turn of its Partner
+  listen.cancel(function() end) -- nor what you were saying
   spin()
   if state.role == 'driver' then set_role('navigator') end -- a restarted daemon has ended the hand-over
   redraw_status()
@@ -770,6 +789,8 @@ local function status_parts()
   if #down > 0 then
     return {glyph = g.away, text = 'pair · ' .. (#down == 2 and 'models' or down[1]) .. ' down', hl = 'PairStatusWarn', text_hl = 'PairStatusWarn'}
   end
+  local hearing = listen.status()
+  if hearing then return hearing end
   local run = state.run
   if state.role == 'driver' and not (run and run.state == 'run') then
     local doing = state.thinking and 'thinking' or 'any key takes it back'
@@ -826,6 +847,7 @@ local commands = {
   navigate = function() send({type = 'role', role = 'navigator'}) end,
   drive = function(arg, selection) send({type = 'drive', text = arg, selection = selection}) end,
   jump = function() M.jump() end,
+  trail = function() send({type = 'trail'}) end,
   accept = M.accept,
   dismiss = M.dismiss,
   useful = function() feedback(true, state.remark) end,
@@ -840,6 +862,11 @@ local commands = {
     forget_words(false)
   end,
   stop = M.disconnect,
+  -- Like a tap of the listen key: Pair listens until the next :Pair listen. `:Pair listen cancel` drops it.
+  listen = function(arg, selection)
+    if arg == 'cancel' then return listen.cancel(send) end
+    listen.press(send, ':Pair listen', selection)
+  end,
 }
 
 function M.command(opts)
@@ -881,6 +908,22 @@ function M.setup(opts)
     if file then event({kind = 'enter', file = file}) end
   end})
   vim.api.nvim_create_autocmd('CursorHold', {group = group, callback = send_cursor})
+  -- Whether you are at the editor: an answer to what you said is read aloud only while you are away.
+  vim.api.nvim_create_autocmd({'FocusGained', 'FocusLost'}, {group = group, callback = function(args)
+    send({type = 'focus', on = args.event == 'FocusGained'})
+  end})
+  -- Push-to-talk, in Normal mode and, about the selected lines, in Visual mode; only where the key is free.
+  for _, mode in ipairs({'n', 'x'}) do
+    if config.listen_key and config.listen_key ~= '' and vim.fn.maparg(config.listen_key, mode) == '' then
+      vim.keymap.set(mode, config.listen_key, function()
+        if not state.channel then return vim.notify('Pair: not connected') end
+        local file = mode == 'x' and project_path(0)
+        local from, to = vim.fn.line('v'), vim.fn.line('.')
+        local selection = file and {file = file, from = math.min(from, to), to = math.max(from, to)} or nil
+        listen.press(send, (config.listen_key:gsub('^<(.*)>$', '%1')), selection)
+      end, {desc = 'Hold to speak to Pair'})
+    end
+  end
   -- Saving is when Pair runs your tests, if you set a command for the project (see the README).
   vim.api.nvim_create_autocmd('BufWritePost', {group = group, callback = function(args)
     local file = state.channel and project_path(args.buf)
@@ -906,6 +949,7 @@ function M.setup(opts)
     diagnostic_timers[args.buf] = timer
     timer:start(config.debounce_ms, 0, vim.schedule_wrap(function() send_diagnostics(args.buf) end))
   end})
+  if config.searches then searches.watch(group, function(search) event(vim.tbl_extend('force', {kind = 'search'}, search)) end) end
   if config.auto_connect then M.connect() end
 end
 

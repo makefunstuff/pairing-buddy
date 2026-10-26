@@ -1,6 +1,7 @@
 // The Watcher: a small fast model that scores whether a remark is worth interrupting for.
 // It answers with the score alone: every token it writes costs latency on each candidate remark.
 import {describeBriefly} from './describe.mjs';
+import {trailLines} from './trail.mjs';
 
 // Every token here is read again on each candidate remark, so the instructions are as short as they can be.
 const SYSTEM = `Score 0-10 how much a pair programmer would want a short remark about what just happened.
@@ -12,6 +13,7 @@ Answer with one number.`;
 // is, not whether it drifted; and the Partner's longer detail costs tokens without helping the score.
 // The wrong turn: the Watcher cannot see the code, so it is asked whether a check of the file would save time.
 // A regression: whether hearing of it now saves time, since the user has not run the tests that found it.
+// The search trail: whether the user is going in circles, with what fails now, which says what they are after.
 // A crash: whether hearing where and why saves a hunt. A new warning: whether it is a bug, not just untidy.
 const WHAT_HAPPENED = {
   drift: (trigger, state) => `The user now edits ${trigger.file}.\n`
@@ -20,6 +22,9 @@ const WHAT_HAPPENED = {
     + `Score how much a quick check of whether ${trigger.file} can cause this failure would save them: 0 if ${trigger.file} is plainly the code that fails, 10 if they may be fixing the wrong file.`,
   regression: trigger => `The user saved ${trigger.file}. The tests Pair ran right after show ${trigger.newly.slice(0, 4).join(', ')} failing, which did not fail before. The user has not run them.\n`
     + 'Score how much hearing now what broke would save them: 0 if it is plainly the test they are working on, 10 if their change broke something elsewhere.',
+  search_trail: trigger => `The user searched ${trigger.searches.length} times for one thing and has not edited since:\n${trailLines(trigger.searches)}\n`
+    + `${trigger.failing ? `Failing now: ${trigger.failing}` : 'Nothing is failing.'}\n`
+    + 'Score how much being told where it is in the code would save them: 0 if the last search plainly found it, 10 if their words are not the code\'s and they go in circles.',
   crash: trigger => `${trigger.detail}\n`
     + 'Score how much hearing where and why it crashed would save them: 0 if the output already names the line and the cause plainly, 10 if they would have to hunt for it.',
   new_warning: trigger => `A build printed a warning that was not there before: ${trigger.warnings.slice(0, 3).map(warning => warning.message).join('; ')}\n`

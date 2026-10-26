@@ -37,6 +37,17 @@ const models = await startModelServer(scene, {log});
 const herdrSocket = join(dir, 'herdr.sock');
 const herdr = await standInHerdr(herdrSocket, {cwd: project, nvim: join(dir, 'nvim.sock'), log});
 
+// The microphone of a scene with a question: its words, said by espeak-ng, played in real time while the key is
+// held. whisper.cpp hears them for real: CAP_WHISPER_MODEL is its model, CAP_WHISPER its binary (else whisper-cli).
+function voice() {
+  if (!scene.question) return {};
+  if (!process.env.CAP_WHISPER_MODEL) throw new Error(`the ${name} scene needs CAP_WHISPER_MODEL, a whisper.cpp model`);
+  const question = join(dir, 'question.wav');
+  execFileSync('sh', ['-c', 'espeak-ng -v en-us+m3 -s 135 --stdout "$1" > "$2"', 'sh', scene.question, question]);
+  const record = `ffmpeg -loglevel error -re -i ${question} -f s16le -ar 16000 -ac 1 -`;
+  return {voice: {model: process.env.CAP_WHISPER_MODEL, whisper: process.env.CAP_WHISPER ?? 'whisper-cli', record}};
+}
+
 const socket = join(dir, 'pair.sock');
 const model = id => ({api: 'openai', baseUrl: models.baseUrl, model: id, contextWindow: 65536});
 writeFileSync(join(dir, 'config.json'), JSON.stringify({
@@ -45,6 +56,7 @@ writeFileSync(join(dir, 'config.json'), JSON.stringify({
   typingPauseMs: 900,
   keepWarm: false,
   ...(scene.testOnSave ? {testOnSave: {[project]: scene.testOnSave}} : {}),
+  ...voice(),
   models: {watcher: model('watcher'), partner: model('partner')},
 }, null, 2));
 const out = openSync(join(dir, 'daemon.log'), 'a');

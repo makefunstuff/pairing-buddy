@@ -3,7 +3,7 @@
 import {hasNews, readingSummary, readRun, warningKey} from './run-output.mjs';
 import {namedFiles, parseTestOutput, testSummary} from './test-output.mjs';
 
-const KEEP = {edits: 20, commands: 10, outputChars: 2000, diagnostics: 30, buildCommands: 20, warnings: 200, edited: 200};
+const KEEP = {edits: 20, commands: 10, outputChars: 2000, diagnostics: 30, searches: 12, buildCommands: 20, warnings: 200, edited: 200};
 
 export function initialState({root = null, goal = null} = {}) {
   return {
@@ -23,6 +23,7 @@ export function initialState({root = null, goal = null} = {}) {
     terminalPane: null, // the user's terminal pane they used last: where the Driver's type goes
     tests: null, // the last test run, the user's or Pair's: parsed by test-output.mjs, plus cmd, by, at and the files it names
     savedRunFailed: null, // the tests that failed in the last run on save; null before the session's first
+    searches: [], // what the user searched for in Neovim's pickers: picker, query, results, the file they opened (see trail.mjs)
     run: null, // the last build or run that crashed or printed compiler errors or warnings, or ran clean after one: see afterRun
     builds: {cmds: [], warnings: []}, // the commands run so far, and the warnings their output printed (warningKey)
     edited: [], // the files the user edited in this session
@@ -183,6 +184,16 @@ const handlers = {
   },
 
   goal: (state, event) => ({...state, goal: event.text}),
+
+  // A search in one of Neovim's pickers, as it closed: `file` is what the user opened from it, if anything.
+  search: (state, event) => ({
+    ...state,
+    searches: keepLast(state.searches, {
+      picker: event.picker ?? 'search', query: event.query ?? '', results: event.results ?? null, file: event.file ?? null, line: event.line ?? null, at: event.at,
+    }, KEEP.searches),
+  }),
+
+  forget_searches: state => ({...state, searches: []}),
 
   branch: (state, event) => ({...state, branch: event.name}),
 };

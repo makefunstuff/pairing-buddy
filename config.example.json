@@ -49,5 +49,12 @@
   //   "partner": {"api": "openai", "baseUrl": "http://localhost:8081/v1", "model": "your-larger-model", "contextWindow": 65536}
   // }
 
+  // Push-to-talk: hold Alt-t in Neovim and ask aloud. whisper.cpp writes it down on the CPU (see docs/voice.md).
+  // "voice": {
+  //   "model": "~/src/whisper.cpp/models/ggml-base.en.bin",
+  //   "whisper": "whisper-cli",            // the program, on PATH or a path
+  //   "speak": "espeak-ng"                 // reads an answer aloud, only when you are away from the editor
+  // },
+
   // Also: "typingPauseMs" (default 2000), "socket" and "dataDir" (see the README).
 }

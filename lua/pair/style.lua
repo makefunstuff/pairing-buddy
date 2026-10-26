@@ -14,6 +14,7 @@ M.glyphs = {
   pass = '✓', -- a test passed, on its line and in the statusline
   fail = '✗', -- a test failed, a build failed, a run crashed
   warn = '△', -- a compiler warning
+  listen = '◉', -- it listens while you hold the listen key
 }
 
 -- The statusline while Pair runs your tests or thinks.
@@ -191,6 +192,7 @@ local function palette()
     PairFail = {fg = fail},
     PairStatusPass = {fg = ok}, -- a passing run, for a moment, in the statusline
     PairFailNote = {fg = readable(M.mix(fg, fail, 0.35), bg, fg, 4.5)}, -- why a test failed, after the line it failed on
+    PairHeard = {fg = readable(dim, bg, fg, 3), italic = true}, -- your words, as Pair heard them
     PairWarn = {fg = warn}, -- a compiler warning the builds before did not print
     PairWarnQuiet = {fg = readable(M.mix(bg, warn, 0.45), bg, warn, 1.6)}, -- one they did: no news
     PairWarnNote = {fg = readable(M.mix(fg, warn, 0.35), bg, fg, 4.5)}, -- a new warning's words, after its line
@@ -204,6 +206,7 @@ local LINKS = {
   PairSuggestDelete = 'Comment', PairSuggestAdd = 'DiffAdd', PairCursor = 'Cursor',
   PairStatus = 'StatusLine', PairStatusDim = 'StatusLine', PairStatusWarn = 'StatusLine',
   PairPass = 'DiagnosticOk', PairStatusPass = 'DiagnosticOk', PairFail = 'DiagnosticError', PairFailNote = 'DiagnosticError',
+  PairHeard = 'Comment',
   PairWarn = 'DiagnosticWarn', PairWarnQuiet = 'Comment', PairWarnNote = 'DiagnosticWarn',
 }
 

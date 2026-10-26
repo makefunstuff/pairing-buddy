@@ -15,6 +15,7 @@ import {crashText, hasNews, readingSummary, readRun} from './run-output.mjs';
 import {RUN_TIMEOUT_MS, shellQuote} from './scout-pane.mjs';
 import {parseTestOutput, testSummary} from './test-output.mjs';
 import {TestRuns} from './test-runs.mjs';
+import {currentTrail, trailMatches, trailSummary} from './trail.mjs';
 import {detectTriggers} from './triggers.mjs';
 import {tuning, WINDOW_MS} from './tuning.mjs';
 
@@ -41,6 +42,10 @@ const CHECKS = {
     + 'reason, often another test: the fix has to keep it working, so undo their change only if it is plainly wrong. If a small '
     + 'change fixes it, call suggest with it (the lines and their complete new text); else point at the cause. Then say why in '
     + 'one or two short sentences, without a trace.',
+  search_trail: 'The user searched for one thing several ways and has not found it: their words are not the code\'s words. From what '
+    + 'is failing and what the project has for their words, work out what they look for, read the code, and point at the place '
+    + '(file, line, and as code the code\'s own word for it). Then say in one sentence where it is, in the code\'s own word, '
+    + 'and, if something fails, how that place causes it. If you cannot tell what they look for, answer exactly SILENT.',
   crash: 'The program crashed. Read the code at the innermost place of its stack in the project (if it printed no stack, '
     + 'the code the run executes that the user changed last) and find why it crashes there, with the real values if you can. '
     + 'Point at that line, with the few characters that are wrong as code, and say why in one sentence.',
@@ -131,6 +136,12 @@ export function runText({exit, timedOut, tests, reading}) {
 /** What a finished run found, for the chat and the models: its tests, else its crash or compiler errors, else `text`. */
 const summaryOf = (run, text) => (run.tests ? testSummary(run.tests) : (run.reading && readingSummary(run.reading)) || text);
 
+/** What the gate made of the search trail, for `:Pair trail`. */
+export function verdictLine({verdict, reason, score, bar}, level) {
+  if (score === undefined) return `Not scored: ${reason}.`;
+  return `The Watcher scored it ${score}/10; the bar at ${level} is ${bar}${verdict === 'speak' ? ', so Pair looked for it' : ''}.`;
+}
+
 const NOTE_CHANGES = 20; // lines of git status the note request shows
 
 /** What the Partner is asked at the end: the note the next session in this project starts from. */
@@ -214,6 +225,7 @@ export class PairSession {
     this.runShown = null; // the places of the last build or run that the editors show (see showRun)
     this.runError = null; // the last run that could not run, said once in the chat
     this.wasRed = false; // the last run failed
+    this.trailVerdict = null; // what the gate decided on the search trail last: {start, verdict, reason, score, bar}
   }
 
   get id() { return this.record.id; }
@@ -353,6 +365,7 @@ export class PairSession {
         if (!this.repeats(trigger, decision)) this.log(`${trigger.kind}: ${decision.verdict} (${decision.reason})`);
         if (decision.held) this.waitFor(trigger, now);
         else this.waited(trigger, now);
+        if (trigger.kind === 'search_trail' && decision.verdict !== 'wait') this.trailVerdict = {start: trigger.searches[0].at, ...decision, bar: this.budget.barFor(trigger.kind)};
         if (decision.verdict === 'wait') return;
         if (decision.verdict === 'later') {
           this.deferred.add(trigger.key); // logged once, looked at again each tick until the budget allows
@@ -423,7 +436,9 @@ export class PairSession {
     const since = this.now(); // a breakpoint from here on is the one it waits for
     const id = this.remarkId = this.store.addRemark({sessionId: this.id, trigger: trigger.kind, score, at: this.now(), waitedMs});
     try {
-      const input = watchInput(trigger, describeState(this.state, this.now()));
+      // The trail's queries, searched in the project: which of the user's words the code has, and where.
+      const seen = trigger.kind === 'search_trail' ? {...trigger, detail: `${trigger.detail}\n${await trailMatches(this.root, trigger.searches)}`} : trigger;
+      const input = watchInput(seen, describeState(this.state, this.now()));
       if (!(await this.talk(input, {kind: 'remark'}))) return this.store.dropRemark(id);
       // After the remark's own words, also when they wait for a pause in the user's typing. The editor shows
       // the words under the line the user is on, with a way to the place Pair pointed at.
@@ -474,13 +489,18 @@ export class PairSession {
 
   /**
    * A question from the user, in the chat pane or Neovim: always answered, outside the budget. `selection`
-   * ({file, from, to}) is the lines they asked about.
+   * ({file, from, to}) is the lines they asked about. Resolves with what Pair said, '' when it only pointed or the
+   * text became the goal.
    */
   async ask(text, selection = null) {
     this.message('user', selection ? `${text} (${relative(this.root, selection.file)}:${selection.from}-${selection.to})` : text);
-    if (!this.state.goal && !selection) return this.setGoal(text);
+    if (!this.state.goal && !selection) {
+      this.setGoal(text);
+      return '';
+    }
     await this.yieldRemark();
     await this.talk(`[user] ${text}${await this.selected(selection)}\n\nNow:\n${describeState(this.state, this.now())}`);
+    return this.words.join('\n');
   }
 
   /** The lines the user selected, for the Partner's input; '' without a selection. */
@@ -650,6 +670,25 @@ export class PairSession {
     this.notify('chat', {type: 'confirmed', id});
     this.message('system', note);
     resolve(ok);
+  }
+
+  /** What `:Pair trail` shows: the searches a trail remark would send, oldest first, and what the gate made of them. */
+  trail() {
+    const now = this.now();
+    const trail = currentTrail(this.state, now);
+    const verdict = trail.length && this.trailVerdict?.start === trail[0].at ? this.trailVerdict : null;
+    return {
+      type: 'trail',
+      searches: trail.map(({picker, query, results, file, line, at}) => ({picker, query, results, file, line, after: at - trail[0].at})),
+      summary: trailSummary(trail),
+      verdict: verdict && verdictLine(verdict, this.budget.level),
+    };
+  }
+
+  /** Forgets the searches so far: none of them goes to a model. */
+  forgetTrail() {
+    this.receive({kind: 'forget_searches'});
+    this.trailVerdict = null;
   }
 
   /** Ends the session with a note, which the next session in this project starts from. */
