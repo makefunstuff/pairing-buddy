@@ -23,7 +23,8 @@ const CHECKS = {
   repeated_error: 'The same error came back. Find the cause, point at it and say it in one sentence.',
   new_code_diagnostic: 'Point at the line and say the fix in a few words.',
   stall: 'The user seems stuck on this failure. Give one concrete next step.',
-  drift: 'Do not help with the goal itself. If the recent work is related to the goal, answer exactly SILENT. If it is unrelated, say in one sentence what drifted.',
+  drift: 'Do not help with the goal itself: the only question is whether the file the user now edits belongs to the goal. '
+    + 'If it could, answer exactly SILENT. If it is unrelated, that drift is the problem: say in one sentence what drifted.',
 };
 
 export function watchInput(trigger, description) {
