@@ -11,6 +11,7 @@ import {gitStatus} from './git.mjs';
 import {Breakpoints, placeOf, stillTrue, urgent} from './held.mjs';
 import {plainLine} from './herdr.mjs';
 import {RUN_TIMEOUT_MS, shellQuote} from './scout-pane.mjs';
+import {PROSE_CHECKS} from './prose-triggers.mjs';
 import {parseTestOutput, testSummary} from './test-output.mjs';
 import {TestRuns} from './test-runs.mjs';
 import {detectTriggers} from './triggers.mjs';
@@ -39,6 +40,7 @@ const CHECKS = {
     + 'reason, often another test: the fix has to keep it working, so undo their change only if it is plainly wrong. If a small '
     + 'change fixes it, call suggest with it (the lines and their complete new text); else point at the cause. Then say why in '
     + 'one or two short sentences, without a trace.',
+  ...PROSE_CHECKS,
 };
 
 export function watchInput(trigger, description) {

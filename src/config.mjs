@@ -174,6 +174,15 @@ function testCommands(raw = {}) {
   }));
 }
 
+/** `taskCommand`: the command, as words, that :Pair tasks runs for each task, with {title} and {description} in them. */
+function taskCommand(raw) {
+  if (raw === undefined || raw === null) return null;
+  if (!Array.isArray(raw) || !raw.length || !raw.every(word => typeof word === 'string' && word)) {
+    throw new Error('config: taskCommand must be a command as a list of words, for example ["gh", "issue", "create", "--title", "{title}"]');
+  }
+  return raw;
+}
+
 export function parseConfig(raw) {
   const level = raw.level ?? 'normal';
   if (!LEVELS.includes(level)) throw new Error(`config: level must be one of ${LEVELS.join(', ')}`);
@@ -188,6 +197,7 @@ export function parseConfig(raw) {
     dataDir: raw.dataDir ?? join(xdg('XDG_STATE_HOME', '.local/state'), 'pairing-buddy'),
     testOnSave: testCommands(raw.testOnSave),
     voice: voiceConfig(raw.voice), // push-to-talk; null when off (see voice.mjs)
+    taskCommand: taskCommand(raw.taskCommand),
     models,
   };
 }

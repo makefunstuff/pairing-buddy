@@ -24,6 +24,7 @@ run is real `go test`; only the models' words are scripted. It is recorded from 
 | `◉` and a meter | under your line, and the statusline | it listens while you hold `Alt-t` ([push-to-talk](voice.md)) |
 | `⠹` | the statusline | it thinks before it answers, or runs your tests |
 | `✓` `✗` | the statusline, and the sign column of your tests | tests it ran for you when you saved |
+| `?` `≠` `→` `◆` `≈` | the sign column of a Markdown note, and its words under the line | [notes in the margin](notes.md): a question, a contradiction, a link to the code, a decision, a repeat |
 
 **One accent, from your colorscheme.** Pair takes its colour from the colorscheme you use, so it fits in light and
 dark: of the colorscheme's own colours for regular expressions, its terminal cyan, its hints and its specials, it
@@ -185,6 +186,17 @@ diagnostics, and the real chat pane on the right. Only the models' words are scr
 `Alt-j` shows a held thought at once, and goes where it points once it shows. If you fix the line yourself before
 your break, the dot goes and Pair says nothing. The rules are in [docs/watcher.md](watcher.md#the-held-thought).
 
+## Notes in the margin
+
+In a Markdown note, Pair asks and points but never writes: at most five marks in the margin, each a glyph in the
+sign column and one line of its words under the line it is about. `Alt-l` opens the code a `→` mark names, `Alt-d`
+logs a `Decision:` line in `decisions.md` next to the note (in its buffer, which you save), and `:Pair tasks` lists
+the note's work, adding nothing until you press `y`. You change a marked line, and its mark goes.
+
+![Five marks in a design note's margin](images/notes-margin.png)
+
+Everything about it is in [docs/notes.md](notes.md).
+
 ## What each thing looks like
 
 **Words.** One or two lines under the line you are on, indented with your code, with `●` before them. At most
@@ -206,6 +218,7 @@ lines sit right under them on a faint tint, and the note follows with `M-y`.
 ![A suggestion in Neovim's own light colorscheme](images/suggestion.png)
 
 **The statusline.** One quiet segment: `● pair` at rest, the `●` in the accent while Pair's words are on screen,
+`● pair · 5 notes in the margin` in a note with marks, `◆ logged · docs/decisions.md` for a moment after a decision,
 `● reading worker.go` while it reads, `◎ pair has the wheel · any key takes it back` while it drives, and the
 tests on save as above (`(unsaved)` after the label for the run on the Driver's edit). The role and
 the talk level show only when they are not the usual ones (`● pair · scout`, `● pair · quiet`). While a thought is
@@ -225,9 +238,11 @@ require('pair').setup({
 })
 ```
 
-The keys (`jump_key`, `accept_key`, `useful_key`, `noise_key`) are mapped only while there is something for them
-to act on, and only where you have no mapping of your own; `listen_key` is mapped from the start, also only where it is free. The glyphs are plain Unicode, so they show in any font:
-`voice` `●`, `mark` `▎`, `held` `•`, `away` `◌`, `wheel` `◎`, `listen` `◉`, `pass` `✓` and `fail` `✗`. The spinner is braille, `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`.
+The keys (`jump_key`, `accept_key`, `useful_key`, `noise_key`, and in a note `decide_key` and `link_key`) are mapped
+only while there is something for them to act on, and only where you have no mapping of your own; `listen_key` is
+mapped from the start, also only where it is free. The glyphs are plain Unicode, so they show in any font: `voice`
+`●`, `mark` `▎`, `held` `•`, `away` `◌`, `wheel` `◎`, `listen` `◉`, `pass` `✓` and `fail` `✗`, and in a note's margin
+`question` `?`, `contradiction` `≠`, `code` `→`, `decision` `◆` and `repeat` `≈`. The spinner is braille, `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`.
 
 For the statusline, `require('pair').status()` is plain text and `require('pair').statusline()` the same with
 Pair's highlight groups, for the `statusline` option or a statusline plugin's section:

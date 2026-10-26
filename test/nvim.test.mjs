@@ -673,3 +673,79 @@ test('push-to-talk: hold Alt-t, a meter under your line; let go, your words, the
     await stop();
   }
 });
+
+test('notes in the margin: five marks in a note, a fixed line loses its mark, a decision goes to the log and tasks only on a yes', {skip: hasNvim ? false : 'nvim not installed', timeout: 60_000}, async () => {
+  const {project, watcher, partner, remote, keys, status, stop} = await pairInNvim('dead letters');
+  const note = readFileSync(new URL('../docs/captures/notes/dead-letters.md', import.meta.url), 'utf8');
+  const marks = () => JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('pair_margin'), 0, -1, {details = true}))")`))
+    .filter(([, , , details]) => details.virt_lines)
+    .map(([, row, , details]) => [row + 1, details.sign_text.trim(), details.virt_lines.map(line => line.map(chunk => chunk[0]).join('')).join('|')]);
+  const reply = (system, text) => context => fauxAssistantMessage([fauxText(context.messages[0].content.includes(system) ? text : '[]')]);
+  try {
+    mkdirSync(join(project, 'docs'));
+    writeFileSync(join(project, 'docs', 'dead-letters.md'), note.replace('still gets the webhook.', 'still gets the webhoo'));
+    watcher.setResponses(Array.from({length: 20}, () => fauxAssistantMessage([fauxText('0')])));
+    partner.setResponses([reply('in its margin', JSON.stringify([
+      {kind: 'code', line: 4, text: 'Deliver returns ErrBudget and the caller drops it.', file: 'a.js', file_line: 2},
+      {kind: 'contradiction', line: 14, text: 'Line 14 says 5 attempts, line 20 says 6.', other_line: 20},
+      {kind: 'question', line: 17, text: 'Replay as attempt 1 with full budget: does the 5-attempt cap apply again?'},
+      {kind: 'question', line: 20, text: 'Does a receiver down for a minute reach 6 attempts inside 15 s?'},
+    ]))]);
+    keys(':edit docs/dead-letters.md<CR>21GAk.<Esc>');
+
+    // At the pause, the rule's repeat; once you stop writing, the model's marks: five, the most there are.
+    await until(() => marks().length === 1, 'the repeat the rule finds');
+    assert.deepEqual(marks()[0], [26, '≈', '≈ Says again what line 9 says.   line 9']);
+    await until(() => marks().length === 5, 'the model\'s marks', 20_000);
+    assert.deepEqual(marks().map(([line, sign]) => [line, sign]), [[4, '→'], [14, '≠'], [17, '?'], [20, '?'], [26, '≈']]);
+    assert.equal(marks()[0][2], '→ Deliver returns ErrBudget and the caller drops it.   M-l a.js');
+    assert.equal(marks()[1][2], '≠ Line 14 says 5 attempts, line 20 says 6.   line 20');
+    assert.equal(status(), '● pair · 5 notes in the margin');
+
+    // The link key opens the code the mark names, in a split.
+    keys('4G<M-l>');
+    await until(() => remote('expand("%:t")') === 'a.js' && remote('line(".")') === '2', 'the code the mark links to');
+    keys(':close<CR>');
+
+    // You fix line 20: its own mark goes, and so does the contradiction that names it.
+    keys('20G0f6r5');
+    await until(() => marks().length === 3, 'the marks of the fixed line to go');
+    assert.deepEqual(marks().map(([line]) => line), [4, 17, 26]);
+
+    // A decision: the rule marks it, and the decide key logs it with the question it answers.
+    partner.setResponses(Array.from({length: 4}, () => reply('as tasks', JSON.stringify([
+      {title: 'Park failed webhooks in dead_letters after the last attempt', lines: 'lines 3-4, line 8'},
+      {title: 'Decide how long dead letters are kept', lines: 'line 26', open: true},
+    ]))));
+    keys('19GoDecision: replay keeps the attempt cap; it gets the budget back, not new attempts<Esc>');
+    await until(() => marks().some(([line, sign]) => line === 20 && sign === '◆'), 'the decision\'s mark');
+    assert.equal(marks().find(([line]) => line === 20)[2], '◆ A decision for the log.   M-d logs it');
+    keys('<M-d>');
+    await until(() => status() === '◆ logged · docs/decisions.md', 'the log in the statusline');
+    const log = JSON.parse(remote('json_encode(getbufline(bufnr("docs/decisions.md"), 1, "$"))'));
+    assert.match(log[2], /^## \d{4}-\d\d-\d\d · replay keeps the attempt cap; it gets the budget back, not new attempts$/);
+    assert.deepEqual(log.slice(3), ['', '- Status: decided', '- Where: docs/dead-letters.md:20 (## How)', '- Asked: "Replay as attempt 1 with full budget: does the 5-attempt cap apply again?"']);
+    assert.equal(remote('expand("%:t")'), 'dead-letters.md', 'your cursor stays in the note');
+    assert.throws(() => readFileSync(join(project, 'docs', 'decisions.md')), 'the log is a buffer you save, not a file Pair wrote');
+    await until(() => !marks().some(([line]) => line === 17 || line === 20), 'the answered question\'s mark and the decision\'s to go');
+
+    // Tasks only when asked, and nothing happens until the yes.
+    keys(':Pair tasks<CR>');
+    await until(() => remote('&filetype') === '' && remote('expand("%")') === '', 'the tasks panel');
+    const panel = JSON.parse(remote('json_encode(getline(1, "$"))'));
+    assert.deepEqual(panel, [
+      'From docs/dead-letters.md, as you asked. Nothing is added until you say so.', '',
+      '1  Park failed webhooks in dead_letters after the last attempt', '   lines 3-4, line 8',
+      '2  Decide how long dead letters are kept', '   open question, line 26', '',
+      'y copies them as a checklist · e edits the list · q cancels',
+    ]);
+    keys('y');
+    await until(() => remote('expand("%:t")') === 'dead-letters.md', 'the panel to close');
+    assert.deepEqual(JSON.parse(remote('json_encode(getreg(\'"\', 1, 1))')), [
+      '- [ ] Park failed webhooks in dead_letters after the last attempt (lines 3-4, line 8)',
+      '- [ ] Decide how long dead letters are kept (open question, line 26)',
+    ]);
+  } finally {
+    await stop();
+  }
+});

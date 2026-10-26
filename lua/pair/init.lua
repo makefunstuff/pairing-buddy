@@ -7,17 +7,21 @@
 local draw = require('pair.draw')
 local drive = require('pair.drive')
 local listen = require('pair.listen')
+local margin = require('pair.margin')
 local style = require('pair.style')
+local tasks = require('pair.tasks')
 
 local M = {}
 
 local ns = draw.ns
 -- Alt-y: no built-in meaning in Normal mode. <Tab> would be the same byte as Ctrl-I, the jumplist's forward jump.
 -- Alt-j goes where Pair points. Alt-u and Alt-n rate Pair's last unasked remark: useful, or noise. Hold Alt-t to
--- speak to Pair (push-to-talk, see listen.lua).
+-- speak to Pair (push-to-talk, see listen.lua). In a note's margin, Alt-d logs a decision and Alt-l opens the code a
+-- mark links to.
 local config = {
   socket = nil, debounce_ms = 2000, max_points = 5, motion = true, glyphs = {},
   accept_key = '<M-y>', jump_key = '<M-j>', useful_key = '<M-u>', noise_key = '<M-n>', listen_key = '<M-t>',
+  decide_key = '<M-d>', link_key = '<M-l>',
 }
 local state = {
   channel = nil, partial = '', attached = {}, pending = {}, open_request = nil, level = nil, role = nil,
@@ -188,6 +192,7 @@ local show_all_tests -- defined with the tests below
 --- Places notes and words again for the windows' new widths.
 local function relayout()
   show_all_tests()
+  margin.relayout()
   for _, p in ipairs(state.points) do
     local mark = vim.api.nvim_buf_is_valid(p.buf) and vim.api.nvim_buf_get_extmark_by_id(p.buf, ns, p.ids.mark, {details = true})
     if mark and mark[1] then
@@ -339,6 +344,7 @@ end
 --- Your edit of rows `first`..`last` answers what Pair said: its words go, and so does a point on those lines.
 local function edited(buf, first, last)
   forget_words(true)
+  margin.edited(buf, first, last)
   for _, p in ipairs(vim.list_slice(state.points)) do
     local mark = p.buf == buf and vim.api.nvim_buf_get_extmark_by_id(buf, ns, p.ids.mark, {details = true})
     if mark and mark[1] and mark[1] <= last and (mark[3].end_row or mark[1]) >= first then forget_point(p) end
@@ -605,6 +611,9 @@ local handlers = {
   held = on_held,
   unheld = forget_held,
   tests = on_tests,
+  margin = margin.show,
+  decision_log = margin.log,
+  tasks = function(message) tasks.show(message, send) end,
   thinking = function(message)
     state.thinking = message.on
     spin()
@@ -615,6 +624,7 @@ local handlers = {
     clear_points()
     clear_suggestion()
     forget_words(false)
+    margin.clear()
     state.remark = nil
     unmap_feedback()
   end,
@@ -716,6 +726,7 @@ function M.disconnect()
   clear_points()
   clear_suggestion()
   forget_words(false)
+  margin.clear()
   unmap_feedback()
   state.results, state.run, state.thinking = {}, nil, false
   spin()
@@ -754,17 +765,21 @@ local function status_parts()
     return {glyph = g.away, text = run.label .. ' · ' .. run.text, hl = 'PairStatusWarn', text_hl = 'PairStatusDim'}
   elseif run and run.state == 'pass' and now_ms() < run.till then
     return {glyph = g.pass, text = run.label .. ' · ' .. run.text, hl = 'PairStatusPass', text_hl = 'PairStatusDim'}
+  elseif margin.flash() then
+    return {glyph = g.decision, text = 'logged · ' .. margin.flash(), hl = 'PairStatus', text_hl = 'PairStatusDim'}
   end
   local parts = {'pair'}
   if state.role and state.role ~= 'navigator' then table.insert(parts, state.role) end
   if state.level and state.level ~= 'normal' then table.insert(parts, state.level) end
   if state.held then table.insert(parts, 'held thought · ' .. (key_label('jump', config.jump_key) or ':Pair jump')) end
+  local notes = margin.status()
+  if notes then table.insert(parts, notes) end
   local lit = state.words or state.held
   return {glyph = g.voice, text = table.concat(parts, ' · '), hl = lit and 'PairStatus' or 'PairStatusDim', text_hl = 'PairStatusDim'}
 end
 
---- The statusline's text, for example `● pair`, `● reading worker.go`, `⠹ go test ./...`, `⠹ pair · thinking`, `✗ 1 failing · TestX` or
---- `◌ pair · partner down`.
+--- The statusline's text, for example `● pair`, `● reading worker.go`, `⠹ go test ./...`, `⠹ pair · thinking`, `✗ 1 failing · TestX`,
+--- `● pair · 5 notes in the margin`, `◆ logged · docs/decisions.md` or `◌ pair · partner down`.
 function M.status()
   local parts = status_parts()
   return parts and (parts.glyph .. ' ' .. parts.text) or ''
@@ -804,6 +819,13 @@ local commands = {
   clear = function()
     clear_points()
     forget_words(false)
+    margin.clear()
+  end,
+  decide = function() margin.decide() end,
+  tasks = function()
+    local file = project_path(0)
+    if not file then return vim.notify('Pair: :Pair tasks reads the note in this buffer; open one first') end
+    send({type = 'tasks', file = file})
   end,
   stop = M.disconnect,
   -- Like a tap of the listen key: Pair listens until the next :Pair listen. `:Pair listen cancel` drops it.
@@ -830,6 +852,7 @@ function M.setup(opts)
   style.glyphs = vim.tbl_extend('force', style.glyphs, config.glyphs)
   draw.motion = config.motion
   drive.motion = config.motion
+  margin.setup({decide_key = config.decide_key, link_key = config.link_key, send = send})
   style.apply()
   local group = vim.api.nvim_create_augroup('pair', {clear = true})
   local function restyle()

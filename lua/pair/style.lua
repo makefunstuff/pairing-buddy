@@ -14,6 +14,11 @@ M.glyphs = {
   pass = '✓', -- a test passed, on its line and in the statusline
   fail = '✗', -- a test failed
   listen = '◉', -- it listens while you hold the listen key
+  question = '?', -- in a note's margin: a question the note does not answer
+  contradiction = '≠', -- two lines that cannot both be true
+  code = '→', -- a claim that depends on code: the link goes there
+  decision = '◆', -- a decision worth logging, and the log
+  ['repeat'] = '≈', -- a paragraph that says again what an earlier one said
 }
 
 -- The statusline while Pair runs your tests or thinks.

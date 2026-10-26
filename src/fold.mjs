@@ -22,6 +22,7 @@ export function initialState({root = null, goal = null} = {}) {
     terminalPane: null, // the user's terminal pane they used last: where the Driver's type goes
     tests: null, // the last test run, the user's or Pair's: parsed by test-output.mjs, plus cmd, by, at and the files it names
     savedRunFailed: null, // the tests that failed in the last run on save; null before the session's first
+    notes: {}, // the Markdown notes Pair has read, by file: {title}
   };
 }
 
@@ -148,6 +149,9 @@ const handlers = {
   goal: (state, event) => ({...state, goal: event.text}),
 
   branch: (state, event) => ({...state, branch: event.name}),
+
+  // A note Pair read for its margin (see margin.mjs).
+  note: (state, event) => ({...state, notes: {...state.notes, [event.file]: {title: event.title}}}),
 };
 
 export function fold(state, event) {

@@ -1,6 +1,7 @@
 // The Watcher: a small fast model that scores whether a remark is worth interrupting for.
 // It answers with the score alone: every token it writes costs latency on each candidate remark.
 import {describeBriefly} from './describe.mjs';
+import {PROSE_WATCH} from './prose-triggers.mjs';
 
 // Every token here is read again on each candidate remark, so the instructions are as short as they can be.
 const SYSTEM = `Score 0-10 how much a pair programmer would want a short remark about what just happened.
@@ -19,6 +20,7 @@ const WHAT_HAPPENED = {
     + `Score how much a quick check of whether ${trigger.file} can cause this failure would save them: 0 if ${trigger.file} is plainly the code that fails, 10 if they may be fixing the wrong file.`,
   regression: trigger => `The user saved ${trigger.file}. The tests Pair ran right after show ${trigger.newly.slice(0, 4).join(', ')} failing, which did not fail before. The user has not run them.\n`
     + 'Score how much hearing now what broke would save them: 0 if it is plainly the test they are working on, 10 if their change broke something elsewhere.',
+  ...PROSE_WATCH,
 };
 
 const MAX_TOKENS = 8; // a number, with room for a model that wraps it in a word or two

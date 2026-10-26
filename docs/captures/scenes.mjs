@@ -1,8 +1,9 @@
 // The scenes: where the project starts, the session's goal and settings, and the models' words and timing.
 // Everything else in a capture is the real plugin and daemon at work: the triggers, the tools reading and checking
 // the files, the tests on save and on the unsaved buffer (go test, for real), and what Neovim draws.
-import {readFileSync, writeFileSync} from 'node:fs';
+import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
+import {fileURLToPath} from 'node:url';
 
 const score = (...kinds) => prompt => (kinds.some(kind => prompt.includes(`(${kind})`)) ? '9' : '0');
 
@@ -102,5 +103,40 @@ export const scenes = {
       {when: /edge cases/, wait: 600, call: ['edit', {file: TABLE, line: 15, new_text: CASES}]},
       {say: 'Okay, yours.'},
     ],
+  },
+  // Notes in the margin: you finish a sentence in the dead-letters design note. At the pause the rule marks the
+  // paragraph that repeats line 9; when you stop, the model's four marks join it. You fix line 20, write a decision
+  // and log it with Alt-d, then ask for tasks.
+  notes: {
+    goal: 'dead letters for webhooks',
+    setup(project) {
+      const note = readFileSync(fileURLToPath(new URL('notes/dead-letters.md', import.meta.url)), 'utf8');
+      mkdirSync(join(project, 'docs'));
+      writeFileSync(join(project, 'docs', 'dead-letters.md'), note.replace('still gets the webhook.', 'still gets the webhoo'));
+    },
+    watcher: score(),
+    partner: [],
+    // The note's readings, in order (the last one again for any after it), and the tasks.
+    notes: {
+      wait: 900,
+      marks: [
+        [
+          {kind: 'code', line: 4, text: 'Deliver returns ErrBudget at worker.go:36 and the caller drops it; parking must happen in the caller, not here.', file: 'internal/delivery/worker.go', file_line: 36},
+          {kind: 'contradiction', line: 14, text: 'Line 14 says 5 attempts, line 20 says 6; the test config sets MaxAttempts: 5.', other_line: 20},
+          {kind: 'question', line: 17, text: 'Replay as attempt 1 with full budget: does the 5-attempt cap then apply again, so a dead receiver loops forever?'},
+          {kind: 'question', line: 20, text: 'Budget is 15s in the test config; does a down receiver for a minute even reach 6 attempts before ErrBudget?'},
+        ],
+        [
+          {kind: 'code', line: 4, text: 'Deliver returns ErrBudget at worker.go:36 and the caller drops it; parking must happen in the caller, not here.', file: 'internal/delivery/worker.go', file_line: 36},
+        ],
+      ],
+      tasks: [
+        {title: 'Park failed webhooks in dead_letters after last attempt', lines: 'lines 3-4, line 8, line 14'},
+        {title: 'List parked dead letters newest first on admin page', lines: 'lines 9, 15'},
+        {title: 'Replay dead letter with same payload and id', lines: 'lines 10, 17-18'},
+        {title: 'Decide dead letter retention period', lines: 'line 26', open: true},
+        {title: 'Confirm operator visibility and replay scope on admin page', lines: 'line 27', open: true},
+      ],
+    },
   },
 };

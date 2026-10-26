@@ -88,19 +88,26 @@ local function width_of(chunks)
   return width
 end
 
---- The pair's voice: `text` as virtual lines indented by `indent`, the voice glyph before the first line and
---- `key` (the key that acts on it) dimmed after the last; at most MAX_LINES, cut with an ellipsis.
-local function voice(text, indent, width, key)
+--- The pair's voice: `text` as virtual lines indented by `indent`, `glyph` (by default the voice glyph) before the
+--- first line and `key` (the key that acts on it) dimmed after the last; at most MAX_LINES, cut with an ellipsis.
+local function voice(text, indent, width, key, glyph)
   local lines = wrap(text, math.max(20, width - indent - 2), 'PairNote')
   if #lines > MAX_LINES then
     lines = vim.list_slice(lines, 1, MAX_LINES)
     table.insert(lines[MAX_LINES], {' …', 'PairNote'})
   end
   for i, line in ipairs(lines) do
-    table.insert(line, 1, i == 1 and {style.glyphs.voice .. ' ', 'PairAccent'} or {'  '})
+    table.insert(line, 1, i == 1 and {(glyph or style.glyphs.voice) .. ' ', 'PairAccent'} or {'  '})
     table.insert(line, 1, {string.rep(' ', indent)})
   end
-  if key and lines[1] then table.insert(lines[#lines], {'   ' .. key, 'PairKey'}) end
+  if key and lines[1] then
+    -- After the last line where it fits, else on a line of its own: a key cut off at the window's edge is no use.
+    if width_of(lines[#lines]) + 3 + vim.fn.strdisplaywidth(key) <= width then
+      table.insert(lines[#lines], {'   ' .. key, 'PairKey'})
+    else
+      table.insert(lines, {{string.rep(' ', indent + 2)}, {key, 'PairKey'}})
+    end
+  end
   return lines
 end
 
@@ -163,13 +170,15 @@ function M.row(buf, id, ns)
 end
 
 --- The pair's words under row `row` of `buf`, indented with the code, the mark in the sign column or `opts.sign`
---- ({glyph, group}). Returns the extmark id.
+--- ({glyph, group}), and `opts.glyph` before them instead of the voice glyph. In namespace `opts.ns`, by default
+--- the pair's. Returns the extmark id.
 function M.remark(buf, row, text, key, opts)
-  local lines = voice(text, indent_of(buf, row), text_width(window_of(buf)), key)
-  local sign = opts and opts.sign or {style.glyphs.mark, 'PairSign'}
+  opts = opts or {}
+  local lines = voice(text, indent_of(buf, row), text_width(window_of(buf)), key, opts.glyph)
+  local sign = opts.sign or {style.glyphs.mark, 'PairSign'}
   local spec = {virt_lines = lines, sign_text = sign[1], sign_hl_group = sign[2], priority = 20}
-  if opts and opts.still then return vim.api.nvim_buf_set_extmark(buf, M.ns, row, 0, spec) end
-  return place(buf, M.ns, row, 0, spec)
+  if opts.still then return vim.api.nvim_buf_set_extmark(buf, opts.ns or M.ns, row, 0, spec) end
+  return place(buf, opts.ns or M.ns, row, 0, spec)
 end
 
 --- The mark in the sign column of rows `first`..`last`, under any other mark of the pair. Returns the extmark id.
