@@ -161,6 +161,7 @@ local function palette()
     PairStatusWarn = {fg = hl('DiagnosticWarn').fg or hl('WarningMsg').fg or accent},
     PairPass = {fg = readable(M.mix(bg, ok, 0.55), bg, ok, 2.2)}, -- quiet: a column of passing tests is no news
     PairFail = {fg = fail},
+    PairStatusPass = {fg = ok}, -- a passing run, for a moment, in the statusline
     PairFailNote = {fg = readable(M.mix(fg, fail, 0.35), bg, fg, 4.5)}, -- why a test failed, after the line it failed on
   }
 end
@@ -171,7 +172,7 @@ local LINKS = {
   PairSign = 'DiagnosticHint', PairPoint = 'CursorLine', PairSpan = 'Visual', PairGaze = 'DiagnosticHint',
   PairSuggestDelete = 'Comment', PairSuggestAdd = 'DiffAdd',
   PairStatus = 'StatusLine', PairStatusDim = 'StatusLine', PairStatusWarn = 'StatusLine',
-  PairPass = 'DiagnosticOk', PairFail = 'DiagnosticError', PairFailNote = 'DiagnosticError',
+  PairPass = 'DiagnosticOk', PairStatusPass = 'DiagnosticOk', PairFail = 'DiagnosticError', PairFailNote = 'DiagnosticError',
 }
 
 local ours = {} -- each group as this module last left it: a group that differs now was set by someone else

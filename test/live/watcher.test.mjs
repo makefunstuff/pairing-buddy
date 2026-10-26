@@ -39,6 +39,13 @@ const SCENARIOS = {
         output: '✖ retries five times within the 15 s budget (1.2ms)\n  AssertionError [ERR_ASSERTION]: 4 !== 5\n      at test/worker.test.js:7:10\nℹ tests 1\nℹ fail 1'},
       {kind: 'edit', file: 'src/backoff.js', from: 4, to: 4, at: sec(20)},
     ]),
+    'a regression: the tests Pair ran on save fail in another file than the one saved': scenario([
+      {kind: 'edit', file: 'src/worker.js', from: 10, to: 10, at: sec(30)},
+      {kind: 'save', file: 'src/worker.js', at: sec(20)},
+      {kind: 'test_run', cmd: 'node --test', saved: 'src/worker.js', files: ['test/queue.test.js'], at: sec(5),
+        tests: {runner: 'node', failed: ['no webhook is delivered twice'], passed: 1, failedCount: 1,
+          firstError: 'AssertionError [ERR_ASSERTION]: attempt at 15000 ms: a second worker takes evt_42'}},
+    ]),
     'a session about reconnects spent editing billing code': scenario([
       {kind: 'branch', name: 'feature/invoices', at: sec(900)},
       {kind: 'edit', file: 'src/billing/invoice.ts', from: 10, to: 40, at: sec(300)},

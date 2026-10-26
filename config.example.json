@@ -13,6 +13,10 @@
   // "anthropic" Watcher it is off unless set.
   "keepWarm": true,
 
+  // Tests Pair runs in its own herdr pane when you save a source file in a project: the project's folder and the
+  // command. JSON reports (go test -json, jest --json, vitest --reporter=json) also put each test's result on its line.
+  // "testOnSave": {"~/src/shop": "go test -json ./..."},
+
   "models": {
     // The Watcher scores every candidate remark with one number, so it must be fast: under 1 s per answer.
     // On a server that keeps one model in memory, give both roles the same model (or the Watcher uses the

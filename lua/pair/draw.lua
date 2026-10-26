@@ -229,7 +229,7 @@ end
 -- Tests: what the run on save found, on the lines of the tests in `buf`.
 
 --- What a test run found in `buf`: `signs` ({line, ok, changed}) put ✓ or ✗ in the sign column of each test,
---- `notes` ({line, text, changed}) say after a line why a test failed there. What `changed` since the last run
+--- `notes` ({line, text, changed}) say why a test failed there: after the line when it fits, else under it. What `changed` since the last run
 --- rises from the background; with `stale` (the next run is on) everything shows half faded.
 function M.tests(buf, signs, notes, opts)
   vim.api.nvim_buf_clear_namespace(buf, M.tests_ns, 0, -1)
@@ -248,11 +248,20 @@ function M.tests(buf, signs, notes, opts)
       priority = 15, -- under the pair's own mark
     })
   end
+  local width = text_width(window_of(buf))
   for _, note in ipairs(notes) do
-    set(note, {
-      virt_text = {{'   ' .. style.glyphs.fail .. ' ', group('PairFail')}, {note.text, group('PairFailNote')}},
-      virt_text_pos = 'eol', priority = 15,
-    })
+    local after = {{'   ' .. style.glyphs.fail .. ' ', group('PairFail')}, {note.text, group('PairFailNote')}}
+    if note.line > count or vim.fn.strdisplaywidth(line_of(buf, note.line - 1)) + width_of(after) <= width then
+      set(note, {virt_text = after, virt_text_pos = 'eol', priority = 15})
+    else
+      local indent = indent_of(buf, note.line - 1)
+      local lines = wrap(note.text, math.max(20, width - indent - 2), group('PairFailNote'))
+      for i, line in ipairs(lines) do
+        table.insert(line, 1, i == 1 and {style.glyphs.fail .. ' ', group('PairFail')} or {'  '})
+        table.insert(line, 1, {string.rep(' ', indent)})
+      end
+      set(note, {virt_lines = lines, priority = 15})
+    end
   end
 end
 

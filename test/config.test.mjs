@@ -43,3 +43,9 @@ test('testOnSave maps project folders, ~ included, to the command run on save', 
   assert.throws(() => config({[dir]: ''}), /testOnSave\[".*"\] must be a command/);
   assert.throws(() => config(['npm test']), /testOnSave must map project folders to commands/);
 });
+
+test('a model that can think gets room for its thinking in the answer', () => {
+  assert.equal(parseConfig({models: {watcher: {api: 'anthropic', model: 'w'}, partner: {api: 'anthropic', model: 'p'}}}).models.partner.maxTokens, 2048);
+  assert.equal(parseConfig({models: {watcher: {api: 'anthropic', model: 'w'}, partner: {api: 'anthropic', model: 'p', reasoning: true}}}).models.partner.maxTokens, 8192);
+  assert.equal(parseConfig({models: {watcher: {api: 'anthropic', model: 'w'}, partner: {api: 'anthropic', model: 'p', reasoning: true, maxTokens: 4000}}}).models.partner.maxTokens, 4000);
+});

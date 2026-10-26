@@ -237,7 +237,7 @@ footer a { color: var(--muted); }
       Source on GitHub
     </a>
   </div>
-  <div class="facts"><span><b>v0.7</b> Navigator, Scout, Driver</span><span>local or cloud models</span><span>MIT</span></div>
+  <div class="facts"><span><b>v0.8</b> Navigator, Scout, Driver</span><span>local or cloud models</span><span>MIT</span></div>
 </header>
 
 <!-- Hero video slot. Today: the v0.6 tutorial from docs/video. A remade video replaces it: swap the
@@ -276,7 +276,7 @@ footer a { color: var(--muted); }
   </div>
   <div class="col proto" role="note">
     <span class="tag">Prototype</span>
-    <p><b>The first moment ships in v0.7:</b> its capture is the released plugin and daemon in a clean Neovim, with a real <code>go test</code>; only the models' words and their timing are scripted. <b>The other two are prototype captures</b> of what comes next, recorded from a running prototype in real Neovim, with real gopls and test runs. Real captures replace them as they ship.</p>
+    <p><b>The first two moments ship in v0.8:</b> their captures are the released plugin and daemon in a clean Neovim, with real <code>go test</code> runs; only the models' words and their timing are scripted. <b>The third is a prototype capture</b> of what comes next, recorded from a running prototype in real Neovim, with real gopls and test runs. A real capture replaces it when it ships.</p>
   </div>
 
   <article class="moment" id="wrong-turn" aria-labelledby="m1-h">
@@ -309,25 +309,25 @@ footer a { color: var(--muted); }
     <div class="col moment-head">
       <div class="num">02 · it runs what you'd skip</div>
       <h3 id="m2-h">It runs what you'd skip, and finds what your fix broke</h3>
-      <p>The delivery tests pass, so you'd push. The pair ran <code>go test ./...</code> in its own pane as you saved. Attempt five now starts the instant the queue's lease on the job expires, so a second worker can take the same webhook. It shows a one-line fix in <code>queue.go</code>, and M-y takes it.</p>
+      <p>The delivery tests pass, so you'd push. The pair ran <code>go test -json ./...</code> in its own pane as you saved: the statusline spins, then names the one test that fails, and a ✗ marks it in the test file. Attempt five now starts the instant the queue's lease on the job expires, so a second worker can take the same webhook. It shows a one-line fix in <code>queue.go</code>, and M-y takes it.</p>
     </div>
     <div>
-      <div class="stage loop"><video data-v="m2" muted loop playsinline preload="none" poster="media/m2-still1.webp" width="1280" height="768" aria-label="Prototype capture: the pair runs all tests on save and points at the queue lease">
+      <div class="stage loop"><video data-v="m2" muted loop playsinline preload="none" poster="media/m2-still1.webp" width="1280" height="768" aria-label="Capture of v0.8: the pair runs all tests on save and suggests the fix in the queue lease">
         <source data-src="media/m2.webm" type="video/webm"><source data-src="media/m2.mp4" type="video/mp4">
       </video></div>
       <div class="beats" data-for="m2">
-        <button class="beat" data-t="0"><b>0:00</b>the fix, saved</button>
-        <button class="beat" data-t="2"><b>0:02</b>go test ./... in the statusline</button>
-        <button class="beat" data-t="4"><b>0:04</b>TestNoDoubleDelivery fails, in another package</button>
-        <button class="beat" data-t="6"><b>0:06</b>why, under the line you just changed</button>
-        <button class="beat" data-t="10"><b>0:10</b>M-j: queue.go:29 with the change in place</button>
-        <button class="beat" data-t="13"><b>0:13</b>M-y, save: 4 tests, 3 packages pass</button>
+        <button class="beat" data-t="0"><b>0:01</b>the fix, saved</button>
+        <button class="beat" data-t="2"><b>0:02</b>go test ./... spins in the statusline</button>
+        <button class="beat" data-t="5.5"><b>0:06</b>TestNoDoubleDelivery fails, in another package</button>
+        <button class="beat" data-t="9"><b>0:09</b>why, under the line you just changed</button>
+        <button class="beat" data-t="11.5"><b>0:12</b>M-j: queue.go:18 with the change in place</button>
+        <button class="beat" data-t="14"><b>0:14</b>M-y, save: 4 tests, 3 packages pass</button>
       </div>
     </div>
     <p class="col why"><b>Why it matters.</b> A second person keeps an eye on everything you aren't looking at. Here that's a double-delivered webhook, the kind of bug that otherwise reaches you a week later as a customer's duplicate charge. It doesn't arrive as a test log: it arrives as one sentence, under the line that caused it.</p>
     <div class="stills">
-      <figure><img src="media/m2-still1.webp" width="1280" height="768" loading="lazy" decoding="async" alt="A remark under worker.go:59 explaining the lease; the statusline shows one failing test"><figcaption>One failing test, named in the statusline; the reason is under the line that caused it.</figcaption></figure>
-      <figure><img src="media/m2-still2.webp" width="1280" height="768" loading="lazy" decoding="async" alt="queue.go line 29 struck through with the suggested line under it"><figcaption>The change in place: the old line struck through, the new one under it, M-y to take it.</figcaption></figure>
+      <figure><img src="media/m2-still1.webp" width="1280" height="768" loading="lazy" decoding="async" alt="A remark under worker.go:35 explaining the lease; a cross on the failing test below, and the statusline names it"><figcaption>One failing test, named in the statusline and marked on its function; the reason is under the line that caused it.</figcaption></figure>
+      <figure><img src="media/m2-still2.webp" width="1280" height="768" loading="lazy" decoding="async" alt="queue.go line 18 struck through with the suggested line under it"><figcaption>The change in place: the old line struck through, the new one under it, M-y to take it.</figcaption></figure>
     </div>
   </article>
 
@@ -501,7 +501,7 @@ footer a { color: var(--muted); }
   <span>pairing-buddy · MIT</span>
   <a href="https://github.com/makefunstuff/pairing-buddy">GitHub</a>
   <a href="https://github.com/makefunstuff/pairing-buddy/issues">Issues</a>
-  <span>In “Three moments”, the first capture is v0.7; the other two are from a prototype.</span>
+  <span>In “Three moments”, the first two captures are v0.8; the third is from a prototype.</span>
 </footer>
 
 <script>

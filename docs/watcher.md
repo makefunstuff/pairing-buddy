@@ -1,6 +1,6 @@
 # The Watcher: fast and well-judged
 
-Every candidate remark (a failed command you missed, the same error again, a new diagnostic, a stall, drift, the wrong turn) goes through the speak gate before the Partner writes a word. The gate asks the Watcher model for a score from 0 to 10, so the Watcher must answer in well under a second, and must not make the Partner's model slower. This page says how Pair keeps it that way.
+Every candidate remark (a failed command you missed, the same error again, a new diagnostic, a stall, drift, the wrong turn, a regression) goes through the speak gate before the Partner writes a word. The gate asks the Watcher model for a score from 0 to 10, so the Watcher must answer in well under a second, and must not make the Partner's model slower. This page says how Pair keeps it that way.
 
 ## The order of the gate
 
@@ -39,6 +39,27 @@ Paths are split into words at slashes, dots, underscores and camelCase. A path w
 The Partner gets the failure and your change, and is told the red run is older than your change. It reads your lines, the failing test and the code it tests, and traces the test through the code as it is now, with the real numbers. If the trace passes (your change was the fix), or it is not sure, it answers SILENT. Only when the trace still fails somewhere else does it point there, with the few characters it means as `code` (an operator, a name), and say why in one or two sentences.
 
 For this check the Partner thinks first: if its model can think (`"reasoning": true`), the turn runs with thinking at least `low`, whatever `thinking` says, and as configured again afterwards. Without it, a fast model traced the test wrongly and told users to change code that already passed; with it, it stayed silent in every live run where the edit was the fix, and still found the real cause when it was not. In Neovim its words show under your edit and `Alt-j` goes to the point ([docs/neovim.md](neovim.md#the-wrong-turn)).
+
+## Regressions
+
+`regression` is raised when the tests Pair ran on save ([docs/scout.md](scout.md#tests-on-save)) fail where the run
+before did not: a test that fails now and did not fail in the last run, yours or Pair's. It is raised once per run,
+within two minutes of it, and is judged before the wrong turn. A run that is red the same way again is no news:
+the statusline already says so.
+
+The Watcher gets a question of its own: you saved a file, the tests run right after show these tests failing, which
+did not fail before, and you have not run them; how much would hearing now what broke save you, 0 if it is plainly
+the test you are working on, 10 if your change broke something elsewhere.
+
+The Partner reads the failing test, the code it tests and your change, and finds how the change breaks it. It is
+told that you made the change for a reason, often another test, so its fix has to keep that working: it undoes your
+change only if it is plainly wrong. If a small change fixes it, it calls `suggest`, else it points at the cause, and
+says why in one or two sentences. Like the wrong turn, the check thinks at least `low` when its model can: in live
+runs without thinking, a fast model undid the user's fix about one time in three. In Neovim the words show under your
+line, and `Alt-j` goes to the suggestion, where `Alt-y` takes it.
+
+A model's thinking counts toward its `maxTokens`, so a Partner with `"reasoning": true` gets 8192 by default instead
+of 2048: with 2048, the thinking for these checks used up the answer in two live runs of five, and Pair said nothing.
 
 ## Keep-warm
 

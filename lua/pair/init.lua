@@ -173,8 +173,11 @@ local function point(message)
   while #state.points > config.max_points do forget_point(state.points[1]) end
 end
 
+local show_all_tests -- defined with the tests below
+
 --- Places notes and words again for the windows' new widths.
 local function relayout()
+  show_all_tests()
   for _, p in ipairs(state.points) do
     local mark = vim.api.nvim_buf_is_valid(p.buf) and vim.api.nvim_buf_get_extmark_by_id(p.buf, ns, p.ids.mark, {details = true})
     if mark and mark[1] then
@@ -401,16 +404,22 @@ end
 local function show_tests(buf)
   if not vim.api.nvim_buf_is_loaded(buf) then return end
   local name = vim.api.nvim_buf_get_name(buf)
-  local signs, notes = {}, {}
+  local signs, notes, shown = {}, {}, {}
   for _, test in ipairs(state.results) do
     if test.file == name then table.insert(signs, {line = test.line, ok = test.ok, changed = test.changed}) end
     local failure = type(test.failure) == 'table' and test.failure -- JSON null arrives as vim.NIL
     if failure and failure.file == name then table.insert(notes, {line = failure.line, text = failure.text, changed = test.changed}) end
+    if test.file == name or (failure and failure.file == name) then table.insert(shown, test) end
   end
-  draw.tests(buf, signs, notes, {stale = state.run and state.run.state == 'run'})
+  local stale = state.run and state.run.state == 'run'
+  draw.tests(buf, signs, notes, {stale = stale})
+  -- A change rises from the background once, where it first shows.
+  if not stale then
+    for _, test in ipairs(shown) do test.changed = false end
+  end
 end
 
-local function show_all_tests()
+show_all_tests = function()
   for _, buf in ipairs(vim.api.nvim_list_bufs()) do show_tests(buf) end
 end
 
@@ -633,7 +642,7 @@ local function status_parts()
   elseif run and run.state == 'fail' then
     return {glyph = g.fail, text = run.text, hl = 'PairFail', text_hl = 'PairStatusDim'}
   elseif run and run.state == 'pass' and now_ms() < run.till then
-    return {glyph = g.pass, text = run.label .. ' · ' .. run.text, hl = 'PairPass', text_hl = 'PairStatusDim'}
+    return {glyph = g.pass, text = run.label .. ' · ' .. run.text, hl = 'PairStatusPass', text_hl = 'PairStatusDim'}
   end
   local parts = {'pair'}
   if state.role and state.role ~= 'navigator' then table.insert(parts, state.role) end

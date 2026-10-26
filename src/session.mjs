@@ -34,9 +34,10 @@ const CHECKS = {
     + 'than their change, point at that place (file, line, and as code the few characters that are wrong, such as an operator) '
     + 'and say why in one or two short sentences, without the trace.',
   regression: 'Pair ran the tests when the user saved, and a test that did not fail before fails now. Read the failing test, '
-    + 'the code it tests and the lines the user changed, and find how the change breaks it. If a small change fixes it, call '
-    + 'suggest with it (the lines and their complete new text); else point at the cause. Then say why in one or two short '
-    + 'sentences, without a trace.',
+    + 'the code it tests and the lines the user changed, and find how the change breaks it. The user made that change for a '
+    + 'reason, often another test: the fix has to keep it working, so undo their change only if it is plainly wrong. If a small '
+    + 'change fixes it, call suggest with it (the lines and their complete new text); else point at the cause. Then say why in '
+    + 'one or two short sentences, without a trace.',
 };
 
 // Triggers whose check needs the Partner to work something out before it may speak: it thinks at least this

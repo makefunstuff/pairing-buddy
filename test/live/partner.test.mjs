@@ -1,6 +1,7 @@
 // The Partner against real models: it points at the right line, stays silent on noise, answers by reading,
 // and cannot change files however it is asked.
 import assert from 'node:assert/strict';
+import {execFileSync} from 'node:child_process';
 import {mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -11,6 +12,7 @@ import {openPartner} from '../../src/partner.mjs';
 import {describeState} from '../../src/describe.mjs';
 import {fold, initialState} from '../../src/fold.mjs';
 import {THINKING, watchInput} from '../../src/session.mjs';
+import {parseTestOutput} from '../../src/test-output.mjs';
 import {detectTriggers} from '../../src/triggers.mjs';
 import {liveStacks, SKIP_REASON} from './stacks.mjs';
 
@@ -141,6 +143,67 @@ function wrongTurn({budget, edited, line}) {
   return {root, input: watchInput(trigger, describeState(state, now))};
 }
 
+// The regression: the user fixed the worker's >= (attempt 5 now starts at exactly 15 s), and the tests Pair runs on
+// save find that the queue's lease on the job runs out at that very moment, so a second worker takes it.
+const QUEUE = `// Hands each job to one worker at a time: a worker leases the job, and the lease runs out after ttl,
+// so a job whose worker died is picked up again.
+export function createQueue({budgetMs, attemptTimeoutMs}) {
+  const ttl = budgetMs;
+  const leased = new Map(); // job id -> when its lease runs out
+  return {
+    lease(id, now) {
+      if (leased.has(id) && now < leased.get(id)) return false;
+      leased.set(id, now + ttl);
+      return true;
+    },
+  };
+}
+`;
+const QUEUE_TEST = `import assert from 'node:assert/strict';
+import {test} from 'node:test';
+import {createQueue} from '../src/queue.js';
+import {deliver} from '../src/worker.js';
+
+test('no webhook is delivered twice', async () => {
+  const queue = createQueue({budgetMs: 15_000, attemptTimeoutMs: 5_000});
+  queue.lease('evt_42', 0);
+  let now = 0;
+  const starts = [];
+  await deliver(async () => { starts.push(now); return false; }, {budgetMs: 15_000, sleep: async ms => { now += ms; }});
+  for (const start of starts) assert.equal(queue.lease('evt_42', start), false, \`attempt at \${start} ms: a second worker takes evt_42\`);
+});
+`;
+
+/** The project after the user's fix of the worker, the real red run of its tests, and the regression trigger's input. */
+function regression() {
+  const root = mkdtempSync(join(tmpdir(), 'pair-live-'));
+  mkdirSync(join(root, 'src'));
+  mkdirSync(join(root, 'test'));
+  writeFileSync(join(root, 'package.json'), '{"type": "module"}\n');
+  writeFileSync(join(root, 'src', 'backoff.js'), BACKOFF);
+  writeFileSync(join(root, 'src', 'worker.js'), worker(15).replace('elapsed + wait >= budgetMs', 'elapsed + wait > budgetMs'));
+  writeFileSync(join(root, 'src', 'queue.js'), QUEUE);
+  writeFileSync(join(root, 'test', 'worker.test.js'), workerTest(15));
+  writeFileSync(join(root, 'test', 'queue.test.js'), QUEUE_TEST);
+  // Without this, node --test in the project thinks it runs inside this test file and skips its tests.
+  const {NODE_TEST_CONTEXT, ...env} = process.env;
+  let output = '';
+  try { execFileSync('node', ['--test'], {cwd: root, env, encoding: 'utf8'}); } catch (error) { output = error.stdout; }
+  const tests = parseTestOutput(output);
+  assert.deepEqual(tests.failed, ['no webhook is delivered twice'], 'the queue test fails for real');
+  const now = 1_000_000;
+  const state = [
+    {kind: 'command_end', pane: 'w1:p2', cmd: 'npm test', exit: 1, output: red(15), at: now - 120_000},
+    {kind: 'edit', file: 'src/worker.js', from: 10, to: 10, at: now - 30_000},
+    {kind: 'cursor', file: 'src/worker.js', line: 10, at: now - 25_000},
+    {kind: 'save', file: 'src/worker.js', at: now - 20_000},
+    {kind: 'test_run', cmd: 'node --test', saved: 'src/worker.js', files: ['test/queue.test.js'], tests, at: now - 15_000},
+  ].reduce(fold, initialState({root, goal: 'retries use the whole budget'}));
+  const trigger = detectTriggers(state, now).find(found => found.kind === 'regression');
+  assert.ok(trigger, 'the red run on save raises the regression trigger');
+  return {root, input: watchInput(trigger, describeState(state, now))};
+}
+
 const stacks = liveStacks();
 
 describe('Partner on live models', {skip: stacks.length ? false : SKIP_REASON}, () => {
@@ -190,6 +253,20 @@ describe('Partner on live models', {skip: stacks.length ? false : SKIP_REASON}, 
       assert.match(answer, /^\W*silent\W*$/i);
       assert.deepEqual(calls.filter(call => call.name !== 'read' && !(call.name === 'say' && /^\W*silent\W*$/i.test(call.args))).map(call => call.name), [],
         'nothing else reached the user');
+    });
+
+    test(`${stack.name}: a regression found on save gets the fix suggested where it breaks`, {timeout: 180_000}, async t => {
+      const {root, input} = regression();
+      const {calls, partner, conversation} = await partnerFor(root);
+      const answer = await partner.ask(conversation, input, {thinking: THINKING.regression});
+      await partner.close();
+      t.diagnostic(`tools: ${calls.map(call => `${call.name}(${JSON.stringify(call.args)})`).join(', ')}`);
+      t.diagnostic(`answer: ${answer}`);
+      const fix = calls.find(call => call.name === 'suggest');
+      assert.ok(fix, 'it suggests a change');
+      assert.ok(fix.args.file.endsWith('queue.js') && fix.args.line <= 4 && fix.args.endLine >= 4, 'the lease\'s ttl in the queue, not the worker or the test');
+      assert.match(fix.args.text, /ttl = budgetMs \+ attemptTimeoutMs|ttl = attemptTimeoutMs \+ budgetMs/, 'the lease outlives the last attempt');
+      assert.doesNotMatch(answer, /^\W*silent\W*$/i);
     });
 
     test(`${stack.name}: noise gets SILENT`, {timeout: 180_000}, async t => {

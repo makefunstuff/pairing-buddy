@@ -32,7 +32,9 @@ export function modelConfig(role, entry) {
   return {
     baseUrl: entry.api === 'anthropic' ? 'https://api.anthropic.com' : undefined,
     contextWindow: 32768,
-    maxTokens: 2048, // the Partner's; the Watcher answers with one number (see watcher.mjs)
+    // The Partner's; the Watcher answers with one number (see watcher.mjs). Thinking counts toward it, and the
+    // checks that need it (see THINKING in session.mjs) think even when the config says off.
+    maxTokens: entry.reasoning ? 8192 : 2048,
     reasoning: false,
     thinking: 'off',
     ...entry,
