@@ -7,6 +7,8 @@ only through the same tools you use: it never writes files on its own. Edits
 land unsaved in your buffer as a single undo step; the disk changes only when
 you save.
 
+**Video tutorial** (3 min 25 s): [how to use pairing-buddy day to day](docs/video/pairing-buddy-tutorial.mp4): install and `pair doctor`, the Neovim plugin, the chat pane in herdr, a question answered with a suggestion, the Watcher's remarks, a model going down, and the config.
+
 Roles:
 
 - **Navigator** (default): watches, comments, points at code.
