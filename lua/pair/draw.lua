@@ -91,7 +91,8 @@ end
 --- The pair's voice: `text` as virtual lines indented by `indent`, `glyph` (by default the voice glyph) before the
 --- first line and `key` (the key that acts on it) dimmed after the last; at most MAX_LINES, cut with an ellipsis.
 local function voice(text, indent, width, key, glyph)
-  local lines = wrap(text, math.max(20, width - indent - 2), 'PairNote')
+  local room = key and vim.fn.strdisplaywidth(key) + 3 or 0 -- the key goes after the last line, so no line takes its place
+  local lines = wrap(text, math.max(20, width - indent - 2 - room), 'PairNote')
   if #lines > MAX_LINES then
     lines = vim.list_slice(lines, 1, MAX_LINES)
     table.insert(lines[MAX_LINES], {' …', 'PairNote'})
@@ -100,14 +101,7 @@ local function voice(text, indent, width, key, glyph)
     table.insert(line, 1, i == 1 and {(glyph or style.glyphs.voice) .. ' ', 'PairAccent'} or {'  '})
     table.insert(line, 1, {string.rep(' ', indent)})
   end
-  if key and lines[1] then
-    -- After the last line where it fits, else on a line of its own: a key cut off at the window's edge is no use.
-    if width_of(lines[#lines]) + 3 + vim.fn.strdisplaywidth(key) <= width then
-      table.insert(lines[#lines], {'   ' .. key, 'PairKey'})
-    else
-      table.insert(lines, {{string.rep(' ', indent + 2)}, {key, 'PairKey'}})
-    end
-  end
+  if key and lines[1] then table.insert(lines[#lines], {'   ' .. key, 'PairKey'}) end
   return lines
 end
 

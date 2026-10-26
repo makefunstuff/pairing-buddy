@@ -73,6 +73,26 @@ user's fix about one time in three. Like every remark, the check thinks first. T
 live test accepts any fix that makes all the project's tests pass, and checks that by running them. In Neovim the words show under your
 line, and `Alt-j` goes to the suggestion, where `Alt-y` takes it.
 
+## The search trail
+
+`search_trail` is raised from your picker searches in Neovim ([docs/neovim.md](neovim.md#the-search-trail)): three
+or more since your last edit, within four minutes, one of them closed with nothing opened or the same words again that opened another file,
+once you have paused three seconds after the last. Each new search in the trail raises it again; an edit ends the
+trail. It is judged after the others.
+
+The Watcher gets a question of its own, with the trail a line per search and what fails now: how much being told
+where it is in the code would save you, 0 if the last search plainly found it, 10 if your words are not the code's
+and you go in circles. In the live test the trail scored 7 each time, above the bar at `normal`.
+
+The Partner gets the trail, what fails now (the last red test run, else the last failed command, from the last ten
+minutes), and what ripgrep finds in the project for each query, any case: the files whose path has it and the first
+lines that do. As Navigator it cannot search, and that a query is nowhere in the project is half the story. It is
+asked to work out what you look for, read the code, point at the place with the code's own word for it, and say in
+one sentence where it is and, if something fails, how that place causes it. The live test runs the captures' Go
+project with and without the failing test: with it, the cue named `ErrBudget` and the `>=` at `worker.go:35` in
+every run; from the trail alone it pointed at the attempt limit, line 31, which is why the failure always goes
+with it.
+
 ## In a note
 
 Two triggers are about prose ([docs/notes.md](notes.md#what-the-triggers-mean-in-prose)). `note_stall` is raised

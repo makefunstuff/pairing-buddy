@@ -39,7 +39,7 @@ const runIn = cwd => command => new Promise(resolve => {
  * `:Pair start <goal>`, and a chat client. With `testOnSave`, saving runs that command in the project, for real,
  * in the fake herdr's pane. With `thinks`, the Partner's model can think. `voice` is the config's. `stop()` ends them all.
  */
-async function pairInNvim(goal, {testOnSave, thinks = false, voice} = {}) {
+async function pairInNvim(goal, {testOnSave, thinks = false, voice, rtp = []} = {}) {
   const project = realpathSync(mkdtempSync(join(tmpdir(), 'pair-nvim-')));
   writeFileSync(join(project, 'a.js'), 'const x = 1\nconst y = 2\nconst z = 3\n');
   const dataDir = mkdtempSync(join(tmpdir(), 'pair-data-'));
@@ -63,7 +63,7 @@ async function pairInNvim(goal, {testOnSave, thinks = false, voice} = {}) {
   const server = join(mkdtempSync('/tmp/pair-'), 'nvim.sock'); // short: socket paths max out near 100 bytes
   const nvim = spawn('nvim', [
     '--headless', '--clean', '--listen', server,
-    '--cmd', `set rtp+=${REPO}`,
+    '--cmd', `set rtp+=${[REPO, ...rtp].join(',')}`,
     '-c', `lua require('pair').setup({socket = '${config.socket}', debounce_ms = 100})`,
     '-c', `cd ${project}`,
     '-c', 'edit a.js',
@@ -669,6 +669,40 @@ test('push-to-talk: hold Alt-t, a meter under your line; let go, your words, the
     await until(() => listenLine() === '◌ no answer · the chat says why', 'no answer, said under the line');
     await until(() => messages.some(message => /Pair could not answer/.test(message.text ?? '')), 'why, in the chat');
     await until(() => listenLine() === null, 'the line to go after a moment');
+  } finally {
+    await stop();
+  }
+});
+
+test('Telescope searches reach the trail with what you opened; :Pair trail shows them, and x forgets them', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
+  const {project, watcher, remote, keys, stop} = await pairInNvim('retries pass', {rtp: [join(REPO, 'test/fixtures/telescope')]});
+  const panel = () => JSON.parse(remote('json_encode(getline(1, "$"))'));
+  try {
+    watcher.setResponses(Array.from({length: 10}, () => fauxAssistantMessage([fauxText('0')]))); // not worth a remark
+    writeFileSync(join(project, 'backoff.js'), 'export const next = attempt => 2 ** attempt\n');
+    const search = (...args) => remote(`luaeval("require('fake_search')(${args.map(arg => JSON.stringify(arg).replaceAll('"', "'")).join(', ')}) or 0")`);
+    search('Live Grep', 'give up', 0);
+    search('Live Grep', '   ', 3); // an empty prompt is no search
+    search('Live Grep', 'dead letter', 1, 'a.js'); // the file you are in: nothing opened
+    search('Find Files', 'retry', 2, 'backoff.js');
+    assert.equal(remote('expand("%:t")'), 'backoff.js');
+
+    keys(':Pair trail<CR>');
+    const lines = await until(() => remote('&filetype') === '' && remote('win_gettype()') === 'popup' && panel(), 'the trail panel');
+    assert.equal(lines[0], 'What the pair saw you look for, oldest first');
+    assert.match(lines[2], /^\+ +0s {2}Live Grep {3}"give up" {6}0 results {2}closed, nothing opened$/);
+    assert.match(lines[3], /^\+ +0s {2}Live Grep {3}"dead letter" {2}1 result {3}closed, nothing opened$/);
+    assert.match(lines[4], /^\+ +0s {2}Find Files {2}"retry" {8}2 results {2}→ backoff\.js$/);
+    assert.equal(lines[6], '3 searches in 0 s since your last edit; 2 closed with nothing opened.');
+    assert.equal(lines.at(-1), 'q closes · x forgets this trail');
+
+    keys('x');
+    await until(() => remote('win_gettype()') === '', 'the panel to close');
+    keys(':Pair trail<CR>');
+    await until(() => remote('win_gettype()') === 'popup', 'the panel again');
+    assert.deepEqual(panel(), ['What the pair saw you look for, oldest first', '', 'No searches since your last edit.', 'q closes']);
+    keys('q');
+    await until(() => remote('win_gettype()') === '', 'q to close it');
   } finally {
     await stop();
   }
