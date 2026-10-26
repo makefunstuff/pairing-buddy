@@ -155,7 +155,8 @@ local function palette()
     PairSpan = {bg = M.mix(bg, accent, 0.16), sp = accent, underline = true}, -- the code it means there
     PairGaze = {fg = accent, bold = true}, -- line numbers where it reads
     PairSuggestDelete = {fg = dim, strikethrough = true},
-    PairSuggestAdd = {fg = fg, bg = M.mix(bg, accent, 0.1)},
+    PairSuggestAdd = {fg = fg, bg = M.mix(bg, accent, 0.1)}, -- also the text the Driver is typing
+    PairCursor = {fg = bg, bg = accent}, -- the Driver's cursor
     PairStatus = {fg = accent},
     PairStatusDim = {fg = M.mix(status_bg, status_fg, 0.62)},
     PairStatusWarn = {fg = hl('DiagnosticWarn').fg or hl('WarningMsg').fg or accent},
@@ -170,7 +171,7 @@ end
 local LINKS = {
   PairAccent = 'DiagnosticHint', PairNote = 'DiagnosticHint', PairCode = 'Special', PairKey = 'Comment',
   PairSign = 'DiagnosticHint', PairPoint = 'CursorLine', PairSpan = 'Visual', PairGaze = 'DiagnosticHint',
-  PairSuggestDelete = 'Comment', PairSuggestAdd = 'DiffAdd',
+  PairSuggestDelete = 'Comment', PairSuggestAdd = 'DiffAdd', PairCursor = 'Cursor',
   PairStatus = 'StatusLine', PairStatusDim = 'StatusLine', PairStatusWarn = 'StatusLine',
   PairPass = 'DiagnosticOk', PairStatusPass = 'DiagnosticOk', PairFail = 'DiagnosticError', PairFailNote = 'DiagnosticError',
 }

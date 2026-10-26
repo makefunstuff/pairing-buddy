@@ -273,7 +273,7 @@ test('handing over makes Pair the Driver for one answer with one edit, which goe
   let input;
   let replies;
   let roleAfterEdit;
-  const {pair, edits, roles, roleChanges} = driverSession({turn: async (pair, given) => {
+  const {pair, edits, roles, sent, roleChanges} = driverSession({turn: async (pair, given) => {
     input = given;
     const reply = await pair.edit({file: 'package.json', line: 2, endLine: 2, text: '  "name": "x",'});
     roleAfterEdit = pair.role;
@@ -285,12 +285,16 @@ test('handing over makes Pair the Driver for one answer with one edit, which goe
   assert.match(input, /^\[drive\] The user handed you the wheel for one change\. The user said: "your turn"/);
   assert.match(input, /make it pass by changing the code, not the test/);
   assert.deepEqual(edits.map(({type, line, endLine, text}) => ({type, line, endLine, text})), [{type: 'edit', line: 2, endLine: 2, text: '  "name": "x",'}]);
-  assert.match(replies[0], /^Changed, as one undo step\. The file on disk changes only when the user saves, so do not run the tests now\. That was your one edit/);
+  assert.match(replies[0], /^Changed, as one undo step\. That was your one edit: say in one sentence what you changed\. The file on disk changes only when the user saves, so do not run the tests now\.$/);
   assert.match(replies[1], /^You already made your one change/, 'one edit per hand-over');
   assert.equal(roleAfterEdit, 'driver', 'the wheel stays until the answer ends, so tools do not vanish mid-answer');
   assert.deepEqual(roleChanges(), ['driver', 'navigator']);
   assert.equal(pair.role, 'navigator');
   assert.deepEqual(roles, ['navigator', 'navigator'], 'a drive is stored as Navigator, where it ends, so a restart during one does too');
+  const handback = sent.find(message => message.type === 'handback');
+  assert.deepEqual(handback, {to: 'editor', type: 'handback', file: join(process.cwd(), 'package.json'), line: 2, endLine: 2, tests: null, text: 'Renamed the package.'},
+    'the hand-back line: Pair\'s words under the lines it changed; no tests without a command for the project');
+  assert.ok(sent.indexOf(handback) > sent.findLastIndex(message => message.type === 'role'), 'after the wheel is back');
 });
 
 test('an edit the editor refuses does not use up the one edit, and two at once cannot both pass', async () => {
@@ -331,6 +335,7 @@ test('a key from the user takes the wheel back at once: an edit still on its way
   await pair.drive('you take it');
   assert.match(reply, /^The user has the wheel now/);
   assert.deepEqual(edits, []);
+  assert.equal(sent.some(message => message.type === 'handback'), false, 'no hand-back line without an edit');
   assert.deepEqual(roleChanges(), ['driver', 'navigator']);
   assert.equal(pair.role, 'navigator');
   assert.ok(sent.some(message => message.text === 'You have the wheel back.'));
@@ -474,9 +479,9 @@ test('after a new goal, a file judged under the old one is judged again', async 
 
 /**
  * A session with tests on save in a small Go project, and a stand-in for Pair's pane that writes `report` (a
- * fixture of go test -json, as the project's real run would print it) to the run's output file.
+ * fixture of go test -json, as the project's real run would print it) to the output file the command names.
  */
-function saveSession({partner = {ask: async () => 'SILENT', setRole: async () => {}}} = {}) {
+function saveSession({partner = {ask: async () => 'SILENT', setRole: async () => {}}, requestEditor = async () => null} = {}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'pair-save-')));
   for (const [path, text] of Object.entries({
     'go.mod': 'module example.com/shop\n',
@@ -495,7 +500,7 @@ function saveSession({partner = {ask: async () => 'SILENT', setRole: async () =>
     close: async () => { pane.closed = true; },
     run: async command => {
       ran.push(command);
-      writeFileSync(outputFile, report.replaceAll('/home/you/shop', root));
+      writeFileSync(/> '([^']+)' 2>&1$/.exec(command)[1], report.replaceAll('/home/you/shop', root));
       return {exit: report.includes('"Action":"fail"') ? 1 : 0, output: '', timedOut: false};
     },
   };
@@ -507,7 +512,7 @@ function saveSession({partner = {ask: async () => 'SILENT', setRole: async () =>
     typingPauseMs: 2000,
     testOnSave: {command: 'go test -json ./...', outputFile},
     notify: (to, message) => { sent.push({to, ...message}); return 1; },
-    requestEditor: async () => null,
+    requestEditor,
     now: () => clock,
   });
   pair.scout = pane;
@@ -608,4 +613,39 @@ test('without Pair\'s pane, a save says once in the chat why the tests did not r
     'Pair could not run `go test ./...`: tests on save need Pair\'s own herdr pane: start Pair with `pair` inside herdr.',
   ]);
   assert.deepEqual(tests().at(-1), {to: 'editors', type: 'tests', state: 'error', label: 'go test ./...', text: 'needs `pair` in herdr'});
+});
+
+test('after the Driver\'s edit, the tests run on the unsaved buffer: the Partner hears how, the hand-back line shows it, and no baseline changes', async () => {
+  const buffer = 'package cart\n\nimport "testing"\n\nfunc TestTotal(t *testing.T) {\n}\n\nfunc TestEmptyCart(t *testing.T) {\n}\n';
+  let reply;
+  const partner = {
+    setRole: async () => {},
+    ask: async () => { reply = await pair.edit({file: 'cart/cart_test.go', line: 6, endLine: 6, text: '\t// a case\n}'}); return 'Added a case; the tests pass.'; },
+  };
+  const requestEditor = async message => (message.type === 'read' ? {text: buffer} : {ok: true});
+  const {pair, root, ran, sent, setReport, tests} = saveSession({partner, requestEditor});
+  setReport('go-test-pass');
+  await pair.drive('your turn');
+  const overlay = `${join(root, 'run.out')}.unsaved/overlay.json`;
+  assert.deepEqual(ran, [`cd '${root}' && go test -overlay '${overlay}' -json ./... > '${root}/run.out.unsaved/run.out' 2>&1`]);
+  assert.match(reply, /^Changed, as one undo step\. That was your one edit: say in one sentence what you changed, and whether the tests pass\. `go test \.\/\.\.\.` on the unsaved buffer: 4 passed\.$/);
+  const [start, end] = tests();
+  assert.deepEqual(start, {to: 'editors', type: 'tests', state: 'run', label: 'go test ./... (unsaved)'});
+  assert.deepEqual([end.state, end.label, end.text], ['pass', 'go test ./... (unsaved)', '4 tests, 2 packages']);
+  assert.ok(sent.some(message => message.to === 'chat' && message.text === '`go test ./... (unsaved)` after Pair\'s edit: 4 passed'));
+  const handback = sent.find(message => message.type === 'handback');
+  assert.deepEqual([handback.line, handback.endLine, handback.tests, handback.text], [6, 7, 'pass', 'Added a case; the tests pass.']);
+  assert.equal(pair.state.tests, null, 'a run on the buffer is no baseline for the next run on save');
+});
+
+test('when the tests cannot run on the buffer, the Partner is told why, and the statusline keeps the last run on save', async () => {
+  let reply;
+  const partner = {setRole: async () => {}, ask: async () => { reply = await pair.edit({file: 'notes.txt', line: 1, endLine: 1, text: 'x'}); return 'Done.'; }};
+  const {pair, root, sent, tests} = saveSession({partner, requestEditor: async message => (message.type === 'read' ? {text: 'x\n'} : {ok: true})});
+  writeFileSync(join(root, 'notes.txt'), 'old\n');
+  pair.testRuns.command = 'npm test'; // not go test: it runs in a copy of the project, which needs git
+  await pair.drive('your turn');
+  assert.match(reply, /The tests could not run on the unsaved buffer: the project is not a git repository/);
+  assert.deepEqual(tests().map(message => message.state), ['run', 'idle']);
+  assert.equal(sent.find(message => message.type === 'handback').tests, null);
 });

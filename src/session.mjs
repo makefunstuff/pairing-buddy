@@ -93,6 +93,9 @@ export function selectionInput({file, from, to}, text) {
 
 const NAME_CHARS = 32; // of a failing test's name in the statusline
 
+/** Whether a finished test run failed: its exit code, a timeout or a failing test say so. */
+const isRed = ({exit, timedOut, tests}) => exit !== 0 || timedOut || !!tests?.failedCount;
+
 /** One short line for the statusline about a finished run: "4 tests, 3 packages" or "1 failing · TestX". */
 export function runText({exit, timedOut, tests}) {
   if (timedOut) return 'stopped after 2 min';
@@ -162,6 +165,7 @@ export class PairSession {
     this.held = []; // parts of an unasked remark that came while the user was typing
     this.panes = null; // the user's herdr panes (a PaneWatch), for the Driver's type
     this.edited = false; // the Driver made its one edit in this hand-over
+    this.handback = null; // that edit's lines and how the tests went on them: {file, line, endLine, tests}
     this.remarkId = null; // the stored remark of the running unasked turn
     this.lastRemark = null; // the last remark that reached the user: what feedback without an id rates
     this.tickedAt = null;
@@ -186,6 +190,7 @@ export class PairSession {
 
   /** A test run on save starts or ends (see test-runs.mjs): the editors show it, and the session state takes it in. */
   testRun(run) {
+    if (run.unsaved) return this.unsavedRun(run);
     if (run.state === 'error') {
       this.log(`tests on save: ${run.error}`);
       if (run.error !== this.runError) this.message('system', `Pair could not run \`${run.label}\`: ${run.error}.`);
@@ -194,7 +199,7 @@ export class PairSession {
     }
     this.runError = null;
     if (run.state === 'run') return this.showTests({type: 'tests', state: 'run', label: run.label});
-    const red = run.exit !== 0 || run.timedOut || !!run.tests?.failedCount;
+    const red = isRed(run);
     const failing = run.placed.filter(test => !test.ok);
     const files = [...new Set(failing.map(test => relative(this.root, test.failure?.file ?? test.file)))];
     this.receive({kind: 'test_run', cmd: run.label, tests: run.tests, files, saved: run.saved});
@@ -204,6 +209,22 @@ export class PairSession {
     if (red && (!this.wasRed || (run.tests && this.state.tests.newly.length))) this.message('system', `\`${run.label}\` after you saved ${run.saved}: ${run.tests ? testSummary(run.tests) : text}`);
     else if (!red && this.wasRed) this.message('system', `\`${run.label}\` passes again: ${text}.`);
     this.wasRed = red;
+  }
+
+  /**
+   * The run on the unsaved buffer after the Driver's edit: the editors show it like a run on save, but it is no
+   * baseline for the next one, and a run that could not start leaves the last run on save in the statusline.
+   */
+  unsavedRun(run) {
+    const label = `${run.label} (unsaved)`;
+    if (run.state === 'run') return this.notify('editors', {type: 'tests', state: 'run', label});
+    if (run.state === 'error') {
+      this.log(`tests on the unsaved buffer: ${run.error}`);
+      return this.notify('editors', this.testsShown ?? {type: 'tests', state: 'idle'});
+    }
+    const text = runText(run);
+    this.showTests({type: 'tests', state: isRed(run) ? 'fail' : 'pass', label, text, results: run.placed});
+    this.message('system', `\`${label}\` after Pair's edit: ${run.tests ? testSummary(run.tests) : text}`);
   }
 
   /** Sends a test run's state to every editor, and keeps it for editors that connect later. */
@@ -415,8 +436,11 @@ export class PairSession {
     if (this.busy) return this.message('system', 'Pair is still answering; hand over again once it is done.');
     if (!(await this.setRole('driver'))) return;
     this.edited = false;
+    this.handback = null;
     await this.talk(driveInput(words, describeState(this.state, this.now()), await this.selected(selection)));
     await this.handBack();
+    // The hand-back line: what Pair says it did, under the lines it changed, with how the tests went on them.
+    if (this.handback) this.notify('editor', {type: 'handback', ...this.handback, text: this.words.join('\n')});
     // Only now does the conversation lose the Driver's tools. After a take-back during the answer, the policy
     // hook refused edit and type with a reason; a tool that vanished mid-answer leaves small models writing
     // the call as plain text, and the user sees nothing.
@@ -617,9 +641,15 @@ export class PairSession {
       return `Not changed: ${reply.error}.`;
     }
     this.message('pair', `Changed ${file}:${line}${endLine > line ? `-${endLine}` : ''} (u undoes it).`);
-    // Tests read the saved file, so a check now would see the old code and send small models in circles.
-    return 'Changed, as one undo step. The file on disk changes only when the user saves, so do not run the tests now. '
-      + 'That was your one edit: say in one sentence what you changed.';
+    const count = text === '' ? 0 : text.replace(/\n$/, '').split('\n').length;
+    this.handback = {file: path, line, endLine: line + Math.max(count, 1) - 1, tests: null};
+    const done = 'Changed, as one undo step. That was your one edit: say in one sentence what you changed';
+    // The tests on save read the saved file, so a check there would see the old code and send small models in circles.
+    if (!this.testRuns) return `${done}. The file on disk changes only when the user saves, so do not run the tests now.`;
+    const run = await this.testRuns.unsaved(path, await this.bufferText(path));
+    if (run.state === 'error') return `${done}. The tests could not run on the unsaved buffer: ${run.error}.`;
+    this.handback.tests = isRed(run) ? 'fail' : 'pass';
+    return `${done}, and whether the tests pass. \`${run.label}\` on the unsaved buffer: ${run.tests ? testSummary(run.tests) : runText(run)}.`;
   }
 
   /** Types one line into the user's terminal pane once they allow it; Enter stays with them. */

@@ -1,9 +1,11 @@
 -- pairing-buddy for Neovim: sends what you do to the pair daemon and shows what Pair says, points at and
 -- suggests, in the visual language of style.lua, drawn by draw.lua.
 -- Pair never saves a buffer, and never moves your cursor: its jump key does, when you press it. It changes a
--- buffer only while you hand it the wheel (the Driver role): one edit, as one undo step, refused here as soon
--- as you press any key. Once connected, it stays connected: when the daemon restarts, it reconnects by itself.
+-- buffer only while you hand it the wheel (the Driver role): one edit, typed while you watch (drive.lua) as one
+-- undo step, and refused or undone as soon as you press any key. Once connected, it stays connected: when the
+-- daemon restarts, it reconnects by itself.
 local draw = require('pair.draw')
+local drive = require('pair.drive')
 local style = require('pair.style')
 
 local M = {}
@@ -29,6 +31,7 @@ local state = {
   models = {}, -- why each model is down, per role: the daemon's health
   run = nil, -- the test run on save, for the statusline: {state = 'run'|'pass'|'fail'|'error'|'idle', label, text, till}
   results = {}, -- what the last finished run found: {name, file, line, ok, failure}, absolute paths
+  typing = nil, -- while the Driver's edit is being typed: the function that stops it and undoes what it typed
 }
 local RETRY_MS = {1000, 2000, 5000, 10000, 30000} -- then every 30 s
 local READING_MS = 2000 -- how long the statusline names the file Pair reads
@@ -118,7 +121,7 @@ local function forget_words(seen)
 end
 
 local function draw_words(words, still)
-  words.id = draw.remark(words.buf, words.row, words.text, words.key, {still = still})
+  words.id = draw.remark(words.buf, words.row, words.text, words.key, {still = still, sign = words.sign})
 end
 
 -- Points: the lines Pair points at. The last one is where the jump key goes, unless a suggestion is newer.
@@ -463,7 +466,9 @@ local function read(message)
   send({type = 'reply', id = message.id, result = {text = text}})
 end
 
--- Driving: while Pair has the wheel, any key you press takes it back, here at once and then in the daemon.
+-- Driving: while Pair has the wheel, any key you press takes it back, here at once and then in the daemon. While
+-- its edit is being typed, that key and any after it until the half-typed edit is undone do nothing else: they
+-- could change the buffer under it.
 
 -- Scrolling or clicking to watch Pair drive, and the terminal's focus reports, are not keys.
 local function pressed(key)
@@ -473,13 +478,17 @@ end
 
 local function watch_keys(on)
   vim.on_key(on and function(key)
-    if state.role ~= 'driver' or not pressed(key) then return end -- a burst of keys takes the wheel back once
-    state.role = 'navigator' -- edits on their way are refused from this key on
-    vim.schedule(function()
-      vim.on_key(nil, ns)
-      send({type = 'take_back'})
-      redraw_status()
-    end)
+    if not pressed(key) then return end
+    if state.role == 'driver' then -- a burst of keys takes the wheel back once
+      state.role = 'navigator' -- edits on their way are refused from this key on
+      vim.schedule(function()
+        if state.typing then state.typing() end
+        vim.on_key(nil, ns)
+        send({type = 'take_back'})
+        redraw_status()
+      end)
+    end
+    if state.typing then return '' end
   end or nil, ns)
 end
 
@@ -489,17 +498,42 @@ local function set_role(role)
   redraw_status()
 end
 
+--- Whether a window in this tab page shows line `line` of `buf`.
+local function in_view(buf, line)
+  for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    if vim.api.nvim_win_get_buf(win) == buf and line >= vim.fn.line('w0', win) and line <= vim.fn.line('w$', win) then return true end
+  end
+  return false
+end
+
+-- The Driver's edit: typed where you can watch it, and answered once it is in the buffer, or undone.
 local function edit(message)
   local function reply(result) send({type = 'reply', id = message.id, result = result}) end
-  if state.role ~= 'driver' then return reply({error = 'the user has taken the wheel back'}) end
+  if state.role ~= 'driver' or state.typing then return reply({error = 'the user has taken the wheel back'}) end
   local buf = load(message.file)
   local count = vim.api.nvim_buf_line_count(buf)
   if message.line > count then return reply({error = ('line %d is past the end of the buffer (%d lines)'):format(message.line, count)}) end
-  -- Setting 'undolevels' starts a new undo step, so `u` undoes Pair's change and nothing of yours.
-  vim.api.nvim_buf_call(buf, function() vim.o.undolevels = vim.o.undolevels end)
-  vim.api.nvim_buf_set_lines(buf, message.line - 1, math.min(message.endLine, count), false, text_lines(message.text))
-  if vim.fn.bufwinid(buf) == -1 then open_split(message.file, message.line) end
-  reply({ok = true})
+  if not in_view(buf, message.line) then open_split(message.file, message.line) end
+  state.typing = drive.type(buf, message.line - 1, math.min(message.endLine, count) - 1, text_lines(message.text), function(typed)
+    state.typing = nil
+    reply(typed and {ok = true} or {error = 'the user has taken the wheel back'})
+  end)
+end
+
+-- The hand-back line: Pair's words under the lines it changed, how the tests went on them in the sign column,
+-- and the key that undoes it all. Like any words of Pair's, they go with your next edit.
+local function handback(message)
+  local buf = vim.fn.bufnr(message.file)
+  if buf == -1 or not vim.api.nvim_buf_is_loaded(buf) then return end
+  local signs = {pass = {style.glyphs.pass, 'PairStatusPass'}, fail = {style.glyphs.fail, 'PairFail'}}
+  forget_words(false)
+  state.words = {
+    buf = buf, row = math.min(message.endLine, vim.api.nvim_buf_line_count(buf)) - 1, key = 'u undoes it',
+    text = message.text ~= '' and message.text or ('changed lines %d to %d'):format(message.line, message.endLine),
+    sign = signs[message.tests],
+  }
+  draw_words(state.words)
+  redraw_status()
 end
 
 local function hello()
@@ -522,6 +556,7 @@ local handlers = {
   read = read,
   suggest = suggest,
   edit = edit,
+  handback = handback,
   remark = on_remark,
   tests = on_tests,
   clear = function()
@@ -586,6 +621,7 @@ end
 disconnected = function()
   state.channel = nil
   if state.run and state.run.state == 'run' then on_tests({state = 'idle'}) end -- that run's end will not come
+  if state.typing then state.typing() end -- no daemon waits for the edit any more
   if state.role == 'driver' then set_role('navigator') end -- a restarted daemon has ended the hand-over
   redraw_status()
   if state.wanted then schedule_retry(1) end
@@ -630,13 +666,13 @@ local function status_parts()
   if #down > 0 then
     return {glyph = g.away, text = 'pair · ' .. (#down == 2 and 'models' or down[1]) .. ' down', hl = 'PairStatusWarn', text_hl = 'PairStatusWarn'}
   end
-  if state.role == 'driver' then
+  local run = state.run
+  if state.role == 'driver' and not (run and run.state == 'run') then
     return {glyph = g.wheel, text = 'pair has the wheel · any key takes it back', hl = 'PairStatus', text_hl = 'PairStatusDim'}
   end
   if state.reading and now_ms() < state.reading.till then
     return {glyph = g.voice, text = 'reading ' .. state.reading.name, hl = 'PairStatus', text_hl = 'PairStatusDim'}
   end
-  local run = state.run
   if run and run.state == 'run' then
     return {glyph = style.spinner[spinner.frame], text = run.label, hl = 'PairStatus', text_hl = 'PairStatusDim'}
   elseif run and run.state == 'fail' then
@@ -713,6 +749,7 @@ function M.setup(opts)
   config = vim.tbl_extend('force', config, opts or {})
   style.glyphs = vim.tbl_extend('force', style.glyphs, config.glyphs)
   draw.motion = config.motion
+  drive.motion = config.motion
   style.apply()
   local group = vim.api.nvim_create_augroup('pair', {clear = true})
   vim.api.nvim_create_autocmd('ColorScheme', {group = group, callback = style.apply})

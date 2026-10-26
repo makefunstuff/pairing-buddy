@@ -21,6 +21,7 @@ import {VERSION} from './version.mjs';
 import {createWatcher} from './watcher.mjs';
 
 const EDITOR_REPLY_MS = 2000;
+const EDIT_REPLY_MS = 30_000; // Neovim replies to the Driver's edit once it has typed it
 const TICK_MS = 1000;
 // While the user works, the Watcher's model is asked at least this often, so a server that unloads idle models
 // (often after 5 min) still has it loaded when a remark is worth scoring.
@@ -114,7 +115,8 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
   function askEditor(editor, message) {
     const id = ++nextRequest;
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { replies.delete(id); reject(new Error('The editor did not reply')); }, EDITOR_REPLY_MS);
+      const timeoutMs = message.type === 'edit' ? EDIT_REPLY_MS : EDITOR_REPLY_MS;
+      const timer = setTimeout(() => { replies.delete(id); reject(new Error('The editor did not reply')); }, timeoutMs);
       replies.set(id, result => { clearTimeout(timer); resolve(result); });
       sendMessage(editor.socket, {...message, id});
     });

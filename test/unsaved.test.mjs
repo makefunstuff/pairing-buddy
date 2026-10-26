@@ -1,0 +1,81 @@
+// Tests on unsaved text: go test reads it through -overlay, other runners in a copy of the project.
+import assert from 'node:assert/strict';
+import {execFileSync} from 'node:child_process';
+import {lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {test} from 'node:test';
+import {parseTestOutput} from '../src/test-output.mjs';
+import {placeTests} from '../src/test-places.mjs';
+import {overlaid, prepareUnsaved} from '../src/unsaved.mjs';
+
+const has = command => { try { execFileSync(command, ['version']); return true; } catch { return false; } };
+
+function project(files) {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'pair-unsaved-')));
+  for (const [path, text] of Object.entries(files)) {
+    mkdirSync(join(root, path, '..'), {recursive: true});
+    writeFileSync(join(root, path), text);
+  }
+  return root;
+}
+
+test('go test reads the overlay wherever the command runs it; other commands have none', () => {
+  assert.equal(overlaid('go test -json ./...', '/d/o.json'), "go test -overlay '/d/o.json' -json ./...");
+  assert.equal(overlaid('cd api && go test -json ./...', '/d/o.json'), "cd api && go test -overlay '/d/o.json' -json ./...");
+  assert.equal(overlaid('npx vitest run --reporter=json', '/d/o.json'), null);
+  assert.equal(overlaid('mygo test', '/d/o.json'), null);
+});
+
+test('go test on the unsaved buffer: the buffer\'s fix passes while the file on disk still fails, and tests are placed at the buffer\'s lines', {skip: has('go') ? false : 'go not installed'}, async () => {
+  const broken = 'package cart\n\nfunc Total(prices []int) int {\n\tsum := 0\n\tfor i := 1; i < len(prices); i++ {\n\t\tsum += prices[i]\n\t}\n\treturn sum\n}\n';
+  const root = project({
+    'go.mod': 'module example.com/shop\n\ngo 1.22\n',
+    'cart/cart.go': broken,
+    'cart/cart_test.go': 'package cart\n\nimport "testing"\n\nfunc TestTotal(t *testing.T) {\n\tif got := Total([]int{1, 2}); got != 3 {\n\t\tt.Errorf("Total = %d, want 3", got)\n\t}\n}\n',
+  });
+  const file = join(root, 'cart/cart.go');
+  const goTest = command => { try { return execFileSync('bash', ['-c', command], {cwd: root, encoding: 'utf8'}); } catch (error) { return error.stdout; } };
+  assert.equal(parseTestOutput(goTest('go test -json ./...')).failedCount, 1, 'the file on disk fails');
+  const run = await prepareUnsaved({root, command: 'go test -json ./...', file, text: broken.replace('i := 1', 'i := 0'), dir: mkdtempSync(join(tmpdir(), 'pair-overlay-'))});
+  assert.equal(run.root, root);
+  const output = goTest(run.command);
+  const tests = parseTestOutput(output);
+  assert.deepEqual([tests.failedCount, tests.passed], [0, 1], output);
+  assert.equal(readFileSync(file, 'utf8'), broken, 'nothing was saved');
+
+  // A test file edited in the buffer: its tests are placed where the buffer has them, not the disk.
+  const testFile = join(root, 'cart/cart_test.go');
+  const moved = `package cart\n\nimport "testing"\n\n// a comment the buffer added\n${readFileSync(testFile, 'utf8').split('\n').slice(4).join('\n')}`;
+  const placed = await placeTests([{package: 'example.com/shop/cart', name: 'TestTotal', status: 'passed'}], root, new Map([[testFile, moved]]));
+  assert.deepEqual(placed.map(test => [test.file, test.line]), [[testFile, 6]]);
+});
+
+test('other runners run in a copy of the project: git\'s files copied, the buffer\'s text in it, ignored folders linked, .git left out', async t => {
+  if (!has('git')) return t.skip('git not installed');
+  const root = project({
+    '.gitignore': 'node_modules/\nbuild/\n',
+    'src/total.js': 'export const total = xs => xs.slice(1).reduce((a, b) => a + b, 0)\n',
+    'test/total.test.js': 'untracked, not ignored\n',
+    'node_modules/dep/index.js': 'module.exports = 1\n',
+    'build/out.js': 'built\n',
+  });
+  execFileSync('git', ['init', '-q'], {cwd: root});
+  execFileSync('git', ['add', 'src', '.gitignore'], {cwd: root});
+  const file = join(root, 'src/total.js');
+  const dir = join(tmpdir(), `pair-unsaved-run-${process.pid}`);
+  const run = await prepareUnsaved({root, command: 'npx vitest run --reporter=json', file, text: 'fixed\n', dir});
+  assert.equal(run.command, 'npx vitest run --reporter=json');
+  assert.equal(run.root, join(dir, 'tree'));
+  assert.equal(readFileSync(join(run.root, 'src/total.js'), 'utf8'), 'fixed\n');
+  assert.equal(readFileSync(file, 'utf8'), 'export const total = xs => xs.slice(1).reduce((a, b) => a + b, 0)\n', 'the project is untouched');
+  assert.equal(readFileSync(join(run.root, 'test/total.test.js'), 'utf8'), 'untracked, not ignored\n');
+  assert.ok(lstatSync(join(run.root, 'node_modules')).isSymbolicLink());
+  assert.throws(() => lstatSync(join(run.root, '.git')));
+  assert.equal(run.toProject(join(run.root, 'test/total.test.js')), join(root, 'test/total.test.js'));
+  assert.equal(run.toProject(null), null);
+
+  // A file in a linked folder would be written through the link, into the project: refused.
+  await assert.rejects(prepareUnsaved({root, command: 'npm test', file: join(root, 'build/out.js'), text: 'x', dir}), /build\/out\.js is in a folder git ignores/);
+  assert.equal(readFileSync(join(root, 'build/out.js'), 'utf8'), 'built\n');
+});
