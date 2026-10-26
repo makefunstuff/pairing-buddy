@@ -1,6 +1,5 @@
--- Where you have been in Neovim, for the context card and the Partner: the listed buffers, the jumplist, and the
--- searches you made with Telescope or / and what you opened from them. Telescope is only watched (its prompt buffer
--- and the window you land in), never patched: a search counts once you go somewhere from it.
+-- Where you have been in Neovim, for the context card and the Partner: the listed buffers and the jumplist. (Your
+-- searches come from searches.lua.)
 local M = {}
 
 local MAX = 10
@@ -54,42 +53,6 @@ function M.send(force)
   emit(event)
 end
 
-local function here()
-  return {buf = vim.api.nvim_get_current_buf(), line = vim.fn.line('.')}
-end
-
-local function search(tool, query, results, from)
-  local now = here()
-  if query == '' or not file_of(now.buf) or (from and now.buf == from.buf and now.line == from.line) then return end -- nothing came of it
-  emit({kind = 'search', tool = tool, query = query, results = results, file = file_of(now.buf), line = now.line})
-end
-
--- Where you were when the last Telescope picker opened: a search that leaves you there (Esc) came to nothing.
-local before_picker = nil
-
--- Telescope: the picker's title, the prompt and the number of results as you leave it, then where you land.
-local function watch_telescope(prompt_buf)
-  local from = before_picker
-  before_picker = nil
-  local seen = {}
-  local function look()
-    local ok, picker = pcall(function() return require('telescope.actions.state').get_current_picker(prompt_buf) end)
-    if not ok or not picker then return end
-    seen.tool = picker.prompt_title
-    seen.query = picker:_get_prompt()
-    seen.results = picker.manager and picker.manager:num_results() or nil
-  end
-  vim.api.nvim_create_autocmd({'TextChangedI', 'TextChanged', 'CursorMovedI'}, {buffer = prompt_buf, callback = look})
-  vim.api.nvim_create_autocmd('BufLeave', {buffer = prompt_buf, once = true, callback = function()
-    look()
-    -- The selection opens its file after the picker has closed.
-    vim.defer_fn(function()
-      -- Without where you were, an Esc could not be told from a selection: such a search is left out.
-      if seen.query and from then search(seen.tool or 'Telescope', seen.query, seen.results, from) end
-    end, 50)
-  end})
-end
-
 --- `send_event(event)` sends to the daemon; `group` is the plugin's autocommand group.
 function M.setup(group, send_event)
   emit = send_event
@@ -99,22 +62,6 @@ function M.setup(group, send_event)
       entered[args.buf] = seconds * 1000 + micros / 1000
     end
     M.send(false)
-  end})
-  -- Telescope fires this before it opens its windows, while you are still where you were.
-  vim.api.nvim_create_autocmd('User', {group = group, pattern = 'TelescopeFindPre', callback = function()
-    before_picker = here()
-  end})
-  vim.api.nvim_create_autocmd('FileType', {group = group, pattern = 'TelescopePrompt', callback = function(args)
-    watch_telescope(args.buf)
-  end})
-  -- / and ?: the pattern, how many matches, and the line it took you to.
-  vim.api.nvim_create_autocmd('CmdlineLeave', {group = group, callback = function()
-    if vim.v.event.abort or (vim.v.event.cmdtype ~= '/' and vim.v.event.cmdtype ~= '?') then return end
-    local query = vim.fn.getcmdline()
-    vim.schedule(function() -- once the search has moved the cursor
-      local ok, count = pcall(vim.fn.searchcount, {recompute = true, maxcount = 999})
-      search('/', query, ok and count.total or nil, nil)
-    end)
   end})
 end
 

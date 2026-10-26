@@ -1,7 +1,8 @@
 # The pair in Neovim
 
 Pair sits in the second chair. In Neovim it has a small visual language: a few marks in one colour, all in your
-own font, and no windows, boxes, borders or field labels, except the one card you open yourself to see what it knows.
+own font, and no windows, boxes, borders or field labels (the two panels, `:Pair trail` and `:Pair context`, open
+only when you ask).
 Everything it shows follows one test: would you keep it on screen for an eight-hour day?
 
 ![Pair stops a wrong turn: it reads, says why under your edit, and Alt-j goes to the real cause](images/wrong-turn.gif)
@@ -160,6 +161,58 @@ a key still takes the wheel back, and leaves the one change.
 A long edit types faster, to take about four seconds; with `motion = false` it lands at once, as one undo step.
 If no window shows the lines it changes, they open in a split first, so you can watch; your cursor stays where it was.
 
+## The search trail
+
+You look for something with Telescope and it is not there under your words. A test is red; you grep for
+"give up": nothing. "dead letter": one comment. You find-file "retry" and open `backoff.go`. Those three searches say
+what you are after better than a goal you typed, and that the code calls it something else. Pair reads the trail
+and, once you pause, says where the thing is, in the code's own word.
+
+![Three Telescope searches; Pair names ErrBudget at worker.go:35 under your line; :Pair trail shows what it saw](images/search-trail.gif)
+
+*The plugin and the daemon as shipped, with real Telescope in a clean Neovim. The test run is real `go test`. The
+Watcher's score and the Partner's words are what a live model answered to this trail in the live test
+(`test/live/trail.test.mjs`), replayed.*
+
+1. The delivery test fails in your terminal: `attempts = 4, want 5`.
+2. `␣sg` "give up", `Esc`: 0 results. `␣sg` "dead letter", `Esc`: one comment, nothing worth opening. `␣sf`
+   "retry", `Enter`: `backoff.go` opens.
+3. A few seconds after the last search, with no edit since, Pair looks. The Watcher scores the trail with what fails
+   now; the Partner gets the trail, the failing test's message, and what ripgrep finds in the project for each of
+   your queries, then reads the code.
+4. Its words show under your line: the word you are looking for is `ErrBudget`, and it fires at
+   `elapsed+wait >= cfg.Budget`, which refuses the wait that lands exactly on the 15 s budget. They end with `M-j`.
+5. `Alt-j` goes to `worker.go:35`, the `>=` underlined.
+
+![The cue under your line in backoff.go](images/trail-cue.png)
+
+**`:Pair trail`** shows what Pair saw: each search since your last edit, oldest first, with the picker, your words,
+how many results, and what you opened from it. Under them, what the trail looks like and what the Watcher made of
+it. These lines are all of your searches a model ever gets, and only with a trail remark. `x` forgets them, `q`
+closes the panel.
+
+![:Pair trail: three searches, the summary and the Watcher's score](images/trail-panel.png)
+
+**When it speaks.** A trail is the searches since your last edit, within four minutes. It is looked at once you
+pause after the last one, when there are three or more and one of them closed with nothing opened, or you searched
+the same words again and landed somewhere else. Three searches that each opened a file are you finding your way,
+and the same words opening the same file each time are your way back to it: both stay quiet. An edit
+ends a trail: what you searched before it, you found. Each new search in a trail is a new look, within the budget
+of your talk level.
+
+**Why the failing test goes with it.** From the trail alone, the model guesses what you are after, and in live runs
+it guessed wrong: it pointed at the attempt limit, the other place that "gives up". With the failing test's message
+next to the trail, it named the `>=` every time. So the cue always carries what fails now: the last red test run,
+else the last failed command, from the last ten minutes. With nothing failing, the cue still comes, and says where
+your words are in the code.
+
+**How the searches are read.** Telescope (`FileType TelescopePrompt`, then the prompt's `BufLeave`, as Telescope
+closes it) and snacks.picker (as its input window closes, whether you confirm from the input or the list): the picker's title, your words,
+the result count and the selected entry, then whether that file is where you are now (in a new split too). No mapping, action or
+picker setting of yours changes, and nothing is written to the picker's own history; Telescope's history keeps
+only searches that ended in a selection, and the ones you gave up on are the telling ones. A picker closed with an
+empty prompt is no search. fzf-lua has no hook for its close, so its searches are not read. `searches = false` in
+`setup` turns all of this off.
 ## The held thought
 
 Most of what Pair has to say is not urgent. A remark about drift, a stall, or an error in a line you wrote and left
@@ -223,7 +276,7 @@ two seconds while it is open.
 ![:Pair context: the goal from the board task, the board, git, the failing run, and the buffers, jumps and searches](images/context.png)
 
 *The card in the capture, made by the daemon and plugin as shipped: no goal was typed, it came from the board task
-of the branch. The test run, the two Telescope searches and the `/` search are real; the board is a stand-in for
+of the branch. The test run and the two Telescope searches are real; the board is a stand-in for
 herdr's work board ([captures/board.mjs](captures/board.mjs)).*
 
 | Source | Rows | Read from |
@@ -232,7 +285,7 @@ herdr's work board ([captures/board.mjs](captures/board.mjs)).*
 | board | the task, its state, and how many of the repo's other tasks are working or need you | the herdr work board: the task whose number is in the branch name, in this repo |
 | git | branch, last commit, how many files changed, the pull request | `git`, and `gh pr view` at most every five minutes |
 | terminal | the last three commands, how they ended and how long ago | the herdr panes and the shell hook |
-| editor | your buffers, the jumplist, and your searches with what you opened from them | Neovim, and Telescope's prompt as you leave it; `/` and `?` too |
+| editor | your buffers, the jumplist, and your searches with what you opened from them | Neovim, and the searches the [search trail](#the-search-trail) reads from Telescope and snacks.picker |
 
 - **`x` hides a source** for the rest of the session: it is struck through on the card and no longer sent. `x` on
   it again brings it back. `q` or `Esc` closes the card. A hidden terminal also means no remark about a failed
@@ -245,10 +298,10 @@ herdr's work board ([captures/board.mjs](captures/board.mjs)).*
 - **Matched by repo and number.** The branch `work/7-retries` belongs to task 7 of this repo only: another repo's
   task 7 is never taken for it. The repo is the folder of the main checkout (also from a worktree) or the name in
   `origin`'s URL.
-- Searches are only watched: Telescope's prompt is read as you leave it, and the search counts only when you land
-  somewhere other than where you opened the picker, so one you leave with `Esc` is not sent. Telescope's actions
-  and your mappings are left alone. A branch is read as a task number only when the number stands alone in a part of
-  its name (`work/7-retries`, `7-fix`), so `release/2.0` is no task.
+- The searches are the search trail's: a search you leave with `Esc` shows without "opened", since nothing was.
+  Hiding the editor also keeps the search trail from raising a remark, which would send the searches.
+- A branch is read as a task number only when the number stands alone in a part of its name (`work/7-retries`,
+  `7-fix`), so `release/2.0` is no task.
 - `:Pair context` needs a connection; before one, it says so.
 
 ![x on the terminal: its rows are struck through and no longer go to the Partner](images/context-trimmed.png)
@@ -262,6 +315,7 @@ require('pair').setup({
   listen_key = '<M-t>', -- hold it to speak to Pair (docs/voice.md); false for none
   motion = true,       -- false: no fades, the gaze lights one line at a time without its trail, and the Driver's edit lands at once
   glyphs = {},         -- for example {voice = '\u{f444}', wheel = '\u{f030c}'} with a Nerd Font
+  searches = true,     -- false: your Telescope and snacks.picker searches stay in Neovim, and there is no search trail
 })
 ```
 

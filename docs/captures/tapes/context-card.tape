@@ -1,5 +1,5 @@
 # :Pair context. No goal is typed: the session took it from the board task of the branch. A test fails in the
-# :terminal, you search with Telescope and /, and the card shows all of it; x hides a source and brings it back.
+# :terminal, you search with Telescope, and the card shows all of it; x hides a source and brings it back.
 Output out/context-card.mp4
 Source tapes/head.tape
 Hide
@@ -24,21 +24,18 @@ Escape
 Ctrl+w
 Type "k"
 Sleep 500ms
-Type " g"
+Type " sg"
 Sleep 700ms
 Type ">= cfg.Budget"
 Sleep 1.2s
 Enter
 Sleep 900ms
-Type " f"
+Type " sf"
 Sleep 700ms
 Type "backoff.go"
 Sleep 1s
 Enter
 Sleep 700ms
-Type "/Max"
-Enter
-Sleep 900ms
 Type ":Pair context"
 Enter
 Sleep 2.5s

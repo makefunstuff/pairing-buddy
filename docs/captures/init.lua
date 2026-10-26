@@ -44,14 +44,14 @@ vim.api.nvim_create_autocmd('TermOpen', {callback = function()
   vim.opt_local.cursorline = false
 end})
 vim.keymap.set('t', '<Esc>', [[<C-\><C-n>]])
--- Telescope, where the scene fetched it (record.sh): <Space>g greps, <Space>f finds files.
-if vim.uv.fs_stat(cap .. '/plugins/telescope.nvim') then
-  vim.opt.rtp:append(cap .. '/plugins/plenary.nvim')
-  vim.opt.rtp:append(cap .. '/plugins/telescope.nvim')
-  require('telescope').setup({defaults = {layout_strategy = 'horizontal', layout_config = {height = 0.7}}})
-  local builtin = require('telescope.builtin')
-  vim.keymap.set('n', '<Space>g', builtin.live_grep)
-  vim.keymap.set('n', '<Space>f', builtin.find_files)
+-- Telescope, when record.sh fetched it for the scene, on the usual keys: space s g greps, space s f finds files.
+if vim.uv.fs_stat(cap .. '/telescope.nvim') then
+  vim.opt.rtp:append(cap .. '/plenary.nvim')
+  vim.opt.rtp:append(cap .. '/telescope.nvim')
+  vim.g.mapleader = ' '
+  require('telescope').setup({})
+  vim.keymap.set('n', '<leader>sg', require('telescope.builtin').live_grep)
+  vim.keymap.set('n', '<leader>sf', require('telescope.builtin').find_files)
 end
 require('pair').setup({socket = cap .. '/pair.sock', debounce_ms = 400})
 require('pair').connect() -- asked for by name: auto_connect leaves out projects in the temp folder, as this one is

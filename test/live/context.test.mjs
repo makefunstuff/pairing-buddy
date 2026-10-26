@@ -52,7 +52,7 @@ describe('The context card on live models', {skip: stacks.length ? false : SKIP_
           board: {task: {id: 'ws-client/12', title: 'Reconnect after the phone sleeps', state: 'working', msg: '', pr: null}, working: 0, waiting: []}});
         session.setGoal('Reconnect after the phone sleeps', 'the board task ws-client/12');
         session.receive({kind: 'places', buffers: [join(root, 'src/ws.mjs'), join(root, 'test/ws.test.mjs')], jumps: [{file: join(root, 'src/ws.mjs'), line: 3}]});
-        session.receive({kind: 'search', tool: 'Live Grep', query: 'RECONNECT_TIMEOUT', results: 3, file: join(root, 'src/config.mjs'), line: 3});
+        session.receive({kind: 'search', picker: 'Live Grep', query: 'RECONNECT_TIMEOUT', results: 3, file: join(root, 'src/config.mjs'), line: 3});
 
         // Hidden from the start: nothing of the editor reaches the conversation.
         session.receive({kind: 'hide', source: 'editor', hidden: true});

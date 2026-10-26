@@ -19,7 +19,7 @@ const busy = () => state([
   {kind: 'command_end', cmd: 'claude --settings /home/u/.herdr-projects/data/tasks/probe/8/settings.json', exit: 0, output: ''},
   {kind: 'places', buffers: [`${ROOT}/probe.c`, `${ROOT}/main.c`, '/etc/hosts', ...'abcdefg'.split('').map(name => `${ROOT}/${name}.h`)],
     jumps: [{file: `${ROOT}/main.c`, line: 12}, {file: `${ROOT}/probe.c`, line: 3}]},
-  {kind: 'search', tool: 'Live Grep', query: 'hash', results: 11, file: `${ROOT}/probe.c`, line: 3},
+  {kind: 'search', picker: 'Live Grep', query: 'hash', results: 11, file: `${ROOT}/probe.c`, line: 3},
 ]);
 
 test('the card shows each source\'s rows, what a budget cut, and the board\'s launches as not sent', () => {
@@ -64,6 +64,22 @@ test('a hidden terminal raises no remark about a command, so no command line rea
   assert.doesNotMatch(describeState(hidden, 100_000), /SECRET_TOKEN/);
   const back = fold(hidden, {kind: 'hide', source: 'terminal', hidden: false});
   assert.match(watchInput(detectTriggers(back, 100_000)[0], describeState(back, 100_000)), /SECRET_TOKEN/, 'brought back, it goes again');
+});
+
+test('a hidden editor raises no search trail, and a hidden terminal sends no command with one', () => {
+  const lostTrail = [
+    {kind: 'command_end', pane: 'w1:p2', cmd: 'make SECRET_TOKEN=abc deploy', exit: 2, output: 'Error: denied'},
+    {kind: 'search', picker: 'Live Grep', query: 'give up', results: 0},
+    {kind: 'search', picker: 'Live Grep', query: 'dead letter', results: 1},
+    {kind: 'search', picker: 'Find Files', query: 'retry', results: 2, file: `${ROOT}/backoff.go`},
+  ];
+  const trailOf = current => detectTriggers(current, 10_000).filter(trigger => trigger.kind === 'search_trail');
+  const shown = state(lostTrail);
+  assert.equal(trailOf(shown).length, 1);
+  assert.match(trailOf(shown)[0].detail, /SECRET_TOKEN/, 'what fails now goes with the trail');
+  assert.deepEqual(trailOf(fold(shown, {kind: 'hide', source: 'editor', hidden: true})), [], 'the searches stay home');
+  const [trail] = trailOf(fold(shown, {kind: 'hide', source: 'terminal', hidden: true}));
+  assert.doesNotMatch(trail.detail, /SECRET_TOKEN/);
 });
 
 test('a session takes its goal from the board task, else the branch name; on main it asks', () => {

@@ -57,7 +57,6 @@ test(':Pair context shows the goal and every source, where you have been, and x 
   try {
     await until(() => { try { return remote('1'); } catch { return false; } }, 'nvim to listen');
     keys(':edit probe.c<CR>2G');
-    keys('/31<CR>');
     await sleep(300);
     keys(':Pair context<CR>');
     const lines = await until(() => cardLines().length && cardLines(), 'the card');
@@ -67,7 +66,6 @@ test(':Pair context shows the goal and every source, where you have been, and x 
     assert.match(text, /^ git\n {3}branch {4}work\/3-faster-hash$/m);
     assert.match(text, /^ {3}buffers {3}probe\.c {2}main\.c$/m, 'the buffers, the one used last first');
     assert.match(text, /^ {3}jumps {5}main\.c:1$/m, 'where you jumped from');
-    assert.match(text, /^ {3}searched {2}\/ "31" · 1 result · opened probe\.c:2$/m, 'the search, its matches and where it took you');
     assert.doesNotMatch(text, /^ board$/m, 'no board configured: no board source');
 
     const gitLine = lines.findIndex(line => line === ' git') + 1;

@@ -60,7 +60,7 @@ function editorRows(state) {
   const searches = state.searches.slice().reverse().map(search => {
     const results = search.results === null || search.results === undefined ? '' : ` · ${plural(search.results, 'result')}`;
     const opened = search.file ? ` · opened ${name(search.file)}${search.line ? `:${search.line}` : ''}` : '';
-    return `${search.tool} "${search.query}"${results}${opened}`;
+    return `${search.picker} "${search.query}"${results}${opened}`;
   });
   return [
     ...listRow('buffers', buffers, BUDGET.buffers, '  '),

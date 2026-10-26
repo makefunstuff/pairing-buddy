@@ -68,6 +68,18 @@ export const scenes = {
       {wait: 300, say: 'six cases, one undo step, and they pass. `64` shifts past the top bit: `Next` already caps it, so that one is a guard.'},
     ],
   },
+  // 04: the delivery test is red; you grep "give up", then "dead letter", and find-file "retry". Pair says where it
+  // is, in the code's own word. The Watcher's score and the Partner's words are a live model's, from test/live/trail.test.mjs.
+  'search-trail': {
+    goal: 'retries reach the budget',
+    watcher: prompt => (prompt.includes('(search_trail)') ? '7' : '0'),
+    partner: [
+      {when: /search_trail/, wait: 400, call: ['read', {file: 'internal/delivery/worker.go'}]},
+      {wait: 900, call: ['read', {file: 'internal/delivery/worker_test.go'}]},
+      {wait: 1100, call: ['point', {file: 'internal/delivery/worker.go', line: 35, note: 'the code\'s word for giving up: `ErrBudget`', code: '>='}]},
+      {wait: 200, say: 'The word you\'re looking for is `ErrBudget` ("retry budget spent"), and it fires here: `if elapsed+wait >= cfg.Budget` treats a wait that lands exactly on 15s as over budget, so it returns after attempt 4 instead of 5 — change `>=` to `>`.'},
+    ],
+  },
   // The held thought, in C: you write ring_pop and go on; the error in a line you left can wait, so Pair holds
   // its remark (a dot in the margin) until you save. The colorscheme is greys with one warm red.
   'held-thought': {
@@ -92,8 +104,8 @@ export const scenes = {
       {wait: 200, say: 'attempt 5 would wait 8s after 7s: exactly the 15s budget, and `>=` gives up on it. `>` lets it run.'},
     ],
   },
-  // :Pair context: no goal typed (it comes from the board task of the branch), a failing run, two Telescope searches
-  // and a / search, then the card, and x on a source. No model words: the card is what the daemon reads.
+  // :Pair context: no goal typed (it comes from the board task of the branch), a failing run, two Telescope searches,
+  // then the card, and x on a source. No model words: the card is what the daemon reads.
   'context-card': {
     branch: 'work/7-retries-reach-the-budget',
     board: true,
