@@ -230,7 +230,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
   function listen(client, session, message) {
     const listener = listenerOf(session);
     if (!listener) return sendMessage(client.socket, {type: 'heard', error: 'voice is off: set "voice" in the config (see docs/voice.md)'});
-    if (message.action === 'start') return listener.start(reply => sendMessage(client.socket, reply), message.selection ?? null);
+    if (message.action === 'start') return listener.start(reply => sendMessage(client.socket, reply), message.selection ?? null, client);
     if (message.action === 'stop') return listener.stop();
     if (message.action === 'cancel') return listener.cancel();
   }
@@ -331,7 +331,10 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
   const server = createServer(socket => {
     const client = {socket, role: null, session: null, activeAt: 0, ready: Promise.resolve()};
     clients.add(client);
-    socket.on('close', () => clients.delete(client));
+    socket.on('close', () => {
+      clients.delete(client);
+      if (client.session) listeners.get(client.session.root)?.drop(client); // no microphone stays open for a gone editor
+    });
     socket.on('error', () => {});
     readMessages(socket, message => handle(client, message).catch(error => {
       log(`${message.type} failed: ${error.stack ?? error}`);

@@ -660,6 +660,15 @@ test('push-to-talk: hold Alt-t, a meter under your line; let go, your words, the
     assert.match(listenLine(), /M-t again to ask$/, 'still listening without the key');
     remote(`luaeval("vim.api.nvim_input('<M-t>') or 0")`);
     await until(() => words().some(([, lines]) => lines[0] === '● Five.'), 'the answer to the tapped question');
+
+    // The model fails: the line says there is no answer, a moment, and the chat says why.
+    partner.setResponses([() => { throw new Error('401 bad key'); }]);
+    await until(() => status() === '● pair', 'the statusline at rest');
+    await sleep(300); // a key pressed again within 0.22 s of the last one counts as still held
+    hold(600);
+    await until(() => listenLine() === '◌ no answer · the chat says why', 'no answer, said under the line');
+    await until(() => messages.some(message => /Pair could not answer/.test(message.text ?? '')), 'why, in the chat');
+    await until(() => listenLine() === null, 'the line to go after a moment');
   } finally {
     await stop();
   }

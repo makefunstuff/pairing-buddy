@@ -1,13 +1,26 @@
 // Push-to-talk without a microphone: a recorder that plays a tone, and whisper replaced by a script or a function.
 import assert from 'node:assert/strict';
-import {chmodSync, mkdtempSync, readdirSync, readFileSync, writeFileSync} from 'node:fs';
+import {execFileSync} from 'node:child_process';
+import {chmodSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import {connect} from 'node:net';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {test} from 'node:test';
+import {after, test} from 'node:test';
+import {createModels, fauxProvider} from '@earendil-works/pi-ai';
+import {parseConfig} from '../src/config.mjs';
+import {startDaemon} from '../src/daemon.mjs';
+import {sendMessage} from '../src/protocol.mjs';
 import {initialState} from '../src/fold.mjs';
 import {voiceCheck} from '../src/doctor.mjs';
 import {Listener} from '../src/listen.mjs';
-import {cleanTranscript, loudness, meterLevel, RATE, recorderOf, Recording, speakable, transcribe, voiceConfig, wav, whisperPrompt} from '../src/voice.mjs';
+import {cleanTranscript, loudness, meterLevel, RATE, recorderOf, Recording, speak, speakable, transcribe, voiceConfig, wav, whisperPrompt} from '../src/voice.mjs';
+
+// Every scratch directory a test makes goes when the tests end.
+const dirs = [];
+const scratch = prefix => { const dir = mkdtempSync(join(tmpdir(), prefix)); dirs.push(dir); return dir; };
+after(() => { for (const dir of dirs) rmSync(dir, {recursive: true, force: true}); });
+/** Whether a process whose command line has `marker` runs. */
+const running = marker => { try { execFileSync('pgrep', ['-f', marker]); return true; } catch { return false; } };
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -114,7 +127,7 @@ test('a recorder that fails says so while the key is still held', async () => {
 });
 
 test('transcribe runs whisper.cpp on the CPU with the prompt, from a WAV file it then removes', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'pair-voice-'));
+  const dir = scratch('pair-voice-');
   const whisper = join(dir, 'whisper-cli');
   writeFileSync(whisper, `#!/bin/sh\nprintf '%s\\n' "$@" > ${dir}/args\nprintf ' Why does attempt 5\\n give up?\\n'\n`);
   chmodSync(whisper, 0o755);
@@ -138,7 +151,7 @@ function listener({heard = 'why does it give up?', speakCommand = null, seconds 
   const listening = new Listener({
     voice: voiceConfig({model: 'm.bin', record: toneCommand(seconds), speak: speakCommand ?? undefined}),
     session,
-    dir: mkdtempSync(join(tmpdir(), 'pair-listen-')),
+    dir: scratch('pair-listen-'),
     ask: async (text, selection) => { asked.push([text, selection]); return answer; },
     transcribeWith: async (voice, pcm, {prompt}) => { prompts.push(prompt); return heard; },
     speakWith: (voice, text) => { spoken.push(text); return () => spoken.push('(stopped)'); },
@@ -226,7 +239,7 @@ test('a recording stops by itself after maxSeconds; no recorder says what to ins
 });
 
 test('pair doctor: voice off, no recorder, no model, a failing whisper, and one that works', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'pair-doctor-voice-'));
+  const dir = scratch('pair-doctor-voice-');
   const model = join(dir, 'ggml-base.en.bin');
   writeFileSync(model, '');
   const whisper = join(dir, 'whisper-cli');
@@ -243,4 +256,61 @@ test('pair doctor: voice off, no recorder, no model, a failing whisper, and one 
   const good = await voiceCheck(voice({speak: 'pw-record'}), found);
   assert.equal(good.level, 'ok');
   assert.match(good.text, /^pw-record records, whisper\.cpp hears a second in \d\.\d s on the CPU, and `pw-record` reads answers aloud/);
+});
+
+test('an editor that goes away drops its recording: nothing is heard or asked', async () => {
+  const {listening, sent, asked, send} = listener();
+  const editor = {}, other = {};
+  listening.start(send, null, editor);
+  await sleep(300);
+  listening.drop(other); // another Neovim closing changes nothing
+  assert.ok(listening.recording);
+  listening.drop(editor);
+  assert.equal(listening.recording, null);
+  await listening.stop();
+  assert.deepEqual(asked, []);
+  assert.deepEqual(sent.filter(message => message.type !== 'listening'), []);
+});
+
+test('coming back stops a spoken pipeline as a whole, the player too', async () => {
+  const marker = `sleep 31.${process.pid}`;
+  const hush = speak({speak: `cat | ${marker}`}, 'Line 9 uses >=.');
+  await sleep(300);
+  assert.ok(running(marker), 'the player plays');
+  hush();
+  await sleep(300);
+  assert.equal(running(marker), false, 'and stops');
+});
+
+test('the daemon: Neovim quitting mid-recording closes the microphone at once, and whisper never runs', async () => {
+  const dir = scratch('pair-drop-');
+  const marker = `sleep 32.${process.pid}`;
+  const whisper = join(dir, 'whisper-cli');
+  writeFileSync(whisper, `#!/bin/sh\ntouch ${dir}/whisper-ran\necho " hello"\n`, {mode: 0o755});
+  const config = parseConfig({
+    dataDir: dir, socket: join(dir, 'pair.sock'),
+    models: {watcher: {api: 'openai', baseUrl: 'http://unused', model: 'w'}, partner: {api: 'openai', baseUrl: 'http://unused', model: 'p'}},
+    voice: {model: 'unused.bin', whisper, record: `${toneCommand(30)} | (${marker}; cat)`, maxSeconds: 1},
+  });
+  const watcher = fauxProvider({provider: 'faux-w'});
+  const partner = fauxProvider({provider: 'faux-p'});
+  const models = createModels();
+  models.setProvider(watcher.provider);
+  models.setProvider(partner.provider);
+  const daemon = await startDaemon(config, {pairModels: {models, watcher: watcher.getModel(), partner: partner.getModel()}, probe: async () => ({ok: true}), log: () => {}});
+  try {
+    const editor = connect(config.socket);
+    await new Promise(resolve => editor.on('connect', resolve));
+    sendMessage(editor, {type: 'hello', role: 'editor', cwd: dir});
+    sendMessage(editor, {type: 'listen', action: 'start'});
+    await sleep(500);
+    assert.ok(running(marker), 'recording');
+    editor.destroy(); // Neovim quits while a tap listens
+    await sleep(400);
+    assert.equal(running(marker), false, 'the recorder is gone');
+    await sleep(1200); // past maxSeconds
+    assert.equal(existsSync(join(dir, 'whisper-ran')), false, 'nothing was transcribed');
+  } finally {
+    await daemon.close();
+  }
 });

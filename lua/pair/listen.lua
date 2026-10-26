@@ -15,7 +15,8 @@ local NOTHING_MS = 1500 -- how long "heard nothing" stays
 local METER = {'▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'}
 local BARS = 10
 
--- phase: 'listening' (recording), 'hearing' (whisper writes it down), 'heard' (Pair is asked), or nil.
+-- phase: 'listening' (recording), 'hearing' (whisper writes it down), 'heard' (Pair is asked), 'unanswered' (it said
+-- nothing), or nil.
 -- mode while listening: nil until it is known, then 'hold' or 'tap'.
 -- key: the listen key as its hint names it, like M-t.
 local state = {phase = nil, mode = nil, pressed_at = 0, last_at = 0, buf = nil, mark = nil, levels = {}, text = nil, timer = nil, frame = 1, key = ''}
@@ -41,6 +42,8 @@ local function chunks()
     return {{g.listen .. ' ', 'PairAccent'}, {meter(), 'PairAccent'}, {'  listening', 'PairNote'}, {hint ~= '' and ('   ' .. hint) or '', 'PairKey'}}
   elseif state.phase == 'hearing' then
     return {{style.spinner[state.frame] .. ' ', 'PairAccent'}, {'hearing', 'PairNote'}}
+  elseif state.phase == 'unanswered' then
+    return {{style.glyphs.away .. ' ', 'PairKey'}, {'no answer · the chat says why', 'PairKey'}}
   elseif state.text == '' then
     return {{style.glyphs.away .. ' ', 'PairKey'}, {'heard nothing', 'PairKey'}}
   end
@@ -139,6 +142,12 @@ function M.level(level)
   draw()
 end
 
+--- The line goes after a moment.
+local function fade_out()
+  local mark = state.mark
+  vim.defer_fn(function() if state.mark == mark then clear() end end, NOTHING_MS)
+end
+
 --- What the daemon heard: `text` ('' for nothing), `error`, or `state = 'hearing'` while whisper works.
 function M.heard(message)
   if message.state == 'hearing' then return end
@@ -150,10 +159,15 @@ function M.heard(message)
   state.phase, state.text = 'heard', message.text or ''
   draw()
   redraw_status()
-  if state.text == '' then
-    local mark = state.mark
-    vim.defer_fn(function() if state.mark == mark then clear() end end, NOTHING_MS)
-  end
+  if state.text == '' then fade_out() end
+end
+
+--- Pair said nothing to what was heard (its model failed, say): the line says so a moment, the chat says why.
+function M.unanswered()
+  if state.phase ~= 'heard' then return end
+  state.phase = 'unanswered'
+  draw()
+  fade_out()
 end
 
 --- Where the answer to what was heard goes: the buffer and row of the line it was asked on; the heard line goes.

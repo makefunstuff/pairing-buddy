@@ -81,6 +81,16 @@ export function wav(pcm) {
 }
 
 /**
+ * Stops `child` and whatever it started: it runs in its own process group (spawned `detached`), since a configured
+ * command may be a pipeline, and all of it stops with it. A part that lingers is killed.
+ */
+function stopGroup(child) {
+  const signal = name => { try { process.kill(-child.pid, name); } catch {} }; // gone already, or never started
+  signal('SIGTERM');
+  setTimeout(() => signal('SIGKILL'), KILL_MS).unref();
+}
+
+/**
  * One recording, from `start` until `stop()`, which resolves with its audio (16-bit PCM) or rejects when the recorder
  * could not record. `onLevel(level)` gets the meter level of each tenth of a second.
  */
@@ -91,7 +101,6 @@ export class Recording {
     this.error = null;
     this.peakDb = -Infinity;
     const [command, ...args] = recorder;
-    // Its own process group: a configured command may be a pipeline, and all of it stops with it.
     this.child = spawn(command, args, {stdio: ['ignore', 'pipe', 'pipe'], detached: true});
     let stderr = '';
     this.child.stderr.on('data', data => { stderr = (stderr + data).slice(-500); });
@@ -130,9 +139,7 @@ export class Recording {
   /** Stops the recorder; what it recorded until then stays. */
   end() {
     this.stopping = true;
-    const signal = name => { try { process.kill(-this.child.pid, name); } catch {} }; // gone already, or never started
-    signal('SIGTERM');
-    setTimeout(() => signal('SIGKILL'), KILL_MS).unref();
+    stopGroup(this.child);
   }
 }
 
@@ -199,12 +206,12 @@ export function speakable(text) {
 
 /** Says `text` with the configured speech command (text on stdin); returns a function that stops it. */
 export function speak(voice, text, {log = () => {}} = {}) {
-  const child = spawn('sh', ['-c', voice.speak], {stdio: ['pipe', 'ignore', 'pipe']});
+  const child = spawn('sh', ['-c', voice.speak], {stdio: ['pipe', 'ignore', 'pipe'], detached: true}); // a pipeline stops as a whole
   let stderr = '';
   child.stderr.on('data', data => { stderr = (stderr + data).slice(-300); });
   child.on('error', error => log(`speaking failed: ${error.message}`));
   child.on('close', code => { if (code) log(`speaking failed: ${stderr.trim() || `exit ${code}`}`); });
   child.stdin.on('error', () => {});
   child.stdin.end(`${text}\n`);
-  return () => child.kill('SIGTERM');
+  return () => stopGroup(child);
 }

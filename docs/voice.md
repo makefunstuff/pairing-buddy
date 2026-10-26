@@ -27,7 +27,8 @@ is used. The audio is kept in memory and in a temporary file only while whisper 
 
 The question also goes to the chat pane, like a typed one, and the whole answer is there. Pair's words under your
 line go with your next edit, as its other words do. Whisper heard nothing (a cough, a key pressed by mistake)? The
-line says `◌ heard nothing` for a moment and Pair is not asked.
+line says `◌ heard nothing` for a moment and Pair is not asked. Pair could not answer (its model is down, say)?
+The line says `◌ no answer · the chat says why` for a moment, and the chat pane says why.
 
 **Hold or tap.** A terminal sends no key-up, only the key again and again while you hold it. Pair counts the key as
 let go when those repeats stop (about 0.2 s after the last one). A short press that does not repeat is a tap: Pair
@@ -45,7 +46,7 @@ With a `speak` command set, the answer to a spoken question is also read aloud, 
 editor when it comes: Neovim has lost the focus (another window, the browser), or herdr shows another workspace.
 At the editor you read it; nothing ever speaks at you while you look at the code. Only the first sentence or two is
 read (up to 240 characters), without Markdown, with `retry.c:42` read as "retry.c, line 42". Coming back to Neovim
-stops it. Pair never speaks its unasked remarks.
+stops it, every part of the `speak` command (a pipeline's player too). Pair never speaks its unasked remarks.
 
 Away is told by the terminal's focus reports, which Neovim turns on by itself; herdr and most terminals send them.
 
@@ -120,5 +121,7 @@ in `setup` (`false` for none; `:Pair listen` works either way).
 
 - The key is held as long as the terminal repeats it. If your terminal waits longer than about 0.65 s before it
   repeats a held key, a hold counts as a tap: press the key again to ask.
-- Voice is off until `voice` is in the config. Pair records only while you hold the key (or between two taps).
+- Voice is off until `voice` is in the config. Pair records only while you hold the key (or between two taps). When
+  the Neovim that started a recording goes away (it quits or crashes), the recording stops at once and nothing is
+  asked.
 - One recording at a time per project; pressing the key in another Neovim of the same project starts over there.

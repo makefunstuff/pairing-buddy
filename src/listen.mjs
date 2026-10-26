@@ -27,14 +27,17 @@ export class Listener {
     return !this.focused || this.session.state.focus.target === 'elsewhere';
   }
 
-  /** The key went down: records until `stop()`, sending the meter's levels to the editor with `send`. */
-  start(send, selection = null) {
+  /**
+   * The key went down: records until `stop()`, sending the meter's levels to the editor with `send`. `owner` is the
+   * editor's connection, which `drop` names when it goes away.
+   */
+  start(send, selection = null, owner = null) {
     if (this.recording) this.cancel();
     this.hush();
     if (!this.recorder) return send({type: 'heard', error: 'no recorder found: install pipewire (pw-record), pulseaudio-utils (parec) or alsa-utils (arecord), or set voice.record'});
     const recording = new Recording(this.recorder, {onLevel: level => send({type: 'listening', level})});
     const timer = setTimeout(() => this.stop(), this.voice.maxSeconds * 1000);
-    this.recording = {recording, send, selection, timer};
+    this.recording = {recording, send, selection, timer, owner};
     // A recorder that fails (no microphone, no audio server) says so at once, not when the key is let go.
     recording.closed.then(() => { if (recording.error && this.recording?.recording === recording) this.stop(); });
     send({type: 'listening', level: 0});
@@ -76,6 +79,11 @@ export class Listener {
     clearTimeout(this.recording.timer);
     this.recording.recording.end();
     this.recording = null;
+  }
+
+  /** The editor `owner` went away (Neovim quit or crashed): its recording stops, and nothing is asked. */
+  drop(owner) {
+    if (this.recording?.owner === owner) this.cancel();
   }
 
   hush() {

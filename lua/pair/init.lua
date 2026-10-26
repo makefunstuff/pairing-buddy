@@ -633,6 +633,7 @@ local handlers = {
   heard = listen.heard,
   -- The answer to what you said: Pair's words under the line you asked on, in place of yours.
   answer = function(message)
+    if message.text == '' and not message.pointed then return listen.unanswered() end
     local buf, row = listen.answered()
     if not buf or type(message.text) ~= 'string' or message.text == '' then return end
     forget_words(false)
