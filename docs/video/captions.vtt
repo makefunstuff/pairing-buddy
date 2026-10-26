@@ -1,0 +1,181 @@
+WEBVTT
+
+00:00:00.280 --> 00:00:03.840
+Coding alone, you lose time in small ways.
+
+00:00:03.840 --> 00:00:07.120
+You fix the wrong file, or you skip the tests.
+
+00:00:07.120 --> 00:00:10.000
+And most AI tools either wait to be asked,
+
+00:00:10.000 --> 00:00:12.440
+or rewrite your code behind your back.
+
+00:00:13.430 --> 00:00:16.730
+Pairing buddy is the person in the second chair.
+
+00:00:16.730 --> 00:00:19.470
+It sits beside you in Neovim, watches,
+
+00:00:19.470 --> 00:00:22.110
+and speaks up only when it matters.
+
+00:00:22.110 --> 00:00:24.130
+It never touches your files,
+
+00:00:24.130 --> 00:00:26.010
+unless you hand it the wheel.
+
+00:00:27.020 --> 00:00:29.200
+Two models share the work.
+
+00:00:29.200 --> 00:00:31.760
+The Watcher is small and fast:
+
+00:00:31.760 --> 00:00:33.740
+it scores each moment.
+
+00:00:33.740 --> 00:00:35.260
+Is this worth a word?
+
+00:00:35.260 --> 00:00:37.160
+The Partner is larger:
+
+00:00:37.160 --> 00:00:39.960
+it reads your code, and writes the remark.
+
+00:00:45.730 --> 00:00:48.350
+Here is a webhook service in Go.
+
+00:00:48.350 --> 00:00:50.410
+A delivery test is red:
+
+00:00:50.410 --> 00:00:52.710
+four attempts, where it wants five.
+
+00:00:53.710 --> 00:00:56.990
+You suspect the backoff code, and change the shift.
+
+00:01:00.820 --> 00:01:03.400
+Pair is the Navigator by default:
+
+00:01:03.400 --> 00:01:05.620
+it watches and points.
+
+00:01:05.620 --> 00:01:08.960
+It sees you editing a file the failure doesn't name,
+
+00:01:08.960 --> 00:01:11.180
+so it reads the worker first.
+
+00:01:12.250 --> 00:01:15.050
+Then it speaks, right under your line.
+
+00:01:15.050 --> 00:01:16.510
+The shift is fine.
+
+00:01:16.510 --> 00:01:18.830
+The worker gives up one attempt early.
+
+00:01:20.220 --> 00:01:23.700
+Alt J jumps to the exact characters it means.
+
+00:01:27.890 --> 00:01:30.090
+You fix it, and save.
+
+00:01:30.090 --> 00:01:32.670
+Pair runs your tests on every save,
+
+00:01:32.670 --> 00:01:34.570
+with a command you set once.
+
+00:01:35.660 --> 00:01:37.260
+Delivery passes.
+
+00:01:37.260 --> 00:01:40.900
+But a queue test that passed before now fails.
+
+00:01:40.900 --> 00:01:44.000
+A regression, and you didn't even run the tests.
+
+00:01:45.070 --> 00:01:46.610
+Pair tells you why,
+
+00:01:46.610 --> 00:01:49.070
+and Alt J takes you to its fix.
+
+00:01:51.540 --> 00:01:53.640
+The old code is struck through,
+
+00:01:53.640 --> 00:01:56.340
+and the fix waits as ghost text.
+
+00:01:56.340 --> 00:01:58.120
+Alt Y accepts it.
+
+00:01:58.120 --> 00:02:00.120
+Save, and it's all green.
+
+00:02:03.470 --> 00:02:04.950
+Or hand over a change.
+
+00:02:04.950 --> 00:02:09.229
+Pair drive makes Pair the Driver, for one change.
+
+00:02:10.259 --> 00:02:13.280
+You watch it type, with its own cursor.
+
+00:02:13.280 --> 00:02:15.800
+Each line lands only when it's whole.
+
+00:02:16.890 --> 00:02:20.170
+It tests the unsaved buffer, and hands back:
+
+00:02:20.170 --> 00:02:22.130
+a tick, a short note,
+
+00:02:22.130 --> 00:02:24.790
+and one undo takes it all away.
+
+00:02:25.860 --> 00:02:27.100
+Changed your mind?
+
+00:02:27.100 --> 00:02:29.120
+Press any key while it types,
+
+00:02:29.120 --> 00:02:30.700
+and the edit is gone.
+
+00:02:34.150 --> 00:02:36.170
+So, three roles.
+
+00:02:36.170 --> 00:02:38.790
+The Navigator watches and points.
+
+00:02:38.790 --> 00:02:43.230
+The Scout searches, and runs commands in its own pane.
+
+00:02:43.230 --> 00:02:46.730
+The Driver makes one change, then gives the wheel back.
+
+00:02:47.920 --> 00:02:50.140
+Install it with two commands:
+
+00:02:50.140 --> 00:02:53.960
+npm install, then pair setup.
+
+00:02:53.960 --> 00:02:56.960
+Add the Neovim plugin, set your two models,
+
+00:02:56.960 --> 00:02:58.580
+and run pair doctor.
+
+00:03:00.510 --> 00:03:02.250
+The keys to remember:
+
+00:03:02.250 --> 00:03:07.050
+Alt J, Alt Y, Pair drive, and u.
+
+00:03:07.050 --> 00:03:09.190
+Pair stays in the second chair.

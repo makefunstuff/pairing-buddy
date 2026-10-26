@@ -104,7 +104,7 @@ code { white-space: nowrap; font-size: .86em; background: var(--panel); padding:
 .facts { display: flex; flex-wrap: wrap; gap: 6px 20px; font: 400 13px/1.4 var(--mono); color: var(--muted); }
 .facts b { color: var(--pair); font-weight: 400; }
 
-/* the hero video slot: the tutorial now, the remade video later (same markup, swap the files) */
+/* the hero video: the tour from docs/video */
 .stage { background: var(--bezel); border-radius: 14px; padding: clamp(5px, 1.1vw, 12px); box-shadow: 0 40px 90px -50px rgba(0,0,0,.8); }
 .stage video { display: block; width: 100%; height: auto; border-radius: 7px; background: #0B0F13; }
 .hero-video video { aspect-ratio: 16 / 9; }
@@ -240,17 +240,17 @@ footer a { color: var(--muted); }
   <div class="facts"><span><b>v0.9</b> Navigator, Scout, Driver</span><span>local or cloud models</span><span>MIT</span></div>
 </header>
 
-<!-- Hero video slot. Today: the v0.6 tutorial from docs/video. A remade video replaces it: swap the
-     files in media/ (hero.mp4, hero.webm, hero-poster.jpg) and the caption below; the layout stays. -->
+<!-- Hero video: the tour from docs/video, re-encoded to 1280x720 (media/hero.mp4, hero.webm, hero-poster.jpg).
+     A new cut replaces those three files and the caption below; the layout stays. -->
 <div class="wide hero-video" id="tutorial">
   <div class="stage">
-    <video controls playsinline preload="none" poster="media/hero-poster.jpg" width="1280" height="720" aria-label="Video tutorial: how to use pairing-buddy day to day">
+    <video controls playsinline preload="none" poster="media/hero-poster.jpg" width="1280" height="720" aria-label="Video: a person in the second chair, a three-minute tour of pairing-buddy">
       <source src="media/hero.webm" type="video/webm">
       <source src="media/hero.mp4" type="video/mp4">
     </video>
   </div>
   <div class="caption">
-    <span>Tutorial · 3 min 25 s · install and <code>pair doctor</code>, the Neovim plugin, the chat pane, the Watcher, a model going down</span>
+    <span>The tour · 3 min · the three moments in Neovim, the roles, install in two commands, the keys</span>
     <a href="https://github.com/makefunstuff/pairing-buddy/tree/main/docs/video">How it was made</a>
   </div>
 </div>
@@ -488,7 +488,7 @@ footer a { color: var(--muted); }
   </div>
   <div class="docs">
     <a class="doc" href="https://github.com/makefunstuff/pairing-buddy#readme"><b>README</b><span>How it works, configuration, every command, known limits.</span></a>
-    <a class="doc" href="https://github.com/makefunstuff/pairing-buddy/tree/main/docs/video"><b>Video tutorial</b><span>The 3-minute tour above, with its sources and how to render it.</span></a>
+    <a class="doc" href="https://github.com/makefunstuff/pairing-buddy/tree/main/docs/video"><b>Video</b><span>The 3-minute tour above: its captures, script and how to render it again.</span></a>
     <a class="doc" href="https://github.com/makefunstuff/pairing-buddy/blob/main/docs/driver.md"><b>Driver and suggestions</b><span>Hand-over, take-back, and inline suggestions.</span></a>
     <a class="doc" href="https://github.com/makefunstuff/pairing-buddy/blob/main/docs/scout.md"><b>Scout</b><span>What it may run, what it asks first, what it refuses.</span></a>
     <a class="doc" href="https://github.com/makefunstuff/pairing-buddy/blob/main/docs/watcher.md"><b>The Watcher</b><span>When Pair speaks, and how it stays under a second.</span></a>

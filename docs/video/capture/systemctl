@@ -1,0 +1,20 @@
+#!/bin/bash
+# A stand-in for `systemctl --user` in the install capture's sandbox, so `pair setup` installs into the sandbox
+# and never reaches the real user manager (or the pairing-buddy service running there). It runs the unit's
+# ExecStart in the background on `restart`, with the sandbox's environment, so the daemon really starts.
+[ "${PBCAP:-}" ] && [[ $HOME == /tmp/pbcap.*/home ]] || { echo "systemctl stand-in: not in a capture sandbox" >&2; exit 1; }
+[ "$1" = --user ] && shift
+unit=$XDG_CONFIG_HOME/systemd/user/pairing-buddy.service
+pidfile=$PBCAP/daemon.pid
+running() { [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null; }
+case "$1" in
+  daemon-reload|enable) exit 0 ;;
+  restart|start)
+    running && kill "$(cat "$pidfile")"
+    exec=$(sed -n 's/^ExecStart=//p' "$unit")
+    setsid bash -c "exec $exec" >> "$PBCAP/daemon.log" 2>&1 < /dev/null &
+    echo $! > "$pidfile" ;;
+  is-active|is-enabled) running ;;
+  stop|disable) running && kill "$(cat "$pidfile")"; exit 0 ;;
+  *) exit 0 ;;
+esac
