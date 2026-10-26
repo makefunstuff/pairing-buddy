@@ -1,5 +1,4 @@
-// pairing-buddy config. JSON with // comments. After a change: systemctl --user restart pairing-buddy
-// (or `pair setup` again), then `pair doctor` to check it.
+// pairing-buddy config. JSON with // comments. The daemon takes a change as you save it; `pair doctor` checks it.
 {
   // How often Pair speaks unasked: "quiet", "normal" or "chatty".
   "level": "normal",
