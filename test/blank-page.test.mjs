@@ -104,7 +104,7 @@ function session(root, answers) {
   const inputs = [];
   const pair = new PairSession({
     record: {id: 1, root, conversation_id: 7, goal: null, level: 'normal'},
-    store: {addMessage() {}, setGoal() {}},
+    store: {addMessage() {}, addAction: () => 1, updateAction() {}, setGoal() {}},
     partner: {thinkingOf: () => 'off', ask: async (_id, input) => {
       inputs.push(input);
       const answer = answers.shift();
@@ -181,7 +181,7 @@ test('the Driver can create a file not written yet as a new buffer, and read it 
   const requests = [];
   const pair = new PairSession({
     record: {id: 1, root, conversation_id: 7, goal: null, level: 'normal', role: 'driver'},
-    store: {addMessage() {}}, partner: {}, score: async () => ({}), typingPauseMs: 2000, notify: () => 1,
+    store: {addMessage() {}, addAction: () => 1, updateAction() {}}, partner: {}, score: async () => ({}), typingPauseMs: 2000, notify: () => 1,
     requestEditor: async message => { requests.push(message); return message.type === 'edit' ? {ok: true, from: 1, to: 2} : {text: null}; },
   });
   pair.role = 'driver';

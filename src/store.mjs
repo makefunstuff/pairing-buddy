@@ -1,5 +1,5 @@
-// Pairing sessions, their chat history and the remarks Pair made unasked with the user's verdict on each,
-// next to the Partner's own pi-durable database.
+// Pairing sessions, their chat history, the remarks Pair made unasked with the user's verdict on each, and the
+// ledger of everything Pair did, next to the Partner's own pi-durable database.
 import {DatabaseSync} from 'node:sqlite';
 
 const SCHEMA = `
@@ -34,9 +34,22 @@ CREATE TABLE IF NOT EXISTS remarks (
 CREATE TABLE IF NOT EXISTS activity (
   hour INTEGER PRIMARY KEY,
   ms INTEGER NOT NULL
+);
+-- The ledger of what Pair did (see ledger.mjs). As JSON: data is what the list shows, detail what one entry opens
+-- to (a command's output, why Pair stayed quiet, a file's text before and after an edit).
+CREATE TABLE IF NOT EXISTS actions (
+  id INTEGER PRIMARY KEY,
+  session_id INTEGER NOT NULL REFERENCES sessions(id),
+  at INTEGER NOT NULL,
+  kind TEXT NOT NULL,
+  text TEXT NOT NULL,
+  data TEXT NOT NULL DEFAULT '{}',
+  detail TEXT,
+  state TEXT
 );`;
 
 const HOUR = 60 * 60_000;
+const ACTION_COLUMNS = new Set(['text', 'data', 'detail', 'state']);
 
 /** Columns added since v0.1, by table, with their definitions. */
 const ADDED_COLUMNS = {
@@ -92,6 +105,31 @@ export function openStore(path) {
       .run(Math.floor(at / HOUR), ms),
     /** How long the user was active since `since`, in ms, in any session: whole hours, from the one `since` falls in. */
     activeMs: since => db.prepare('SELECT coalesce(sum(ms), 0) AS ms FROM activity WHERE hour >= ?').get(Math.floor(since / HOUR)).ms,
+
+    addAction: ({sessionId, at, kind, text, data = {}, detail = null}) => Number(db.prepare('INSERT INTO actions (session_id, at, kind, text, data, detail) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(sessionId, at, kind, text, JSON.stringify(data), detail && JSON.stringify(detail)).lastInsertRowid),
+    /** Sets the text, data, detail or state of action `id`, those that `changes` has. */
+    updateAction(id, changes) {
+      for (const [column, value] of Object.entries(changes)) {
+        if (!ACTION_COLUMNS.has(column)) throw new Error(`No action column ${column}`);
+        const json = (column === 'data' || column === 'detail') && value !== null;
+        db.prepare(`UPDATE actions SET ${column} = ? WHERE id = ?`).run(json ? JSON.stringify(value) : value, id);
+      }
+    },
+    /** Action `id` with its detail and the root of its session, or undefined. */
+    action(id) {
+      const row = db.prepare('SELECT a.*, s.root FROM actions a JOIN sessions s ON s.id = a.session_id WHERE a.id = ?').get(id);
+      return row && {...row, data: JSON.parse(row.data), detail: row.detail && JSON.parse(row.detail)};
+    },
+    /** The actions in `root` since `since`, oldest first, without their detail, each with its remark's verdict. */
+    actions: (root, since) => db.prepare(`SELECT a.id, a.at, a.kind, a.text, a.data, a.detail IS NOT NULL AS more, a.state, r.verdict
+      FROM actions a JOIN sessions s ON s.id = a.session_id LEFT JOIN remarks r ON r.id = json_extract(a.data, '$.remark')
+      WHERE s.root = ? AND a.at >= ? ORDER BY a.id`).all(root, since).map(row => ({...row, data: JSON.parse(row.data), more: !!row.more})),
+    /** Forgets what the actions before `before` open to: outputs and edits' text are the bulk of the store. */
+    forgetActionDetails: before => db.prepare('UPDATE actions SET detail = NULL WHERE at < ? AND detail IS NOT NULL').run(before),
+    /** The verdicts on the remarks made in `root` since `since`. */
+    verdicts: (root, since) => db.prepare('SELECT r.verdict FROM remarks r JOIN sessions s ON s.id = r.session_id WHERE s.root = ? AND r.at >= ?')
+      .all(root, since).map(row => row.verdict),
 
     close: () => db.close(),
   };

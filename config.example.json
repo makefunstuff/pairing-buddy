@@ -17,6 +17,10 @@
   // command. JSON reports (go test -json, jest --json, vitest --reporter=json) also put each test's result on its line.
   // "testOnSave": {"~/src/shop": "go test -json ./..."},
 
+  // The herdr work board's command: a session takes its goal from the board task of its branch (matched by repo and
+  // number), and the context card (:Pair context) shows the task. null turns it off; without the command, nothing is read.
+  // "board": "herdr-projects",
+
   // One model for both roles: the Watcher asks it for one number without thinking, so it stays fast; the Partner
   // asks it with thinking. Its server needs to hold only this model, and may answer one request at a time: the
   // Watcher then waits while the Partner works, and your questions go first.
@@ -37,7 +41,7 @@
     // A cloud model instead: a provider pi-ai knows, with a subscription login or an API key from
     // `pair auth login PROVIDER` (`pair auth list` lists the providers, `pair auth models PROVIDER` their models).
     // A subscription's requests count against its plan's limits, and its terms decide whether a tool like this
-    // may use it (see "Logins and keys" in the README).
+    // may use it (see "Logins and keys" in docs/config.md).
     // "provider": "anthropic", "model": "your-cloud-model"
   }
 
@@ -56,5 +60,5 @@
   //   "speak": "espeak-ng"                 // reads an answer aloud, only when you are away from the editor
   // },
 
-  // Also: "typingPauseMs" (default 2000), "socket" and "dataDir" (see the README).
+  // Also: "typingPauseMs" (default 2000), "socket" and "dataDir" (see docs/config.md).
 }

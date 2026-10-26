@@ -36,6 +36,7 @@ if (scene.blank) {
   git('init', '-q');
   git('add', '-A');
   git('commit', '-qm', 'hookd');
+  if (scene.branch) git('checkout', '-qb', scene.branch);
   if (existsSync(join(project, 'go.mod'))) execFileSync('go', ['test', '-count=1', '-run', '^$', './...'], {cwd: project, stdio: 'ignore'});
 }
 
@@ -63,6 +64,7 @@ writeFileSync(join(dir, 'config.json'), JSON.stringify({
   keepWarm: false,
   ...(scene.testOnSave ? {testOnSave: {[project]: scene.testOnSave}} : {}),
   ...voice(),
+  board: scene.board ? join(HERE, 'board.mjs') : null, // the stand-in board, or none: not yours
   models: {watcher: model('watcher'), partner: model('partner')},
 }, null, 2));
 const out = openSync(join(dir, 'daemon.log'), 'a');
@@ -75,7 +77,7 @@ const chat = connect(socket);
 readMessages(chat, message => { if (message.type === 'message') log(`chat: ${message.sender}: ${message.text}`); });
 await new Promise(resolve => chat.on('connect', resolve));
 sendMessage(chat, {type: 'hello', role: 'chat', cwd: project, herdr: {socket: herdrSocket, workspace: 'w1', pane: 'w1:p2'}});
-if (scene.goal) sendMessage(chat, {type: 'goal', text: scene.goal}); // :Pair new sets its own
+if (scene.goal) sendMessage(chat, {type: 'goal', text: scene.goal}); // else the session takes the board task's, or :Pair new sets it
 
 async function stop() {
   chat.destroy();

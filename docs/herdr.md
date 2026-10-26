@@ -24,6 +24,8 @@ Each request is its own connection: herdr answers one request per connection and
 - **Keystrokes.** Nothing says that the user is typing in a pane, so typing at a shell prompt does not hold Pair back (typing in Neovim and the chat pane does).
 - **A push stream of pane changes.** `pane_output_changed` carries only a revision number and cannot be subscribed to through `events.subscribe`, so Pair polls instead of reacting.
 
+Each gap is tracked as an issue: [#22](https://github.com/makefunstuff/pairing-buddy/issues/22) (command boundaries), [#23](https://github.com/makefunstuff/pairing-buddy/issues/23) (one command's output), [#24](https://github.com/makefunstuff/pairing-buddy/issues/24) (keystrokes), [#25](https://github.com/makefunstuff/pairing-buddy/issues/25) (a push stream), and [#26](https://github.com/makefunstuff/pairing-buddy/issues/26) (at most 1000 lines per read).
+
 Pair's own pane does not need any of this: its shell's prompt carries the command number and the exit code, and `pane.wait_for_output` reports the prompt as soon as it shows.
 
 ## The workaround Pair ships, and what would replace it
