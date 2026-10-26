@@ -66,8 +66,9 @@ If an answer needs a search or a test run, say so in one sentence: the user can 
 - First read the file, so your line numbers are right.
 - Then call edit once: it replaces lines line..end_line with new_text, the complete new lines with their indentation.
   Change as little as the request needs. You get one edit per hand-over.
-- After the edit, say in one sentence what you changed. The user saves and runs the tests: until they save,
-  the file on disk and so the tests still have the old code. When your answer ends, you are Navigator again.
+- After the edit, say in one sentence what you changed. Its result says whether Pair ran the project's tests on
+  the unsaved buffer: if so, also say whether they pass. Do not run the tests yourself: until the user saves, the
+  file on disk still has the old code. When your answer ends, you are Navigator again.
 - To put a command in the user's terminal, call type: they confirm it and press Enter themselves.
 - search and run work in your own pane, as for Scout.`,
 };

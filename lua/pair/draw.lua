@@ -162,12 +162,19 @@ function M.row(buf, id, ns)
   return vim.api.nvim_buf_get_extmark_by_id(buf, ns or M.ns, id, {})[1]
 end
 
---- The pair's words under row `row` of `buf`, indented with the code. Returns the extmark id.
+--- The pair's words under row `row` of `buf`, indented with the code, the mark in the sign column or `opts.sign`
+--- ({glyph, group}). Returns the extmark id.
 function M.remark(buf, row, text, key, opts)
   local lines = voice(text, indent_of(buf, row), text_width(window_of(buf)), key)
-  local spec = {virt_lines = lines, sign_text = style.glyphs.mark, sign_hl_group = 'PairSign', priority = 20}
+  local sign = opts and opts.sign or {style.glyphs.mark, 'PairSign'}
+  local spec = {virt_lines = lines, sign_text = sign[1], sign_hl_group = sign[2], priority = 20}
   if opts and opts.still then return vim.api.nvim_buf_set_extmark(buf, M.ns, row, 0, spec) end
   return place(buf, M.ns, row, 0, spec)
+end
+
+--- The mark in the sign column of rows `first`..`last`, under any other mark of the pair. Returns the extmark id.
+function M.span(buf, first, last)
+  return vim.api.nvim_buf_set_extmark(buf, M.ns, first, 0, {end_row = last, sign_text = style.glyphs.mark, sign_hl_group = 'PairSign', priority = 15})
 end
 
 --- A note about row `row`: after the line when it fits in the window, else under it. Returns the extmark id.

@@ -5,11 +5,11 @@ import {isAbsolute, join, sep} from 'node:path';
 
 const escape = text => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-/** The lines of each file, read once per call of placeTests. */
-function reader() {
+/** The lines of each file, read once per call of placeTests; from `texts` (file -> text) where it has the file. */
+function reader(texts) {
   const files = new Map();
   return file => {
-    if (!files.has(file)) files.set(file, readFile(file, 'utf8').then(text => text.split('\n'), () => null));
+    if (!files.has(file)) files.set(file, texts.has(file) ? Promise.resolve(texts.get(file).split('\n')) : readFile(file, 'utf8').then(text => text.split('\n'), () => null));
     return files.get(file);
   };
 }
@@ -44,10 +44,10 @@ const inside = (root, file) => file.startsWith(root + sep);
 /**
  * The tests of a JSON report (see test-output.mjs) as the editor shows them: `{name, file, line, ok, failure}`
  * with absolute paths inside `root`, failure `{file, line, text}` or null. Tests that did not run, and tests
- * whose place is not found, are left out.
+ * whose place is not found, are left out. `texts` maps files to their text where the run saw another than the disk's.
  */
-export async function placeTests(tests, root) {
-  const lines = reader();
+export async function placeTests(tests, root, texts = new Map()) {
+  const lines = reader(texts);
   const placed = [];
   for (const test of tests.filter(test => test.status !== 'skipped')) {
     let place = null;

@@ -310,6 +310,77 @@ test('suggestions show as a ghost diff that one key accepts; handing over gives 
   }
 });
 
+test('the hand-over in plain sight: the edit is typed as ghost text, whole lines at a time; the tests run on the unsaved buffer; the hand-back line; a key halfway leaves no change', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
+  const {project, partner, messages, remote, keys, send, lines, status, stop} = await pairInNvim('tune the numbers', {testOnSave: 'node report.mjs'});
+  const marks = namespace => JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('${namespace}'), 0, -1, {details = true}))")`));
+  const text = chunks => chunks.map(chunk => chunk[0]).join('');
+  const answered = reply => until(() => messages.some(message => message.text === reply), `the answer "${reply}"`);
+  const toolResult = context => context.messages.filter(message => message.role === 'toolResult').at(-1).content[0].text;
+  try {
+    // A test runner that reads a.js where it runs: in a copy of the project, with the buffer's text in it.
+    writeFileSync(join(project, 'a.test.js'), "test('x is 100', () => {})\n");
+    writeFileSync(join(project, 'report.mjs'), `import {readFileSync} from 'node:fs';
+const ok = readFileSync('a.js', 'utf8').includes('const x = 100');
+const failureMessages = ok ? [] : ['Error: x is not 100'];
+console.log(JSON.stringify({testResults: [{name: process.cwd() + '/a.test.js', assertionResults: [{ancestorTitles: [], title: 'x is 100', status: ok ? 'passed' : 'failed', location: {line: 1}, failureMessages}]}]}));
+`);
+    execFileSync('git', ['init', '-q'], {cwd: project});
+    execFileSync('git', ['add', '.'], {cwd: project});
+
+    let reply;
+    partner.setResponses([
+      fauxAssistantMessage([fauxToolCall('edit', {file: 'a.js', line: 1, new_text: 'const x = 100\nconst w = 5'})], {stopReason: 'toolUse'}),
+      context => { reply = toolResult(context); return fauxAssistantMessage([fauxText('x is 100 now, and w is new; the test passes.')]); },
+    ]);
+    send({type: 'drive', text: 'your turn'});
+    // While Pair types: the old text struck, the new one growing after it with Pair's cursor, and never half a line in the buffer.
+    const seen = new Set();
+    const ghosts = new Set(); // how the text being typed showed: inline in a line it changes, or as a line of its own
+    while (!messages.some(message => message.text === 'x is 100 now, and w is new; the test passes.')) {
+      const now = lines();
+      seen.add(now.join('|'));
+      const typing = marks('pair_drive').find(([, , , details]) => (details.virt_text ?? details.virt_lines?.[0] ?? []).some(chunk => chunk[1] === 'PairCursor'));
+      if (typing) ghosts.add(typing[3].virt_text ? `inline after column ${typing[2]}` : 'a line of its own');
+      await sleep(20);
+    }
+    assert.deepEqual([...seen].filter(state => !['const x = 1|const y = 2|const z = 3', 'const x = 100|const y = 2|const z = 3', 'const x = 100|const w = 5|const y = 2|const z = 3'].includes(state)), [], 'only whole lines entered the buffer');
+    assert.deepEqual([...ghosts], ['inline after column 11', 'a line of its own'], 'the ghost text with Pair\'s cursor');
+    assert.match(reply, /`node report\.mjs` on the unsaved buffer: 1 passed\.$/);
+    assert.deepEqual(lines(), ['const x = 100', 'const w = 5', 'const y = 2', 'const z = 3']);
+    assert.equal(readFileSync(join(project, 'a.js'), 'utf8'), 'const x = 1\nconst y = 2\nconst z = 3\n', 'nothing was saved');
+    assert.deepEqual(marks('pair_drive'), [], 'the typing leaves no marks behind');
+
+    // Handed back: Pair's words under the lines it changed, ✓ in the margin and the statusline, and the key that undoes it.
+    const words = await until(() => marks('pair').find(([, , , details]) => details.virt_lines), 'the hand-back line');
+    assert.equal(words[1], 1, 'under the last line it changed');
+    assert.deepEqual([words[3].sign_text.trim(), words[3].sign_hl_group], ['✓', 'PairStatusPass']);
+    assert.equal(words[3].virt_lines.map(text).join('|').trim(), '● x is 100 now, and w is new; the test passes.   u undoes it');
+    assert.ok(marks('pair').some(([, row, , details]) => row === 0 && details.end_row === 1 && details.sign_text.trim() === '▎'), 'the lines it changed keep its mark');
+    await until(() => status() === '✓ node report.mjs (unsaved) · 1 test, 1 file', 'the run on the buffer in the statusline');
+    keys('u');
+    await until(() => lines().length === 3, 'one undo for the whole edit');
+    assert.deepEqual(lines(), ['const x = 1', 'const y = 2', 'const z = 3']);
+    await until(() => !marks('pair').some(([, , , details]) => details.virt_lines), 'the hand-back line to go with the undo');
+
+    // A key halfway: what Pair typed so far is undone, the key itself does nothing, and the edit was none.
+    partner.setResponses([
+      fauxAssistantMessage([fauxToolCall('edit', {file: 'a.js', line: 2, end_line: 3, new_text: 'const y = 20 // the second of four lines\nconst z = 30 // the third of four lines\nconst v = 40 // the fourth of four lines'})], {stopReason: 'toolUse'}),
+      context => { reply = toolResult(context); return fauxAssistantMessage([fauxText('Okay, yours.')]); },
+    ]);
+    keys(':Pair drive<CR>');
+    await until(() => lines()[1] === 'const y = 20 // the second of four lines', 'Pair\'s first whole line');
+    keys('x');
+    await answered('Okay, yours.');
+    assert.equal(reply, 'Not changed: the user has taken the wheel back.');
+    assert.deepEqual(lines(), ['const x = 1', 'const y = 2', 'const z = 3'], 'none of it is left, and the x deleted nothing');
+    assert.deepEqual(marks('pair_drive'), []);
+    assert.ok(messages.some(message => message.text === 'You have the wheel back.'));
+    assert.equal(messages.some(message => message.type === 'handback'), false);
+  } finally {
+    await stop();
+  }
+});
+
 test('Alt-n rates an unasked remark as noise; accepting its suggestion rates it useful after all', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
   const {project, dataDir, watcher, partner, messages, remote, keys, send, lines, stop} = await pairInNvim('tune the numbers');
   const mapped = key => remote(`maparg('${key}', 'n')`) !== '';

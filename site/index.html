@@ -237,7 +237,7 @@ footer a { color: var(--muted); }
       Source on GitHub
     </a>
   </div>
-  <div class="facts"><span><b>v0.8</b> Navigator, Scout, Driver</span><span>local or cloud models</span><span>MIT</span></div>
+  <div class="facts"><span><b>v0.9</b> Navigator, Scout, Driver</span><span>local or cloud models</span><span>MIT</span></div>
 </header>
 
 <!-- Hero video slot. Today: the v0.6 tutorial from docs/video. A remade video replaces it: swap the
@@ -275,8 +275,8 @@ footer a { color: var(--muted); }
     <p>One morning on a small Go service with a retry bug. Each moment is something a colleague in the second chair would do.</p>
   </div>
   <div class="col proto" role="note">
-    <span class="tag">Prototype</span>
-    <p><b>The first two moments ship in v0.8:</b> their captures are the released plugin and daemon in a clean Neovim, with real <code>go test</code> runs; only the models' words and their timing are scripted. <b>The third is a prototype capture</b> of what comes next, recorded from a running prototype in real Neovim, with real gopls and test runs. A real capture replaces it when it ships.</p>
+    <span class="tag">Captures</span>
+    <p><b>All three moments ship in v0.9:</b> their captures are the released plugin and daemon in a clean Neovim, with real <code>go test</code> runs; only the models' words and their timing are scripted.</p>
   </div>
 
   <article class="moment" id="wrong-turn" aria-labelledby="m1-h">
@@ -335,25 +335,25 @@ footer a { color: var(--muted); }
     <div class="col moment-head">
       <div class="num">03 · the visible hand-over</div>
       <h3 id="m3-h">It takes the keyboard for the boring part, and gives it back</h3>
-      <p>You write the first table case and hand over with <code>:Pair drive the edge cases</code>. The pair types the other six into your buffer while you watch, including the one you'd skip: an attempt of 64 shifts past the top bit. It tests your unsaved buffer, says they pass, and gives the keyboard back. One <code>u</code> takes all six away.</p>
+      <p>You write the first table case and hand over with <code>:Pair drive the edge cases</code>. The pair types the other six into your buffer while you watch, including the one you'd skip: an attempt of 64 shifts past the top bit. It runs <code>go test -overlay</code> on your unsaved buffer, says they pass, and gives the keyboard back. One <code>u</code> takes all six away.</p>
     </div>
     <div>
-      <div class="stage loop"><video data-v="m3" muted loop playsinline preload="none" poster="media/m3-still2.webp" width="1280" height="768" aria-label="Prototype capture: the pair types table test cases as the Driver, then hands back">
+      <div class="stage loop"><video data-v="m3" muted loop playsinline preload="none" poster="media/m3-still2.webp" width="1280" height="768" aria-label="Capture of v0.9: the pair types table test cases as the Driver, tests the unsaved buffer, then hands back">
         <source data-src="media/m3.webm" type="video/webm"><source data-src="media/m3.mp4" type="video/mp4">
       </video></div>
       <div class="beats" data-for="m3">
-        <button class="beat" data-t="0"><b>0:00</b>you write the first case</button>
-        <button class="beat" data-t="5"><b>0:05</b>:Pair drive the edge cases</button>
-        <button class="beat" data-t="7"><b>0:07</b>it has the wheel, line by line</button>
-        <button class="beat" data-t="14"><b>0:14</b>tests the unsaved buffer</button>
-        <button class="beat" data-t="15"><b>0:15</b>hands back: six cases, one undo step</button>
-        <button class="beat" data-t="20"><b>0:20</b>u removes all six; Ctrl-R brings them back</button>
+        <button class="beat" data-t="0"><b>0:00</b>you wrote the first case</button>
+        <button class="beat" data-t="2"><b>0:02</b>:Pair drive the edge cases: it has the wheel</button>
+        <button class="beat" data-t="5"><b>0:05</b>ghost text, a whole line at a time</button>
+        <button class="beat" data-t="9.6"><b>0:10</b>tests the unsaved buffer, hands back</button>
+        <button class="beat" data-t="14.3"><b>0:14</b>u removes all six</button>
+        <button class="beat" data-t="16"><b>0:16</b>Ctrl-R brings them back</button>
       </div>
     </div>
     <p class="col why"><b>Why it matters.</b> A hand-over feels safe when you can see it happen. The statusline says who has the wheel, the lines arrive at reading speed, and any key you press takes it back. At the end there is one change, one undo step and a tested result, and nothing is saved until you decide.</p>
     <div class="stills">
-      <figure><img src="media/m3-still1.webp" width="1280" height="768" loading="lazy" decoding="async" alt="The pair typing a table case; the statusline says pair has the wheel, any key takes it back"><figcaption>While it drives: its cursor, a tinted line, and the wheel in the statusline.</figcaption></figure>
-      <figure><img src="media/m3-still2.webp" width="1280" height="768" loading="lazy" decoding="async" alt="Six new test cases and a two-line hand-back note"><figcaption>Handed back: the result in the margin and statusline, and a note on the case you'd have skipped.</figcaption></figure>
+      <figure><img src="media/m3-still1.webp" width="1280" height="768" loading="lazy" decoding="async" alt="The pair typing a table case; the statusline says pair has the wheel, any key takes it back"><figcaption>While it drives: its cursor at the end of the ghost text, a bar on each line it entered, and the wheel in the statusline.</figcaption></figure>
+      <figure><img src="media/m3-still2.webp" width="1280" height="768" loading="lazy" decoding="async" alt="Six new test cases, a check mark in the margin, and a two-line hand-back note"><figcaption>Handed back: ✓ in the margin and the statusline, and a note on the case you'd have skipped.</figcaption></figure>
     </div>
   </article>
 </section>
@@ -501,7 +501,7 @@ footer a { color: var(--muted); }
   <span>pairing-buddy · MIT</span>
   <a href="https://github.com/makefunstuff/pairing-buddy">GitHub</a>
   <a href="https://github.com/makefunstuff/pairing-buddy/issues">Issues</a>
-  <span>In “Three moments”, the first two captures are v0.8; the third is from a prototype.</span>
+  <span>The captures in “Three moments” are v0.9, with scripted model words.</span>
 </footer>
 
 <script>
