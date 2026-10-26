@@ -393,3 +393,27 @@ test('the next session in a repo starts from the last note; a remark is rated wi
     await daemon.close();
   }
 });
+
+test('keep-warm asks the Watcher\'s model for one token while someone works, and not while nobody does', {timeout: 20_000}, async () => {
+  const project = mkdtempSync(join(tmpdir(), 'pair-project-'));
+  const config = testConfig(mkdtempSync(join(tmpdir(), 'pair-data-')));
+  const {watcher, pairModels} = scriptedModels();
+  const pings = [];
+  watcher.setResponses(Array(5).fill(null).map(() => (context, options) => {
+    pings.push({prompt: context.messages.at(-1).content, maxTokens: options.maxTokens});
+    return fauxAssistantMessage([fauxText('0')]);
+  }));
+  const daemon = await startDaemon(config, {pairModels, probe: answers, log: () => {}, keepWarmMs: 200});
+  const editor = client(config.socket, {type: 'hello', role: 'editor', cwd: project});
+  try {
+    await editor.next(message => message.type === 'welcome');
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    assert.deepEqual(pings, [], 'a session nobody works in');
+    editor.send({type: 'event', event: {kind: 'typing'}});
+    while (!pings.length) await new Promise(resolve => setTimeout(resolve, 100));
+    assert.deepEqual(pings[0], {prompt: 'Nothing happened yet.', maxTokens: 1});
+  } finally {
+    editor.close();
+    await daemon.close();
+  }
+});

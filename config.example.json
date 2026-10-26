@@ -8,8 +8,15 @@
   // and the level's budget, within fixed bounds. `pair stats` shows how. false keeps the level's defaults.
   "autoTune": true,
 
+  // While you work, Pair asks the Watcher's model for one token every 4 min, so a server that unloads idle
+  // models (many do after 5 min) still has it loaded when a remark needs scoring. false turns it off; with an
+  // "anthropic" Watcher it is off unless set.
+  "keepWarm": true,
+
   "models": {
-    // The Watcher scores every candidate remark, so it must be fast: a small model, about 1 s per answer.
+    // The Watcher scores every candidate remark with one number, so it must be fast: under 1 s per answer.
+    // On a server that keeps one model in memory, give both roles the same model (or the Watcher uses the
+    // Partner's model whenever only that one is loaded, rather than make the server reload).
     "watcher": {
       "api": "openai",                      // "openai" (any OpenAI-compatible server) or "anthropic"
       "baseUrl": "http://localhost:8080/v1",

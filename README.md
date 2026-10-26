@@ -17,7 +17,7 @@ Runtime: a long-lived daemon on [pi-durable](https://www.npmjs.com/package/@eare
 with a small local model deciding when a remark is worth making and a larger
 local or cloud model doing the reasoning.
 
-Status: **v0.5, Navigator, Scout and Driver, with inline suggestions; installed once, then always running; remembers the last session per project and learns from your feedback when to talk.** Voice comes later.
+Status: **v0.6, Navigator, Scout and Driver, with inline suggestions; installed once, then always running; remembers the last session per project and learns from your feedback when to talk; a Watcher that scores each moment with one number, in under a second on the local models it was tested with.** Voice comes later.
 
 ## How it works
 
@@ -31,8 +31,8 @@ herdr panes ────┘   → triggers → speak gate + budget        │
 ```
 
 - **Senses.** The Neovim plugin sends edits (about 2 s after you stop typing), the current file, cursor, selection and LSP diagnostics. The daemon watches your herdr panes for focus, commands and their output. The optional shell hook adds exit codes. Test output is parsed (cargo, go test, jest, vitest, pytest, `node --test`): which tests failed and the first error line.
-- **When it speaks.** A remark can come from: a failed command you are not looking at, the same error a second time, an error diagnostic in code you just wrote after you moved on, a stall after a failure, or work that drifts from the session goal. A failed test run counts as failed even without an exit code, the same failing test twice is the same error, and the remark names the failed tests and the first error. A direct question in the chat is always answered.
-- **The gate.** For anything unasked, the Watcher scores the moment from 0 to 10. Only scores above the talk level's bar reach the Partner, and the budget limits how often Pair speaks. Pair never speaks while you type in Neovim or the chat pane: a remark that is ready while you type waits for your next pause.
+- **When it speaks.** A remark can come from: a failed command you are not looking at, the same error a second time, an error diagnostic in code you just wrote after you moved on, a stall after a failure, or editing a file that looks unrelated to the session goal. A failed test run counts as failed even without an exit code, the same failing test twice is the same error, and the remark names the failed tests and the first error. A direct question in the chat is always answered.
+- **The gate.** For anything unasked, cheap rules first drop what is plainly noise (a `grep` that finds nothing, a command you stopped, editing a file whose path shares a word with the goal), then the Watcher scores the moment from 0 to 10 with a single number. Only scores above the talk level's bar reach the Partner, and the budget limits how often Pair speaks ([details](docs/watcher.md)). Pair never speaks while you type in Neovim or the chat pane: a remark that is ready while you type waits for your next pause.
 - **Hands.** As Navigator, the Partner has five tools: `say` (chat message), `point` (highlight lines with a short note in Neovim), `open` (show a file in a split, asking first while you type), `read` (read a file as the editor has it, or list a directory) and `suggest` (show a change as an inline diff that you accept with one key or ignore). As Scout it also has `search` (ripgrep) and `run` (one command line), both typed and run in Pair's own herdr pane, where you see everything; their results go back to the model. As Driver, which Pair is only while you hand it the wheel, it also has `edit` (one change in your buffer, one undo step) and `type` (one line into your terminal, after your yes, without Enter). The lists are enforced in code: each conversation is offered only its role's tools, and a `beforeTool` policy refuses any other name. Nothing in the daemon writes your files or saves buffers, and nothing is typed into your own panes except the Driver's `type`.
 - **Memory.** Each project gets one long-lived Partner conversation, stored in SQLite by pi-durable, so a restart of the daemon keeps the session, its chat and its context. When a session ends, Pair writes a short note (goal, what changed, loose ends), and the next session in that project starts from it ([details](docs/memory.md)).
 - **Feedback.** Every unasked remark can get your verdict, useful or noise, with one key in Neovim or `+`/`-` in the chat; a remark you ignore counts as noise. Your verdicts tune each trigger's bar and the speak budget within fixed bounds, and `pair stats` shows the numbers.
@@ -121,7 +121,7 @@ Pair reads one file: `~/.config/pairing-buddy/config.json` (or the path in `$PAI
 {
   "level": "normal",
   "models": {
-    // The Watcher scores every candidate remark: small and fast
+    // The Watcher scores every candidate remark with one number: it must be fast
     "watcher": {"api": "openai", "baseUrl": "http://localhost:8080/v1", "model": "your-small-model"},
     "partner": {"api": "anthropic", "model": "your-cloud-model", "apiKeyEnv": "ANTHROPIC_API_KEY"}
   }
@@ -137,18 +137,18 @@ Each model entry:
 | `model` | The model id the server expects |
 | `apiKey`, `apiKeyFile`, `apiKeyEnv` | Where the key comes from: inline, a file, or an environment variable. A local server without a key needs none. The service does not see your shell's variables: with `apiKeyEnv`, add it with `systemctl --user edit pairing-buddy` (`[Service]` and `Environment=NAME=value`), or use `apiKeyFile` |
 | `contextWindow` | Tokens the server serves for this model (default 32768); Pair compacts the conversation before it fills up |
-| `maxTokens` | Longest answer (default 200 for the Watcher, 2048 for the Partner) |
+| `maxTokens` | The Partner's longest answer (default 2048); the Watcher always answers with one number |
 | `reasoning` | `true` for a model that thinks by default, so Pair can switch its thinking off (default `false`) |
 | `thinking` | The Partner's thinking level when `reasoning` is on: `off` (default), `low`, `medium`, `high` |
 | `samplingParams` | Extra sampling fields sent with each request to an OpenAI-compatible server, for example `{"temperature": 0.3}` when the server's default is high |
 | `compat` | OpenAI-compatibility flags passed to pi-ai (see its "OpenAI Compatibility Settings"), for example `thinkingFormat` for a model whose chat template has a thinking switch |
 
-Other settings: `level` (`quiet`, `normal` or `chatty`), `autoTune` (your feedback tunes the bars and budget, default `true`; see [Memory and feedback](#memory-and-feedback)), `typingPauseMs` (how long after a keystroke you count as typing, default 2000), `socket` and `dataDir`.
+Other settings: `level` (`quiet`, `normal` or `chatty`), `autoTune` (your feedback tunes the bars and budget, default `true`; see [Memory and feedback](#memory-and-feedback)), `keepWarm` (while you work, ask the Watcher's model for one token every 4 min so a server that unloads idle models keeps it loaded; default `true` for an `openai` Watcher, `false` for an `anthropic` one; see [docs/watcher.md](docs/watcher.md)), `typingPauseMs` (how long after a keystroke you count as typing, default 2000), `socket` and `dataDir`.
 
 Tips for local models:
 
-- The Watcher runs on every candidate remark and should answer in about a second: use a small model, keep `reasoning: true` for models that think by default (so thinking gets switched off), and keep `maxTokens` small.
-- A server that keeps only one model loaded at a time (llama.cpp's router mode, for example) reloads on every switch between two models. There, give both roles the same model; a mid-sized one answers the Watcher's short prompt in well under a second.
+- The Watcher runs on every candidate remark and should answer in under a second: it gets a few lines (under 200 tokens) and answers with one number, so a mid-sized model is fast enough on a fast server. A server with a high fixed cost per request may still take close to a second; `pair doctor` shows the time. Keep `reasoning: true` for models that think by default, so thinking gets switched off.
+- A server that keeps only one model loaded at a time (llama.cpp's router mode, for example) reloads on every switch between two models. There, give both roles the same model. With two models on such a server, the Watcher uses the Partner's model while only that one is loaded, if the server says which models are loaded; otherwise it swaps on every remark.
 - If the server's default temperature is high, give the Partner `"samplingParams": {"temperature": 0.3}`: its yes-or-no calls (speak or stay SILENT) get much steadier. The Watcher always runs at temperature 0.
 - The prompts and tools are deliberately simple (five tools as Navigator, seven as Scout, nine as Driver, flat arguments, one instruction per message), so mid-sized local models handle them. The command policy, the limit of four commands per question and the one edit per hand-over are in code, so a model that loops or asks for too much cannot do harm. Thinking is off by default for both roles; turn it on for the Partner with `thinking` if your model needs it.
 
@@ -215,7 +215,7 @@ Other commands: `pair stats` shows how often Pair spoke unasked and what you mad
 ```
 ✓ config   ~/.config/pairing-buddy/config.json
 ✓ service  starts at login, running
-✓ daemon   version 0.5.0, up 42 min, 2 sessions
+✓ daemon   version 0.6.0, up 42 min, 2 sessions
 ✓ plugin   your Neovim config loads it
 ✓ neovim   2 connected, in shop, blog
 ✓ herdr    answers in 3 ms, 4 panes in this workspace
@@ -250,7 +250,7 @@ A model endpoint that stops answering does not turn into a stream of errors:
 | Level | Watcher score needed | At most | Minimum gap |
 | --- | --- | --- | --- |
 | quiet | 8 | 2 per hour | 15 min |
-| normal | 6 | 6 per hour | 4 min |
+| normal | 6 | 6 per hour | 3 min |
 | chatty | 4 | 15 per hour | 90 s |
 
 Answers to your own questions do not count against the budget. With `autoTune` on, your feedback moves each trigger's bar and scales the budget within fixed bounds (below).
@@ -274,21 +274,21 @@ Everything lives in the data directory (default `~/.local/state/pairing-buddy`, 
 npm test
 ```
 
-runs the model-free tests: event folding, triggers, the budget and speak gate, the tool policy per role (including with file-writing tools installed by mistake, and an edit after the wheel was taken back), the command policy, the test-output parsers (on real output of each runner), Pair's pane and role switching against a fake herdr, hand-over and take-back, `type` (only after a yes, only into your terminal pane, never Enter), the daemon end to end with scripted models, the Neovim plugin in a headless Neovim (suggestions accepted and ignored, a Driver edit undone with one `u` and never saved, a key taking the wheel back), and the bash hook. Also the install and daily use: the config with comments and the first run's example, the systemd unit, `pair doctor` against a fake model server (fast, slow, dead, a wrong model name), model health (one notice, no remarks while down, back after a probe), several projects and Neovims at once, and Neovim and the chat pane reconnecting after a daemon restart. And memory and feedback: the note the next session starts from (in the chat and the Partner's instructions, per project, never a failed note), remarks stored with their verdicts (`+`, `Alt-n`, an accepted suggestion), ignored remarks counting as noise, the tuning and its bounds, active time, and `pair stats`.
+runs the model-free tests: event folding, triggers, the budget and speak gate, the tool policy per role (including with file-writing tools installed by mistake, and an edit after the wheel was taken back), the command policy, the test-output parsers (on real output of each runner), Pair's pane and role switching against a fake herdr, hand-over and take-back, `type` (only after a yes, only into your terminal pane, never Enter), the daemon end to end with scripted models, the Neovim plugin in a headless Neovim (suggestions accepted and ignored, a Driver edit undone with one `u` and never saved, a key taking the wheel back), and the bash hook. Also the install and daily use: the config with comments and the first run's example, the systemd unit, `pair doctor` against a fake model server (fast, slow, dead, a wrong model name), model health (one notice, no remarks while down, back after a probe), several projects and Neovims at once, and Neovim and the chat pane reconnecting after a daemon restart. And memory and feedback: the note the next session starts from (in the chat and the Partner's instructions, per project, never a failed note), remarks stored with their verdicts (`+`, `Alt-n`, an accepted suggestion), ignored remarks counting as noise, the tuning and its bounds, active time, and `pair stats`. And the Watcher's speed: the prefilter's rules, the one-number answer, drift checked once per file, keep-warm, and the Watcher following the model a one-model server has loaded.
 
 ```sh
 PAIR_LIVE_CONFIG=/path/to/stacks.json npm run test:live
 ```
 
-runs the same decisions against real models: Watcher scores for worth-it and noise moments, the speak gate, the Partner's tool calls (pointing at the right line, staying silent on noise, reading before answering, changing nothing when asked to), Scout (searching to answer "where else", running the tests to say what fails, leaving the commit to you, and the Navigator pointing to `/scout`), the Driver (making a failing test pass after "your turn" without touching the test, making exactly the change asked for, typing the test command without Enter, and the Navigator suggesting instead of editing), and memory (a session note that names the goal, the change and the loose end; the next session answering "what did we leave open?" from it; and the note not turning a noise moment into a remark). It also sends the probe `pair doctor` and the daemon's health check use, and checks that the Watcher answers it within 3 s. The Scout and Driver tests work in a scratch project with a local bash in place of the herdr pane; the Driver's editor is played by buffers in memory, and the files on disk must stay as they were. The file lists one or more stacks, each with a `watcher` and a `partner` entry like those in the config:
+runs the same decisions against real models: Watcher scores for worth-it and noise moments, the speak gate, the Partner's tool calls (pointing at the right line, staying silent on noise, reading before answering, changing nothing when asked to), Scout (searching to answer "where else", running the tests to say what fails, leaving the commit to you, and the Navigator pointing to `/scout`), the Driver (making a failing test pass after "your turn" without touching the test, making exactly the change asked for, typing the test command without Enter, and the Navigator suggesting instead of editing), and memory (a session note that names the goal, the change and the loose end; the next session answering "what did we leave open?" from it; and the note not turning a noise moment into a remark). It also sends the probe `pair doctor` and the daemon's health check use, and checks that the Watcher answers it within 3 s. And it plays a scripted twelve-minute session (edits, failing tests, a stall, a question, drift) through a real Pair session on a simulated clock, prints it like a transcript, and checks that Pair spoke a few times, on the moments that matter. The Scout and Driver tests work in a scratch project with a local bash in place of the herdr pane; the Driver's editor is played by buffers in memory, and the files on disk must stay as they were. The file lists one or more stacks, each with a `watcher` and a `partner` entry like those in the config:
 
 ```json
 {"stacks": [{"name": "local", "watcher": {"api": "openai", "baseUrl": "http://localhost:8080/v1", "model": "your-small-model"}, "partner": {"api": "openai", "baseUrl": "http://localhost:8080/v1", "model": "your-larger-model"}}]}
 ```
 
-Without `PAIR_LIVE_CONFIG` (or a gitignored `test/live/config.json`) the live tests are skipped.
+Without `PAIR_LIVE_CONFIG` (or a gitignored `test/live/config.json`) the live tests are skipped. The Anthropic path has a test of its own, run when `ANTHROPIC_API_KEY` and `PAIR_LIVE_ANTHROPIC_MODEL` are set: the cloud model answers the probe as both roles, scores a repeated failure above the bar, and answers a short question as Partner.
 
-## Known limits of v0.5
+## Known limits of v0.6
 
 - herdr exposes no command boundaries or exit codes; see [docs/herdr.md](docs/herdr.md) for what Pair does instead and what herdr would need.
 - Scout's pane runs `bash` without your rc files (a custom prompt would hide the exit code), so your aliases and shell functions are not there. It reads back at most the last 1000 lines of a command's output.
@@ -306,3 +306,6 @@ Without `PAIR_LIVE_CONFIG` (or a gitignored `test/live/config.json`) the live te
 - Memory is the last session's note only, per project; the conversations before it are not searched.
 - Feedback goes to the last unasked remark (or the one whose suggestion you accept or dismiss); an older one cannot be rated. The chat's `+`/`-` after a daemon restart has no last remark until Pair makes a new one.
 - Tuning is one set of bars and one budget for all projects, and active time counts keys, edits and commands, not reading.
+- The Anthropic path (`"api": "anthropic"`) is wired, and `test/live/cloud.test.mjs` tests it, but it has not been run against the real API yet.
+- The Watcher's speed depends on the server more than on Pair: tested local servers answered in 0.3 to 0.95 s, the slowest of them close to the 1 s aim.
+- The prefilter's drift rule matches the words of a file's path, not its meaning: a file whose path has a word of the goal is taken as on-goal without asking the Watcher, even when it is unrelated (for example a goal about the search ranking and `src/billing/ranking.ts`). Words found in the paths of most projects (`index`, `main`, `server`, `users`, …) never count. An on-goal file with no word in common goes to the Watcher.

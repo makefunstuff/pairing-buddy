@@ -7,6 +7,7 @@ import {basename, join, sep} from 'node:path';
 import {gitBranch, gitRoot} from './git.mjs';
 import {ModelHealth} from './health.mjs';
 import {PaneWatch} from './herdr.mjs';
+import {followLoaded, shareServer} from './loaded-model.mjs';
 import {createPairModels} from './models.mjs';
 import {acquireOwner} from './owner.mjs';
 import {openPartner} from './partner.mjs';
@@ -21,6 +22,9 @@ import {createWatcher} from './watcher.mjs';
 
 const EDITOR_REPLY_MS = 2000;
 const TICK_MS = 1000;
+// While the user works, the Watcher's model is asked at least this often, so a server that unloads idle models
+// (often after 5 min) still has it loaded when a remark is worth scoring.
+const KEEP_WARM_MS = 4 * 60_000;
 const MODEL_NAMES = {watcher: 'Watcher', partner: 'Partner'};
 
 /** What the chat says when a model goes down (`reason`) or answers again (null). */
@@ -33,8 +37,8 @@ export function healthNote(role, reason) {
 const timestamp = () => new Date().toTimeString().slice(0, 8);
 const defaultLog = line => process.stderr.write(`${timestamp()} ${line}\n`);
 
-/** `probe(role)` checks that a model answers (see probe.mjs); tests pass their own. */
-export async function startDaemon(config, {pairModels = createPairModels(config), probe, log = defaultLog} = {}) {
+/** `probe(role)` checks that a model answers (see probe.mjs); tests pass their own, and a short `keepWarmMs`. */
+export async function startDaemon(config, {pairModels = createPairModels(config), probe, log = defaultLog, keepWarmMs = KEEP_WARM_MS} = {}) {
   mkdirSync(config.dataDir, {recursive: true, mode: 0o700});
   const owner = acquireOwner(config.dataDir);
   const store = openStore(join(config.dataDir, 'sessions.sqlite'));
@@ -46,8 +50,14 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
   let nextRequest = 0;
   const startedAt = Date.now();
 
+  // Two models on one server: the Watcher follows what the server has loaded (see loaded-model.mjs).
+  const chooseWatcherModel = shareServer(config.models.watcher, config.models.partner)
+    ? followLoaded({entries: config.models, watcher: pairModels.watcher, partner: pairModels.partner, log})
+    : async () => pairModels.watcher;
+  const modelOf = role => (role === 'watcher' ? chooseWatcherModel() : pairModels.partner);
+
   const health = new ModelHealth({
-    probe: probe ?? (role => probeModel(pairModels.models, pairModels[role])),
+    probe: probe ?? (async role => probeModel(pairModels.models, await modelOf(role))),
     onChange(role, reason) {
       log(reason ? `${role} model down: ${reason}` : `${role} model answers again`);
       for (const client of clients) {
@@ -77,7 +87,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
       roleOf: conversationId => sessionOfConversation(conversationId)?.role ?? 'navigator',
     },
   });
-  const scoreRemark = createWatcher({models: pairModels.models, model: pairModels.watcher});
+  const scoreRemark = createWatcher({models: pairModels.models, model: pairModels.watcher, chooseModel: chooseWatcherModel});
   const score = async (trigger, state) => {
     const result = await scoreRemark(trigger, state);
     health.report('watcher', result.error);
@@ -278,8 +288,17 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
   await new Promise((resolve, reject) => server.once('error', reject).listen(config.socket, resolve));
   chmodSync(config.socket, 0o600);
 
+  /** Keeps the Watcher's model loaded while someone works, unless it is down: then the health probe checks it. */
+  function keepWarm() {
+    const now = Date.now();
+    if (!config.keepWarm || now - scoreRemark.lastCallAt < keepWarmMs || !health.ok('watcher')) return;
+    if (![...live.values()].some(session => session.active(now))) return;
+    scoreRemark.warm().then(result => health.report('watcher', result.error));
+  }
+
   const ticker = setInterval(() => {
     for (const session of live.values()) session.tick().catch(error => log(`tick failed: ${error.stack ?? error}`));
+    keepWarm();
   }, TICK_MS);
 
   health.start();

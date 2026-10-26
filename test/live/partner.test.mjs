@@ -66,7 +66,7 @@ The user is looking at: editor`,
 );
 
 const NOISE = watchInput(
-  {kind: 'drift', detail: 'Possible drift from the goal "reconnect drops after the phone sleeps": recently edited src/ws.ts on branch fix/reconnect. A remark helps only if this work is unrelated to the goal.'},
+  {kind: 'drift', detail: 'Possible drift from the goal "reconnect drops after the phone sleeps": the user now edits src/ws.ts on branch fix/reconnect.'},
   `Goal: reconnect drops after the phone sleeps
 Branch: fix/reconnect
 Current file: src/ws.ts, cursor at line 4
@@ -74,7 +74,7 @@ Recent edits: src/ws.ts:3-5 (20 s ago)`,
 );
 
 const DRIFT = watchInput(
-  {kind: 'drift', detail: 'Possible drift from the goal "reconnect drops after the phone sleeps": recently edited src/billing/invoice.ts, src/billing/tax.ts on branch feature/invoices. A remark helps only if this work is unrelated to the goal.'},
+  {kind: 'drift', detail: 'Possible drift from the goal "reconnect drops after the phone sleeps": the user now edits src/billing/tax.ts (recently also src/billing/invoice.ts) on branch feature/invoices.'},
   `Goal: reconnect drops after the phone sleeps
 Branch: feature/invoices
 Current file: src/billing/tax.ts, cursor at line 30

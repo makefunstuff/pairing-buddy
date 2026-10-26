@@ -15,6 +15,8 @@ import {detectTriggers} from './triggers.mjs';
 import {tuning, WINDOW_MS} from './tuning.mjs';
 
 const SILENT = /^\W*silent\W*$/i;
+// "…so no drift here — SILENT.": a model that explains its SILENT still means silence.
+const silent = text => SILENT.test(text) || /\bSILENT\W*$/.test(text);
 
 // What the Partner should check for each kind of trigger. Small models follow an instruction in the
 // message far better than a general rule in the system prompt.
@@ -23,7 +25,8 @@ const CHECKS = {
   repeated_error: 'The same error came back. Find the cause, point at it and say it in one sentence.',
   new_code_diagnostic: 'Point at the line and say the fix in a few words.',
   stall: 'The user seems stuck on this failure. Give one concrete next step.',
-  drift: 'Do not help with the goal itself. If the recent work is related to the goal, answer exactly SILENT. If it is unrelated, say in one sentence what drifted.',
+  drift: 'Do not help with the goal itself: the only question is whether the file the user now edits belongs to the goal. '
+    + 'If it could, answer exactly SILENT. If it is unrelated, that drift is the problem: say in one sentence what drifted.',
 };
 
 export function watchInput(trigger, description) {
@@ -109,6 +112,7 @@ export class PairSession {
     this.lastConfirmation = 0;
     this.paneUses = 0; // searches and commands in the running turn
     this.fired = new Set();
+    this.deferred = new Set(); // keys of lasting triggers the budget holds back
     this.busy = false; // a Partner turn is running
     this.ticking = false;
     this.spoke = false; // anything reached the user this turn
@@ -155,8 +159,12 @@ export class PairSession {
       if (triggers.length && this.autoTune) this.budget.tune(tuning(this.store.remarks(now - WINDOW_MS), now));
       for (const trigger of triggers) {
         const decision = await decide({trigger, state: this.state, now, budget: this.budget, score: this.score, typingPauseMs: this.typingPauseMs});
-        this.log(`${trigger.kind}: ${decision.verdict} (${decision.reason})`);
+        if (decision.verdict !== 'later' || !this.deferred.has(trigger.key)) this.log(`${trigger.kind}: ${decision.verdict} (${decision.reason})`);
         if (decision.verdict === 'wait') return;
+        if (decision.verdict === 'later') {
+          this.deferred.add(trigger.key); // logged once, looked at again each tick until the budget allows
+          continue;
+        }
         this.fired.add(trigger.key);
         if (decision.verdict === 'speak') return await this.remark(trigger, decision.score);
       }
@@ -165,11 +173,16 @@ export class PairSession {
     }
   }
 
+  /** Whether the user typed, edited or ran a command in the last few minutes. */
+  active(now = this.now()) {
+    const lastActivity = Math.max(this.state.lastKeyAt, this.state.lastEditAt, this.state.commands.at(-1)?.endedAt ?? 0);
+    return now - lastActivity < IDLE_AFTER_MS;
+  }
+
   /** Adds the time since the last tick to the active time while the user is at work, for `pair stats`. */
   countActive() {
     const now = this.now();
-    const lastActivity = Math.max(this.state.lastKeyAt, this.state.lastEditAt, this.state.commands.at(-1)?.endedAt ?? 0);
-    if (this.tickedAt !== null && now - lastActivity < IDLE_AFTER_MS) {
+    if (this.tickedAt !== null && this.active(now)) {
       this.activeMs += Math.min(now - this.tickedAt, MAX_TICK_GAP_MS);
       this.activeAt = now;
     } else {
@@ -231,7 +244,7 @@ export class PairSession {
     try {
       const answer = await this.partner.ask(this.conversationId, input);
       // After a say, local models tend to end with filler or a repeat; the say already was the answer.
-      if (answer && !SILENT.test(answer) && !this.said) {
+      if (answer && !silent(answer) && !this.said) {
         this.show(() => this.message('pair', answer));
         this.spoke = true;
       }
@@ -378,7 +391,7 @@ export class PairSession {
   // The Partner's tools (see tools.mjs). Each returns what the model is told.
 
   say(text) {
-    if (SILENT.test(text)) return 'shown'; // some models say their SILENT instead of answering it
+    if (silent(text)) return 'shown'; // some models say their SILENT instead of answering it
     this.spoke = true;
     this.said = true;
     this.show(() => this.message('pair', text));

@@ -6,7 +6,7 @@ const HOUR = 60 * 60_000;
 
 export const BUDGETS = {
   quiet: {minGapMs: 15 * 60_000, perHour: 2, bar: 8},
-  normal: {minGapMs: 4 * 60_000, perHour: 6, bar: 6},
+  normal: {minGapMs: 3 * 60_000, perHour: 6, bar: 6},
   chatty: {minGapMs: 90_000, perHour: 15, bar: 4},
 };
 

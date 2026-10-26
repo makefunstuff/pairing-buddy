@@ -8,7 +8,7 @@ export const TIMING = {
   recentMs: 120_000, // older failures are history, not news
   stallMs: 90_000,
   newCodeMs: 60_000, // an edit this close before a diagnostic counts as the code that caused it
-  driftEveryMs: 10 * 60_000,
+  driftWindowMs: 10 * 60_000, // drift is looked at only while the last edit is this recent
 };
 
 /** Not looked at: never seen at the bottom of its pane, or the user scrolled away from it since (scrolled past). */
@@ -30,13 +30,13 @@ function commandTriggers(state, now) {
   const count = state.errors[signature]?.count ?? 1;
   const found = [];
   if (count >= 2) {
-    found.push({kind: 'repeated_error', key: `repeat:${signature}:${count}`, detail: `\`${command.cmd}\` failed again (${count} times) with: ${error}`});
+    found.push({kind: 'repeated_error', key: `repeat:${signature}:${count}`, command, detail: `\`${command.cmd}\` failed again (${count} times) with: ${error}`});
   } else if (now - command.endedAt >= TIMING.lookGraceMs && missed(state, command)) {
-    found.push({kind: 'failed_command', key: `failed:${command.endedAt}`, detail: `\`${command.cmd}\` failed${command.exit ? ` (exit ${command.exit})` : ''} and you are not looking at it: ${error}`});
+    found.push({kind: 'failed_command', key: `failed:${command.endedAt}`, command, detail: `\`${command.cmd}\` failed${command.exit ? ` (exit ${command.exit})` : ''} and you are not looking at it: ${error}`});
   }
   const quietSince = Math.max(state.lastKeyAt, state.lastEditAt, command.endedAt);
   if (quietSince === command.endedAt && now - command.endedAt >= TIMING.stallMs) {
-    found.push({kind: 'stall', key: `stall:${command.endedAt}`, detail: `No edits or commands for ${Math.round((now - command.endedAt) / 1000)} s since \`${command.cmd}\` failed with: ${error}`});
+    found.push({kind: 'stall', key: `stall:${command.endedAt}`, command, detail: `No edits or commands for ${Math.round((now - command.endedAt) / 1000)} s since \`${command.cmd}\` failed with: ${error}`});
   }
   return found;
 }
@@ -69,14 +69,16 @@ function diagnosticTriggers(state) {
 }
 
 function driftTriggers(state, now) {
-  if (!state.goal) return [];
-  const recent = state.edits.filter(edit => now - edit.at <= TIMING.driftEveryMs);
-  if (!recent.length) return [];
-  const files = [...new Set(recent.map(edit => edit.file))].join(', ');
-  // Says what a remark would be for: models otherwise judge how important the work is, not whether it drifted.
-  const detail = `Possible drift from the goal "${state.goal}": recently edited ${files} on branch ${state.branch ?? 'unknown'}. `
-    + 'A remark helps only if this work is unrelated to the goal.';
-  return [{kind: 'drift', key: `drift:${Math.floor(now / TIMING.driftEveryMs)}`, detail}];
+  const latest = state.edits.at(-1);
+  if (!state.goal || !latest || now - latest.at > TIMING.driftWindowMs) return [];
+  const recent = state.edits.filter(edit => now - edit.at <= TIMING.driftWindowMs);
+  const others = [...new Set(recent.map(edit => edit.file))].filter(file => file !== latest.file);
+  const detail = `Possible drift from the goal "${state.goal}": the user now edits ${latest.file}`
+    + `${others.length ? ` (recently also ${others.join(', ')})` : ''}${state.branch ? ` on branch ${state.branch}` : ''}.`;
+  // Judged once per goal, branch and file: moving into a file is when work drifts, and staying in it is no news;
+  // a new goal judges every file again. It lasts while the user stays in that file, so a budget that holds it
+  // back does not lose it.
+  return [{kind: 'drift', key: `drift:${state.goal}:${state.branch}:${latest.file}`, detail, file: latest.file, lasting: true}];
 }
 
 /** The candidate remarks for this moment whose keys have not fired yet. */

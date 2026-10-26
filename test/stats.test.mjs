@@ -33,7 +33,7 @@ test('the stats view shows remarks per hour, kept vs dismissed per trigger, and 
     'stall                      2       0.4       0          0        1    0%       6',
     'drift                      5       1.0       0          5        0    0%  8 (+2)',
   ]);
-  assert.equal(lines.at(-2), 'Budget at level normal: at most 6 remarks per hour, 4 min apart (the level\'s default: 6, 4 min)');
+  assert.equal(lines.at(-2), 'Budget at level normal: at most 6 remarks per hour, 3 min apart (the level\'s default: 6, 3 min)');
 });
 
 test('without autoTune the stats show the level\'s own bars', () => {

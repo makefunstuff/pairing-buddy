@@ -52,9 +52,10 @@ test('a delivered remark spends the budget', async () => {
   assert.equal(pair.budget.allows(100_000).ok, false);
 });
 
-test('a say of SILENT is silence', async () => {
+test('a say of SILENT is silence, also with an explanation before it', async () => {
   const {pair, sent} = session();
   assert.equal(pair.say('SILENT'), 'shown');
+  assert.equal(pair.say('src/ws.mjs is the goal\'s own file, so no drift — SILENT.'), 'shown');
   assert.deepEqual(sent, []);
 });
 
@@ -414,4 +415,56 @@ test('type needs the Driver role, a known terminal pane, and the wheel still in 
   pair.answer(lastConfirm(sent).id, true);
   assert.match(await reply, /^The user has the wheel now/);
   assert.deepEqual(typed, []);
+});
+
+test('a session is active for five minutes after the user last typed, edited or ran something', () => {
+  const {pair} = session();
+  assert.equal(pair.active(10 * 60_000), false, 'nothing yet');
+  pair.receive({kind: 'command_end', cmd: 'ls', exit: 0, output: '', at: 50_000});
+  assert.equal(pair.active(50_000 + 5 * 60_000 - 1), true);
+  assert.equal(pair.active(50_000 + 5 * 60_000), false);
+});
+
+test('drift the budget holds back is judged once the budget allows, if the user is still in that file', async () => {
+  let clock = 100_000;
+  const scored = [];
+  const logged = [];
+  const pair = new PairSession({
+    record: {id: 1, root: '/project', conversation_id: 7, goal: 'fix reconnect after sleep', level: 'normal'},
+    store: {addMessage() {}, addRemark: () => 1, dropRemark() {}},
+    partner: {ask: async () => 'SILENT'},
+    score: async trigger => { scored.push(trigger.kind); return {value: 2}; },
+    typingPauseMs: 2000, notify: () => 1, requestEditor: async () => null, now: () => clock, log: line => logged.push(line),
+  });
+  pair.budget.spend(clock); // a remark just now
+  pair.receive({kind: 'edit', file: 'src/billing/invoice.ts', from: 1, to: 1, text: 'x', at: clock + 1000});
+  for (clock += 5000; clock < 100_000 + 60_000; clock += 1000) await pair.tick();
+  assert.deepEqual(scored, [], 'held back while the budget is spent');
+  assert.equal(logged.filter(line => line.startsWith('drift: later')).length, 1, 'logged once, not every tick');
+  clock = 100_000 + 3 * 60_000;
+  await pair.tick();
+  assert.deepEqual(scored, ['drift'], 'judged once the budget allows');
+  await pair.tick();
+  assert.deepEqual(scored, ['drift'], 'and only once');
+});
+
+test('after a new goal, a file judged under the old one is judged again', async () => {
+  let clock = 100_000;
+  const scored = [];
+  const pair = new PairSession({
+    record: {id: 1, root: '/project', conversation_id: 7, goal: 'fix rounding in billing totals', level: 'normal'},
+    store: {addMessage() {}, setGoal() {}, addRemark: () => 1, dropRemark() {}},
+    partner: {ask: async () => 'SILENT'},
+    score: async trigger => { scored.push(trigger.kind); return {value: 2}; },
+    typingPauseMs: 2000, notify: () => 1, requestEditor: async () => null, now: () => clock,
+  });
+  pair.receive({kind: 'edit', file: 'src/billing/totals.ts', from: 1, to: 1, text: 'x', at: clock});
+  clock += 5000;
+  await pair.tick();
+  assert.deepEqual(scored, [], 'on-goal by its path: dropped without the Watcher');
+  pair.setGoal('reconnect waits 30 s after the phone sleeps');
+  pair.receive({kind: 'edit', file: 'src/billing/totals.ts', from: 2, to: 2, text: 'y', at: clock});
+  clock += 5000;
+  await pair.tick();
+  assert.deepEqual(scored, ['drift'], 'judged again under the new goal');
 });

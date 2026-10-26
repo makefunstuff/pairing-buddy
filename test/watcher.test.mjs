@@ -10,6 +10,13 @@ test('parseScore reads the JSON answer, also when wrapped in prose or a code fen
   assert.deepEqual(parseScore('{"score": "7"}'), {value: 7, reason: ''});
 });
 
+test('parseScore reads the bare number the Watcher is asked for, also with a word around it', () => {
+  assert.deepEqual(parseScore('7'), {value: 7, reason: ''});
+  assert.deepEqual(parseScore(' 8\n'), {value: 8, reason: ''});
+  assert.equal(parseScore('Score: 3.').value, 3);
+  assert.equal(parseScore('10/10').value, 10);
+});
+
 test('parseScore clamps to 0..10 and falls back to a bare "score: N"', () => {
   assert.equal(parseScore('{"score": 42}').value, 10);
   assert.equal(parseScore('{"score": -1}').value, 0);
@@ -24,8 +31,8 @@ test('a Watcher that answers nonsense or fails scores 0', async () => {
   const score = createWatcher({models, model: faux.getModel()});
   const trigger = {kind: 'stall', detail: 'nothing for 90 s'};
 
-  faux.setResponses([fauxAssistantMessage([fauxText('{"score": 9, "reason": "stuck"}')])]);
-  assert.deepEqual(await score(trigger, initialState()), {value: 9, reason: 'stuck'});
+  faux.setResponses([fauxAssistantMessage([fauxText('9')])]);
+  assert.deepEqual(await score(trigger, initialState()), {value: 9, reason: ''});
 
   faux.setResponses([fauxAssistantMessage([fauxText('hmm, hard to say')])]);
   assert.equal((await score(trigger, initialState())).value, 0);
@@ -34,4 +41,30 @@ test('a Watcher that answers nonsense or fails scores 0', async () => {
   const failed = await score(trigger, initialState());
   assert.equal(failed.value, 0);
   assert.match(failed.reason, /watcher failed/);
+});
+
+test('the Watcher asks for a short answer, a drift question of its own, and the model chooseModel picks', async () => {
+  const faux = fauxProvider();
+  const models = createModels();
+  models.setProvider(faux.provider);
+  const seen = [];
+  faux.setResponses(Array(3).fill(null).map(() => (context, options) => {
+    seen.push({prompt: context.messages.at(-1).content, maxTokens: options.maxTokens});
+    return fauxAssistantMessage([fauxText('4')]);
+  }));
+  let chosen = 0;
+  const score = createWatcher({models, model: faux.getModel(), chooseModel: async () => { chosen += 1; return faux.getModel(); }, now: () => 5000});
+  await score({kind: 'stall', detail: 'nothing for 90 s'}, initialState());
+  await score({kind: 'drift', detail: 'Possible drift … (recently also src/ws.ts)', file: 'src/billing.mjs'}, initialState({goal: 'fix reconnect'}));
+  assert.ok(seen[0].maxTokens <= 8);
+  assert.doesNotMatch(seen[0].prompt, /unrelated/);
+  assert.match(seen[1].prompt, /\(drift\): The user now edits src\/billing\.mjs\.\nScore how clearly this file is unrelated to the goal "fix reconnect"/);
+  assert.doesNotMatch(seen[1].prompt, /recently also/, "the Partner's detail stays out");
+  assert.equal(chosen, 2);
+
+  assert.equal(score.lastCallAt, 5000);
+  assert.deepEqual(await score.warm(), {ok: true});
+  assert.equal(seen[2].maxTokens, 1, 'a warm-up asks for one token');
+  faux.setResponses([]);
+  assert.equal((await score.warm()).ok, false);
 });
