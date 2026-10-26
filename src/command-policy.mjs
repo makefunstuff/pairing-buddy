@@ -10,13 +10,24 @@ const READ_ONLY = new Set([
   'realpath', 'readlink', 'date', 'jq', 'xxd', 'od', 'hexdump', 'ps', 'true', 'false',
 ]);
 
-// Flags that make an otherwise read-only program write files or run other programs.
+// Flags that make an otherwise read-only program, test runner or build write files or run other programs.
 const UNSAFE_FLAGS = {
   find: ['-exec', '-execdir', '-ok', '-okdir', '-delete', '-fprint', '-fprint0', '-fprintf', '-fls'],
-  sort: ['-o', '--output'],
+  fd: ['-x', '--exec', '-X', '--exec-batch'],
+  sort: ['-o', '--output', '--compress-program'],
   tree: ['-o'],
+  file: ['-C', '--compile'],
+  date: ['-s', '--set'],
   rg: ['--pre'],
   eslint: ['--fix'],
+  jest: ['-u', '--updateSnapshot', '--update-snapshot'],
+  vitest: ['-u', '--update'],
+};
+
+// Programs that write to their second file operand (`uniq IN OUT`, `xxd IN OUT`), with the flags that take a value.
+const OUTPUT_OPERAND = {
+  uniq: ['-f', '-s', '-w', '--skip-fields', '--skip-chars', '--check-chars'],
+  xxd: ['-c', '-g', '-l', '-n', '-o', '-s', '-cols', '-groupsize', '-len', '-name', '-offset', '-seek'],
 };
 
 const WRITES = new Set(['rm', 'rmdir', 'mv', 'cp', 'mkdir', 'touch', 'chmod', 'chown', 'ln', 'dd', 'truncate', 'tee', 'shred', 'install', 'patch']);
@@ -37,6 +48,7 @@ const GIT_LISTING = {branch: ['-a', '-r', '-v', '-vv', '--list', '--show-current
 
 const CARGO = new Set(['test', 'build', 'check', 'clippy', 'nextest', 'bench', 'doc', 'tree', 'metadata']);
 const GO = new Set(['test', 'build', 'vet', 'list', 'version', 'env']);
+const GO_UNSAFE = ['-exec', '-toolexec', '-vettool', '-w', '-u'];
 const MAKE_TARGETS = new Set(['test', 'check', 'build', 'lint', 'all']);
 
 const allow = () => ({verdict: 'allow', reason: ''});
@@ -105,17 +117,47 @@ function outside(word) {
   return value !== '/dev/null' && PATHLIKE_OUTSIDE.test(value);
 }
 
+/**
+ * Whether `flag` is among the arguments: as given, as `--flag=value`, as a long flag shortened the way
+ * GNU tools accept (`--out` for `--output`), or as a short flag inside a cluster or with its value
+ * attached (`-ro`, `-onew.txt`).
+ */
+function hasFlag(args, flag) {
+  const short = /^-\w$/.test(flag);
+  return args.some(arg => {
+    const name = arg.split('=')[0];
+    if (name === flag) return true;
+    if (flag.startsWith('--')) return name.length > 3 && flag.startsWith(name);
+    return short && /^-\w/.test(arg) && arg.slice(1).includes(flag[1]);
+  });
+}
+
+/** How many file operands the arguments hold; `valueFlags` are the flags whose value is the next word. */
+function operands(args, valueFlags) {
+  let count = 0;
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--') return count + args.length - i - 1;
+    if (args[i] === '-' || !args[i].startsWith('-')) count++;
+    else if (valueFlags.includes(args[i])) i++;
+  }
+  return count;
+}
+
+// Global git options whose value is the next word.
+const GIT_VALUE_OPTIONS = ['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-env'];
+
 function git(args) {
   let i = 0;
+  let option = null;
   while (args[i]?.startsWith('-')) {
-    if (args[i] === '--no-pager') { i++; continue; }
-    if (args[i] === '-C') { i += 2; continue; }
-    return ask(`git ${args[i]} changes how git runs`);
+    if (!['--no-pager', '-C'].includes(args[i])) option ??= args[i];
+    i += GIT_VALUE_OPTIONS.includes(args[i]) ? 2 : 1;
   }
   const [sub, ...rest] = args.slice(i);
-  if (!sub) return allow();
   if (GIT_HISTORY.has(sub)) return refuse(`git ${sub} changes git history; that is yours to do`);
   if (GIT_NETWORK.has(sub)) return refuse(`git ${sub} goes over the network`);
+  if (option) return ask(`git ${option} changes how git runs`);
+  if (!sub) return allow();
   if (rest.some(arg => arg.startsWith('--output') || arg === '-O' || arg.startsWith('--open-files-in-pager'))) return ask(`git ${sub} with that option writes a file or opens a program`);
   if (GIT_READ.has(sub)) return allow();
   // A bare `git stash` stashes your changes; the other listing subcommands only list without arguments.
@@ -124,12 +166,20 @@ function git(args) {
   return ask(`git ${sub} can change your working tree or repository`);
 }
 
+// Test runner flags that rewrite snapshots, which a test script passes on to its runner (`npm test -- -u`).
+const SNAPSHOT_FLAGS = [...new Set([...UNSAFE_FLAGS.jest, ...UNSAFE_FLAGS.vitest])];
+
+function testScript(name, args) {
+  const flag = SNAPSHOT_FLAGS.find(flag => hasFlag(args, flag));
+  return flag ? ask(`${name} ${flag} rewrites test snapshots`) : allow();
+}
+
 function packageManager(name, args) {
   const [sub, script] = args;
-  if (['test', 't'].includes(sub)) return allow();
-  if (sub === 'run' && SCRIPT.test(script ?? '')) return allow();
-  if (name === 'yarn' && SCRIPT.test(sub ?? '')) return allow();
-  if (['exec', 'x'].includes(sub) && RUNNERS.has(script)) return allow();
+  if (['test', 't'].includes(sub)) return testScript(name, args.slice(1));
+  if (sub === 'run' && SCRIPT.test(script ?? '')) return testScript(name, args.slice(2));
+  if (name === 'yarn' && SCRIPT.test(sub ?? '')) return testScript(name, args.slice(1));
+  if (['exec', 'x'].includes(sub) && RUNNERS.has(script)) return program(args.slice(1));
   if (sub === 'publish') return refuse(`${name} publish publishes a package`);
   if (INSTALLS.has(sub)) return ask(`${name} ${sub} installs or removes packages`);
   return ask(`${name} ${sub ?? ''} is not a test or build script`.trim());
@@ -139,9 +189,24 @@ function cargo(args) {
   const [sub] = args;
   if (sub === 'fmt') return args.includes('--check') ? allow() : ask('cargo fmt rewrites files');
   if (sub === 'clippy' && args.includes('--fix')) return ask('cargo clippy --fix rewrites files');
+  if (sub === 'doc' && args.includes('--open')) return ask('cargo doc --open opens a browser');
   if (CARGO.has(sub)) return allow();
   if (sub === 'publish') return refuse('cargo publish publishes a crate');
   return ask(`cargo ${sub ?? ''} is not a test or build command`.trim());
+}
+
+function go(args) {
+  const [sub] = args;
+  if (!GO.has(sub)) return ask(`go ${sub ?? ''} is not a test or build command`.trim());
+  // go accepts its flags with one dash or two.
+  const unsafe = GO_UNSAFE.find(flag => args.some(arg => [flag, `-${flag}`].includes(arg.split('=')[0])));
+  return unsafe ? ask(`go ${sub} ${unsafe} writes your Go settings or runs a program`) : allow();
+}
+
+function make(args) {
+  const targets = args.filter(arg => !arg.startsWith('-'));
+  if (!targets.length) return ask('make runs the default target, which can be anything');
+  return targets.every(target => MAKE_TARGETS.has(target)) ? allow() : ask(`make ${targets.join(' ')} runs a target that is not a test or build`);
 }
 
 function python(args) {
@@ -157,17 +222,18 @@ function program(words) {
   if (NETWORK.has(first)) return refuse(`${first} goes over the network`);
   if (INTERACTIVE.has(first)) return refuse(`${first} waits for keys; Pair cannot use it in its pane`);
   if (WRITES.has(first)) return ask(`${first} writes or deletes files`);
-  const unsafe = (UNSAFE_FLAGS[first] ?? []).find(flag => args.some(arg => arg === flag || arg.startsWith(`${flag}=`)));
+  const unsafe = (UNSAFE_FLAGS[first] ?? []).find(flag => hasFlag(args, flag));
   if (unsafe) return ask(`${first} ${unsafe} writes files or runs a program`);
+  if (OUTPUT_OPERAND[first] && operands(args, OUTPUT_OPERAND[first]) > 1) return ask(`${first} writes to its second file`);
   if (READ_ONLY.has(first) || RUNNERS.has(first)) return allow();
   if (first === 'git') return git(args);
   if (PACKAGE_MANAGERS.has(first)) return packageManager(first, args);
-  if (first === 'npx' || first === 'bunx') return RUNNERS.has(args[0]) ? allow() : ask(`${first} ${args[0] ?? ''} may download and run a package`.trim());
+  if (first === 'npx' || first === 'bunx') return RUNNERS.has(args[0]) ? program(args) : ask(`${first} ${args[0] ?? ''} may download and run a package`.trim());
   if (first === 'cargo') return cargo(args);
-  if (first === 'go') return GO.has(args[0]) ? allow() : ask(`go ${args[0] ?? ''} is not a test or build command`.trim());
+  if (first === 'go') return go(args);
   if (first === 'python' || first === 'python3') return python(args);
   if (first === 'node') return args[0] === '--test' || ['-v', '--version'].includes(args[0]) ? allow() : ask('node runs a script that may change files');
-  if (first === 'make') return args.every(arg => arg.startsWith('-') || MAKE_TARGETS.has(arg)) ? allow() : ask(`make ${args.join(' ')} runs a target that is not a test or build`);
+  if (first === 'make') return make(args);
   return ask(`${first} is not on the list of read-only, test and build commands`);
 }
 

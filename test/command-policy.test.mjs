@@ -21,7 +21,7 @@ test('tests and builds run', () => {
     'npm test', 'npm run test:unit', 'npm run build', 'pnpm test', 'yarn lint', 'npx vitest run src/ws.test.ts', 'npx jest -t reconnect',
     'cargo test', 'cargo test reconnect -- --nocapture', 'cargo build --release', 'cargo clippy', 'cargo fmt --check',
     'go test ./...', 'go vet ./...', 'pytest -x tests/test_ws.py', 'python -m pytest -k reconnect', 'node --test test/',
-    'make test', 'make', 'CI=1 npm test', 'npm test 2>&1 | tail -40', 'cargo test > /dev/null',
+    'make test', 'make -j4 test', 'CI=1 npm test', 'npm test 2>&1 | tail -40', 'cargo test > /dev/null',
   ]);
 });
 
@@ -34,10 +34,30 @@ test('commands that write, delete or install ask first', () => {
   ]);
 });
 
+test('read-only programs ask when a flag or operand makes them write or run a program', () => {
+  expectAll('ask', [
+    'fd . -x rm {}', 'fd precious -x rm', 'fd -e js --exec-batch rm', 'fd . -X rm', 'fd -HX rm', 'fd . --exec=rm',
+    'sort -onew.txt package.json', 'sort -ro out.txt list.txt', 'sort --out=x list.txt', 'sort --compress-program=sh list.txt',
+    'tree -ofile.txt', 'uniq in.txt out.txt', 'uniq -c in.txt out.txt', 'uniq - out.txt', 'xxd in.bin out.hex', 'xxd -l 64 in.bin out.hex',
+    'file -C -m magic', 'go env -w GOFLAGS=-mod=mod', 'go env -u GOFLAGS', 'go test -exec rm ./...', 'go test --exec=rm ./...',
+    'go vet -vettool=./x ./...',
+  ]);
+  expectAll('allow', ['fd -e js', 'fd reconnect src', 'sort -k2 -n list.txt', 'uniq -c in.txt', 'uniq -f 2 in.txt', 'xxd -l 64 in.bin', 'tree -L 2', 'go env GOPATH']);
+});
+
+test('tests and builds ask when they would rewrite snapshots, open a program or run an unknown target', () => {
+  expectAll('ask', [
+    'jest -u', 'vitest -u', 'npx vitest -u', 'npx jest --updateSnapshot', 'npm exec jest -- -u', 'npm test -- -u', 'yarn test -u',
+    'npm run test -- --update', 'npx eslint --fix .', 'make', 'make -j4', 'cargo doc --open',
+  ]);
+  expectAll('allow', ['npx vitest run', 'npm test -- --reporter=dot', 'cargo doc']);
+});
+
 test('git history, the network and root are refused', () => {
   expectAll('refuse', [
     'git commit -m wip', 'git push', 'git push --force origin main', 'git reset --hard HEAD~1', 'git rebase main', 'git merge dev',
     'git cherry-pick abc123', 'git revert HEAD', 'git pull', 'git fetch', 'npm test && git commit -am done', 'git -C . commit',
+    'git -c user.name=x commit -m hi', 'git --git-dir=.git push', 'git --git-dir .git push', 'git --no-pager -c x=y reset --hard',
     'curl https://example.com', 'wget http://x', 'ssh host', 'sudo npm test', 'npm publish', 'cargo publish', 'less README.md', 'vim a.js',
   ]);
 });

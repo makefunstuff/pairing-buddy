@@ -164,6 +164,17 @@ test('a command that writes asks the user in the chat and runs only on yes', asy
   assert.deepEqual(ran, ['rm -rf build']);
 });
 
+test('a declined delete cannot be done another way through a read-only program', async () => {
+  const {pair, ran, sent} = scoutSession();
+  for (const command of ['rm precious.txt', 'fd precious -x rm', 'sort -onew.txt package.json']) {
+    const reply = pair.run({command});
+    await Promise.resolve();
+    pair.answer(sent.filter(message => message.type === 'confirm').at(-1).id, false);
+    assert.match(await reply, /did not allow/, command);
+  }
+  assert.deepEqual(ran, []);
+});
+
 test('without a chat pane to ask in, a command that writes does not run', async () => {
   const {pair, ran} = scoutSession({chat: false});
   assert.match(await pair.run({command: 'npm install'}), /did not allow/);

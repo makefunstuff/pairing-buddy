@@ -27,17 +27,23 @@ Switching to Scout opens a pane below the chat pane, labelled `pair scout`. It r
 
 **Runs at once:**
 
-- Read-only programs: `ls`, `cat`, `head`, `tail`, `wc`, `rg`, `grep`, `fd`, `find`, `tree`, `pwd`, `echo`, `printf`, `which`, `file`, `stat`, `du`, `df`, `diff`, `cmp`, `sort`, `uniq`, `cut`, `tr`, `jq`, `ps` and a few more.
+- Read-only programs: `ls`, `cat`, `head`, `tail`, `wc`, `rg`, `grep`, `fd`, `find`, `tree`, `pwd`, `echo`, `printf`, `which`, `file`, `stat`, `du`, `df`, `diff`, `cmp`, `sort`, `uniq`, `cut`, `tr`, `jq`, `xxd`, `ps` and a few more, unless a flag or operand below makes them write.
 - Git that only reads: `status`, `log`, `diff`, `show`, `blame`, `grep`, `ls-files`, `ls-tree`, `rev-parse`, `rev-list`, `describe`, `shortlog`, `cat-file`, and `branch`, `stash`, `remote`, `tag`, `config`, `reflog` when they only list.
-- Tests and builds: `npm`/`pnpm`/`yarn`/`bun` `test` and `run test|build|lint|check|typecheck` (also `test:unit` and the like), `npx vitest|jest|mocha|tsc|eslint`, `cargo test|build|check|clippy|nextest|bench|doc`, `cargo fmt --check`, `go test|build|vet|list`, `pytest`, `python -m pytest|unittest`, `node --test`, `make` with no target or `test`, `check`, `build`, `lint`, `all`.
+- Tests and builds: `npm`/`pnpm`/`yarn`/`bun` `test` and `run test|build|lint|check|typecheck` (also `test:unit` and the like), `npx vitest|jest|mocha|tsc|eslint`, `cargo test|build|check|clippy|nextest|bench|doc`, `cargo fmt --check`, `go test|build|vet|list|env`, `pytest`, `python -m pytest|unittest`, `node --test`, `make test|check|build|lint|all`.
 - Redirections to `/dev/null` and `2>&1`.
 
 **Asks you first** (in the chat; `y` or `yes` allows it, anything else declines, and no answer within a minute declines):
 
 - Programs that write or delete: `rm`, `rmdir`, `mv`, `cp`, `mkdir`, `touch`, `chmod`, `chown`, `ln`, `dd`, `truncate`, `tee`, `patch`.
 - Installs: `npm install|i|ci|add|update|uninstall`, `cargo add|install`, `go get|install`, `pip install` and the like.
-- Flags that turn a read into a write: `find -delete|-exec`, `sort -o`, `eslint --fix`, `cargo fmt`, `cargo clippy --fix`, `git diff --output`.
-- Git that changes your working tree: `checkout`, `switch`, `restore`, `add`, `stash`, `clean`, a new `branch`.
+- Flags and operands that turn a read into a write or run another program:
+  - `find -exec|-execdir|-ok|-delete|-fprint`, `fd -x|--exec|-X|--exec-batch`, `rg --pre`;
+  - `sort -o|--output|--compress-program`, `tree -o`, `file -C`, `date -s`, `git diff --output`;
+  - a second file name for `uniq` and `xxd` (`uniq IN OUT` writes OUT).
+
+  A short flag counts in every spelling: alone (`-o out`), with its value attached (`-oout`), or inside a cluster (`-ro`). A long flag also counts when it is shortened, the way GNU tools accept (`--out=x`).
+- Tests and builds that change files or run something else: `cargo fmt`, `cargo clippy --fix`, `eslint --fix`, snapshot updates (`jest -u`, `vitest -u`, also passed through as in `npm test -- -u`), `cargo doc --open`, `go env -w|-u`, `go test -exec`, `go vet -vettool`, and `make` with no target, since the default target can be anything.
+- Git that changes your working tree: `checkout`, `switch`, `restore`, `add`, `stash`, `clean`, a new `branch`; and any git command with global options other than `-C` and `--no-pager` (`git -c core.pager=sh log`).
 - Writing to a file with `>` or `>>`.
 - Anything it cannot see through: command substitution, variables, subshells, background jobs, programs given by path (`./deploy.sh`), interpreters running scripts (`python x.py`, `bash -c`).
 - Paths outside the project: absolute paths, `~`, `..`.
@@ -47,7 +53,7 @@ Without a chat pane to ask in, the answer is no.
 
 **Refused:**
 
-- Git history: `commit`, `push`, `reset`, `rebase`, `merge`, `cherry-pick`, `revert`, `am`, `pull`, `filter-branch`, `update-ref`. You commit yourself.
+- Git history: `commit`, `push`, `reset`, `rebase`, `merge`, `cherry-pick`, `revert`, `am`, `pull`, `filter-branch`, `update-ref`, whatever global options come before them (`git -c x=y commit`). You commit yourself.
 - The network: `git fetch`, `git clone`, `curl`, `wget`, `ssh`, `scp`, `rsync`, `nc`, `npm publish`, `cargo publish`.
 - Root: `sudo`, `su`, `doas`.
 - Interactive programs that would wait for keys: `less`, `more`, `vim`, `nano`, `top`, `man`, `watch`.
