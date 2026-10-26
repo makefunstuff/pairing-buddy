@@ -22,15 +22,16 @@ if (!/^\/tmp\/paircap\.[^/]+$/.test(dir ?? '')) throw new Error('the stage needs
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const log = line => console.error(`${new Date().toISOString().slice(11, 23)} ${line}`);
 
-// The project, committed as it is when the scene starts; its packages built, so the first test run is quick.
-const project = join(dir, 'hookd');
-cpSync(join(HERE, 'hookd'), project, {recursive: true});
+// The project (hookd, unless the scene names another), committed as it is when the scene starts; a Go project's
+// packages built, so the first test run is quick.
+const project = join(dir, scene.project ?? 'hookd');
+cpSync(join(HERE, scene.project ?? 'hookd'), project, {recursive: true});
 scene.setup?.(project);
 const git = (...args) => execFileSync('git', ['-c', 'user.name=dev', '-c', 'user.email=dev@example.com', ...args], {cwd: project});
 git('init', '-q');
 git('add', '-A');
 git('commit', '-qm', 'hookd');
-execFileSync('go', ['test', '-count=1', '-run', '^$', './...'], {cwd: project, stdio: 'ignore'});
+if (existsSync(join(project, 'go.mod'))) execFileSync('go', ['test', '-count=1', '-run', '^$', './...'], {cwd: project, stdio: 'ignore'});
 
 const models = await startModelServer(scene, {log});
 const herdrSocket = join(dir, 'herdr.sock');

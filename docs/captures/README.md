@@ -14,9 +14,11 @@ recording comes out the same each time.
     `go test -overlay` on the unsaved buffer.
   - The user's shell is Neovim's `:terminal`, with Pair's shell hook.
 - **The project** is [hookd/](hookd/), a small Go webhook service with a retry bug. Each scene starts it at its
-  own point.
+  own point. The held thought is in C instead: [ringbuf/](ringbuf/), a ring buffer with a Makefile, and `clangd`
+  gives its diagnostics.
 - **Neovim** is clean: [init.lua](init.lua), the ayu colorscheme (fetched at a pinned commit), and scratch XDG
-  directories.
+  directories. The held thought uses mini.base16 (also fetched at a pinned commit) on a grey palette with one
+  warm red, and shows the real chat pane (`pair chat`) in a `:terminal` on the right.
 
 | Tape | Shows |
 | --- | --- |
@@ -25,15 +27,16 @@ recording comes out the same each time.
 | [hand-over](tapes/hand-over.tape) | 03 · the visible hand-over |
 | [take-back](tapes/take-back.tape) | a key while Pair drives takes the wheel back |
 | [ledger](tapes/ledger.tape) | `:Pair today` after a morning of 02 and 03; `u` undoes the six cases after your own edit |
+| [held-thought](tapes/held-thought.tape) | the held thought, and one look on a grey palette |
 
 ## Recording
 
-Needs [VHS](https://github.com/charmbracelet/vhs) 0.11 with ttyd, Neovim 0.11+, Go, Node.js, curl, FFmpeg and
-the JetBrainsMono Nerd Font.
+Needs [VHS](https://github.com/charmbracelet/vhs) 0.11 with ttyd, Neovim 0.11+, Go, clangd, Node.js, curl, FFmpeg
+and the JetBrainsMono Nerd Font.
 
 ```sh
 npm ci                                  # in the repo root
-docs/captures/record.sh                 # all five scenes into docs/captures/out/, or name some
+docs/captures/record.sh                 # all six scenes into docs/captures/out/, or name some
 docs/captures/encode.sh                 # out/ -> site/media/ and docs/images/
 ```
 

@@ -234,6 +234,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     const {session} = client;
     sendMessage(client.socket, {
       type: 'welcome', root: session.root, goal: session.state.goal, level: session.budget.level, role: session.role, models: health.snapshot(),
+      accent: session.accent,
     });
     // A Neovim that connects (or reconnects) after a test run shows its result too.
     if (client.role === 'editor' && session.testsShown) sendMessage(client.socket, session.testsShown);
@@ -301,6 +302,8 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     if (message.type === 'ledger_detail') return sendMessage(client.socket, {type: 'ledger_detail', ids: message.ids, detail: session.ledgerDetail(message.ids ?? [])});
     if (message.type === 'undo') return session.undo(message.action);
     if (message.type === 'applied') return session.applied(message.action, message.before, message.after);
+    if (message.type === 'release') return session.release();
+    if (message.type === 'accent') return session.setAccent(message.color);
     if (message.type === 'end') return endSession(session);
   }
 

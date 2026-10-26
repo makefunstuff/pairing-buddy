@@ -1,11 +1,10 @@
 // The chat pane: where the user talks to Pair and reads what it says.
 import {connect} from 'node:net';
 import {clearLine, createInterface, cursorTo} from 'node:readline';
+import {dim, formatMessage} from './chat-style.mjs';
 import {LEVELS} from './config.mjs';
 import {ledgerText} from './ledger.mjs';
 import {readMessages, sendMessage} from './protocol.mjs';
-
-const STYLE = {pair: '\x1b[36mpair\x1b[0m', user: '\x1b[2myou\x1b[0m', system: '\x1b[2m··\x1b[0m'};
 
 const HELP = `/goal <text>   set the session goal
 /level ${LEVELS.join('|')}   how often Pair speaks unasked
@@ -55,6 +54,7 @@ export function runChat(socketPath) {
   let away = false; // the daemon went away and the pane is reconnecting
   const rl = createInterface({input: process.stdin, output: process.stdout, prompt: '› '});
   let confirming = null; // the id of the question the next line answers
+  const look = {accent: null, color: !!process.stdout.isTTY && !process.env.NO_COLOR}; // the accent: the editor's, once it sends it
   const showRole = role => rl.setPrompt(`${role} › `);
   const print = text => {
     clearLine(process.stdout, 0);
@@ -62,6 +62,7 @@ export function runChat(socketPath) {
     process.stdout.write(`${text}\n`);
     rl.prompt(true);
   };
+  const say = (sender, text) => print(formatMessage(sender, text, {...look, width: process.stdout.columns ?? 0}));
 
   const hello = resume => sendMessage(socket, {
     type: 'hello',
@@ -84,7 +85,7 @@ export function runChat(socketPath) {
     });
     socket.on('close', () => {
       if (!welcomed) return;
-      if (!away) print(`${STYLE.system} the pair daemon went away; reconnecting…`);
+      if (!away) say('system', 'the pair daemon went away; reconnecting…');
       away = true;
       setTimeout(connectDaemon, RECONNECT_MS);
     });
@@ -93,32 +94,34 @@ export function runChat(socketPath) {
 
   function onMessage(message) {
     if (message.type === 'welcome') {
+      look.accent = message.accent ?? look.accent;
       showRole(message.role);
-      if (away) print(`${STYLE.system} reconnected`);
-      else print(`${STYLE.system} pairing on ${message.root} (${message.level}) · /help`);
+      if (away) say('system', 'reconnected');
+      else say('system', `pairing on ${message.root} (${message.level}) · /help`);
       welcomed = true;
       away = false;
       for (const role of ['watcher', 'partner']) {
-        if (message.models?.[role]) print(`${STYLE.system} The ${role} model is not answering (${message.models[role]}).`);
+        if (message.models?.[role]) say('system', `The ${role} model is not answering (${message.models[role]}).`);
       }
     }
-    if (message.type === 'health') print(`${STYLE.system} ${message.text}`);
+    if (message.type === 'health') say('system', message.text);
     if (message.type === 'role') {
       showRole(message.role);
       rl.prompt(true);
     }
     if (message.type === 'confirm') {
       confirming = message.id;
-      print(`${STYLE.pair} ${message.text} [y/N]`);
+      say('pair', `${message.text} [y/N]`);
     }
     if (message.type === 'confirmed' && message.id === confirming) confirming = null; // answered, or timed out
-    if (message.type === 'ledger') print(ledgerText(message).map(line => `${STYLE.system} ${line}`).join('\n'));
-    if (message.type === 'remark') print(`${STYLE.system} \x1b[2m+ useful  - noise\x1b[0m`);
+    if (message.type === 'ledger') print(ledgerText(message).map(line => dim(`·· ${line}`, look)).join('\n'));
+    if (message.type === 'accent') look.accent = message.color;
+    if (message.type === 'remark') print(dim('·· + useful  - noise', look));
     // What you type is already on screen; your own lines come back only as history.
     const echo = message.sender === 'user' && !message.history;
-    if (message.type === 'message' && !echo) print(`${STYLE[message.sender] ?? message.sender} ${message.text}`);
+    if (message.type === 'message' && !echo) say(message.sender, message.text);
     if (message.type === 'ended') {
-      print(`${STYLE.system} session ended`);
+      say('system', 'session ended');
       hello(false); // starts the next session, which asks for its goal
     }
   }
@@ -133,7 +136,7 @@ export function runChat(socketPath) {
     const input = parseInput(line);
     if (input?.local === 'quit') return rl.close();
     if (input?.local === 'help') print(HELP);
-    else if (input && away) print(`${STYLE.system} not sent: the daemon is not back yet`);
+    else if (input && away) say('system', 'not sent: the daemon is not back yet');
     else if (input) sendMessage(socket, input);
     rl.prompt();
   });
