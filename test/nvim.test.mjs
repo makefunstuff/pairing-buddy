@@ -175,8 +175,8 @@ test('the wrong turn: Pair\'s words show under your line, the jump key goes to t
     await sleep(200);
     keys('3Gccconst z = 4<Esc>'); // a wrong turn in a.js
     const shown = await until(() => words().length && words(), 'Pair\'s words under the line');
-    assert.deepEqual(shown, [[2, ['● The shift is fine.', 'Attempt 5 lands at exactly 15, and worker.js:2 gives up on >=.', 'M-j goes there · M-? why']]],
-      'under the line you are on, the code without backticks, the keys at the end, with what they do the first time (on a line of their own when they do not fit)');
+    assert.deepEqual(shown, [[2, ['● The shift is fine.', 'Attempt 5 lands at exactly 15, and worker.js:2', 'gives up on >=.   M-j goes there · M-? why']]],
+      'under the line you are on, the code without backticks, the keys at the end, with what they do the first time');
     assert.equal(remote('mode()'), 'n', 'nothing moved you');
     assert.equal(remote('expand("%:t")'), 'a.js');
 
@@ -456,10 +456,11 @@ test('Alt-? on Pair\'s words asks for the idea behind them, shows it under them 
     await until(() => input, 'the teach request reaching the Partner');
     assert.match(input, /^\[teach\] The user asks for the idea behind what you said: "`len \/ cap` is integer division in `table.c:2`/);
     const taught = await until(() => words().some(line => line.startsWith('◇ C divides')) && words(), 'the idea under the words');
-    assert.deepEqual(taught.slice(-3), [
-      'never grows.   M-j goes there',
-      '◇ C divides two ints as ints, before any compare with a double: scale instead,',
-      'as len * 10 > cap * 7.   M-? opens en.cppreference.com',
+    assert.deepEqual(taught.slice(-4), [
+      'table is full, so it never grows.   M-j goes there',
+      '◇ C divides two ints as ints, before any',
+      'compare with a double: scale instead, as',
+      'len * 10 > cap * 7.   M-? opens en.cppreference.com',
     ], 'after the words, without the hint it no longer needs; the link apart, as the key that opens it');
     assert.ok(messages.some(message => message.sender === 'pair' && message.text.startsWith('C divides')), 'the chat has it too, link and all');
     await until(() => verdicts()[0] === 'seen', 'asking about a remark to count as having seen it');

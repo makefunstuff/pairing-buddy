@@ -42,7 +42,7 @@ Node.js, curl, FFmpeg and the JetBrainsMono Nerd Font.
 
 ```sh
 npm ci                                  # in the repo root
-docs/captures/record.sh                 # all six scenes into docs/captures/out/, or name some
+docs/captures/record.sh                 # all scenes into docs/captures/out/, or name some
 docs/captures/encode.sh                 # out/ -> site/media/ and docs/images/
 ```
 
