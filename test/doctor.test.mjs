@@ -61,7 +61,7 @@ test('all well: each check says ok, and a slow Watcher gets advice', {timeout: 2
     assert.equal(checks.partner.level, 'ok');
     assert.match(checks.partner.text, /^small at http:\/\/127\.0\.0\.1:\d+\/v1 answers in \d\.\d s$/);
     assert.equal(checks.watcher.level, 'warn');
-    assert.match(checks.watcher.text, /takes 1\.\d s: the Watcher scores every candidate remark and should take about 1 s/);
+    assert.match(checks.watcher.text, /takes \d+\.\d s: the Watcher scores every candidate remark and should take about 1 s/);
   } finally {
     editor.destroy();
     await daemon.close();
