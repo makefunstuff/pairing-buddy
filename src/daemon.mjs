@@ -325,6 +325,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     if (message.type === 'forget_trail') return session.forgetTrail();
     if (message.type === 'release') return session.release();
     if (message.type === 'accent') return session.setAccent(message.color);
+    if (message.type === 'teach') return session.teach(message.text || undefined, message.remark ?? null);
     if (message.type === 'end') return endSession(session);
     if (message.type === 'listen') return listen(client, session, message);
     if (message.type === 'focus') return listenerOf(session)?.focus(message.on === true);

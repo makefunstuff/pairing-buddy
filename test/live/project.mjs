@@ -3,6 +3,7 @@ import {execFileSync} from 'node:child_process';
 import {mkdirSync, mkdtempSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
+import {withoutCores} from '../no-cores.mjs';
 
 export const FILES = {
   'package.json': '{"type": "module", "scripts": {"test": "node --test"}}\n',
@@ -44,7 +45,7 @@ export function localPane(root) {
   return {ran, open: async () => {}, close: async () => {}, run: async command => {
     ran.push(command);
     try {
-      return {exit: 0, output: execFileSync('bash', ['-c', `${command} 2>&1`], {cwd: root, env, encoding: 'utf8', timeout: 60_000}).trimEnd(), timedOut: false};
+      return {exit: 0, output: execFileSync('bash', ['-c', withoutCores(`${command} 2>&1`)], {cwd: root, env, encoding: 'utf8', timeout: 60_000}).trimEnd(), timedOut: false};
     } catch (error) {
       return {exit: error.status ?? 1, output: String(error.stdout ?? '').trimEnd(), timedOut: false};
     }

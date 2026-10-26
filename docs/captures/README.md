@@ -15,7 +15,9 @@ recording comes out the same each time.
   - The user's shell is Neovim's `:terminal`, with Pair's shell hook.
 - **The project** is [hookd/](hookd/), a small Go webhook service with a retry bug. Each scene starts it at its
   own point. The held thought is in C instead: [ringbuf/](ringbuf/), a ring buffer with a Makefile, and `clangd`
-  gives its diagnostics.
+  gives its diagnostics. Teach on request is in the C program the live tone tests use
+  ([test/live/probe](../../test/live/probe/)), whose `make run` fails its check with exit 1. Commands run with core
+  dumps off ([test/no-cores.mjs](../../test/no-cores.mjs)).
 - **Neovim** is clean: [init.lua](init.lua), the ayu colorscheme (fetched at a pinned commit), and scratch XDG
   directories. The search-trail scene also fetches Telescope and plenary at pinned commits; Telescope's history goes
   to the scratch directories too.
@@ -31,11 +33,12 @@ recording comes out the same each time.
 | [search-trail](tapes/search-trail.tape) | the search trail: three Telescope searches, the cue, `:Pair trail` |
 | [held-thought](tapes/held-thought.tape) | the held thought, and one look on a grey palette |
 | [push-to-talk](tapes/push-to-talk.tape) | hold `Alt-t`, ask aloud, and Pair answers under your line |
+| [teach](tapes/teach.tape) | Alt-? on a remark: the idea worth keeping behind it, and its link |
 
 ## Recording
 
-Needs [VHS](https://github.com/charmbracelet/vhs) 0.11 with ttyd, Neovim 0.11+, Go, clangd, Node.js, curl, FFmpeg
-and the JetBrainsMono Nerd Font.
+Needs [VHS](https://github.com/charmbracelet/vhs) 0.11 with ttyd, Neovim 0.11+, Go, clangd, make and a C compiler,
+Node.js, curl, FFmpeg and the JetBrainsMono Nerd Font.
 
 ```sh
 npm ci                                  # in the repo root

@@ -20,8 +20,8 @@ gif() { # 1000x600, 15 fps, one palette for the whole clip
 clip wrong-turn m1; still remark m1-still1; still jump m1-still2
 clip tests-on-save m2; still regression m2-still1; still regression-fix m2-still2
 clip hand-over m3; still driving m3-still1; still hand-back m3-still2
-for name in wrong-turn tests-on-save hand-over take-back held-thought; do gif "$name"; done
-for name in gaze remark jump regression regression-fix driving hand-back held held-shown; do cp "$OUT/$name.png" "$IMAGES/$name.png"; done
+for name in wrong-turn tests-on-save hand-over take-back held-thought teach; do gif "$name"; done
+for name in gaze remark jump regression regression-fix driving hand-back held held-shown teach-hint teach; do cp "$OUT/$name.png" "$IMAGES/$name.png"; done
 # push-to-talk needs whisper.cpp to record (see README.md), so it is encoded only when it was recorded.
 if [ -e "$OUT/push-to-talk.mp4" ]; then
   gif push-to-talk

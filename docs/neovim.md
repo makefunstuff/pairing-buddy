@@ -13,13 +13,14 @@ run is real `go test`; only the models' words are scripted. It is recorded from 
 
 | Mark | Where | What it means |
 | --- | --- | --- |
-| `●` and a line or two | under the line you are on | Pair's voice: what it says unasked, in your font, indented with your code |
+| `●` and a line or two | under the line you are on | Pair's tone: what it says unasked, in your font, indented with your code |
 | a lit line number | the number column | its gaze: the lines it is reading, one after another, with a short trail |
 | `▎` | the sign column | a line it points at, or the line its words are about |
 | `•` | the sign column, and `held thought` in the statusline | a remark that waits for your next break, about this line ([below](#the-held-thought)) |
 | `M-j` | after its words | go where it points; your cursor never moves by itself |
 | `◎` | the statusline | it has the wheel (the Driver); any key takes it back |
 | a block after ghost text | where it types | its cursor, while it types the change you handed over |
+| `◇` and a line or two | under its words, when you ask | the idea worth keeping behind them (`Alt-?`) |
 | `◌` | the statusline | it is not there: reconnecting, or a model is down |
 | `◉` and a meter | under your line, and the statusline | it listens while you hold `Alt-t` ([push-to-talk](voice.md)) |
 | `⠹` | the statusline | it thinks before it answers, or runs your tests |
@@ -237,10 +238,40 @@ diagnostics, and the real chat pane on the right. Only the models' words are scr
 `Alt-j` shows a held thought at once, and goes where it points once it shows. If you fix the line yourself before
 your break, the dot goes and Pair says nothing. The rules are in [docs/watcher.md](watcher.md#the-held-thought).
 
+## The idea behind it
+
+Teaching on request: a remark says what is wrong; `Alt-?` asks what to keep from it. Learning is part of the
+pleasure of pairing, but only when you ask, so Pair never adds it by itself.
+
+![make run fails twice; the remark under your line; Alt-? and the idea under it, with the key that opens the docs](images/teach.gif)
+
+*The plugin and the daemon as shipped, in a clean Neovim with ayu, on a small C program with a Makefile; `make run`
+is real. The remark and the idea are a real model's words from one run of the live tone test on the same project,
+replayed unedited; the point's note too.*
+
+1. `make run` fails twice: the table never grows, and the average probe is 12.6. Pair reads `table.c`, points at
+   line 35 and says why under your line, with the place first. The first time, the keys say what they do:
+   `M-j goes there · M-? why`.
+2. `Alt-?` (or `:Pair why`). A dimmed `◇ …` shows at once that it heard you, and the hint goes.
+3. The idea follows under the remark, after `◇`: integer division truncates, so a ratio test of two counts is 0 or 1.
+   It ends with `M-? opens en.cppreference.com`: Pair gives a link only when it is sure of one, to the language's or
+   library's own documentation.
+4. `Alt-?` again opens it in your browser (`vim.ui.open`). Your next edit takes the words and the idea away; the chat
+   has both, the link included.
+
+![The remark, with each key saying what it does](images/teach-hint.png)
+
+![The idea under the remark, and the key that opens its link](images/teach.png)
+
+It works on any words of Pair's under your line: a remark, or the hand-back line after the Driver's edit. In the
+chat, `?` or `/why` asks about what Pair said last. Asking about a remark counts as having seen it.
+
 ## What each thing looks like
 
 **Words.** One or two lines under the line you are on, indented with your code, with `●` before them. At most
-three lines; the chat pane has all of them. Your next edit, anywhere, takes them away.
+three lines; the chat pane has all of them. Your next edit, anywhere, takes them away. The keys that act on them
+follow, dimmed, each with what it does until you have used it once (`M-j goes there · M-? why`), then the key alone;
+on a line of their own when they do not fit.
 
 **Points.** The lines Pair points at get `▎` in the sign column and a faint tint; the code it means on the first
 line is underlined. Its note goes after the line when it fits in the window, else under the line, and moves when
@@ -278,9 +309,10 @@ require('pair').setup({
 })
 ```
 
-The keys (`jump_key`, `accept_key`, `useful_key`, `noise_key`) are mapped only while there is something for them
-to act on, and only where you have no mapping of your own; `listen_key` is mapped from the start, also only where it is free. The glyphs are plain Unicode, so they show in any font:
-`voice` `●`, `mark` `▎`, `held` `•`, `away` `◌`, `wheel` `◎`, `listen` `◉`, `pass` `✓` and `fail` `✗`. The spinner is braille, `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`.
+The keys (`jump_key`, `accept_key`, `useful_key`, `noise_key`, `teach_key`) are mapped only while there is something for them
+to act on, and only where you have no mapping of your own; `listen_key` is mapped from the start, also only where it is free. The keys you have used are kept in
+`stdpath('state')/pair/keys.json`, so their first-use hints stop for good. The glyphs are plain Unicode, so they show in any font:
+`voice` `●`, `idea` `◇`, `mark` `▎`, `held` `•`, `away` `◌`, `wheel` `◎`, `listen` `◉`, `pass` `✓` and `fail` `✗`. The spinner is braille, `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`.
 
 For the statusline, `require('pair').status()` is plain text and `require('pair').statusline()` the same with
 Pair's highlight groups, for the `statusline` option or a statusline plugin's section:

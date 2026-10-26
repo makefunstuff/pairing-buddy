@@ -12,6 +12,7 @@ const HELP = `/goal <text>   set the session goal
 /drive [what]  hand Pair the wheel for one change (or say "you take it" or "your turn")
 +  or /useful  Pair's last remark was useful
 -  or /noise   it was not (a remark you never see counts as not useful too)
+?  or /why     the one idea worth keeping behind what Pair said last
 /end           end the session and write a session note
 /quit          close this pane (the session goes on)
 anything else  ask Pair`;
@@ -34,6 +35,7 @@ export function parseInput(line) {
   if (command === '/end') return {type: 'end'};
   if (text === '+' || command === '/useful') return {type: 'feedback', useful: true};
   if (text === '-' || command === '/noise') return {type: 'feedback', useful: false};
+  if (text === '?' || command === '/why') return {type: 'teach'};
   if (command === '/quit') return {local: 'quit'};
   if (command.startsWith('/')) return {local: 'help'};
   if (HAND_OVER.test(text)) return {type: 'drive', text};

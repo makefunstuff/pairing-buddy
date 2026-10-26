@@ -31,6 +31,10 @@ const CASES = [
   '\t\t{"shift past 63 bits", 64, time.Minute},',
 ].join('\n');
 
+// The teach scene's words are a real model's, from one run of the live tone test on the same project, unedited.
+const REMARK = 'table.c:35 divides size_t by size_t, so `t->len / t->cap` is always 0 and the table never grows; at load 0.98 linear probing blows past 3 probes.';
+const TEACHING = 'When both operands of `/` are integers, C truncates the result, so a ratio test like that is 0 or 1 — cast to `double` to get the intended fraction.\nhttps://en.cppreference.com/w/c/language/operator_arithmetic';
+
 export const scenes = {
   // 01: the delivery test is red; you open backoff.go and change the shift. Pair reads, and says why not.
   'wrong-turn': {
@@ -102,6 +106,20 @@ export const scenes = {
       {when: /one retry too early/, wait: 500, call: ['read', {file: 'internal/delivery/worker.go'}]},
       {wait: 1200, call: ['point', {file: 'internal/delivery/worker.go', line: 35, note: '7s + 8s = 15s: still inside the budget', code: '>='}]},
       {wait: 200, say: 'attempt 5 would wait 8s after 7s: exactly the 15s budget, and `>=` gives up on it. `>` lets it run.'},
+    ],
+  },
+  // Teach on request, in a C project with a Makefile: make run fails twice, Pair says why under your line, and
+  // Alt-? asks for the idea behind it. The keys say what they do, since this Neovim has never used them.
+  teach: {
+    project: '../../test/live/probe',
+    build: ['make', '-s', 'probe'],
+    goal: 'the table keeps the average probe under 3',
+    watcher: score('repeated_error'),
+    partner: [
+      {when: /make run/, wait: 1200, call: ['read', {file: 'table.c'}]},
+      {wait: 1300, call: ['point', {file: 'table.c', line: 35, note: 'size_t/size_t: always 0, never grows', code: 't->len / t->cap > 0.7'}]},
+      {wait: 200, say: REMARK},
+      {when: /\[teach\]/, wait: 2200, say: TEACHING},
     ],
   },
   // The same hand-over, taken back with a key while Pair types.

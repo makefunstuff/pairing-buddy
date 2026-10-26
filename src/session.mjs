@@ -16,6 +16,7 @@ import {TestRuns} from './test-runs.mjs';
 import {currentTrail, trailMatches, trailSummary} from './trail.mjs';
 import {detectTriggers} from './triggers.mjs';
 import {tuning, WINDOW_MS} from './tuning.mjs';
+import {KEEP, splitTeaching, teachInput} from './tone.mjs';
 
 const SILENT = /^\W*silent\W*$/i;
 // "…so no drift here — SILENT.": a model that explains its SILENT still means silence.
@@ -47,7 +48,7 @@ const CHECKS = {
 };
 
 export function watchInput(trigger, description) {
-  return `[watch] ${trigger.kind}: ${trigger.detail}\n\nNow:\n${description}\n\n${CHECKS[trigger.kind]} If no remark would help, answer exactly SILENT.`;
+  return `[watch] ${trigger.kind}: ${trigger.detail}\n\nNow:\n${description}\n\n${CHECKS[trigger.kind]} ${KEEP.remark} If no remark would help, answer exactly SILENT.`;
 }
 
 /**
@@ -194,6 +195,7 @@ export class PairSession {
     this.handback = null; // that edit's lines and how the tests went on them: {file, line, endLine, tests}
     this.remarkId = null; // the stored remark of the running unasked turn
     this.lastRemark = null; // the last remark that reached the user: what feedback without an id rates
+    this.lastWords = null; // what Pair said in its last turn that said anything: what a teach request without words is about
     this.tickedAt = null;
     this.activeMs = 0; // active time not yet stored
     this.activeAt = 0; // when active time was last counted: what it is stored under
@@ -461,7 +463,7 @@ export class PairSession {
       return '';
     }
     await this.yieldRemark();
-    await this.talk(`[user] ${text}${await this.selected(selection)}\n\nNow:\n${describeState(this.state, this.now())}`);
+    await this.talk(`[user] ${text}${await this.selected(selection)}\n\nNow:\n${describeState(this.state, this.now())}\n\n${KEEP.answer}`);
     return this.words.join('\n');
   }
 
@@ -494,6 +496,7 @@ export class PairSession {
         this.words.push(answer);
         this.spoke = true;
       }
+      if (this.words.length) this.lastWords = this.words.join('\n');
     } catch (error) {
       // A remark nobody asked for fails quietly: the statusline already says that the model is down.
       if (this.unasked) this.log(`remark failed: ${error.message}`);
@@ -592,6 +595,27 @@ export class PairSession {
     // hook refused edit and type with a reason; a tool that vanished mid-answer leaves small models writing
     // the call as plain text, and the user sees nothing.
     await this.configurePartner(this.role);
+  }
+
+  /**
+   * The user asks for the idea behind Pair's words (the teach key in Neovim, ? in the chat): `said` is what showed
+   * under their line, else what Pair said last. The answer goes to the chat, and to the editor to show under those
+   * words, with its link apart; an editor that asked always hears back, with no text when there is none.
+   */
+  async teach(said = this.lastWords, remark = null) {
+    if (remark) this.seen(remark); // asking about a remark answers it, like going where it points
+    const answer = async () => {
+      if (!said) return this.message('system', 'Pair has said nothing yet to explain.');
+      await this.yieldRemark();
+      if (this.busy) return this.message('system', 'Pair is still answering; ask again once it is done.');
+      this.message('user', 'why?');
+      const lastWords = this.lastWords;
+      await this.talk(teachInput(said));
+      const teaching = this.words.join('\n');
+      this.lastWords = lastWords; // asking again is about the same words, not about this answer
+      return teaching;
+    };
+    this.notify('editor', {type: 'teaching', ...splitTeaching((await answer()) || '')});
   }
 
   /** Gives the Partner `role`'s tools and instructions, with the last session's note to start from. */
