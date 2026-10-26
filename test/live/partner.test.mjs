@@ -174,6 +174,17 @@ test('no webhook is delivered twice', async () => {
 });
 `;
 
+/** The project's tests, run for real: `{ok, output}`. */
+function nodeTest(root) {
+  // Without this, node --test in the project thinks it runs inside this test file and skips its tests.
+  const {NODE_TEST_CONTEXT, ...env} = process.env;
+  try {
+    return {ok: true, output: execFileSync('node', ['--test'], {cwd: root, env, encoding: 'utf8'})};
+  } catch (error) {
+    return {ok: false, output: error.stdout};
+  }
+}
+
 /** The project after the user's fix of the worker, the real red run of its tests, and the regression trigger's input. */
 function regression() {
   const root = mkdtempSync(join(tmpdir(), 'pair-live-'));
@@ -185,11 +196,7 @@ function regression() {
   writeFileSync(join(root, 'src', 'queue.js'), QUEUE);
   writeFileSync(join(root, 'test', 'worker.test.js'), workerTest(15));
   writeFileSync(join(root, 'test', 'queue.test.js'), QUEUE_TEST);
-  // Without this, node --test in the project thinks it runs inside this test file and skips its tests.
-  const {NODE_TEST_CONTEXT, ...env} = process.env;
-  let output = '';
-  try { execFileSync('node', ['--test'], {cwd: root, env, encoding: 'utf8'}); } catch (error) { output = error.stdout; }
-  const tests = parseTestOutput(output);
+  const tests = parseTestOutput(nodeTest(root).output);
   assert.deepEqual(tests.failed, ['no webhook is delivered twice'], 'the queue test fails for real');
   const now = 1_000_000;
   const state = [
@@ -264,8 +271,14 @@ describe('Partner on live models', {skip: stacks.length ? false : SKIP_REASON}, 
       t.diagnostic(`answer: ${answer}`);
       const fix = calls.find(call => call.name === 'suggest');
       assert.ok(fix, 'it suggests a change');
-      assert.ok(fix.args.file.endsWith('queue.js') && fix.args.line <= 4 && fix.args.endLine >= 4, 'the lease\'s ttl in the queue, not the worker or the test');
-      assert.match(fix.args.text, /ttl = budgetMs \+ attemptTimeoutMs|ttl = attemptTimeoutMs \+ budgetMs/, 'the lease outlives the last attempt');
+      assert.equal(fix.args.file.replace(/^\.\//, ''), 'src/queue.js', 'in the queue, not the worker the user fixed or a test');
+      // Accepted, the suggestion makes every test pass: the queue's and the worker's the user's change was for.
+      const path = join(root, fix.args.file);
+      const lines = readFileSync(path, 'utf8').split('\n');
+      lines.splice(fix.args.line - 1, fix.args.endLine - fix.args.line + 1, ...fix.args.text.replace(/\n$/, '').split('\n'));
+      writeFileSync(path, lines.join('\n'));
+      const after = nodeTest(root);
+      assert.ok(after.ok, `the tests pass with the fix:\n${after.output}`);
       assert.doesNotMatch(answer, /^\W*silent\W*$/i);
     });
 

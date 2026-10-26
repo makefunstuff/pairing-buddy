@@ -54,8 +54,9 @@ the test you are working on, 10 if your change broke something elsewhere.
 The Partner reads the failing test, the code it tests and your change, and finds how the change breaks it. It is
 told that you made the change for a reason, often another test, so its fix has to keep that working: it undoes your
 change only if it is plainly wrong. If a small change fixes it, it calls `suggest`, else it points at the cause, and
-says why in one or two sentences. Like the wrong turn, the check thinks at least `low` when its model can: in live
-runs without thinking, a fast model undid the user's fix about one time in three. In Neovim the words show under your
+says why in one or two sentences. Before it was told to keep your change, a fast model in live runs undid the
+user's fix about one time in three. Like the wrong turn, the check thinks at least `low` when its model can. The
+live test accepts any fix that makes all the project's tests pass, and checks that by running them. In Neovim the words show under your
 line, and `Alt-j` goes to the suggestion, where `Alt-y` takes it.
 
 A model's thinking counts toward its `maxTokens`, so a Partner with `"reasoning": true` gets 8192 by default instead
