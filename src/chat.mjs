@@ -12,7 +12,7 @@ const HELP = `/goal <text>   set the session goal
 /drive [what]  hand Pair the wheel for one change (or say "you take it" or "your turn")
 +  or /useful  Pair's last remark was useful
 -  or /noise   it was not (a remark you never see counts as not useful too)
-/end           end the session and write a session note
+/end           end the session now and write a session note (it also ends by itself)
 /quit          close this pane (the session goes on)
 anything else  ask Pair`;
 
@@ -117,7 +117,7 @@ export function runChat(socketPath) {
     const echo = message.sender === 'user' && !message.history;
     if (message.type === 'message' && !echo) say(message.sender, message.text);
     if (message.type === 'ended') {
-      say('system', 'session ended');
+      say('system', `session ended${message.why ? ` by itself: ${message.why}` : ''}`);
       hello(false); // starts the next session, which asks for its goal
     }
   }
