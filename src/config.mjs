@@ -32,7 +32,7 @@ export function modelConfig(role, entry) {
   return {
     baseUrl: entry.api === 'anthropic' ? 'https://api.anthropic.com' : undefined,
     contextWindow: 32768,
-    maxTokens: role === 'watcher' ? 200 : 2048,
+    maxTokens: 2048, // the Partner's; the Watcher answers with one number (see watcher.mjs)
     reasoning: false,
     thinking: 'off',
     ...entry,

@@ -83,7 +83,7 @@ new_code_diagnostic        1       0.2       1          0        0  100%       6
 stall                      1       0.2       0          0        0     -       6
 drift                      5       0.8       0          2        3    0%  8 (+2)
 
-Budget at level normal: at most 5 remarks per hour, 5 min 20 s apart (the level's default: 6, 4 min)
+Budget at level normal: at most 5 remarks per hour, 4 min apart (the level's default: 6, 3 min)
 Tuning follows your verdicts of the last 30 days: a trigger needs 5 of them to move its bar, the budget 10.
 ```
 
