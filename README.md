@@ -17,7 +17,7 @@ Runtime: a long-lived daemon on [pi-durable](https://www.npmjs.com/package/@eare
 with a small local model deciding when a remark is worth making and a larger
 local or cloud model doing the reasoning.
 
-Status: **v0.6, Navigator, Scout and Driver, with inline suggestions; installed once, then always running; remembers the last session per project and learns from your feedback when to talk; a Watcher that answers in well under a second on local models.** Voice comes later.
+Status: **v0.6, Navigator, Scout and Driver, with inline suggestions; installed once, then always running; remembers the last session per project and learns from your feedback when to talk; a Watcher that scores each moment with one number, in under a second on the local models it was tested with.** Voice comes later.
 
 ## How it works
 
@@ -147,7 +147,7 @@ Other settings: `level` (`quiet`, `normal` or `chatty`), `autoTune` (your feedba
 
 Tips for local models:
 
-- The Watcher runs on every candidate remark and should answer in well under a second: it gets a few lines and answers with one number, so a mid-sized model is fast enough. Keep `reasoning: true` for models that think by default, so thinking gets switched off.
+- The Watcher runs on every candidate remark and should answer in under a second: it gets a few lines (under 200 tokens) and answers with one number, so a mid-sized model is fast enough on a fast server. A server with a high fixed cost per request may still take close to a second; `pair doctor` shows the time. Keep `reasoning: true` for models that think by default, so thinking gets switched off.
 - A server that keeps only one model loaded at a time (llama.cpp's router mode, for example) reloads on every switch between two models. There, give both roles the same model. With two models on such a server, the Watcher uses the Partner's model while only that one is loaded, if the server says which models are loaded; otherwise it swaps on every remark.
 - If the server's default temperature is high, give the Partner `"samplingParams": {"temperature": 0.3}`: its yes-or-no calls (speak or stay SILENT) get much steadier. The Watcher always runs at temperature 0.
 - The prompts and tools are deliberately simple (five tools as Navigator, seven as Scout, nine as Driver, flat arguments, one instruction per message), so mid-sized local models handle them. The command policy, the limit of four commands per question and the one edit per hand-over are in code, so a model that loops or asks for too much cannot do harm. Thinking is off by default for both roles; turn it on for the Partner with `thinking` if your model needs it.
@@ -306,4 +306,6 @@ Without `PAIR_LIVE_CONFIG` (or a gitignored `test/live/config.json`) the live te
 - Memory is the last session's note only, per project; the conversations before it are not searched.
 - Feedback goes to the last unasked remark (or the one whose suggestion you accept or dismiss); an older one cannot be rated. The chat's `+`/`-` after a daemon restart has no last remark until Pair makes a new one.
 - Tuning is one set of bars and one budget for all projects, and active time counts keys, edits and commands, not reading.
+- The Anthropic path (`"api": "anthropic"`) is wired, and `test/live/cloud.test.mjs` tests it, but it has not been run against the real API yet.
+- The Watcher's speed depends on the server more than on Pair: tested local servers answered in 0.3 to 0.95 s, the slowest of them close to the 1 s aim.
 - The prefilter's drift rule matches the words of a file's path, not its meaning: a file whose path has a word of the goal is taken as on-goal without asking the Watcher, even when it is unrelated; an on-goal file with no word in common goes to the Watcher.

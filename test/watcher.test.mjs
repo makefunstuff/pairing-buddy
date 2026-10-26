@@ -58,7 +58,7 @@ test('the Watcher asks for a short answer, a drift question of its own, and the 
   await score({kind: 'drift', detail: 'now edits src/billing.mjs'}, initialState({goal: 'fix reconnect'}));
   assert.ok(seen[0].maxTokens <= 8);
   assert.doesNotMatch(seen[0].prompt, /unrelated/);
-  assert.match(seen[1].prompt, /src\/billing\.mjs\nScore how clearly this file is unrelated to the goal/);
+  assert.match(seen[1].prompt, /src\/billing\.mjs\nScore how clearly this file is unrelated to the goal "fix reconnect"/);
   assert.equal(chosen, 2);
 
   assert.equal(score.lastCallAt, 5000);

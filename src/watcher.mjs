@@ -9,8 +9,9 @@ Answer with one number.`;
 
 // What to score, for triggers where "would they want a remark" is the wrong question: models then score how
 // important the work is, not whether it drifted.
+// The question names the goal again: right next to it, mid-sized models judge the file far more reliably.
 const QUESTIONS = {
-  drift: 'Score how clearly this file is unrelated to the goal: 0 if it could be part of it, 10 if it is plainly other work.',
+  drift: state => `Score how clearly this file is unrelated to the goal "${state.goal}": 0 if it could be part of it, 10 if it is plainly other work.`,
 };
 
 const MAX_TOKENS = 8; // a number, with room for a model that wraps it in a word or two
@@ -47,7 +48,7 @@ export function createWatcher({models, model, chooseModel = async () => model, n
   };
 
   async function score(trigger, state) {
-    const question = QUESTIONS[trigger.kind] ? `\n${QUESTIONS[trigger.kind]}` : '';
+    const question = QUESTIONS[trigger.kind] ? `\n${QUESTIONS[trigger.kind](state)}` : '';
     const message = await ask(`${describeBriefly(state, now())}\n\nWhat just happened (${trigger.kind}): ${trigger.detail}${question}`, MAX_TOKENS);
     const text = message.content.filter(block => block.type === 'text').map(block => block.text).join('');
     const parsed = parseScore(text);

@@ -27,7 +27,8 @@ Paths are split into words at slashes, dots, underscores and camelCase. A path w
 
 - The Watcher sees a few lines: the goal, the current file and cursor, where you are looking, your last keystroke, and what just happened. The Partner gets the full picture only once the gate lets the remark through.
 - It answers with the score alone, a single number, and may write at most 8 tokens. A JSON answer with a reason took about ten times as many tokens, and on a local server every token written adds to the wait.
-- Drift gets a question of its own: how clearly the file you now edit is unrelated to the goal. Asked whether you would want a remark, models score how important the work is instead.
+- Drift gets a question of its own: how clearly the file you now edit is unrelated to the goal, with the goal named in the question. Asked whether you would want a remark, models score how important the work is instead.
+- A smaller Watcher model than the Partner's is faster, but small models tend to judge drift badly (scoring it 0 or 1), and on a server that keeps one model loaded every swap costs far more than it saves. One mid-sized model for both roles is the tested setup.
 - Drift is checked once for each file you move into (and again on another branch), right when you start editing it, not once every ten minutes.
 
 ## Keep-warm
