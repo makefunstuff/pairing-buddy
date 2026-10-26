@@ -160,11 +160,17 @@ Each model entry:
 | `model` | The model id the server expects |
 | `apiKey`, `apiKeyFile`, `apiKeyEnv` | Where the key comes from: inline, a file, or an environment variable. A local server without a key needs none. The service does not see your shell's variables: with `apiKeyEnv`, add it with `systemctl --user edit pairing-buddy` (`[Service]` and `Environment=NAME=value`), or use `apiKeyFile` |
 | `contextWindow` | Tokens the server serves for this model (default 32768); Pair compacts the conversation before it fills up |
-| `maxTokens` | The Partner's longest answer, its thinking included (default 2048, or 8192 with `reasoning`); the Watcher always answers with one number |
-| `reasoning` | `true` for a model that thinks by default, so Pair can switch its thinking off (default `false`) |
-| `thinking` | The Partner's thinking level when `reasoning` is on: `off` (default), `low`, `medium`, `high`. The checks of a wrong turn and of a regression always think at least `low` |
+| `maxTokens` | The Partner's longest answer, its thinking included (default 2048 plus room for its most thinking: 10240 with the default levels); the Watcher always answers with one number |
+| `reasoning` | Whether Pair sets the model's thinking. The Partner's default is `true`, so it thinks as `thinking` says; set `false` for a model that cannot think. The Watcher's default is `false`: set `true` for a model that thinks by default, so Pair can switch its thinking off |
+| `thinking` | The Partner only: how much it thinks, `off`, `minimal`, `low`, `medium`, `high` or `xhigh`. One level for every turn, or levels by kind of turn: `navigator` (answers to your questions), `scout`, `driver` and `remark` (what it says unasked). Default `{"navigator": "medium", "scout": "medium", "driver": "medium", "remark": "low"}` |
 | `samplingParams` | Extra sampling fields sent with each request to an OpenAI-compatible server, for example `{"temperature": 0.3}` when the server's default is high |
 | `compat` | OpenAI-compatibility flags passed to pi-ai (see its "OpenAI Compatibility Settings"), for example `thinkingFormat` for a model whose chat template has a thinking switch |
+
+The Partner thinks before it answers, and the Watcher never does: the Watcher only scores, on every candidate
+remark, so it must stay under a second; the Partner's words are what you act on, and a few seconds of thinking make
+them right far more often (a remark may come a little later; that is fine). `"thinking": {"remark": "medium"}` lets
+remarks think more, `"thinking": "off"` switches it off everywhere. `pair doctor` checks that the Partner does think,
+and that the Watcher does not. See [docs/watcher.md](docs/watcher.md#thinking-the-partner-not-the-watcher).
 
 Other settings: `level` (`quiet`, `normal` or `chatty`), `autoTune` (your feedback tunes the bars and budget, default `true`; see [Memory and feedback](#memory-and-feedback)), `keepWarm` (while you work, ask the Watcher's model for one token every 4 min so a server that unloads idle models keeps it loaded; default `true` for an `openai` Watcher, `false` for an `anthropic` one; see [docs/watcher.md](docs/watcher.md)), `typingPauseMs` (how long after a keystroke you count as typing, default 2000), `socket` and `dataDir`.
 
@@ -173,7 +179,7 @@ Tips for local models:
 - The Watcher runs on every candidate remark and should answer in under a second: it gets a few lines (under 200 tokens) and answers with one number, so a mid-sized model is fast enough on a fast server. A server with a high fixed cost per request may still take close to a second; `pair doctor` shows the time. Keep `reasoning: true` for models that think by default, so thinking gets switched off.
 - A server that keeps only one model loaded at a time (llama.cpp's router mode, for example) reloads on every switch between two models. There, give both roles the same model. With two models on such a server, the Watcher uses the Partner's model while only that one is loaded, if the server says which models are loaded; otherwise it swaps on every remark.
 - If the server's default temperature is high, give the Partner `"samplingParams": {"temperature": 0.3}`: its yes-or-no calls (speak or stay SILENT) get much steadier. The Watcher always runs at temperature 0.
-- The prompts and tools are deliberately simple (five tools as Navigator, seven as Scout, nine as Driver, flat arguments, one instruction per message), so mid-sized local models handle them. The command policy, the limit of four commands per question and the one edit per hand-over are in code, so a model that loops or asks for too much cannot do harm. Thinking is off by default for both roles; turn it on for the Partner with `thinking` if your model needs it.
+- The prompts and tools are deliberately simple (five tools as Navigator, seven as Scout, nine as Driver, flat arguments, one instruction per message), so mid-sized local models handle them. The command policy, the limit of four commands per question and the one edit per hand-over are in code, so a model that loops or asks for too much cannot do harm. A model that has a thinking switch in its chat template needs `compat.thinkingFormat` on an OpenAI-compatible server, or Pair cannot set it: `pair doctor` says when the Partner answers without thinking, or the Watcher thinks anyway.
 
 ## Tests on save
 
@@ -243,7 +249,7 @@ Commands:
 | `:Pair end` | End the session; Pair writes a short session note, which the next session in this project starts from |
 | `:Pair stop` | Disconnect this Neovim, and stop reconnecting |
 
-For a statusline, `require('pair').status()` returns one quiet segment while connected: `● pair`, with the role and talk level only when they are not the usual ones (`● pair · scout`, `● pair · quiet`), `● reading worker.go` while Pair reads, `⠹ go test ./...`, `✗ 1 failing · TestX` or `✓ go test ./... · 4 tests, 3 packages` for the [tests on save](#tests-on-save) (with `(unsaved)` after the command for the run on the Driver's edit), and `◎ pair has the wheel · any key takes it back` while it drives. It says `◌ pair · partner down` (or `models down`) while a model is down, `◌ pair · reconnecting` while the daemon is away, and is empty when the plugin is not connected. `require('pair').statusline()` is the same with Pair's highlight groups, for the `statusline` option or a statusline plugin's section.
+For a statusline, `require('pair').status()` returns one quiet segment while connected: `● pair`, with the role and talk level only when they are not the usual ones (`● pair · scout`, `● pair · quiet`), `● reading worker.go` while Pair reads, `⠹ pair · thinking` while it thinks, `⠹ go test ./...`, `✗ 1 failing · TestX` or `✓ go test ./... · 4 tests, 3 packages` for the [tests on save](#tests-on-save) (with `(unsaved)` after the command for the run on the Driver's edit), and `◎ pair has the wheel · any key takes it back` while it drives (`· thinking` while it thinks). It says `◌ pair · partner down` (or `models down`) while a model is down, `◌ pair · reconnecting` while the daemon is away, and is empty when the plugin is not connected. `require('pair').statusline()` is the same with Pair's highlight groups, for the `statusline` option or a statusline plugin's section.
 
 Highlight groups (`PairAccent`, `PairNote`, `PairCode`, `PairKey`, `PairSign`, `PairPoint`, `PairSpan`, `PairGaze`, `PairSuggestDelete`, `PairSuggestAdd`, `PairStatus`, `PairStatusDim`, `PairStatusWarn`, `PairStatusPass`, `PairPass`, `PairFail`, `PairFailNote`) are made from your colorscheme's colours and defined only where your colorscheme or config has not defined them; the [table in docs/neovim.md](docs/neovim.md#highlight-groups) says what each one colours.
 

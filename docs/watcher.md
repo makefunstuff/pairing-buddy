@@ -38,7 +38,7 @@ Paths are split into words at slashes, dots, underscores and camelCase. A path w
 
 The Partner gets the failure and your change, and is told the red run is older than your change. It reads your lines, the failing test and the code it tests, and traces the test through the code as it is now, with the real numbers. If the trace passes (your change was the fix), or it is not sure, it answers SILENT. Only when the trace still fails somewhere else does it point there, with the few characters it means as `code` (an operator, a name), and say why in one or two sentences.
 
-For this check the Partner thinks first: if its model can think (`"reasoning": true`), the turn runs with thinking at least `low`, whatever `thinking` says, and as configured again afterwards. Without it, a fast model traced the test wrongly and told users to change code that already passed; with it, it stayed silent in every live run where the edit was the fix, and still found the real cause when it was not. In Neovim its words show under your edit and `Alt-j` goes to the point ([docs/neovim.md](neovim.md#the-wrong-turn)).
+The Partner thinks first, as for every remark (below). Without thinking, a fast model traced the test wrongly and told users to change code that already passed; with it, it stayed silent in every live run where the edit was the fix, and still found the real cause when it was not. In Neovim its words show under your edit and `Alt-j` goes to the point ([docs/neovim.md](neovim.md#the-wrong-turn)).
 
 ## Regressions
 
@@ -56,12 +56,10 @@ The Partner reads the failing test, the code it tests and your change, and finds
 told that you made the change for a reason, often another test, so its fix has to keep that working: it undoes your
 change only if it is plainly wrong. If a small change fixes it, it calls `suggest`, else it points at the cause, and
 says why in one or two sentences. Before it was told to keep your change, a fast model in live runs undid the
-user's fix about one time in three. Like the wrong turn, the check thinks at least `low` when its model can. The
+user's fix about one time in three. Like every remark, the check thinks first. The
 live test accepts any fix that makes all the project's tests pass, and checks that by running them. In Neovim the words show under your
 line, and `Alt-j` goes to the suggestion, where `Alt-y` takes it.
 
-A model's thinking counts toward its `maxTokens`, so a Partner with `"reasoning": true` gets 8192 by default instead
-of 2048: with 2048, the thinking for these checks used up the answer in two live runs of five, and Pair said nothing.
 
 ## Keep-warm
 
@@ -74,6 +72,41 @@ Many local servers unload a model that has not been asked for a few minutes, and
 Some servers keep only one model in memory and swap on request (a llama.cpp router with one model at a time, or a model switcher in front of a single-model server). With two different models for the Watcher and the Partner on such a server, every remark would swap twice: once for the Watcher's score and once for the Partner's words.
 
 The simple fix is one model for both roles: a mid-sized model answers the Watcher's short question fast enough. If you configure two models on one server anyway, Pair avoids the swaps where the server says which models it has loaded (its `/models` list then marks each one loaded or not): while only the Partner's model is loaded, the Watcher scores with that one. When the Watcher's own model is loaded, or none is, or the server does not say, the Watcher uses its own. The daemon's log says when the Watcher switches. The health probe follows the same choice, so it does not swap models either.
+
+## Thinking: the Partner, not the Watcher
+
+The Watcher only scores. It runs on every candidate remark, answers with one number in at most 8 tokens, and must stay
+under a second; thinking would make it many times slower and leave no room for the number. Pair never asks it to
+think: with `"reasoning": true` on its entry, Pair switches its thinking off, and `pair doctor` warns when the
+Watcher's model thinks anyway (a model that thinks by default, on a server whose thinking switch Pair does not know).
+Keep-warm and the time it takes are as they were.
+
+The Partner's words are what you act on, so it thinks before it answers, in every role:
+
+| Kind of turn | Default | Key in `thinking` |
+| --- | --- | --- |
+| An answer to your question, as Navigator | `medium` | `navigator` |
+| A Scout investigation | `medium` | `scout` |
+| A Driver change | `medium` | `driver` |
+| A remark nobody asked for | `low` | `remark` |
+
+A remark may come a few seconds later than it would without thinking; the Watcher has already decided it is worth
+saying, and a wrong remark costs you more than the wait. `"thinking": "high"` makes every turn think more,
+`"thinking": {"remark": "medium"}` only remarks, and `"thinking": "off"` switches it off: an explicit choice, never
+the default. Off, the wrong turn and the regression checks trace the code badly (above).
+
+- **Room for it.** Thinking counts toward `maxTokens`, so the Partner's default is 2048 for the answer plus the
+  thinking budget of its highest level (8192 for `medium`, 16384 for `high`). With too little, the thinking uses up
+  the answer and Pair says nothing.
+- **Time for it.** While the Partner thinks, the model may take up to four minutes to start its reply instead of 90
+  seconds, for servers that send nothing until the thinking is done.
+- **Models that cannot switch it.** With `"reasoning": false` Pair sends no thinking level, and the model thinks as
+  it always does. On an OpenAI-compatible server a model whose chat template has a thinking switch needs
+  `compat.thinkingFormat` (for example `"qwen-chat-template"`); without it Pair cannot set the level.
+  `pair doctor` asks the Partner a short sum with thinking on and says when it answered without thinking, or failed
+  because the model cannot think.
+- **What you see.** While a turn that thinks runs, the Neovim statusline spins `⠹ pair · thinking` (or
+  `◎ pair has the wheel · thinking` as Driver), and goes back to rest with the answer, or silence.
 
 ## Measuring it
 
