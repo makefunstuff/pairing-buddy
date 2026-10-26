@@ -4,6 +4,7 @@
 // later, after other edits too: Neovim merges the undo into the buffer as it is now (see lua/pair/merge.lua).
 
 const OUTPUT_CHARS = 20_000; // of a command's output, the ledger keeps the end
+export const DETAIL_KEPT_MS = 7 * 24 * 60 * 60_000; // what entries open to (outputs, edits' text) is kept this long
 const TEXT_CHARS = 120; // of the words on one line of the list
 
 /** How a kind of entry reads in the list. */
@@ -32,7 +33,7 @@ export class Ledger {
   /** Books into `store` for session `sessionId`; `changed()` hears of each new or changed entry. */
   constructor({store, sessionId, changed = () => {}, now = Date.now}) {
     Object.assign(this, {store, sessionId, changed, now});
-    this.last = null; // the entry booked last: {id, kind, text}
+    this.last = null; // the entry booked last: {id, kind, text, data}
   }
 
   /**
@@ -40,13 +41,16 @@ export class Ledger {
    * result, remark, answer, undo), `detail` what the entry opens to. Reads in a row are one entry. Returns its id.
    */
   add(kind, text, {data = {}, detail = null} = {}) {
-    if (kind === 'read' && this.last?.kind === 'read') {
-      if (!this.last.text.split(', ').includes(text)) this.last.text = `${this.last.text}, ${text}`;
-      this.update(this.last.id, {text: this.last.text, data});
-      return this.last.id;
+    const {last} = this;
+    if (kind === 'read' && last?.kind === 'read') {
+      if (!last.text.split(', ').includes(text)) last.text = `${last.text}, ${text}`;
+      last.data = {...last.data, ...data};
+      this.store.updateAction(last.id, {text: last.text, data: last.data});
+      this.changed();
+      return last.id;
     }
     const id = this.store.addAction({sessionId: this.sessionId, at: this.now(), kind, text: firstLine(text), data, detail});
-    this.last = {id, kind, text: firstLine(text)};
+    this.last = {id, kind, text: firstLine(text), data};
     this.changed();
     return id;
   }

@@ -125,6 +125,8 @@ export function openStore(path) {
     actions: (root, since) => db.prepare(`SELECT a.id, a.at, a.kind, a.text, a.data, a.detail IS NOT NULL AS more, a.state, r.verdict
       FROM actions a JOIN sessions s ON s.id = a.session_id LEFT JOIN remarks r ON r.id = json_extract(a.data, '$.remark')
       WHERE s.root = ? AND a.at >= ? ORDER BY a.id`).all(root, since).map(row => ({...row, data: JSON.parse(row.data), more: !!row.more})),
+    /** Forgets what the actions before `before` open to: outputs and edits' text are the bulk of the store. */
+    forgetActionDetails: before => db.prepare('UPDATE actions SET detail = NULL WHERE at < ? AND detail IS NOT NULL').run(before),
     /** The verdicts on the remarks made in `root` since `since`. */
     verdicts: (root, since) => db.prepare('SELECT r.verdict FROM remarks r JOIN sessions s ON s.id = r.session_id WHERE s.root = ? AND r.at >= ?')
       .all(root, since).map(row => row.verdict),

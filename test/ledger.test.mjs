@@ -193,4 +193,8 @@ test('today starts at local midnight; runs of one command with one result are on
   ]);
   assert.deepEqual(ledgerText(today(store, '/elsewhere', NOON)), ['Pair has done nothing here today.']);
   assert.deepEqual(ledgerRows([]), []);
+
+  store.forgetActionDetails(NOON + 1);
+  assert.equal(ledgerDetail(store, '/p', listed.rows[0].ids), null, 'what an old entry opened to is forgotten; the entry stays');
+  assert.equal(today(store, '/p', NOON).rows.length, 2);
 });

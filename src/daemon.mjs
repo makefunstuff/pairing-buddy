@@ -9,6 +9,7 @@ import {gitBranch, gitRoot} from './git.mjs';
 import {ModelHealth} from './health.mjs';
 import {PaneWatch} from './herdr.mjs';
 import {followLoaded, shareServer} from './loaded-model.mjs';
+import {DETAIL_KEPT_MS} from './ledger.mjs';
 import {createPairModels} from './models.mjs';
 import {acquireOwner} from './owner.mjs';
 import {openPartner} from './partner.mjs';
@@ -46,6 +47,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
   mkdirSync(join(config.dataDir, 'runs'), {recursive: true}); // the output of the tests run on save, one file per session
   const owner = acquireOwner(config.dataDir);
   const store = openStore(join(config.dataDir, 'sessions.sqlite'));
+  store.forgetActionDetails(Date.now() - DETAIL_KEPT_MS);
   const sessions = new Map(); // root -> Promise<PairSession>
   const live = new Map(); // root -> PairSession, once loaded
   const watches = new Map(); // root -> PaneWatch

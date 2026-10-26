@@ -9,7 +9,7 @@ import {PairSession} from '../src/session.mjs';
 function session({score = async () => ({value: 9, reason: 'worth it'}), answer = 'Line 2 is off.'} = {}) {
   const asked = [];
   const sent = [];
-  const store = {addMessage() {}, addAction: () => 1, setGoal() {}, setLevel() {}, endSession() {}, addRemark: () => 1, dropRemark() {}};
+  const store = {addMessage() {}, addAction: () => 1, updateAction() {}, setGoal() {}, setLevel() {}, endSession() {}, addRemark: () => 1, dropRemark() {}};
   const partner = {thinkingOf: () => 'off', ask: async (_id, input) => { asked.push(input); return answer; }};
   const pair = new PairSession({
     record: {id: 1, root: '/project', conversation_id: 7, goal: 'fix it', level: 'normal'},
@@ -67,7 +67,7 @@ test('an unasked remark that arrives while the user types again waits for their 
   const sent = [];
   const pair = new PairSession({
     record: {id: 1, root: process.cwd(), conversation_id: 7, goal: 'fix it', level: 'normal'},
-    store: {addMessage() {}, addAction: () => 1, addRemark: () => 1, dropRemark() {}},
+    store: {addMessage() {}, addAction: () => 1, updateAction() {}, addRemark: () => 1, dropRemark() {}},
     // The Partner takes 6 s; the user types again half a second before it answers.
     partner: {thinkingOf: () => 'off', ask: async () => {
       clock += 5500;
@@ -125,7 +125,7 @@ function scoutSession({results = {}, chat = true} = {}) {
   };
   const pair = new PairSession({
     record: {id: 1, root: process.cwd(), conversation_id: 7, goal: 'fix it', level: 'normal', role: 'scout'},
-    store: {addMessage() {}, addAction: () => 1, setRole: (_id, role) => roles.push(role)},
+    store: {addMessage() {}, addAction: () => 1, updateAction() {}, setRole: (_id, role) => roles.push(role)},
     partner: {thinkingOf: () => 'off', ask: async () => 'ok', setRole: async () => {}},
     score: async () => ({value: 9, reason: 'worth it'}),
     typingPauseMs: 2000,
@@ -255,7 +255,7 @@ function driverSession({turn = async () => 'ok', editor = true, role = 'navigato
   const toolsOf = []; // the roles whose tools the conversation was given, in order
   const pair = new PairSession({
     record: {id: 1, root: process.cwd(), conversation_id: 7, goal: 'fix it', level: 'normal', role},
-    store: {addMessage() {}, addAction: () => 1, setRole: (_id, stored) => roles.push(stored)},
+    store: {addMessage() {}, addAction: () => 1, updateAction() {}, setRole: (_id, stored) => roles.push(stored)},
     partner: {thinkingOf: () => 'off', ask: async (_id, input) => turn(pair, input), setRole: async (_id, given) => { toolsOf.push(given); }},
     score: async () => ({value: 9, reason: 'worth it'}),
     typingPauseMs: 2000,
@@ -440,7 +440,7 @@ test('drift the budget holds back is judged once the budget allows, if the user 
   const logged = [];
   const pair = new PairSession({
     record: {id: 1, root: '/project', conversation_id: 7, goal: 'fix reconnect after sleep', level: 'normal'},
-    store: {addMessage() {}, addAction: () => 1, addRemark: () => 1, dropRemark() {}},
+    store: {addMessage() {}, addAction: () => 1, updateAction() {}, addRemark: () => 1, dropRemark() {}},
     partner: {thinkingOf: () => 'off', ask: async () => 'SILENT'},
     score: async trigger => { scored.push(trigger.kind); return {value: 2}; },
     typingPauseMs: 2000, notify: () => 1, requestEditor: async () => null, now: () => clock, log: line => logged.push(line),
@@ -462,7 +462,7 @@ test('after a new goal, a file judged under the old one is judged again', async 
   const scored = [];
   const pair = new PairSession({
     record: {id: 1, root: '/project', conversation_id: 7, goal: 'fix rounding in billing totals', level: 'normal'},
-    store: {addMessage() {}, addAction: () => 1, setGoal() {}, addRemark: () => 1, dropRemark() {}},
+    store: {addMessage() {}, addAction: () => 1, updateAction() {}, setGoal() {}, addRemark: () => 1, dropRemark() {}},
     partner: {thinkingOf: () => 'off', ask: async () => 'SILENT'},
     score: async trigger => { scored.push(trigger.kind); return {value: 2}; },
     typingPauseMs: 2000, notify: () => 1, requestEditor: async () => null, now: () => clock,
@@ -507,7 +507,7 @@ function saveSession({partner = {thinkingOf: () => 'off', ask: async () => 'SILE
   };
   const pair = new PairSession({
     record: {id: 1, root, conversation_id: 7, goal: 'totals', level: 'normal'},
-    store: {addMessage() {}, addAction: () => 1, setRole() {}, addRemark: () => 1, dropRemark() {}},
+    store: {addMessage() {}, addAction: () => 1, updateAction() {}, setRole() {}, addRemark: () => 1, dropRemark() {}},
     partner,
     score: async () => ({value: 9, reason: 'worth it'}),
     typingPauseMs: 2000,

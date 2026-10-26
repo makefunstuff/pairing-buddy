@@ -189,7 +189,8 @@ edit was: the disk changes when you `:w`.
 
 The list is today's, from local midnight, across the sessions of this project; the line at the bottom sums it up:
 `11 things · 1 remark, 1 useful · 2 h 10 min` (the active pairing time today). The entries are kept in
-`sessions.sqlite`, with the output of each command (its last 20 000 characters).
+`sessions.sqlite`; what they open to (the output of each command, its last 20 000 characters, and the text before
+and after each edit) for a week.
 
 ## What each thing looks like
 
