@@ -4,7 +4,7 @@ import {mkdtempSync, readFileSync, writeFileSync} from 'node:fs';
 import {homedir, tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {test} from 'node:test';
-import {createConfig, loadConfig, parseConfig, stripComments} from '../src/config.mjs';
+import {createConfig, loadConfig, parseConfig, rolesText, sameModel, stripComments} from '../src/config.mjs';
 
 test('comments are stripped, strings with slashes are kept', () => {
   const text = '{\n  // a comment\n  "url": "http://host/v1", /* another */ "say": "a \\" // not a comment"\n}';
@@ -64,7 +64,38 @@ test('thinking is one level for every turn, or levels for some kinds; off is a c
 test('maxTokens has room for the most thinking a turn does, and the answer after it', () => {
   const partner = entry => parseConfig({models: {watcher: {api: 'anthropic', model: 'w'}, partner: {api: 'anthropic', model: 'p', ...entry}}}).models.partner;
   assert.equal(partner({}).maxTokens, 2048 + 8192, 'medium');
-  assert.equal(partner({thinking: {driver: 'high'}}).maxTokens, 2048 + 16384);
+  assert.equal(partner({thinking: {driver: 'high'}, contextWindow: 65536}).maxTokens, 2048 + 16384);
   assert.equal(partner({thinking: 'off'}).maxTokens, 2048);
   assert.equal(partner({maxTokens: 4000}).maxTokens, 4000);
+});
+
+test('in a small context window the reply takes at most a third, and below the minimum the config says why', () => {
+  const partner = entry => parseConfig({models: {watcher: {api: 'anthropic', model: 'w'}, partner: {api: 'anthropic', model: 'p', ...entry}}}).models.partner;
+  assert.equal(partner({thinking: 'high'}).maxTokens, 10922, 'a third of the default 32768');
+  assert.equal(partner({contextWindow: 16384}).maxTokens, 5461);
+  assert.equal(partner({contextWindow: 16384, thinking: 'off'}).maxTokens, 2048);
+  assert.throws(() => partner({contextWindow: 8192}), /models\.partner\.contextWindow is 8192: the Partner needs at least 16384 tokens/);
+});
+
+test('one model for both roles: "model", or the Watcher "same as partner"; each role asks it its own way', () => {
+  const entry = {api: 'openai', baseUrl: 'http://box/v1', model: 'm', contextWindow: 65536, thinking: 'high', samplingParams: {temperature: 0.3}, compat: {thinkingFormat: 'x'}};
+  const one = parseConfig({model: entry}).models;
+  const same = parseConfig({models: {watcher: 'same as partner', partner: entry}}).models;
+  assert.deepEqual(one, same);
+  assert.equal(sameModel(one.watcher, one.partner), true);
+  assert.deepEqual(one.partner.thinking, {navigator: 'high', scout: 'high', driver: 'high', remark: 'high'});
+  assert.equal(one.partner.maxTokens, 2048 + 16384);
+  assert.equal(one.watcher.reasoning, true, 'marked as a model that thinks, so its thinking is switched off');
+  assert.equal(one.watcher.thinking, undefined);
+  assert.equal(one.watcher.samplingParams, undefined, 'the Watcher runs at temperature 0');
+  assert.equal(one.watcher.maxTokens, 2048);
+  assert.deepEqual(one.watcher.compat, {thinkingFormat: 'x'});
+  assert.equal(parseConfig({model: {...entry, reasoning: false}}).models.watcher.reasoning, false, 'a model that cannot think');
+  assert.equal(rolesText(one), 'one model for both roles: m at http://box/v1');
+  assert.equal(rolesText(parseConfig({models: {watcher: {...entry, model: 'w'}, partner: entry}}).models), 'the Watcher w at http://box/v1, the Partner m at http://box/v1');
+
+  assert.throws(() => parseConfig({model: entry, models: {partner: entry}}), /set "model" \(one model for both roles\) or "models", not both/);
+  assert.throws(() => parseConfig({models: {watcher: 'same', partner: entry}}), /models\.watcher is a model entry, or "same as partner"/);
+  assert.throws(() => parseConfig({model: {api: 'openai', model: 'm'}}), /config: model\.baseUrl is missing/);
+  assert.throws(() => parseConfig({model: {...entry, thinking: 'lots'}}), /config: model\.thinking: "lots" is not one of/);
 });

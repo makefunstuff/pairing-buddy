@@ -17,39 +17,34 @@
   // command. JSON reports (go test -json, jest --json, vitest --reporter=json) also put each test's result on its line.
   // "testOnSave": {"~/src/shop": "go test -json ./..."},
 
-  "models": {
-    // The Watcher scores every candidate remark with one number, so it must be fast: under 1 s per answer.
-    // It never thinks; thinking belongs to the Partner.
-    // On a server that keeps one model in memory, give both roles the same model (or the Watcher uses the
-    // Partner's model whenever only that one is loaded, rather than make the server reload).
-    "watcher": {
-      "api": "openai",                      // "openai" (any OpenAI-compatible server) or "anthropic"
-      "baseUrl": "http://localhost:8080/v1",
-      "model": "your-small-model",
-      "contextWindow": 32768
-      // "reasoning": true,                 // for a model that thinks by default, so Pair can switch it off
-      // "compat": {"thinkingFormat": "..."},  // the thinking switch of its chat template, if it has one (see the README)
-      // "apiKeyEnv": "MY_SERVER_KEY"       // or "apiKey", or "apiKeyFile": "~/.config/my-server.key"
-    },
-
-    // The Partner writes the words and calls the tools, and thinks before it does. One model can serve both roles.
-    "partner": {
-      "api": "openai",
-      "baseUrl": "http://localhost:8080/v1",
-      "model": "your-larger-model",
-      "contextWindow": 65536
-      // How much it thinks, by kind of turn (these are the defaults), or one level for all; "off" switches it off.
-      // Levels: off, minimal, low, medium, high, xhigh. A remark comes a few seconds later; that is fine.
-      // "thinking": {"navigator": "medium", "scout": "medium", "driver": "medium", "remark": "low"},
-      // "reasoning": false,                // for a model that cannot think: Pair then sends it no thinking level
-      // Its chat template's thinking switch, and a server that takes the level as reasoning_effort (without that,
-      // every level is just "on"; `pair doctor` says which it is):
-      // "compat": {"thinkingFormat": "...", "supportsReasoningEffort": true},
-      // "samplingParams": {"temperature": 0.3}   // steadier answers when the server's default is high
-      // A cloud Partner instead:
-      // "api": "anthropic", "model": "your-cloud-model", "apiKeyEnv": "ANTHROPIC_API_KEY"
-    }
+  // One model for both roles: the Watcher asks it for one number without thinking, so it stays fast; the Partner
+  // asks it with thinking. Its server needs to hold only this model, and may answer one request at a time: the
+  // Watcher then waits while the Partner works, and your questions go first.
+  "model": {
+    "api": "openai",                        // "openai" (any OpenAI-compatible server) or "anthropic"
+    "baseUrl": "http://localhost:8080/v1",
+    "model": "your-model",
+    "contextWindow": 32768                  // what the server serves; at least 16384
+    // How much the Partner thinks, by kind of turn (these are the defaults), or one level for all; "off" switches
+    // it off. Levels: off, minimal, low, medium, high, xhigh. A remark comes a few seconds later; that is fine.
+    // "thinking": {"navigator": "medium", "scout": "medium", "driver": "medium", "remark": "low"},
+    // "reasoning": false,                  // for a model that cannot think: Pair then sends it no thinking level
+    // Its chat template's thinking switch, and a server that takes the level as reasoning_effort (without that,
+    // every level is just "on"; `pair doctor` says which it is):
+    // "compat": {"thinkingFormat": "...", "supportsReasoningEffort": true},
+    // "samplingParams": {"temperature": 0.3}, // steadier Partner answers when the server's default is high
+    // "apiKeyEnv": "MY_SERVER_KEY"         // or "apiKey", or "apiKeyFile": "~/.config/my-server.key"
+    // A cloud model instead:
+    // "api": "anthropic", "model": "your-cloud-model", "apiKeyEnv": "ANTHROPIC_API_KEY"
   }
+
+  // Or a model for each role, in place of "model": a small fast Watcher (under 1 s per answer) and a larger
+  // Partner. The Watcher never thinks ("reasoning": true on a model that thinks by default lets Pair switch it off).
+  // "watcher" may also be "same as partner".
+  // "models": {
+  //   "watcher": {"api": "openai", "baseUrl": "http://localhost:8080/v1", "model": "your-small-model", "contextWindow": 32768},
+  //   "partner": {"api": "openai", "baseUrl": "http://localhost:8081/v1", "model": "your-larger-model", "contextWindow": 65536}
+  // }
 
   // Also: "typingPauseMs" (default 2000), "socket" and "dataDir" (see the README).
 }

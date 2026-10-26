@@ -1,15 +1,15 @@
 // The daemon end to end over its socket, with scripted models in place of real ones.
 import assert from 'node:assert/strict';
 import {mkdtempSync, writeFileSync} from 'node:fs';
-import {connect} from 'node:net';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {createModels, fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall} from '@earendil-works/pi-ai';
 import {parseConfig} from '../src/config.mjs';
 import {startDaemon} from '../src/daemon.mjs';
-import {readMessages, requestDaemon, sendMessage} from '../src/protocol.mjs';
+import {requestDaemon} from '../src/protocol.mjs';
 import {openStore} from '../src/store.mjs';
+import {client} from './daemon-client.mjs';
 import {fakeHerdr} from './fake-herdr.mjs';
 
 const answers = async () => ({ok: true}); // the scripted models are not probed
@@ -22,27 +22,6 @@ function scriptedModels(partnerModel) {
   models.setProvider(watcher.provider);
   models.setProvider(partner.provider);
   return {watcher, partner, pairModels: {models, watcher: watcher.getModel(), partner: partner.getModel()}};
-}
-
-/** A socket client that collects what the daemon sends and can wait for a message. */
-function client(socketPath, hello) {
-  const socket = connect(socketPath);
-  const received = [];
-  const waiters = [];
-  readMessages(socket, message => {
-    received.push(message);
-    for (const waiter of [...waiters]) if (waiter.match(message)) { waiters.splice(waiters.indexOf(waiter), 1); waiter.resolve(message); }
-  });
-  socket.on('connect', () => sendMessage(socket, hello));
-  return {
-    received,
-    send: message => sendMessage(socket, message),
-    next: match => new Promise(resolve => {
-      const found = received.find(match);
-      if (found) resolve(found); else waiters.push({match, resolve});
-    }),
-    close: () => socket.destroy(),
-  };
 }
 
 function testConfig(dataDir) {

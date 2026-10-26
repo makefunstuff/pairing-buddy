@@ -38,25 +38,27 @@ export function parseScore(text) {
 }
 
 /**
- * A `score(trigger, state)` for the speak gate. A Watcher that fails or answers nonsense scores 0,
- * so a broken small model keeps Pair quiet instead of noisy; a failure also carries its `error`.
+ * A `score(trigger, state, {signal})` for the speak gate; `signal` cancels the call (see slot.mjs). A Watcher that
+ * fails or answers nonsense scores 0, so a broken small model keeps Pair quiet instead of noisy; a failure also
+ * carries its `error`.
  * `chooseModel()` resolves the model to ask each time (see loaded-model.mjs); by default it is `model`.
  * `score.warm()` sends the same instructions with nothing to judge, so the server keeps the model loaded
  * and its prompt cached; `score.lastCallAt` is when the model was last asked.
  */
 export function createWatcher({models, model, chooseModel = async () => model, now = Date.now, timeoutMs = 10_000}) {
-  const ask = async (content, maxTokens) => {
+  const ask = async (content, maxTokens, signal) => {
     score.lastCallAt = now();
+    const timeout = AbortSignal.timeout(timeoutMs);
     return models.completeSimple(
       await chooseModel(),
       {systemPrompt: SYSTEM, messages: [{role: 'user', content, timestamp: now()}]},
-      {temperature: 0, maxTokens, signal: AbortSignal.timeout(timeoutMs)},
+      {temperature: 0, maxTokens, signal: signal ? AbortSignal.any([signal, timeout]) : timeout},
     ).catch(error => ({content: [], errorMessage: String(error?.message ?? error)}));
   };
 
-  async function score(trigger, state) {
+  async function score(trigger, state, {signal} = {}) {
     const happened = WHAT_HAPPENED[trigger.kind]?.(trigger, state) ?? trigger.detail;
-    const message = await ask(`${describeBriefly(state, now())}\n\nWhat just happened (${trigger.kind}): ${happened}`, MAX_TOKENS);
+    const message = await ask(`${describeBriefly(state, now())}\n\nWhat just happened (${trigger.kind}): ${happened}`, MAX_TOKENS, signal);
     const text = message.content.filter(block => block.type === 'text').map(block => block.text).join('');
     const parsed = parseScore(text);
     if (parsed) return parsed;

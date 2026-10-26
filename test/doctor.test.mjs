@@ -7,9 +7,9 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {createModels, fauxProvider} from '@earendil-works/pi-ai';
-import {loadConfig} from '../src/config.mjs';
+import {loadConfig, parseConfig} from '../src/config.mjs';
 import {startDaemon} from '../src/daemon.mjs';
-import {daemonCheck, doctor, serviceCheck} from '../src/doctor.mjs';
+import {contextCheck, daemonCheck, doctor, rolesCheck, serviceCheck} from '../src/doctor.mjs';
 import {sendMessage} from '../src/protocol.mjs';
 import {VERSION} from '../src/version.mjs';
 
@@ -132,6 +132,42 @@ test('thinking: a model that thinks anyway, one that does not, and levels the se
     thinker.close();
     plain.close();
   }
+});
+
+test('one model: one line checks it, the roles line explains how it serves both, and its thinking is checked', {timeout: 20_000}, async () => {
+  const server = await fakeServer({model: 'one', thinks: true});
+  const dir = mkdtempSync(join(tmpdir(), 'pair-doctor-'));
+  const path = join(dir, 'config.json');
+  writeFileSync(path, JSON.stringify({socket: join(dir, 'pair.sock'), model: {api: 'openai', baseUrl: server.url, model: 'one', reasoning: true, compat: {supportsReasoningEffort: true}}}));
+  try {
+    const checks = await run({path, env: {PATH: ''}, service: installed, nvimPlugin: async () => 'yes'});
+    assert.equal(checks.watcher, undefined);
+    assert.equal(checks.partner, undefined);
+    assert.match(checks.models.text, /^one at http:\/\/127\.0\.0\.1:\d+\/v1 /);
+    assert.equal(checks.roles.level, 'ok');
+    assert.match(checks.roles.text, /^one model serves both: the Watcher asks it for one number without thinking, the Partner thinks/);
+    assert.equal(checks.thinking[0].level, 'ok');
+    assert.equal(checks.context.text, '32768 tokens: 10240 for the Partner\'s reply, the rest for its conversation');
+  } finally {
+    server.close();
+  }
+});
+
+test('the roles line says what the daemon measured, and nudges two models on one server toward one', () => {
+  const one = parseConfig({model: {api: 'openai', baseUrl: 'http://box/v1', model: 'm'}}).models;
+  const slot = {exclusive: true, scores: 12, scoreMedianMs: 640, cancelled: {scores: 1, remarks: 2}};
+  assert.match(rolesCheck(one, slot).text, /\. Since the daemon started: 12 scores, 0\.6 s each \(median\); your questions cancelled 1 score and 2 remarks still at work$/);
+  const two = parseConfig({models: {watcher: {api: 'openai', baseUrl: 'http://box/v1', model: 's'}, partner: {api: 'openai', baseUrl: 'http://box/v1', model: 'm'}}}).models;
+  assert.match(rolesCheck(two, null).text, /^two models on one server: .*give both roles one model \("model" in the config\), so it never reloads$/);
+});
+
+test('the context check says when the reply cannot hold the thinking, and when compaction will come often', () => {
+  const partner = entry => parseConfig({model: {api: 'openai', baseUrl: 'http://box/v1', model: 'm', ...entry}}).models.partner;
+  assert.match(contextCheck(partner({contextWindow: 16384})).text, /^the Partner's reply has room for 5461 tokens, and thinking at "medium" takes up to 10240 with the answer/);
+  assert.equal(contextCheck(partner({contextWindow: 16384})).level, 'warn');
+  const small = contextCheck(partner({contextWindow: 16384, thinking: 'low'}));
+  assert.deepEqual([small.level, small.text], ['warn', '16384 tokens: the Partner\'s conversation is compacted every few turns; 32768 or more works better']);
+  assert.equal(contextCheck(partner({contextWindow: 65536, reasoning: false})).level, 'ok');
 });
 
 test('the service and daemon checks name the fix', () => {

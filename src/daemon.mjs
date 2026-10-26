@@ -4,6 +4,7 @@ import {chmodSync, mkdirSync, unlinkSync} from 'node:fs';
 import {realpath} from 'node:fs/promises';
 import {createServer} from 'node:net';
 import {basename, join, sep} from 'node:path';
+import {sameServer} from './config.mjs';
 import {gitBranch, gitRoot} from './git.mjs';
 import {ModelHealth} from './health.mjs';
 import {PaneWatch} from './herdr.mjs';
@@ -15,6 +16,7 @@ import {probeModel} from './probe.mjs';
 import {readMessages, sendMessage} from './protocol.mjs';
 import {ScoutPane} from './scout-pane.mjs';
 import {PairSession} from './session.mjs';
+import {ModelSlot} from './slot.mjs';
 import {openStore} from './store.mjs';
 import {ROLE_TOOLS, ROLES} from './tools.mjs';
 import {VERSION} from './version.mjs';
@@ -57,6 +59,9 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     ? followLoaded({entries: config.models, watcher: pairModels.watcher, partner: pairModels.partner, log})
     : async () => pairModels.watcher;
   const modelOf = role => (role === 'watcher' ? chooseWatcherModel() : pairModels.partner);
+  // Both roles on one server, which may answer one request at a time: the slot puts their requests in order.
+  const oneServer = sameServer(config.models.watcher, config.models.partner);
+  const slot = new ModelSlot({exclusive: oneServer});
 
   const health = new ModelHealth({
     probe: probe ?? (async role => probeModel(pairModels.models, await modelOf(role))),
@@ -84,6 +89,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     models: pairModels.models,
     model: pairModels.partner,
     thinking: config.models.partner.thinking,
+    backgroundCompaction: !oneServer,
     hands: {
       ...Object.fromEntries(ROLE_TOOLS.driver.map(name => [name, hand(name)])), // the Driver has every tool
       roleOf: conversationId => sessionOfConversation(conversationId)?.role ?? 'navigator',
@@ -91,11 +97,23 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
   });
   const scoreRemark = createWatcher({models: pairModels.models, model: pairModels.watcher, chooseModel: chooseWatcherModel});
   const score = async (trigger, state) => {
-    const result = await scoreRemark(trigger, state);
+    const result = await slot.watch(signal => scoreRemark(trigger, state, {signal}));
+    if (!result) return {deferred: true, reason: 'the Partner has the model'};
     health.report('watcher', result.error);
     return result;
   };
-  const sessionPartner = {...partner, ask: (conversationId, content, options) => reported('partner', partner.ask(conversationId, content, options))};
+  const sessionPartner = {
+    ...partner,
+    cancel: conversationId => slot.cancel(conversationId),
+    ask: (conversationId, content, options) => slot.turn(
+      {
+        conversation: conversationId,
+        asked: options?.kind !== 'remark',
+        cancel: () => partner.cancel(conversationId).catch(error => log(`cancelling a remark failed: ${error.message}`)),
+      },
+      () => reported('partner', partner.ask(conversationId, content, options)),
+    ),
+  };
 
   const clientsOf = (session, role) => [...clients].filter(client => client.session === session && client.role === role);
   /** The Neovims attached to `session`, the one the user used last first. */
@@ -234,6 +252,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
       pid: process.pid,
       startedAt,
       models: health.snapshot(),
+      slot: slot.snapshot(),
       sessions: [...live.values()].map(session => ({
         root: session.root,
         role: session.role,
@@ -295,10 +314,14 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
   await new Promise((resolve, reject) => server.once('error', reject).listen(config.socket, resolve));
   chmodSync(config.socket, 0o600);
 
-  /** Keeps the Watcher's model loaded while someone works, unless it is down: then the health probe checks it. */
+  /**
+   * Keeps the Watcher's model loaded while someone works, unless it is down (then the health probe checks it) or
+   * the Partner is at work on the same server, which keeps it loaded.
+   */
   function keepWarm() {
     const now = Date.now();
     if (!config.keepWarm || now - scoreRemark.lastCallAt < keepWarmMs || !health.ok('watcher')) return;
+    if (slot.exclusive && slot.busy()) return;
     if (![...live.values()].some(session => session.active(now))) return;
     scoreRemark.warm().then(result => health.report('watcher', result.error));
   }
