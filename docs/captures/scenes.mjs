@@ -32,6 +32,29 @@ const CASES = [
   '\t\t{"shift past 63 bits", 64, time.Minute},',
 ].join('\n');
 
+// The board of a day of exploring: four tasks of this project at work and a notes agent, all in their own panes.
+const task = (n, title, state, stage, msg) => ({id: `hashtab/${n}`, title, state, stage, msg});
+const TASKS = [
+  task(21, 'See crashes and compiler errors', 'working', 'working', 'Parsing clang diagnostics'),
+  task(22, 'The exploration loop: read every run', 'working', 'reviewing', 'Under review'),
+  task(24, 'The search trail from Telescope', 'working', 'working', 'Reading the docs'),
+  task(25, 'Context card and no ceremony', 'working', 'after', 'queued after #21'),
+];
+const AGENTS = {
+  tasks: TASKS,
+  files: Object.fromEntries([21, 22, 24, 25].map(n => [`hashtab/${n}`, {worktree: `/work/hashtab-${n}`, link: {pane: `w${n}:p1`}}])),
+  herdr: [
+    ...[21, 22, 24].map(n => ({pane_id: `w${n}:p1`, cwd: `/work/hashtab-${n}`, agent: 'claude', agent_status: 'working'})),
+    {pane_id: 'w3:p1', cwd: '/work/notes', agent: 'pi', agent_status: 'working', terminal_title_stripped: 'tidy the design notes'},
+  ],
+  // While you type: #21 asks you a question, #22 passed its review, and the notes agent finishes.
+  later(herdr, show) {
+    show(TASKS.map(t => (t.id === 'hashtab/21' ? {...t, state: 'blocked', stage: 'asks', msg: 'Should a segfault also name its signal number?'}
+      : t.id === 'hashtab/22' ? {...t, state: 'blocked', stage: 'approval', msg: 'Review: Pass'} : t)));
+    herdr[3].agent_status = 'idle';
+  },
+};
+
 export const scenes = {
   // 01: the delivery test is red; you open backoff.go and change the shift. Pair reads, and says why not.
   'wrong-turn': {
@@ -150,6 +173,14 @@ export const scenes = {
     board: true,
     watcher: score(),
     partner: [],
+  },
+  // Your other agents: their news waits while you type, and comes as one line when you save; :Pair agents has them all.
+  'agents': {
+    project: 'hashtab',
+    goal: 'a faster probe',
+    watcher: score(),
+    partner: [],
+    agents: AGENTS,
   },
   // The same hand-over, taken back with a key while Pair types.
   'take-back': {

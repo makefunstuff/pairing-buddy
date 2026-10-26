@@ -17,8 +17,11 @@ const terminalText = server => new Promise(resolve => {
   execFile('nvim', ['--server', server, '--remote-expr', expr], (error, stdout) => resolve(error ? '' : stdout));
 });
 
-/** Serves the stand-in on `socketPath`: commands in Pair's pane run in `cwd`, and `nvim` is Neovim's server address. */
-export async function standInHerdr(socketPath, {cwd, nvim, log = () => {}}) {
+/**
+ * Serves the stand-in on `socketPath`: commands in Pair's pane run in `cwd`, and `nvim` is Neovim's server address.
+ * `agents` is what agent.list answers: the scene's other agents, changed in place as the scene goes on.
+ */
+export async function standInHerdr(socketPath, {cwd, nvim, agents = [], log = () => {}}) {
   const panes = new Map([['w1:p1', {lines: []}], ['w1:p2', {lines: []}], ['w1:p3', {lines: []}]]);
   let next = 4;
 
@@ -59,6 +62,8 @@ export async function standInHerdr(socketPath, {cwd, nvim, log = () => {}}) {
       }
       return {};
     },
+    'agent.list': () => ({type: 'agent_list', agents}),
+    'agent.focus': ({target}) => { log(`focus ${target}`); return {}; },
     // Neovim runs in w1:p1; every other shell is at its prompt (the shell hook reports the user's commands).
     'pane.process_info': ({pane_id}) => ({process_info: {
       pane_id, shell_pid: 1, foreground_processes: pane_id === 'w1:p1' ? [{pid: 1, name: 'bash'}, {pid: 2, name: 'nvim'}] : [{pid: 1, name: 'bash'}],
@@ -73,5 +78,5 @@ export async function standInHerdr(socketPath, {cwd, nvim, log = () => {}}) {
     }
   }));
   await new Promise(resolve => server.listen(socketPath, resolve));
-  return {close: () => new Promise(resolve => server.close(resolve))};
+  return {agents, close: () => new Promise(resolve => server.close(resolve))};
 }

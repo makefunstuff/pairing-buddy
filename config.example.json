@@ -21,6 +21,11 @@
   // number), and the context card (:Pair context) shows the task. null turns it off; without the command, nothing is read.
   // "board": "herdr-projects",
 
+  // Your other agents: when one needs you, is ready to approve or is done, Pair says so in one line at your next
+  // breakpoint (a save, a run that ended, a stop to look). It reads herdr's agents and the board above, if there is
+  // one. false turns the relay off.
+  // "agents": false,
+
   // What :Pair tasks runs for each task you say yes to, in the project, as a list of words: {title} and {description}
   // are put in as whole words, never through a shell. Without it, the tasks are copied as a Markdown checklist.
   // "taskCommand": ["gh", "issue", "create", "--title", "{title}", "--body", "{description}"],

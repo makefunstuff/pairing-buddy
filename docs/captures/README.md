@@ -18,10 +18,14 @@ recording comes out the same each time.
 - **The project** is [hookd/](hookd/), a small Go webhook service with a retry bug. Each scene starts it at its
   own point. The held thought is in C instead: [ringbuf/](ringbuf/), a ring buffer with a Makefile, and `clangd`
   gives its diagnostics; so is the crash scene: [probe/](probe/), a small C hash table built and run with `make run`
-  and AddressSanitizer. Delight is in C too: [intern/](intern/), a string-interning table and its benchmark. The notes scene adds its design note,
+  and AddressSanitizer. Delight is in C too: [intern/](intern/), a string-interning table and its benchmark; and the
+  agents scene: [hashtab/](hashtab/), another C hash table, timed with `make`. The notes scene adds its design note,
   [notes/dead-letters.md](notes/dead-letters.md), which the tests read too.
 - **No core dumps.** The crash scene crashes a program on purpose. `record.sh` sets the core limit to 1 byte for
   everything it starts, so nothing reaches the machine's crash reporter (see [test/no-core.mjs](../../test/no-core.mjs)).
+- **Your other agents** (the agents scene only): a stand-in board, a script that prints the board's list, with its
+  task files in the scratch directory, and the herdr stand-in's `agent.list`. They move on once you start typing.
+  The other scenes read no board.
 - **Neovim** is clean: [init.lua](init.lua), the ayu colorscheme (fetched at a pinned commit), and scratch XDG
   directories. The search-trail scene also fetches Telescope and plenary at pinned commits; Telescope's history goes
   to the scratch directories too.
@@ -41,6 +45,7 @@ recording comes out the same each time.
 | [push-to-talk](tapes/push-to-talk.tape) | hold `Alt-t`, ask aloud, and Pair answers under your line |
 | [context-card](tapes/context-card.tape) | `:Pair context`, with the goal from the board task, and `x` on a source |
 | [crash](tapes/crash.tape) | a compiler error, a crash and its frame, and a new warning, from `make run` on save |
+| [agents](tapes/agents.tape) | your other agents' news, one line at your next breakpoint, and `:Pair agents` |
 | [notes](tapes/notes.tape) | notes in the margin: the marks, a fixed line, a decision logged, the tasks panel |
 
 ## Recording

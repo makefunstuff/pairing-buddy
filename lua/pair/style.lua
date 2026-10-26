@@ -15,6 +15,7 @@ M.glyphs = {
   fail = '✗', -- a test failed, a build failed, a run crashed
   warn = '△', -- a compiler warning
   listen = '◉', -- it listens while you hold the listen key
+  agents = '◇', -- another agent's news, after Pair's own part of the statusline
   question = '?', -- in a note's margin: a question the note does not answer
   contradiction = '≠', -- two lines that cannot both be true
   code = '→', -- a claim that depends on code: the link goes there
