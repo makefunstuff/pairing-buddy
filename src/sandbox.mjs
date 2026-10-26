@@ -1,12 +1,18 @@
 // The sandbox of Pair's pane, when bubblewrap is there: the disk read-only except the project and the folders the
-// config names, a private /tmp, no network unless allowed, and the sockets that reach your desktop session, herdr
-// or the daemon hidden. The command policy still decides what runs; the sandbox limits what an allowed command does.
+// config names, a private /tmp, no network (name lookups included) unless allowed, and the sockets that reach your
+// desktop session, herdr or the daemon hidden. The command policy still decides what runs; the sandbox limits what an allowed command does.
 import {spawnSync} from 'node:child_process';
 import {existsSync} from 'node:fs';
 
 const BWRAP = 'bwrap';
 // Container daemons run anything they are asked to as root.
 const ROOT_SOCKETS = ['/run/docker.sock', '/run/podman/podman.sock'];
+// Daemons that look names up on the network for a client: without the network, a lookup would still carry data out.
+// The system bus is among them, since systemd-resolved answers lookups there too.
+const LOOKUP_SOCKETS = [
+  '/run/systemd/resolve/io.systemd.Resolve', '/run/systemd/resolve/io.systemd.Resolve.Monitor', '/run/nscd/socket',
+  '/run/avahi-daemon/socket', '/run/dbus/system_bus_socket',
+];
 
 let works;
 
@@ -27,7 +33,8 @@ export function sandboxWords({cwd, writable = [], readable = [], hidden = [], ne
   for (const path of readable.filter(existsSync)) words.push('--ro-bind', path, path);
   for (const path of [cwd, ...writable].filter(existsSync)) words.push('--bind', path, path);
   // Last, so that a writable folder holding one of them does not show it again.
-  for (const path of [...hidden, ...ROOT_SOCKETS].filter(existsSync)) words.push('--ro-bind', '/dev/null', path);
+  const sockets = [...hidden, ...ROOT_SOCKETS, ...(network ? [] : LOOKUP_SOCKETS)];
+  for (const path of sockets.filter(existsSync)) words.push('--ro-bind', '/dev/null', path);
   words.push('--unshare-all', ...(network ? ['--share-net'] : []), '--chdir', cwd);
   return words;
 }

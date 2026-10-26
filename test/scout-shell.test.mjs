@@ -91,7 +91,14 @@ test('the sandbox: the disk read-only, the project and named folders writable, s
   assert.equal(words.includes(join(dir, 'missing')), false, 'a folder that is not there is left out');
   assert.ok(at('--ro-bind', '/dev/null', socket) > at('--bind', dir, dir), 'a socket inside a writable folder stays hidden');
   assert.equal(words.includes('--share-net'), false);
-  assert.ok(sandboxWords({cwd: dir, network: true}).includes('--share-net'));
+  const online = sandboxWords({cwd: dir, network: true});
+  assert.ok(online.includes('--share-net'));
+  // Name lookups through systemd-resolved, nscd, avahi or the system bus would reach the network without it.
+  const resolver = '/run/systemd/resolve/io.systemd.Resolve';
+  if (existsSync(resolver)) {
+    assert.ok(at('--ro-bind', '/dev/null', resolver) > 0, 'without the network, no name lookups either');
+    assert.equal(online.includes(resolver), false, 'with the network, lookups work');
+  }
 });
 
 test('with the rc file the pane has its aliases, functions and environment, and still reads exit codes', async () => {

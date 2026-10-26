@@ -248,10 +248,21 @@ function shellCommand(words, shell) {
   if (shell.functions?.includes(first)) return ask(`${first} is a function from your rc file`);
   if (shell.aliases && Object.hasOwn(shell.aliases, first)) {
     // As in bash, an alias inside its own text stands for the program.
-    const {[first]: text, ...others} = shell.aliases;
-    return commandPolicy([text, ...args.map(shellQuote)].join(' '), {...shell, aliases: others});
+    const {[first]: _, ...others} = shell.aliases;
+    return commandPolicy(aliasLine(words, shell.aliases), {...shell, aliases: others});
   }
   return program(words);
+}
+
+/**
+ * The command line bash runs for `words` that start with an alias: the alias's text, and when that text ends in a
+ * space, the next word through the aliases too (`alias g='git '` makes `g p` run `git` and the alias `p`).
+ */
+function aliasLine([first, ...rest], aliases) {
+  if (!Object.hasOwn(aliases, first)) return [first, ...rest].map(shellQuote).join(' ');
+  const {[first]: text, ...others} = aliases;
+  if (!rest.length) return text;
+  return /\s$/.test(text) ? text + aliasLine(rest, others) : `${text} ${rest.map(shellQuote).join(' ')}`;
 }
 
 function segment(words, shell) {

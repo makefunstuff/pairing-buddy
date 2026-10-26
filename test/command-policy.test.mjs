@@ -103,5 +103,14 @@ test('with the user\'s rc file, an alias is judged by what it stands for and a f
   assert.deepEqual(judge('cat package.json'), {verdict: 'ask', reason: 'cat is a function from your rc file'});
   assert.equal(judge('git status | cat').verdict, 'ask');
   assert.equal(commandPolicy('ls', {unknown: true}).verdict, 'ask', 'without the list, nothing runs at once');
+
+  // An alias ending in a space makes bash expand the next word as an alias too.
+  const chained = command => commandPolicy(command, {aliases: {l: 'ls ', z: '$(touch pwned)', gl: 'git log ', o: '--output=x', g: 'git ', p: 'push', c: 'cat'}, functions: []});
+  assert.equal(chained('l z').verdict, 'ask');
+  assert.equal(chained('gl o').verdict, 'ask');
+  assert.match(chained('g p').reason, /git push changes git history/);
+  assert.equal(chained('g p').verdict, 'refuse');
+  assert.equal(chained('l c').verdict, 'allow', 'the next word that is no alias is a plain word');
+  assert.equal(chained('gl -3').verdict, 'allow');
   assert.equal(commandPolicy('ls').verdict, 'allow', 'without an rc file names mean the programs');
 });

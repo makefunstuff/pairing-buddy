@@ -41,14 +41,14 @@ With `sandbox` at `"auto"` (the default) and bubblewrap (`bwrap`) installed and 
 - The disk is read-only, except the project, the `runs/` folder of the data directory (where the tests on save write their output and their scratch copy) and the `writable` folders. Writing anywhere else fails with "Read-only file system".
 - `/tmp` is a private, empty one: what a command writes there is gone when the pane closes.
 - `XDG_RUNTIME_DIR` is empty, and herdr's socket, the daemon's socket and the docker and podman sockets are hidden: a command cannot type into your panes, ask the daemon, reach your desktop session (D-Bus, Wayland, ssh-agent) or start a container.
-- No network unless `network` is true; the loopback interface is there, so tests that serve on `localhost` still work. Commands see only their own processes (`ps` lists the sandbox's).
+- No network unless `network` is true; the loopback interface is there, so tests that serve on `localhost` still work. Name lookups are off too: the sockets of the daemons that look names up for a program (systemd-resolved, nscd, avahi, and the system D-Bus, where systemd-resolved answers too) are hidden, since a lookup of a made-up name would carry data out. Commands see only their own processes (`ps` lists the sandbox's).
 
 The trade-offs:
 
-- Reading is not limited: a command can still read any file you can, your home included. The policy asks before a command names a path outside the project, but a test or build can read what it likes. With the network off, what it reads can leave only through the output Pair shows the model.
+- Reading is not limited: a command can still read any file you can, your home included. The policy asks before a command names a path outside the project, but a test or build can read what it likes. With the network off, what it reads can leave through the output Pair shows the model, or through a socket on the disk that Pair does not hide and whose daemon reaches the network for its clients.
 - Caches outside the project are read-only unless listed in `writable`: Go and Cargo still build and test, but keep no new build results between runs, so they are slower; `~/.cache` (or `~/.cargo`, `~/.npm`) in `writable` brings that back, and lets a command change what is cached there.
 - Tests that download, or talk to a service on another host, fail with the network off.
-- Other sockets on the disk are not hidden: a command can still connect to one it may write to, such as the system's D-Bus or a database's socket under `/run`.
+- Other sockets on the disk are not hidden: a command can still connect to one it may write to, such as a database's socket under `/run`, or, with `network` true, the system D-Bus.
 - With `network` true, the sandbox shares your network, abstract unix sockets included (some D-Bus and X11 setups use them).
 - Without bubblewrap (other systems, or one that forbids unprivileged namespaces) `"auto"` runs the pane as before, as you, and `pair doctor` warns; `true` makes the pane fail to open rather than run without a sandbox.
 
