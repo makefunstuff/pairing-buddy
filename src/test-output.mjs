@@ -138,8 +138,12 @@ export function parseTestOutput(text = '') {
   return null;
 }
 
+const SOURCE_EXTENSION = String.raw`\.(?:go|[cm]?js|jsx|tsx?|py|rs|rb|java|kt|swift|cs|c|cc|cpp|h|hpp|php|exs?|lua|zig)`;
 // Source files as test runners print them: `worker_test.go:35`, `at test/ws.test.ts:14:28`, `File "test_ws.py"`.
-const SOURCE_FILE = /(?:^|[\s("'\[])(\/?(?:[\w.@-]+\/)*[\w@-][\w.@-]*\.(?:go|[cm]?js|jsx|tsx?|py|rs|rb|java|kt|swift|cs|c|cc|cpp|h|hpp|php|exs?|lua|zig))\b/gm;
+const SOURCE_FILE = new RegExp(String.raw`(?:^|[\s("'\[])(\/?(?:[\w.@-]+\/)*[\w@-][\w.@-]*${SOURCE_EXTENSION})\b`, 'gm');
+
+/** Whether `file` is source code, by its extension. */
+export const isSourceFile = file => new RegExp(`${SOURCE_EXTENSION}$`).test(file);
 
 /** The source files a test run's output names, as written (at most 20). */
 export function namedFiles(text = '') {

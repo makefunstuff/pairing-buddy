@@ -27,9 +27,9 @@ const CHECKS = {
   stall: 'The user seems stuck on this failure. Give one concrete next step.',
   drift: 'Do not help with the goal itself: the only question is whether the file the user now edits belongs to the goal. '
     + 'If it could, answer exactly SILENT. If it is unrelated, that drift is the problem: say in one sentence what drifted.',
-  edit_while_red: 'The user may be fixing the wrong place. Read the lines they just changed, the failing test and the code it tests. '
-    + 'If the failure does not come from their change, point at the real cause (file, line and the exact code) and say in one or two '
-    + 'short sentences why their change is not it. If their change is the right place, answer exactly SILENT.',
+  edit_while_red: 'Check whether the lines the user just changed can cause this failure: read them, the failing test and the code it tests. '
+    + 'If their change is or may be the fix, answer exactly SILENT. Only if the failure clearly comes from somewhere else, point at that '
+    + 'place (file, line, and as code the few characters that are wrong, such as an operator) and say in one or two short sentences why.',
 };
 
 export function watchInput(trigger, description) {

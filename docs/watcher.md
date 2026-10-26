@@ -1,6 +1,6 @@
 # The Watcher: fast and well-judged
 
-Every candidate remark (a failed command you missed, the same error again, a new diagnostic, a stall, drift) goes through the speak gate before the Partner writes a word. The gate asks the Watcher model for a score from 0 to 10, so the Watcher must answer in well under a second, and must not make the Partner's model slower. This page says how Pair keeps it that way.
+Every candidate remark (a failed command you missed, the same error again, a new diagnostic, a stall, drift, the wrong turn) goes through the speak gate before the Partner writes a word. The gate asks the Watcher model for a score from 0 to 10, so the Watcher must answer in well under a second, and must not make the Partner's model slower. This page says how Pair keeps it that way.
 
 ## The order of the gate
 
@@ -28,8 +28,15 @@ Paths are split into words at slashes, dots, underscores and camelCase. A path w
 - The Watcher sees a few lines: the goal, the current file and cursor, where you are looking, your last keystroke, and what just happened. The Partner gets the full picture only once the gate lets the remark through.
 - It answers with the score alone, a single number, and may write at most 8 tokens. A JSON answer with a reason took about ten times as many tokens, and on a local server every token written adds to the wait.
 - Drift gets a question of its own: how clearly the file you now edit is unrelated to the goal, with the goal named in the question. Asked whether you would want a remark, models score how important the work is instead.
+- The wrong turn (`edit_while_red`: you edit, while a test run is red, a source file the failure does not name) gets one too: the Watcher cannot see the code, so it is asked how much a quick check of whether that file can cause the failure would save you, with the files the failure names next to it. Asked how likely the cause is elsewhere, models hedge in the middle of the scale.
 - A smaller Watcher model than the Partner's is faster, but small models tend to judge drift badly (scoring it 0 or 1), and on a server that keeps one model loaded every swap costs far more than it saves. One mid-sized model for both roles is the tested setup.
 - Drift is checked once for each file you move into, right when you start editing it, and again on another branch or after a new goal (`/goal`), not once every ten minutes.
+
+## The wrong turn
+
+`edit_while_red` is raised when the last test run (yours, or Scout's) failed in the last ten minutes, its output names source files, and you then edit a source file it does not name. A test file and the code it tests count as one name: `worker_test.go` and `worker.go`, `test/ws.test.ts` and `src/ws.ts`, `test_ws.py` and `ws.py`. It is raised once per run and file, and not at all once a newer run passed. It is judged before drift, since it is the more specific moment.
+
+The Partner gets the failure and your change, and is asked to read your lines, the failing test and the code it tests. If your change is or may be the fix, it answers SILENT. Only when the failure clearly comes from somewhere else does it point there, with the few characters it means as `code` (an operator, a name), and say why in one or two sentences. In Neovim its words show under your edit and `Alt-j` goes to the point ([docs/neovim.md](neovim.md#the-wrong-turn)).
 
 ## Keep-warm
 

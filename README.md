@@ -7,6 +7,11 @@ only through the same tools you use: it never writes files on its own. Edits
 land unsaved in your buffer as a single undo step; the disk changes only when
 you save.
 
+![In Neovim: Pair reads, says why under your edit, and Alt-j goes to the real cause](docs/images/wrong-turn.gif)
+
+*Pair in Neovim, as shipped: a test is red and you start fixing the wrong file. Pair reads (its gaze crosses the
+line numbers), says why under your edit, and `Alt-j` goes to the real cause. More in [docs/neovim.md](docs/neovim.md).*
+
 **Video tutorial** (3 min 25 s): [how to use pairing-buddy day to day](docs/video/pairing-buddy-tutorial.mp4): install and `pair doctor`, the Neovim plugin, the chat pane in herdr, a question answered with a suggestion, the Watcher's remarks, a model going down, and the config.
 
 Roles:
@@ -19,7 +24,7 @@ Runtime: a long-lived daemon on [pi-durable](https://www.npmjs.com/package/@eare
 with a small local model deciding when a remark is worth making and a larger
 local or cloud model doing the reasoning.
 
-Status: **v0.6, Navigator, Scout and Driver, with inline suggestions; installed once, then always running; remembers the last session per project and learns from your feedback when to talk; a Watcher that scores each moment with one number, in under a second on the local models it was tested with.** Voice comes later.
+Status: **v0.7, Navigator, Scout and Driver, with inline suggestions; installed once, then always running; remembers the last session per project and learns from your feedback when to talk; a Watcher that scores each moment with one number, in under a second on the local models it was tested with; in Neovim, a quiet visual language in your colorscheme's colours, and a pair that stops a wrong turn.** Voice comes later.
 
 ## How it works
 
@@ -33,11 +38,11 @@ herdr panes ────┘   → triggers → speak gate + budget        │
 ```
 
 - **Senses.** The Neovim plugin sends edits (about 2 s after you stop typing), the current file, cursor, selection and LSP diagnostics. The daemon watches your herdr panes for focus, commands and their output. The optional shell hook adds exit codes. Test output is parsed (cargo, go test, jest, vitest, pytest, `node --test`): which tests failed and the first error line.
-- **When it speaks.** A remark can come from: a failed command you are not looking at, the same error a second time, an error diagnostic in code you just wrote after you moved on, a stall after a failure, or editing a file that looks unrelated to the session goal. A failed test run counts as failed even without an exit code, the same failing test twice is the same error, and the remark names the failed tests and the first error. A direct question in the chat is always answered.
+- **When it speaks.** A remark can come from: a failed command you are not looking at, the same error a second time, an error diagnostic in code you just wrote after you moved on, a stall after a failure, editing a file that looks unrelated to the session goal, or the wrong turn: editing, while a test is red, a source file the failure does not name (a test and the code it tests, like `worker_test.go` and `worker.go`, count as one). A failed test run counts as failed even without an exit code, the same failing test twice is the same error, and the remark names the failed tests and the first error. A direct question in the chat is always answered.
 - **The gate.** For anything unasked, cheap rules first drop what is plainly noise (a `grep` that finds nothing, a command you stopped, editing a file whose path shares a word with the goal), then the Watcher scores the moment from 0 to 10 with a single number. Only scores above the talk level's bar reach the Partner, and the budget limits how often Pair speaks ([details](docs/watcher.md)). Pair never speaks while you type in Neovim or the chat pane: a remark that is ready while you type waits for your next pause.
-- **Hands.** As Navigator, the Partner has five tools: `say` (chat message), `point` (highlight lines with a short note in Neovim), `open` (show a file in a split, asking first while you type), `read` (read a file as the editor has it, or list a directory) and `suggest` (show a change as an inline diff that you accept with one key or ignore). As Scout it also has `search` (ripgrep) and `run` (one command line), both typed and run in Pair's own herdr pane, where you see everything; their results go back to the model. As Driver, which Pair is only while you hand it the wheel, it also has `edit` (one change in your buffer, one undo step) and `type` (one line into your terminal, after your yes, without Enter). The lists are enforced in code: each conversation is offered only its role's tools, and a `beforeTool` policy refuses any other name. Nothing in the daemon writes your files or saves buffers, and nothing is typed into your own panes except the Driver's `type`.
+- **Hands.** As Navigator, the Partner has five tools: `say` (chat message), `point` (mark lines in Neovim with a short note and the code it means; `Alt-j` goes there), `open` (show a file in a split, asking first while you type), `read` (read a file as the editor has it, or list a directory; Neovim shows where it reads) and `suggest` (show a change in place that you accept with one key or ignore). As Scout it also has `search` (ripgrep) and `run` (one command line), both typed and run in Pair's own herdr pane, where you see everything; their results go back to the model. As Driver, which Pair is only while you hand it the wheel, it also has `edit` (one change in your buffer, one undo step) and `type` (one line into your terminal, after your yes, without Enter). The lists are enforced in code: each conversation is offered only its role's tools, and a `beforeTool` policy refuses any other name. Nothing in the daemon writes your files or saves buffers, and nothing is typed into your own panes except the Driver's `type`.
 - **Memory.** Each project gets one long-lived Partner conversation, stored in SQLite by pi-durable, so a restart of the daemon keeps the session, its chat and its context. When a session ends, Pair writes a short note (goal, what changed, loose ends), and the next session in that project starts from it ([details](docs/memory.md)).
-- **Feedback.** Every unasked remark can get your verdict, useful or noise, with one key in Neovim or `+`/`-` in the chat; a remark you ignore counts as noise. Your verdicts tune each trigger's bar and the speak budget within fixed bounds, and `pair stats` shows the numbers.
+- **Feedback.** Every unasked remark can get your verdict, useful or noise, with one key in Neovim or `+`/`-` in the chat. Editing on after a remark counts as having seen it, neither useful nor noise; a remark you never see counts as noise. Your verdicts tune each trigger's bar and the speak budget within fixed bounds, and `pair stats` shows the numbers.
 
 ## Roles
 
@@ -51,7 +56,7 @@ Pair has one role at a time. It shows in the chat pane's prompt and in Neovim's 
 
 Switching to Scout opens Pair's pane below the chat pane; switching back closes it. The role is kept with the session, also across a daemon restart; the Driver role is not, since it lasts one answer.
 
-In every role Pair can **suggest** a change: the old lines are marked in your buffer and the new ones appear below them as ghost text, with a note. `Alt-y` (`<M-y>`, or `:Pair accept`) applies it as your own change; editing those lines yourself, `:Pair dismiss`, or the next suggestion drops it. Nothing changes until you accept.
+In every role Pair can **suggest** a change: the old lines are struck through in your buffer, from their first character, and the new ones appear right under them, with a note. `Alt-y` (`<M-y>`, or `:Pair accept`) applies it as your own change; editing those lines yourself, `:Pair dismiss`, or the next suggestion drops it. Nothing changes until you accept.
 
 **Driving** ([details](docs/driver.md)): hand over with `:Pair drive [what to do]` in Neovim, `/drive [what to do]` in the chat, or a chat line that is "you take it" or "your turn", alone or followed by punctuation and a request (`you take it: set the timeout to 30 s`; "your turn to explain ..." stays a question). Pair becomes the Driver for that one answer:
 
@@ -158,7 +163,9 @@ Tips for local models:
 
 The lazy.nvim spec is in [Install](#install). Without a plugin manager: `vim.opt.rtp:append('/path/to/pairing-buddy')` and `require('pair').setup({auto_connect = true})` in your config.
 
-Options for `setup`: `socket` (default: the daemon's default socket), `debounce_ms` (2000), `max_points` (highlights kept at once, 5), `accept_key` (accepts a suggestion; mapped in Normal mode, only in the buffer and only while a suggestion shows; default `'<M-y>'`, `false` for none; avoid `<Tab>`, which terminals send for Ctrl-I, the jumplist's forward jump), `useful_key` and `noise_key` (your verdict on Pair's last unasked remark; mapped in Normal mode only while a remark waits for one, and only where you have no mapping of your own; defaults `'<M-u>'` and `'<M-n>'`, `false` for none), `auto_connect` (connect at startup, `false`; the spec above sets it).
+What Pair shows in Neovim, and how it looks, is in **[docs/neovim.md](docs/neovim.md)**: its words under the line you are on, which fade in and go with your next edit; its gaze in the line numbers while it reads; the lines it points at, and `Alt-j` to go there; suggestions; and one accent colour taken from your colorscheme, in light and dark.
+
+Options for `setup`: `socket` (default: the daemon's default socket), `debounce_ms` (2000), `max_points` (points kept at once, 5), `jump_key` (goes where Pair pointed last; mapped in Normal mode while it points somewhere, only where you have no mapping of your own; default `'<M-j>'`, `false` for none), `accept_key` (accepts a suggestion; mapped in Normal mode, only in the buffer and only while a suggestion shows; default `'<M-y>'`, `false` for none; avoid `<Tab>`, which terminals send for Ctrl-I, the jumplist's forward jump), `useful_key` and `noise_key` (your verdict on Pair's last unasked remark; mapped in Normal mode only while a remark waits for one, and only where you have no mapping of your own; defaults `'<M-u>'` and `'<M-n>'`, `false` for none), `motion` (fades and the sweeping gaze, `true`), `glyphs` (Pair's marks, plain Unicode by default; see [docs/neovim.md](docs/neovim.md#setup)), `auto_connect` (connect at startup, `false`; the spec above sets it).
 
 Once connected, the plugin stays connected: when the daemon restarts (an upgrade, `systemctl --user restart`, a crash), it reconnects by itself, after 1, 2, 5, 10 and then every 30 seconds, and sends the current file again. `:Pair stop` disconnects for good.
 
@@ -168,23 +175,24 @@ Commands:
 | --- | --- |
 | `:Pair start [goal]` | Connect to the daemon (not needed with `auto_connect`), optionally setting the session goal |
 | `:Pair goal <text>` | Set the session goal |
-| `:Pair ask <text>` | Ask Pair something (the answer appears in the chat pane) |
+| `:Pair ask <text>` | Ask Pair something (the answer appears in the chat pane); with a range (`:'<,'>Pair ask ...`), about those lines |
 | `:Pair level quiet\|normal\|chatty` | How often Pair speaks unasked |
 | `:Pair scout` | Switch to Scout: Pair may search and run commands in its own pane |
 | `:Pair navigate` | Switch back to Navigator (the default) |
-| `:Pair drive [what]` | Hand Pair the wheel for one change; any key takes it back |
+| `:Pair drive [what]` | Hand Pair the wheel for one change; any key takes it back. With a range, for those lines |
+| `:Pair jump` | Go where Pair pointed last (same as `Alt-j`); `Ctrl-O` comes back |
 | `:Pair accept` | Accept Pair's suggestion (same as the accept key); for a suggestion in an unasked remark, that rates the remark useful |
 | `:Pair dismiss` | Drop Pair's suggestion; for a suggestion in an unasked remark, that rates the remark not useful |
 | `:Pair useful` | Pair's last unasked remark was useful (same as `Alt-u`) |
 | `:Pair noise` | It was not (same as `Alt-n`) |
 | `:Pair open` | Open the place Pair asked to show while you were typing |
-| `:Pair clear` | Remove Pair's highlights |
+| `:Pair clear` | Remove Pair's points and words |
 | `:Pair end` | End the session; Pair writes a short session note, which the next session in this project starts from |
 | `:Pair stop` | Disconnect this Neovim, and stop reconnecting |
 
-For a statusline, `require('pair').status()` returns the role and talk level while connected, for example `Pair: scout · normal`, or `Pair: driver · normal` while Pair has the wheel. It adds a warning while a model is down (`Pair: navigator · normal · partner down`, or `· models down`), says `Pair: reconnecting` while the daemon is away, and is empty when the plugin is not connected.
+For a statusline, `require('pair').status()` returns one quiet segment while connected: `● pair`, with the role and talk level only when they are not the usual ones (`● pair · scout`, `● pair · quiet`), `● reading worker.go` while Pair reads, and `◎ pair has the wheel · any key takes it back` while it drives. It says `◌ pair · partner down` (or `models down`) while a model is down, `◌ pair · reconnecting` while the daemon is away, and is empty when the plugin is not connected. `require('pair').statusline()` is the same with Pair's highlight groups, for the `statusline` option or a statusline plugin's section.
 
-Highlight groups, all linked by default: `PairPoint` (`Visual`), `PairNote` (`DiagnosticVirtualTextInfo`), `PairSuggestDelete` (`DiffDelete`, the lines a suggestion replaces) and `PairSuggestAdd` (`DiffAdd`, its new lines).
+Highlight groups (`PairAccent`, `PairNote`, `PairCode`, `PairKey`, `PairSign`, `PairPoint`, `PairSpan`, `PairGaze`, `PairSuggestDelete`, `PairSuggestAdd`, `PairStatus`, `PairStatusDim`, `PairStatusWarn`) are made from your colorscheme's colours and defined only where your colorscheme or config has not defined them; the [table in docs/neovim.md](docs/neovim.md#highlight-groups) says what each one colours.
 
 ## Start a session in herdr
 
@@ -217,7 +225,7 @@ Other commands: `pair stats` shows how often Pair spoke unasked and what you mad
 ```
 ✓ config   ~/.config/pairing-buddy/config.json
 ✓ service  starts at login, running
-✓ daemon   version 0.6.0, up 42 min, 2 sessions
+✓ daemon   version 0.7.0, up 42 min, 2 sessions
 ✓ plugin   your Neovim config loads it
 ✓ neovim   2 connected, in shop, blog
 ✓ herdr    answers in 3 ms, 4 panes in this workspace
@@ -262,7 +270,7 @@ Answers to your own questions do not count against the budget. With `autoTune` o
 Details in [docs/memory.md](docs/memory.md).
 
 - **Session note.** `/end` (or `:Pair end`) asks the Partner for a note of at most six lines: the goal, what changed (it gets `git status` for that) and the loose ends. The next session in the same project shows it in the chat ("Last time: …") and gives it to the Partner, which uses it when you ask about the last session and does not bring it up otherwise. A failed note is not kept; the next session then starts from the last good one.
-- **Feedback.** After each unasked remark the chat shows `+ useful  - noise`. Answer with `+` or `-` in the chat, or `Alt-u` or `Alt-n` in Neovim. Accepting a remark's suggestion counts as useful, `:Pair dismiss` as noise. A remark with no verdict after ten minutes counts as ignored, which is noise too.
+- **Feedback.** After each unasked remark the chat shows `+ useful  - noise`. Answer with `+` or `-` in the chat, or `Alt-u` or `Alt-n` in Neovim. Accepting a remark's suggestion counts as useful, `:Pair dismiss` as noise. Editing on after a remark in Neovim (which takes its words away) or going where it points counts as seen: neither useful nor noise. A remark with no verdict and never seen after ten minutes counts as ignored, which is noise too.
 - **Tuning.** Over the verdicts of the last 30 days (at most the last 20 per trigger), a trigger that is mostly noise needs a higher Watcher score (up to +2), one that is mostly useful a lower one (−1); a trigger needs 5 verdicts first. With 10 verdicts in all, the budget shrinks to half or grows to one and a half times the level's. Bars stay between 3 and 9, so no trigger is silenced for good. `"autoTune": false` keeps the level's defaults.
 - **`pair stats`** (`--days N`, default 7) shows active pairing time, remarks per hour, and useful, dismissed and ignored per trigger, with each trigger's bar and the budget as tuned now. It reads the data directory, with or without the daemon.
 
@@ -276,13 +284,13 @@ Everything lives in the data directory (default `~/.local/state/pairing-buddy`, 
 npm test
 ```
 
-runs the model-free tests: event folding, triggers, the budget and speak gate, the tool policy per role (including with file-writing tools installed by mistake, and an edit after the wheel was taken back), the command policy, the test-output parsers (on real output of each runner), Pair's pane and role switching against a fake herdr, hand-over and take-back, `type` (only after a yes, only into your terminal pane, never Enter), the daemon end to end with scripted models, the Neovim plugin in a headless Neovim (suggestions accepted and ignored, a Driver edit undone with one `u` and never saved, a key taking the wheel back), and the bash hook. Also the install and daily use: the config with comments and the first run's example, the systemd unit, `pair doctor` against a fake model server (fast, slow, dead, a wrong model name), model health (one notice, no remarks while down, back after a probe), several projects and Neovims at once, and Neovim and the chat pane reconnecting after a daemon restart. And memory and feedback: the note the next session starts from (in the chat and the Partner's instructions, per project, never a failed note), remarks stored with their verdicts (`+`, `Alt-n`, an accepted suggestion), ignored remarks counting as noise, the tuning and its bounds, active time, and `pair stats`. And the Watcher's speed: the prefilter's rules, the one-number answer, drift checked once per file, keep-warm, and the Watcher following the model a one-model server has loaded.
+runs the model-free tests: event folding, triggers, the budget and speak gate, the tool policy per role (including with file-writing tools installed by mistake, and an edit after the wheel was taken back), the command policy, the test-output parsers (on real output of each runner), Pair's pane and role switching against a fake herdr, hand-over and take-back, `type` (only after a yes, only into your terminal pane, never Enter), the daemon end to end with scripted models, the Neovim plugin in a headless Neovim (suggestions accepted and ignored and struck from their first character, a Driver edit undone with one `u` and never saved, a key taking the wheel back, the wrong turn end to end: Pair's words under your line, `Alt-j` to the cause, your next edit counting as seen; a note moving under its line when the window narrows, and a question about selected lines), and the bash hook. Also the install and daily use: the config with comments and the first run's example, the systemd unit, `pair doctor` against a fake model server (fast, slow, dead, a wrong model name), model health (one notice, no remarks while down, back after a probe), several projects and Neovims at once, and Neovim and the chat pane reconnecting after a daemon restart. And memory and feedback: the note the next session starts from (in the chat and the Partner's instructions, per project, never a failed note), remarks stored with their verdicts (`+`, `Alt-n`, an accepted suggestion), ignored remarks counting as noise and seen ones as neither, the tuning and its bounds, active time, and `pair stats`. And the Watcher's speed: the prefilter's rules, the one-number answer, drift checked once per file, keep-warm, and the Watcher following the model a one-model server has loaded. And the wrong turn's trigger: raised once per red run and file, never for the code the failure names, its test, notes, or a run that passed since.
 
 ```sh
 PAIR_LIVE_CONFIG=/path/to/stacks.json npm run test:live
 ```
 
-runs the same decisions against real models: Watcher scores for worth-it and noise moments, the speak gate, the Partner's tool calls (pointing at the right line, staying silent on noise, reading before answering, changing nothing when asked to), Scout (searching to answer "where else", running the tests to say what fails, leaving the commit to you, and the Navigator pointing to `/scout`), the Driver (making a failing test pass after "your turn" without touching the test, making exactly the change asked for, typing the test command without Enter, and the Navigator suggesting instead of editing), and memory (a session note that names the goal, the change and the loose end; the next session answering "what did we leave open?" from it; and the note not turning a noise moment into a remark). It also sends the probe `pair doctor` and the daemon's health check use, and checks that the Watcher answers it within 3 s. And it plays a scripted twelve-minute session (edits, failing tests, a stall, a question, drift) through a real Pair session on a simulated clock, prints it like a transcript, and checks that Pair spoke a few times, on the moments that matter. The Scout and Driver tests work in a scratch project with a local bash in place of the herdr pane; the Driver's editor is played by buffers in memory, and the files on disk must stay as they were. The file lists one or more stacks, each with a `watcher` and a `partner` entry like those in the config:
+runs the same decisions against real models: Watcher scores for worth-it and noise moments, the speak gate, the Partner's tool calls (pointing at the right line, staying silent on noise, reading before answering, changing nothing when asked to, and on a wrong turn pointing at the real cause with its code, or staying silent when your edit is the fix), Scout (searching to answer "where else", running the tests to say what fails, leaving the commit to you, and the Navigator pointing to `/scout`), the Driver (making a failing test pass after "your turn" without touching the test, making exactly the change asked for, typing the test command without Enter, and the Navigator suggesting instead of editing), and memory (a session note that names the goal, the change and the loose end; the next session answering "what did we leave open?" from it; and the note not turning a noise moment into a remark). It also sends the probe `pair doctor` and the daemon's health check use, and checks that the Watcher answers it within 3 s. And it plays a scripted twelve-minute session (edits, failing tests, a stall, a question, drift) through a real Pair session on a simulated clock, prints it like a transcript, and checks that Pair spoke a few times, on the moments that matter. The Scout and Driver tests work in a scratch project with a local bash in place of the herdr pane; the Driver's editor is played by buffers in memory, and the files on disk must stay as they were. The file lists one or more stacks, each with a `watcher` and a `partner` entry like those in the config:
 
 ```json
 {"stacks": [{"name": "local", "watcher": {"api": "openai", "baseUrl": "http://localhost:8080/v1", "model": "your-small-model"}, "partner": {"api": "openai", "baseUrl": "http://localhost:8080/v1", "model": "your-larger-model"}}]}
@@ -290,7 +298,7 @@ runs the same decisions against real models: Watcher scores for worth-it and noi
 
 Without `PAIR_LIVE_CONFIG` (or a gitignored `test/live/config.json`) the live tests are skipped. The Anthropic path has a test of its own, run when `ANTHROPIC_API_KEY` and `PAIR_LIVE_ANTHROPIC_MODEL` are set: the cloud model answers the probe as both roles, scores a repeated failure above the bar, and answers a short question as Partner.
 
-## Known limits of v0.6
+## Known limits of v0.7
 
 - herdr exposes no command boundaries or exit codes; see [docs/herdr.md](docs/herdr.md) for what Pair does instead and what herdr would need.
 - Scout's pane runs `bash` without your rc files (a custom prompt would hide the exit code), so your aliases and shell functions are not there. It reads back at most the last 1000 lines of a command's output.
@@ -302,6 +310,8 @@ Without `PAIR_LIVE_CONFIG` (or a gitignored `test/live/config.json`) the live te
 - Typing in a shell pane does not count as typing: herdr does not report keystrokes. For the same reason, only a key in Neovim takes the wheel back from the Driver; typing in the chat or a shell pane does not.
 - The Driver makes one edit per hand-over, in whole lines. After its answer, Pair is Navigator again, also when you handed over in Scout (Pair's pane then closes).
 - One suggestion shows at a time; a new one replaces it.
+- Pair's words show under your line only for its unasked remarks; answers to your questions are in the chat pane.
+- The gaze shows in line numbers: in a window without them, only the statusline says what Pair reads.
 - `type` needs herdr and goes to the terminal pane you last looked at or ran a command in.
 - Pair's pane runs commands against the files on disk, not your unsaved buffer, so the Driver does not run the tests after its edit: you save and run them.
 - Test output is parsed from what the pane shows: a user's command's output is read from the last 400 lines of its pane.

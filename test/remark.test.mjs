@@ -48,7 +48,7 @@ test('the wrong turn: Pair reads, says why under your line, and points at the re
   await pair.tick();
 
   assert.match(asked[0], /^\[watch\] edit_while_red: The user edits backoff\.go:4-4 while `go test \.\/\.\.\.` is red/);
-  assert.match(asked[0], /point at the real cause \(file, line and the exact code\)/);
+  assert.match(asked[0], /If their change is or may be the fix, answer exactly SILENT/);
   const editor = sent.filter(message => message.via === 'editor');
   assert.deepEqual(editor.map(message => message.type), ['look', 'look', 'point', 'remark']);
   assert.deepEqual(editor.slice(0, 2).map(({file, from, to}) => [file, from, to]), [[join(root, 'backoff.go'), 1, 6], [join(root, 'worker.go'), 3, 5]],

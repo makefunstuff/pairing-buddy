@@ -1,6 +1,6 @@
 // Finds the moments where a remark might help. Pure: the caller passes the clock and the keys already fired.
 import {errorSignature, failed, failureLine} from './fold.mjs';
-import {testSummary} from './test-output.mjs';
+import {isSourceFile, testSummary} from './test-output.mjs';
 
 export const TRIGGER_KINDS = ['failed_command', 'repeated_error', 'new_code_diagnostic', 'stall', 'drift', 'edit_while_red'];
 
@@ -98,7 +98,7 @@ function redTriggers(state, now) {
   const edit = state.edits.at(-1);
   if (!tests?.failedCount || !tests.files?.length || !edit || edit.at <= tests.at || now - tests.at > TIMING.redMs) return [];
   const named = new Set(tests.files.map(fileStem));
-  if (named.has(fileStem(edit.file))) return [];
+  if (!isSourceFile(edit.file) || named.has(fileStem(edit.file))) return []; // notes and docs are no attempt at a fix
   return [{
     kind: 'edit_while_red',
     key: `red:${tests.at}:${edit.file}`,

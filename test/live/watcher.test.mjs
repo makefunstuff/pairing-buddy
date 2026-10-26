@@ -33,6 +33,12 @@ const SCENARIOS = {
       {kind: 'diagnostics', file: 'src/ws.ts', items: [{line: 52, severity: 'error', message: "Cannot find name 'backof'. Did you mean 'backoff'?"}], at: sec(17)},
       {kind: 'cursor', file: 'src/ws.ts', line: 90, at: sec(10)},
     ]),
+    'a wrong turn: editing the backoff while the failure names the worker test': scenario([
+      {kind: 'focus', target: 'terminal', pane: 'w1:p2', at: sec(90)},
+      {kind: 'command_end', pane: 'w1:p2', cmd: 'npm test', exit: 1, at: sec(60),
+        output: '✖ retries five times within the 15 s budget (1.2ms)\n  AssertionError [ERR_ASSERTION]: 4 !== 5\n      at test/worker.test.js:7:10\nℹ tests 1\nℹ fail 1'},
+      {kind: 'edit', file: 'src/backoff.js', from: 4, to: 4, at: sec(20)},
+    ]),
     'a session about reconnects spent editing billing code': scenario([
       {kind: 'branch', name: 'feature/invoices', at: sec(900)},
       {kind: 'edit', file: 'src/billing/invoice.ts', from: 10, to: 40, at: sec(300)},

@@ -133,6 +133,7 @@ test('the wrong turn: editing, while a test is red, a file the failure does not 
     + 'worker_test.go:35: attempts = 4, want 5. The failure names worker_test.go, not internal/retry/backoff.go.');
   assert.deepEqual(kinds(fold(red, edit('internal/delivery/worker.go', 5000)), 6000), [], 'the code under the failing test is where it fails');
   assert.deepEqual(kinds(fold(red, edit('internal/delivery/worker_test.go', 5000)), 6000), [], 'and so is the test itself');
+  assert.deepEqual(kinds(fold(red, edit('docs/retries.md', 5000)), 6000), [], 'notes are no attempt at a fix');
 });
 
 test('a wrong turn needs a red run that names files, an edit after it, and is raised once per run and file', () => {
