@@ -45,7 +45,7 @@ test('a subscription login of a provider Pair knows the terms of names them, wit
   const provider = {...fakeProvider('anthropic'), name: 'Anthropic'};
   const interaction = scripted('oauth');
   await login({id: 'anthropic', credentials: store(), interaction, providers: new Map([[provider.id, provider]])});
-  assert.match(interaction.told[0].message, /^Terms: Anthropic allows a Claude Free\/Pro\/Max login only in Claude Code and its own apps/);
+  assert.match(interaction.told[0].message, /^Terms: Anthropic allows a Claude subscription login \(Free, Pro, Max, Team, Enterprise\) only in Claude Code and its own apps/);
   assert.match(interaction.told[0].links[0].url, /^https:\/\/code\.claude\.com\//);
 });
 

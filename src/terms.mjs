@@ -3,7 +3,7 @@
 
 const TERMS = {
   'anthropic': {
-    note: 'Anthropic allows a Claude Free/Pro/Max login only in Claude Code and its own apps; other tools must use an API key, and Anthropic may block them without notice.',
+    note: 'Anthropic allows a Claude subscription login (Free, Pro, Max, Team, Enterprise) only in Claude Code and its own apps; other tools must use an API key, and Anthropic may block them without notice.',
     url: 'https://code.claude.com/docs/en/legal-and-compliance#authentication-and-credential-use',
   },
   'openai': {
@@ -19,7 +19,7 @@ const TERMS = {
     url: 'https://docs.github.com/en/site-policy/acceptable-use-policies/github-acceptable-use-policies',
   },
   'kimi-coding': {
-    note: 'Kimi Code\'s membership may be used in third-party coding agents for your own programming; a changed client identifier can suspend it.',
+    note: 'Kimi Code\'s plan may be used in other tools only with an API key from the Kimi Code Console; this sign-in is the official client\'s, so choose the API key instead.',
     url: 'https://www.kimi.ai/help/kimi-code/membership-guide',
   },
   'xai': {
