@@ -1,10 +1,11 @@
 // One pairing session: folds its events, decides when Pair speaks and carries out the Partner's tools.
 import {readFile} from 'node:fs/promises';
 import {isAbsolute, relative} from 'node:path';
+import {BlankPage} from './blank-page.mjs';
 import {Budget} from './budget.mjs';
 import {commandPolicy} from './command-policy.mjs';
 import {describeState} from './describe.mjs';
-import {insideRoot, MAX_LINES, numberedLines, projectFile, readProjectPath} from './files.mjs';
+import {insideRoot, MAX_LINES, newProjectFile, numberedLines, projectFile, readProjectPath} from './files.mjs';
 import {fold, initialState} from './fold.mjs';
 import {decide} from './gate.mjs';
 import {gitStatus} from './git.mjs';
@@ -186,6 +187,7 @@ export class PairSession {
     this.testsShown = null;
     this.runError = null; // the last run that could not run, said once in the chat
     this.wasRed = false; // the last run failed
+    this.blankPage = null; // the questions of :Pair new and their slice (see blank-page.mjs)
   }
 
   get id() { return this.record.id; }
@@ -257,7 +259,7 @@ export class PairSession {
   async tick() {
     this.countActive();
     if (this.held.length && !this.typing()) this.held.splice(0).forEach(action => action());
-    if (this.ticking || this.role === 'driver' || !this.health.ok()) return;
+    if (this.ticking || this.role === 'driver' || this.blankPage?.open || !this.health.ok()) return;
     const now = this.now();
     const triggers = detectTriggers(this.state, now, this.fired);
     this.waits = new Map([...this.waits].filter(([key]) => triggers.some(trigger => trigger.key === key)));
@@ -525,6 +527,15 @@ export class PairSession {
     await this.configurePartner(this.role);
   }
 
+  /** :Pair new: one question at a time about `idea`, then the first slice, shown in the note `file` (see blank-page.mjs). */
+  async startNew(idea, file) {
+    const note = (await projectFile(this.root, file)) ?? (await newProjectFile(this.root, file));
+    if (!note) return this.message('system', `Pair keeps its notes inside the project, not in ${file}.`);
+    if (this.blankPage?.open) this.blankPage.close();
+    this.blankPage = new BlankPage({session: this, file: note});
+    await this.blankPage.start(idea);
+  }
+
   /** Gives the Partner `role`'s tools and instructions, with the last session's note to start from. */
   configurePartner(role) {
     return this.partner.setRole(this.conversationId, role, this.previousNote);
@@ -645,12 +656,22 @@ export class PairSession {
   /** Reads a file as the editor has it; the editor shows where Pair reads (its gaze) as it does. */
   async read({file, from, to}) {
     const source = await readProjectPath(this.root, file);
-    if (source.error || source.listing !== undefined) return source.error ?? source.listing;
+    if (source.error) return this.readNew(file, from, to, source.error);
+    if (source.listing !== undefined) return source.listing;
     const path = await projectFile(this.root, file);
     const text = await this.bufferText(path, source.text);
     const first = Math.max(1, from ?? 1);
     this.notify('editor', {type: 'look', file: path, from: first, to: Math.min(text.split('\n').length, to ?? first + MAX_LINES - 1)});
     return numberedLines(text, from, to);
+  }
+
+  /** Reads a file that is only a buffer so far, such as one the Driver typed and the user has not saved. */
+  async readNew(file, from, to, error) {
+    const path = await newProjectFile(this.root, file);
+    if (!path) return error;
+    const buffer = await this.requestEditor({type: 'read', file: path}).catch(() => null);
+    if (typeof buffer?.text === 'string') return numberedLines(buffer.text, from, to);
+    return `${file} does not exist yet. As Driver, an edit of line 1 creates it in the editor; the user saves it.`;
   }
 
   /** The text of the file at `path` as the user sees it: the editor's buffer wins over the disk, unsaved changes included. */
@@ -707,7 +728,8 @@ export class PairSession {
 
   /** The Driver's one change in the user's buffer, as one undo step and unsaved. */
   async edit({file, line, endLine, text}) {
-    const path = await projectFile(this.root, file);
+    // A file not written yet opens as a new buffer: the disk has it once the user saves it.
+    const path = (await projectFile(this.root, file)) ?? (await newProjectFile(this.root, file));
     if (!path) return `No file ${file} in the project`;
     if (endLine < line) return `end_line ${endLine} is before line ${line}`;
     const refused = this.wheel(); // after the await: the user may have taken the wheel back meanwhile

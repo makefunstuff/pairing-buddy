@@ -1,7 +1,7 @@
 // The Lua plugin in a headless Neovim against the daemon, with scripted models. Skips without nvim.
 import assert from 'node:assert/strict';
 import {execFile, execFileSync, spawn} from 'node:child_process';
-import {mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync} from 'node:fs';
 import {connect} from 'node:net';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -527,6 +527,56 @@ test('saving runs the tests: the statusline spins, then names what fails; signs 
     await until(() => status() === '✓ sleep 0.6 && cat report.json · 4 tests, 2 packages', 'the passing run in the statusline');
     await until(() => signs().every(([, sign]) => sign === '✓') && signs().length === 2, 'the signs to turn');
     assert.deepEqual(notes(), []);
+  } finally {
+    await stop();
+  }
+});
+
+test(':Pair new opens the note unsaved, asks one question at a time under your last line, and M-y takes the slice into it', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
+  const {project, partner, remote, keys, lines, status, stop} = await pairInNvim('anything');
+  const virtual = ns => JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('${ns}'), 0, -1, {details = true}))")`))
+    .filter(([, , , details]) => details.virt_lines)
+    .map(([, row, , details]) => [row, details.virt_lines.map(line => line.map(chunk => chunk[0]).join('').trim())]);
+  const slice = {
+    files: [{path: 'Makefile', does: 'make run builds and runs it'}, {path: 'main.c', does: 'the loop and two counters'}],
+    run: 'make run', shows: 'two counters that differ', needs: [], probes: ['sleep in the loop: steps hold', 'step at 30 Hz: watch the dot'],
+    test: 'the accumulator: given dt, the steps and leftover', later: ['the swarm', 'the mouse'],
+  };
+  try {
+    partner.setResponses([
+      fauxAssistantMessage([fauxText('What should the first run show?')]),
+      fauxAssistantMessage([fauxText('Sim steps or wall clock?')]),
+      fauxAssistantMessage([fauxText('What do you want to learn from it?')]),
+      fauxAssistantMessage([fauxText(JSON.stringify(slice))]),
+    ]);
+    keys(':Pair new a small toy in C<CR>');
+    const name = project.split('/').at(-1);
+    await until(() => virtual('pair').length, 'the first question');
+    assert.equal(remote('expand("%:t")'), 'NOTES.md');
+    assert.deepEqual(lines(), [`# ${name}`, '', 'a small toy in C']);
+    assert.deepEqual(virtual('pair'), [[2, ['● What should the first run show?']]], 'under the idea');
+    assert.equal(status(), '● pair · question 1 of a few');
+
+    keys('o- two counters<Esc>');
+    await until(() => status() === '● pair · question 2 of a few', 'the second question');
+    assert.deepEqual(virtual('pair'), [[3, ['● Sim steps or wall clock?']]], 'under the answer, and the first one gone');
+    keys('o- sim steps<Esc>');
+    await until(() => status() === '● pair · question 3 of a few', 'the third question');
+    keys('o- the accumulator<Esc>');
+    await until(() => status() === '● pair · a suggestion', 'the slice');
+    assert.deepEqual(virtual('pair'), [], 'no question left');
+    const [[row, shown]] = virtual('pair_suggest');
+    assert.equal(row, 5, 'under the last answer');
+    assert.deepEqual(shown.slice(0, 4), ['', '## First run', '- `Makefile`: make run builds and runs it', '- `main.c`: the loop and two counters']);
+    assert.equal(shown.at(-1), '● Your three answers as a first slice. Two files, nothing written yet.   M-y takes it into the note');
+
+    keys('<M-y>');
+    await until(() => lines().length > 6, 'the slice in the note');
+    assert.deepEqual(lines().slice(5, 8), ['- the accumulator', '', '## First run']);
+    assert.equal(lines().at(-1), '- the swarm · the mouse');
+    assert.equal(status(), '● pair');
+    assert.equal(remote('&modified'), '1', 'the note is not saved');
+    assert.ok(!existsSync(join(project, 'NOTES.md')), 'and not on disk');
   } finally {
     await stop();
   }

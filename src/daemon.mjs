@@ -292,6 +292,8 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     if (message.type === 'role' && ROLES.includes(message.role)) return session.setRole(message.role);
     if (message.type === 'drive') return session.drive(message.text ?? '', message.selection ?? null);
     if (message.type === 'take_back') return session.takeBack();
+    if (message.type === 'new') return session.startNew(message.idea ?? '', message.file ?? 'NOTES.md');
+    if (message.type === 'answer') return session.blankPage?.answer(message.text ?? '');
     if (message.type === 'confirm') return session.answer(message.id, message.ok === true);
     if (message.type === 'feedback') return session.feedback({useful: message.useful === true, id: message.remark ?? undefined, implicit: message.implicit === true});
     if (message.type === 'seen') return session.seen(message.remark);

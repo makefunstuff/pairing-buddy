@@ -6,6 +6,7 @@
 -- daemon restarts, it reconnects by itself.
 local draw = require('pair.draw')
 local drive = require('pair.drive')
+local blank = require('pair.new')
 local style = require('pair.style')
 
 local M = {}
@@ -250,10 +251,12 @@ local function clear_suggestion()
   if config.accept_key then pcall(vim.keymap.del, 'n', config.accept_key, {buffer = suggestion.buf}) end
 end
 
--- The lines under the suggestion now, which may have moved since it was shown.
+-- The lines under the suggestion now, which may have moved since it was shown. A suggestion to insert lines is
+-- marked on the line they go under.
 local function suggested_range(suggestion)
   local first = draw.row(suggestion.buf, suggestion.ids[1], draw.suggest_ns)
   if not first then return nil end
+  if suggestion.insert then first = first + 1 end
   return first, first + #suggestion.old
 end
 
@@ -287,16 +290,18 @@ local function suggest(message)
   if message.line > count then return vim.notify('Pair: its suggestion is past the end of the buffer, so it was dropped') end
   local first = message.line - 1
   local last = math.max(first, math.min(message.endLine or message.line, count) - 1)
-  local old = vim.api.nvim_buf_get_lines(buf, first, last + 1, false)
+  -- With `insert`, the new lines go under `line` and nothing is struck through: the slice of :Pair new.
+  local old = message.insert and {} or vim.api.nvim_buf_get_lines(buf, first, last + 1, false)
   local new = text_lines(message.text)
   local key = config.accept_key and (config.accept_key:gsub('^<(.*)>$', '%1'))
+  if key and type(message.keyNote) == 'string' then key = key .. ' ' .. message.keyNote end
   if config.accept_key then
     vim.keymap.set('n', config.accept_key, M.accept, {buffer = buf, desc = 'Accept Pair\'s suggestion'})
   end
   -- JSON null arrives as vim.NIL: a suggestion in an answer to you is no remark.
   local remark = message.remark ~= vim.NIL and message.remark or nil
   local ids = draw.suggestion(buf, first, old, new, message.note, key)
-  state.suggestion = {buf = buf, ids = ids, old = old, new = new, remark = remark, target = {buf = buf, ns = draw.suggest_ns, id = ids[1]}}
+  state.suggestion = {buf = buf, ids = ids, old = old, new = new, remark = remark, insert = message.insert == true, target = {buf = buf, ns = draw.suggest_ns, id = ids[1]}}
   aim(state.suggestion.target) -- the jump key goes there: where the accept key works
   map_keys('jump', {{config.jump_key, M.jump, 'Go where Pair points'}})
   state.reading = nil
@@ -561,6 +566,10 @@ local handlers = {
   suggest = suggest,
   edit = edit,
   handback = handback,
+  interview = function(message)
+    blank.on_interview(message, send)
+    redraw_status()
+  end,
   remark = on_remark,
   tests = on_tests,
   thinking = function(message)
@@ -572,6 +581,7 @@ local handlers = {
     clear_points()
     clear_suggestion()
     forget_words(false)
+    blank.on_interview({done = true})
     state.remark = nil
     unmap_feedback()
   end,
@@ -696,6 +706,8 @@ local function status_parts()
   elseif run and run.state == 'pass' and now_ms() < run.till then
     return {glyph = g.pass, text = run.label .. ' · ' .. run.text, hl = 'PairStatusPass', text_hl = 'PairStatusDim'}
   end
+  local asking = blank.status() or (state.suggestion and state.suggestion.insert and 'a suggestion')
+  if asking then return {glyph = g.voice, text = 'pair · ' .. asking, hl = 'PairStatus', text_hl = 'PairStatusDim'} end
   local parts = {'pair'}
   if state.role and state.role ~= 'navigator' then table.insert(parts, state.role) end
   if state.level and state.level ~= 'normal' then table.insert(parts, state.level) end
@@ -730,6 +742,10 @@ local commands = {
   scout = function() send({type = 'role', role = 'scout'}) end,
   navigate = function() send({type = 'role', role = 'navigator'}) end,
   drive = function(arg, selection) send({type = 'drive', text = arg, selection = selection}) end,
+  new = function(arg)
+    if not M.connect() then return vim.notify('Pair: not connected, so no questions yet; :Pair new again once it is', vim.log.levels.WARN) end
+    blank.start(arg, send)
+  end,
   jump = function() M.jump() end,
   accept = M.accept,
   dismiss = M.dismiss,
