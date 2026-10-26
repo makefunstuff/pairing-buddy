@@ -55,7 +55,7 @@ A model entry says where its requests go in one of two ways:
 | `baseUrl` | The server's base URL, usually ending in `/v1`. Required for `openai`; `anthropic` defaults to the Anthropic API |
 | `model` | The model id the provider or server expects |
 | `auth` | The name of a key stored with `pair auth login NAME`, for an endpoint (a name pi-ai does not know stores a key for your own server; a provider's id uses that provider's stored key) |
-| `apiKey`, `apiKeyFile`, `apiKeyEnv` | Or the key inline, in a file, or in an environment variable. A local server without a key needs none. The service does not see your shell's variables: with `apiKeyEnv`, add it with `systemctl --user edit pairing-buddy` (`[Service]` and `Environment=NAME=value`), or use `auth` or `apiKeyFile` |
+| `apiKey`, `apiKeyFile`, `apiKeyEnv` | Or the key inline, in a file, or in an environment variable. A local server without a key needs none. The service does not see your shell's variables: `pair setup` stores those named by `apiKeyEnv` in `service.env` next to the config, readable by you only, and `pair doctor` says when one is missing there |
 | `contextWindow` | Tokens of conversation Pair keeps for this model (default 32768, also for a provider's model with a larger window; at least 16384 for the Partner). Pair compacts the conversation before it crowds out the reply |
 | `maxTokens` | The Partner's longest answer, its thinking included (default 2048 plus room for its most thinking: 10240 with the default levels, and at most a third of `contextWindow`). The Watcher always answers with one number |
 | `reasoning` | Whether Pair sets the model's thinking. The Partner's default is `true`, so it thinks as `thinking` says; set `false` for a model that cannot think. The Watcher's default is `false`: set `true` for a model that thinks by default, so Pair can switch its thinking off. A provider's model has it from pi-ai's catalog, whatever the role |
@@ -135,6 +135,11 @@ pair auth logout anthropic  # also `pair logout anthropic`
 - **API keys**: every provider takes one. The key is typed at a prompt that does not echo it. A key for your own
   server: `pair auth login my-server` (any name pi-ai does not know), then `"auth": "my-server"` in its model entry.
 - The daemon reads the file as it needs a key, so a login takes effect without a restart.
+- **Keys from environment variables** (`apiKeyEnv`): a service started at login does not get your shell's
+  environment, so `pair setup` stores each variable a model entry names, as this shell has it, in `service.env` next to
+  the config, readable by you only. The daemon takes the variable from its own environment first, else from that file,
+  as it needs the key. After changing the key, run `pair setup` again; `pair doctor` says which variable the service
+  would miss.
 
 ### Before you use a subscription
 

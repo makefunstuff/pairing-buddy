@@ -8,13 +8,14 @@ import {fileURLToPath} from 'node:url';
 import {parseArgs} from 'node:util';
 import {authStates, login, logout, providerModels} from '../src/auth.mjs';
 import {runChat} from '../src/chat.mjs';
-import {authPath, configPath, createConfig, defaultSocketPath, loadConfig, rolesText, sameModel} from '../src/config.mjs';
+import {authPath, configPath, createConfig, defaultSocketPath, loadConfig, rolesText, sameModel, serviceEnvPath} from '../src/config.mjs';
 import {deviceId, fileCredentialStore} from '../src/credentials.mjs';
 import {startDaemon} from '../src/daemon.mjs';
 import {doctor, tilde} from '../src/doctor.mjs';
 import {herdrRequest} from '../src/herdr.mjs';
 import {terminalInteraction} from '../src/prompt.mjs';
 import {requestDaemon, sendMessage} from '../src/protocol.mjs';
+import {keyVariables, storeServiceEnv} from '../src/service-env.mjs';
 import {installService, removeService, systemctl, UNIT, unitPath} from '../src/service.mjs';
 import {shellHook} from '../src/shell-hook.mjs';
 import {statsReport} from '../src/stats.mjs';
@@ -110,7 +111,7 @@ async function authList() {
   const width = Math.max(...rows.map(row => row.id.length));
   for (const row of rows) console.log(`${row.set ? SYMBOLS.ok : ' '} ${row.id.padEnd(width)}  ${row.state}`);
   console.log(`\nLogins and keys: ${tilde(authPath())}. Log in with \`pair auth login PROVIDER\`.
-A key from an environment variable reaches the service only if the service has it too: \`systemctl --user edit ${UNIT}\`.`);
+A key from an environment variable ("apiKeyEnv") reaches the service once \`pair setup\` stores it in ${tilde(serviceEnvPath())}.`);
 }
 
 async function auth([action, id]) {
@@ -137,10 +138,18 @@ async function offerLogin() {
   if (id) await authLogin(id);
 }
 
+/** Stores the variables named by "apiKeyEnv" for the service, which does not get this shell's environment, and says so. */
+function storeKeyVariables(config) {
+  const {stored, missing} = storeServiceEnv(serviceEnvPath(), keyVariables(config), process.env);
+  if (stored.length) console.log(`Stored ${stored.join(', ')} for the service in ${tilde(serviceEnvPath())}, readable by you only.`);
+  if (missing.length) console.error(`pair: the config takes keys from ${missing.join(', ')}, which this shell does not set: set them and run \`pair setup\` again`);
+}
+
 async function setup() {
   firstRunConfig();
   await offerLogin();
   const config = loadConfig();
+  storeKeyVariables(config);
   // A daemon started by `pair` before the service existed holds the data directory: hand it over to systemd.
   const running = await requestDaemon(config.socket, {type: 'status'}).catch(() => null);
   const service = await systemctl('is-active', UNIT);
