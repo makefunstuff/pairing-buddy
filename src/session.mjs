@@ -78,9 +78,12 @@ Goal: ${state.goal ?? '(not set)'}
 Uncommitted changes (git status): ${shown.length ? `\n${shown.join('\n')}` : 'none'}`;
 }
 
+// "Session note:", "# Session Notes", "**Session note**" and the like, alone on the first line or before the text.
+const HEADING = /^[\s#*_]*session notes?[*_]*[ \t]*(:[*_]*[ \t]*|\n|$)/i;
+
 /** The Partner's note, without a heading of its own (the chat adds one) and without SILENT; null when nothing is left. */
 export function cleanNote(text) {
-  const note = text?.replace(/^\W*session note\W*(\n|$)/i, '').trim();
+  const note = text?.replace(HEADING, '').trim();
   return note && !SILENT.test(note) ? note : null;
 }
 
@@ -118,6 +121,7 @@ export class PairSession {
     this.lastRemark = null; // the last remark that reached the user: what feedback without an id rates
     this.tickedAt = null;
     this.activeMs = 0; // active time not yet stored
+    this.activeAt = 0; // when active time was last counted: what it is stored under
   }
 
   get id() { return this.record.id; }
@@ -165,13 +169,18 @@ export class PairSession {
   countActive() {
     const now = this.now();
     const lastActivity = Math.max(this.state.lastKeyAt, this.state.lastEditAt, this.state.commands.at(-1)?.endedAt ?? 0);
-    if (this.tickedAt !== null && now - lastActivity < IDLE_AFTER_MS) this.activeMs += Math.min(now - this.tickedAt, MAX_TICK_GAP_MS);
+    if (this.tickedAt !== null && now - lastActivity < IDLE_AFTER_MS) {
+      this.activeMs += Math.min(now - this.tickedAt, MAX_TICK_GAP_MS);
+      this.activeAt = now;
+    } else {
+      this.storeActive(); // the user went away: what they did is stored under when they did it
+    }
     this.tickedAt = now;
     if (this.activeMs >= ACTIVE_FLUSH_MS) this.storeActive();
   }
 
   storeActive() {
-    if (this.activeMs) this.store.addActive(this.id, this.activeMs);
+    if (this.activeMs) this.store.addActive(this.activeAt, this.activeMs);
     this.activeMs = 0;
   }
 

@@ -12,8 +12,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   role TEXT NOT NULL DEFAULT 'navigator',
   started_at INTEGER NOT NULL,
   ended_at INTEGER,
-  note TEXT,
-  active_ms INTEGER NOT NULL DEFAULT 0
+  note TEXT
 );
 CREATE TABLE IF NOT EXISTS messages (
   session_id INTEGER NOT NULL REFERENCES sessions(id),
@@ -28,12 +27,19 @@ CREATE TABLE IF NOT EXISTS remarks (
   score REAL,
   at INTEGER NOT NULL,
   verdict TEXT
+);
+-- Active pairing time per clock hour (hour = ms since the epoch / 3600000), counted when it happened, so a
+-- session left open for days adds to each day it was used.
+CREATE TABLE IF NOT EXISTS activity (
+  hour INTEGER PRIMARY KEY,
+  ms INTEGER NOT NULL
 );`;
+
+const HOUR = 60 * 60_000;
 
 /** Columns added since v0.1, with their definitions. */
 const ADDED_COLUMNS = {
   role: 'TEXT NOT NULL DEFAULT \'navigator\'',
-  active_ms: 'INTEGER NOT NULL DEFAULT 0',
 };
 
 export function openStore(path) {
@@ -61,7 +67,6 @@ export function openStore(path) {
     setLevel: (id, level) => db.prepare('UPDATE sessions SET level = ? WHERE id = ?').run(level, id),
     setRole: (id, role) => db.prepare('UPDATE sessions SET role = ? WHERE id = ?').run(role, id),
     endSession: (id, note, at) => db.prepare('UPDATE sessions SET ended_at = ?, note = ? WHERE id = ?').run(at, note, id),
-    addActive: (id, ms) => db.prepare('UPDATE sessions SET active_ms = active_ms + ? WHERE id = ?').run(ms, id),
 
     /** The note of the last ended session of `root` before session `id`: where the next session starts from. */
     previousNote: (root, id) => db.prepare('SELECT note FROM sessions WHERE root = ? AND id < ? AND note IS NOT NULL ORDER BY id DESC LIMIT 1').get(root, id)?.note ?? null,
@@ -76,8 +81,11 @@ export function openStore(path) {
     rateRemark: (id, verdict) => db.prepare('UPDATE remarks SET verdict = ? WHERE id = ?').run(verdict, id).changes > 0,
     /** Every remark since `since`, newest first. */
     remarks: since => db.prepare('SELECT id, trigger, score, at, verdict FROM remarks WHERE at >= ? ORDER BY id DESC').all(since),
-    /** How long the user was active in sessions started since `since`, in ms. */
-    activeMs: since => db.prepare('SELECT coalesce(sum(active_ms), 0) AS ms FROM sessions WHERE started_at >= ?').get(since).ms,
+    /** Adds `ms` of active pairing, just before `at`, to its hour. */
+    addActive: (at, ms) => db.prepare('INSERT INTO activity (hour, ms) VALUES (?, ?) ON CONFLICT (hour) DO UPDATE SET ms = ms + excluded.ms')
+      .run(Math.floor(at / HOUR), ms),
+    /** How long the user was active since `since`, in ms, in any session: whole hours, from the one `since` falls in. */
+    activeMs: since => db.prepare('SELECT coalesce(sum(ms), 0) AS ms FROM activity WHERE hour >= ?').get(Math.floor(since / HOUR)).ms,
 
     close: () => db.close(),
   };

@@ -6,7 +6,7 @@ Pair remembers where the last session in a project stopped, and learns from you 
 
 `/end` in the chat (or `:Pair end`) ends the session. Pair then asks the Partner for a short note of at most six lines: the goal, what changed, and the loose ends. With the request it gets the session goal and `git status --short` (the first 20 lines), so even a small model can say which files changed. The note shows in the chat and is kept with the session.
 
-A heading the model adds itself is dropped. If the Partner cannot answer (the model is down) or answers with nothing, no note is kept (the chat says why when the model failed): the next session then starts from the last good note.
+A heading the model adds itself (`Session note:`, `# Session Notes`, …) is dropped, also when the text follows on the same line. If the Partner cannot answer (the model is down) or answers with nothing, no note is kept (the chat says why when the model failed): the next session then starts from the last good note.
 
 ## The next session starts from it
 
@@ -87,7 +87,7 @@ Budget at level normal: at most 5 remarks per hour, 5 min 20 s apart (the level'
 Tuning follows your verdicts of the last 30 days: a trigger needs 5 of them to move its bar, the budget 10.
 ```
 
-- **Active pairing** is the time in which you typed, edited or ran a command in the last five minutes, while a session was open. Remarks per hour are counted against it, not against the hours a session stood open, and shown from six minutes of it on.
+- **Active pairing** is the time in which you typed, edited or ran a command in the last five minutes, while a session was open. It is stored per clock hour, when it happened, so a session left open for days counts toward each day you used it, and `--days 1` shows today's work even in a session started last week. Remarks per hour are counted against it, not against the hours a session stood open, and shown from six minutes of it on.
 - **kept** is useful ÷ (useful + dismissed + ignored); remarks still waiting do not count.
 - **bar** is the Watcher score each trigger needs now, with the tuning's change from the level's bar in brackets.
 - **Budget** is what the tuned budget allows now at your configured level.

@@ -146,6 +146,10 @@ test('the session note is written from the goal and the uncommitted changes, and
 test('a note loses a heading of its own, and SILENT or nothing is no note', () => {
   assert.equal(cleanNote('Session note:\nGoal: fix it.\nLoose end: tests.'), 'Goal: fix it.\nLoose end: tests.');
   assert.equal(cleanNote('**Session note**\nGoal: fix it.'), 'Goal: fix it.');
+  assert.equal(cleanNote('Session note: Goal: fix it.'), 'Goal: fix it.');
+  assert.equal(cleanNote('# Session Notes\nGoal: fix it.'), 'Goal: fix it.');
+  assert.equal(cleanNote('**Session note:** Goal: fix it.'), 'Goal: fix it.');
+  assert.equal(cleanNote('Session notes are now kept per repo.'), 'Session notes are now kept per repo.');
   assert.equal(cleanNote('Goal: the session note format.'), 'Goal: the session note format.');
   assert.equal(cleanNote('SILENT'), null);
   assert.equal(cleanNote(''), null);
@@ -174,4 +178,5 @@ test('active time counts while the user works, not while they are away, and is s
   await pair.tick();
   await pair.end();
   assert.equal(store.activeMs(0), (5 * MIN - 1000) + 5000, 'the five minutes after the key, and at most 5 s of the gap');
+  assert.equal(store.activeMs(clock.now - 30 * MIN), 5000, 'counted in the hour it happened: only the end is this hour');
 });

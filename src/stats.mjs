@@ -32,7 +32,7 @@ export function statsReport({remarks, activeMs, now, days, level, autoTune}) {
   const hours = activeMs / HOUR;
   const total = tally(recent, now);
   const lines = [
-    `Last ${days} days, all projects: ${hours.toFixed(1)} h of active pairing, ${plural(total.remarks, 'unasked remark')} (${rate(total.remarks, hours)} per hour)`,
+    `Last ${plural(days, 'day')}, all projects: ${hours.toFixed(1)} h of active pairing, ${plural(total.remarks, 'unasked remark')} (${rate(total.remarks, hours)} per hour)`,
     `useful ${total.useful} · dismissed ${total.dismissed} · ignored ${total.ignored}${total.waiting ? ` · waiting ${total.waiting}` : ''} · kept ${percent(keptShare(total))}`,
     '',
   ];
