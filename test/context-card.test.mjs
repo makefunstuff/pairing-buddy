@@ -1,0 +1,94 @@
+import assert from 'node:assert/strict';
+import {test} from 'node:test';
+import {contextCard, contextLines, goalFromContext} from '../src/context-card.mjs';
+import {describeState} from '../src/describe.mjs';
+import {watchInput} from '../src/session.mjs';
+import {detectTriggers} from '../src/triggers.mjs';
+import {fold, initialState} from '../src/fold.mjs';
+
+const ROOT = '/work/probe';
+const board = {task: {id: 'probe/7', title: 'Faster hash', state: 'working', msg: 'trying fibonacci', pr: null}, working: 2, waiting: []};
+
+function state(events) {
+  return events.reduce((current, event, i) => fold(current, {at: 1000 * (i + 1), ...event}), initialState({root: ROOT}));
+}
+
+const busy = () => state([
+  {kind: 'context', branch: 'work/7-faster-hash', git: {last: 'abc1234 probe: count the worst case', changed: 2, pr: ''}, board},
+  {kind: 'command_end', cmd: 'make && ./probe', exit: 0, output: 'avg probe 23.7'},
+  {kind: 'command_end', cmd: 'claude --settings /home/u/.herdr-projects/data/tasks/probe/8/settings.json', exit: 0, output: ''},
+  {kind: 'places', buffers: [`${ROOT}/probe.c`, `${ROOT}/main.c`, '/etc/hosts', ...'abcdefg'.split('').map(name => `${ROOT}/${name}.h`)],
+    jumps: [{file: `${ROOT}/main.c`, line: 12}, {file: `${ROOT}/probe.c`, line: 3}]},
+  {kind: 'search', picker: 'Live Grep', query: 'hash', results: 11, file: `${ROOT}/probe.c`, line: 3},
+]);
+
+test('the card shows each source\'s rows, what a budget cut, and the board\'s launches as not sent', () => {
+  const card = contextCard(busy(), 10_000);
+  assert.deepEqual(card.map(section => section.source), ['board', 'git', 'terminal', 'editor']);
+  const [boardSection, git, terminal, editor] = card;
+  assert.deepEqual(boardSection.rows.map(row => row.text), ['probe/7 · Faster hash', 'working · trying fibonacci', '2 other tasks working; none needs you']);
+  assert.deepEqual(git.rows.map(row => `${row.label} ${row.text}`), ['branch work/7-faster-hash', 'last abc1234 probe: count the worst case', 'tree 2 changed', 'PR none yet']);
+  assert.deepEqual(terminal.rows.map(row => row.text), ['`make && ./probe` ok, 8 s ago'], 'the launch is not one of your commands');
+  assert.deepEqual(terminal.notSent, [{label: 'not sent', text: '1 agent launch from the board, not yours'}]);
+  const twice = fold(busy(), {kind: 'command_end', cmd: 'pi --settings=/home/u/.herdr-projects/data/tasks/probe/9/s.json', exit: 0, output: '', at: 9000});
+  assert.equal(contextCard(twice, 10_000)[2].notSent[0].text, '2 agent launches from the board, not yours');
+  const buffers = editor.rows.find(row => row.label === 'buffers');
+  assert.equal(buffers.text, 'probe.c  main.c  a.h  b.h  c.h  d.h', 'project files, relative, as many as the budget allows');
+  assert.equal(buffers.cut, 3);
+  assert.equal(editor.rows.find(row => row.label === 'jumps').text, 'main.c:12  ←  probe.c:3');
+  assert.equal(editor.rows.find(row => row.label === 'searched').text, 'Live Grep "hash" · 11 results · opened probe.c:3');
+});
+
+test('what the Partner gets is what the card shows, and a hidden source goes nowhere', () => {
+  const now = busy();
+  const described = describeState(now, 10_000);
+  assert.match(described, /^Board: task probe\/7 · Faster hash; state working · trying fibonacci; others 2 other tasks working; none needs you$/m);
+  assert.match(described, /^Git: branch work\/7-faster-hash; last abc1234 probe: count the worst case; tree 2 changed; PR none yet$/m);
+  assert.match(described, /^Editor: buffers probe\.c {2}main\.c.*; jumps main\.c:12 {2}← {2}probe\.c:3; searched Live Grep "hash"/m);
+  assert.match(described, /Recent commands:\n- `make && \.\/probe` ok/);
+  assert.doesNotMatch(described, /herdr-projects/, 'the board\'s launch is not sent');
+
+  const hidden = fold(fold(now, {kind: 'hide', source: 'git', hidden: true}), {kind: 'hide', source: 'terminal', hidden: true});
+  assert.doesNotMatch(describeState(hidden, 10_000), /Git:|Recent commands/);
+  assert.deepEqual(contextCard(hidden, 10_000).filter(section => section.hidden).map(section => section.source), ['git', 'terminal'], 'the card still shows them, hidden');
+  assert.equal(contextLines(fold(hidden, {kind: 'hide', source: 'git', hidden: false})).length, 3, 'x again brings it back');
+});
+
+test('a hidden terminal raises no remark about a command, so no command line reaches either model', () => {
+  const failing = [{kind: 'focus', target: 'editor', pane: 'w1:p1'}, {kind: 'command_end', pane: 'w1:p2', cmd: 'make SECRET_TOKEN=abc deploy', exit: 2, output: 'Error: denied'}];
+  const shown = state(failing);
+  assert.deepEqual(detectTriggers(shown, 60_000).map(trigger => trigger.kind), ['failed_command']);
+  const hidden = state([{kind: 'hide', source: 'terminal', hidden: true}, ...failing, failing[1]]);
+  const triggers = detectTriggers(hidden, 100_000);
+  assert.deepEqual(triggers, [], 'no failed_command, repeated_error or stall');
+  assert.doesNotMatch(describeState(hidden, 100_000), /SECRET_TOKEN/);
+  const back = fold(hidden, {kind: 'hide', source: 'terminal', hidden: false});
+  assert.match(watchInput(detectTriggers(back, 100_000)[0], describeState(back, 100_000)), /SECRET_TOKEN/, 'brought back, it goes again');
+});
+
+test('a hidden editor raises no search trail, and a hidden terminal sends no command with one', () => {
+  const lostTrail = [
+    {kind: 'command_end', pane: 'w1:p2', cmd: 'make SECRET_TOKEN=abc deploy', exit: 2, output: 'Error: denied'},
+    {kind: 'search', picker: 'Live Grep', query: 'give up', results: 0},
+    {kind: 'search', picker: 'Live Grep', query: 'dead letter', results: 1},
+    {kind: 'search', picker: 'Find Files', query: 'retry', results: 2, file: `${ROOT}/backoff.go`},
+  ];
+  const trailOf = current => detectTriggers(current, 10_000).filter(trigger => trigger.kind === 'search_trail');
+  const shown = state(lostTrail);
+  assert.equal(trailOf(shown).length, 1);
+  assert.match(trailOf(shown)[0].detail, /SECRET_TOKEN/, 'what fails now goes with the trail');
+  assert.deepEqual(trailOf(fold(shown, {kind: 'hide', source: 'editor', hidden: true})), [], 'the searches stay home');
+  const [trail] = trailOf(fold(shown, {kind: 'hide', source: 'terminal', hidden: true}));
+  assert.doesNotMatch(trail.detail, /SECRET_TOKEN/);
+});
+
+test('a session takes its goal from the board task, else the branch name; on main it asks', () => {
+  assert.deepEqual(goalFromContext(busy()), {text: 'Faster hash', from: 'the board task probe/7'});
+  assert.deepEqual(goalFromContext({branch: 'work/25-context-card-and-no-ceremony', board: {task: null}}), {text: 'context card and no ceremony', from: 'the branch work/25-context-card-and-no-ceremony'});
+  assert.equal(goalFromContext({branch: 'main', board: null}), null);
+  assert.equal(goalFromContext({branch: null, board: null}), null);
+});
+
+test('without a board there is no board source', () => {
+  assert.deepEqual(contextCard(initialState({root: ROOT}), 0).map(section => section.source), ['git', 'terminal', 'editor']);
+});

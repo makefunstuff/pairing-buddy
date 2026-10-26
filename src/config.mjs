@@ -183,6 +183,12 @@ function taskCommand(raw) {
   return raw;
 }
 
+/** The work board's command (herdr-projects), which the context card and the goal are read from; null for none. */
+function boardCommand(raw = 'herdr-projects') {
+  if (raw !== null && (typeof raw !== 'string' || !raw.trim())) throw new Error('config: board must be the board\'s command, or null');
+  return raw && raw.trim().replace(/^~(?=\/)/, homedir());
+}
+
 export function parseConfig(raw) {
   const level = raw.level ?? 'normal';
   if (!LEVELS.includes(level)) throw new Error(`config: level must be one of ${LEVELS.join(', ')}`);
@@ -198,6 +204,7 @@ export function parseConfig(raw) {
     testOnSave: testCommands(raw.testOnSave),
     voice: voiceConfig(raw.voice), // push-to-talk; null when off (see voice.mjs)
     taskCommand: taskCommand(raw.taskCommand),
+    board: boardCommand(raw.board),
     models,
   };
 }

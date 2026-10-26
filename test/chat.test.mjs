@@ -14,12 +14,13 @@ import {startDaemon} from '../src/daemon.mjs';
 
 const BIN = fileURLToPath(new URL('../bin/pair.mjs', import.meta.url));
 
-test('/scout and /navigate switch the role; other lines keep their meaning', () => {
+test('/scout and /navigate switch the role, /today lists what Pair did; other lines keep their meaning', () => {
   assert.deepEqual(parseInput('/scout'), {type: 'role', role: 'scout'});
   assert.deepEqual(parseInput('  /navigate '), {type: 'role', role: 'navigator'});
   assert.deepEqual(parseInput('/level chatty'), {type: 'level', level: 'chatty'});
   assert.deepEqual(parseInput('where else do we set that?'), {type: 'ask', text: 'where else do we set that?'});
   assert.deepEqual(parseInput('/drivel'), {local: 'help'});
+  assert.deepEqual(parseInput('/today'), {type: 'today'});
 });
 
 test('/drive, "you take it" and "your turn" hand Pair the wheel; the words go along', () => {

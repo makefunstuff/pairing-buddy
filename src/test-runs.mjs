@@ -21,7 +21,7 @@ export const runLine = (command, root, outputFile) => `cd ${shellQuote(root)} &&
 export class TestRuns {
   /**
    * `pane()` is Pair's pane (a ScoutPane), or null without herdr. `report(run)` hears of each run twice:
-   * `{state: 'run', label, saved}` as it starts, then `{state: 'done', label, saved, exit, timedOut, tests, placed}`
+   * `{state: 'run', label, saved}` as it starts, then `{state: 'done', label, saved, exit, timedOut, output, tests, placed}`
    * (`tests` as parseTestOutput gives them, `placed` as placeTests does), or `{state: 'error', label, saved, error, short}`.
    * A run on unsaved text has `unsaved: true` in each.
    */
@@ -46,9 +46,10 @@ export class TestRuns {
     this.report({state: 'run', label: this.label, saved});
     try {
       const {exit, timedOut} = await pane.run(runLine(this.command, this.root, this.outputFile));
-      const tests = parseTestOutput(await readFile(this.outputFile, 'utf8').catch(() => ''));
+      const output = await readFile(this.outputFile, 'utf8').catch(() => '');
+      const tests = parseTestOutput(output);
       const placed = tests?.tests ? await placeTests(tests.tests, this.root) : [];
-      this.report({state: 'done', label: this.label, saved, exit, timedOut, tests, placed});
+      this.report({state: 'done', label: this.label, saved, exit, timedOut, output, tests, placed});
     } catch (error) {
       this.report({state: 'error', label: this.label, saved, error: error.message, short: 'could not run'});
     } finally {
@@ -73,13 +74,14 @@ export class TestRuns {
       const run = await prepareUnsaved({root: this.root, command: this.command, file, text, dir});
       const outputFile = join(dir, 'run.out');
       const {exit, timedOut} = await pane.run(runLine(run.command, run.root, outputFile));
-      const tests = parseTestOutput(await readFile(outputFile, 'utf8').catch(() => ''));
+      const output = await readFile(outputFile, 'utf8').catch(() => '');
+      const tests = parseTestOutput(output);
       const placed = (tests?.tests ? await placeTests(tests.tests, run.root, run.texts) : []).map(test => ({
         ...test,
         file: run.toProject(test.file),
         failure: test.failure && {...test.failure, file: run.toProject(test.failure.file)},
       }));
-      return report({state: 'done', exit, timedOut, tests, placed});
+      return report({state: 'done', exit, timedOut, output, tests, placed});
     } catch (error) {
       return report({state: 'error', error: error.message, short: 'could not run'});
     } finally {

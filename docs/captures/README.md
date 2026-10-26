@@ -1,6 +1,6 @@
 # The captures
 
-The clips and stills of the three moments (the README, [docs/neovim.md](../neovim.md) and the site) are recorded
+The clips and stills of the three moments and the ledger ([docs/neovim.md](../neovim.md) and the site) are recorded
 from the tapes here. They show the plugin and the daemon of this checkout as they ship. Only the models are scripted, so a
 recording comes out the same each time.
 
@@ -9,6 +9,8 @@ recording comes out the same each time.
   trigger it is asked about. The Partner's turns (tool calls or words, each after its own pause) come in order
   from [scenes.mjs](scenes.mjs), and so do its readings of a note: the marks, and the tasks. The tools those calls reach are real: they read the files, check the line and the
   code they point at, and type the edit.
+- **The board:** [board.mjs](board.mjs) stands in for herdr's work board in the context-card scene, which also
+  fetches Telescope and plenary at pinned commits for its searches.
 - **herdr:** [herdr.mjs](herdr.mjs) stands in for herdr's socket, because the captures show Neovim alone.
   - Pair's own pane runs its commands for real, with bash in the project: the tests on save, and
     `go test -overlay` on the unsaved buffer.
@@ -29,9 +31,11 @@ recording comes out the same each time.
 | [tests-on-save](tapes/tests-on-save.tape) | 02 · it runs what you'd skip |
 | [hand-over](tapes/hand-over.tape) | 03 · the visible hand-over |
 | [take-back](tapes/take-back.tape) | a key while Pair drives takes the wheel back |
+| [ledger](tapes/ledger.tape) | `:Pair today` after a morning of 02 and 03; `u` undoes the six cases after your own edit |
 | [search-trail](tapes/search-trail.tape) | the search trail: three Telescope searches, the cue, `:Pair trail` |
 | [held-thought](tapes/held-thought.tape) | the held thought, and one look on a grey palette |
 | [push-to-talk](tapes/push-to-talk.tape) | hold `Alt-t`, ask aloud, and Pair answers under your line |
+| [context-card](tapes/context-card.tape) | `:Pair context`, with the goal from the board task, and `x` on a source |
 | [notes](tapes/notes.tape) | notes in the margin: the marks, a fixed line, a decision logged, the tasks panel |
 
 ## Recording
@@ -41,7 +45,7 @@ and the JetBrainsMono Nerd Font.
 
 ```sh
 npm ci                                  # in the repo root
-docs/captures/record.sh                 # all six scenes into docs/captures/out/, or name some
+docs/captures/record.sh                 # all the scenes into docs/captures/out/, or name some
 docs/captures/encode.sh                 # out/ -> site/media/ and docs/images/
 ```
 

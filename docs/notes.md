@@ -20,7 +20,7 @@ words are scripted. It is recorded from [a tape](captures/tapes/notes.tape) on t
 | `≈` | a paragraph that says again what an earlier one says | a rule | `line 9`: the one it repeats |
 
 Each mark is a glyph in the sign column and one line of Pair's words under the line it is about, in Pair's
-[visual language](neovim.md#six-marks-one-accent): the same accent, the same fade-in, no boxes. The statusline
+[visual language](neovim.md#a-few-marks-one-accent): the same accent, the same fade-in, no boxes. The statusline
 says `● pair · 5 notes in the margin`.
 
 ![Five marks: a link to the code, the 5-versus-6 contradiction, two questions, and the repeat](images/notes-margin.png)
