@@ -11,6 +11,7 @@ import {gitStatus} from './git.mjs';
 import {plainLine} from './herdr.mjs';
 import {RUN_TIMEOUT_MS, shellQuote} from './scout-pane.mjs';
 import {parseTestOutput, testSummary} from './test-output.mjs';
+import {TestRuns} from './test-runs.mjs';
 import {detectTriggers} from './triggers.mjs';
 import {tuning, WINDOW_MS} from './tuning.mjs';
 
@@ -32,11 +33,16 @@ const CHECKS = {
     + 'fixed it; if you are not sure, say nothing: in both cases answer exactly SILENT. Only if the trace still fails, somewhere other '
     + 'than their change, point at that place (file, line, and as code the few characters that are wrong, such as an operator) '
     + 'and say why in one or two short sentences, without the trace.',
+  regression: 'Pair ran the tests when the user saved, and a test that did not fail before fails now. Read the failing test, '
+    + 'the code it tests and the lines the user changed, and find how the change breaks it. The user made that change for a '
+    + 'reason, often another test: the fix has to keep it working, so undo their change only if it is plainly wrong. If a small '
+    + 'change fixes it, call suggest with it (the lines and their complete new text); else point at the cause. Then say why in '
+    + 'one or two short sentences, without a trace.',
 };
 
 // Triggers whose check needs the Partner to work something out before it may speak: it thinks at least this
 // much for them, if its model can think. Without it, fast models trace a test through code wrongly, and remark.
-export const THINKING = {edit_while_red: 'low'};
+export const THINKING = {edit_while_red: 'low', regression: 'low'};
 
 export function watchInput(trigger, description) {
   return `[watch] ${trigger.kind}: ${trigger.detail}\n\nNow:\n${description}\n\n${CHECKS[trigger.kind]} If no remark would help, answer exactly SILENT.`;
@@ -85,6 +91,22 @@ export function selectionInput({file, from, to}, text) {
   return `\n\nAbout lines ${from}-${to} of ${file}, which the user selected:\n${shown}`;
 }
 
+const NAME_CHARS = 32; // of a failing test's name in the statusline
+
+/** One short line for the statusline about a finished run: "4 tests, 3 packages" or "1 failing · TestX". */
+export function runText({exit, timedOut, tests}) {
+  if (timedOut) return 'stopped after 2 min';
+  if (!tests?.failedCount) {
+    if (exit !== 0) return `exit ${exit}`;
+    const scope = tests?.packages ? `, ${tests.packages} packages` : tests?.files ? `, ${tests.files} files` : '';
+    return tests?.passed ? `${tests.passed} tests${scope}` : 'passed';
+  }
+  const [first] = tests.failed;
+  if (!first) return tests.runner === 'go' ? 'does not build' : `${tests.failedCount} failing`;
+  const name = first.length > NAME_CHARS ? `${first.slice(0, NAME_CHARS - 1)}…` : first;
+  return `${tests.failedCount} failing · ${name}${tests.failedCount > 1 ? ` +${tests.failedCount - 1}` : ''}`;
+}
+
 const NOTE_CHANGES = 20; // lines of git status the note request shows
 
 /** What the Partner is asked at the end: the note the next session in this project starts from. */
@@ -119,7 +141,7 @@ export class PairSession {
    * `previousNote` is the note of the last session in this project. With `autoTune`, the user's verdicts on
    * past remarks tune the budget (see tuning.mjs).
    */
-  constructor({record, store, partner, score, typingPauseMs, notify, requestEditor, previousNote = null, autoTune = false, health = {ok: () => true}, log = () => {}, now = Date.now}) {
+  constructor({record, store, partner, score, typingPauseMs, notify, requestEditor, previousNote = null, autoTune = false, health = {ok: () => true}, testOnSave = null, log = () => {}, now = Date.now}) {
     Object.assign(this, {record, store, partner, score, typingPauseMs, notify, requestEditor, previousNote, autoTune, health, log, now});
     this.state = initialState({root: record.root, goal: record.goal});
     this.budget = new Budget(record.level);
@@ -136,7 +158,7 @@ export class PairSession {
     this.said = false; // the say tool was used this turn
     this.unasked = false; // the running turn is a remark nobody asked for
     this.words = []; // what Pair said this turn: an unasked remark shows it under the user's line too
-    this.target = null; // where Pair pointed last this turn: where the user's jump key goes
+    this.target = null; // where the user's jump key goes: Pair's suggestion this turn, else where it pointed last
     this.held = []; // parts of an unasked remark that came while the user was typing
     this.panes = null; // the user's herdr panes (a PaneWatch), for the Driver's type
     this.edited = false; // the Driver made its one edit in this hand-over
@@ -145,6 +167,11 @@ export class PairSession {
     this.tickedAt = null;
     this.activeMs = 0; // active time not yet stored
     this.activeAt = 0; // when active time was last counted: what it is stored under
+    // The tests run on save, with `testOnSave` ({command, outputFile}); what the editors last heard of them.
+    this.testRuns = testOnSave && new TestRuns({...testOnSave, root: record.root, pane: () => this.scout, report: run => this.testRun(run)});
+    this.testsShown = null;
+    this.runError = null; // the last run that could not run, said once in the chat
+    this.wasRed = false; // the last run failed
   }
 
   get id() { return this.record.id; }
@@ -154,6 +181,35 @@ export class PairSession {
   receive(event) {
     const file = event.file && isAbsolute(event.file) ? relative(this.root, event.file) : event.file;
     this.state = fold(this.state, {at: this.now(), ...event, ...(file ? {file} : {})});
+    if (event.kind === 'save' && file && !file.startsWith('..')) this.testRuns?.saved(file);
+  }
+
+  /** A test run on save starts or ends (see test-runs.mjs): the editors show it, and the session state takes it in. */
+  testRun(run) {
+    if (run.state === 'error') {
+      this.log(`tests on save: ${run.error}`);
+      if (run.error !== this.runError) this.message('system', `Pair could not run \`${run.label}\`: ${run.error}.`);
+      this.runError = run.error;
+      return this.showTests({type: 'tests', state: 'error', label: run.label, text: run.short});
+    }
+    this.runError = null;
+    if (run.state === 'run') return this.showTests({type: 'tests', state: 'run', label: run.label});
+    const red = run.exit !== 0 || run.timedOut || !!run.tests?.failedCount;
+    const failing = run.placed.filter(test => !test.ok);
+    const files = [...new Set(failing.map(test => relative(this.root, test.failure?.file ?? test.file)))];
+    this.receive({kind: 'test_run', cmd: run.label, tests: run.tests, files, saved: run.saved});
+    const text = runText(run);
+    this.showTests({type: 'tests', state: red ? 'fail' : 'pass', label: run.label, text, results: run.placed});
+    // The chat hears of a run when it turns red or green, or finds new failures; a run like the last one is no news.
+    if (red && (!this.wasRed || (run.tests && this.state.tests.newly.length))) this.message('system', `\`${run.label}\` after you saved ${run.saved}: ${run.tests ? testSummary(run.tests) : text}`);
+    else if (!red && this.wasRed) this.message('system', `\`${run.label}\` passes again: ${text}.`);
+    this.wasRed = red;
+  }
+
+  /** Sends a test run's state to every editor, and keeps it for editors that connect later. */
+  showTests(message) {
+    this.testsShown = message;
+    this.notify('editors', message);
   }
 
   typing() {
@@ -326,7 +382,7 @@ export class PairSession {
       });
       if (!opened) return false;
     }
-    if (role === 'navigator') await this.scout?.close();
+    if (role === 'navigator') await this.closePane();
     if (!this.notify('editors', {type: 'role', role}) && role === 'driver') {
       this.message('system', 'Pair drives only in Neovim: run :Pair start there first.');
       return false;
@@ -335,6 +391,11 @@ export class PairSession {
     await this.configurePartner(role);
     this.announce(role);
     return true;
+  }
+
+  /** Closes Pair's pane as Scout's work ends, unless the tests on save run in it. */
+  async closePane() {
+    if (!this.testRuns) await this.scout?.close();
   }
 
   /** Tells the chat about the new role, and stores it unless it is the Driver's. */
@@ -373,7 +434,7 @@ export class PairSession {
     this.role = 'navigator'; // at once: an edit or type still on its way is refused from here on
     if (note) this.message('system', note);
     this.notify('editors', {type: 'role', role: 'navigator'});
-    await this.scout?.close();
+    await this.closePane();
     this.announce('navigator');
   }
 
@@ -444,7 +505,7 @@ export class PairSession {
     const path = await projectFile(this.root, file);
     if (!path) return `No file ${file} in the project`;
     this.spoke = true;
-    this.target = {file: path, line, endLine, note, code};
+    if (!this.target?.suggestion) this.target = {file: path, line, endLine, note, code};
     this.show(() => {
       this.notify('editor', {type: 'point', file: path, line, endLine, note, code});
       this.message('pair', `${file}:${line} ${note}`);
@@ -468,6 +529,8 @@ export class PairSession {
     const count = (await this.bufferText(path)).split('\n').length;
     if (line > count) return `Line ${line} is past the end of ${file}, which has ${count} lines. Read it first.`;
     this.spoke = true;
+    // The jump key goes to a suggestion before a point: that is where the one key that takes it works.
+    this.target = {file: path, line, endLine, note, suggestion: true};
     const remark = this.remarkId; // now: a suggestion held for the user's pause is shown after the turn ended
     this.show(() => {
       this.notify('editor', {type: 'suggest', file: path, line, endLine, text, note, remark});

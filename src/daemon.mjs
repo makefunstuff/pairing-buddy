@@ -40,6 +40,7 @@ const defaultLog = line => process.stderr.write(`${timestamp()} ${line}\n`);
 /** `probe(role)` checks that a model answers (see probe.mjs); tests pass their own, and a short `keepWarmMs`. */
 export async function startDaemon(config, {pairModels = createPairModels(config), probe, log = defaultLog, keepWarmMs = KEEP_WARM_MS} = {}) {
   mkdirSync(config.dataDir, {recursive: true, mode: 0o700});
+  mkdirSync(join(config.dataDir, 'runs'), {recursive: true}); // the output of the tests run on save, one file per session
   const owner = acquireOwner(config.dataDir);
   const store = openStore(join(config.dataDir, 'sessions.sqlite'));
   const sessions = new Map(); // root -> Promise<PairSession>
@@ -153,6 +154,7 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
         previousNote: store.previousNote(root, record.id),
         autoTune: config.autoTune,
         typingPauseMs: config.typingPauseMs,
+        testOnSave: config.testOnSave[root] ? {command: config.testOnSave[root], outputFile: join(config.dataDir, 'runs', `${record.id}.out`)} : null,
         notify: (role, message) => notify(session, role, message),
         requestEditor: message => requestEditor(session, message),
         log: line => log(`[${basename(root)}] ${line}`),
@@ -211,6 +213,8 @@ export async function startDaemon(config, {pairModels = createPairModels(config)
     sendMessage(client.socket, {
       type: 'welcome', root: session.root, goal: session.state.goal, level: session.budget.level, role: session.role, models: health.snapshot(),
     });
+    // A Neovim that connects (or reconnects) after a test run shows its result too.
+    if (client.role === 'editor' && session.testsShown) sendMessage(client.socket, session.testsShown);
     if (client.role !== 'chat') return;
     watchHerdr(session, message.herdr);
     // A chat pane that reconnects after a daemon restart already shows the history.

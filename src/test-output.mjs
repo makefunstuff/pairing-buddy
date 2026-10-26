@@ -1,5 +1,6 @@
 // Reads test-runner output: which runner, which tests failed and the first error line.
-// Covers cargo test, go test, jest, vitest, pytest and node --test (the spec reporter); anything else is null.
+// Covers cargo test, go test, jest, vitest, pytest and node --test (the spec reporter), and the JSON reports of
+// go test, jest and vitest; anything else is null.
 
 const MAX_NAMES = 20;
 
@@ -124,11 +125,127 @@ function nodeTest(text) {
   };
 }
 
-const RUNNERS = [cargo, jest, vitest, pytest, nodeTest, go];
+// JSON reports: `go test -json` (one event per line) and the report of `jest --json` or `vitest --reporter=json`.
+// They also list each test, for the editor: {name, status, package or file, line, failure: {file, line, text}}.
+
+/** The JSON objects among the lines of `text`; a runner's own lines and npm's around them are skipped. */
+function jsonLines(text) {
+  return linesOf(text).filter(line => line.startsWith('{')).flatMap(line => {
+    try { return [JSON.parse(line)]; } catch { return []; }
+  });
+}
+
+const GO_STATUS = {pass: 'passed', fail: 'failed', skip: 'skipped'};
+
+/** Where a failed Go test says it failed: `t.Errorf`'s `file.go:12: text`, else a panic and its first frame outside the runtime. */
+function goFailure(output) {
+  const lines = output.join('').split('\n');
+  const assertion = lines.map(line => /^\s+([\w.-]+\.go):(\d+): (.*)$/.exec(line)).find(Boolean);
+  if (assertion) return {file: assertion[1], line: Number(assertion[2]), text: assertion[3].trim()};
+  const panic = lines.findIndex(line => line.startsWith('panic: '));
+  if (panic === -1) return null;
+  const text = lines[panic].replace(/ \[recovered.*\]$/, '');
+  // The stack is pairs of lines: a function, then its file:line. The panic is raised where the first one past
+  // `panic(` that is not part of the runtime was.
+  const frames = lines.slice(lines.findIndex((line, i) => i > panic && line.startsWith('panic(')) + 2);
+  for (let i = 0; i + 1 < frames.length; i += 2) {
+    const at = /^\t(\/\S+\.go):(\d+)/.exec(frames[i + 1]);
+    if (at && !frames[i].startsWith('runtime.')) return {file: at[1], line: Number(at[2]), text};
+  }
+  return {file: null, line: null, text};
+}
+
+function goJson(text) {
+  const events = jsonLines(text).filter(event => event.Action && (event.Package || event.ImportPath));
+  if (!events.length) return null;
+  const runs = new Map(); // "package test" -> {name, package, status, output}
+  const build = [];
+  let packageFailed = false;
+  for (const event of events) {
+    if (event.Action === 'build-output') build.push(event.Output);
+    if (!event.Test) {
+      if (event.Action === 'fail') packageFailed = true;
+      continue;
+    }
+    const key = `${event.Package} ${event.Test}`;
+    const run = runs.get(key) ?? {name: event.Test, package: event.Package, status: null, output: []};
+    runs.set(key, run);
+    if (event.Action === 'output') run.output.push(event.Output);
+    if (GO_STATUS[event.Action]) run.status = GO_STATUS[event.Action];
+  }
+  const ended = [...runs.values()].filter(run => run.status);
+  // A failed subtest fails its parent too; the subtest is the one worth naming, and has the failure.
+  const leaves = ended.filter(run => !ended.some(other => other.package === run.package && other.name.startsWith(`${run.name}/`)));
+  const failedLeaves = leaves.filter(run => run.status === 'failed');
+  const tests = ended.filter(run => !run.name.includes('/')).map(run => {
+    const leaf = failedLeaves.find(other => other.package === run.package && (other.name === run.name || other.name.startsWith(`${run.name}/`)));
+    return {name: run.name, package: run.package, status: run.status, failure: leaf ? goFailure(leaf.output) : null};
+  });
+  const failure = tests.find(test => test.failure)?.failure;
+  const buildError = build.map(line => line.trim()).find(line => /^\S+\.go:\d+:\d+: /.test(line));
+  return {
+    runner: 'go',
+    failed: unique(failedLeaves.map(run => run.name)),
+    passed: tests.filter(test => test.status === 'passed').length,
+    failedCount: Math.max(failedLeaves.length, packageFailed ? 1 : 0),
+    firstError: failure ? `${failure.file ? `${failure.file.split('/').at(-1)}:${failure.line}: ` : ''}${failure.text}` : buildError ?? null,
+    tests,
+    packages: new Set(tests.map(test => test.package)).size,
+  };
+}
+
+const stripColor = text => text.replace(/\x1b\[[0-9;]*m/g, '');
+
+/** A failed jest or vitest test's first error line, with its expected and received values, and where in `file` it failed. */
+function jsFailure(message, file) {
+  const lines = stripColor(message).split('\n');
+  const values = lines.filter(line => /^\s*(Expected|Received):/.test(line)).map(line => line.trim());
+  const text = `${lines[0].trim()}${values.length ? ` (${values.join(', ')})` : ''}`;
+  const at = lines.map(line => /(?:\(|at )(?:file:\/\/)?(\/[^():\s]+):(\d+):\d+/.exec(line)).find(match => match?.[1] === file);
+  return {file, line: at ? Number(at[2]) : null, text};
+}
+
+const JS_STATUS = {passed: 'passed', failed: 'failed'}; // anything else (pending, skipped, todo) did not run
+
+function jsJson(text) {
+  const report = jsonLines(text).find(object => Array.isArray(object.testResults));
+  if (!report) return null;
+  const tests = report.testResults.flatMap(suite => {
+    // A file that fails as a whole (a syntax error, a failed import) has no tests of its own to name.
+    if (!suite.assertionResults?.length && suite.status === 'failed') {
+      // Its mark goes on the first line, and its error there too unless the stack names a line of its own.
+      const failure = jsFailure(suite.message || 'failed to run', suite.name);
+      return [{name: suite.name.split('/').at(-1), file: suite.name, line: 1, status: 'failed', failure: {...failure, line: failure.line ?? 1}}];
+    }
+    return (suite.assertionResults ?? []).map(result => ({
+      name: [...result.ancestorTitles, result.title].join(' › '),
+      title: result.title,
+      file: suite.name,
+      line: result.location?.line ?? null,
+      status: JS_STATUS[result.status] ?? 'skipped',
+      failure: result.status === 'failed' ? jsFailure(result.failureMessages?.[0] ?? 'failed', suite.name) : null,
+    }));
+  });
+  const failed = tests.filter(test => test.status === 'failed');
+  return {
+    // jest's report also lists the handles left open; vitest's report copies jest's format, without them.
+    runner: 'openHandles' in report ? 'jest' : 'vitest',
+    failed: unique(failed.map(test => test.name)),
+    passed: tests.filter(test => test.status === 'passed').length,
+    failedCount: failed.length,
+    firstError: failed[0] ? `${failed[0].failure.text}${failed[0].failure.line ? ` at ${failed[0].file.split('/').at(-1)}:${failed[0].failure.line}` : ''}` : null,
+    tests,
+    files: report.testResults.length,
+  };
+}
+
+const RUNNERS = [goJson, jsJson, cargo, jest, vitest, pytest, nodeTest, go];
 
 /**
  * `{runner, failed, passed, failedCount, firstError}` when `text` is the output of a test run, else null.
  * `failed` names the failed tests (at most 20); `passed` is null when the runner does not count them.
+ * A JSON report also has `tests`, each test with its status and failure, and how many `packages` (go) or
+ * test `files` (jest, vitest) it ran.
  */
 export function parseTestOutput(text = '') {
   for (const runner of RUNNERS) {

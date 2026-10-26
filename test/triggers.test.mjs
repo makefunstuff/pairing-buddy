@@ -154,3 +154,20 @@ test('file stems pair a test with its code across runners', () => {
   assert.deepEqual(['worker_test.go', 'src/worker.go', 'test/ws.test.ts', 'test_ws.py', 'WsTest.java', 'ws.spec.js', 'contest.go'].map(fileStem),
     ['worker', 'worker', 'ws', 'ws', 'ws', 'ws', 'contest']);
 });
+
+test('a regression: the tests Pair ran on save fail where the run before did not, raised once per run', () => {
+  const run = (failed, at) => ({kind: 'test_run', cmd: 'go test ./...', saved: 'internal/delivery/worker.go', files: ['internal/queue/queue_test.go'], at,
+    tests: {runner: 'go', failed, passed: 3, failedCount: failed.length, firstError: 'queue_test.go:34: attempt 5 starts at 15s', tests: [], packages: 3}});
+  const green = foldAll([run([], 1000)]);
+  assert.deepEqual(kinds(green, 2000), []);
+  const red = fold(green, run(['TestNoDoubleDelivery'], 3000));
+  const [trigger] = detectTriggers(red, 4000);
+  assert.equal(trigger.kind, 'regression');
+  assert.equal(trigger.file, 'internal/delivery/worker.go');
+  assert.match(trigger.detail, /^Pair ran `go test \.\/\.\.\.` when the user saved internal\/delivery\/worker\.go\. Now failing, and not in Pair's run before: TestNoDoubleDelivery\. 1 failed/);
+  assert.match(trigger.detail, /names internal\/queue\/queue_test\.go/);
+  assert.deepEqual(kinds(red, 4000, new Set([trigger.key])), []);
+  assert.deepEqual(kinds(fold(red, run(['TestNoDoubleDelivery'], 5000)), 6000), [], 'red the same way again is no news');
+  assert.deepEqual(kinds(red, 3000 + TIMING.recentMs + 1), [], 'old runs are history');
+  assert.deepEqual(kinds(foldAll([run(['TestNoDoubleDelivery'], 1000)]), 2000), [], 'the session\'s first run, red already, is no regression');
+});

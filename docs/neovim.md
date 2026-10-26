@@ -19,6 +19,7 @@ run is real `go test`; only the models' words are scripted.*
 | `M-j` | after its words | go where it points; your cursor never moves by itself |
 | `◎` | the statusline | it has the wheel (the Driver); any key takes it back |
 | `◌` | the statusline | it is not there: reconnecting, or a model is down |
+| `⠹` `✓` `✗` | the statusline, and the sign column of your tests | tests it ran for you when you saved |
 
 **One accent, from your colorscheme.** Pair takes its colour from the colorscheme you use, so it fits in light and
 dark: of the colorscheme's own colours for regular expressions, its terminal cyan, its hints and its specials, it
@@ -53,6 +54,58 @@ check of that file would save you time, and the Partner reads your change, the f
 It traces the test through the code as it is now, thinking first if its model can: if your change is the fix, or it is not
 sure, it stays silent; only when the failure still comes from elsewhere does it point there. Details in [docs/watcher.md](watcher.md).
 
+## It runs what you'd skip
+
+The second moment: you save a fix, the tests you ran pass, and you would push. Pair runs the whole suite as you
+save, in its own pane, and finds what your fix broke somewhere you were not looking. You set the command per project
+(`testOnSave` in the config, see the [README](../README.md#tests-on-save)); the model never starts a run.
+
+![On save: the spinner, the failing test, the remark, the suggestion, Alt-y, and green](images/tests-on-save.gif)
+
+*The plugin and the daemon as shipped, in a clean Neovim with ayu. Both test runs are real `go test -json ./...`
+runs on the project; only the models' words are scripted.*
+
+1. You save `worker.go` as it is, and the statusline spins: `⠹ go test ./...`. This first run of the session is the
+   baseline: it is red on the delivery test, the bug from the wrong turn, and that raises nothing.
+2. You change `>=` to `>`, the fix, and save. The delivery test passes now, but the statusline turns to
+   `✗ 1 failing · TestNoDoubleDelivery`: a test that passed in the run before. In `queue_test.go`, below, the test function gets a `✗` and its
+   neighbour a quiet `✓`; the message `t.Fatalf` printed sits under line 34, where it failed.
+3. Pair reads the test, then `queue.go` (the statusline names each file; where the file is on screen, its gaze
+   crosses the line numbers), and two lines appear under your change: attempt 5 now starts at 15 s, the moment the
+   queue's lease on the job runs out, so a second worker takes it. They end with `M-j`.
+4. `Alt-j` goes to `queue.go:18`, where its fix waits: the old line struck through, the new one under it, and `M-y`.
+5. `Alt-y` takes it, `:w` saves it, the tests run again: `✓ go test ./... · 4 tests, 3 packages` for a few seconds,
+   and the `✗` turns into a `✓`, rising from the background.
+
+![The remark under your change; a cross on the failing test below, the failure under the line it failed on](images/regression.png)
+
+![After Alt-j: the suggestion in queue.go, the old line struck through](images/regression-fix.png)
+
+![The statusline while the tests run, when one fails, and when they pass](images/test-statusline.png)
+
+The run on save is never a remark by itself: the statusline and the signs say how it went, and the chat says when it
+turns red or green. Only a **regression**, a test that fails now and did not in Pair's run before, goes through the
+speak gate as an unasked remark, so a suite that stays red the same way stays quiet. The Partner is asked to keep
+your change working (you made it for a reason) and to suggest the fix where it breaks, thinking first if its model
+can. Details in [docs/watcher.md](watcher.md#regressions).
+
+**What the run shows.**
+
+- **Statusline.** `⠹ go test ./...` while it runs, with the flags that only ask for JSON left out. Then
+  `✗ 1 failing · TestNoDoubleDelivery` (`+2` when more fail, `does not build` for a Go build error) until the next
+  run, or `✓ go test ./... · 4 tests, 3 packages` for six seconds before it rests at `● pair` again. Pair reading,
+  driving, or away comes first. Without Pair's pane (no `pair` in herdr) it says `◌ go test ./... · needs \`pair\` in
+  herdr` instead, until a run can start.
+- **Signs.** With a JSON report (`go test -json`, `jest --json`, `vitest --reporter=json`), each test that ran gets
+  `✓` or `✗` in the sign column of its function (Go) or its `test(...)` line (jest, vitest), in every buffer you have
+  open and in test files you open later. Passing signs are quiet; failing ones are your colorscheme's error colour.
+  A sign whose result changed since the last run fades in; while the next run is on, the last results show half
+  faded.
+- **Failures.** The failed test's message (`t.Errorf`, a panic, `expect(...)`) shows after the line it failed on,
+  or under it when the line is too long for the window.
+
+![A failing test in Neovim's own light colorscheme](images/tests-light.png)
+
 ## What each thing looks like
 
 **Words.** One or two lines under the line you are on, indented with your code, with `●` before them. At most
@@ -60,7 +113,7 @@ three lines; the chat pane has all of them. Your next edit, anywhere, takes them
 
 **Points.** The lines Pair points at get `▎` in the sign column and a faint tint; the code it means on the first
 line is underlined. Its note goes after the line when it fits in the window, else under the line, and moves when
-you resize. Editing a pointed line removes the point. The last point is where `Alt-j` (or `:Pair jump`) goes.
+you resize. Editing a pointed line removes the point. The last point is where `Alt-j` (or `:Pair jump`) goes, unless Pair suggested a change since: then it goes to the suggestion, where `Alt-y` takes it.
 
 **The gaze.** While Pair reads a file you have open, the line numbers it reads light up in the accent, one after
 another, with a trail of two fading behind, in about 0.8 s whatever the length. The statusline names the file for
@@ -74,7 +127,8 @@ lines sit right under them on a faint tint, and the note follows with `M-y`.
 ![A suggestion in Neovim's own light colorscheme](images/suggestion.png)
 
 **The statusline.** One quiet segment: `● pair` at rest, the `●` in the accent while Pair's words are on screen,
-`● reading worker.go` while it reads, `◎ pair has the wheel · any key takes it back` while it drives. The role and
+`● reading worker.go` while it reads, `◎ pair has the wheel · any key takes it back` while it drives, and the
+tests on save as above. The role and
 the talk level show only when they are not the usual ones (`● pair · scout`, `● pair · quiet`).
 
 ![A model down, then the daemon away](images/statusline.png)
@@ -92,7 +146,7 @@ require('pair').setup({
 
 The keys (`jump_key`, `accept_key`, `useful_key`, `noise_key`) are mapped only while there is something for them
 to act on, and only where you have no mapping of your own. The glyphs are plain Unicode, so they show in any font:
-`voice` `●`, `mark` `▎`, `away` `◌`, `wheel` `◎`, `pass` `✓` and `fail` `✗`.
+`voice` `●`, `mark` `▎`, `away` `◌`, `wheel` `◎`, `pass` `✓` and `fail` `✗`. The spinner is braille, `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`.
 
 For the statusline, `require('pair').status()` is plain text and `require('pair').statusline()` the same with
 Pair's highlight groups, for the `statusline` option or a statusline plugin's section:
@@ -120,6 +174,10 @@ to standard ones and does not fade.
 | `PairSuggestDelete` | the lines a suggestion replaces, struck through | between background and foreground |
 | `PairSuggestAdd` | a suggestion's new lines | your foreground on a faint tint |
 | `PairStatus`, `PairStatusDim`, `PairStatusWarn` | the statusline segment | the accent, the statusline's own colours, your colorscheme's warning colour |
+| `PairStatusPass` | `✓` in the statusline after a passing run | your colorscheme's "ok" colour (`DiagnosticOk`) |
+| `PairPass` | `✓` on a passing test | the "ok" colour, faded toward the background |
+| `PairFail` | `✗` on a failing test, and in the statusline | your colorscheme's error colour (`DiagnosticError`) |
+| `PairFailNote` | why a test failed, after its line | your foreground toward the error colour |
 
 ## Ask about lines
 

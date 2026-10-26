@@ -8,9 +8,12 @@ M.glyphs = {
   mark = '▎', -- in the sign column, where it points
   away = '◌', -- not connected, or a model is down
   wheel = '◎', -- it has the wheel
-  pass = '✓',
-  fail = '✗',
+  pass = '✓', -- a test passed, on its line and in the statusline
+  fail = '✗', -- a test failed
 }
+
+-- The statusline while Pair runs your tests.
+M.spinner = {'⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'}
 
 -- Colours are 0xRRGGBB numbers, as nvim_get_hl gives them.
 local function channels(color)
@@ -140,6 +143,8 @@ local function palette()
   local status_bg = status.reverse and (status.fg or fg) or (status.bg or bg)
   local status_fg = status.reverse and (status.bg or bg) or (status.fg or fg)
   local dim = readable(M.mix(bg, fg, 0.42), bg, fg, 2.2)
+  local ok = readable(hl('DiagnosticOk').fg or accent, bg, fg, 3)
+  local fail = readable(hl('DiagnosticError').fg or hl('ErrorMsg').fg or 0xe06c75, bg, fg, 3)
   return {
     PairAccent = {fg = accent},
     PairNote = {fg = readable(M.mix(fg, accent, 0.45), bg, fg, 4.5)}, -- the pair's words
@@ -154,6 +159,10 @@ local function palette()
     PairStatus = {fg = accent},
     PairStatusDim = {fg = M.mix(status_bg, status_fg, 0.62)},
     PairStatusWarn = {fg = hl('DiagnosticWarn').fg or hl('WarningMsg').fg or accent},
+    PairPass = {fg = readable(M.mix(bg, ok, 0.55), bg, ok, 2.2)}, -- quiet: a column of passing tests is no news
+    PairFail = {fg = fail},
+    PairStatusPass = {fg = ok}, -- a passing run, for a moment, in the statusline
+    PairFailNote = {fg = readable(M.mix(fg, fail, 0.35), bg, fg, 4.5)}, -- why a test failed, after the line it failed on
   }
 end
 
@@ -163,6 +172,7 @@ local LINKS = {
   PairSign = 'DiagnosticHint', PairPoint = 'CursorLine', PairSpan = 'Visual', PairGaze = 'DiagnosticHint',
   PairSuggestDelete = 'Comment', PairSuggestAdd = 'DiffAdd',
   PairStatus = 'StatusLine', PairStatusDim = 'StatusLine', PairStatusWarn = 'StatusLine',
+  PairPass = 'DiagnosticOk', PairStatusPass = 'DiagnosticOk', PairFail = 'DiagnosticError', PairFailNote = 'DiagnosticError',
 }
 
 local ours = {} -- each group as this module last left it: a group that differs now was set by someone else

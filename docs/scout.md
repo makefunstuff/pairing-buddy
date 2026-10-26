@@ -63,7 +63,7 @@ The pane is not a sandbox. An allowed test run can write what tests write, and a
 
 ## Test results
 
-The output of every test run, yours or Scout's, is parsed for the runner, the failed tests and the first error line (`src/test-output.mjs`):
+The output of every test run, yours, Scout's or the one on save, is parsed for the runner, the failed tests and the first error line (`src/test-output.mjs`):
 
 | Runner | Recognised by | Failed tests | First error |
 | --- | --- | --- | --- |
@@ -73,5 +73,32 @@ The output of every test run, yours or Scout's, is parsed for the runner, the fa
 | vitest | `Tests  ... (N)` | `FAIL` lines | The error under the first `FAIL`, with its location |
 | pytest | the `=== ... in 0.12s ===` summary | `FAILED`/`ERROR` lines | The message of the first `FAILED` line, else the first `E` line |
 | node --test (spec reporter) | `ℹ tests N` | `✖` lines | The error under the first failing test |
+| go test -json | lines of JSON events with `Action` and `Package` | tests with a `fail` event (subtests rather than their parents) | `file.go:12: message` from the test's output, a panic and its first frame outside the runtime, or the compiler error |
+| jest --json, vitest --reporter=json | a JSON line with `testResults` (also among npm's own lines) | `failed` assertion results, named `describe › test` | The first line of the failure message, with `Expected`/`Received`, and its line in the test file from the stack |
 
 The session keeps the last test run (who ran it, when, what failed) and shows it to the models. For your own commands it also decides the failure triggers: a failed test run counts as failed without an exit code, a passing one does not, whatever words its test names contain, and the same failing test twice is the same error. Scout's own runs never raise a remark, since Pair already has their result.
+
+## Tests on save
+
+With a command for the project in `testOnSave` (see the [README](../README.md#tests-on-save)), Pair runs it in this
+pane each time you save a source file there (not notes or docs, and not files outside the project). It is typed as
+`cd <project> && <command> > <data dir>/runs/<session>.out 2>&1` (from the root, whatever a Scout command's `cd`
+did to the pane's shell): the pane shows the command line and its exit code in the prompt, and
+the daemon reads the output back from the file, whole, however long it is. Then:
+
+- A JSON report also gives each test (`src/test-places.mjs`): a Go test's function is found as `func Name(` in the
+  `_test.go` files of its package (the package's directory from `go.mod`), a jest or vitest test by its title in
+  quotes in its file, or the location the runner gives; a test file that fails to load (a broken import) is marked on
+  its first line. Tests outside the project, skipped ones and ones not found (a `test.each` row) are left out. Neovim shows them in the sign column (see [docs/neovim.md](neovim.md#it-runs-what-youd-skip)).
+- The run becomes the session's last test run, by Pair, with the file you saved and the tests that fail now and did
+  not in Pair's run on save before it. Those raise the `regression` trigger
+  ([docs/watcher.md](watcher.md#regressions)).
+- The command is yours, from your config: it does not go through the command policy, and the model can neither
+  start nor change it. As with Scout's commands, the pane is not a sandbox.
+- One run at a time, sharing the pane's queue with Scout; a save during a run starts one more run after it, for the
+  last file saved. After two minutes a run is stopped with Ctrl-C.
+- Switching back to Navigator keeps the pane open while the project has a command; ending the session closes it.
+  The session's first run (also after a daemon restart) is the baseline: what fails in it failed already, so it
+  raises no regression. A run of your own is no baseline: it may have run other tests.
+  Without herdr there is no pane: nothing runs, the chat says why once, and Neovim's statusline says
+  `◌ go test ./... · needs \`pair\` in herdr`.

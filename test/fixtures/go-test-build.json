@@ -1,0 +1,12 @@
+{"ImportPath":"example.com/hookd/internal/retry","Action":"build-output","Output":"# example.com/hookd/internal/retry\n"}
+{"ImportPath":"example.com/hookd/internal/retry","Action":"build-output","Output":"internal/retry/backoff.go:31:17: undefined: x\n"}
+{"ImportPath":"example.com/hookd/internal/retry","Action":"build-fail"}
+{"Time":"2026-10-26T20:11:21.455206372+02:00","Action":"start","Package":"example.com/hookd/internal/delivery"}
+{"Time":"2026-10-26T20:11:21.455240402+02:00","Action":"output","Package":"example.com/hookd/internal/delivery","Output":"FAIL\texample.com/hookd/internal/delivery [build failed]\n","OutputType":"frame"}
+{"Time":"2026-10-26T20:11:21.455247542+02:00","Action":"fail","Package":"example.com/hookd/internal/delivery","Elapsed":0,"FailedBuild":"example.com/hookd/internal/retry"}
+{"Time":"2026-10-26T20:11:21.455268232+02:00","Action":"start","Package":"example.com/hookd/internal/queue"}
+{"Time":"2026-10-26T20:11:21.455296862+02:00","Action":"output","Package":"example.com/hookd/internal/queue","Output":"FAIL\texample.com/hookd/internal/queue [build failed]\n","OutputType":"frame"}
+{"Time":"2026-10-26T20:11:21.455302362+02:00","Action":"fail","Package":"example.com/hookd/internal/queue","Elapsed":0,"FailedBuild":"example.com/hookd/internal/retry"}
+{"Time":"2026-10-26T20:11:21.455332072+02:00","Action":"start","Package":"example.com/hookd/internal/retry"}
+{"Time":"2026-10-26T20:11:21.455336832+02:00","Action":"output","Package":"example.com/hookd/internal/retry","Output":"FAIL\texample.com/hookd/internal/retry [build failed]\n","OutputType":"frame"}
+{"Time":"2026-10-26T20:11:21.455339342+02:00","Action":"fail","Package":"example.com/hookd/internal/retry","Elapsed":0,"FailedBuild":"example.com/hookd/internal/retry"}

@@ -18,7 +18,7 @@ local config = {
 local state = {
   channel = nil, partial = '', attached = {}, pending = {}, open_request = nil, level = nil, role = nil,
   points = {}, -- the lines Pair points at: {buf, ids (see draw.point), note, code}, oldest first
-  target = nil, -- the point the jump key goes to: Pair's last
+  target = nil, -- where the jump key goes: {buf, ns, id, code} of Pair's last point, or of its suggestion
   words = nil, -- Pair's words under your line: {buf, row, id, remark, text, key}, until your next edit
   reading = nil, -- the file Pair reads now, for the statusline: {name, till}
   suggestion = nil, -- the change Pair suggested: {buf, ids, old, new, remark}
@@ -27,9 +27,12 @@ local state = {
   wanted = false, -- connect was asked for (:Pair start or auto_connect) and not undone by :Pair stop
   retry = nil, -- the reconnect timer
   models = {}, -- why each model is down, per role: the daemon's health
+  run = nil, -- the test run on save, for the statusline: {state = 'run'|'pass'|'fail'|'error'|'idle', label, text, till}
+  results = {}, -- what the last finished run found: {name, file, line, ok, failure}, absolute paths
 }
 local RETRY_MS = {1000, 2000, 5000, 10000, 30000} -- then every 30 s
 local READING_MS = 2000 -- how long the statusline names the file Pair reads
+local PASS_MS = 6000 -- how long the statusline shows a passing run; a failing one stays until the next run
 
 local function default_socket()
   if vim.env.PAIR_SOCKET then return vim.env.PAIR_SOCKET end
@@ -118,34 +121,41 @@ local function draw_words(words, still)
   words.id = draw.remark(words.buf, words.row, words.text, words.key, {still = still})
 end
 
--- Points: the lines Pair points at. The last one is where the jump key goes.
+-- Points: the lines Pair points at. The last one is where the jump key goes, unless a suggestion is newer.
+
+local function point_target(point)
+  return point and {buf = point.buf, ns = ns, id = point.ids.mark, code = point.code, point = point}
+end
+
+--- The jump key goes to `target`, or to Pair's last point when it is nil, or nowhere when there is none.
+local function aim(target)
+  state.target = target or point_target(state.points[#state.points])
+  if not state.target then unmap_keys('jump') end
+end
 
 local function forget_point(point)
   draw.erase(point.buf, vim.tbl_values(point.ids))
   for i, other in ipairs(state.points) do
     if other == point then table.remove(state.points, i) end
   end
-  if state.target == point then
-    state.target = state.points[#state.points]
-    if not state.target then unmap_keys('jump') end
-  end
+  if state.target and state.target.point == point then aim(nil) end
 end
 
 local function clear_points()
   for _, point in ipairs(vim.list_slice(state.points)) do forget_point(point) end
 end
 
---- Goes to the place Pair pointed at last, leaving a mark in the jumplist: Ctrl-O comes back.
+--- Goes to the place Pair pointed at last, or to its suggestion, leaving a mark in the jumplist: Ctrl-O comes back.
 function M.jump()
-  local point = state.target
-  local row = point and draw.row(point.buf, point.ids.mark)
+  local target = state.target
+  local row = target and draw.row(target.buf, target.id, target.ns)
   if not row then return vim.notify('Pair: it points at nothing now') end
   forget_words(true) -- going there answers what it said
   vim.cmd("normal! m'")
-  local ok, err = pcall(vim.api.nvim_win_set_buf, 0, point.buf)
+  local ok, err = pcall(vim.api.nvim_win_set_buf, 0, target.buf)
   if not ok then return vim.notify('Pair: ' .. err, vim.log.levels.ERROR) end
-  vim.bo[point.buf].buflisted = true
-  vim.api.nvim_win_set_cursor(0, {row + 1, draw.column(point.buf, row, point.code)})
+  vim.bo[target.buf].buflisted = true
+  vim.api.nvim_win_set_cursor(0, {row + 1, draw.column(target.buf, row, target.code)})
   vim.cmd('normal! zz')
 end
 
@@ -158,13 +168,16 @@ local function point(message)
   local new = {buf = buf, ids = draw.point(buf, first, last, message.note, code), note = message.note, code = code}
   state.reading = nil -- it has read what it needed
   table.insert(state.points, new)
-  state.target = new
+  state.target = point_target(new)
   map_keys('jump', {{config.jump_key, M.jump, 'Go where Pair points'}})
   while #state.points > config.max_points do forget_point(state.points[1]) end
 end
 
+local show_all_tests -- defined with the tests below
+
 --- Places notes and words again for the windows' new widths.
 local function relayout()
+  show_all_tests()
   for _, p in ipairs(state.points) do
     local mark = vim.api.nvim_buf_is_valid(p.buf) and vim.api.nvim_buf_get_extmark_by_id(p.buf, ns, p.ids.mark, {details = true})
     if mark and mark[1] then
@@ -203,6 +216,8 @@ local function on_remark(message)
     {config.noise_key, function() feedback(false, state.remark) end, 'Pair\'s remark was noise'},
   })
   forget_words(false)
+  -- The remark's target is its suggestion when it made one, else its last point.
+  if type(message.target) == 'table' and message.target.suggestion and state.suggestion then aim(state.suggestion.target) end
   local target = type(message.target) == 'table' and state.target or nil
   local text = type(message.text) == 'string' and message.text or ''
   -- A remark that only pointed: its note, and where.
@@ -225,6 +240,7 @@ end
 local function clear_suggestion()
   local suggestion = state.suggestion
   state.suggestion = nil
+  if suggestion and state.target == suggestion.target then aim(nil) end
   if not suggestion or not vim.api.nvim_buf_is_valid(suggestion.buf) then return end
   draw.erase(suggestion.buf, suggestion.ids, draw.suggest_ns)
   if config.accept_key then pcall(vim.keymap.del, 'n', config.accept_key, {buffer = suggestion.buf}) end
@@ -275,7 +291,10 @@ local function suggest(message)
   end
   -- JSON null arrives as vim.NIL: a suggestion in an answer to you is no remark.
   local remark = message.remark ~= vim.NIL and message.remark or nil
-  state.suggestion = {buf = buf, ids = draw.suggestion(buf, first, old, new, message.note, key), old = old, new = new, remark = remark}
+  local ids = draw.suggestion(buf, first, old, new, message.note, key)
+  state.suggestion = {buf = buf, ids = ids, old = old, new = new, remark = remark, target = {buf = buf, ns = draw.suggest_ns, id = ids[1]}}
+  aim(state.suggestion.target) -- the jump key goes there: where the accept key works
+  map_keys('jump', {{config.jump_key, M.jump, 'Go where Pair points'}})
   state.reading = nil
   redraw_status()
 end
@@ -364,6 +383,61 @@ local function look(message)
   vim.defer_fn(redraw_status, READING_MS + 50)
 end
 
+-- Tests: the run on save, in the statusline while it runs and after, and on the lines of the tests it ran.
+
+local spinner = {timer = nil, frame = 1}
+
+local function spin(on)
+  if on and not spinner.timer then
+    spinner.timer = vim.uv.new_timer()
+    spinner.timer:start(0, 80, vim.schedule_wrap(function()
+      spinner.frame = spinner.frame % #style.spinner + 1
+      redraw_status()
+    end))
+  elseif not on and spinner.timer then
+    spinner.timer:close()
+    spinner.timer = nil
+  end
+end
+
+--- Shows what the last run found in `buf`: a sign on each test, and why one failed after the line it failed on.
+local function show_tests(buf)
+  if not vim.api.nvim_buf_is_loaded(buf) then return end
+  local name = vim.api.nvim_buf_get_name(buf)
+  local signs, notes, shown = {}, {}, {}
+  for _, test in ipairs(state.results) do
+    if test.file == name then table.insert(signs, {line = test.line, ok = test.ok, changed = test.changed}) end
+    local failure = type(test.failure) == 'table' and test.failure -- JSON null arrives as vim.NIL
+    if failure and failure.file == name then table.insert(notes, {line = failure.line, text = failure.text, changed = test.changed}) end
+    if test.file == name or (failure and failure.file == name) then table.insert(shown, test) end
+  end
+  local stale = state.run and state.run.state == 'run'
+  draw.tests(buf, signs, notes, {stale = stale})
+  -- A change rises from the background once, where it first shows.
+  if not stale then
+    for _, test in ipairs(shown) do test.changed = false end
+  end
+end
+
+show_all_tests = function()
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do show_tests(buf) end
+end
+
+local function on_tests(message)
+  if message.state == 'pass' or message.state == 'fail' then
+    -- A test whose result changed since the last run rises from the background; the others are just there.
+    local before = {}
+    for _, test in ipairs(state.results) do before[test.file .. ':' .. test.name] = test.ok end
+    state.results = message.results or {}
+    for _, test in ipairs(state.results) do test.changed = before[test.file .. ':' .. test.name] ~= test.ok end
+  end
+  state.run = {state = message.state, label = message.label, text = message.text, till = now_ms() + PASS_MS}
+  if message.state == 'pass' then vim.defer_fn(redraw_status, PASS_MS + 50) end
+  spin(message.state == 'run')
+  show_all_tests()
+  redraw_status()
+end
+
 local function open_split(file, line)
   local window = vim.api.nvim_get_current_win()
   vim.cmd('belowright split ' .. vim.fn.fnameescape(file))
@@ -449,6 +523,7 @@ local handlers = {
   suggest = suggest,
   edit = edit,
   remark = on_remark,
+  tests = on_tests,
   clear = function()
     clear_points()
     clear_suggestion()
@@ -510,6 +585,7 @@ end
 
 disconnected = function()
   state.channel = nil
+  if state.run and state.run.state == 'run' then on_tests({state = 'idle'}) end -- that run's end will not come
   if state.role == 'driver' then set_role('navigator') end -- a restarted daemon has ended the hand-over
   redraw_status()
   if state.wanted then schedule_retry(1) end
@@ -537,6 +613,9 @@ function M.disconnect()
   clear_suggestion()
   forget_words(false)
   unmap_feedback()
+  state.results, state.run = {}, nil
+  spin(false)
+  show_all_tests()
 end
 
 -- The statusline: one quiet segment. The voice glyph lights up in the accent while Pair's words show; the role
@@ -557,13 +636,24 @@ local function status_parts()
   if state.reading and now_ms() < state.reading.till then
     return {glyph = g.voice, text = 'reading ' .. state.reading.name, hl = 'PairStatus', text_hl = 'PairStatusDim'}
   end
+  local run = state.run
+  if run and run.state == 'run' then
+    return {glyph = style.spinner[spinner.frame], text = run.label, hl = 'PairStatus', text_hl = 'PairStatusDim'}
+  elseif run and run.state == 'fail' then
+    return {glyph = g.fail, text = run.text, hl = 'PairFail', text_hl = 'PairStatusDim'}
+  elseif run and run.state == 'error' then
+    return {glyph = g.away, text = run.label .. ' · ' .. run.text, hl = 'PairStatusWarn', text_hl = 'PairStatusDim'}
+  elseif run and run.state == 'pass' and now_ms() < run.till then
+    return {glyph = g.pass, text = run.label .. ' · ' .. run.text, hl = 'PairStatusPass', text_hl = 'PairStatusDim'}
+  end
   local parts = {'pair'}
   if state.role and state.role ~= 'navigator' then table.insert(parts, state.role) end
   if state.level and state.level ~= 'normal' then table.insert(parts, state.level) end
   return {glyph = g.voice, text = table.concat(parts, ' · '), hl = state.words and 'PairStatus' or 'PairStatusDim', text_hl = 'PairStatusDim'}
 end
 
---- The statusline's text, for example `● pair`, `● pair · scout`, `● reading worker.go` or `◌ pair · partner down`.
+--- The statusline's text, for example `● pair`, `● reading worker.go`, `⠹ go test ./...`, `✗ 1 failing · TestX` or
+--- `◌ pair · partner down`.
 function M.status()
   local parts = status_parts()
   return parts and (parts.glyph .. ' ' .. parts.text) or ''
@@ -637,6 +727,13 @@ function M.setup(opts)
     if file then event({kind = 'enter', file = file}) end
   end})
   vim.api.nvim_create_autocmd('CursorHold', {group = group, callback = send_cursor})
+  -- Saving is when Pair runs your tests, if you set a command for the project (see the README).
+  vim.api.nvim_create_autocmd('BufWritePost', {group = group, callback = function(args)
+    local file = state.channel and project_path(args.buf)
+    if file then event({kind = 'save', file = file}) end
+  end})
+  -- A test file you open after a run shows its results too.
+  vim.api.nvim_create_autocmd('BufReadPost', {group = group, callback = function(args) show_tests(args.buf) end})
   -- CursorHold never fires in Visual mode, so a selection is sent once it stops changing.
   local selection_timer = vim.uv.new_timer()
   vim.api.nvim_create_autocmd({'CursorMoved', 'ModeChanged'}, {group = group, callback = function()

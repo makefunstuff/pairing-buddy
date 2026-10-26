@@ -14,7 +14,8 @@ function currentFile(state) {
   return `Current file: ${state.file}${state.cursor ? `, cursor at line ${state.cursor.line}` : ''}${selection}`;
 }
 
-const testsLine = (tests, now) => `Last test run: \`${tests.cmd}\` by ${tests.by === 'pair' ? 'Pair' : 'the user'}, ${ago(now, tests.at)}: ${testSummary(tests)}`;
+const runBy = tests => (tests.saved ? `Pair, when the user saved ${tests.saved}` : tests.by === 'pair' ? 'Pair' : 'the user');
+const testsLine = (tests, now) => `Last test run: \`${tests.cmd}\` by ${runBy(tests)}, ${ago(now, tests.at)}: ${testSummary(tests)}`;
 
 const looking = state => `The user is looking at: ${state.focus.target}${state.focus.scrolled ? ' (scrolled up)' : ''}`;
 const lastKey = (state, now) => `Last keystroke: ${state.lastKeyAt ? ago(now, state.lastKeyAt) : 'none yet'}`;

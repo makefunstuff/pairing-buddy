@@ -7,6 +7,7 @@ local M = {}
 
 M.ns = vim.api.nvim_create_namespace('pair')
 M.suggest_ns = vim.api.nvim_create_namespace('pair_suggest')
+M.tests_ns = vim.api.nvim_create_namespace('pair_tests')
 local gaze_ns = vim.api.nvim_create_namespace('pair_gaze')
 
 M.motion = true -- setup's `motion` option
@@ -223,6 +224,45 @@ function M.suggestion(buf, first, old, new, note, key)
   vim.list_extend(lines, voice(note, indent_of(buf, last), text_width(window_of(buf)), key))
   table.insert(ids, place(buf, M.suggest_ns, last, 0, {virt_lines = lines}))
   return ids
+end
+
+-- Tests: what the run on save found, on the lines of the tests in `buf`.
+
+--- What a test run found in `buf`: `signs` ({line, ok, changed}) put ✓ or ✗ in the sign column of each test,
+--- `notes` ({line, text, changed}) say why a test failed there: after the line when it fits, else under it. What `changed` since the last run
+--- rises from the background; with `stale` (the next run is on) everything shows half faded.
+function M.tests(buf, signs, notes, opts)
+  vim.api.nvim_buf_clear_namespace(buf, M.tests_ns, 0, -1)
+  local count = vim.api.nvim_buf_line_count(buf)
+  local stale = opts and opts.stale
+  local function group(name) return stale and style.fade(name, 0.4) or name end
+  local function set(mark, spec)
+    if mark.line > count then return end
+    local how = mark.changed and not stale and place or vim.api.nvim_buf_set_extmark
+    how(buf, M.tests_ns, mark.line - 1, 0, spec)
+  end
+  for _, sign in ipairs(signs) do
+    set(sign, {
+      sign_text = sign.ok and style.glyphs.pass or style.glyphs.fail,
+      sign_hl_group = group(sign.ok and 'PairPass' or 'PairFail'),
+      priority = 15, -- under the pair's own mark
+    })
+  end
+  local width = text_width(window_of(buf))
+  for _, note in ipairs(notes) do
+    local after = {{'   ' .. style.glyphs.fail .. ' ', group('PairFail')}, {note.text, group('PairFailNote')}}
+    if note.line > count or vim.fn.strdisplaywidth(line_of(buf, note.line - 1)) + width_of(after) <= width then
+      set(note, {virt_text = after, virt_text_pos = 'eol', priority = 15})
+    else
+      local indent = indent_of(buf, note.line - 1)
+      local lines = wrap(note.text, math.max(20, width - indent - 2), group('PairFailNote'))
+      for i, line in ipairs(lines) do
+        table.insert(line, 1, i == 1 and {style.glyphs.fail .. ' ', group('PairFail')} or {'  '})
+        table.insert(line, 1, {string.rep(' ', indent)})
+      end
+      set(note, {virt_lines = lines, priority = 15})
+    end
+  end
 end
 
 -- The gaze: the line numbers the pair reads light up one after another, a short trail fading behind.
