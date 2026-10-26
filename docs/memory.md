@@ -2,9 +2,32 @@
 
 Pair remembers where the last session in a project stopped, and learns from you when a remark is worth making. Both live in the daemon's data directory (`sessions.sqlite`), never in your repository, and never leave your machine.
 
+## No ceremony: a session starts and ends by itself
+
+A session starts when a Neovim or a chat pane opens in a project; there is nothing to start. Its goal is usually
+written down already, so Pair takes it from there instead of asking:
+
+1. the title of the herdr work board's task for the branch, matched by repo and number (`work/7-retries` in repo
+   `hookd` is task `hookd/7`, never another repo's task 7);
+2. else the words of the branch name (`fix/reconnect-after-sleep` is "reconnect after sleep");
+3. else the chat asks: "What are we doing this session?". `later` (or `exit`, `skip`, `none`) skips the question,
+   and the next line is a question for Pair again. `/goal` sets one any time.
+
+The chat says where the goal came from (`Goal, from the board task hookd/7: Retries reach the budget`), and the
+[context card](neovim.md#what-it-knows-the-context-card) shows it. The board is read with its own command
+(`herdr-projects list --json`); `"board": null` in the config turns that off.
+
+A session ends by itself, and writes its note:
+
+- after 45 minutes in which you neither typed, edited, moved in Neovim, ran a command nor asked anything;
+- a minute after its last Neovim and chat pane closed (a Neovim you restart at once keeps it).
+
+A session you never used (an agent's Neovim, one opened to look) ends without a note: there is nothing to note.
+`/end` still ends one at once.
+
 ## The session note
 
-`/end` in the chat (or `:Pair end`) ends the session. Pair then asks the Partner for a short note of at most six lines: the goal, what changed, and the loose ends. With the request it gets the session goal and `git status --short` (the first 20 lines), so even a small model can say which files changed. The note shows in the chat and is kept with the session.
+`/end` in the chat (or `:Pair end`) ends the session, and so does Pair [by itself](#no-ceremony-a-session-starts-and-ends-by-itself). Pair then asks the Partner for a short note of at most six lines: the goal, what changed, and the loose ends. With the request it gets the session goal and `git status --short` (the first 20 lines), so even a small model can say which files changed. The note shows in the chat and is kept with the session.
 
 A heading the model adds itself (`Session note:`, `# Session Notes`, …) is dropped, also when the text follows on the same line. If the Partner cannot answer (the model is down) or answers with nothing, no note is kept (the chat says why when the model failed): the next session then starts from the last good note.
 
@@ -12,14 +35,14 @@ A heading the model adds itself (`Session note:`, `# Session Notes`, …) is dro
 
 The next session in the same project (the same git root) starts from the last note, in two ways:
 
-- The chat shows it before asking for the new goal:
+- The chat shows it before the new goal (or before asking for one):
 
   ```
   ·· Last time:
   Goal: reconnect drops after the phone sleeps.
   Changed: RECONNECT_TIMEOUT_MS in src/ws.ts is now 30000.
   Loose end: try it on a real phone.
-  ·· What are we doing this session? Type the goal here.
+  ·· What are we doing this session? Type the goal here, or "later".
   ```
 
 - The Partner's instructions carry it, with the advice to use it when you ask about the last session or its loose ends, and not to bring it up otherwise. "What did we leave open last time?" gets an answer from it; a remark nobody asked for is not made because of it.

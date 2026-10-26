@@ -1,8 +1,8 @@
 # The pair in Neovim
 
 Pair sits in the second chair. In Neovim it has a small visual language: a few marks in one colour, all in your
-own font, and no windows, boxes, borders or field labels. Everything it shows follows one test: would you keep it
-on screen for an eight-hour day?
+own font, and no windows, boxes, borders or field labels, except the one card you open yourself to see what it knows.
+Everything it shows follows one test: would you keep it on screen for an eight-hour day?
 
 ![Pair stops a wrong turn: it reads, says why under your edit, and Alt-j goes to the real cause](images/wrong-turn.gif)
 
@@ -213,6 +213,41 @@ held, `● pair · held thought · M-j`, the `●` in the accent.
 
 ![A model down, then the daemon away](images/statusline.png)
 
+## What it knows: the context card
+
+`:Pair context` shows everything the pair uses, as it is this second, on one card you can read and trim: the goal,
+the board task of your branch, git, the commands you ran, and where you have been in the editor. It is the same
+text the Partner gets with every remark and question, so what is not on the card is not sent. It is read again every
+two seconds while it is open.
+
+![:Pair context: the goal from the board task, the board, git, the failing run, and the buffers, jumps and searches](images/context.png)
+
+*The card in the capture, made by the daemon and plugin as shipped: no goal was typed, it came from the board task
+of the branch. The test run, the two Telescope searches and the `/` search are real; the board is a stand-in for
+herdr's work board ([captures/board.mjs](captures/board.mjs)).*
+
+| Source | Rows | Read from |
+| --- | --- | --- |
+| goal | what the session is for, and where it came from | the board task, else the branch name, else what you typed |
+| board | the task, its state, and how many of the repo's other tasks are working or need you | the herdr work board: the task whose number is in the branch name, in this repo |
+| git | branch, last commit, how many files changed, the pull request | `git`, and `gh pr view` at most every five minutes |
+| terminal | the last three commands, how they ended and how long ago | the herdr panes and the shell hook |
+| editor | your buffers, the jumplist, and your searches with what you opened from them | Neovim, and Telescope's prompt as you leave it; `/` and `?` too |
+
+- **`x` hides a source** for the rest of the session: it is struck through on the card and no longer sent. `x` on
+  it again brings it back. `q` or `Esc` closes the card. Hiding works from then on: what went with earlier questions
+  stays in the session's conversation.
+- **A budget per source.** Six buffers, four jumps and three searches go; the card says how many more were cut.
+- **The board's own launches are not yours.** A command that launches one of the board's agents is left out of the
+  commands, and the card counts it as not sent, so Pair never thinks you ran it.
+- **Matched by repo and number.** The branch `work/7-retries` belongs to task 7 of this repo only: another repo's
+  task 7 is never taken for it. The repo is the folder of the main checkout (also from a worktree) or the name in
+  `origin`'s URL.
+- Searches are only watched: Telescope's prompt is read as you leave it, and the search counts once you land
+  somewhere new. Telescope's actions and your mappings are left alone.
+
+![x on the terminal: its rows are struck through and no longer go to the Partner](images/context-trimmed.png)
+
 ## Setup
 
 ```lua
@@ -224,6 +259,9 @@ require('pair').setup({
   glyphs = {},         -- for example {voice = '\u{f444}', wheel = '\u{f030c}'} with a Nerd Font
 })
 ```
+
+With `auto_connect`, a Neovim without a screen (an agent's or a script's, `nvim --headless`) and one started in the
+temp folder do not connect, so they never start a session; `:Pair start` connects them anyway.
 
 The keys (`jump_key`, `accept_key`, `useful_key`, `noise_key`) are mapped only while there is something for them
 to act on, and only where you have no mapping of your own; `listen_key` is mapped from the start, also only where it is free. The glyphs are plain Unicode, so they show in any font:
