@@ -45,8 +45,8 @@ const USAGE = `usage:
   pair uninstall    stop and remove the service (the config and data stay)
   pair daemon       run the daemon in the foreground
   pair supervise    run the daemon in the foreground, restarted when it fails (what \`pair\` starts without a service)
-  pair shell-hook bash|zsh|fish   print the shell hook that reports exit codes
-  pair report --exit N --cmd TEXT [--shell PID]   (used by the shell hook)`;
+  pair shell-hook bash|zsh|fish   print the shell hook that reports commands, exit codes and (zsh) typing
+  pair report --start|--exit N|--ready [--cmd TEXT] [--shell PID] ...   (used by the shell hook)`;
 
 const ONE_MODEL = 'The Watcher asks it for one number without thinking, the Partner thinks; on its server the Watcher waits while the Partner works.';
 const TWO_MODELS = 'On a server that holds one model at a time, give both roles one model instead: "model" in the config (see docs/models.md, "One model").';
@@ -189,7 +189,7 @@ Models: ${rolesText(config.models)}. ${sameModel(config.models.watcher, config.m
 Next:
   1. Add the Neovim plugin with lazy.nvim:
 ${LAZY_SPEC}
-  2. Optional, for exit codes: eval "$(pair shell-hook bash)" in your shell's rc file (or zsh; fish: pair shell-hook fish | source)
+  2. Optional, for exact commands and exit codes in your panes: eval "$(pair shell-hook bash)" in your shell's rc file (or zsh; fish: pair shell-hook fish | source)
   3. Run \`pair doctor\` to check everything, then \`pair\` in a herdr pane next to Neovim.`);
 }
 
@@ -264,28 +264,36 @@ async function openChatPane(config) {
   await herdrRequest(process.env.HERDR_SOCKET_PATH, 'pane.send_text', {pane_id: pane.pane_id, text: `${SCRIPT} chat\r`});
 }
 
-// Runs after every shell command, so it stays silent: no config or no daemon means nothing to report.
+// Runs before and after every shell command, so it stays silent: no config or no daemon means nothing to report.
 function report(args) {
-  const {values} = parseArgs({args, options: {exit: {type: 'string'}, cmd: {type: 'string'}, shell: {type: 'string'}}});
-  let socketPath;
-  try { socketPath = loadConfig().socket; } catch { socketPath = defaultSocketPath(); }
-  const socket = connect(socketPath);
+  const {values} = parseArgs({args, options: {
+    exit: {type: 'string'}, cmd: {type: 'string'}, start: {type: 'boolean'}, ready: {type: 'boolean'}, keys: {type: 'boolean'},
+    shell: {type: 'string'}, n: {type: 'string'},
+  }});
+  // The shell's pid names the terminal outside herdr: a Neovim :terminal's or a tmux pane's (src/pane-watch.mjs).
+  const hook = {
+    cwd: process.cwd(), pane: process.env.HERDR_PANE_ID ?? null, tmux: process.env.TMUX_PANE ?? null,
+    shell: Number(values.shell) || null, keys: values.keys === true,
+  };
+  const message = values.ready ? {type: 'shell', ...hook}
+    : {type: values.start ? 'command_start' : 'command', ...hook, n: Number(values.n ?? 0), cmd: values.cmd ?? '', ...(values.start ? {} : {exit: Number(values.exit)})};
+  const socket = connect(socketPathOf());
   socket.on('error', () => {});
   socket.on('connect', () => {
-    // The shell's pid names the terminal outside herdr: a Neovim :terminal's or a tmux pane's (src/pane-watch.mjs).
-    const shell = Number(values.shell) || null;
-    sendMessage(socket, {
-      type: 'command', cwd: process.cwd(), pane: process.env.HERDR_PANE_ID ?? null, tmux: process.env.TMUX_PANE ?? null, shell,
-      cmd: values.cmd ?? '', exit: Number(values.exit),
-    });
+    sendMessage(socket, message);
     socket.end();
   });
+}
+
+/** The daemon's socket, from the config when there is one. */
+function socketPathOf() {
+  try { return loadConfig().socket; } catch { return defaultSocketPath(); }
 }
 
 const [command, ...args] = process.argv.slice(2);
 try {
   if (command === 'shell-hook') {
-    process.stdout.write(shellHook(args[0], process.argv[1]));
+    process.stdout.write(shellHook(args[0], process.argv[1], {socket: socketPathOf()}));
   } else if (command === 'report') {
     report(args);
   } else if (command === 'setup') {

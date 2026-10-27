@@ -74,16 +74,21 @@ init system ([install.md](install.md#install)).
 
 ## `pair shell-hook`
 
-Prints a hook for your shell that reports each command's exit code to the daemon, and emits OSC 133 marks for a
-terminal that reads them. It names the shell by its process id, which tells Pair the `:terminal` buffer or tmux pane
-the command ran in. Optional; most useful without herdr.
+Prints a hook for your shell that tells the daemon when the shell starts and when each command starts and ends, with
+its exit code; in zsh also when you type at the prompt (at most twice a second, never the keys themselves). Pair then
+catches every command however short, and no longer polls the terminal's processes to find them: it looks at them only
+while a command runs, for an editor opening in it. A zsh terminal is not read at its prompt at all; bash and fish
+report no keys, so the one with focus is still read twice a second at its prompt, for typing
+([herdr.md](herdr.md#the-users-panes-the-shell-hook-else-heuristics)).
+It emits OSC 133 marks for a terminal that reads them, and names the shell by its process id, which tells Pair the
+`:terminal` buffer or tmux pane the command ran in. Optional; recommended in herdr too.
 
 ```sh
 eval "$(pair shell-hook bash)"   # or zsh, in your rc file
 pair shell-hook fish | source    # fish, in config.fish
 ```
 
-`pair report --exit N --cmd TEXT [--shell PID]` is what the hook runs; you never need to.
+`pair report --start|--exit N|--ready [--cmd TEXT] [--shell PID] ...` is what the hook runs; you never need to.
 
 ## Chat commands
 

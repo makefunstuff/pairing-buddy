@@ -92,15 +92,20 @@ The chat pane is optional: a Neovim alone is a whole session.
 `/end` and the rest are in the [command reference](cli.md#chat-commands). Anything else you type is a question for
 Pair, and "you take it" or "your turn" hands it the wheel.
 
-**The shell hook.** Optional, for exit codes and the shortest commands; add it to your shell's rc file:
+**The shell hook.** Optional, for exact command boundaries and exit codes in your own panes: add it to your shell's rc file.
+Pair then catches every command however short and looks at the pane's processes only for an editor while a command
+runs. In zsh the hook also reports your keys at the prompt, so the pane is not read there at all; bash and fish report
+no keys, so the pane with focus is still read twice a second at its prompt, for typing ([herdr.md](herdr.md#the-users-panes-the-shell-hook-else-heuristics)):
 
 ```sh
 eval "$(pair shell-hook bash)"   # or zsh
 pair shell-hook fish | source    # fish, in config.fish
 ```
 
-It also emits OSC 133 marks (prompt, output, end with the exit code) for a terminal that reads them. It names the
-shell by its process id, which tells Pair the `:terminal` buffer or tmux pane the command ran in.
+It runs `pair report` in the background before and after each command, so the prompt never waits; zsh's keys go
+straight to the daemon's socket, at most twice a second, and never the keys themselves. It also emits OSC 133 marks
+(prompt, output, end with the exit code) for a terminal that reads them. It names the shell by its process id, which
+tells Pair the `:terminal` buffer or tmux pane the command ran in.
 
 **Without herdr**, run `:Pair chat` in Neovim (or `pair chat` in any terminal). Scout's pane and the tests on save
 run in a `:terminal` along the bottom of Neovim, and the Driver's `type` goes to your own `:terminal` buffers
