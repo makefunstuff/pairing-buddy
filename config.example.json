@@ -35,7 +35,7 @@
 
   // Pair's own pane, where Scout's commands and the tests on save run (see docs/scout.md#pairs-pane): your rc file
   // for its aliases, functions and PATH (true is ~/.bashrc), and the bubblewrap sandbox: "auto" where bwrap works,
-  // true always, false never; inside it only the project and `writable` can be written, and no network unless allowed.
+  // true always, false never; inside it only the project and `writable` keep what is written, and no network unless allowed.
   // "scoutPane": {"rc": "~/.bashrc", "sandbox": "auto", "network": false, "writable": ["~/.cache"]},
 
   // One model for both roles: the Watcher asks it for one number without thinking, so it stays fast; the Partner

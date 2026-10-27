@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
-import {spawn} from 'node:child_process';
+import {spawn, spawnSync} from 'node:child_process';
 import {existsSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync} from 'node:fs';
 import {createServer} from 'node:net';
 import {homedir, tmpdir} from 'node:os';
 import {basename, join} from 'node:path';
 import {test} from 'node:test';
-import {sandboxWords, sandboxWorks} from '../src/sandbox.mjs';
+import {cacheFolders, overlayWorks, sandboxWords, sandboxWorks, userSockets} from '../src/sandbox.mjs';
 import {commandResult, promptNumber} from '../src/scout-pane.mjs';
-import {rcNames, scoutPaneConfig, shellLine} from '../src/scout-shell.mjs';
+import {rcNames, scoutPaneConfig, shellLine, shellQuote} from '../src/scout-shell.mjs';
 
 const scratch = () => realpathSync(mkdtempSync(join(tmpdir(), 'pair-shell-')));
 const plain = scoutPaneConfig({sandbox: false});
@@ -83,7 +83,7 @@ test('the sandbox: the disk read-only, the project and named folders writable, s
   mkdirSync(cache);
   const socket = join(dir, 'herdr.sock');
   writeFileSync(socket, '');
-  const words = sandboxWords({cwd: dir, writable: [cache, join(dir, 'missing')], hidden: [socket], runtimeDir: '/run/user/1'});
+  const words = sandboxWords({cwd: dir, writable: [cache, join(dir, 'missing')], hidden: [socket], runtimeDir: '/run/user/1', caches: [], sockets: []});
   const at = (...seq) => words.findIndex((_, i) => seq.every((word, j) => words[i + j] === word));
   assert.ok(at('--ro-bind', '/', '/') === 1);
   assert.ok(at('--tmpfs', '/run/user/1') > 0);
@@ -91,7 +91,7 @@ test('the sandbox: the disk read-only, the project and named folders writable, s
   assert.equal(words.includes(join(dir, 'missing')), false, 'a folder that is not there is left out');
   assert.ok(at('--ro-bind', '/dev/null', socket) > at('--bind', dir, dir), 'a socket inside a writable folder stays hidden');
   assert.equal(words.includes('--share-net'), false);
-  const online = sandboxWords({cwd: dir, network: true});
+  const online = sandboxWords({cwd: dir, network: true, caches: [], sockets: []});
   assert.ok(online.includes('--share-net'));
   // Name lookups through systemd-resolved, nscd, avahi or the system bus would reach the network without it.
   const resolver = '/run/systemd/resolve/io.systemd.Resolve';
@@ -99,6 +99,42 @@ test('the sandbox: the disk read-only, the project and named folders writable, s
     assert.ok(at('--ro-bind', '/dev/null', resolver) > 0, 'without the network, no name lookups either');
     assert.equal(online.includes(resolver), false, 'with the network, lookups work');
   }
+});
+
+test('the sandbox: caches writable with their writes thrown away, and every socket of yours hidden', async () => {
+  const dir = scratch();
+  const [cache, project] = ['cache', 'project'].map(name => join(dir, name));
+  mkdirSync(cache);
+  mkdirSync(project);
+  const yours = join(dir, 'client.sock');
+  const server = createServer();
+  await new Promise(resolve => server.listen(yours, resolve));
+  try {
+    assert.ok(userSockets().includes(yours), 'a listening socket of yours is found');
+    const words = sandboxWords({cwd: project, caches: [cache, project], overlay: true, sockets: [yours], runtimeDir: null});
+    const at = (...seq) => words.findIndex((_, i) => seq.every((word, j) => words[i + j] === word));
+    assert.ok(at('--overlay-src', cache, '--tmp-overlay', cache) > 0);
+    assert.equal(at('--tmp-overlay', project), -1, 'a writable folder is no cache');
+    assert.ok(at('--ro-bind', '/dev/null', yours) > 0);
+    assert.ok(sandboxWords({cwd: project, caches: [cache], overlay: false, sockets: []}).includes('--tmpfs'), 'without overlays, an empty one');
+    assert.deepEqual(cacheFolders({XDG_CACHE_HOME: '/c', GOCACHE: '/go'}), ['/c', '/go']);
+    assert.deepEqual(cacheFolders({XDG_CACHE_HOME: '/c', GOCACHE: '/c'}), ['/c']);
+  } finally {
+    server.close();
+  }
+});
+
+test('in the sandbox a cache keeps what is there and takes new entries, which never reach the disk', {skip: overlayWorks() ? false : 'bubblewrap cannot make overlays here'}, async () => {
+  const dir = scratch();
+  const [cache, project] = ['cache', 'project'].map(name => join(dir, name));
+  mkdirSync(cache);
+  mkdirSync(project);
+  writeFileSync(join(cache, 'old'), 'built before\n');
+  const words = sandboxWords({cwd: project, caches: [cache], sockets: [], runtimeDir: null});
+  const line = `exec env ${shellQuote('PS1=scout[\\#] exit $? $ ')} ${words.map(shellQuote).join(' ')} bash --norc -i`;
+  const results = await runInShell(line, project, [`cat ${cache}/old`, `echo entry > ${cache}/new && cat ${cache}/new`]);
+  assert.deepEqual(results, [{exit: 0, output: 'built before'}, {exit: 0, output: 'entry'}]);
+  assert.equal(existsSync(join(cache, 'new')), false);
 });
 
 test('with the rc file the pane has its aliases, functions and environment, and still reads exit codes', async () => {
@@ -135,7 +171,8 @@ test('in the sandbox, commands write only the project, reach no network and no h
     // An rc file in /tmp, which is a private one in the sandbox.
     const rc = join(dir, 'bashrc');
     writeFileSync(rc, RC);
-    const {line, sandboxed} = shellLine({setup: scoutPaneConfig({rc, sandbox: true}), cwd: project, hidden: [socket]});
+    // Not named as hidden: it is hidden as a socket of yours.
+    const {line, sandboxed} = shellLine({setup: scoutPaneConfig({rc, sandbox: true}), cwd: project});
     assert.equal(sandboxed, true);
     const marker = mkdtempSync('/tmp/pair-marker-');
     const results = await runInShell(line, project, [
@@ -158,4 +195,19 @@ test('in the sandbox, commands write only the project, reach no network and no h
   } finally {
     server.close();
   }
+});
+
+const hasGo = spawnSync('go', ['version'], {stdio: 'ignore'}).status === 0;
+
+test('go test runs in the default sandbox on a module it never built, with its cache writes thrown away', {skip: sandboxWorks() && hasGo ? false : 'needs bubblewrap and go', timeout: 120_000}, async () => {
+  const project = join(scratch(), 'mod');
+  mkdirSync(project);
+  // A module and a test nobody built before, so each build result is a new cache entry.
+  const unique = `${process.pid}${Date.now()}`;
+  writeFileSync(join(project, 'go.mod'), `module example.com/m${unique}\n\ngo 1.21\n`);
+  writeFileSync(join(project, 'm_test.go'), `package m\n\nimport "testing"\n\nfunc TestUnique(t *testing.T) { if ${unique} == 0 { t.Fatal() } }\n`);
+  const {line} = shellLine({setup: scoutPaneConfig(), cwd: project});
+  const [result] = await runInShell(line, project, ['go test -count=1 ./...']);
+  assert.equal(result.exit, 0, result.output);
+  assert.match(result.output, /^ok\s+example\.com\/m/);
 });
