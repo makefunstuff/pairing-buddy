@@ -1,11 +1,12 @@
 // Finds the moments where a remark might help. Pure: the caller passes the clock and the keys already fired.
 import {errorSignature, failed, failureLine} from './fold.mjs';
 import {PROSE_KINDS, proseTriggers} from './prose-triggers.mjs';
+import {moveText, runsDetail} from './run-log.mjs';
 import {readingSummary} from './run-output.mjs';
 import {isSourceFile, testSummary} from './test-output.mjs';
 import {currentTrail, lost, TRAIL, trailLines} from './trail.mjs';
 
-export const TRIGGER_KINDS = ['failed_command', 'repeated_error', 'new_code_diagnostic', 'stall', 'drift', 'edit_while_red', 'regression', 'search_trail', 'crash', 'new_warning', ...PROSE_KINDS];
+export const TRIGGER_KINDS = ['failed_command', 'repeated_error', 'new_code_diagnostic', 'stall', 'drift', 'edit_while_red', 'regression', 'search_trail', 'crash', 'new_warning', 'same_result', 'number_moved', ...PROSE_KINDS];
 
 export const TIMING = {
   lookGraceMs: 4_000, // a failure gets this long to be noticed before Pair counts it as missed
@@ -171,6 +172,35 @@ function warningTriggers(state, now) {
   }];
 }
 
+const MOVED = 0.25; // a number that moves at least this much is worth a look; a time, when it halves or doubles
+
+/**
+ * The exploration loop: the last run of a command printed the same numbers as the run before although the code
+ * changed (the change did nothing, and why is the question), or a change of the code moved a number for real.
+ * Raised once per run.
+ */
+function loopTriggers(state, now) {
+  const run = state.runs.at(-1);
+  if (!run || now - run.at > TIMING.recentMs) return [];
+  const {verdict} = run;
+  const change = run.changes.at(-1);
+  const where = change ? {file: change.file, line: change.from} : {file: null, line: null};
+  if (verdict.kind === 'same') {
+    return [{
+      kind: 'same_result', key: `same:${run.n}`, run: run.n, ...where,
+      detail: `\`${run.cmd}\` (${runBy(run)}) printed the same ${verdict.numbers ? 'numbers' : 'output'} as run ${verdict.as}, although the code changed since.\n${runsDetail(state.runs, run.cmd)}`,
+    }];
+  }
+  const moved = verdict.kind === 'moved' && verdict.changed && verdict.moves.filter(move => move.time || (move.way && Math.abs(move.change) >= MOVED));
+  if (!moved?.length) return [];
+  const said = moved.slice(0, 3).map(moveText).join(', ');
+  const hunt = verdict.held >= 2 ? ` That ends a hunt: the ${verdict.held} runs before printed the same numbers, whatever the user changed.` : '';
+  return [{
+    kind: 'number_moved', key: `moved:${run.n}`, run: run.n, moves: moved, held: verdict.held, ...where,
+    detail: `\`${run.cmd}\` (${runBy(run)}): next to run ${verdict.as}, ${said}.${hunt}\n${runsDetail(state.runs, run.cmd)}`,
+  }];
+}
+
 /** What fails now, in one line: a red test run, else a failed command, both while recent; null when nothing does. */
 export function failingNow(state, now) {
   const {tests} = state;
@@ -212,6 +242,7 @@ export function detectTriggers(state, now, fired = new Set()) {
   const trail = hidden('editor') ? [] : trailTriggers(state, now);
   // A run in the user's terminal is the terminal's: a hidden terminal sends none. Pair's own runs on save are Pair's.
   const runs = hidden('terminal') && state.run?.by === 'you' ? {crashes: [], warnings: []} : {crashes: crashTriggers(state, now), warnings: warningTriggers(state, now)};
-  return [...runs.crashes, ...commands, ...diagnosticTriggers(state), ...regressionTriggers(state, now), ...redTriggers(state, now), ...runs.warnings, ...driftTriggers(state, now), ...trail, ...proseTriggers(state, now)]
+  const loop = hidden('terminal') && state.runs.at(-1)?.by === 'you' ? [] : loopTriggers(state, now);
+  return [...runs.crashes, ...commands, ...diagnosticTriggers(state), ...regressionTriggers(state, now), ...redTriggers(state, now), ...runs.warnings, ...loop, ...driftTriggers(state, now), ...trail, ...proseTriggers(state, now)]
     .filter(trigger => !fired.has(trigger.key));
 }

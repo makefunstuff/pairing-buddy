@@ -1,5 +1,6 @@
 // The session state as a few short lines of text: what both models see instead of raw events.
 import {ago, commandLine, contextLines, RECENT_COMMANDS} from './context-card.mjs';
+import {runLines} from './run-log.mjs';
 import {readingSummary} from './run-output.mjs';
 import {testSummary} from './test-output.mjs';
 
@@ -36,6 +37,8 @@ export function describeState(state, now) {
   if (commands.length) lines.push(`Recent commands:\n${commands.join('\n')}`);
   if (state.tests) lines.push(testsLine(state.tests, now));
   if (state.run && !(state.run.by === 'you' && state.hidden.includes('terminal'))) lines.push(buildLine(state.run, now));
+  const runs = state.runs.filter(run => !(run.by === 'you' && state.hidden.includes('terminal'))); // a hidden terminal sends none of yours
+  if (runs.length) lines.push(`Recent runs of \`${runs.at(-1).cmd}\`:\n${runLines(runs, runs.at(-1).cmd, 3).map(line => `- ${line}`).join('\n')}`);
   if (state.focus.target !== 'unknown') lines.push(looking(state));
   lines.push(lastKey(state, now));
   return lines.join('\n');

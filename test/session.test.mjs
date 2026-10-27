@@ -78,8 +78,8 @@ test('an unasked remark that arrives while the user types again waits for their 
     }},
     score: async () => ({value: 9, reason: 'worth it'}),
     typingPauseMs: 2000,
-    // The ledger's list follows along at once: it shows what Pair did, and interrupts nobody.
-    notify: (role, message) => message.type === 'ledger_changed' || sent.push({role, at: clock, ...message}),
+    // The ledger's list and the statusline's run line follow along at once: they interrupt nobody.
+    notify: (role, message) => ['ledger_changed', 'run_line'].includes(message.type) || sent.push({role, at: clock, ...message}),
     requestEditor: async () => null,
     now: () => clock,
   });

@@ -1,6 +1,7 @@
 // Folds raw editor, terminal and chat events into one small session state.
 // Pure: `fold(state, event)` returns a new state and never looks at the clock.
 import {boardLaunch} from './board.mjs';
+import {isRun, logRun} from './run-log.mjs';
 import {hasNews, readingSummary, readRun, warningKey} from './run-output.mjs';
 import {namedFiles, parseTestOutput, testSummary} from './test-output.mjs';
 
@@ -26,6 +27,7 @@ export function initialState({root = null, goal = null} = {}) {
     savedRunFailed: null, // the tests that failed in the last run on save; null before the session's first
     searches: [], // what the user searched for in Neovim's pickers: picker, query, results, the file they opened (see trail.mjs)
     run: null, // the last build or run that crashed or printed compiler errors or warnings, or ran clean after one: see afterRun
+    runs: [], // every build and run of the session that is no test run, numbered, with the change before it and its numbers (see run-log.mjs)
     builds: {cmds: [], warnings: []}, // the commands run so far, and the warnings their output printed (warningKey)
     edited: [], // the files the user edited in this session
     // The context card's sources (see context-card.mjs): git and the board as last read, where the user has been in the
@@ -108,6 +110,13 @@ function afterRun(state, {cmd, by, at, reading}) {
   return hasNews(reading) || state.run?.cmd === cmd ? {...next, run: {cmd, by, at, ...reading, newWarnings}} : next;
 }
 
+/** The state after a build or run, `run` as afterRun takes it plus its `exit` and `output`: also in the run log. */
+function afterLoggedRun(state, run) {
+  const next = afterRun(state, run);
+  const newWarnings = next.run !== state.run ? next.run.newWarnings : [];
+  return {...next, runs: logRun(state.runs, {...run, newWarnings, edits: state.edits})};
+}
+
 function foldCommandEnd(state, event) {
   if (boardLaunch(event.cmd ?? '')) return {...state, launches: state.launches + 1};
   // Parsed from the whole output: the failed tests' names are often far above the kept tail.
@@ -123,8 +132,9 @@ function foldCommandEnd(state, event) {
     endedAt: event.at,
   };
   command.seen = lookingAt(state.focus, command);
+  const ran = {cmd: command.cmd, by: 'you', at: event.at, reading: command.reading, exit: command.exit, output: event.output ?? ''};
   const next = {
-    ...afterRun(state, {cmd: command.cmd, by: 'you', at: event.at, reading: command.reading}),
+    ...(isRun(command.cmd) && !tests ? afterLoggedRun(state, ran) : afterRun(state, ran)),
     commands: keepLast(state.commands, command, KEEP.commands),
     tests: testsAfter(state, tests, event, 'you'),
     terminalPane: command.pane ?? state.terminalPane,
@@ -172,9 +182,12 @@ const handlers = {
   // The tests Pair ran when the user saved `saved` (see test-runs.mjs), already parsed, with the files of the
   // failed tests. `newly` names the tests that fail now and did not in the last run on save. Only that run, of the
   // same command, says what passed before: the session's first run (also after a daemon restart) is the baseline,
-  // and nothing in it is new. Its `reading` (run-output.mjs) is the crash or compiler output of a build on save.
+  // and nothing in it is new. Its `reading` (run-output.mjs) is the crash or compiler output of a build on save;
+  // with its `output`, a run that is no test run goes into the run log too.
   test_run: (previous, event) => {
-    const state = event.reading ? afterRun(previous, {cmd: event.cmd, by: 'pair', at: event.at, reading: event.reading}) : previous;
+    const ran = {cmd: event.cmd, by: 'pair', at: event.at, reading: event.reading, exit: event.exit ?? null, output: event.output};
+    const logged = event.output !== undefined && !event.tests;
+    const state = !event.reading ? previous : logged ? afterLoggedRun(previous, ran) : afterRun(previous, ran);
     if (!event.tests) return state;
     const {tests: _list, ...tests} = event.tests;
     const before = state.savedRunFailed && new Set(state.savedRunFailed);

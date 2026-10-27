@@ -27,7 +27,7 @@ async function until(check, what, timeoutMs = 8000) {
     if (value) return value;
     await sleep(100);
   }
-  throw new Error(`timed out waiting for ${what}`);
+  throw new Error(`timed out waiting for ${what}${check.last ? `: ${await check.last()}` : ''}`);
 }
 
 /** Runs a command line in `cwd` with bash, as Pair's pane would (without core dumps): its output and exit code. */
@@ -987,7 +987,7 @@ test('a build or run on save: crashes and compiler errors on their lines, the ju
     keys('21GA // spare<Esc>');
     await sleep(400); // the edit reaches the daemon after debounce_ms
     keys(':w<CR>');
-    await until(() => status() === '✓ cat run.out; exit $(cat run.exit) · 1 new warning', 'the new warning in the statusline');
+    await until(Object.assign(() => status() === '● run 3 · exit 0 · 1 new warning', {last: status}), 'the new warning in the statusline');
     await until(() => signs().length === 1 && signs()[0][0] === 21, 'the warning on its line');
     assert.deepEqual(signs(), [[21, '△', 'PairWarn']]);
     assert.deepEqual(notes(), [[21, '   △ unused variable \'spare\'']]);
@@ -1106,6 +1106,82 @@ test('a daemon restart while a :Pair new question waits ends the questions in Ne
     });
     await until(() => heard.some(message => /No questions of :Pair new are running here/.test(message.text ?? '')), 'the reply');
     late.destroy();
+  } finally {
+    await stop();
+  }
+});
+
+test('the exploration loop: every run read next to the one before, :Pair runs, and the debug line of the hunt cleaned up', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
+  const {project, watcher, partner, messages, remote, keys, status, stop} = await pairInNvim('spread the keys', {testOnSave: 'cat run.out'});
+  const printing = output => writeFileSync(join(project, 'run.out'), output);
+  const line = (probe, worst, ms) => `190000 keys  load 0.72  avg probe ${probe}  worst ${worst}  ${ms} ms\n`;
+  const buckets = step => [0, 1, 2, 3, 4, 5].map(i => `bucket ${i * step}\n`).join('');
+  const panel = () => JSON.parse(remote('json_encode(getline(1, "$"))')).map(text => text.trimEnd());
+  const PROBE = ['static unsigned hash(unsigned key) {', '  return key & (CAP - 1);', '}', '', 'int main(void) {', '  for (unsigned e = 0; e < N; e++) insert(e * 64);', '  report();', '}'];
+  try {
+    writeFileSync(join(project, 'probe.c'), `${PROBE.join('\n')}\n`);
+    // The Watcher finds the change that did nothing worth a remark, and nothing else.
+    watcher.setResponses(Array.from({length: 20}, () => context => fauxAssistantMessage([fauxText(context.messages.at(-1).content.includes('(same_result)') ? '7' : '0')])));
+    let asked;
+    partner.setResponses([context => {
+      asked = context.messages.at(-1).content;
+      return fauxAssistantMessage([fauxText('key*31 is odd, so keys 64 apart stay 64 apart: same stride, same probes.')]);
+    }]);
+
+    printing(line(23.7, 47, 35));
+    keys(':edit probe.c<CR>:set noautoindent<CR>:w<CR>');
+    await until(() => status() === '● run 1 · exit 0 · 35 ms · avg probe 23.7', 'the first run in the statusline');
+
+    // A printf for the hunt: no change of the code, so the same numbers are no news.
+    printing(buckets(64) + line(23.7, 47, 52));
+    keys('6Go  if (e <lt> 6) printf("bucket %u\\n", hash(e * 64));<Esc>');
+    await sleep(400); // the edit reaches the daemon after debounce_ms
+    keys(':w<CR>');
+    await until(Object.assign(() => status() === '● run 2 · exit 0 · 52 ms · avg probe 23.7', {last: status}), 'the second run: the same, after a print');
+
+    printing(buckets(1984) + line(23.7, 47, 55));
+    keys('2Gcc  return (key * 31) & (CAP - 1);<Esc>');
+    await sleep(400);
+    keys(':w<CR>');
+    await until(() => status().startsWith('● run 3 · exit 0 · 55 ms · avg probe 23.7 · same numbers as run 2'), 'the same numbers after a change of the code');
+    await until(() => messages.some(message => message.type === 'remark'), 'the remark on why');
+    assert.match(asked, /\[watch\] same_result: `cat run\.out` \(Pair ran it when the user saved\) printed the same numbers as run 2/);
+    assert.match(asked, /run 3 after probe\.c:2 `return \(key \* 31\) & \(CAP - 1\);`: .*avg probe 23\.7.*; same numbers as run 2/, 'the runs, with the change before each');
+    assert.match(asked, /Run 3 printed:\nbucket 0\nbucket 1984/, 'and what they printed');
+
+    printing(buckets(7) + line(1.1, 3, 5));
+    keys('2Gcc  return (key * 2654435769u) >> 14;<Esc>');
+    await sleep(400);
+    keys(':w<CR>');
+    await until(() => status() === '● run 4 · exit 0 · 5 ms · avg probe 23.7 → 1.1 · 1 debug line from run 2 left · M-j', 'the number that moved, and the print left from the hunt');
+    keys('gg<M-j>');
+    await until(() => remote('line(".")') === '7', 'the jump to the debug line');
+
+    keys(':Pair runs<CR>');
+    await until(() => remote('win_gettype()') === 'popup', 'the runs panel');
+    assert.deepEqual(panel(), [
+      'This session, newest last. The pair keeps it; you keep coding.',
+      '',
+      '1  first run                                     avg probe 23.7  35 ms',
+      '2  if (e < 6) printf("bucket %u\\n", hash(e * 6…  avg probe 23.7  52 ms  6 printed',
+      '3  return (key * 31) & (CAP - 1);                avg probe 23.7  55 ms  6 printed  same numbers as run 2',
+      '4  return (key * 2654435769u) >> 14;             avg probe 1.1   5 ms   6 printed  avg probe 23.7 → 1.1',
+      '',
+      '⏎ shows a run\'s output · d its change · x removes 1 debug line · q closes',
+    ].map(text => text.trimEnd()));
+    keys('<CR>');
+    await until(() => panel()[0] === 'bucket 0', 'the output of run 4');
+    assert.equal(panel().at(-1), '⏎ or q back to the runs');
+    keys('q');
+    await until(() => panel()[0].startsWith('This session'), 'back to the list');
+    keys('x');
+    await until(() => remote('win_gettype()') === '' || !panel().join('\n').includes('x removes'), 'x to remove the debug line');
+    keys('q');
+    await until(() => remote('win_gettype()') === '', 'q to close it');
+    const lines = JSON.parse(remote('json_encode(getline(1, "$"))'));
+    assert.deepEqual(lines.filter((_, i) => i !== 1), PROBE.filter((_, i) => i !== 1), 'the print is gone, and nothing else');
+    assert.equal(remote('&modified'), '1', 'unsaved: the file is yours to save');
+    assert.equal(status(), '● run 4 · exit 0 · 5 ms · avg probe 23.7 → 1.1', 'no debug line left to count');
   } finally {
     await stop();
   }
