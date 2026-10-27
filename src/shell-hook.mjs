@@ -1,34 +1,71 @@
-// The optional shell hook: reports each finished command and its exit code, which herdr cannot tell Pair.
-// It runs `pair report` in the background, so the prompt never waits for it. It also emits the OSC 133 marks
-// that Pair's own pane emits (prompt, output, end with the exit code), for a terminal that reads them; herdr
-// ignores them today (see docs/herdr.md).
+// The optional shell hook: tells Pair what herdr cannot (see docs/herdr.md). When the shell starts it says the
+// pane has the hook (`report --ready`), so Pair stops polling the pane's processes; then, for each command line,
+// that it started (`--start`) and that it ended with its exit code (`--exit`). Start and end carry the shell's pid
+// and the line's number, so a start that arrives after its own end (each report runs in the background, so the
+// prompt never waits for it) is not taken for a command still running. zsh also says when keys change the line at
+// the prompt, at most once a second, straight to the daemon's socket through zsh's own zsocket: no process is
+// started for it. bash and fish have no hook for keys, so Pair still tells typing from the pane's text there.
+// The hook also emits the OSC 133 marks that Pair's own pane emits (prompt, output, end with the exit code), for a
+// terminal that reads them; herdr ignores them today.
 
-const ZSH = bin => `# pairing-buddy: report finished commands to Pair
-_pair_preexec() { _pair_cmd=$1; print -n '\\e]133;C\\a' }
+// A word in single quotes: in bash and zsh a quote ends them and starts again; fish escapes with a backslash.
+const quote = text => `'${text.replaceAll("'", "'\\''")}'`;
+const fishQuote = text => `'${text.replaceAll('\\', '\\\\').replaceAll("'", "\\'")}'`;
+
+const ZSH = (report, socket) => `# pairing-buddy: report commands and typing to Pair
+zmodload zsh/datetime 2>/dev/null
+_pair_n=0
+_pair_preexec() {
+  _pair_cmd=$1
+  (( ++_pair_n ))
+  ${report} --keys --start --shell $$ --n $_pair_n --cmd "$1" >/dev/null 2>&1 &!
+  print -n '\\e]133;C\\a'
+}
 _pair_precmd() {
   local code=$?
-  [[ -n $_pair_cmd ]] && { print -n "\\e]133;D;$code\\a"; '${process.execPath}' '${bin}' report --exit "$code" --cmd "$_pair_cmd" &! }
+  [[ -n $_pair_cmd ]] && { print -n "\\e]133;D;$code\\a"; ${report} --keys --exit "$code" --shell $$ --n $_pair_n --cmd "$_pair_cmd" >/dev/null 2>&1 &! }
   _pair_cmd=
   print -n '\\e]133;A\\a'
 }
-autoload -Uz add-zsh-hook
+# Keys at the prompt: the line or the cursor changed since the last redraw. Reported at most once a second.
+_pair_line_init() { _pair_line="$CURSOR:$BUFFER" }
+_pair_keys() {
+  [[ "$CURSOR:$BUFFER" == "$_pair_line" ]] && return
+  _pair_line="$CURSOR:$BUFFER"
+  (( \${EPOCHREALTIME:-0} - \${_pair_keys_at:-0} < 1 )) && return
+  _pair_keys_at=\${EPOCHREALTIME:-0}
+  [[ $HERDR_PANE_ID =~ '^[[:alnum:]:_.-]+$' ]] || return
+  if zmodload zsh/net/socket 2>/dev/null && zsocket ${quote(socket)} 2>/dev/null; then
+    print -u $REPLY -r -- '{"type":"typing","pane":"'$HERDR_PANE_ID'"}'
+    exec {REPLY}>&-
+  fi
+}
+autoload -Uz add-zsh-hook add-zle-hook-widget
 add-zsh-hook preexec _pair_preexec
 add-zsh-hook precmd _pair_precmd
+add-zle-hook-widget line-init _pair_line_init
+add-zle-hook-widget line-pre-redraw _pair_keys
+${report} --keys --ready --shell $$ >/dev/null 2>&1 &!
 `;
 
 // bash has no preexec: the DEBUG trap sees each command before it runs. _pair_arm runs last in PROMPT_COMMAND,
-// so only the first command typed at the prompt is recorded, not the rest of PROMPT_COMMAND; after an empty
-// line the trap sees the prompt's own functions first, which are no command either.
-const BASH = bin => `# pairing-buddy: report finished commands to Pair
+// so only the first command typed at the prompt is recorded, not the rest of PROMPT_COMMAND. After an empty line
+// the first the trap sees is _pair_precmd, first in PROMPT_COMMAND: no command ran, and the rest of
+// PROMPT_COMMAND is none either.
+const BASH = report => `# pairing-buddy: report commands to Pair
+_pair_n=0
 _pair_preexec() {
-  [[ -z $_pair_armed || -n $COMP_LINE || $BASH_COMMAND == _pair_* ]] && return
+  [[ -z $_pair_armed || -n $COMP_LINE ]] && return
   _pair_armed=
+  [[ $BASH_COMMAND == _pair_* ]] && return
   _pair_cmd=$(HISTTIMEFORMAT= history 1 | sed 's/^ *[0-9]* *//')
+  (( ++_pair_n ))
+  ( ${report} --start --shell $$ --n $_pair_n --cmd "$_pair_cmd" >/dev/null 2>&1 & )
   printf '\\e]133;C\\a'
 }
 _pair_precmd() {
   local code=$?
-  [[ -n $_pair_cmd ]] && { printf '\\e]133;D;%s\\a' "$code"; ( '${process.execPath}' '${bin}' report --exit "$code" --cmd "$_pair_cmd" >/dev/null 2>&1 & ) }
+  [[ -n $_pair_cmd ]] && { printf '\\e]133;D;%s\\a' "$code"; ( ${report} --exit "$code" --shell $$ --n $_pair_n --cmd "$_pair_cmd" >/dev/null 2>&1 & ) }
   _pair_cmd=
   printf '\\e]133;A\\a'
 }
@@ -39,27 +76,36 @@ if (( BASH_VERSINFO[0] * 100 + BASH_VERSINFO[1] >= 501 )); then
 else
   PROMPT_COMMAND="_pair_precmd\${PROMPT_COMMAND:+;$PROMPT_COMMAND};_pair_arm"
 fi
+( ${report} --ready --shell $$ >/dev/null 2>&1 & )
 `;
 
 // fish names the command line in its own events, and runs neither for an empty line.
-const FISH = bin => `# pairing-buddy: report finished commands to Pair
+const FISH = report => `# pairing-buddy: report commands to Pair
+set -g _pair_n 0
 function _pair_preexec --on-event fish_preexec
+    set -g _pair_n (math $_pair_n + 1)
+    command ${report} --start --shell $fish_pid --n $_pair_n --cmd $argv[1] >/dev/null 2>&1 &
+    disown
     printf '\\e]133;C\\a'
 end
 function _pair_postexec --on-event fish_postexec
     set -l code $status
     printf '\\e]133;D;%s\\a' $code
-    command '${process.execPath}' '${bin}' report --exit $code --cmd $argv[1] >/dev/null 2>&1 &
+    command ${report} --exit $code --shell $fish_pid --n $_pair_n --cmd $argv[1] >/dev/null 2>&1 &
     disown
 end
 function _pair_prompt --on-event fish_prompt
     printf '\\e]133;A\\a'
 end
+command ${report} --ready --shell $fish_pid >/dev/null 2>&1 &
+disown
 `;
 
 const HOOKS = {bash: BASH, zsh: ZSH, fish: FISH};
 
-export function shellHook(shell, bin) {
+/** The hook for `shell`, which runs `bin report` with node; zsh also writes to the daemon's socket `socket`. */
+export function shellHook(shell, bin, {socket = ''} = {}) {
   if (!HOOKS[shell]) throw new Error('usage: pair shell-hook bash|zsh|fish');
-  return HOOKS[shell](bin);
+  const q = shell === 'fish' ? fishQuote : quote;
+  return HOOKS[shell](`${q(process.execPath)} ${q(bin)} report`, socket);
 }

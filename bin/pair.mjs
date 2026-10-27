@@ -45,8 +45,8 @@ const USAGE = `usage:
   pair uninstall    stop and remove the service (the config and data stay)
   pair daemon       run the daemon in the foreground
   pair supervise    run the daemon in the foreground, restarted when it fails (what \`pair\` starts without a service)
-  pair shell-hook bash|zsh|fish   print the shell hook that reports exit codes
-  pair report --exit N --cmd TEXT   (used by the shell hook)`;
+  pair shell-hook bash|zsh|fish   print the shell hook that reports commands, exit codes and (zsh) typing
+  pair report --start|--exit N|--ready ...   (used by the shell hook)`;
 
 const ONE_MODEL = 'The Watcher asks it for one number without thinking, the Partner thinks; on its server the Watcher waits while the Partner works.';
 const TWO_MODELS = 'On a server that holds one model at a time, give both roles one model instead: "model" in the config (see docs/config.md, "One model").';
@@ -264,23 +264,34 @@ async function openChatPane(config) {
   await herdrRequest(process.env.HERDR_SOCKET_PATH, 'pane.send_text', {pane_id: pane.pane_id, text: `${SCRIPT} chat\r`});
 }
 
-// Runs after every shell command, so it stays silent: no config or no daemon means nothing to report.
+// Runs before and after every shell command, so it stays silent: no config or no daemon means nothing to report.
 function report(args) {
-  const {values} = parseArgs({args, options: {exit: {type: 'string'}, cmd: {type: 'string'}}});
-  let socketPath;
-  try { socketPath = loadConfig().socket; } catch { socketPath = defaultSocketPath(); }
-  const socket = connect(socketPath);
+  const {values} = parseArgs({args, options: {
+    exit: {type: 'string'}, cmd: {type: 'string'}, start: {type: 'boolean'}, ready: {type: 'boolean'}, keys: {type: 'boolean'},
+    shell: {type: 'string'}, n: {type: 'string'},
+  }});
+  const pane = process.env.HERDR_PANE_ID ?? null;
+  const hook = {cwd: process.cwd(), pane, shell: values.shell ?? null, keys: values.keys === true};
+  const message = values.ready ? {type: 'shell', ...hook}
+    : {type: values.start ? 'command_start' : 'command', ...hook, n: Number(values.n ?? 0), cmd: values.cmd ?? '', ...(values.start ? {} : {exit: Number(values.exit)})};
+  if (message.type !== 'command' && !pane) return; // only herdr panes are watched: nothing to tell outside herdr
+  const socket = connect(socketPathOf());
   socket.on('error', () => {});
   socket.on('connect', () => {
-    sendMessage(socket, {type: 'command', cwd: process.cwd(), pane: process.env.HERDR_PANE_ID ?? null, cmd: values.cmd ?? '', exit: Number(values.exit)});
+    sendMessage(socket, message);
     socket.end();
   });
+}
+
+/** The daemon's socket, from the config when there is one. */
+function socketPathOf() {
+  try { return loadConfig().socket; } catch { return defaultSocketPath(); }
 }
 
 const [command, ...args] = process.argv.slice(2);
 try {
   if (command === 'shell-hook') {
-    process.stdout.write(shellHook(args[0], process.argv[1]));
+    process.stdout.write(shellHook(args[0], process.argv[1], {socket: socketPathOf()}));
   } else if (command === 'report') {
     report(args);
   } else if (command === 'setup') {

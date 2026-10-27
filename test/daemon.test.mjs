@@ -213,6 +213,46 @@ test('handed the wheel from the chat, Pair types into the user\'s pane after a y
   }
 });
 
+test('the shell hook in the user\'s pane: its keys take the wheel back, and its commands come with their output', {timeout: 20_000}, async () => {
+  const project = scratch('pair-project-');
+  const config = testConfig(scratch('pair-data-'));
+  const herdrSocket = join(scratch('pair-herdr-'), 'herdr.sock');
+  const herdr = await fakeHerdr(herdrSocket);
+  const {partner, pairModels} = scriptedModels();
+  const daemon = await startDaemon(config, {pairModels, probe: answers, log: () => {}});
+  const editor = client(config.socket, {type: 'hello', role: 'editor', cwd: project});
+  const chat = client(config.socket, {type: 'hello', role: 'chat', cwd: project, herdr: {socket: herdrSocket, workspace: 'w1', pane: 'w1:p2'}});
+  const hook = message => { const shell = client(config.socket, message); setTimeout(() => shell.close(), 200); };
+  try {
+    await chat.next(message => message.type === 'welcome');
+    await editor.next(message => message.type === 'welcome');
+    hook({type: 'shell', cwd: project, pane: 'w1:p1', shell: '42', keys: true});
+    await new Promise(resolve => setTimeout(resolve, 1000)); // the watch has seen the user's pane w1:p1
+    const polled = herdr.calls.length;
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    assert.deepEqual(herdr.calls.slice(polled), [], 'nothing polled: the hook reports');
+
+    partner.setResponses([fauxAssistantMessage([fauxText('I have it.')])]);
+    chat.send({type: 'drive', text: 'you take it', keep: true});
+    await editor.next(message => message.type === 'role' && message.role === 'driver');
+    await chat.next(message => message.text === 'I have it.');
+    hook({type: 'typing', pane: 'w1:p1'});
+    await editor.next(message => message.type === 'role' && message.role === 'navigator');
+
+    // A command's start and end: one look at its start (its line, an editor?), one read of its output at the end.
+    const before = herdr.calls.length;
+    hook({type: 'command_start', cwd: project, pane: 'w1:p1', shell: '42', keys: true, n: 1, cmd: 'npm test'});
+    hook({type: 'command', cwd: project, pane: 'w1:p1', shell: '42', keys: true, n: 1, cmd: 'npm test', exit: 1});
+    await new Promise(resolve => setTimeout(resolve, 600));
+    assert.deepEqual(herdr.calls.slice(before).sort(), ['pane.process_info', 'pane.read', 'pane.read']);
+  } finally {
+    editor.close();
+    chat.close();
+    await daemon.close();
+    await herdr.close();
+  }
+});
+
 test('a dead Partner is said once, to the chat and the statusline; Pair then stays quiet instead of failing on every remark', {timeout: 30_000}, async () => {
   const project = scratch('pair-project-');
   const config = testConfig(scratch('pair-data-'));

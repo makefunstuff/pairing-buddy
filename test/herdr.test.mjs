@@ -124,3 +124,75 @@ test('with the user in another workspace and nothing running, Pair asks herdr no
   await new Promise(resolve => setTimeout(resolve, 1500));
   assert.deepEqual(herdr.calls.slice(before), []);
 });
+
+test('a pane with the zsh hook: Pair polls nothing, and takes commands, output and keys from the hook', async t => {
+  const {herdr, watch, user, of} = await watching(t);
+  await until(() => of('focus').length === 1, 'the first focus');
+  watch.shellReady('w1:p1', {shell: '42', keys: true});
+  await new Promise(resolve => setTimeout(resolve, 100));
+  const before = herdr.calls.length;
+  await new Promise(resolve => setTimeout(resolve, 1200));
+  assert.deepEqual(herdr.calls.slice(before), [], 'nothing polled while the focused pane waits at its prompt');
+
+  user.lines = ['old', '$ npm test', '$ npm test'];
+  await watch.commandStarted('w1:p1', {shell: '42', n: 1, cmd: 'npm test'});
+  assert.deepEqual(herdr.calls.slice(before), ['pane.read', 'pane.process_info'], 'one look, at the start');
+  user.lines.push('> jest', 'not ok 1 - adds', '$');
+  const output = await watch.commandEnded('w1:p1', {shell: '42', n: 1, cmd: 'npm test'});
+  assert.equal(output, '> jest\nnot ok 1 - adds', 'from the line it was typed on, the last of the two');
+
+  watch.keysTyped('w1:p1');
+  await watch.type('w1:p1', 'git status');
+  watch.keysTyped('w1:p1'); // the Driver's text arriving
+  assert.deepEqual(of('typing'), [{kind: 'typing', source: 'terminal', pane: 'w1:p1'}]);
+});
+
+test('a hooked command whose end is reported before its start is not taken for one still running', async t => {
+  const {watch, of} = await watching(t);
+  await until(() => of('focus').length === 1, 'the first focus');
+  watch.shellReady('w1:p1', {shell: '42', keys: true});
+  await watch.commandEnded('w1:p1', {shell: '42', n: 1, cmd: 'false'});
+  await watch.commandStarted('w1:p1', {shell: '42', n: 1, cmd: 'false'});
+  assert.equal(watch.paneState('w1:p1').running, null);
+  await watch.commandStarted('w1:p1', {shell: '42', n: 2, cmd: 'nvim a.js'});
+  assert.equal(watch.paneState('w1:p1').running, 'nvim a.js');
+  // A new shell in the pane counts its lines from 1 again.
+  await watch.commandStarted('w1:p1', {shell: '43', n: 1, cmd: 'ls'});
+  assert.equal(watch.paneState('w1:p1').running, 'ls');
+});
+
+test('a hooked pane running an editor is the editor until the command ends', async t => {
+  const {herdr, watch, of} = await watching(t);
+  await until(() => of('focus').length === 1, 'the first focus');
+  watch.shellReady('w1:p1', {shell: '42', keys: true});
+  herdr.processes.set('w1:p1', [{pid: 7, name: 'nvim', argv: ['nvim', 'a.js']}]);
+  await watch.commandStarted('w1:p1', {shell: '42', n: 1, cmd: 'nvim a.js'});
+  herdr.processes.delete('w1:p1');
+  await watch.commandEnded('w1:p1', {shell: '42', n: 1, cmd: 'nvim a.js'});
+  assert.deepEqual(of('focus').map(event => event.target), ['terminal', 'editor', 'terminal']);
+});
+
+test('with the bash or fish hook, the focused pane is only read at its prompt, for typing', async t => {
+  const {herdr, watch, user, of} = await watching(t);
+  await until(() => of('focus').length === 1, 'the first focus');
+  watch.shellReady('w1:p1', {shell: '42', keys: false});
+  await new Promise(resolve => setTimeout(resolve, 1200));
+  const before = herdr.calls.length;
+  user.lines = ['$ git st'];
+  await until(() => of('typing').length === 1, 'typing');
+  await new Promise(resolve => setTimeout(resolve, 600));
+  assert.ok(herdr.calls.slice(before).every(method => method === 'pane.read'), 'no process_info');
+});
+
+test('the hook in Pair\'s own panes (the chat\'s shell has the user\'s rc file) is not the user\'s', async t => {
+  const {herdr, watch, of} = await watching(t);
+  await until(() => of('focus').length === 1, 'the first focus');
+  const before = herdr.calls.length;
+  watch.shellReady('w1:p2', {shell: '9'});
+  await watch.commandStarted('w1:p2', {shell: '9', n: 1, cmd: 'pair chat'});
+  assert.equal(await watch.commandEnded('w1:p2', {shell: '9', n: 1, cmd: 'pair chat'}), null);
+  watch.keysTyped('w1:p2');
+  assert.equal(watch.hooked.has('w1:p2'), false);
+  assert.deepEqual(herdr.calls.slice(before).filter(method => method !== 'pane.read' && method !== 'pane.process_info'), []);
+  assert.equal(of('typing').length, 0);
+});

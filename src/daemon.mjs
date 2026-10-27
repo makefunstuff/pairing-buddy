@@ -559,20 +559,40 @@ export async function startDaemon(config, {
     if (shown) relay.clear();
   }
 
+  /** The pane watch of the session of the shell hook's `message`, or null when its project has none. */
+  async function hookWatch(message) {
+    const session = live.get(await rootOf(message.cwd));
+    return session ? {session, watch: watches.get(session.root) ?? null} : null;
+  }
+
   /** A command the shell hook saw end, with its exit code. Ignored when its project has no session. */
   async function shellCommand(message) {
-    const session = live.get(await rootOf(message.cwd));
+    const {session, watch} = await hookWatch(message) ?? {};
     if (!session) return;
-    const watch = watches.get(session.root);
-    watch?.markHooked(message.pane);
-    const output = watch && message.pane ? await watch.output(message.pane, message.cmd).catch(() => '') : '';
+    const output = watch && message.pane ? await watch.commandEnded(message.pane, message).catch(() => '') : '';
+    if (output === null) return; // one of Pair's own panes (the chat's, Scout's), whose shell has the user's hook
     receive(session, {kind: 'command_end', pane: message.pane ?? null, cmd: message.cmd, exit: message.exit, output, cwd: message.cwd});
+  }
+
+  /** The shell hook in a herdr pane: a shell started, or a command started in it (see shell-hook.mjs). */
+  async function shellStarted(message) {
+    if (!message.pane) return;
+    const {watch} = await hookWatch(message) ?? {};
+    if (message.type === 'shell') watch?.shellReady(message.pane, message);
+    else await watch?.commandStarted(message.pane, message).catch(error => log(`shell hook: ${error.message}`));
+  }
+
+  /** zsh's hook says keys were pressed at a prompt: the pane's watch tells which session (it has no cwd). */
+  function shellTyping(message) {
+    for (const watch of watches.values()) if (watch.panes.has(message.pane)) watch.keysTyped(message.pane);
   }
 
   async function handle(client, message) {
     if (message.type === 'hello') return (client.ready = hello(client, message));
     if (message.type === 'status') return sendMessage(client.socket, status());
     if (message.type === 'command') return shellCommand(message);
+    if (message.type === 'shell' || message.type === 'command_start') return shellStarted(message);
+    if (message.type === 'typing' && typeof message.pane === 'string') return shellTyping(message);
     if (message.type === 'reply') return replies.get(message.id)?.(message.result);
     // A client may send right after its hello; wait until the hello has found its session.
     await client.ready;
