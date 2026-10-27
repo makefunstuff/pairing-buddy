@@ -251,7 +251,8 @@ test('the state the model judges: the moment, the score, typing, the last remark
 test('each decision is logged with its probabilities, and linked to the remark it led to', () => {
   const store = openStore(join(scratch('pair-store-'), 'sessions.sqlite'));
   const session = store.createSession({root: '/p', conversationId: 'c', goal: null, level: 'normal', at: 0});
-  const id = store.addDecision({sessionId: session.id, at: 1000, trigger: 'failed_command', sort: 'worth', sortP: 0.9, speakP: 0.8, bar: 6, verdict: 'speak'});
+  const told = {moment: {kind: 'failed_command', what_happened: 'npm test failed'}, past_verdicts: {this_kind: {useful: 1, dismissed: 0, ignored: 0}, examples: []}};
+  const id = store.addDecision({sessionId: session.id, at: 1000, trigger: 'failed_command', sort: 'worth', sortP: 0.9, speakP: 0.8, bar: 6, verdict: 'speak', state: told});
   const remark = store.addRemark({sessionId: session.id, trigger: 'failed_command', score: null, at: 1000});
   store.linkDecision(id, remark);
   store.rateRemark(remark, 'useful');
@@ -259,9 +260,9 @@ test('each decision is logged with its probabilities, and linked to the remark i
   const [down, spoke] = store.decisions(0);
   assert.deepEqual({...spoke}, {
     id, trigger: 'failed_command', at: 1000, sort: 'worth', sortP: 0.9, speakP: 0.8, score: null, bar: 6, rule: null, decided: 'speak', fallback: null,
-    remarkId: remark, root: '/p', remarkAt: 1000, verdict: 'useful', shown: 0,
+    remarkId: remark, state: told, root: '/p', remarkAt: 1000, verdict: 'useful', shown: 0,
   });
-  assert.deepEqual([down.fallback, down.rule, down.remarkAt], ['down', 'drop', null]);
+  assert.deepEqual([down.fallback, down.rule, down.remarkAt, down.state], ['down', 'drop', null, null]);
   store.close();
 });
 

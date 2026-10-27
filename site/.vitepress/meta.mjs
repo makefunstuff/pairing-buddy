@@ -36,7 +36,10 @@ export function describe(markdown) {
   return text ? fit(text, MAX_DESCRIPTION) : '';
 }
 
-/** Markdown inline syntax to plain text: links and images to their text, no code ticks, emphasis or tags. */
+/**
+ * Markdown inline syntax to plain text: links and images to their text, no code ticks, emphasis or tags. Straight
+ * double quotes become curly ones: the description goes into a meta tag's attribute, where a straight one ends it.
+ */
 function plain(md) {
   return md
     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
@@ -44,6 +47,8 @@ function plain(md) {
     .replace(/`([^`]*)`/g, '$1')
     .replace(/(\*\*|__)(.+?)\1/g, '$2')
     .replace(/(^|[\s(])[*_](\S.*?)[*_](?=[\s).,;:!?]|$)/g, '$1$2')
+    .replace(/"([^"]*)"/g, '“$1”')
+    .replace(/"/g, '”')
     .replace(/\s+/g, ' ')
     .trim();
 }

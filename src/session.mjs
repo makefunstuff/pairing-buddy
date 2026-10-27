@@ -259,6 +259,7 @@ export class PairSession {
   constructor({record, store, partner, score, pace = null, decision = () => null, typingPauseMs, notify, requestEditor, previousNote = null, lastSession = null, autoTune = false, health = {ok: () => true}, testOnSave = null, checkOutput = null, log = () => {}, now = Date.now}) {
     Object.assign(this, {record, store, partner, score, pace, decision, typingPauseMs, notify, requestEditor, previousNote, lastSession, autoTune, health, log, now});
     this.sorted = new Map(); // trigger key -> {at, sort}: what the decision model sorted it as lately
+    this.told = new Map(); // trigger key -> what the decision model was told about it first, for the decisions log
     this.checkOutput = checkOutput ?? join(tmpdir(), `pair-check-${process.pid}-${record.id}`, 'check.out'); // its copy of the project goes next to it
     this.state = initialState({root: record.root, goal: record.goal});
     this.budget = new Budget(record.level);
@@ -610,14 +611,20 @@ export class PairSession {
   decider(now) {
     const model = this.decision();
     if (!model) return null;
-    for (const [key, kept] of this.sorted) if (now - kept.at >= SORT_KEPT_MS) this.sorted.delete(key);
+    for (const [key, kept] of this.sorted) {
+      if (now - kept.at < SORT_KEPT_MS) continue;
+      this.sorted.delete(key);
+      this.told.delete(key);
+    }
     const ask = (names, trigger, state, {bar, score = null}) => {
       const remarks = this.store.remarks(now - WINDOW_MS).filter(remark => remark.root === this.root);
       const lastRemarkAt = this.budget.spent.at(-1) ?? null;
-      return model.decide(names, momentState({
+      const told = momentState({
         trigger, state, now, level: this.budget.level, bar, score, lastRemarkAt,
         past: pastVerdicts(remarks, trigger.kind, now, {ignoredAfterMs: IGNORED_AFTER_MS}),
-      }));
+      });
+      if (!this.told.has(trigger.key)) this.told.set(trigger.key, told);
+      return model.decide(names, told);
     };
     return {
       sort: async (trigger, state, {bar}) => {
@@ -642,8 +649,10 @@ export class PairSession {
     const {decided} = decision;
     if (!decided || !['speak', 'drop'].includes(decision.verdict)) return null;
     this.sorted.delete(trigger.key);
+    const state = this.told.get(trigger.key) ?? null;
+    this.told.delete(trigger.key);
     return this.store.addDecision({
-      sessionId: this.id, at: now, trigger: trigger.kind, ...decided, bar: this.budget.barFor(trigger.kind), verdict: decision.verdict,
+      sessionId: this.id, at: now, trigger: trigger.kind, ...decided, bar: this.budget.barFor(trigger.kind), verdict: decision.verdict, state,
     });
   }
 

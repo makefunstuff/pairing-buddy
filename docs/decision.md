@@ -101,38 +101,49 @@ small one is enough. pi-ai's catalog has these (`pair auth models PROVIDER` list
 - **Start with a flash or small model** (`cloudflare/clef-flash`, Jev). The two questions are short and the state is
   a few hundred tokens.
 - **Pay per use, not a subscription.** The model is asked about every candidate moment, as the Watcher is.
-- **Try it on recorded moments.** `node test/decision-check.mjs --entry '{"provider": "openrouter", "model": "typesafe/jev-1.14"}'`
-  runs 16 recorded moments through the gate with it, and reports accuracy against the rules, latency and cost per
-  call ([testing.md](testing.md)).
+- **Try it before you rely on it.** `node test/decision-check.mjs --entry '{"provider": "openrouter", "model": "typesafe/jev-1.14"}'`
+  runs 16 hand-written sample moments through the gate with it. Once the daemon has logged decisions you judged,
+  `--store ~/.local/state/pairing-buddy/sessions.sqlite` replays your own recorded moments instead. It reports how
+  often the gate was right with the model and with the rules alone, latency and cost per call
+  ([testing.md](testing.md)).
 - **Check it with `pair doctor`.** It asks the model one small question and says how long the answer took
   (below). Then let `pair stats` show, after a few days, whether its remarks are kept more often than the rules'.
 
 ## Measured
 
-`node test/decision-check.mjs` with `typesafe/jev-1.14` on OpenRouter, at `normal`, on the 16 recorded moments
-(one run, 22 calls):
+`node test/decision-check.mjs --runs 3` with `typesafe/jev-1.14` on OpenRouter, at `normal`: three runs of the 16
+hand-written sample moments, 84 calls. The moments are written by hand, not recorded from a session. Each has a
+Watcher score and a label (a remark wanted or not), both chosen by hand. The model is also told a hand-written history
+of 10 earlier verdicts, as it would be told yours.
 
-| | Result |
-| --- | --- |
-| Gate right, with the model | 13 of 16 (81%) |
-| Gate right, by the rules alone | 16 of 16 (100%) |
-| Sorted noise or worth it with 80% or more | none, so no Watcher call was saved |
-| Latency per call | median 282 ms, p90 349 ms, slowest 414 ms; one call of 22 passed the 1.5 s timeout |
-| Cost per call | $0.000031, 741 input tokens |
+| | Run 1 | Run 2 | Run 3 |
+| --- | --- | --- | --- |
+| Gate right, with the model | 12 of 16 | 13 of 16 | 12 of 16 |
+| Gate right, by the rules alone | 16 of 16 | 16 of 16 | 16 of 16 |
+| Sure sorts (80% or more), right | 2 of 2 | 2 of 2 | 2 of 2 |
+| Watcher calls saved | 2 | 2 | 2 |
+| Latency per call: median, p90, slowest | 241, 300, 629 ms | 231, 274, 330 ms | 240, 291, 453 ms |
+| Cost per call | $0.000038 | $0.000038 | $0.000038 |
 
-The rules' 100% says less than it looks: each recorded moment carries a Watcher score that agrees with its label, so
-the rules cannot miss on this set. What the run does show:
+What these runs show, and what they do not:
 
-- **The model is fast and cheap.** About 0.3 s and $0.00003 a call, well inside the 1.5 s timeout.
-- **Jev is not sure enough to replace the Watcher here.** Its sorts stayed between 47% and 76%, so every moment went
-  on to the Watcher. Its three misses were remarks that were wanted, and its "speak now" probability put them under
-  the 60% bar: the same failure twice (39%), a warning that is a likely bug (54%), drift into the billing code (53%).
-- **One slow answer costs 30 s of decisions.** The call that passed the timeout marked the model down, and the rules
-  decided the last four moments.
+- **The rules cannot miss here.** Each sample's Watcher score was chosen to agree with its label. On your own
+  moments the Watcher's score is no oracle, so this table does not say the rules beat the model there.
+  `--store` on your recorded moments answers that.
+- **The model is fast and cheap.** About a quarter of a second and $0.00004 a call, well inside the 1.5 s timeout;
+  none of the 84 calls timed out.
+- **Its sure sorts were right.** Each run, it was sure two moments were noise (a failure you are already fixing, an
+  unused variable while exploring, at 85% to 96%). Both were dropped without a Watcher call.
+- **It misses wanted remarks.** All its misses were remarks the labels wanted, put under the 60% bar: a stall after a
+  failure (36% to 40%), a likely-bug warning (55% to 57%), drift into billing code (56% to 59%), a diagnostic in code
+  you left (56% to 57%). Most of them sit just under the bar.
+- **Runs differ.** The same moments got different sorts and probabilities from run to run, by a few points: 12 or 13
+  right. An earlier single run, without the verdict history, got 13 of 16 with no sure sort, and one call of 22 over
+  the timeout. Judge a model by several runs, or by `pair stats` over days.
 
-With this model, Pair talks a little less than with the rules alone, and the Watcher is asked as often as before.
-Raise the level (`chatty` needs 40%) to counter that, or leave the model out until your own `pair stats` shows its
-remarks are kept more often than the rules' remarks.
+With this model, Pair at `normal` says a little less than with the rules alone, and asks the Watcher a little less
+often. `chatty` (40%) would have let most of those misses through. Or leave the model out until `pair stats` shows
+its remarks are kept more often than the rules' remarks.
 
 ## When it is down or slow
 
@@ -155,7 +166,8 @@ when the model does not answer, or not within `timeoutMs`.
 
 Pair logs each decision it made with the model (in `sessions.sqlite`, [data.md](data.md)): the sort and its
 probability, the "speak now" probability, the Watcher's score and the bar when there was one, what the old rules
-would have done, why the rules decided when the model gave no answer, and the remark it led to. `pair stats` adds a
+would have done, why the rules decided when the model gave no answer, the remark it led to, and the state the model
+was told, so `node test/decision-check.mjs --store` can judge the moment again. `pair stats` adds a
 section that compares the model with the old rules:
 
 ```
