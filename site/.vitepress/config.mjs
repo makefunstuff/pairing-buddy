@@ -1,8 +1,12 @@
-// The site: the front page (docs/index.md, the Landing component) and the docs, built from the Markdown in docs/.
-// Usage, in site/: npm ci, then npm run dev (a local preview) or npm run build (to .vitepress/dist).
-import {dirname, posix} from 'node:path';
+// The site: the front page (docs/index.md, the Landing component) and the docs, built from the Markdown in docs/. Its
+// colours and fonts are in theme/tokens.css; its sprites and icons are drawn by ../sprites/build.mjs; what a shared link
+// to a page shows is in meta.mjs, with the preview image from ../og/.
+// Usage, in site/: npm ci, then npm run dev (a local preview) or npm run build (to .vitepress/dist), then npm run check.
+import {readFileSync} from 'node:fs';
+import {dirname, join, posix} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {defineConfig} from 'vitepress';
+import {DESCRIPTION, describe, pageHead} from './meta.mjs';
 
 const REPO = 'https://github.com/makefunstuff/pairing-buddy';
 // Folders of docs/ that hold tapes, scripts and renders rather than pages; links into them go to GitHub.
@@ -31,22 +35,32 @@ const githubSlug = text => text.trim().toLowerCase().replace(/<[^>]*>/g, '').rep
 
 export default defineConfig({
   title: 'pairing-buddy',
-  description: 'A pair programmer for Neovim: it watches, speaks when it matters, runs what you would skip, and types only when you hand it the keyboard.',
+  description: DESCRIPTION,
   lang: 'en',
   base: '/pairing-buddy/',
   srcDir: '../docs',
   srcExclude: NOT_PAGES,
   cleanUrls: false,
   lastUpdated: false,
+  // The icons (drawn by ../sprites/build.mjs) and the browser's colours, the page's cream and the dark theme's navy.
+  // Each page's own preview tags (title, description, image, canonical URL) come from transformHead below.
   head: [
     ['link', {rel: 'icon', href: '/pairing-buddy/favicon.svg', type: 'image/svg+xml'}],
+    ['link', {rel: 'icon', href: '/pairing-buddy/favicon-32.png', type: 'image/png', sizes: '32x32'}],
+    ['link', {rel: 'icon', href: '/pairing-buddy/favicon-16.png', type: 'image/png', sizes: '16x16'}],
+    ['link', {rel: 'apple-touch-icon', href: '/pairing-buddy/apple-touch-icon.png', sizes: '180x180'}],
+    ['link', {rel: 'manifest', href: '/pairing-buddy/site.webmanifest'}],
+    ['meta', {name: 'theme-color', content: '#FFF1E8', media: '(prefers-color-scheme: light)'}],
+    ['meta', {name: 'theme-color', content: '#1D2B53', media: '(prefers-color-scheme: dark)'}],
     ['link', {rel: 'preload', href: '/pairing-buddy/fonts/inter-500.woff2', as: 'font', type: 'font/woff2', crossorigin: ''}],
-    ['meta', {property: 'og:title', content: 'pairing-buddy: a pair programmer for Neovim'}],
-    ['meta', {property: 'og:description', content: 'Not completion, not a chat sidebar: a pair that watches, speaks when it matters and types only when you hand over.'}],
-    ['meta', {property: 'og:image', content: 'https://makefunstuff.github.io/pairing-buddy/media/og.jpg'}],
-    ['meta', {property: 'og:type', content: 'website'}],
-    ['meta', {name: 'twitter:card', content: 'summary_large_image'}],
+    ['link', {rel: 'preload', href: '/pairing-buddy/fonts/pixelify-sans.woff2', as: 'font', type: 'font/woff2', crossorigin: ''}],
   ],
+  // A page without a description in its frontmatter is described by its first paragraph (meta.mjs), so a shared link
+  // to it says what that page is about, not what the site is.
+  transformPageData(pageData, {siteConfig}) {
+    if (!pageData.description) pageData.description = describe(readFileSync(join(siteConfig.srcDir, pageData.relativePath), 'utf8'));
+  },
+  transformHead: ({pageData}) => pageHead(pageData),
   markdown: {
     config: repoLinks,
     image: {lazyLoading: true},
@@ -54,7 +68,7 @@ export default defineConfig({
     theme: {light: 'tokyo-night', dark: 'tokyo-night'}, // code is dark in both, in the colours of the editor the loops show
   },
   vite: {
-    // The site's own files (the videos, fonts, favicon) live next to the config, not among the docs.
+    // The site's own files (the videos, fonts, sprites, favicon) live next to the config, not among the docs.
     publicDir: fileURLToPath(new URL('../public', import.meta.url)),
     server: {fs: {allow: [fileURLToPath(new URL('../..', import.meta.url))]}},
     // The pages are compiled from docs/, which has no node_modules: their imports resolve from here.

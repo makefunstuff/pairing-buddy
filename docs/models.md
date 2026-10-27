@@ -1,3 +1,7 @@
+---
+description: "Pair asks two models: a fast Watcher that decides when to speak and a Partner that writes the words. Run them locally, with an API key or a subscription."
+---
+
 # Models and providers
 
 Pair asks two models, one for each of its two jobs:
@@ -99,7 +103,8 @@ pair auth logout anthropic  # also `pair logout anthropic`
 
 - The Watcher runs on every candidate remark and should answer in under a second. It gets a few lines (under 200
   tokens) and answers with one number, so a mid-sized model is fast enough on a fast server. A server with a high fixed
-  cost per request may still take close to a second; `pair doctor` shows the time. Keep `reasoning: true` for models
+  cost per request may still take close to a second; `pair doctor` shows the time. On a slower one, Pair asks the
+  Watcher about fewer kinds of moment ([watcher.md](watcher.md#when-the-server-is-slow)). Keep `reasoning: true` for models
   that think by default, so thinking gets switched off.
 - A server that keeps only one model loaded at a time (llama.cpp's router mode, for example) reloads on every switch
   between two models. There, use [one model](#one-model) for both roles. With two models on such a server, the

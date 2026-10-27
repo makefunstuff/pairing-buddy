@@ -24,6 +24,7 @@ import {EditorPaneHost, HerdrPaneHost} from './pane-hosts.mjs';
 import {Panes, PaneWatch} from './pane-watch.mjs';
 import {NvimPanes} from './nvim-panes.mjs';
 import {openPartner} from './partner.mjs';
+import {Pace} from './pace.mjs';
 import {probeModel} from './probe.mjs';
 import {projectContext} from './project-context.mjs';
 import {readMessages, sendMessage} from './protocol.mjs';
@@ -92,6 +93,8 @@ export async function startDaemon(config, {
 
   // Both roles on one server, which may answer one request at a time: the slot puts their requests in order.
   const slot = new ModelSlot({exclusive: sameServer(config.models.watcher, config.models.partner)});
+  // How long the Watcher's calls take, and what Pair asks about while they take long (see pace.mjs).
+  const pace = new Pace({on: config.watcherPace ?? true, log});
   let models; // what the daemon builds on the config's models (see buildModels); a config change rebuilds it
   let rebuilt = Promise.resolve(); // a rebuild of the models under way, which a Partner turn waits for
   const modelOf = role => (role === 'watcher' ? models.chooseWatcherModel() : models.pairModels.partner);
@@ -152,7 +155,9 @@ export async function startDaemon(config, {
       const result = await slot.watch(signal => scoreRemark(trigger, state, {signal}));
       if (!result) return deferred;
       partnerAsked = false;
-      chooseWatcherModel.timed?.(Date.now() - started, afterPartner);
+      const ms = Date.now() - started;
+      chooseWatcherModel.timed?.(ms, afterPartner);
+      pace.hear(ms);
       health.report('watcher', result.error);
       return result;
     }, {momentOf});
@@ -243,6 +248,7 @@ export async function startDaemon(config, {
     }
     saved = next;
     config = {...next, socket: config.socket, dataDir: config.dataDir, agents: config.agents};
+    pace.on = config.watcherPace ?? true;
     for (const session of live.values()) {
       session.typingPauseMs = config.typingPauseMs;
       session.autoTune = config.autoTune;
@@ -353,7 +359,7 @@ export async function startDaemon(config, {
       const record = store.activeSession(root)
         ?? store.createSession({root, conversationId: await sessionPartner.createConversation(), goal: null, level: config.level, at: Date.now()});
       const session = new PairSession({
-        record, store, partner: sessionPartner, score, health,
+        record, store, partner: sessionPartner, score, pace, health,
         previousNote: store.previousNote(root, record.id),
         lastSession: store.lastSession(root, record.id),
         autoTune: config.autoTune,
@@ -549,6 +555,7 @@ export async function startDaemon(config, {
       startedAt,
       models: health.snapshot(),
       slot: slot.snapshot(),
+      pace: pace.snapshot(), // what the Watcher's calls cost, and what Pair is not asking about
       sessions: [...live.values()].map(session => ({
         root: session.root,
         role: session.role,
@@ -738,7 +745,9 @@ export async function startDaemon(config, {
     if (!config.keepWarm || now - models.scoreRemark.lastCallAt < keepWarmMs || !health.ok('watcher')) return;
     if (slot.exclusive && slot.busy()) return;
     if (![...live.values()].some(session => session.active(now))) return;
-    models.scoreRemark.warm().then(result => health.report('watcher', result.error));
+    // A ping measures the server's own cost per request, so the pace keeps measuring while Pair asks about nothing.
+    const started = Date.now();
+    models.scoreRemark.warm().then(result => { pace.hear(Date.now() - started); health.report('watcher', result.error); });
   }
 
   const ticker = setInterval(() => {

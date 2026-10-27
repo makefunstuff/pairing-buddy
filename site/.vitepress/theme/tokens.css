@@ -1,0 +1,126 @@
+/* The site's look in one place: an old-console pixel-art theme. Everything else (style.css, Landing.vue, the sprites in
+   site/sprites/build.mjs) takes its colours and fonts from here, and the tutorial video and the link-preview image
+   (site/og/card.html) are made to match them.
+
+   Palette: PICO-8's 16 colours, solid fills only, nothing soft or fading: borders are hard pixels, shadows are solid
+   blocks offset down and right. Colours are fills; text stays black, navy or cream, so it keeps at
+   least 7:1 on its background (secondary text and links at least 4.5:1).
+
+   Fonts: Pixelify Sans (pixel) for headings and UI labels (buttons, badges, nav, kickers); Inter for running text and
+   the docs; JetBrains Mono for code. All self-hosted from site/public/fonts (OFL). */
+@font-face { font-family: "Pixelify Sans"; font-weight: 400 700; font-display: swap; src: url(/fonts/pixelify-sans.woff2) format("woff2"); }
+@font-face { font-family: "Inter"; font-weight: 500; font-display: swap; src: url(/fonts/inter-500.woff2) format("woff2"); }
+@font-face { font-family: "Inter"; font-weight: 700; font-display: swap; src: url(/fonts/inter-700.woff2) format("woff2"); }
+@font-face { font-family: "JetBrains Mono"; font-weight: 400; font-display: swap; src: url(/fonts/jetbrains-mono-400.woff2) format("woff2"); }
+@font-face { font-family: "JetBrains Mono"; font-weight: 700; font-display: swap; src: url(/fonts/jetbrains-mono-700.woff2) format("woff2"); }
+
+:root {
+  /* the 16 colours */
+  --px-black: #000000;
+  --px-navy: #1D2B53;
+  --px-plum: #7E2553;
+  --px-forest: #008751;
+  --px-brown: #AB5236;
+  --px-charcoal: #5F574F;
+  --px-silver: #C2C3C7;
+  --px-cream: #FFF1E8;
+  --px-red: #FF004D;
+  --px-orange: #FFA300;
+  --px-yellow: #FFEC27;
+  --px-green: #00E436;
+  --px-blue: #29ADFF;
+  --px-lavender: #83769C;
+  --px-pink: #FF77A8;
+  --px-peach: #FFCCAA;
+
+  /* the fonts */
+  --px-font-pixel: "Pixelify Sans", "Courier New", monospace;
+  --vp-font-family-base: "Inter", "Segoe UI", system-ui, sans-serif;
+  --vp-font-family-mono: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+
+  /* the pixel grid: one art pixel is 4 screen pixels on the landing page; borders and shadow offsets step by it */
+  --px: 4px;
+  --px-border: 3px;
+
+  /* the parts of Pair, one colour each (the sprites and badges) */
+  --pair-watcher: var(--px-orange);
+  --pair-partner: var(--px-pink);
+  --pair-navigator: var(--px-blue);
+  --pair-scout: var(--px-green);
+  --pair-driver: var(--px-red);
+
+  /* light: cream paper, black ink */
+  --vp-c-bg: var(--px-cream);
+  --vp-c-bg-alt: var(--px-peach);
+  --vp-c-bg-soft: var(--px-peach);
+  --vp-c-bg-elv: var(--px-cream);
+  --vp-c-text-1: var(--px-black);
+  --vp-c-text-2: var(--px-navy);
+  --vp-c-text-3: var(--px-charcoal);
+  --vp-c-divider: var(--px-silver);
+  --vp-c-gutter: var(--px-silver);
+  --vp-c-border: var(--px-charcoal);
+  --vp-c-brand-1: var(--px-plum);
+  --vp-c-brand-2: var(--px-plum);
+  --vp-c-brand-3: var(--px-plum);
+  --vp-c-brand-soft: var(--px-peach);
+  --vp-c-tip-1: var(--px-black);
+  --vp-c-tip-3: var(--px-green);
+  --vp-c-warning-1: var(--px-black);
+  --vp-c-warning-3: var(--px-orange);
+  --vp-c-danger-1: var(--px-black);
+  --vp-c-danger-3: var(--px-red);
+  --vp-c-note-3: var(--px-blue);
+  --vp-code-block-bg: var(--px-black);
+  --vp-code-color: var(--px-plum);
+  --vp-code-bg: var(--px-peach);
+
+  --vp-button-brand-bg: var(--px-yellow);
+  --vp-button-brand-hover-bg: var(--px-yellow);
+  --vp-button-brand-active-bg: var(--px-orange);
+  --vp-button-brand-border: var(--px-black);
+  --vp-button-brand-text: var(--px-black);
+  --vp-button-brand-hover-text: var(--px-black);
+  --vp-button-brand-active-text: var(--px-black);
+  /* the default theme's shadows (menus, search, popups) become solid offset blocks */
+  --vp-shadow-1: 2px 2px 0 var(--px-black);
+  --vp-shadow-2: 4px 4px 0 var(--px-black);
+  --vp-shadow-3: 4px 4px 0 var(--px-black);
+  --vp-shadow-4: 6px 6px 0 var(--px-black);
+  --vp-shadow-5: 8px 8px 0 var(--px-black);
+
+  --pair-ink: var(--px-black); /* borders and shadows */
+  --pair-card: var(--px-cream);
+  --pair-shadow: 4px 4px 0 var(--pair-ink);
+  --pair-shadow-lg: 8px 8px 0 var(--pair-ink);
+  --pair-window: var(--px-black);
+  --pair-window-bar: var(--px-navy);
+  --pair-band: var(--px-navy);
+  --pair-fail: var(--px-red);
+}
+
+.dark {
+  /* dark: the navy screen of an old console, cream text */
+  --vp-c-bg: var(--px-navy);
+  --vp-c-bg-alt: var(--px-black);
+  --vp-c-bg-soft: var(--px-black);
+  --vp-c-bg-elv: var(--px-navy);
+  --vp-c-text-1: var(--px-cream);
+  --vp-c-text-2: var(--px-silver);
+  --vp-c-text-3: var(--px-silver);
+  --vp-c-divider: var(--px-charcoal);
+  --vp-c-gutter: var(--px-black);
+  --vp-c-border: var(--px-lavender);
+  --vp-c-brand-1: var(--px-pink);
+  --vp-c-brand-2: var(--px-pink);
+  --vp-c-brand-3: var(--px-pink);
+  --vp-c-brand-soft: var(--px-black);
+  --vp-c-tip-1: var(--px-cream);
+  --vp-c-warning-1: var(--px-cream);
+  --vp-c-danger-1: var(--px-cream);
+  --vp-code-color: var(--px-yellow);
+  --vp-code-bg: var(--px-black);
+
+  --pair-card: var(--px-black);
+  --pair-band: var(--px-plum);
+}

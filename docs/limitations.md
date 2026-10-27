@@ -44,10 +44,10 @@ stay herdr's:
 
 ## Models
 
-- **The Watcher's speed depends on your server.** It should answer in about a second; a slow server or a high fixed
-  cost per request makes remarks late, and two models on a server that holds one at a time reload on every switch.
-  [One model](models.md#one-model) for both roles is the workaround; `pair doctor` warns.
-  [#45](https://github.com/makefunstuff/pairing-buddy/issues/45)
+- **A slow server still makes each new moment wait for one Watcher call.** Pair asks it about fewer kinds of moment
+  while it is slow, and remembers scores ([watcher.md](watcher.md#when-the-server-is-slow)), but a moment worth asking
+  about waits for the call. Fixed as far as Pair can in
+  [#45](https://github.com/makefunstuff/pairing-buddy/issues/45).
 - **The Anthropic API path and subscription logins are not tested against the real services** in CI; the token
   renewal is tested against fake providers.
   [#44](https://github.com/makefunstuff/pairing-buddy/issues/44)

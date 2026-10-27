@@ -1,3 +1,7 @@
+---
+description: "How Pair is tested: model-free tests with scripted models and fakes of herdr and the providers, and live tests against real models."
+---
+
 # Tests
 
 ## Model-free tests
@@ -83,7 +87,9 @@ Runs every test that needs no model, in under a minute, with scripted models and
 - **The Watcher's speed.** The prefilter's rules, the one-number answer, scores remembered, drift checked once per
   file with the file's gist, keep-warm, the Watcher following the model a one-model server has loaded, and, end to
   end against a fake server that swaps and does not say so, the Watcher moving to the Partner's model after two
-  reloads.
+  reloads. The pace: its levels and their border, verdicts ranking what it gives up, and, end to end against a fake
+  server answering in 1.7 s, drift costing no call while a failure is still scored. `node test/pace-bench.mjs` (not
+  part of `npm test`, about 2 minutes) measures calls and waits before and after the pace at set latencies.
 - **Context windows and thinking settings.** The window from vLLM's, llama.cpp's and LM Studio's metadata or pi-ai's
   catalog, the config's own winning; `pair doctor --thinking` against fake servers that take a chat-template switch
   with a budget field, or `reasoning_effort` with three levels.
@@ -151,6 +157,10 @@ Runs every test that needs no model, in under a minute, with scripted models and
   for the Partner); the Watcher waiting while the Partner works in another project, and its remark saying how long it
   waited; a question cancelling the remark still being written (dropped, and no failure of the model); the context
   budget: the reply's room, compaction, and the instructions, tools and longest note fitting the smallest window.
+- **The site's link previews** (`test/site-meta.test.mjs`): each docs page's description from its frontmatter or
+  first paragraph (own, not thin, at most 155 characters), the tags a page gets, and the check of the built pages
+  naming a missing, relative or wrong tag. The Pages workflow runs that check on the real build (`npm run check` in
+  `site/`).
 
 **Temp dirs.** `npm test` runs through [test/run.mjs](../test/run.mjs), which puts the whole run under one folder,
 `pair-test-XXXXXX` in `$TMPDIR` (`/tmp` when it is not set), and removes it when the run ends, also on Ctrl-C and

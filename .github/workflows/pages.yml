@@ -34,6 +34,9 @@ jobs:
         working-directory: site
       - run: npm run build
         working-directory: site
+      # every page's link-preview tags, with absolute URLs (site/check-meta.mjs)
+      - run: npm run check
+        working-directory: site
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:
