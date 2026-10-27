@@ -22,7 +22,9 @@ export async function runInPane({setup, cwd, dir, commands, terminal = false, li
   try {
     await runs.ready(timeoutMs);
     for (const command of commands) {
+      // Read at once, as a run queued behind the last one reads it: the shell must be at its prompt by now.
       const number = await runs.next();
+      if (number === null) throw new Error(`the shell was not at its prompt after ${results.length} commands`);
       if (command) await runs.clearLog();
       shell.stdin.write(`${command}${terminal ? '\r' : '\n'}`);
       if (!command) continue;

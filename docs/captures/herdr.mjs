@@ -47,8 +47,9 @@ export async function standInHerdr(socketPath, {cwd, nvim, agents = [], log = ()
     if (output) shell.lines.push(...output.split('\n'));
     const marked = `\x1b]133;C;aid=pair${shell.count}\x07${output ? `${output}\n` : ''}\x1b]133;D;${exit};aid=pair${shell.count}\x07`;
     appendFileSync(join(shell.runs, 'pane.log'), marked);
-    writeFileSync(join(shell.runs, `${shell.count}.exit`), `${exit}\n`);
-    writeFileSync(join(shell.runs, 'next'), `${++shell.count}\n`);
+    // As the real shell does: `next` first, the exit code last.
+    writeFileSync(join(shell.runs, 'next'), `${shell.count + 1}\n`);
+    writeFileSync(join(shell.runs, `${shell.count++}.exit`), `${exit}\n`);
     shell.lines.push(`scout[${shell.count}] exit ${exit} $ `);
   }
 

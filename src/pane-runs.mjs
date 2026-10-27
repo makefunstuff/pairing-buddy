@@ -16,7 +16,8 @@ const END_MS = 2000; // how long tee may take to write the end mark after the co
 // shows PS0 in the shell itself after it read a line with a command in it, before running it: there the array
 // subscript sets the running command's number and the mark `C;aid=pairN` goes to the log. PROMPT_COMMAND writes
 // the end mark with the exit code. These are OSC 133 marks, for a terminal that reads them too; herdr ignores them
-// today (see docs/herdr.md).
+// today (see docs/herdr.md). Each file is written whole and renamed into place, so Pair never reads half of one,
+// and N.exit comes last: once it is there, `next` already holds the number of the command after N.
 export const RC = `# Pair's own pane (pairing-buddy): all it shows also goes to $PAIR_RUNS/pane.log, each exit code to N.exit
 HISTFILE=
 exec > >(exec tee -i -a "$PAIR_RUNS/pane.log") 2>&1
@@ -24,19 +25,20 @@ _pair_n=1
 _pair_exit=0
 _pair_running=
 _pair_set=()
+_pair_put() { printf '%s\\n' "$2" > "$PAIR_RUNS/$1.tmp" && command mv -f "$PAIR_RUNS/$1.tmp" "$PAIR_RUNS/$1"; }
 _pair_end() {
   _pair_exit=$?
-  if [[ -n $_pair_running ]]; then
-    printf '\\e]133;D;%s;aid=pair%s\\a' "$_pair_exit" "$_pair_running"
-    printf '%s\\n' "$_pair_exit" > "$PAIR_RUNS/$_pair_running.exit.tmp"
-    command mv -f "$PAIR_RUNS/$_pair_running.exit.tmp" "$PAIR_RUNS/$_pair_running.exit"
-    _pair_n=$((_pair_running + 1))
+  local ended=$_pair_running
+  if [[ -n $ended ]]; then
+    printf '\\e]133;D;%s;aid=pair%s\\a' "$_pair_exit" "$ended"
+    _pair_n=$((ended + 1))
     _pair_running=
   fi
-  printf '%s\\n' "$_pair_n" > "$PAIR_RUNS/next"
+  _pair_put next "$_pair_n"
+  [[ -n $ended ]] && _pair_put "$ended.exit" "$_pair_exit"
 }
 PROMPT_COMMAND=_pair_end
-PS0='\${_pair_set[_pair_running=_pair_n]}$(printf "running %s\\\\n" "$_pair_n" > "$PAIR_RUNS/next")\\e]133;C;aid=pair\${_pair_n}\\a'
+PS0='\${_pair_set[_pair_running=_pair_n]}$(_pair_put next "running $_pair_n")\\e]133;C;aid=pair\${_pair_n}\\a'
 PS1='\\[\\e]133;A\\a\\]scout[$_pair_n] exit $_pair_exit $ \\[\\e]133;B\\a\\]'
 `;
 

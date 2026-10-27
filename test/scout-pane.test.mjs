@@ -45,6 +45,14 @@ for (const [name, sandbox] of [['', false], [' in the sandbox', true]]) {
   });
 }
 
+test('once a command has ended, the shell is at its prompt for the next one, also right away', {skip: hasBash ? false : 'bash not installed', timeout: 60_000}, async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pair-runs-'));
+  // runInPane reads `next` the moment each command ended, as a run queued behind it does.
+  const {results} = await runInPane({setup: scoutPaneConfig({sandbox: false}), cwd: dir, dir: join(dir, 'pane'), commands: Array.from({length: 300}, (_, i) => `echo ${i}`)});
+  assert.equal(results.length, 300);
+  assert.deepEqual(results.at(-1), {exit: 0, output: '299'});
+});
+
 const hasScript = spawnSync('script', ['--version']).status === 0;
 
 test('on a terminal, Ctrl-C ends a command and keeps its output, also with a job left in the background', {skip: hasBash && hasScript ? false : 'needs bash and script (util-linux)', timeout: 20_000}, async () => {
