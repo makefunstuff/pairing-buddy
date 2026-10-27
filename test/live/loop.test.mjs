@@ -106,7 +106,8 @@ describe('the exploration loop on live models', {skip}, () => {
       // say's hand gets the words themselves, point's its arguments.
       const words = [...calls.map(call => (call.name === 'say' ? call.args : call.name === 'point' ? call.args.note : '')), answer].filter(Boolean).join('\n');
       t.diagnostic(`words: ${words}`);
-      return {answer, words, points: calls.filter(call => call.name === 'point' || call.name === 'suggest')};
+      t.diagnostic(`points: ${calls.filter(call => call.name === 'point').map(call => `${call.args.file}:${call.args.line}`).join(', ')}`);
+      return {words, points: calls.filter(call => call.name === 'point' || call.name === 'suggest')};
     }
 
     const triggerOf = (state, kind) => {
@@ -127,8 +128,9 @@ describe('the exploration loop on live models', {skip}, () => {
       const {value} = await score(trigger, states[2]);
       t.diagnostic(`same numbers scored ${value}`);
       assert.ok(value >= BUDGETS.normal.bar, `score ${value} below the normal bar`);
-      const {answer, words, points} = await remark(t, states[2], trigger);
-      assert.doesNotMatch(answer, /^\W*silent\W*$/i);
+      const {words, points} = await remark(t, states[2], trigger);
+      // After a say or a point, a closing SILENT is no silence: the user saw what came before it (see session.mjs).
+      assert.ok(words.trim() && !/^\W*silent\W*$/i.test(words), 'it speaks');
       // The cause is in two places: hash() keeps the stride, and the ids that come 64 apart give it one.
       const code = readFileSync(join(root, 'probe.c'), 'utf8');
       const hash = line(code, 'static uint32_t hash');
@@ -142,8 +144,9 @@ describe('the exploration loop on live models', {skip}, () => {
       const {value} = await score(trigger, states[3]);
       t.diagnostic(`moved numbers scored ${value}`);
       assert.ok(value >= BUDGETS.normal.bar, `score ${value} below the normal bar`);
-      const {answer, words} = await remark(t, states[3], trigger);
-      assert.doesNotMatch(answer, /^\W*silent\W*$/i);
+      const {words} = await remark(t, states[3], trigger);
+      // After a say or a point, a closing SILENT is no silence: the user saw what came before it (see session.mjs).
+      assert.ok(words.trim() && !/^\W*silent\W*$/i.test(words), 'it speaks');
       assert.match(words, /1\.1/, 'it says the new number');
     });
   }
