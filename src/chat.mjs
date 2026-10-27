@@ -17,7 +17,8 @@ const HELP = `/goal <text>   set the session goal
 /today         what Pair did here today
 ?  or /why     the one idea worth keeping behind what Pair said last
 /agents        your other agents and board tasks, the ones that need you first
-/end           end the session now and write a session note (it also ends by itself)
+/end           end the session now with its debrief (it also ends by itself)
+/first <step>  tomorrow's first step, with a file:line to land on (after the debrief, e edits it)
 /quit          close this pane (the session goes on)
 anything else  ask Pair`;
 
@@ -32,6 +33,7 @@ export function parseInput(line) {
   const [command, ...rest] = text.split(/\s+/);
   const arg = rest.join(' ');
   if (command === '/goal' && arg) return {type: 'goal', text: arg};
+  if (command === '/first' && arg) return {type: 'first', text: arg};
   if (command === '/level' && LEVELS.includes(arg)) return {type: 'level', level: arg};
   if (command === '/scout') return {type: 'role', role: 'scout'};
   if (command === '/navigate') return {type: 'role', role: 'navigator'};
@@ -59,6 +61,7 @@ export function runChat(socketPath) {
   let away = false; // the daemon went away and the pane is reconnecting
   const rl = createInterface({input: process.stdin, output: process.stdout, prompt: '› '});
   let confirming = null; // the id of the question the next line answers
+  let first = null; // tomorrow's first step, which `e` edits, right after the debrief
   const look = {accent: null, color: !!process.stdout.isTTY && !process.env.NO_COLOR}; // the accent: the editor's, once it sends it
   const showRole = role => rl.setPrompt(`${role} › `);
   const print = text => {
@@ -119,6 +122,10 @@ export function runChat(socketPath) {
       say('pair', `${message.text} [y/N]`);
     }
     if (message.type === 'confirmed' && message.id === confirming) confirming = null; // answered, or timed out
+    if (message.type === 'first' && message.step) {
+      first = message.step;
+      print(dim('·· e edits tomorrow\'s first step', look));
+    }
     if (message.type === 'ledger') print(ledgerText(message).map(line => dim(`·· ${line}`, look)).join('\n'));
     // Another agent's news, at your breakpoint: one line, like the pane's own notes.
     if (message.type === 'agents' && message.item) say('system', `◇ ${message.text}${message.more ? ` (+${message.more} more · /agents)` : ''}`);
@@ -140,6 +147,14 @@ export function runChat(socketPath) {
       sendMessage(socket, {type: 'confirm', id: confirming, ok: allows(line)});
       confirming = null;
       return rl.prompt();
+    }
+    // `e` right after the debrief puts its first step on the line, to edit and send with Enter.
+    const editing = first !== null && line.trim() === 'e';
+    const step = first;
+    first = null;
+    if (editing) {
+      rl.prompt();
+      return rl.write(`/first ${step}`);
     }
     const input = parseInput(line);
     if (input?.local === 'quit') return rl.close();

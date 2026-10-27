@@ -3,11 +3,12 @@
 // that points at them, and a chat client, as the chat pane would be. Writes `ready` when Neovim may start.
 // usage: node stage.mjs <scene> <scratch dir under /tmp/paircap.*>
 import {execFileSync, spawn} from 'node:child_process';
-import {chmodSync, cpSync, existsSync, mkdirSync, openSync, writeFileSync} from 'node:fs';
+import {chmodSync, cpSync, existsSync, mkdirSync, openSync, utimesSync, writeFileSync} from 'node:fs';
 import {connect} from 'node:net';
 import {basename, join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {readMessages, sendMessage} from '../../src/protocol.mjs';
+import {openStore} from '../../src/store.mjs';
 import {standInHerdr} from './herdr.mjs';
 import {startModelServer} from './model.mjs';
 import {scenes} from './scenes.mjs';
@@ -66,10 +67,32 @@ function voice() {
   return {voice: {model: process.env.CAP_WHISPER_MODEL, whisper: process.env.CAP_WHISPER ?? 'whisper-cli', record}};
 }
 
+// Yesterday's session, for the morning pick-up: ended at 17:40 the day before, with its debrief and where to pick up.
+// The project's files are older, so the failing test keeps its signs.
+const dataDir = join(dir, 'data');
+mkdirSync(dataDir, {recursive: true});
+if (scene.yesterday) {
+  const ended = new Date(Date.now() - 86_400_000).setHours(17, 40, 0, 0);
+  const {note, first, tests} = scene.yesterday(project);
+  const store = openStore(join(dataDir, 'sessions.sqlite'));
+  const {id} = store.createSession({root: project, conversationId: 'yesterday', goal: scene.goal, level: 'normal', at: ended - 3 * 3_600_000});
+  store.endSession(id, note, ended, {first, tests});
+  store.close();
+  const before = new Date(ended - 3_600_000);
+  for (const file of tests.results.flatMap(test => [test.file, test.failure?.file]).filter(Boolean)) utimesSync(file, before, before);
+}
+
+// The daemon's clock shows `scene.clock` o'clock, as the debrief's heading and the pick-up read it.
+function zone(hour) {
+  if (hour === undefined) return process.env.TZ;
+  const offset = ((hour - new Date().getUTCHours() + 36) % 24) - 12; // -12..11
+  return offset === 0 ? 'UTC' : `Etc/GMT${offset > 0 ? '-' : '+'}${Math.abs(offset)}`;
+}
+
 const socket = join(dir, 'pair.sock');
 const model = id => ({api: 'openai', baseUrl: models.baseUrl, model: id, contextWindow: 65536});
 writeFileSync(join(dir, 'config.json'), JSON.stringify({
-  dataDir: join(dir, 'data'),
+  dataDir,
   socket,
   typingPauseMs: 900,
   keepWarm: false,
@@ -82,7 +105,7 @@ writeFileSync(join(dir, 'config.json'), JSON.stringify({
 }, null, 2));
 const out = openSync(join(dir, 'daemon.log'), 'a');
 const daemon = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', PAIR, 'daemon'], {
-  env: {...process.env, PAIR_CONFIG: join(dir, 'config.json'), HERDR_PROJECTS_DATA_DIR: board}, stdio: ['ignore', out, out],
+  env: {...process.env, PAIR_CONFIG: join(dir, 'config.json'), HERDR_PROJECTS_DATA_DIR: board, TZ: zone(scene.clock)}, stdio: ['ignore', out, out],
 });
 while (!existsSync(socket)) await sleep(50);
 
@@ -91,6 +114,16 @@ readMessages(chat, message => { if (message.type === 'message') log(`chat: ${mes
 await new Promise(resolve => chat.on('connect', resolve));
 sendMessage(chat, {type: 'hello', role: 'chat', cwd: project, herdr: {socket: herdrSocket, workspace: 'w1', pane: 'w1:p2'}});
 if (scene.goal) sendMessage(chat, {type: 'goal', text: scene.goal}); // else the session takes the board task's
+
+// The day so far, for the debrief: its active time and the user's verdicts on Pair's remarks.
+if (scene.today) {
+  const store = openStore(join(dataDir, 'sessions.sqlite'));
+  let session;
+  while (!(session = store.activeSession(project))) await sleep(50);
+  store.addSessionActive(session.id, scene.today.activeMs);
+  for (const [trigger, verdict] of scene.today.remarks) store.rateRemark(store.addRemark({sessionId: session.id, trigger, score: 7, at: Date.now()}), verdict);
+  store.close();
+}
 
 async function stop() {
   chat.destroy();

@@ -21,6 +21,15 @@ function fixed(project) {
   change(project, 'internal/queue/queue.go', 'ttl: cfg.Budget,', 'ttl: cfg.Budget + cfg.AttemptTimeout,');
 }
 
+// The budget fix is in, the lease is not: TestNoDoubleDelivery fails.
+function budgetFixed(project) {
+  change(project, 'internal/delivery/worker.go', 'elapsed+wait >= cfg.Budget', 'elapsed+wait > cfg.Budget');
+}
+
+const QUEUE = 'internal/queue/queue.go';
+const QUEUE_TEST = 'internal/queue/queue_test.go';
+const LEASE_LINE = '\treturn &Queue{ttl: cfg.Budget, leased: map[string]time.Duration{}}';
+
 const TABLE = 'internal/retry/backoff_test.go';
 const CASES = [
   '\t\t{"first retry waits the base", 1, time.Second},',
@@ -177,6 +186,41 @@ export const scenes = {
     board: true,
     watcher: score(),
     partner: [],
+  },
+  // The morning pick-up: yesterday ended with the lease still too short. Neovim opens empty and lands on queue.go:18,
+  // Pair's gaze reads it again, one line says what is left, and Alt-j goes to the failing test.
+  pickup: {
+    goal: 'retries reach the budget',
+    setup: budgetFixed,
+    clock: 9,
+    yesterday: project => ({
+      note: '✓ delivery makes all 5 attempts: `>` lets attempt 5 run at exactly 15 s\n○ open: the queue\'s lease ends at 15 s, as attempt 5 starts\nTomorrow, first: make the lease outlive the last attempt, in queue.go:18.',
+      first: {step: 'make the lease outlive the last attempt, in queue.go:18.', file: QUEUE, line: 18, text: LEASE_LINE},
+      tests: {
+        type: 'tests', state: 'fail', label: 'go test -json ./...', text: '1 failing · TestNoDoubleDelivery',
+        results: [
+          {name: 'TestLeaseOnce', file: join(project, QUEUE_TEST), line: 19, ok: true, failure: null},
+          {name: 'TestNoDoubleDelivery', file: join(project, QUEUE_TEST), line: 26, ok: false, failure: {file: join(project, QUEUE_TEST), line: 34, text: 'attempt 5 starts at 15s, when evt_42\'s lease runs out'}},
+        ],
+      },
+    }),
+    watcher: score(),
+    partner: [
+      {when: /^\[pickup\]/, wait: 1400, say: 'Morning. Yesterday\'s `>` in worker.go made delivery green and left this: the lease is `cfg.Budget`, so it ends at 15 s, just as attempt 5 starts.'},
+    ],
+  },
+  // The day's end: the lease fix turns the queue green, and /end in the chat gives the day in a few lines, with
+  // tomorrow's first step, which e edits. The session's three hours and two noise remarks about drift are seeded.
+  debrief: {
+    goal: 'retries reach the budget',
+    setup: budgetFixed,
+    testOnSave: 'go test -json ./...',
+    clock: 17,
+    today: {activeMs: (3 * 60 + 5) * 60_000, remarks: [['drift', 'dismissed'], ['drift', 'dismissed'], ['regression', 'useful'], ['edit_while_red', 'useful'], ['regression', 'useful']]},
+    watcher: score(),
+    partner: [
+      {when: /^\[end\]/, wait: 1600, say: '✓ delivery makes all 5 attempts\n✓ leases outlast the last attempt: `TestNoDoubleDelivery` passes\n○ open: `AttemptTimeout` is set, but nothing enforces it yet\nTomorrow, first: give `send()` a context with that timeout, in worker.go:27.'},
+    ],
   },
   // Your other agents: their news waits while you type, and comes as one line when you save; :Pair agents has them all.
   'agents': {
