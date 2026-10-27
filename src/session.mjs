@@ -4,6 +4,7 @@ import {basename, dirname, isAbsolute, join, relative} from 'node:path';
 import {BlankPage} from './blank-page.mjs';
 import {Breaks} from './breaks.mjs';
 import {Budget} from './budget.mjs';
+import {momentState, pastVerdicts} from './decision.mjs';
 import {checkCommand, judge, markOf, parseHandOver, targetsOf} from './check.mjs';
 import {commandPolicy} from './command-policy.mjs';
 import {contextCard} from './context-card.mjs';
@@ -32,7 +33,7 @@ import {TestRuns, treeOf} from './test-runs.mjs';
 import {named} from './terminals.mjs';
 import {currentTrail, trailMatches, trailSummary} from './trail.mjs';
 import {detectTriggers} from './triggers.mjs';
-import {keptShares, outcome, tuning, WINDOW_MS} from './tuning.mjs';
+import {IGNORED_AFTER_MS, keptShares, outcome, tuning, WINDOW_MS} from './tuning.mjs';
 import {prepareUnsaved, withTree} from './unsaved.mjs';
 import {KEEP, splitTeaching, teachInput} from './tone.mjs';
 
@@ -240,6 +241,9 @@ const NO_GOAL = /^\W*(exit|later|skip|none|no|nothing|-)\W*$/i;
 const IDLE_AFTER_MS = 5 * 60_000; // no key, edit, command, cursor move or scroll for this long: the user is away, and active time stops
 const ACTIVE_FLUSH_MS = 60_000;
 const MAX_TICK_GAP_MS = 5000; // a longer gap between ticks (a suspended laptop) is not active time
+// A moment the decision model sorted keeps its sort this long: the gate looks at a moment again on every tick while
+// it waits for the model (see gate.mjs), and asking again would cost a call for the same answer.
+const SORT_KEPT_MS = 30_000;
 
 export class PairSession {
   /**
@@ -249,10 +253,12 @@ export class PairSession {
    * `previousNote` is the note of the last session in this project, and `lastSession` that session as the store
    * keeps it, with where to pick up (see pickup.mjs). With `autoTune`, the user's verdicts on past remarks tune the
    * budget (see tuning.mjs). `checkOutput` is where the hand-over's check writes its output and scratch copy when it
-   * is not the command on save (see check.mjs): in the sandbox's writable runs folder.
+   * is not the command on save (see check.mjs): in the sandbox's writable runs folder. `decision()` is the decision
+   * model the gate asks (a decision.mjs DecisionModel), or null without one.
    */
-  constructor({record, store, partner, score, pace = null, typingPauseMs, notify, requestEditor, previousNote = null, lastSession = null, autoTune = false, health = {ok: () => true}, testOnSave = null, checkOutput = null, log = () => {}, now = Date.now}) {
-    Object.assign(this, {record, store, partner, score, pace, typingPauseMs, notify, requestEditor, previousNote, lastSession, autoTune, health, log, now});
+  constructor({record, store, partner, score, pace = null, decision = () => null, typingPauseMs, notify, requestEditor, previousNote = null, lastSession = null, autoTune = false, health = {ok: () => true}, testOnSave = null, checkOutput = null, log = () => {}, now = Date.now}) {
+    Object.assign(this, {record, store, partner, score, pace, decision, typingPauseMs, notify, requestEditor, previousNote, lastSession, autoTune, health, log, now});
+    this.sorted = new Map(); // trigger key -> {at, sort}: what the decision model sorted it as lately
     this.checkOutput = checkOutput ?? join(tmpdir(), `pair-check-${process.pid}-${record.id}`, 'check.out'); // its copy of the project goes next to it
     this.state = initialState({root: record.root, goal: record.goal});
     this.budget = new Budget(record.level);
@@ -574,8 +580,12 @@ export class PairSession {
       }
       for (const trigger of triggers) {
         if (this.thought && !urgent(trigger.kind)) continue; // one held thought at a time
-        const decision = await decide({trigger, state: this.state, now, budget: this.budget, score: (judged, state) => this.scoreWithGist(judged, state), typingPauseMs: this.typingPauseMs, pace: this.pace});
+        const decision = await decide({
+          trigger, state: this.state, now, budget: this.budget, score: (judged, state) => this.scoreWithGist(judged, state), typingPauseMs: this.typingPauseMs,
+          pace: this.pace, decider: this.decider(now),
+        });
         if (!this.repeats(trigger, decision)) this.log(`${trigger.kind}: ${decision.verdict} (${decision.reason})`);
+        const logged = this.logDecision(trigger, decision, now);
         if (decision.held) this.waitFor(trigger, now);
         else this.waited(trigger, now);
         if (trigger.kind === 'search_trail' && decision.verdict !== 'wait') this.trailVerdict = {start: trigger.searches[0].at, ...decision, bar: this.budget.barFor(trigger.kind)};
@@ -585,12 +595,56 @@ export class PairSession {
           continue;
         }
         this.fired.add(trigger.key);
-        if (decision.verdict === 'speak') return await (this.remarking = this.remark(trigger, decision.score, this.waits.get(trigger.key)?.ms));
-        this.ledger.quiet(trigger.kind, decision.reason, {budget: decision.score === undefined && !decision.skipped, slow: decision.skipped});
+        if (decision.verdict === 'speak') return await (this.remarking = this.remark(trigger, decision.score, this.waits.get(trigger.key)?.ms, logged));
+        this.ledger.quiet(trigger.kind, decision.reason, {budget: decision.score === undefined && !decision.skipped && !decision.byModel, slow: decision.skipped, model: decision.byModel});
       }
     } finally {
       this.ticking = false;
     }
+  }
+
+  /**
+   * The gate's decider on the decision model (see gate.mjs), null without one: each question goes with the moment, the
+   * user's typing, recent work and their verdicts on this project's earlier remarks (see decision.mjs).
+   */
+  decider(now) {
+    const model = this.decision();
+    if (!model) return null;
+    for (const [key, kept] of this.sorted) if (now - kept.at >= SORT_KEPT_MS) this.sorted.delete(key);
+    const ask = (names, trigger, state, {bar, score = null}) => {
+      const remarks = this.store.remarks(now - WINDOW_MS).filter(remark => remark.root === this.root);
+      const lastRemarkAt = this.budget.spent.at(-1) ?? null;
+      return model.decide(names, momentState({
+        trigger, state, now, level: this.budget.level, bar, score, lastRemarkAt,
+        past: pastVerdicts(remarks, trigger.kind, now, {ignoredAfterMs: IGNORED_AFTER_MS}),
+      }));
+    };
+    return {
+      sort: async (trigger, state, {bar}) => {
+        const kept = this.sorted.get(trigger.key);
+        if (kept) return kept.sort;
+        const result = await ask(['moment', 'speak'], trigger, state, {bar});
+        if (!result.ok) return {fallback: result.why};
+        const {moment, speak} = result.answers;
+        const sort = {choice: moment.choice, p: moment.probabilities?.[moment.choice] ?? moment.confidence ?? 0, speak: speak.probability};
+        this.sorted.set(trigger.key, {at: now, sort});
+        return sort;
+      },
+      speak: async (trigger, state, {score, bar}) => {
+        const result = await ask(['speak'], trigger, state, {bar, score});
+        return result.ok ? {p: result.answers.speak.probability} : {fallback: result.why};
+      },
+    };
+  }
+
+  /** Logs a decision the gate made with the decision model, for `pair stats`; returns its id, or null when none. */
+  logDecision(trigger, decision, now) {
+    const {decided} = decision;
+    if (!decided || !['speak', 'drop'].includes(decision.verdict)) return null;
+    this.sorted.delete(trigger.key);
+    return this.store.addDecision({
+      sessionId: this.id, at: now, trigger: trigger.kind, ...decided, bar: this.budget.barFor(trigger.kind), verdict: decision.verdict,
+    });
   }
 
   /** `trigger` waits for the model, from `now` unless it already did. */
@@ -648,15 +702,16 @@ export class PairSession {
 
   /**
    * One unasked remark. It is stored so the user can rate it (dropped again if Pair stays silent), with how long
-   * its trigger `waitedMs` for the model, and costs budget.
+   * its trigger `waitedMs` for the model, and costs budget. `decisionId` is the logged decision it comes of, if any.
    */
-  async remark(trigger, score, waitedMs = null) {
+  async remark(trigger, score, waitedMs = null, decisionId = null) {
     // The gate saw a pause, but a Partner turn takes seconds: the user may be typing again by the time it answers.
     this.unasked = true;
     this.asksBack = asksBack(trigger.kind);
     this.holding = urgent(trigger.kind) ? null : [];
     const since = this.now(); // a breakpoint from here on is the one it waits for
     const id = this.remarkId = this.store.addRemark({sessionId: this.id, trigger: trigger.kind, score, at: this.now(), waitedMs});
+    if (decisionId) this.store.linkDecision(decisionId, id);
     try {
       // The trail's queries, searched in the project: which of the user's words the code has, and where.
       const seen = trigger.kind === 'search_trail' ? {...trigger, detail: `${trigger.detail}\n${await trailMatches(this.root, trigger.searches)}`} : trigger;

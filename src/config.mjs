@@ -179,6 +179,40 @@ function parseModels(raw, windows) {
   };
 }
 
+// The decision model's APIs at a baseUrl, by the config's name for them: OpenAI's Decisions API (`POST /decisions`), the
+// System One API TypeSafe, OpenRouter and llama.cpp serve (`POST /systemone`), and a chat model on llama.cpp's server
+// asked for the probability of each answer (see pi-ai's README, "Classification").
+export const DECISION_APIS = {openai: 'openai-decisions', 'system-one': 'typesafe-system-one', 'llama-cpp': 'llama-cpp-classify'};
+// A decision the gate waits longer for than this is not taken: Pair goes by its own rules at once (see decision.mjs).
+export const DECISION_TIMEOUT_MS = 1500;
+
+/**
+ * The optional `decision` entry: a classifier model (TypeSafe's Jev, Cloudflare's Clef, OpenAI's Decisions API) that
+ * answers the speak gate's questions with probabilities. Like a role's entry it names a pi-ai `provider` and one of
+ * its classifier models, or an `api` of DECISION_APIS at a `baseUrl`; `timeoutMs` is how long the gate waits for it.
+ * null without one: Pair decides by its own rules, as without the entry.
+ */
+export function decisionConfig(entry, name = 'decision') {
+  if (entry === undefined || entry === null) return null;
+  if (typeof entry !== 'object' || Array.isArray(entry)) throw new Error(`config: ${name} must be a model entry`);
+  const keys = ['auth', 'apiKey', 'apiKeyFile', 'apiKeyEnv'].filter(field => entry[field] !== undefined);
+  if (keys.length > 1) throw new Error(`config: ${name} takes one of ${keys.join(', ')}`);
+  if (typeof entry.model !== 'string' || !entry.model) throw new Error(`config: ${name}.model is missing`);
+  if (entry.provider !== undefined) {
+    if (typeof entry.provider !== 'string' || !entry.provider) throw new Error(`config: ${name}.provider must be a provider id (see \`pair auth list\`)`);
+    if (entry.api !== undefined || entry.baseUrl !== undefined) throw new Error(`config: ${name} names a provider, which brings its own api and baseUrl`);
+    if (keys.length) throw new Error(`config: ${name} names a provider: log in with \`pair auth login ${entry.provider}\` instead of ${keys[0]}`);
+  } else {
+    if (!(entry.api in DECISION_APIS)) throw new Error(`config: ${name} needs a "provider", or an "api": ${Object.keys(DECISION_APIS).map(api => `"${api}"`).join(', ')}`);
+    if (typeof entry.baseUrl !== 'string' || !entry.baseUrl) throw new Error(`config: ${name}.baseUrl is missing`);
+    if (entry.auth !== undefined && (typeof entry.auth !== 'string' || !entry.auth)) throw new Error(`config: ${name}.auth must name a key stored by \`pair auth login\``);
+  }
+  const timeoutMs = entry.timeoutMs ?? DECISION_TIMEOUT_MS;
+  if (typeof timeoutMs !== 'number' || !(timeoutMs > 0)) throw new Error(`config: ${name}.timeoutMs must be a number of milliseconds`);
+  if (entry.contextWindow !== undefined && !(Number.isInteger(entry.contextWindow) && entry.contextWindow > 0)) throw new Error(`config: ${name}.contextWindow must be a number of tokens`);
+  return {contextWindow: DEFAULT_CONTEXT, ...entry, timeoutMs};
+}
+
 /** One line on which models serve the two roles, for `pair setup`. */
 export function rolesText({watcher, partner}) {
   if (sameModel(watcher, partner)) return `one model for both roles: ${whereIs(partner)}`;
@@ -278,6 +312,7 @@ export function parseConfig(raw, {windows = {}} = {}) {
     windows, // as found (see context-window.mjs), so a reload can keep one a server cannot tell then
     agents: raw.agents ?? true, // relays your other agents' news (see agents.mjs)
     models,
+    decision: decisionConfig(raw.decision), // the gate's decision model, or null (see decision.mjs)
   };
 }
 
