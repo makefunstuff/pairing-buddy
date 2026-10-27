@@ -614,7 +614,7 @@ Only those the human chose in step 2.
 this workspace`. Nothing to configure: `pair` in a herdr pane opens the chat beside it. The work board
 (`herdr-projects`) and its goal for the branch are read when its command is on `PATH` ([agents.md](docs/agents.md)).
 
-**The shell hook.** It reports each command's exit code to Pair. **Check:** `grep -s 'pair shell-hook' "$rc"`
+**The shell hook.** It tells Pair each command you run and its exit code. **Check:** `grep -s 'pair shell-hook' "$rc"`
 (`rc` from step 3.1; for fish, `~/.config/fish/config.fish`). **Do**, if it prints nothing, back up the rc file and add one line at its end:
 
 ```sh
