@@ -592,8 +592,8 @@ the count starts again. `level quiet` turns them off.
 
 ## Without herdr
 
-All of Pair works inside Neovim too; herdr only adds the view of your other terminals
-([herdr.md](herdr.md)).
+All of Pair works inside Neovim too, and in tmux; herdr adds its board of your other agents ([agents.md](agents.md))
+and, for terminals that are neither Neovim's nor tmux's, their output ([herdr.md](herdr.md)).
 
 - **The chat.** `:Pair chat` opens `pair chat` in a terminal buffer on the right, in Insert mode, connected to the
   daemon; again, it goes back to it. `pair chat` in any other terminal works the same.
@@ -606,6 +606,19 @@ All of Pair works inside Neovim too; herdr only adds the view of your other term
   are not yours). The question in the chat names it, `nvim:<buffer>`, and lists your other terminals: answer `y`,
   or the name of another one to type there instead. With two Neovims in the project, a buffer number both have is
   named with the Neovim's process id too, `nvim:<pid>:<buffer>` ([driver.md](driver.md#typing-into-your-terminal)).
+- **Your terminals.** Pair reads your `:terminal` buffers as it reads herdr's panes: which one you are in (going in,
+  out, or to another buffer says so; in herdr or tmux, their focus on another pane; elsewhere, Neovim losing the
+  focus of your terminal emulator, where the emulator reports that), a command seen running (your shell's
+  foreground process) and one too short for that (the prompt line), each with its output from the buffer, and
+  typing at the prompt, which takes the wheel back from the Driver. With the
+  [shell hook](install.md), its exit codes too: the hook names its shell's process id, which tells the buffer. Neovim
+  wraps long lines in a terminal buffer where the window ends, so a long line reads as two.
+- **tmux.** When Neovim (or the chat) runs in tmux, Pair also reads the panes of that tmux session, the same way:
+  the active pane of the window shown has the focus. When that pane is Neovim's and you are in one of its `:terminal`
+  buffers, that buffer has it; in another pane, that pane does, also with tmux's `focus-events` off (its default),
+  where Neovim never hears that you left. A pane that runs Neovim in place of a shell (`tmux new nvim`) is an
+  editor, never a terminal to type into. tmux pushes nothing to Pair, so it lists the panes once a second. The
+  Driver's `type` can go to them (`tmux:%<n>`).
 
 ## Setup
 
@@ -617,6 +630,7 @@ require('pair').setup({
   auto_connect = true,
   jump_key = '<M-j>',  -- false for none; :Pair jump works either way
   listen_key = '<M-t>', -- hold it to speak to Pair (docs/voice.md); false for none
+  listen_mode = 'hold', -- 'toggle': press it to start, press it again to ask
   motion = true,       -- false: no fades, the gaze lights one line at a time without its trail, and the Driver's edit lands at once
   glyphs = {},         -- for example {voice = '\u{f444}', wheel = '\u{f030c}'} with a Nerd Font
   searches = true,     -- false: your Telescope and snacks.picker searches stay in Neovim, and there is no search trail
@@ -635,6 +649,9 @@ require('pair').setup({
 | `jump_key` | `'<M-j>'` | Goes where Pair pointed last, or shows a held thought; from one suggestion on to the next. Mapped in Normal mode while it points somewhere or holds a thought |
 | `accept_key` | `'<M-y>'` | Accepts the suggestion under the cursor, else the newest in the buffer. Mapped in Normal mode, only in a buffer with a suggestion and only while one shows. Avoid `<Tab>`: terminals send it for Ctrl-I, the jumplist's forward jump |
 | `listen_key` | `'<M-t>'` | Hold it to speak to Pair ([voice.md](voice.md)). Mapped in Normal and Visual mode from the start |
+| `listen_mode` | `'hold'` | `'hold'`: hold the key and let go, or tap it twice. `'toggle'`: press it to start, press it again to ask, never guessing when you let go; holding it is one press, however long the terminal waits to repeat it ([voice.md](voice.md#4-the-key)) |
+| `listen_hold_ms`, `listen_release_ms` | `650`, `220` | In `'hold'`: no repeat this long after the press is a tap; no repeat this long is letting go. In `'toggle'`: a press this close to another is its repeat; a press this soon after the one that asked is that key's repeat |
+| `listen_silence_ms` | `false` | A number: a recording you do not hold asks after you spoke and paused this long |
 | `useful_key`, `noise_key` | `'<M-u>'`, `'<M-n>'` | Your verdict on Pair's last unasked remark. Mapped in Normal mode only while a remark waits for one |
 | `teach_key` | `'<M-?>'` | Asks for the idea behind Pair's words under your line, then opens its link ([below](#the-idea-behind-it)). Mapped in Normal mode while they show |
 | `agents_key` | `'<M-a>'` | Goes to the agent whose news Pair relayed, or puts the line away when it has no pane ([agents.md](agents.md)). Mapped in Normal mode while such a line shows |

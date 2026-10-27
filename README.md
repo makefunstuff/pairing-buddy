@@ -35,8 +35,8 @@ Pair aims for that:
 
 You need Node.js 22.19+, Neovim 0.11+, and a model: a local OpenAI-compatible server, an Anthropic-compatible
 API, or any provider [pi-ai](https://www.npmjs.com/package/@earendil-works/pi-ai) supports. [herdr](https://herdr.dev) is
-the best home for it; without herdr, `:Pair chat` opens the chat inside Neovim and Pair's pane is a `:terminal`
-there ([docs/neovim.md](docs/neovim.md#without-herdr)).
+the best home for it; without herdr, `:Pair chat` opens the chat inside Neovim, Pair's pane is a `:terminal` there, and
+Pair reads your own `:terminal` buffers and tmux panes ([docs/neovim.md](docs/neovim.md#without-herdr)).
 
 ```sh
 npm install -g github:makefunstuff/pairing-buddy   # puts `pair` on your PATH
@@ -92,7 +92,7 @@ to do:
 | --- | --- |
 | `Alt-j` | Go where Pair points (`Ctrl-O` comes back), or show a held remark now |
 | `Alt-y` | Take Pair's suggested change, as your own edit |
-| `Alt-t` (hold) | Ask aloud: [push-to-talk](docs/voice.md), when voice is set up |
+| `Alt-t` (hold, or tap twice) | Ask aloud: [push-to-talk](docs/voice.md), when voice is set up |
 | `Alt-u` / `Alt-n` | Tell Pair its last remark was useful / noise |
 | `Alt-l` / `Alt-d` | In a Markdown note: open the code a mark names / log the decision on your line |
 | `Alt-?` | The one idea worth keeping behind Pair's words under your line; again, open its link to the docs |
@@ -244,3 +244,11 @@ Off until you set `"voice"` in the config. [docs/voice.md](docs/voice.md)
 ## Limitations
 
 Known limitations are tracked as [GitHub issues](https://github.com/makefunstuff/pairing-buddy/issues/51).
+
+Without herdr all of Pair works in Neovim and tmux. Two things stay herdr's by nature:
+
+- **The output of a terminal that is neither a Neovim `:terminal` nor a tmux pane** (a plain window of your
+  terminal emulator): nothing lets another program read its screen. The shell hook still reports its commands and
+  exit codes.
+- **herdr's own agents** in [your other agents](docs/agents.md), and `Alt-a` bringing one's pane to the front: they
+  are herdr's panes. The Herdr Projects board's tasks are read without herdr.
