@@ -1,0 +1,10 @@
+1/1 util.test.util fails...FAIL (TestUnexpectedResult)
+/usr/lib/zig/lib/std/testing.zig:607:14: 0x102f019 in expect (std.zig)
+    if (!ok) return error.TestUnexpectedResult;
+             ^
+/home/you/zz/util.zig:4:5: 0x102f078 in test.util fails (util.zig)
+    try std.testing.expect(1 == 2);
+    ^
+0 passed; 0 skipped; 1 failed.
+error: the following test command failed with exit code 1:
+.zig-cache/o/a24e408a771b6db746c2f23c13044df6/test --seed=0x957090d6

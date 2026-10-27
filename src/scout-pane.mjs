@@ -98,15 +98,19 @@ export class ScoutPane {
     const number = await runs.next();
     if (number === null) throw new Error('Pair\'s pane is busy: its shell is not at the prompt');
     await runs.clearLog();
+    // Aborted while the pane got ready: never typed.
+    if (signal?.aborted) return {exit: null, output: '', timedOut: false, cancelled: true};
     // Ctrl-U first clears anything typed at the prompt by hand.
-    await this.request('pane.send_text', {pane_id: this.paneId, text: `\x15${command}\r`});
+    const typed = this.request('pane.send_text', {pane_id: this.paneId, text: `\x15${command}\r`});
     let timedOut = false;
     let cancelled = false;
+    // Ctrl-C once the command is typed, so it stops the command and not the prompt before it.
     const cancel = () => {
       cancelled = true;
-      this.request('pane.send_text', {pane_id: this.paneId, text: '\x03'}).catch(() => {});
+      typed.then(() => this.request('pane.send_text', {pane_id: this.paneId, text: '\x03'})).catch(() => {});
     };
     signal?.addEventListener('abort', cancel, {once: true});
+    await typed.catch(error => { signal?.removeEventListener('abort', cancel); throw error; });
     await runs.ended(number, timeoutMs).catch(async () => {
       timedOut = true;
       await this.request('pane.send_text', {pane_id: this.paneId, text: '\x03'});

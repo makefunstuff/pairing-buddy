@@ -152,7 +152,8 @@ the daemon reads the output back from the file, whole, however long it is. Then:
 - One run at a time, sharing the pane's queue with Scout. A save during a run stops it with Ctrl-C (or takes it out
   of the queue before it starts) and starts one for every file saved since the last run that ended; the stopped run
   reports nothing. After the baseline, a run covers only the tests the saved files affect where the runner can be
-  told (`src/affected.mjs`, see [tests-on-save.md](tests-on-save.md#how-it-runs)). A run is stopped with Ctrl-C after
+  told (`src/affected.mjs`, see [tests-on-save.md](tests-on-save.md#how-it-runs)); one that passes while earlier
+  failures are still counted is followed by a whole run. A run is stopped with Ctrl-C after
   the project's `timeoutSeconds`, two minutes by default.
 - Switching back to Navigator keeps the pane open while the project has a command; ending the session closes it.
   The session's first run (also after a daemon restart) is the baseline: what fails in it failed already, so it

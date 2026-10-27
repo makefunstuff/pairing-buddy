@@ -450,9 +450,13 @@ export class PairSession {
     const last = this.state.run;
     if (run.tests) this.wins.tests(run.tests.failed);
     this.receive({kind: 'test_run', cmd: run.label, tests: run.tests, files, saved: run.saved, reading: run.reading, exit: run.exit, output: run.output, narrowed: run.narrowed});
-    // A run of only the tests a save affects says nothing of the others: the ones that failed before still do.
-    const elsewhere = run.narrowed && run.tests ? (this.state.savedRunFailed ?? []).filter(name => !run.tests.failed.includes(name)) : [];
-    const results = run.narrowed ? [...(this.savedResults ?? []).filter(old => !run.placed.some(test => test.file === old.file && test.name === old.name)), ...run.placed] : run.placed;
+    // A run of only the tests a save affects says nothing of the others: the ones that failed before still do, and
+    // keep their signs in the files this run did not report on. When it passes, a whole run says which of them still
+    // fail at all: one may have been renamed or deleted since.
+    const elsewhere = run.narrowed ? (this.state.savedRunFailed ?? []).filter(name => !run.tests?.failed.includes(name)) : [];
+    const reported = new Set(run.placed.map(test => test.file));
+    const results = run.narrowed ? [...(this.savedResults ?? []).filter(old => !reported.has(old.file)), ...run.placed] : run.placed;
+    if (elsewhere.length && !isRed(run)) this.testRuns?.runWhole();
     this.savedResults = results;
     const red = isRed(run) || elsewhere.length > 0;
     const fresh = this.state.run !== last ? this.state.run.newWarnings.length : 0; // this run's

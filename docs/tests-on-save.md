@@ -32,11 +32,12 @@ and read back is in [scout.md](scout.md#tests-on-save).
   - `go test ./...`: the saved file's package and every package of the module that imports it, directly or not
     (`go test -json ./cart ./checkout`);
   - jest: `--findRelatedTests <saved files>`; vitest: `vitest related --run <saved files>`; both find the tests that
-    import them;
+    import them, and pass (`--passWithNoTests`) when no test does;
   - pytest: a saved test file runs alone (`pytest -v tests/test_cart.py`); a saved source file runs everything.
   Other runners, a command that names its own packages or tests, and a list of commands (`make && ./probe`) run whole.
-  A test that failed before and did not run now still counts as failing: the statusline says
-  `✗ 2 still failing · TestRate` after a narrowed run that passed.
+  A test that failed before and did not run now still counts as failing, and keeps its sign: the statusline says
+  `✗ 2 still failing · TestRate` after a narrowed run that passed. Such a run is followed by one whole run, which
+  says what still fails at all: a failing test you renamed or deleted is gone after it.
 - Without Pair's pane (no `pair` running in herdr) nothing runs, and the statusline says so.
 
 ## What you see

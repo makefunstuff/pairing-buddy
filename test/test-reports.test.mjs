@@ -14,12 +14,13 @@ const fixture = name => readFileSync(new URL(`./fixtures/${name}`, import.meta.u
 const project = name => join(projects, name);
 const shown = placed => placed.map(({name, file, line, ok, failure}) => [name, `${file.split('/').at(-1)}:${line}`, ok, failure && (failure.line ? `${failure.file.split('/').at(-1)}:${failure.line} ${failure.text}` : failure.text)]);
 
-test('cargo test: each test at its fn, a failure where it panicked', async () => {
+test('cargo test: each test at its fn, in its module when two share a name, a failure where it panicked', async () => {
   const tests = parseTestOutput(fixture('cargo-tests.txt'));
-  assert.deepEqual(tests.failed, ['tests::subtracts']);
+  assert.deepEqual(tests.failed, ['tests::subtracts', 'tests::inner::adds']);
   assert.deepEqual(shown(await placeTests(tests.tests, project('crab'))), [
     ['tests::adds', 'lib.rs:8', true, null],
     ['tests::subtracts', 'lib.rs:13', false, 'lib.rs:14 assertion `left == right` failed'],
+    ['tests::inner::adds', 'lib.rs:19', false, 'lib.rs:20 assertion `left == right` failed'],
   ]);
 });
 
@@ -45,7 +46,8 @@ test('pytest without -v names only its failures', async () => {
 });
 
 test('a JUnit XML report file: pytest --junitxml, its tests found by the module in the classname', async () => {
-  const tests = parseTestOutput(fixture('pytest-ra.txt'), fixture('pytest-junit.xml'));
+  const plain = readFileSync(new URL('./fixtures/pytest-ra.txt', import.meta.url), 'utf8').replace(/^PASSED .*\n/gm, ''); // only its failures
+  const tests = parseTestOutput(plain, fixture('pytest-junit.xml'));
   assert.equal(tests.runner, 'pytest');
   assert.equal(tests.failedCount, 2);
   const placed = shown(await placeTests(tests.tests, project('py')));
@@ -70,6 +72,16 @@ test('zig build test: only its failures', async () => {
   assert.equal(parseTestOutput('\nBuild Summary: 3/3 steps succeeded; 2/2 tests passed\ntest success\n').failedCount, 0);
 });
 
+test('ctest --output-junit: its own output still places each test; its report alone does too', async () => {
+  const withReport = parseTestOutput(fixture('ctest-with-junit.txt'), fixture('ctest-junit.xml'));
+  assert.equal(withReport.runner, 'ctest');
+  const expected = [['passes', 'CMakeLists.txt:5', true, null], ['fails', 'CMakeLists.txt:6', false, 't.c:3 t.c:3: expected 1, got 2']];
+  assert.deepEqual(shown(await placeTests(withReport.tests, project('cm'))), expected);
+  const reportOnly = parseTestOutput('', fixture('ctest-junit.xml'));
+  assert.deepEqual([reportOnly.failedCount, reportOnly.firstError], [1, 't.c:3: expected 1, got 2 at t.c:3']);
+  assert.deepEqual(shown(await placeTests(reportOnly.tests, project('cm'))), expected);
+});
+
 test('ctest: each test at its add_test, a failure with the first line it printed', async () => {
   const tests = parseTestOutput(fixture('ctest.txt'));
   assert.equal(tests.runner, 'ctest');
@@ -88,6 +100,17 @@ test('TAP: a test at its location, or by its title, also one made at run time', 
     ['sums 1 and 1', 'math.test.mjs:9', true, null],
     ['sums 2 and 2', 'math.test.mjs:9', false, 'math.test.mjs:10 Expected values to be strictly equal: 4 !== 5'],
   ]);
+});
+
+test('TAP: a failing describe() is no failed test of its own', async () => {
+  const tests = parseTestOutput(fixture('node-tap-describe.txt'));
+  assert.deepEqual([tests.failed, tests.failedCount, tests.passed], [['breaks'], 1, 1]);
+  assert.deepEqual(shown(await placeTests(tests.tests, project('nt'))).map(([name, at, ok]) => [name, at, ok]), [['breaks', 'group.test.mjs:5', false], ['holds', 'group.test.mjs:8', true]]);
+});
+
+test('zig test: a failed expect says its error, not the standard library\'s frame', async () => {
+  const tests = parseTestOutput(fixture('zig-expect.txt'));
+  assert.deepEqual(shown(await placeTests(tests.tests, project('zz'))), [['util fails', 'util.zig:3', false, 'util.zig:4 TestUnexpectedResult']]);
 });
 
 test('JUnit XML in the output: node --test-reporter=junit', async () => {

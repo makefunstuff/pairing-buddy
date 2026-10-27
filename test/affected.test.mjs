@@ -37,8 +37,8 @@ test('go: the saved file\'s package and every package that imports it, directly 
 
 test('jest, vitest and pytest are told the saved files', async () => {
   const narrowed = (command, files) => affectedCommand({command, root: '/p', files});
-  assert.equal(await narrowed('npx jest --json', ['src/a.js']), "npx jest --json --findRelatedTests 'src/a.js'");
-  assert.equal(await narrowed('npx vitest run --reporter=json', ['src/a.ts', 'src/b.ts']), "npx vitest related --run --reporter=json 'src/a.ts' 'src/b.ts'");
+  assert.equal(await narrowed('npx jest --json', ['src/a.js']), "npx jest --json --passWithNoTests --findRelatedTests 'src/a.js'");
+  assert.equal(await narrowed('npx vitest run --reporter=json', ['src/a.ts', 'src/b.ts']), "npx vitest related --run --passWithNoTests --reporter=json 'src/a.ts' 'src/b.ts'");
   assert.equal(await narrowed('pytest -q -k fast', ['tests/test_a.py']), "pytest -q -k fast 'tests/test_a.py'");
   assert.equal(await narrowed('pytest -q', ['calc.py']), null, 'a source file: pytest cannot say which tests use it');
   assert.equal(await narrowed('pytest tests/unit', ['tests/unit/test_a.py']), null, 'a command that names its tests runs as it is');

@@ -85,18 +85,33 @@ function lister(root) {
   return () => (files ??= walk('', []));
 }
 
-/** The place of declaration `find` ({kind, name, files}) in the project: in the files ending with one of `files` first. */
-async function declaration(root, {kind, name, files: hints = []}, lines, list) {
+/** Whether line `index` of `text` is inside `mod <module>`: the nearest `mod` above it is that one. */
+const inModule = (text, index, module) => {
+  const above = text.slice(0, index).reverse().map(line => /^\s*(?:pub(?:\([^)]*\))?\s+)?mod (\w+)/.exec(line)).find(Boolean);
+  return above?.[1] === module;
+};
+
+/**
+ * The place of declaration `find` ({kind, name, files, module}) in the project: in the files ending with one of
+ * `files` first. A Rust test's `module` (tests in tests::inner::adds) picks among fns of the same name.
+ */
+async function declaration(root, {kind, name, files: hints = [], module}, lines, list) {
   const {files, line} = DECLARATIONS[kind];
   const pattern = line(name);
   const all = (await list()).filter(file => files.test(file));
   const hinted = hints.flatMap(hint => all.filter(file => file === hint || file.endsWith(`/${hint}`) || join(root, file) === hint));
   const rest = hints.length && kind !== 'rust' ? [] : all; // a Rust unit test may be in any file of its crate
+  let first = null;
   for (const file of [...new Set([...hinted, ...rest])]) {
-    const index = (await lines(join(root, file)))?.findIndex(text => pattern.test(text)) ?? -1;
-    if (index !== -1) return {file: join(root, file), line: index + 1};
+    const text = (await lines(join(root, file))) ?? [];
+    for (let index = 0; index < text.length; index++) {
+      if (!pattern.test(text[index])) continue;
+      const place = {file: join(root, file), line: index + 1};
+      if (!module || inModule(text, index, module)) return place;
+      first ??= place;
+    }
   }
-  return null;
+  return first;
 }
 
 const inside = (root, file) => file.startsWith(root + sep);

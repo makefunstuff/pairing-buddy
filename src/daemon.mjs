@@ -301,7 +301,7 @@ export async function startDaemon(config, {
     const editors = editorsOf(session);
     if (!editors.length) throw new Error('No editor attached');
     if (message.type === 'buffers') {
-      const replies = await Promise.all(editors.map(editor => askEditor(editor, message).catch(() => null)));
+      const replies = await Promise.all(editors.filter(editor => editor.buffers).map(editor => askEditor(editor, message).catch(() => null)));
       return {buffers: replies.flatMap(reply => (Array.isArray(reply?.buffers) ? reply.buffers : []))};
     }
     if (message.type !== 'read') return askEditor(editors[0], message);
@@ -466,6 +466,7 @@ export async function startDaemon(config, {
     client.role = message.role;
     client.activeAt = Date.now();
     client.pane = message.pane ?? null; // the herdr pane a Neovim runs in
+    client.buffers = message.buffers === true; // a plugin that lists its unsaved buffers; an older one never answers
     client.session = await loadSession(await rootOf(message.cwd));
     const {session} = client;
     sendMessage(client.socket, {

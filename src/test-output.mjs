@@ -30,7 +30,8 @@ function cargoTests(lines) {
     const status = result === 'ok' ? 'passed' : result === 'FAILED' ? 'failed' : 'skipped';
     // The unit tests of src/lib.rs may be in any file of src/; an integration test is in its own file.
     const files = running && !running.startsWith('src/') ? [running] : [];
-    tests.push({name, status, find: {kind: 'rust', name: name.split('::').at(-1), files}, failure: status === 'failed' ? cargoFailure(lines, name) : null});
+    const path = name.split('::');
+    tests.push({name, status, find: {kind: 'rust', name: path.at(-1), module: path.at(-2), files}, failure: status === 'failed' ? cargoFailure(lines, name) : null});
   }
   return tests;
 }
@@ -308,13 +309,17 @@ const RUNNERS = [goJson, jsJson, junit, tap, cargo, jest, vitest, pytest, nodeTe
  * `failed` names the failed tests (at most 20); `passed` is null when the runner does not count them.
  * Most runners also give `tests`, each test with its status, failure and where to find it (see test-reports.mjs);
  * a JSON report also says how many `packages` (go) or test `files` (jest, vitest) it ran.
- * `report` is the JUnit XML the command wrote to a file, if any: its tests win over the ones in the output.
+ * `report` is the JUnit XML the command wrote to a file, if any: its tests count where it names more than the output.
  */
 export function parseTestOutput(text = '', report = null) {
   const fromReport = report && junit(report);
   for (const runner of RUNNERS) {
     const result = runner(text);
-    if (result) return finished(fromReport ? {...fromReport, runner: result.runner} : result);
+    if (!result) continue;
+    // The report wins where it names more tests (plain pytest lists only its failures); else the output's own list
+    // does, which says as much or more of where each test is (ctest's report names no file).
+    const better = fromReport && fromReport.tests.length > (result.tests?.length ?? 0);
+    return finished(better ? {...fromReport, runner: result.runner} : result);
   }
   return fromReport && finished(fromReport);
 }

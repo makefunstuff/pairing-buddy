@@ -50,14 +50,15 @@ export function zig(text) {
   const failureOf = (name, said) => {
     const frame = lines.findIndex(line => line.includes(` in test.${name} (`));
     const at = frame === -1 ? null : /^(\S+\.zig):(\d+):\d+:/.exec(lines[frame]);
-    const text = said || lines[lines.findIndex(line => line.includes(`test.${name}...`)) + 1]?.trim() || 'failed';
-    return {file: at?.[1] ?? null, line: at ? Number(at[2]) : null, text};
+    return {file: at?.[1] ?? null, line: at ? Number(at[2]) : null, text: said || 'failed'};
   };
   const test = (module, name, status, said) => ({
     name, status, find: {kind: 'zig', name, files: module ? [`${module.split('.').at(-1)}.zig`] : []}, failure: status === 'failed' ? failureOf(name, said) : null,
   });
+  // A failure ends its line with what it printed (`expected 5, found 4`), or only with `FAIL (TestUnexpectedResult)`.
+  const said = end => /^FAIL \((\w+)\)$/.exec(end)?.[1] ?? end.trim();
   const tests = listed.length
-    ? listed.map(([, module, name, end]) => test(module, name, end === 'OK' ? 'passed' : end === 'SKIP' ? 'skipped' : 'failed', end === 'OK' || end === 'SKIP' || /^FAIL/.test(end) ? null : end.trim()))
+    ? listed.map(([, module, name, end]) => test(module, name, end === 'OK' ? 'passed' : end === 'SKIP' ? 'skipped' : 'failed', end === 'OK' || end === 'SKIP' ? null : said(end)))
     : built.map(([, module, name, said]) => test(module, name, 'failed', said));
   const passed = summary[1] !== undefined && summary[0].startsWith('All') ? Number(summary[1]) : undefined;
   return resultOf('zig', tests, passed === undefined ? {} : {passed});
@@ -114,6 +115,7 @@ export function tap(text) {
     const [, indent, ok, name, , directive] = match;
     const end = lines.findIndex((next, i) => i > index && next.startsWith(`${indent}  ...`));
     const block = lines[index + 1]?.startsWith(`${indent}  ---`) && end !== -1 ? lines.slice(index + 2, end) : [];
+    if (yamlValue(block, 'type') === 'suite') return; // node's describe(): it fails when a test in it does
     const at = /^(?:file:\/\/)?(\/.+):(\d+):\d+$/.exec(yamlValue(block, 'location') ?? '');
     const status = directive ? 'skipped' : ok === 'ok' ? 'passed' : 'failed';
     let failure = null;
@@ -143,6 +145,7 @@ const KINDS = {'.py': 'python', '.rs': 'rust', '.zig': 'zig'};
 /** Where a JUnit test case is: its file and line, its file and title, or its classname as a Python module. */
 function junitPlace({file, line, classname, name}) {
   if (file && line) return {file, line: Number(line)};
+  if (!file && classname === name) return {find: {kind: 'ctest', name, files: []}}; // ctest names a test only by itself
   // pytest names a parametrized test test_param[2-3-6]; its def is test_param.
   const declared = name.replace(/\[.*\]$/, '');
   const kind = file && KINDS[/\.\w+$/.exec(file)?.[0]];
@@ -164,9 +167,11 @@ export function junit(text) {
     let failure = null;
     if (bad) {
       const message = unescape(attributes(bad[2]).message ?? '');
-      const detail = unescape(bad[3] ?? '');
+      // What the test printed, where the failure itself says no more than that it failed (ctest: "Failed").
+      const detail = unescape(bad[3] || /<system-out>([\s\S]*?)<\/system-out>/.exec(body)?.[1] || '');
       const place = placeIn(detail, attrs.file);
-      failure = {file: place?.file ?? null, line: place?.line ?? null, text: (message || detail).split('\n').map(line => line.trim()).find(Boolean) ?? 'failed'};
+      const said = /^(failed|error)?$/i.test(message.trim()) ? detail || message : message;
+      failure = {file: place?.file ?? null, line: place?.line ?? null, text: said.split('\n').map(line => line.trim()).find(Boolean) ?? 'failed'};
     }
     return {name, status, failure, ...junitPlace({...attrs, name})};
   });

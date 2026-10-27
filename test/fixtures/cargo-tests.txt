@@ -1,10 +1,11 @@
    Compiling crab v0.1.0 (/home/you/crab)
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.10s
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.04s
      Running unittests src/lib.rs (target/debug/deps/crab-4b731f602d68d887)
 
-running 2 tests
+running 3 tests
 test tests::adds ... ok
 test tests::subtracts ... FAILED
+test tests::inner::adds ... FAILED
 
 failures:
 
@@ -14,12 +15,20 @@ thread 'tests::subtracts' (41) panicked at src/lib.rs:14:9:
 assertion `left == right` failed
   left: 4
  right: 5
+
+---- tests::inner::adds stdout ----
+
+thread 'tests::inner::adds' (41) panicked at src/lib.rs:20:13:
+assertion `left == right` failed
+  left: 2
+ right: 3
 note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 
 
 failures:
+    tests::inner::adds
     tests::subtracts
 
-test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: FAILED. 1 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
 error: test failed, to rerun pass `--lib`

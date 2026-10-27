@@ -65,6 +65,16 @@ export class TestRuns {
     this.pending = new Set(); // files saved since the last run that ended, relative to the root
     this.lastSaved = null;
     this.baseline = false; // whether a whole run has ended, so later ones may run only what a save affects
+    this.wholeNext = false; // the next run runs whole, whatever was saved
+  }
+
+  /**
+   * Runs the whole command next, now when nothing runs: what a narrowed run cannot say, such as whether a test that
+   * failed before still exists, a whole run does.
+   */
+  runWhole() {
+    this.wholeNext = true;
+    if (!this.running) this.run();
   }
 
   /** The user saved `file` (relative to the root): a source file starts a run, and stops one under way. */
@@ -84,9 +94,11 @@ export class TestRuns {
     if (!pane) return this.report({state: 'error', label: this.label, saved, error: 'tests on save need Pair\'s own herdr pane: start Pair with `pair` inside herdr', short: 'needs `pair` in herdr'});
     const controller = new AbortController();
     this.running = {stop: () => controller.abort()};
+    const whole = this.wholeNext;
+    this.wholeNext = false;
     let cancelled = false;
     try {
-      const narrowed = this.affected && this.baseline ? await affectedCommand({command: this.command, root: this.root, files}) : null;
+      const narrowed = this.affected && this.baseline && !whole ? await affectedCommand({command: this.command, root: this.root, files}) : null;
       const command = narrowed ?? this.command;
       const label = runLabel(command);
       this.report({state: 'run', label, saved});
@@ -102,9 +114,10 @@ export class TestRuns {
       this.report({state: 'error', label: this.label, saved, error: error.message, short: 'could not run'});
     } finally {
       this.running = null;
-      // A stopped run's files run again with the ones saved since.
+      // A stopped run's files run again with the ones saved since; a whole run asked for is still asked for.
       if (cancelled) for (const file of files) this.pending.add(file);
-      if (this.pending.size) this.run();
+      if (cancelled && whole) this.wholeNext = true;
+      if (this.pending.size || this.wholeNext) this.run();
     }
   }
 

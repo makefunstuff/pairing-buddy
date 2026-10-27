@@ -13,4 +13,11 @@ mod tests {
     fn subtracts() {
         assert_eq!(add(2, 2), 5);
     }
+
+    mod inner {
+        #[test]
+        fn adds() {
+            assert_eq!(super::super::add(1, 1), 3);
+        }
+    }
 }

@@ -63,12 +63,13 @@ async function go(command, root, files) {
 
 const quoted = files => files.map(shellQuote).join(' ');
 
+// A saved file no test imports has no related tests: both runners exit 1 for that unless told it passes.
 function jest(command, files) {
-  return /(^|[\s/])jest(\s|$)/.test(command) ? `${command} --findRelatedTests ${quoted(files)}` : null;
+  return /(^|[\s/])jest(\s|$)/.test(command) ? `${command} --passWithNoTests --findRelatedTests ${quoted(files)}` : null;
 }
 
 function vitest(command, files) {
-  return /(^|[\s/])vitest run(\s|$)/.test(command) ? `${command.replace(/vitest run/, 'vitest related --run')} ${quoted(files)}` : null;
+  return /(^|[\s/])vitest run(\s|$)/.test(command) ? `${command.replace(/vitest run/, 'vitest related --run --passWithNoTests')} ${quoted(files)}` : null;
 }
 
 // pytest's options that take a value as the next word.
