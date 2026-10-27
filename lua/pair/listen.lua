@@ -1,6 +1,9 @@
 -- Push-to-talk: hold the listen key and speak, let go, and Pair answers under your line. A terminal sends no
 -- key-up, only the key again and again while it is held, so letting go is when that stops. A short press is a tap:
--- Pair listens until you press the key again. Under your line, a meter shows that it hears you, then the words it
+-- Pair listens until you press the key again. Neovim drops the key-release events of the kitty keyboard protocol
+-- before a plugin sees them, so there is no real key-up to use. Where the repeats cannot be trusted, mode 'toggle'
+-- never guesses: a press starts, the next press asks. With silence_ms, a recording you do not hold also asks after
+-- that long a pause in what you say. Under your line, a meter shows that it hears you, then the words it
 -- heard, which Pair's answer replaces. The daemon records and transcribes (see src/listen.mjs).
 local style = require('pair.style')
 
@@ -8,8 +11,11 @@ local M = {}
 
 M.ns = vim.api.nvim_create_namespace('pair_listen')
 -- Terminals start repeating a held key after 200 to 600 ms, then repeat every 30 to 50 ms.
-local HOLD_MS = 650 -- no repeat within this long after the press: it was a tap
-local RELEASE_MS = 220 -- no repeat for this long: the key is up
+-- hold_ms: no repeat within this long after the press, it was a tap. release_ms: no repeat for this long, the key is
+-- up (in 'toggle', a press this soon after the last one is a repeat, and does nothing). silence_ms: false, or how long
+-- a pause after you spoke asks, in a recording you do not hold.
+local opts = {mode = 'hold', hold_ms = 650, release_ms = 220, silence_ms = false}
+local SPEAKING = 0.35 -- a meter level (0 to 1, about -42 dB) at and above which you are speaking
 local TICK_MS = 40
 local NOTHING_MS = 1500 -- how long "heard nothing" stays
 local METER = {'▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'}
@@ -17,9 +23,10 @@ local BARS = 10
 
 -- phase: 'listening' (recording), 'hearing' (whisper writes it down), 'heard' (Pair is asked), 'unanswered' (it said
 -- nothing), or nil.
--- mode while listening: nil until it is known, then 'hold' or 'tap'.
--- key: the listen key as its hint names it, like M-t.
-local state = {phase = nil, mode = nil, pressed_at = 0, last_at = 0, buf = nil, mark = nil, levels = {}, text = nil, timer = nil, frame = 1, key = ''}
+-- mode while listening: nil until it is known, then 'hold' or 'tap' (a tap or 'toggle': until the next press).
+-- key: the listen key as its hint names it, like M-t. spoke: you were heard speaking; quiet_at: since when you are
+-- not.
+local state = {phase = nil, mode = nil, pressed_at = 0, last_at = 0, buf = nil, mark = nil, levels = {}, text = nil, timer = nil, frame = 1, key = '', spoke = false, quiet_at = nil}
 
 local function now_ms() return math.floor(vim.uv.now()) end
 
@@ -38,7 +45,8 @@ end
 local function chunks()
   local g = style.glyphs
   if state.phase == 'listening' then
-    local hint = state.mode == 'tap' and (state.key .. ' again to ask') or state.mode == 'hold' and 'let go to ask' or ''
+    local again = opts.silence_ms and (state.key .. ' again or pause to ask') or (state.key .. ' again to ask')
+    local hint = state.mode == 'tap' and again or state.mode == 'hold' and 'let go to ask' or ''
     return {{g.listen .. ' ', 'PairAccent'}, {meter(), 'PairAccent'}, {'  listening', 'PairNote'}, {hint ~= '' and ('   ' .. hint) or '', 'PairKey'}}
   elseif state.phase == 'hearing' then
     return {{style.spinner[state.frame] .. ' ', 'PairAccent'}, {'hearing', 'PairNote'}}
@@ -69,7 +77,7 @@ end
 local function clear()
   stop_timer()
   if state.buf and vim.api.nvim_buf_is_valid(state.buf) then vim.api.nvim_buf_clear_namespace(state.buf, M.ns, 0, -1) end
-  state.phase, state.mode, state.mark, state.text, state.levels = nil, nil, nil, nil, {}
+  state.phase, state.mode, state.mark, state.text, state.levels, state.spoke, state.quiet_at = nil, nil, nil, nil, {}, false, nil
   redraw_status()
 end
 
@@ -89,10 +97,34 @@ local function finish(send)
   end))
 end
 
+--- How the key works: `mode` 'hold' (hold it, or tap it twice) or 'toggle' (press, then press again), `hold_ms`,
+--- `release_ms` and `silence_ms` (see above). What is wrong is said, and left as it was.
+function M.setup(o)
+  o = o or {}
+  if o.mode ~= nil and o.mode ~= 'hold' and o.mode ~= 'toggle' then
+    vim.notify(string.format("Pair: listen_mode is 'hold' or 'toggle', not %s", vim.inspect(o.mode)), vim.log.levels.WARN)
+    o.mode = nil
+  end
+  for _, name in ipairs({'hold_ms', 'release_ms', 'silence_ms'}) do
+    local v = o[name]
+    if v ~= nil and not (type(v) == 'number' and v > 0) and not (name == 'silence_ms' and v == false) then
+      vim.notify(string.format('Pair: listen_%s is a number of milliseconds%s, not %s', name, name == 'silence_ms' and ' or false' or '', vim.inspect(v)), vim.log.levels.WARN)
+      o[name] = nil
+    end
+  end
+  for _, name in ipairs({'mode', 'hold_ms', 'release_ms', 'silence_ms'}) do
+    if o[name] ~= nil then opts[name] = o[name] end
+  end
+end
+
 --- The listen key, pressed or repeating while held. `key` is how its name reads in the hint, like M-t.
 function M.press(send, key, selection)
   local now = now_ms()
   if state.phase == 'listening' then
+    if opts.mode == 'toggle' and now - state.last_at < opts.release_ms then
+      state.last_at = now -- a repeat of the press that started it
+      return
+    end
     if state.mode == 'tap' then
       state.last_at = now
       return finish(send)
@@ -101,7 +133,7 @@ function M.press(send, key, selection)
     return draw()
   end
   -- The repeats of a key still held after it stopped the listening (a long second tap) start nothing.
-  if now - state.last_at < RELEASE_MS then
+  if now - state.last_at < opts.release_ms then
     state.last_at = now
     return
   end
@@ -110,6 +142,7 @@ function M.press(send, key, selection)
   state.buf = vim.api.nvim_get_current_buf()
   state.mark = vim.api.nvim_buf_set_extmark(state.buf, M.ns, row, 0, {})
   state.phase, state.pressed_at, state.last_at, state.key = 'listening', now, now, key
+  if opts.mode == 'toggle' then state.mode = 'tap' end
   send({type = 'listen', action = 'start', selection = selection})
   draw()
   redraw_status()
@@ -117,10 +150,12 @@ function M.press(send, key, selection)
   state.timer:start(TICK_MS, TICK_MS, vim.schedule_wrap(function()
     if state.phase ~= 'listening' then return end
     local t = now_ms()
-    if state.mode == nil and t - state.pressed_at > HOLD_MS then
+    if state.mode == nil and t - state.pressed_at > opts.hold_ms then
       state.mode = 'tap'
       draw()
-    elseif state.mode == 'hold' and t - state.last_at > RELEASE_MS then
+    elseif state.mode == 'hold' and t - state.last_at > opts.release_ms then
+      finish(send)
+    elseif state.mode == 'tap' and opts.silence_ms and state.spoke and state.quiet_at and t - state.quiet_at > opts.silence_ms then
       finish(send)
     end
   end))
@@ -137,6 +172,11 @@ function M.listening() return state.phase == 'listening' end
 --- One step of the meter: how loud the last tenth of a second was, 0 to 1.
 function M.level(level)
   if state.phase ~= 'listening' then return end
+  if level >= SPEAKING then
+    state.spoke, state.quiet_at = true, nil
+  elseif not state.quiet_at then
+    state.quiet_at = now_ms()
+  end
   table.insert(state.levels, level)
   if #state.levels > BARS then table.remove(state.levels, 1) end
   draw()

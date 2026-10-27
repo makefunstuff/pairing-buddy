@@ -41,9 +41,9 @@ const runIn = cwd => command => new Promise(resolve => {
  * in the fake herdr's pane; with `runs`, Pair's pane runs commands for real without it. With `thinks`, the
  * Partner's model can think. `voice` is the config's. `knownKeys`
  * (labels such as M-j) are the keys the plugin remembers you have used, which show without their first-use hints.
- * `stop()` ends them all.
+ * `setup` is more of the plugin's options, as Lua table fields. `stop()` ends them all.
  */
-async function pairInNvim(goal, {testOnSave, runs = false, thinks = false, voice, rtp = [], knownKeys = []} = {}) {
+async function pairInNvim(goal, {testOnSave, runs = false, thinks = false, voice, rtp = [], knownKeys = [], setup = ''} = {}) {
   const project = realpathSync(scratch('pair-nvim-'));
   writeFileSync(join(project, 'a.js'), 'const x = 1\nconst y = 2\nconst z = 3\n');
   const dataDir = scratch('pair-data-');
@@ -75,7 +75,7 @@ async function pairInNvim(goal, {testOnSave, runs = false, thinks = false, voice
   const nvim = spawn('nvim', [
     '--headless', '--clean', '--listen', server,
     '--cmd', `set rtp+=${[REPO, ...rtp].join(',')}`,
-    '-c', `lua require('pair').setup({socket = '${config.socket}', debounce_ms = 100})`,
+    '-c', `lua require('pair').setup({socket = '${config.socket}', debounce_ms = 100${setup ? `, ${setup}` : ''}})`,
     '-c', `cd ${project}`,
     '-c', 'edit a.js',
     '-c', `Pair start ${goal}`,
@@ -1113,6 +1113,53 @@ test('push-to-talk: hold Alt-t, a meter under your line; let go, your words, the
     await until(() => listenLine() === '◌ no answer · the chat says why', 'no answer, said under the line');
     await until(() => messages.some(message => /Pair could not answer/.test(message.text ?? '')), 'why, in the chat');
     await until(() => listenLine() === null, 'the line to go after a moment');
+  } finally {
+    await stop();
+  }
+});
+
+test('push-to-talk in toggle mode: a press starts, holding it does not stop it, the next press asks; with listen_silence_ms a pause asks', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
+  // The microphone hears a loud tone for half a second, then silence, at every recording.
+  const bin = scratch('pair-whisper-');
+  writeFileSync(join(bin, 'whisper-cli'), '#!/bin/sh\nprintf " How many attempts?\\n"\n', {mode: 0o755});
+  const record = `node -e 'let n = 0; setInterval(() => { const b = Buffer.alloc(3200); if (n++ < 5) for (let i = 0; i < 1600; i++) b.writeInt16LE(i % 8 < 4 ? 9000 : -9000, i * 2); process.stdout.write(b); }, 100)'`;
+  const voice = {model: 'unused.bin', whisper: join(bin, 'whisper-cli'), record};
+  const {partner, messages, remote, stop} = await pairInNvim('retries pass', {voice, knownKeys: ['M-j', 'M-?'], setup: "listen_mode = 'toggle'"});
+  const listenLine = () => {
+    const marks = JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, require('pair.listen').ns, 0, -1, {details = true}))")`));
+    const line = marks.find(([, , , details]) => details.virt_lines)?.[3].virt_lines[0];
+    return line ? line.map(chunk => chunk[0]).join('').trim() : null;
+  };
+  const asked = () => messages.filter(message => message.sender === 'user' && message.text === 'How many attempts?').length;
+  const hold = ms => remote(`luaeval("(function() local n = 0; local t = vim.uv.new_timer(); t:start(0, 40, vim.schedule_wrap(function() n = n + 1; vim.api.nvim_input('<M-t>'); if n * 40 >= ${ms} then t:close() end end)) end)() or 0")`);
+  const press = () => remote(`luaeval("vim.api.nvim_input('<M-t>') or 0")`);
+  try {
+    partner.setResponses([fauxAssistantMessage([fauxText('Five.')]), fauxAssistantMessage([fauxText('Still five.')])]);
+    remote('cursor(2, 1)');
+    // Held for 0.9 s, repeating: still one press, and the hint says to press again from the start.
+    hold(900);
+    await until(() => /listening   M-t again to ask$/.test(listenLine() ?? ''), 'the toggle hint at once');
+    await sleep(1500); // past the tone: without listen_silence_ms a pause does not ask
+    assert.match(listenLine(), /listening   M-t again to ask$/, 'still listening after the key and the voice stopped');
+    assert.equal(asked(), 0);
+    press();
+    await until(() => asked() === 1, 'the question, asked by the second press');
+    await until(() => listenLine() === null, 'the answer in place of the words');
+
+    // With listen_silence_ms, a pause after the voice asks by itself.
+    remote(`luaeval("require('pair.listen').setup({silence_ms = 400}) or 0")`);
+    await sleep(300);
+    press();
+    await until(() => /listening   M-t again or pause to ask$/.test(listenLine() ?? ''), 'the hint names the pause');
+    await until(() => asked() === 2, 'the question, asked by the pause');
+
+    // Options that make no sense are said, and change nothing.
+    const warned = JSON.parse(remote(`luaeval("(function() local said = {}; local notify = vim.notify; vim.notify = function(m) table.insert(said, m) end; require('pair.listen').setup({mode = 'push', hold_ms = 'long', silence_ms = 0}); vim.notify = notify; return vim.json.encode(said) end)()")`));
+    assert.deepEqual(warned, [
+      "Pair: listen_mode is 'hold' or 'toggle', not \"push\"",
+      'Pair: listen_hold_ms is a number of milliseconds, not "long"',
+      'Pair: listen_silence_ms is a number of milliseconds or false, not 0',
+    ]);
   } finally {
     await stop();
   }

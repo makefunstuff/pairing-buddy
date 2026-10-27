@@ -90,7 +90,7 @@ to do:
 | --- | --- |
 | `Alt-j` | Go where Pair points (`Ctrl-O` comes back), or show a held remark now |
 | `Alt-y` | Take Pair's suggested change, as your own edit |
-| `Alt-t` (hold) | Ask aloud: [push-to-talk](docs/voice.md), when voice is set up |
+| `Alt-t` (hold, or tap twice) | Ask aloud: [push-to-talk](docs/voice.md), when voice is set up |
 | `Alt-u` / `Alt-n` | Tell Pair its last remark was useful / noise |
 | `Alt-l` / `Alt-d` | In a Markdown note: open the code a mark names / log the decision on your line |
 | `Alt-?` | The one idea worth keeping behind Pair's words under your line; again, open its link to the docs |
