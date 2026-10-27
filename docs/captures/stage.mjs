@@ -3,7 +3,8 @@
 // that points at them, and a chat client, as the chat pane would be. Writes `ready` when Neovim may start.
 // usage: node stage.mjs <scene> <scratch dir under /tmp/paircap.*>
 import {execFileSync, spawn} from 'node:child_process';
-import {chmodSync, cpSync, existsSync, mkdirSync, openSync, utimesSync, writeFileSync} from 'node:fs';
+import {chmodSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, utimesSync, writeFileSync} from 'node:fs';
+import {homedir} from 'node:os';
 import {connect} from 'node:net';
 import {basename, join} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -16,8 +17,12 @@ import {scenes} from './scenes.mjs';
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 const PAIR = fileURLToPath(new URL('../../bin/pair.mjs', import.meta.url));
 const [name, dir] = process.argv.slice(2);
-const scene = scenes[name];
-if (!scene) throw new Error(`no scene ${name}; there are: ${Object.keys(scenes).join(', ')}`);
+// A tutorial scene (t-*, tapes at 1920x1080 for the video) is set up as the scene it is named after, unless it has
+// its own, and runs without herdr: one Neovim with the chat (:Pair chat) and your terminal in it, all on screen.
+const tutorial = /^t-/.test(name ?? '');
+const own = scenes[name] ?? (tutorial ? scenes[name.slice(2)] : undefined);
+if (!own) throw new Error(`no scene ${name}; there are: ${Object.keys(scenes).join(', ')}`);
+const scene = tutorial ? {...own, noHerdr: true} : own;
 if (!/^\/tmp\/paircap\.[^/]+$/.test(dir ?? '')) throw new Error('the stage needs a scratch directory /tmp/paircap.*'); // short socket paths, and nothing of yours
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -58,7 +63,17 @@ if (scene.agents) {
   showBoard(scene.agents.tasks);
 }
 
-const models = await startModelServer(scene, {log});
+// CAP_MODEL=deepseek: a real model instead of the scripted one, for the tutorial video. Its key is read at run time
+// from pi's auth.json and kept only in the scene's own auth.json (mode 600), where the daemon and `pair doctor` find
+// it; it is never in an environment variable, so the shell VHS types into cannot print it.
+const LIVE = process.env.CAP_MODEL === 'deepseek';
+if (LIVE) {
+  const {key} = JSON.parse(readFileSync(join(homedir(), '.pi/agent/auth.json'), 'utf8')).deepseek;
+  // pi's key is the key itself, or "!command" that prints it
+  const secret = key.startsWith('!') ? execFileSync('sh', ['-c', key.slice(1)], {encoding: 'utf8'}).trim() : key;
+  writeFileSync(join(dir, 'auth.json'), JSON.stringify({deepseek: {type: 'api_key', key: secret}}), {mode: 0o600});
+}
+const models = LIVE ? {close: async () => {}} : await startModelServer(scene, {log});
 const herdrSocket = join(dir, 'herdr.sock');
 const herdr = await standInHerdr(herdrSocket, {cwd: project, nvim: join(dir, 'nvim.sock'), agents: scene.agents?.herdr ?? [], log});
 
@@ -97,6 +112,7 @@ function zone(hour) {
 
 const socket = join(dir, 'pair.sock');
 const model = id => ({api: 'openai', baseUrl: models.baseUrl, model: id, contextWindow: 65536});
+const live = {provider: 'deepseek', model: 'deepseek-flash'};
 writeFileSync(join(dir, 'config.json'), JSON.stringify({
   dataDir,
   socket,
@@ -107,7 +123,7 @@ writeFileSync(join(dir, 'config.json'), JSON.stringify({
   // the stand-in board, or none: not yours
   board: scene.board ? join(HERE, 'board.mjs') : scene.agents ? join(board, 'herdr-projects') : null,
   agents: Boolean(scene.agents),
-  models: {watcher: model('watcher'), partner: model('partner')},
+  ...(LIVE ? {model: live} : {models: {watcher: model('watcher'), partner: model('partner')}}),
 }, null, 2));
 const out = openSync(join(dir, 'daemon.log'), 'a');
 const daemon = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', PAIR, 'daemon'], {

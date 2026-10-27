@@ -360,4 +360,9 @@ export const scenes = {
       {wait: 300, say: 'it stops after 4 attempts: attempt 5 would start at exactly 15s, and `worker.go:35` gives up on `>=`, so a wait that lands on the budget counts as over it.'},
     ],
   },
+  // The tutorial's Scout scene (t-scout, with a real model): hookd as it starts; you ask in the chat, as Scout.
+  scout: {
+    watcher: score(),
+    partner: [],
+  },
 };

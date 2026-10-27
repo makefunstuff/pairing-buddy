@@ -1,88 +1,73 @@
 {
+ "length": 762.756,
+ "poster": 297.01,
  "chapters": [
   {
    "at": 0,
-   "title": "Why",
+   "title": "What Pair is",
    "clock": "0:00"
   },
   {
-   "at": 38.65,
-   "title": "Getting started",
-   "clock": "0:38"
+   "at": 59.5,
+   "title": "Setup and pair doctor",
+   "clock": "0:59"
   },
   {
-   "at": 94.18,
+   "at": 164.8,
+   "title": "The roles",
+   "clock": "2:44"
+  },
+  {
+   "at": 259.08,
    "title": "Exploring code",
-   "clock": "1:34"
+   "clock": "4:19"
   },
   {
-   "at": 184.108,
-   "title": "Tests, if you have them",
-   "clock": "3:04"
+   "at": 319.84,
+   "title": "Tests",
+   "clock": "5:19"
   },
   {
-   "at": 217.89,
+   "at": 402.56,
    "title": "Notes and the blank page",
-   "clock": "3:37"
+   "clock": "6:42"
   },
   {
-   "at": 260.727,
-   "title": "Handing over",
-   "clock": "4:20"
+   "at": 552.736,
+   "title": "The hand-over",
+   "clock": "9:12"
   },
   {
-   "at": 293.275,
-   "title": "The day around it",
-   "clock": "4:53"
+   "at": 650.706,
+   "title": "Voice",
+   "clock": "10:50"
   },
   {
-   "at": 325.615,
-   "title": "And the rest",
-   "clock": "5:25"
+   "at": 696.206,
+   "title": "With or without herdr",
+   "clock": "11:36"
   },
   {
-   "at": 347.042,
+   "at": 732.266,
    "title": "The keys to remember",
-   "clock": "5:47"
+   "clock": "12:12"
   }
  ],
  "scenes": {
-  "problem": 0,
-  "chair": 12.89,
-  "models": 25.28,
-  "install": 40.75,
-  "auth": 53.2,
-  "onemodel": 62.41,
-  "doctor": 71.94,
-  "roles": 80.85,
-  "red": 96.28,
-  "reads": 103.93,
-  "words": 111.58,
-  "jump": 119.47,
-  "trail": 124.64,
-  "context": 133.37,
-  "crash": 143.32,
-  "loop": 153.653,
-  "runs": 164.278,
-  "teach": 171.028,
-  "held": 177.598,
-  "save": 186.208,
-  "regression": 193.178,
-  "accept": 199.988,
-  "green": 211.565,
-  "notes": 219.99,
-  "decision": 232.48,
-  "blank": 238.37,
-  "firstrun": 250.001,
-  "drive": 262.827,
-  "handback": 272.277,
-  "takeback": 279.515,
-  "intent": 284.605,
-  "ledger": 295.375,
-  "agents": 304.025,
-  "debrief": 311.315,
-  "pickup": 319.185,
-  "montage": 327.715,
-  "keys": 347.042
+  "intro": 0,
+  "screen": 24.09,
+  "install": 62.1,
+  "doctor": 109.73,
+  "roles": 167.4,
+  "scout": 208.25,
+  "wrong-turn": 261.68,
+  "tests": 322.44,
+  "notes": 405.16,
+  "blank-page": 470.603,
+  "hand-over": 555.336,
+  "take-back": 611.476,
+  "voice": 653.306,
+  "herdr": 698.806,
+  "keys": 732.266
  }
 }

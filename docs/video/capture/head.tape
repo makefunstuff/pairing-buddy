@@ -1,7 +1,8 @@
-# The terminal of every capture: 1920x1080 (VHS drops frames at larger sizes), ayu dark, JetBrains Mono.
+# The terminal of the setup scenes: 1920x1080 (VHS drops frames at larger sizes), ayu dark, JetBrains Mono at an
+# everyday size; the video zooms in on the lines that matter.
 Set Shell bash
 Set FontFamily "JetBrainsMono Nerd Font"
-Set FontSize 38
+Set FontSize 20
 Set Width 1920
 Set Height 1080
 Set Padding 18

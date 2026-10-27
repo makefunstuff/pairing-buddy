@@ -1,13 +1,15 @@
 // Word timings for the captions: each voiceover file is transcribed with word timestamps (ElevenLabs Scribe,
-// through OpenRouter), and each word of narration.json takes the time of the word it matches, so the captions
-// show the script's spelling ("Neovim", "npm") at the time the voice says it. Writes words.json.
+// through OpenRouter), and each word of script.mjs takes the time of the word it matches, so the captions
+// show the script's spelling ("Neovim", "npm") at the time the voice says it. Writes words.json; a line whose
+// words are there already, for the same text, is not sent again.
 // The key is read at run time from $OPENROUTER_KEY_FILE (default /tmp/openrouter.key) and never printed.
 // Usage: node words.mjs
-import {readFileSync, writeFileSync} from 'node:fs';
+import {existsSync, readFileSync, writeFileSync} from 'node:fs';
+import {allLines} from './script.mjs';
 
 const here = new URL('.', import.meta.url).pathname;
 const key = readFileSync(process.env.OPENROUTER_KEY_FILE ?? '/tmp/openrouter.key', 'utf8').trim();
-const scenes = JSON.parse(readFileSync(`${here}narration.json`, 'utf8'));
+const scenes = allLines();
 const norm = word => word.toLowerCase().replace(/[^a-z0-9]/g, '');
 
 /** Pairs script words with heard words by their longest common subsequence; the rest are spread between. */
@@ -37,8 +39,10 @@ function align(script, heard) {
   return script.map((text, i) => ({text, start: Math.round(times[i][0] * 100) / 100, end: Math.round(times[i][1] * 100) / 100}));
 }
 
+const old = existsSync(`${here}words.json`) ? JSON.parse(readFileSync(`${here}words.json`, 'utf8')) : {};
 const out = {};
 for (const scene of scenes) {
+  if (old[scene.id]?.map(word => word.text).join(' ') === scene.text.split(/\s+/).join(' ')) { out[scene.id] = old[scene.id]; continue; }
   const form = new FormData();
   form.set('model', 'elevenlabs/scribe-v2');
   form.set('response_format', 'verbose_json');
