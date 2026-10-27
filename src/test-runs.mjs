@@ -8,7 +8,7 @@ import {readRun} from './run-output.mjs';
 import {shellQuote} from './scout-pane.mjs';
 import {isSourceFile, parseTestOutput} from './test-output.mjs';
 import {placeTests} from './test-places.mjs';
-import {prepareUnsaved} from './unsaved.mjs';
+import {pictureSince, prepareUnsaved} from './unsaved.mjs';
 
 /** How a command reads in the statusline: without the flags that only ask for a JSON report. */
 export const runLabel = command => command.replace(/\s+(?:-json|--json|--reporter[= ]json)(?=\s|$)/g, '');
@@ -65,7 +65,8 @@ export class TestRuns {
 
   /**
    * Runs the command once on `text` as the content of `file` (absolute), without saving it, and resolves with
-   * what it reports at the end. Pair's pane runs one command at a time, so it waits for a run on save.
+   * what it reports at the end, and the `picture` the run wrote in the scratch copy, if any (see pictureSince).
+   * Pair's pane runs one command at a time, so it waits for a run on save.
    */
   async unsaved(file, text) {
     const report = run => { this.report({...run, label: this.label, saved: file, unsaved: true}); return {...run, label: this.label}; };
@@ -76,7 +77,9 @@ export class TestRuns {
     try {
       const run = await prepareUnsaved({root: this.root, command: this.command, file, text, dir});
       const outputFile = join(dir, 'run.out');
+      const started = Date.now();
       const {exit, timedOut} = await pane.run(runLine(run.command, run.root, outputFile));
+      const picture = run.root === this.root ? null : await pictureSince(run.root, started);
       const output = await readFile(outputFile, 'utf8').catch(() => '');
       const tests = parseTestOutput(output);
       const placed = (tests?.tests ? await placeTests(tests.tests, run.root, run.texts) : []).map(test => ({
@@ -84,7 +87,7 @@ export class TestRuns {
         file: run.toProject(test.file),
         failure: test.failure && {...test.failure, file: run.toProject(test.failure.file)},
       }));
-      return report({state: 'done', exit, timedOut, output, tests, placed, reading: readRun(output, {exit, root: run.root})});
+      return {...report({state: 'done', exit, timedOut, output, tests, placed, reading: readRun(output, {exit, root: run.root})}), picture};
     } catch (error) {
       return report({state: 'error', error: error.message, short: 'could not run'});
     } finally {

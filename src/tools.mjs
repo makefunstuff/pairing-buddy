@@ -71,14 +71,18 @@ If an answer needs a search or a test run, say so in one sentence: the user can 
 - First read the file, so your line numbers are right.
 - Then call edit once: it replaces lines line..end_line with new_text, the complete new lines with their indentation.
   Change as little as the request needs. You get one edit per hand-over.
-- After the edit, say in one sentence what you changed. Its result says whether Pair ran the project's tests on
-  the unsaved buffer: if so, also say whether they pass. Do not run the tests yourself: until the user saves, the
-  file on disk still has the old code. When your answer ends, you are Navigator again.
+- After the edit, say in one sentence what you changed. Its result says whether Pair ran the project's tests, or
+  the user's build and run, on the unsaved buffer: if so, also say whether they pass, or what the run printed for
+  what the user expects. Do not run them yourself: until the user saves, the file on disk still has the old code.
+  When your answer ends, you are Navigator again.
 - To put a command in the user's terminal, call type: they confirm it and press Enter themselves.
 - search and run work in your own pane, as for Scout.`,
 };
 
 const text = value => ({output: [{type: 'text', text: value}]});
+/** A tool's answer that may carry the picture a run wrote: the model sees it, or a note that it cannot. */
+const withPicture = value => (typeof value === 'string' ? text(value)
+  : {output: [{type: 'text', text: value.text}, {type: 'image', data: value.picture.data, mimeType: value.picture.mimeType}]});
 
 /** The arguments of suggest and edit: which lines of which file, and what they become. */
 const lineChange = (extra = {}) => Type.Object({
@@ -160,7 +164,7 @@ function tools(hands) {
       name: 'edit',
       description: 'Replace lines line..end_line of a file in the user\'s editor with new_text, as one undo step. The buffer is not saved.',
       parameters: lineChange(),
-      execute: async (args, api) => text(await hands.edit(api.conversationId, changeOf(args))),
+      execute: async (args, api) => withPicture(await hands.edit(api.conversationId, changeOf(args))),
     }),
     defineTool({
       name: 'type',

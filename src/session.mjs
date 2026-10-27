@@ -4,6 +4,7 @@ import {basename, isAbsolute, join, relative} from 'node:path';
 import {BlankPage} from './blank-page.mjs';
 import {Breaks} from './breaks.mjs';
 import {Budget} from './budget.mjs';
+import {checkCommand, judge, markOf, parseHandOver, targetOf} from './check.mjs';
 import {commandPolicy} from './command-policy.mjs';
 import {contextCard} from './context-card.mjs';
 import {debriefInput, firstPlace, heading, keptChanges, lessonLine, parseDebrief, Wins} from './debrief.mjs';
@@ -18,12 +19,13 @@ import {Breakpoints, placeOf, stillTrue, urgent} from './held.mjs';
 import {plainLine} from './herdr.mjs';
 import {keptOutput, Ledger, ledgerDetail, today} from './ledger.mjs';
 import {DebugLines, printedBy} from './debug-lines.mjs';
-import {changeLine, headline, runLine, verdictText} from './run-log.mjs';
+import {changeLine, headline, measure, runLine, verdictText} from './run-log.mjs';
 import {around, codeOn, fallbackLine, PICKUP_AFTER_MS, pickupInput, pickupLine, relocate, restoredTests} from './pickup.mjs';
 import {asksAboutBefore, recall} from './recall.mjs';
 import {placeRun} from './run-places.mjs';
 import {crashText, hasNews, readingSummary, readRun} from './run-output.mjs';
 import {RUN_TIMEOUT_MS, shellQuote} from './scout-pane.mjs';
+import {tmpdir} from 'node:os';
 import {asksBack, oneQuestion, PROSE_CHECKS} from './prose-triggers.mjs';
 import {parseTestOutput, testSummary} from './test-output.mjs';
 import {TestRuns} from './test-runs.mjs';
@@ -89,12 +91,24 @@ export function watchInput(trigger, description) {
  * What the Partner is asked when the user hands over the wheel: `words` are theirs ("you take it, ...",
  * "your turn"), or empty for a bare :Pair drive.
  */
-export function driveInput(words, description, selection = '') {
+export function driveInput(words, description, selection = '', check = '') {
   const request = words ? `The user said: "${words}"` : 'The user gave no request: make the change you two talked about last.';
-  return `[drive] The user handed you the wheel for one change. ${request}${selection}\n\nNow:\n${description}\n\n`
-    + 'If they said "your turn", they just wrote a failing test (see the recent edits): read it and the code it tests, '
-    + 'and make it pass by changing the code, not the test. Read before you edit. If you do not know what to change, '
-    + 'ask one short question instead of editing.';
+  return `[drive] The user handed you the wheel for one change. ${request}${selection}\n\nNow:\n${description}\n\n${check}`
+    + 'If they said "your turn" and just wrote a failing test (see the recent edits), read it and the code it tests, '
+    + 'and make it pass by changing the code, not the test. Without a test, what they said they expect to see is the goal. '
+    + 'Read before you edit. If you do not know what to change, ask one short question instead of editing.';
+}
+
+/**
+ * What the Partner hears of the check before it edits: what the user expects to see, and the command Pair runs on
+ * the unsaved buffer after the edit (`check` as checkCommand gives it). '' when there is neither.
+ */
+export function checkInput(expect, check) {
+  const expects = expect ? `What the user expects to see: "${expect}". ` : '';
+  const runs = check.command
+    ? `After your edit, Pair runs \`${check.command}\` (${check.from}) on the unsaved buffer and gives you its output.`
+    : expect ? `Pair cannot run anything to check it: ${check.none}.` : '';
+  return expects || check.command ? `${expects}${runs}\n\n` : '';
 }
 
 const ROLE_NOTES = {
@@ -164,6 +178,27 @@ export function runText({exit, timedOut, tests, reading}) {
 
 /** What a finished run found, for the chat and the models: its tests, else its crash or compiler errors, else `text`. */
 const summaryOf = (run, text) => (run.tests ? testSummary(run.tests) : (run.reading && readingSummary(run.reading)) || text);
+
+const DONE = 'Changed, as one undo step. That was your one edit: say in one sentence what you changed';
+
+/**
+ * What the Partner hears after its edit of the check on the unsaved buffer: a test run in short; a build and run
+ * with its output, and what the user expected next to it. `verdict` is judge()'s: a bound the code checked, else the
+ * Partner compares the output with `expect` and starts its sentence with ✓ or ✗, which the hand-back line shows.
+ */
+export function checkReport(run, {expect, verdict, root}) {
+  if (run.tests && !expect) return `${DONE}, and whether the tests pass. \`${run.label}\` on the unsaved buffer: ${summaryOf(run, runText(run))}.`;
+  const ran = `\`${run.label}\` on the unsaved buffer:\n${runReport(run, root)}`;
+  if (!expect) return `${DONE}, and whether it built and ran. ${ran}`;
+  const asked = `The user expects: "${expect}".`;
+  if (isRed(run)) return `${DONE}, and that the run failed: ${verdict.text}. ${asked} Say why from the output in a few words. ${ran}`;
+  if (verdict.mark) {
+    const meets = verdict.mark === 'pass' ? 'meets it' : 'does not meet it: say why from the output in a few words';
+    return `${DONE}, and the line the run printed for what the user expects. ${asked} It printed ${verdict.text}, which ${meets}. ${ran}`;
+  }
+  return `${DONE}. ${asked} Compare the output with it: start your sentence with ✓ if the run shows that, or ✗ if it does not, `
+    + `then say what it printed for it. ${ran}`;
+}
 
 /** What the gate made of the search trail, for `:Pair trail`. */
 export function verdictLine({verdict, reason, score, bar}, level) {
@@ -238,7 +273,8 @@ export class PairSession {
     this.accent = null; // the editor's accent (see style.lua) as #rrggbb, for the chat pane
     this.panes = null; // the user's herdr panes (a PaneWatch), for the Driver's type
     this.edited = false; // the Driver made its one edit in this hand-over
-    this.handback = null; // that edit's lines and how the tests went on them: {file, line, endLine, tests}
+    this.handback = null; // that edit's lines and how the check went on them: {file, line, endLine, tests, check}
+    this.handOver = null; // the hand-over's intent, expectation and check command (see check.mjs)
     this.remarkId = null; // the stored remark of the running unasked turn
     this.lastRemark = store.lastRemark(record.id); // the last remark that reached the user: what feedback without an id rates
     this.lastWords = null; // what Pair said in its last turn that said anything: what a teach request without words is about
@@ -426,9 +462,11 @@ export class PairSession {
       this.log(`tests on the unsaved buffer: ${run.error}`);
       return this.notify('editors', this.testsShown ?? {type: 'tests', state: 'idle'});
     }
-    const text = runText(run);
-    this.ledger.add('ran', run.label, {data: {note: `${text} · unsaved`, result: isRed(run) ? 'fail' : 'pass'}, detail: {output: keptOutput(run.output)}});
-    this.showTests({type: 'tests', state: isRed(run) ? 'fail' : 'pass', label, text, results: run.placed});
+    const verdict = this.checked(run);
+    const text = verdict.text ?? runText(run);
+    const red = verdict.mark ? verdict.mark === 'fail' : isRed(run);
+    this.ledger.add('ran', run.label, {data: {note: `${text} · unsaved`, result: red ? 'fail' : 'pass'}, detail: {output: keptOutput(run.output)}});
+    this.showTests({type: 'tests', state: red ? 'fail' : 'pass', label, text, results: run.placed});
     this.message('system', `\`${label}\` after Pair's edit: ${summaryOf(run, text)}`);
   }
 
@@ -850,10 +888,19 @@ export class PairSession {
     if (!(await this.setRole('driver'))) return;
     this.edited = false;
     this.handback = null;
-    await this.talk(driveInput(words, describeState(this.state, this.now()), await this.selected(selection)));
+    const parts = parseHandOver(words);
+    const check = checkCommand({given: parts.command, testCommand: this.testRuns?.command, runs: this.state.runs, root: this.root});
+    this.handOver = {...parts, target: targetOf(parts.expect), check};
+    const description = describeState(this.state, this.now());
+    await this.talk(driveInput(words, description, await this.selected(selection), checkInput(parts.expect, check)));
     await this.handBack();
-    // The hand-back line: what Pair says it did, under the lines it changed, with how the tests went on them.
-    if (this.handback) this.notify('editor', {type: 'handback', ...this.handback, text: this.words.join('\n')});
+    // The hand-back line: what Pair says it did, under the lines it changed, with how the check went on them. An
+    // expectation the code could not check is the Partner's to judge: its words start with ✓ or ✗.
+    if (this.handback) {
+      const said = this.words.join('\n');
+      const tests = this.handback.tests ?? (parts.expect ? markOf(said) : null);
+      this.notify('editor', {type: 'handback', ...this.handback, tests, text: said});
+    }
     this.earcon('handback');
     // Only now does the conversation lose the Driver's tools. After a take-back during the answer, the policy
     // hook refused edit and type with a reason; a tool that vanished mid-answer leaves small models writing
@@ -1287,20 +1334,31 @@ export class PairSession {
     this.message('pair', `Changed ${file}:${line}${endLine > line ? `-${endLine}` : ''} (u undoes it).`);
     // The editor says which lines it changed: lines the edit kept as they were are not Pair's.
     const count = text === '' ? 0 : text.replace(/\n$/, '').split('\n').length;
-    this.handback = {file: path, line: reply.from ?? line, endLine: reply.to ?? line + Math.max(count, 1) - 1, tests: null};
+    this.handback = {file: path, line: reply.from ?? line, endLine: reply.to ?? line + Math.max(count, 1) - 1, tests: null, check: null};
     // With the buffer's text before and after, the ledger can undo the edit later, after other edits too.
     const patch = Array.isArray(reply.before) && Array.isArray(reply.after) ? {file: path, before: reply.before, after: reply.after} : null;
     const name = relative(this.root, path);
     const changed = this.handback.endLine - this.handback.line + 1;
     const typed = count ? `${changed === 1 ? 'a line' : `${changed} lines`} in ${name}` : `lines ${line}-${endLine} of ${name} deleted`;
     this.ledger.add('typed', typed, {data: {place: {file: path, line: this.handback.line}, note: 'one undo step', undo: !!patch}, detail: patch && {patch}});
-    const done = 'Changed, as one undo step. That was your one edit: say in one sentence what you changed';
-    // The tests on save read the saved file, so a check there would see the old code and send small models in circles.
-    if (!this.testRuns) return `${done}. The file on disk changes only when the user saves, so do not run the tests now.`;
-    const run = await this.testRuns.unsaved(path, await this.bufferText(path));
-    if (run.state === 'error') return `${done}. The tests could not run on the unsaved buffer: ${run.error}.`;
-    this.handback.tests = isRed(run) ? 'fail' : 'pass';
-    return `${done}, and whether the tests pass. \`${run.label}\` on the unsaved buffer: ${summaryOf(run, runText(run))}.`;
+    // A run of its own would read the saved file, see the old code and send small models in circles.
+    const {check, expect} = this.handOver;
+    if (!check.command) return `${DONE}. Nothing ran on the unsaved buffer: ${check.none}. The file on disk changes only when the user saves, so do not run anything now.`;
+    const runs = check.command === this.testRuns?.command ? this.testRuns : new TestRuns({
+      root: this.root, command: check.command, outputFile: join(tmpdir(), `pair-check-${this.id}.out`), pane: () => this.scout, report: run => this.testRun(run),
+    });
+    const run = await runs.unsaved(path, await this.bufferText(path));
+    if (run.state === 'error') return `${DONE}. \`${run.label}\` could not run on the unsaved buffer: ${run.error}.`;
+    const verdict = this.checked(run);
+    Object.assign(this.handback, {tests: verdict.mark, check: expect ? verdict.text : null}); // the line printed for what the user expects
+    const said = checkReport(run, {expect, verdict, root: this.root});
+    return run.picture ? {text: `${said}\n\nThe run wrote the picture ${run.picture.file}, attached.`, picture: run.picture} : said;
+  }
+
+  /** How a run on the unsaved buffer checks the hand-over (see judge in check.mjs). */
+  checked(run) {
+    const {target = null, expect = null} = this.handOver ?? {};
+    return judge({red: isRed(run), failure: runText(run), numbers: measure(run.output), target, expect, text: runText(run)});
   }
 
   /** Types one line into the user's terminal pane once they allow it; Enter stays with them. */

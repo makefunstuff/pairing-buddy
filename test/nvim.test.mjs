@@ -38,11 +38,12 @@ const runIn = cwd => command => new Promise(resolve => {
 /**
  * The daemon with scripted models, a fake herdr, a headless Neovim with the plugin editing a.js and running
  * `:Pair start <goal>`, and a chat client. With `testOnSave`, saving runs that command in the project, for real,
- * in the fake herdr's pane. With `thinks`, the Partner's model can think. `voice` is the config's. `knownKeys`
+ * in the fake herdr's pane; with `runs`, Pair's pane runs commands for real without it. With `thinks`, the
+ * Partner's model can think. `voice` is the config's. `knownKeys`
  * (labels such as M-j) are the keys the plugin remembers you have used, which show without their first-use hints.
  * `stop()` ends them all.
  */
-async function pairInNvim(goal, {testOnSave, thinks = false, voice, rtp = [], knownKeys = []} = {}) {
+async function pairInNvim(goal, {testOnSave, runs = false, thinks = false, voice, rtp = [], knownKeys = []} = {}) {
   const project = realpathSync(mkdtempSync(join(tmpdir(), 'pair-nvim-')));
   writeFileSync(join(project, 'a.js'), 'const x = 1\nconst y = 2\nconst z = 3\n');
   const dataDir = mkdtempSync(join(tmpdir(), 'pair-data-'));
@@ -62,7 +63,7 @@ async function pairInNvim(goal, {testOnSave, thinks = false, voice, rtp = [], kn
   const pairModels = {models, watcher: watcher.getModel(), partner: partner.getModel()};
   let daemon = await startDaemon(config, {pairModels, probe: answers, log: () => {}});
   const herdrSocket = join(dataDir, 'herdr.sock');
-  const herdr = await fakeHerdr(herdrSocket, {commands: testOnSave ? runIn(project) : {}});
+  const herdr = await fakeHerdr(herdrSocket, {commands: testOnSave || runs ? runIn(project) : {}});
 
   const server = join(mkdtempSync('/tmp/pair-'), 'nvim.sock'); // short: socket paths max out near 100 bytes
   // Its own state directory, where the plugin keeps the keys you have used (lua/pair/hints.lua).
@@ -316,6 +317,36 @@ test('suggestions show as a ghost diff that one key accepts; handing over gives 
     assert.match(refused, /only while the user hands you the wheel/, 'the policy refused the edit, with a reason');
     assert.equal(lines()[0], 'const x = 1');
     assert.equal(status(), '● pair');
+  } finally {
+    await stop();
+  }
+});
+
+test('the hand-over without a test: your last run builds and runs the unsaved buffer, and the hand-back line shows the line it printed next to your target', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
+  const {project, partner, remote, keys, send, lines, status, stop} = await pairInNvim('tune the numbers', {runs: true, knownKeys: ['M-?']});
+  const marks = () => JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('pair'), 0, -1, {details = true}))")`));
+  const text = chunks => chunks.map(chunk => chunk[0]).join('');
+  const toolResult = context => context.messages.filter(message => message.role === 'toolResult').at(-1).content[0].text;
+  try {
+    // The program prints a number from a.js, as an exploring program prints what it measured.
+    writeFileSync(join(project, 'show.mjs'), "import {readFileSync} from 'node:fs';\nconsole.log('x', /const x = (\\d+)/.exec(readFileSync('a.js', 'utf8'))[1]);\n");
+    execFileSync('git', ['init', '-q'], {cwd: project});
+    send({type: 'event', event: {kind: 'command_end', cmd: 'node show.mjs', exit: 0, output: 'x 1\n', cwd: project}});
+    let reply;
+    partner.setResponses([
+      fauxAssistantMessage([fauxToolCall('edit', {file: 'a.js', line: 1, new_text: 'const x = 100'})], {stopReason: 'toolUse'}),
+      context => { reply = toolResult(context); return fauxAssistantMessage([fauxText('x is 100 now.')]); },
+    ]);
+    send({type: 'drive', text: 'you take it: raise x, x stays over 50'});
+    const words = await until(() => marks().find(([, , , details]) => details.virt_lines), 'the hand-back line', 20_000);
+    assert.match(reply, /The user expects: "x stays over 50"\. It printed x 100, which meets it\./);
+    assert.deepEqual([words[3].sign_text.trim(), words[3].sign_hl_group], ['✓', 'PairStatusPass']);
+    assert.equal(words[3].virt_lines.map(text).join('|').trim(), '● ✓ x 100 · x is 100 now.   u undoes it');
+    await until(() => status() === '✓ node show.mjs (unsaved) · x 100', 'the check in the statusline');
+    assert.deepEqual(lines(), ['const x = 100', 'const y = 2', 'const z = 3']);
+    assert.equal(readFileSync(join(project, 'a.js'), 'utf8'), 'const x = 1\nconst y = 2\nconst z = 3\n', 'nothing was saved');
+    keys('u');
+    await until(() => lines()[0] === 'const x = 1', 'one undo step');
   } finally {
     await stop();
   }
