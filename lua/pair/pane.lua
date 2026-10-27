@@ -22,7 +22,7 @@ function M.is_yours(buf)
   return running(buf) and not vim.b[buf].pair_pane and not is_chat(buf)
 end
 
---- The name the daemon knows terminal `buf` of this Neovim by, and that the chat names it by after "nvim:".
+--- The name the daemon knows terminal `buf` of this Neovim by (src/terminals.mjs).
 function M.id(buf) return ('nvim:%d:%d'):format(vim.fn.getpid(), buf) end
 
 --- Runs `cmd` in a new terminal buffer marked `mark`, in a window that `split` opens, and comes back to the window
@@ -72,11 +72,11 @@ function M.request(message, reply)
   reply(action and action(message) or {error = 'unknown pane action ' .. tostring(message.action)})
 end
 
---- Your terminals in this Neovim, the one you were in last first: {pane, name}.
+--- Your terminals in this Neovim, the one you were in last first: {pane}.
 function M.terminals()
   local list = {}
   for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-    if M.is_yours(buf) then table.insert(list, {pane = M.id(buf), name = 'nvim:' .. buf, used = vim.fn.getbufinfo(buf)[1].lastused}) end
+    if M.is_yours(buf) then table.insert(list, {pane = M.id(buf), used = vim.fn.getbufinfo(buf)[1].lastused}) end
   end
   table.sort(list, function(a, b) return a.used > b.used end)
   for _, item in ipairs(list) do item.used = nil end

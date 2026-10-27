@@ -144,5 +144,4 @@ the daemon reads the output back from the file, whole, however long it is. Then:
 - Switching back to Navigator keeps the pane open while the project has a command; ending the session closes it.
   The session's first run (also after a daemon restart) is the baseline: what fails in it failed already, so it
   raises no regression. A run of your own is no baseline: it may have run other tests.
-  Without herdr the pane is a `:terminal` in Neovim. With neither herdr nor a Neovim there is no pane: nothing
-  runs, the chat says why once, and Neovim's statusline says `◌ go test ./... · needs herdr or Neovim`.
+  Without herdr the pane is a `:terminal` in Neovim.

@@ -115,8 +115,7 @@ can. Details in [docs/watcher.md](watcher.md#regressions).
 - **Statusline.** `⠹ go test ./...` while it runs, with the flags that only ask for JSON left out. Then
   `✗ 1 failing · TestNoDoubleDelivery` (`+2` when more fail, `does not build` for a Go build error) until the next
   run, or `✓ go test ./... · 4 tests, 3 packages` for six seconds before it rests at `● pair` again. Pair reading,
-  driving, or away comes first. Without Pair's pane (no herdr and no Neovim connected) it says
-  `◌ go test ./... · needs herdr or Neovim` instead, until a run can start.
+  driving, or away comes first.
 - **Signs.** With a JSON report (`go test -json`, `jest --json`, `vitest --reporter=json`), each test that ran gets
   `✓` or `✗` in the sign column of its function (Go) or its `test(...)` line (jest, vitest), in every buffer you have
   open and in test files you open later. Passing signs are quiet; failing ones are your colorscheme's error colour.
@@ -597,7 +596,8 @@ All of Pair works inside Neovim too; herdr only adds the view of your other term
   Pair's pane moves there.
 - **The Driver's `type`.** It goes to the `:terminal` buffer of yours you were in last (Pair's pane and the chat
   are not yours). The question in the chat names it, `nvim:<buffer>`, and lists your other terminals: answer `y`,
-  or the name of another one to type there instead ([driver.md](driver.md#typing-into-your-terminal)).
+  or the name of another one to type there instead. With two Neovims in the project, a buffer number both have is
+  named with the Neovim's process id too, `nvim:<pid>:<buffer>` ([driver.md](driver.md#typing-into-your-terminal)).
 
 ## Setup
 

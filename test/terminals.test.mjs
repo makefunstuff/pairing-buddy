@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {Terminals} from '../src/terminals.mjs';
+import {named, Terminals} from '../src/terminals.mjs';
 
 /** Terminals with two Neovims (pids 7 and 8) and, with `herdr`, a PaneWatch that records what it types. */
 function terminals({herdr = true} = {}) {
   const asked = [];
   const typed = [];
   const editors = [{pid: 7}, {pid: 8}];
-  const watch = {terminals: () => [{pane: 'w1:p1', name: 'w1:p1'}], type: async (pane, text) => typed.push([pane, text])};
+  const watch = {terminals: () => ['w1:p1'], type: async (pane, text) => typed.push([pane, text])};
   const ask = async (editor, message) => {
     asked.push([editor.pid, message]);
     if (message.type === 'terminals') return {terminals: editor.pid === 7 ? [{pane: 'nvim:7:3', name: 'nvim:3'}] : []};
@@ -18,8 +18,13 @@ function terminals({herdr = true} = {}) {
 
 test('the user\'s terminals are herdr\'s panes and each Neovim\'s :terminal buffers', async () => {
   const {terminals: all} = terminals();
-  assert.deepEqual(await all.list(), [{pane: 'w1:p1', name: 'w1:p1'}, {pane: 'nvim:7:3', name: 'nvim:3'}]);
-  assert.deepEqual(await terminals({herdr: false}).terminals.list(), [{pane: 'nvim:7:3', name: 'nvim:3'}]);
+  assert.deepEqual(await all.list(), ['w1:p1', 'nvim:7:3']);
+  assert.deepEqual(await terminals({herdr: false}).terminals.list(), ['nvim:7:3']);
+});
+
+test('a Neovim terminal is named by its buffer, and by its whole id where two Neovims share the buffer number', () => {
+  assert.deepEqual(named(['w1:p1', 'nvim:7:3', 'nvim:7:4']).map(item => item.name), ['w1:p1', 'nvim:3', 'nvim:4']);
+  assert.deepEqual(named(['nvim:7:3', 'nvim:8:3', 'nvim:8:2']).map(item => item.name), ['nvim:7:3', 'nvim:8:3', 'nvim:2']);
 });
 
 test('type goes to the Neovim the terminal is in, or to herdr; only one line of plain text', async () => {

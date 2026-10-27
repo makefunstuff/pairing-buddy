@@ -29,6 +29,7 @@ import {tmpdir} from 'node:os';
 import {asksBack, oneQuestion, PROSE_CHECKS} from './prose-triggers.mjs';
 import {parseTestOutput, testSummary} from './test-output.mjs';
 import {TestRuns} from './test-runs.mjs';
+import {named} from './terminals.mjs';
 import {currentTrail, trailMatches, trailSummary} from './trail.mjs';
 import {detectTriggers} from './triggers.mjs';
 import {outcome, tuning, WINDOW_MS} from './tuning.mjs';
@@ -1400,9 +1401,9 @@ export class PairSession {
       return `Refused: ${policy.reason}. Do not try another way; tell the user.`;
     }
     // The question names the terminal, and the user may answer with another one's name instead of yes.
-    const others = (await this.panes.list()).filter(other => other.pane !== pane);
+    const [target, ...others] = named([pane, ...(await this.panes.list()).filter(other => other !== pane)]);
     const another = others.length ? ` (y, or another terminal: ${others.map(other => other.name).join(', ')})` : '';
-    const answer = await this.allowed(text, `Pair wants to type \`${text}\` into your terminal (pane ${this.panes.name(pane)}), without pressing Enter. Allow?${another}`, others.map(other => other.name));
+    const answer = await this.allowed(text, `Pair wants to type \`${text}\` into your terminal (pane ${target.name}), without pressing Enter. Allow?${another}`, others.map(other => other.name));
     if (!answer) return 'The user did not allow it.';
     const after = this.wheel();
     if (after) return after;

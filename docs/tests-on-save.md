@@ -21,7 +21,6 @@ and read back is in [scout.md](scout.md#tests-on-save).
   directory (`runs/`), so a long run is read back whole and the pane stays readable. The pane stays open while the
   project has a command.
 - One run at a time: a save during a run starts one more after it. A run that takes over two minutes is stopped.
-- Without Pair's pane (neither herdr nor a Neovim) nothing runs, and the statusline says so.
 
 ## What you see
 

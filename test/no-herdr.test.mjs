@@ -37,7 +37,8 @@ function tempDir(t, prefix, base = tmpdir()) {
 
 /**
  * The daemon with scripted models and a headless Neovim with the plugin in a scratch project, outside herdr,
- * with `:Pair start`. `chat()` connects a chat client as `pair chat` outside herdr does. `stop()` ends them.
+ * with `:Pair start`. `chat()` connects a chat client as `pair chat` outside herdr does, `secondNvim()` starts one
+ * more Neovim there. All end with test `t`.
  */
 async function pairWithoutHerdr(t, {testOnSave} = {}) {
   const project = tempDir(t, 'pair-nvim-');
@@ -62,35 +63,42 @@ async function pairWithoutHerdr(t, {testOnSave} = {}) {
   watcher.setResponses(Array.from({length: 20}, () => fauxAssistantMessage([fauxText('0')]))); // no remarks
   const daemon = await startDaemon(config, {pairModels: {models, watcher: watcher.getModel(), partner: partner.getModel()}, probe: async () => ({ok: true}), log: () => {}});
 
-  const server = join(dataDir, 'nvim.sock');
   // No herdr in its environment, as in a plain terminal; PAIR_CONFIG for the `pair chat` that :Pair chat starts.
   const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith('HERDR_')));
-  const nvim = spawn('nvim', [
-    '--headless', '--clean', '--listen', server,
-    '--cmd', `set rtp+=${REPO}`,
-    '-c', `lua require('pair').setup({socket = '${config.socket}', debounce_ms = 100})`,
-    '-c', `cd ${project}`,
-    '-c', 'edit a.js',
-    '-c', 'Pair start no herdr',
-  ], {stdio: 'ignore', env: {...env, PAIR_CONFIG: join(dataDir, 'config.json'), XDG_STATE_HOME: dataDir}});
-  const remote = expr => execFileSync('nvim', ['--server', server, '--remote-expr', expr], {encoding: 'utf8'}).trim();
-  const vimString = text => `"${text.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`;
-  const lua = code => JSON.parse(remote(`luaeval(${vimString(`vim.json.encode((function() ${code} end)())`)})`));
-  const keys = text => execFileSync('nvim', ['--server', server, '--remote-send', text]);
-  await until(() => { try { return remote('1'); } catch { return false; } }, 'nvim to listen');
   const status = () => new Promise(resolve => {
     const asking = client(config.socket, {type: 'status'});
     asking.next(message => message.type === 'status').then(reply => { asking.close(); resolve(reply); });
   });
-  await until(async () => (await status()).sessions[0]?.editors === 1, 'the plugin to connect');
+  const nvims = [];
   const chats = [];
   t.after(async () => {
     for (const chat of chats) chat.close();
-    nvim.kill();
+    for (const nvim of nvims) nvim.kill();
     await daemon.close();
   });
+  /** One more headless Neovim in the project, the `count`th to connect: `{remote, lua, keys}` to drive it. */
+  async function openNvim(count) {
+    const server = join(dataDir, `nvim${count}.sock`);
+    nvims.push(spawn('nvim', [
+      '--headless', '--clean', '--listen', server,
+      '--cmd', `set rtp+=${REPO}`,
+      '-c', `lua require('pair').setup({socket = '${config.socket}', debounce_ms = 100})`,
+      '-c', `cd ${project}`,
+      '-c', 'edit a.js',
+      '-c', 'Pair start no herdr',
+    ], {stdio: 'ignore', env: {...env, PAIR_CONFIG: join(dataDir, 'config.json'), XDG_STATE_HOME: dataDir}}));
+    const remote = expr => execFileSync('nvim', ['--server', server, '--remote-expr', expr], {encoding: 'utf8'}).trim();
+    const vimString = text => `"${text.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`;
+    const lua = code => JSON.parse(remote(`luaeval(${vimString(`vim.json.encode((function() ${code} end)())`)})`));
+    const keys = text => execFileSync('nvim', ['--server', server, '--remote-send', text]);
+    await until(() => { try { return remote('1'); } catch { return false; } }, 'nvim to listen');
+    await until(async () => (await status()).sessions[0]?.editors === count, 'the plugin to connect');
+    return {remote, lua, keys};
+  }
+  const {remote, lua, keys} = await openNvim(1);
   return {
     project, partner, remote, lua, keys, status,
+    secondNvim: () => openNvim(2),
     async chat() {
       const chat = client(config.socket, {type: 'hello', role: 'chat', cwd: project, herdr: null});
       chats.push(chat);
@@ -182,4 +190,32 @@ test(':Pair chat opens the chat in a terminal buffer, connected to the daemon ou
   const screen = () => lua(`return table.concat(vim.api.nvim_buf_get_lines(${chat}, 0, -1, false), "\\n")`);
   await until(() => /^·· pairing on[^]*^navigator › /m.test(screen()), 'the chat\'s greeting and prompt');
   assert.equal((await status()).sessions[0].herdr, false, 'not a herdr chat pane');
+});
+
+test('two Neovims with a :terminal in the same buffer: the question tells them apart, and the answer types into the one it names', {skip, timeout: 40_000}, async t => {
+  const {partner, lua, keys, secondNvim, chat: openChat} = await pairWithoutHerdr(t);
+  const other = await secondNvim();
+  const chat = await openChat();
+  const shell = 'bash --norc --noprofile';
+  const opened = async nvim => {
+    nvim.keys(`:terminal ${shell}<CR>`);
+    return until(() => nvim.lua('return vim.bo.buftype == "terminal" and vim.api.nvim_get_current_buf() or false'), 'a terminal');
+  };
+  const otherBuf = await opened(other);
+  const buf = await opened({lua, keys}); // the first Neovim's, used last: the target
+  assert.equal(buf, otherBuf, 'the same buffer number in both');
+  const [pid, otherPid] = [lua('return vim.fn.getpid()'), other.lua('return vim.fn.getpid()')];
+  const screen = nvim => nvim.lua(`return table.concat(vim.api.nvim_buf_get_lines(${buf}, 0, -1, false), "\\n")`);
+
+  partner.setResponses([
+    fauxAssistantMessage([fauxToolCall('type', {text: 'echo hi'})], {stopReason: 'toolUse'}),
+    fauxAssistantMessage([fauxText('Typed there.')]),
+  ]);
+  chat.send({type: 'drive', text: 'type it'});
+  const question = await chat.next(message => message.type === 'confirm');
+  assert.match(question.text, new RegExp(`\\(pane nvim:${pid}:${buf}\\), without pressing Enter\\. Allow\\? \\(y, or another terminal: nvim:${otherPid}:${buf}\\)$`));
+  chat.send({type: 'confirm', id: question.id, ok: false, text: `nvim:${otherPid}:${buf}`});
+  await chat.next(message => message.text === 'Typed there.');
+  await until(() => /echo hi$/m.test(screen(other)), 'the text in the other Neovim\'s terminal');
+  assert.doesNotMatch(screen({lua}), /echo hi/, 'not in the target the question named first');
 });
