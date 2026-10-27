@@ -33,6 +33,9 @@ whole):
   did not touch again, after a header changed, brings no news. The line is left out, so a warning that moved with
   your edit above it is the same one.
 
+Each build and run also goes into the session's run log, which reads it next to the run before: the same numbers
+after a change, a number that moved, `:Pair runs`. See [exploration.md](exploration.md).
+
 ## What you see
 
 In Neovim, the last build or run that crashed or printed diagnostics shows on its lines until the same command runs
