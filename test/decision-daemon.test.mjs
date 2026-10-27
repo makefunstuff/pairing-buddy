@@ -95,7 +95,7 @@ test('the decision model lets a failure through without the Watcher, logs it, an
   const store = openStore(join(dataDir, 'sessions.sqlite'));
   const [fellBack, spoke] = store.decisions(0);
   assert.deepEqual([spoke.sort, spoke.sortP, spoke.speakP, spoke.decided, spoke.remarkId !== null, spoke.score], ['worth', 0.95, 0.9, 'speak', true, null]);
-  assert.deepEqual([fellBack.fallback, fellBack.score, fellBack.rule, fellBack.decided], ['down', 2, 'drop', 'drop']);
+  assert.deepEqual([fellBack.fallback, fellBack.score, fellBack.rule, fellBack.decided], ['error', 2, 'drop', 'drop'], 'the first cause: the model failed, then it was down');
   store.close();
 });
 
