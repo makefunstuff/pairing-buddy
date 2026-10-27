@@ -6,7 +6,7 @@
 - Neovim 0.11 or newer
 - [herdr](https://herdr.dev) for the chat pane, terminal watching, Scout's pane and tests on save. Pair also works
   without it, with the chat in any terminal, as Navigator only.
-- For Scout: `bash` and [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg`)
+- For Scout: `bash` and [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg`); optionally [bubblewrap](https://github.com/containers/bubblewrap) (`bwrap`), to run Pair's commands in [a sandbox](scout.md#the-sandbox)
 - Optional, for the [context card](neovim.md#what-it-knows-the-context-card) and the goal: herdr's work board
   (`herdr-projects`) and GitHub's `gh` for the pull request
 - A model: any OpenAI-compatible local server (for example llama.cpp or Ollama), an Anthropic-compatible API, or any

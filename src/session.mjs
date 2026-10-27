@@ -1190,7 +1190,7 @@ export class PairSession {
   async run({command}) {
     // A remark nobody asked for may read and search, but not start commands.
     if (this.unasked) return 'Not now: run commands only when the user asks. Read and search instead.';
-    const policy = commandPolicy(command);
+    const policy = commandPolicy(command, await this.scout?.rcNames?.());
     if (policy.verdict === 'refuse') {
       this.ledger.add('refused', command, {data: {note: policy.reason}});
       this.message('system', `Pair may not run \`${command}\`: ${policy.reason}.`);
