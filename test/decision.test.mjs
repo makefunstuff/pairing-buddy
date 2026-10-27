@@ -118,6 +118,10 @@ test('a decision model that is down, throws, or answers nonsense gives no answer
     const result = await createDecider({models: fakeModels(() => ({stopReason: 'stop', answers: given})), model, timeoutMs: 500})(['speak'], {});
     assert.deepEqual([result.ok, result.why], [false, 'malformed'], JSON.stringify(given));
   }
+  for (const name of ['constructor', 'toString', '__proto__']) {
+    const inherited = await createDecider({models: fakeModels(() => answers(name, 0.9, 0.5)), model, timeoutMs: 500})(['moment', 'speak'], {});
+    assert.equal(inherited.why, 'malformed', `"${name}" is no choice offered`);
+  }
   const offList = await createDecider({models: fakeModels(() => answers('maybe', 0.9, 0.5)), model, timeoutMs: 500})(['moment', 'speak'], {});
   assert.equal(offList.why, 'malformed');
 });
@@ -195,7 +199,7 @@ test('without an answer the gate goes by the Watcher\'s score and the bar, as wi
   const fallback = await run({sort: {fallback: 'timeout'}, speak: async () => ({fallback: 'down'}), score: 7});
   assert.equal(fallback.decision.verdict, 'speak');
   assert.equal(fallback.decision.reason, 'score 7');
-  assert.equal(fallback.decision.decided.fallback, 'down');
+  assert.equal(fallback.decision.decided.fallback, 'timeout', 'the first cause: the sort timed out, then the model was down');
   assert.equal(fallback.decision.decided.rule, 'speak');
   const low = await run({sort: {fallback: 'down'}, speak: async () => ({fallback: 'down'}), score: 3});
   assert.equal(low.decision.reason, 'score 3 < 6');
@@ -281,21 +285,23 @@ test('pair stats: what the model sorted, the calls it saved, and its remarks nex
     row({sort: 'ask', sortP: 0.6, speakP: 0.7, score: 5, rule: 'drop', decided: 'speak', remarkId: 2, remarkAt: now - 20 * MIN, verdict: 'useful'}),
     row({sort: 'ask', sortP: 0.6, speakP: 0.2, score: 8, rule: 'speak', decided: 'drop'}),
     row({sort: 'ask', sortP: 0.5, speakP: 0.9, score: 9, rule: 'speak', decided: 'speak', remarkId: 3, remarkAt: now - 20 * MIN, verdict: 'dismissed'}),
+    row({sort: 'ask', sortP: 0.7, decided: 'drop'}), // the pace held it back: no call, but not the model's saving
+    row({sort: 'noise', sortP: 0.6, decided: 'drop'}), // unsure noise, held back by the pace too
     row({fallback: 'timeout', score: 7, rule: 'speak', decided: 'speak', remarkId: 4, remarkAt: now - 20 * MIN, verdict: 'dismissed'}),
   ];
   const remarks = [1, 2, 3, 4, 5].map(id => ({id, trigger: 'failed_command', at: now - 20 * MIN, verdict: id === 5 ? 'useful' : id < 3 ? 'useful' : 'dismissed', root: '/p'}));
   const lines = decisionLines(decisions, remarks, now);
   assert.deepEqual(lines, [
     '',
-    'Decision model: 6 moments judged; it answered 5, the rules decided the rest (timeout 1)',
-    '  sorted as noise 1 · worth it 1 · for the Watcher 3; 2 Watcher calls saved',
+    'Decision model: 8 moments judged; it answered 7, the rules decided the rest (timeout 1)',
+    '  sorted as noise 2 · worth it 1 · for the Watcher 4; 2 Watcher calls saved',
     '  its remarks: 3: useful 2 · dismissed 1 · ignored 0 · kept 67%',
     '  the rules\' remarks (the Watcher\'s score against the bar): 2: useful 1 · dismissed 1 · ignored 0 · kept 50%',
     '  where the Watcher scored too, the model and the bar agreed on 1 of 3: it spoke 1 time the bar would not, and stayed quiet 1 time the bar would have spoken',
   ]);
   assert.deepEqual(decisionLines([], remarks, now), [], 'no decision model: nothing more');
   const report = statsReport({remarks, activeMs: 3_600_000, now, days: 7, level: 'normal', autoTune: false, decisions});
-  assert.ok(report.includes('Decision model: 6 moments judged; it answered 5, the rules decided the rest (timeout 1)'));
+  assert.ok(report.includes('Decision model: 8 moments judged; it answered 7, the rules decided the rest (timeout 1)'));
   assert.ok(!statsReport({remarks, activeMs: 0, now, days: 7, level: 'normal', autoTune: false}).some(line => line.startsWith('Decision model')));
 });
 

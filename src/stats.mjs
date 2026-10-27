@@ -2,6 +2,7 @@
 // for all projects or, with --project, for one.
 import {basename} from 'node:path';
 import {Budget, BUDGETS} from './budget.mjs';
+import {SURE} from './decision.mjs';
 import {TRIGGER_KINDS} from './triggers.mjs';
 import {keptShare, NO_TUNING, tally, tuning} from './tuning.mjs';
 
@@ -62,7 +63,9 @@ export function decisionLines(decisions, remarks, now) {
   const sorts = sort => answered.filter(decision => decision.sort === sort).length;
   const fallbacks = Object.entries(Object.groupBy(decisions.filter(decision => decision.fallback), decision => decision.fallback))
     .map(([why, list]) => `${why} ${list.length}`);
-  const noWatcher = decisions.filter(decision => decision.score === null && !decision.fallback).length;
+  // Saved: the model was sure (noise, or worth it) and the Watcher was not asked. A moment the pace held back after an
+  // unsure sort cost no call either, but that is the pace's saving, not the model's.
+  const noWatcher = answered.filter(decision => decision.score === null && ['noise', 'worth'].includes(decision.sort) && decision.sortP >= SURE).length;
   const lines = [
     '',
     `Decision model: ${plural(decisions.length, 'moment')} judged; it answered ${answered.length}`

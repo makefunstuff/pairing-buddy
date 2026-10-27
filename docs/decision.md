@@ -101,6 +101,9 @@ small one is enough. pi-ai's catalog has these (`pair auth models PROVIDER` list
 - **Start with a flash or small model** (`cloudflare/clef-flash`, Jev). The two questions are short and the state is
   a few hundred tokens.
 - **Pay per use, not a subscription.** The model is asked about every candidate moment, as the Watcher is.
+- **Try it on recorded moments.** `node test/decision-check.mjs --entry '{"provider": "openrouter", "model": "typesafe/jev-1.14"}'`
+  runs 16 recorded moments through the gate with it, and reports accuracy against the rules, latency and cost per
+  call ([testing.md](testing.md)).
 - **Check it with `pair doctor`.** It asks the model one small question and says how long the answer took
   (below). Then let `pair stats` show, after a few days, whether its remarks are kept more often than the rules'.
 
@@ -136,7 +139,9 @@ Decision model: 48 moments judged; it answered 46, the rules decided the rest (t
   where the Watcher scored too, the model and the bar agreed on 14 of 19: it spoke 2 times the bar would not, and stayed quiet 3 times the bar would have spoken
 ```
 
-"The rules' remarks" are the remarks of the same days the model did not decide: those from before you added it,
+"Watcher calls saved" counts the moments the model was sure of (noise, or worth it), where the Watcher was not asked.
+A moment the [pace](watcher.md#when-the-server-is-slow) held back after an unsure sort cost no call either, but that
+saving is the pace's. "The rules' remarks" are the remarks of the same days the model did not decide: those from before you added it,
 and those it fell back on.
 
 ## Next steps

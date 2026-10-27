@@ -46,7 +46,7 @@ export async function decide({trigger, state, now, budget, score, typingPauseMs,
     const asked = byProbability(judged.p, bar, {...decided, speakP: judged.p, score: value, rule}, `score ${value}`);
     return {...asked, score: value};
   }
-  const fellBack = decided || judged ? {decided: {...decided, speakP: null, score: value, rule, fallback: judged?.fallback ?? decided?.fallback ?? null}} : {};
+  const fellBack = decided || judged ? {decided: {...decided, speakP: null, score: value, rule, fallback: decided?.fallback ?? judged?.fallback ?? null}} : {};
   if (rule === 'drop') return {verdict: 'drop', reason: `score ${value} < ${bar}${reason ? `: ${reason}` : ''}`, score: value, ...fellBack};
   return {verdict: 'speak', reason: reason || `score ${value}`, score: value, ...fellBack};
 }

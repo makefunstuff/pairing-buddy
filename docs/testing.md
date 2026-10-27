@@ -94,6 +94,11 @@ Runs every test that needs no model, in under a minute, with scripted models and
   the ledger, `pair stats`'s section, and `pair doctor` and pi-ai's System One request against a fake HTTP server.
   End to end (`test/decision-daemon.test.mjs`): a failure let through without the Watcher, then the model down, said
   once in the chat, and the next failure scored by the Watcher. No provider is called.
+  `node test/decision-check.mjs` (not part of `npm test`) is the live check: 16 recorded moments
+  (`test/fixtures/decision-moments.json`, each with the Watcher's score it got and whether a remark was wanted) through
+  the real gate with the config's `decision` model, or `--entry '{...}'`. It reports how often the gate was right with
+  the model and with the rules alone, how often the prefilter's sort was right, the Watcher calls saved, and latency
+  and cost per call. It asks a real model with your login or key, so it runs by hand; `--fake` checks the script.
 - **Context windows and thinking settings.** The window from vLLM's, llama.cpp's and LM Studio's metadata or pi-ai's
   catalog, the config's own winning; `pair doctor --thinking` against fake servers that take a chat-template switch
   with a budget field, or `reasoning_effort` with three levels.

@@ -105,7 +105,7 @@ function wellFormed(question, answer) {
   if (!answer || answer.type !== question.type) return false;
   if (question.type === 'bool') return probability(answer.probability);
   if (question.type === 'score') return Number.isFinite(answer.score);
-  return answer.choice in question.criteria && Object.values(answer.probabilities ?? {}).every(probability);
+  return Object.hasOwn(question.criteria, answer.choice) && Object.values(answer.probabilities ?? {}).every(probability);
 }
 
 /**
