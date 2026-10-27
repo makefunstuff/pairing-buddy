@@ -75,14 +75,15 @@ init system ([install.md](install.md#install)).
 ## `pair shell-hook`
 
 Prints a hook for your shell that reports each command's exit code to the daemon, and emits OSC 133 marks for a
-terminal that reads them. Optional; most useful without herdr.
+terminal that reads them. It names the shell by its process id, which tells Pair the `:terminal` buffer or tmux pane
+the command ran in. Optional; most useful without herdr.
 
 ```sh
 eval "$(pair shell-hook bash)"   # or zsh, in your rc file
 pair shell-hook fish | source    # fish, in config.fish
 ```
 
-`pair report --exit N --cmd TEXT` is what the hook runs; you never need to.
+`pair report --exit N --cmd TEXT [--shell PID]` is what the hook runs; you never need to.
 
 ## Chat commands
 

@@ -8,7 +8,7 @@ What Pair cannot do well yet, one GitHub issue each. The full list, with the one
 
 These need a change in herdr itself.
 
-- **No command boundaries or exit codes.** Pair learns that a command ran in a herdr pane by polling, so a command
+- **No command boundaries or exit codes.** Pair learns that a command ran in a herdr pane by watching it, so a command
   shorter than about a second can be missed, and success or failure is guessed from the output. The
   [shell hook](cli.md#pair-shell-hook) reports exit codes and fixes this for panes that have it.
   [#22](https://github.com/makefunstuff/pairing-buddy/issues/22)
@@ -18,21 +18,26 @@ These need a change in herdr itself.
 - **Typing at a shell prompt is guessed** from the pane's screen, since herdr reports no keystrokes; a prompt that
   changes by itself looks like typing. [#24](https://github.com/makefunstuff/pairing-buddy/issues/24),
   [herdr.md](herdr.md#what-is-missing)
-- **Polling every second.** Pane changes cannot be subscribed to, which adds up to a second of delay to what Pair
-  sees in herdr. [#25](https://github.com/makefunstuff/pairing-buddy/issues/25)
-- **Pair's pane reads back at most the last 1000 lines** of a Scout or Driver command, so a long output loses its
-  beginning. [#26](https://github.com/makefunstuff/pairing-buddy/issues/26)
+- **Output changes are polled.** herdr pushes focus and pane events, but a pane's output cannot be subscribed to,
+  so Pair looks at the focused pane twice a second and at other panes running a command once a second: what you
+  see there reaches Pair up to a second later. [#25](https://github.com/makefunstuff/pairing-buddy/issues/25)
 
 ## Without herdr
 
-- **Your terminals' output is not seen.** Without herdr, Pair sees your commands' exit codes through the shell hook,
-  but not what they printed; Scout's pane, tests on save and the Driver's `type` work inside Neovim
-  ([workflows](workflows.md#with-or-without-herdr)). [#37](https://github.com/makefunstuff/pairing-buddy/issues/37)
+Without herdr all of Pair works in Neovim and tmux ([workflows](workflows.md#with-or-without-herdr)). Two things
+stay herdr's:
+
+- **A terminal that is neither a Neovim `:terminal` nor a tmux pane** (a plain window of your terminal emulator):
+  nothing lets another program read its screen, so Pair sees its commands and exit codes through the
+  [shell hook](cli.md#pair-shell-hook), but not their output.
+- **herdr's own agents** in [your other agents](agents.md), and `Alt-a` bringing one's pane to the front. The board's
+  tasks are read without herdr.
 
 ## Neovim
 
-- **Push-to-talk guesses when you let go** of `Alt-t` from the terminal's key repeats. If your terminal waits longer
-  than about 0.65 s before it repeats a held key, a hold counts as a tap. Only one recording runs per project.
+- **Push-to-talk guesses when you let go** of `Alt-t` from the terminal's key repeats, since Neovim drops key-release
+  events. A terminal that is slow to repeat turns a hold into a tap; `listen_mode = 'toggle'` (press to start, press
+  again to ask) never guesses ([voice.md](voice.md#4-the-key)).
   [#55](https://github.com/makefunstuff/pairing-buddy/issues/55)
 - **The search trail reads Telescope and snacks.picker only**, not fzf-lua.
   [#56](https://github.com/makefunstuff/pairing-buddy/issues/56)

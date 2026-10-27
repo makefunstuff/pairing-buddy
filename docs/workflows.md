@@ -53,7 +53,7 @@ Ping-pong works too: write a failing test, say "your turn".
 
 ## Voice
 
-Hold `Alt-t` in Neovim, ask aloud, let go. whisper.cpp writes it down on your CPU in about half a second, and the
+Hold `Alt-t` in Neovim (or tap it twice), ask aloud, let go. whisper.cpp writes it down on your CPU in about half a second, and the
 answer comes under your line. It is read aloud only if you are away from the editor when it comes. Off until you
 set [`voice`](config.md#voice) ([voice.md](voice.md)).
 
@@ -72,12 +72,13 @@ set [`voice`](config.md#voice) ([voice.md](voice.md)).
 [herdr](https://herdr.dev) is the best home for Pair: the chat pane sits beside Neovim, Pair sees your terminals and
 their output, and Scout's pane opens below the chat.
 
-Without herdr, all of Pair works inside Neovim:
+Without herdr, all of Pair works inside Neovim and tmux:
 
 - `:Pair chat` opens the chat in a terminal buffer on the right (or run `pair chat` in any terminal);
 - Scout's pane and the tests on save run in a `:terminal` along the bottom of Neovim;
-- the Driver's `type` goes to your own `:terminal` buffers.
+- Pair reads your own `:terminal` buffers and the panes of the tmux session you work in: which one you are in, the
+  commands you run and their output, and with the [shell hook](cli.md#pair-shell-hook) their exit codes;
+- the Driver's `type` goes to one of those terminals, after your yes.
 
-What you lose is the view of your other terminals: without herdr Pair sees your commands' exit codes through the
-[shell hook](cli.md#pair-shell-hook), but not their output ([without herdr](neovim.md#without-herdr),
-[what Pair gets from herdr](herdr.md)).
+Only a terminal that is neither (a plain window of your terminal emulator) sends just its exit codes, without output,
+and herdr's own agents need herdr ([without herdr](neovim.md#without-herdr), [what Pair gets from herdr](herdr.md)).

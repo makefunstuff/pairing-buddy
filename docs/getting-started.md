@@ -7,7 +7,7 @@ From nothing to your first session in about five minutes. Each step links to the
 - Node.js 22.19 or newer, and Neovim 0.11 or newer.
 - A model: a local OpenAI-compatible server (llama.cpp, Ollama, vLLM, LM Studio), an API key for a provider, or a
   subscription login where the provider allows it ([Models and providers](models.md)).
-- Optional: [herdr](https://herdr.dev), the best home for Pair. Without it, everything runs inside Neovim
+- Optional: [herdr](https://herdr.dev), the best home for Pair. Without it, everything runs inside Neovim and tmux
   ([Workflows](workflows.md#with-or-without-herdr)).
 - For Scout: `bash` and ripgrep (`rg`); bubblewrap (`bwrap`) if you want its commands in a sandbox.
 

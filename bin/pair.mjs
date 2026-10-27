@@ -46,7 +46,7 @@ const USAGE = `usage:
   pair daemon       run the daemon in the foreground
   pair supervise    run the daemon in the foreground, restarted when it fails (what \`pair\` starts without a service)
   pair shell-hook bash|zsh|fish   print the shell hook that reports exit codes
-  pair report --exit N --cmd TEXT   (used by the shell hook)`;
+  pair report --exit N --cmd TEXT [--shell PID]   (used by the shell hook)`;
 
 const ONE_MODEL = 'The Watcher asks it for one number without thinking, the Partner thinks; on its server the Watcher waits while the Partner works.';
 const TWO_MODELS = 'On a server that holds one model at a time, give both roles one model instead: "model" in the config (see docs/models.md, "One model").';
@@ -266,13 +266,18 @@ async function openChatPane(config) {
 
 // Runs after every shell command, so it stays silent: no config or no daemon means nothing to report.
 function report(args) {
-  const {values} = parseArgs({args, options: {exit: {type: 'string'}, cmd: {type: 'string'}}});
+  const {values} = parseArgs({args, options: {exit: {type: 'string'}, cmd: {type: 'string'}, shell: {type: 'string'}}});
   let socketPath;
   try { socketPath = loadConfig().socket; } catch { socketPath = defaultSocketPath(); }
   const socket = connect(socketPath);
   socket.on('error', () => {});
   socket.on('connect', () => {
-    sendMessage(socket, {type: 'command', cwd: process.cwd(), pane: process.env.HERDR_PANE_ID ?? null, cmd: values.cmd ?? '', exit: Number(values.exit)});
+    // The shell's pid names the terminal outside herdr: a Neovim :terminal's or a tmux pane's (src/pane-watch.mjs).
+    const shell = Number(values.shell) || null;
+    sendMessage(socket, {
+      type: 'command', cwd: process.cwd(), pane: process.env.HERDR_PANE_ID ?? null, tmux: process.env.TMUX_PANE ?? null, shell,
+      cmd: values.cmd ?? '', exit: Number(values.exit),
+    });
     socket.end();
   });
 }

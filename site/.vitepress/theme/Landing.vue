@@ -12,23 +12,23 @@ const media = path => withBase(`/media/${path}`);
 const moments = [
   {
     id: 'm1', poster: 'm1-still1.webp', title: 'It stops the wrong turn',
-    text: 'A retry test fails and you start fixing the backoff. Pair reads your edit and the worker, and says in two lines under your edit that the real cause is <code>worker.go:35</code>, with <code>Alt-j</code> to go there.',
+    text: 'You start fixing the wrong file, and Pair says in two lines under your edit that the real cause is <code>worker.go:35</code>.',
     label: 'Capture: Pair reads backoff.go and worker.go, writes two lines under your edit, and Alt-j takes you to the real cause',
   },
   {
     id: 'm2', poster: 'm2-still1.webp', title: 'It runs what you\'d skip',
-    text: 'Your fix passes, so you would push. Pair ran the tests as you saved, names the one your change broke elsewhere, says why under the line you changed, and offers the one-line fix: <code>Alt-y</code> takes it.',
+    text: 'Pair ran the tests as you saved, found the one your fix broke elsewhere, and offers a one-line fix you take with <code>Alt-y</code>.',
     label: 'Capture: Pair runs the tests on save, names the failing test, says why under your line, and puts a one-line fix in queue.go that Alt-y takes',
   },
   {
     id: 'm3', poster: 'm3-still2.webp', title: 'It takes the keyboard, and gives it back',
-    text: 'You hand over the edge cases. Pair types six table cases into your buffer while you watch, runs the tests on the unsaved buffer and hands back. One <code>u</code> undoes all six.',
+    text: 'You hand over the edge cases: Pair types them while you watch, tests the unsaved buffer and hands back, and one <code>u</code> undoes it all.',
     label: 'Capture: the Driver types six table test cases, tests the unsaved buffer, hands back, and u takes all six away',
   },
 ];
 
 const steps = [
-  {title: 'The plugin watches with you', text: 'The Neovim plugin sends the daemon what you do: edits, saves, searches, diagnostics and test runs. In herdr, Pair also sees your terminals.'},
+  {title: 'The plugin watches with you', text: 'The Neovim plugin sends the daemon what you do: edits, saves, searches, diagnostics and test runs. Pair also reads your terminals: herdr or tmux panes, and the terminal buffers in Neovim.'},
   {title: 'The Watcher decides if it is worth a word', text: 'A small, fast model scores each moment from 0 to 10 in about a second. Most moments score low, so Pair stays quiet, and it never interrupts your typing.'},
   {title: 'The Partner says it where you look', text: 'A larger model, or the same one, writes one or two short lines under the line they are about, with the key that acts on them.'},
   {title: 'You choose how much it may do', text: 'One role at a time, switched with a command, and enforced in code:'},
@@ -104,8 +104,8 @@ onBeforeUnmount(() => { near?.disconnect(); seen?.disconnect(); });
     <section class="wrap hero">
       <p class="eyebrow">A Neovim plugin and a daemon · local or cloud models · MIT</p>
       <h1>A pair programmer that knows when to speak<span class="dot">.</span></h1>
-      <p class="lede">pairing-buddy, or Pair, works next to you like a colleague in the second chair: it watches you code in Neovim, says one short line under your cursor when it spots something, runs the tests you would skip, and takes the keyboard only when you hand it over.</p>
-      <p class="lede">It is not code completion and not a chat sidebar. And it never writes your files: its edits land unsaved, as one undo step.</p>
+      <p class="lede">Pair is a Neovim plugin and a daemon that pair with you like a person in the second chair: it watches you work, says one short line when something matters, and types only when you hand it the keyboard.</p>
+      <p class="lede">Not code completion, not a chat sidebar, and it never writes your files.</p>
       <div class="cta">
         <a class="btn primary" :href="withBase('/getting-started.html')">Get started</a>
         <a class="btn" href="#tour">Watch the 6-minute tour</a>
@@ -179,7 +179,7 @@ onBeforeUnmount(() => { near?.disconnect(); seen?.disconnect(); });
 
     <section class="wrap" id="install" aria-labelledby="install-h">
       <h2 id="install-h">Install</h2>
-      <p class="sub">Needs Node.js 22.19+ and Neovim 0.11+. <a href="https://herdr.dev">herdr</a> is its best home; without it, everything runs inside Neovim.</p>
+      <p class="sub">Needs Node.js 22.19+ and Neovim 0.11+. <a href="https://herdr.dev">herdr</a> is its best home; without it, everything runs in Neovim and tmux.</p>
       <ol class="install">
         <li v-for="(s, i) in install" :key="s.title">
           <h3>{{ s.title }}</h3>

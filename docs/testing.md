@@ -17,7 +17,10 @@ Runs every test that needs no model, in under a minute, with scripted models and
   (focus and scroll pushed, typing, a command seen running and one too short for that, no requests while you are in
   another workspace) and the heuristics on pane text; the shell hooks: bash, and zsh and fish where installed.
 - **Without herdr**, in a headless Neovim: Scout's pane and the tests on save as a `:terminal` there, the Driver's
-  `type` into the `:terminal` you used last or another one named in the answer, and `:Pair chat`.
+  `type` into the `:terminal` you used last or another one named in the answer, `:Pair chat`, and a command you run
+  in your own `:terminal`, seen running and with its output, and with the bash hook its exit code. In a real tmux
+  server with a client attached: focus, typing, a command seen running with its output, the Driver's text, the
+  shell's foreground command by `/proc` and by `ps`, and the daemon watching the tmux session of a chat pane.
 - **The daemon end to end** with scripted models; several projects and Neovims at once; Neovim and the chat pane
   reconnecting after a daemon restart; a question the restart cut off answered late, a remark dropped; a saved config
   taken without a restart (a new model between turns, one with an error refused).

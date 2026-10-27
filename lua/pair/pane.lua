@@ -72,15 +72,41 @@ function M.request(message, reply)
   reply(action and action(message) or {error = 'unknown pane action ' .. tostring(message.action)})
 end
 
---- Your terminals in this Neovim, the one you were in last first: {pane}.
+--- Your terminals in this Neovim, the one you were in last first: {pane, pid}, the pid its shell's, by which the
+--- daemon tells the command running in it and the terminal a shell hook's command ran in (src/nvim-panes.mjs).
 function M.terminals()
   local list = {}
   for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-    if M.is_yours(buf) then table.insert(list, {pane = M.id(buf), used = vim.fn.getbufinfo(buf)[1].lastused}) end
+    if M.is_yours(buf) then
+      local pid = vim.fn.jobpid(vim.bo[buf].channel)
+      table.insert(list, {pane = M.id(buf), pid = pid > 0 and pid or nil, used = vim.fn.getbufinfo(buf)[1].lastused})
+    end
   end
   table.sort(list, function(a, b) return a.used > b.used end)
   for _, item in ipairs(list) do item.used = nil end
   return list
+end
+
+--- The last line of `buf` with text in it: a terminal's buffer has empty lines below the prompt up to the window's height.
+local function last_line(buf)
+  local count = vim.api.nvim_buf_line_count(buf)
+  while count > 1 and vim.api.nvim_buf_get_lines(buf, count - 1, count, false)[1] == '' do count = count - 1 end
+  return count
+end
+
+--- Your terminals, the one you are in (`current`, its id) and whether you scrolled it away from its prompt.
+function M.listing()
+  local buf = vim.api.nvim_get_current_buf()
+  local current = M.is_yours(buf) and M.id(buf) or nil
+  local scrolled = current ~= nil and vim.fn.mode() ~= 't' and vim.fn.line('w$') < last_line(buf)
+  return {terminals = M.terminals(), current = current, scrolled = scrolled}
+end
+
+--- The last `lines` lines of your terminal `buf` as they show, without the empty ones below the prompt.
+function M.text(buf, lines)
+  if not M.is_yours(buf) then return {error = 'that is not one of your terminals here'} end
+  local last = last_line(buf)
+  return {text = table.concat(vim.api.nvim_buf_get_lines(buf, math.max(0, last - lines), last, false), '\n')}
 end
 
 --- Types `text` (one line, without Enter, checked by the daemon) at the prompt of your terminal `buf`.

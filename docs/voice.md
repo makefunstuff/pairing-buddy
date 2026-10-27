@@ -35,6 +35,22 @@ let go when those repeats stop (about 0.2 s after the last one). A short press t
 then listens until you press the key again, and the line says `M-t again to ask`. `:Pair listen` works as a tap, and
 `:Pair listen cancel` drops what is being recorded. A recording stops by itself after `maxSeconds`.
 
+**When holding does not work for you.** Letting go is guessed from the repeats, so a terminal that waits long before
+it repeats a held key (or does not repeat it at all) turns your hold into a tap. Two settings never guess
+(see [the key](#4-the-key)):
+
+- `listen_mode = 'toggle'`: press the key to start, press it again to ask. Holding the key does nothing more, however
+  long your terminal waits before it repeats: a press that another follows within `listen_release_ms` is a repeat,
+  not a second press. So the press that asks counts once that much time has gone by without a repeat (0.22 s), and
+  holding it starts nothing new as long as its repeats begin within `listen_hold_ms`. The line says
+  `M-t again to ask` from the start.
+- `listen_silence_ms = 1200`: a recording you do not hold (a tap, `toggle`, `:Pair listen`) also asks once you have
+  spoken and then paused that long; the line says `M-t again or pause to ask`. Pause counts from the meter: quieter
+  than about -42 dB. Nothing is asked before you have said something.
+
+A real key-up would be better, and the kitty keyboard protocol has one, but Neovim (0.12 included) drops key-release
+events before a plugin can see them ([#55](https://github.com/makefunstuff/pairing-buddy/issues/55)).
+
 **About the selection.** In Visual mode the key asks about the selected lines, as `:'<,'>Pair ask` does.
 
 **Whisper hears your project's words.** It is told the file you are in and the session goal, which helps with names
@@ -115,12 +131,27 @@ the audio, and name that script.
 ### 4. The key
 
 `Alt-t` in Normal and Visual mode, mapped only where you have no mapping of your own. Change it with `listen_key`
-in `setup` (`false` for none; `:Pair listen` works either way).
+in `setup` (`false` for none; `:Pair listen` works either way). How it works:
+
+```lua
+require('pair').setup({
+  listen_key = '<M-t>',
+  listen_mode = 'hold',     -- 'toggle': press to start, press again to ask
+  listen_hold_ms = 650,     -- no repeat this long after the press: it was a tap
+  listen_release_ms = 220,  -- no repeat this long: the key is up (in 'toggle': a press this close to another is a repeat)
+  listen_silence_ms = false, -- a number: a recording you do not hold asks after a pause this long
+})
+```
+
+With a terminal that is slow to repeat, a longer `listen_hold_ms` (its repeat delay and a little more) keeps your
+holds holds; `listen_release_ms` must be longer than the time between two of its repeats. Both modes need that;
+`toggle` needs nothing of the repeat delay but that `listen_hold_ms` is longer than it, for a held press that asks.
 
 ## Limits
 
-- The key is held as long as the terminal repeats it. If your terminal waits longer than about 0.65 s before it
-  repeats a held key, a hold counts as a tap: press the key again to ask
+- In `hold` mode the key is held as long as the terminal repeats it. If your terminal waits longer than
+  `listen_hold_ms` before it repeats a held key, a hold counts as a tap: press the key again to ask, or use
+  `listen_mode = 'toggle'`. There is no real key-up: Neovim drops the kitty keyboard protocol's release events
   ([#55](https://github.com/makefunstuff/pairing-buddy/issues/55)).
 - Voice is off until `voice` is in the config. Pair records only while you hold the key (or between two taps). When
   the Neovim that started a recording goes away (it quits or crashes), the recording stops at once and nothing is

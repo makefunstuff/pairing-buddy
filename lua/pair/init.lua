@@ -38,6 +38,8 @@ local ns = draw.ns
 local config = {
   socket = nil, debounce_ms = 2000, max_points = 5, motion = true, glyphs = {},
   accept_key = '<M-y>', jump_key = '<M-j>', useful_key = '<M-u>', noise_key = '<M-n>', listen_key = '<M-t>',
+  listen_mode = 'hold', -- or 'toggle': press to start, press again to ask (see listen.lua)
+  listen_hold_ms = 650, listen_release_ms = 220, listen_silence_ms = false,
   sounds = false, sound_volume = 0.5,
   searches = true, -- your Telescope and snacks.picker searches go to the daemon, for the search trail
   decide_key = '<M-d>', link_key = '<M-l>',
@@ -827,8 +829,13 @@ local function hello()
   -- herdr's socket lets the daemon see your other agents, also when no chat pane runs; the herdr pane this Neovim
   -- runs in, if any, lets Pair show things in the Neovim whose pane has focus.
   local herdr = vim.env.HERDR_SOCKET_PATH and {socket = vim.env.HERDR_SOCKET_PATH} or nil
-  -- Its pid names its own terminals, where the Driver's `type` may go (pane.lua).
-  send({type = 'hello', role = 'editor', cwd = vim.fn.getcwd(), herdr = herdr, pane = vim.env.HERDR_PANE_ID, pid = vim.fn.getpid(), buffers = true})
+  -- The tmux pane it runs in, if any, lets Pair watch that tmux session's panes (src/tmux.mjs). Its pid names its
+  -- own terminals, where the Driver's `type` may go (pane.lua).
+  local tmux = vim.env.TMUX and vim.env.TMUX_PANE and {socket = vim.env.TMUX:match('^[^,]*'), pane = vim.env.TMUX_PANE} or nil
+  send({
+    type = 'hello', role = 'editor', cwd = vim.fn.getcwd(), herdr = herdr, pane = vim.env.HERDR_PANE_ID, tmux = tmux, pid = vim.fn.getpid(),
+    buffers = true,
+  })
   send_accent()
 end
 
@@ -950,7 +957,8 @@ local handlers = {
   revert = revert,
   -- Without herdr: Pair's pane, your terminals and typing into one of them, all in this Neovim (pane.lua).
   pane = function(message) pane.request(message, function(result) send({type = 'reply', id = message.id, result = result}) end) end,
-  terminals = function(message) send({type = 'reply', id = message.id, result = {terminals = pane.terminals()}}) end,
+  terminals = function(message) send({type = 'reply', id = message.id, result = pane.listing()}) end,
+  terminal_text = function(message) send({type = 'reply', id = message.id, result = pane.text(message.buf, message.lines)}) end,
   type_text = function(message) send({type = 'reply', id = message.id, result = pane.type(message.buf, message.text)}) end,
   ledger = ledger.show,
   ledger_detail = ledger.detail,
@@ -1296,6 +1304,7 @@ function M.setup(opts)
   earcons.enabled, earcons.volume = config.sounds, config.sound_volume
   ledger.send = send
   ledger.rate = feedback
+  listen.setup({mode = config.listen_mode, hold_ms = config.listen_hold_ms, release_ms = config.listen_release_ms, silence_ms = config.listen_silence_ms})
   agents.setup({send = send, map_keys = map_keys, unmap_keys = unmap_keys, key_label = key_label, redraw_status = redraw_status}, config.agents_key)
   style.apply()
   local group = vim.api.nvim_create_augroup('pair', {clear = true})
@@ -1321,6 +1330,11 @@ function M.setup(opts)
   -- Going to one of your :terminal buffers makes it the one the Driver's `type` goes to, as herdr's focus does.
   vim.api.nvim_create_autocmd({'TermOpen', 'BufEnter', 'TermEnter'}, {group = group, callback = function(args)
     if state.channel and pane.is_yours(args.buf) then event({kind = 'terminal', pane = pane.id(args.buf)}) end
+  end})
+  -- Going into a terminal, out of it or to another buffer moves the focus Pair knows (src/nvim-panes.mjs), and
+  -- a terminal closing ends the one it watched.
+  vim.api.nvim_create_autocmd({'BufEnter', 'TermEnter', 'TermLeave', 'TermClose'}, {group = group, callback = function()
+    if state.channel then send({type = 'panes'}) end
   end})
   vim.api.nvim_create_autocmd('CursorHold', {group = group, callback = send_cursor})
   -- Scrolling the window you are in is reading, which counts as active time like the cursor moving.
@@ -1348,7 +1362,7 @@ function M.setup(opts)
         local from, to = vim.fn.line('v'), vim.fn.line('.')
         local selection = file and {file = file, from = math.min(from, to), to = math.max(from, to)} or nil
         listen.press(send, (config.listen_key:gsub('^<(.*)>$', '%1')), selection)
-      end, {desc = 'Hold to speak to Pair'})
+      end, {desc = config.listen_mode == 'toggle' and 'Press to speak to Pair, again to ask' or 'Hold to speak to Pair'})
     end
   end
   -- Saving is when Pair runs your tests, if you set a command for the project (see docs/tests-on-save.md).

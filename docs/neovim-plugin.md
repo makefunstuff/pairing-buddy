@@ -11,7 +11,7 @@ The keys exist only while there is something for them to do, and only where you 
 | --- | --- |
 | `Alt-j` | Go where Pair points (`Ctrl-O` comes back), or show a held remark now |
 | `Alt-y` | Take Pair's suggested change, as your own edit |
-| `Alt-t` (hold) | Ask aloud: [push-to-talk](voice.md), when voice is set up |
+| `Alt-t` (hold, or tap twice) | Ask aloud: [push-to-talk](voice.md), when voice is set up |
 | `Alt-u` / `Alt-n` | Tell Pair its last remark was useful / noise |
 | `Alt-l` / `Alt-d` | In a Markdown note: open the code a mark names / log the decision on your line |
 | `Alt-?` | The one idea worth keeping behind Pair's words under your line; again, open its link to the docs |
@@ -30,6 +30,7 @@ require('pair').setup({
   auto_connect = true,
   jump_key = '<M-j>',  -- false for none; :Pair jump works either way
   listen_key = '<M-t>', -- hold it to speak to Pair (docs/voice.md); false for none
+  listen_mode = 'hold', -- 'toggle': press it to start, press it again to ask
   motion = true,       -- false: no fades, the gaze lights one line at a time without its trail, and the Driver's edit lands at once
   glyphs = {},         -- for example {voice = '\u{f444}', wheel = '\u{f030c}'} with a Nerd Font
   searches = true,     -- false: your Telescope and snacks.picker searches stay in Neovim, and there is no search trail
@@ -48,6 +49,9 @@ require('pair').setup({
 | `jump_key` | `'<M-j>'` | Goes where Pair pointed last, or shows a held thought; from one suggestion on to the next. Mapped in Normal mode while it points somewhere or holds a thought |
 | `accept_key` | `'<M-y>'` | Accepts the suggestion under the cursor, else the newest in the buffer. Mapped in Normal mode, only in a buffer with a suggestion and only while one shows. Avoid `<Tab>`: terminals send it for Ctrl-I, the jumplist's forward jump |
 | `listen_key` | `'<M-t>'` | Hold it to speak to Pair ([voice.md](voice.md)). Mapped in Normal and Visual mode from the start |
+| `listen_mode` | `'hold'` | `'hold'`: hold the key and let go, or tap it twice. `'toggle'`: press it to start, press it again to ask, never guessing when you let go; holding it is one press, however long the terminal waits to repeat it ([voice.md](voice.md#4-the-key)) |
+| `listen_hold_ms`, `listen_release_ms` | `650`, `220` | In `'hold'`: no repeat this long after the press is a tap; no repeat this long is letting go. In `'toggle'`: a press this close to another is its repeat; a press this soon after the one that asked is that key's repeat |
+| `listen_silence_ms` | `false` | A number: a recording you do not hold asks after you spoke and paused this long |
 | `useful_key`, `noise_key` | `'<M-u>'`, `'<M-n>'` | Your verdict on Pair's last unasked remark. Mapped in Normal mode only while a remark waits for one |
 | `teach_key` | `'<M-?>'` | Asks for the idea behind Pair's words under your line, then opens its link ([the idea behind it](neovim.md#the-idea-behind-it)). Mapped in Normal mode while they show |
 | `agents_key` | `'<M-a>'` | Goes to the agent whose news Pair relayed, or puts the line away when it has no pane ([agents.md](agents.md)). Mapped in Normal mode while such a line shows |
@@ -110,7 +114,8 @@ to standard ones and does not fade.
 
 ## Statusline
 
-`require('pair').status()` returns one quiet segment while connected, and is empty when the plugin is not connected.
+`require('pair').status()` returns one quiet segment while connected, `◌ pair · reconnecting` while it waits to
+connect again, and is empty when the plugin is not connected (before `:Pair start`, or after `:Pair stop`).
 `require('pair').statusline()` is the same with Pair's highlight groups, for the `statusline` option or a statusline
 plugin's section:
 

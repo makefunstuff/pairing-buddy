@@ -18,7 +18,7 @@ why while the daemon keeps the config it runs. Run `pair doctor` after a change 
 - **Between turns**: new `model` or `models` entries (and their thinking levels). An answer under way finishes on
   the old model; the next one is the new model's, in the same conversation.
 - **For new sessions**: `level` and `sessionRoots`. An open session keeps its own level; `/level` changes it.
-- **After a restart only**: `socket`, `dataDir`, and turning `agents` on or off.
+- **After a restart only**: `socket`, `dataDir`, `scoutPane`, and turning `agents` on or off.
 
 ## Settings
 
