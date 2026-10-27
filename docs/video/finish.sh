@@ -9,7 +9,7 @@ cd "$(dirname "$0")"
 in=${1:-renders/final.mp4}
 short=${2:-renders/short.mp4}
 out=renders/pairing-buddy-tour.mp4
-site=../../site/media
+site=../../site/public/media
 mix=$(mktemp --suffix=.wav)
 trap 'rm -f "$mix"' EXIT
 loud() { ffmpeg -v error -y -i "$1" -vn -af "loudnorm=I=-16:TP=-3:LRA=11,alimiter=limit=0.66:level=false" -ar 48000 "$mix"; }

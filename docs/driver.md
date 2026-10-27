@@ -121,7 +121,7 @@ The same one undo step as any hand-over: `u` takes the edit away, and nothing wa
 
 ## Taking the wheel back
 
-Any key you press in Neovim while Pair has the wheel takes it back (scrolling, clicking and the terminal's focus reports are not keys, so you can scroll to watch), and so does typing at the prompt of one of your shell panes:
+Any key you press in Neovim while Pair has the wheel takes it back (scrolling, clicking and the terminal's focus reports are not keys, so you can scroll to watch), and so does typing at the prompt of one of your shell panes (with zsh's [shell hook](cli.md#pair-shell-hook) in any of your terminals, else in the one with focus):
 
 - While Pair is typing its edit, the edit stops and what it typed so far is undone: one change or none. That key, and any you press until the undo is done, does nothing else, so it cannot change the buffer under a half-typed edit. The model is told `Not changed: the user has taken the wheel back.`
 - The plugin refuses edits from that key on, before the daemon has even heard of it.
