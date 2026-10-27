@@ -44,8 +44,12 @@ export class ScoutPane {
     await this.runs.prepare();
     const {line, sandboxed} = shellLine({setup: this.setup, cwd: this.cwd, runs: this.runs.dir, writable: this.writable, hidden: [...this.host.hidden, ...this.hidden]});
     this.paneId = await this.host.open({cwd: this.cwd, line});
-    await this.runs.ready(this.setup.rc ? RC_READY_MS : READY_MS).catch(error => {
-      throw this.setup.rc ? new Error(`Pair's pane shows no prompt after loading ${this.setup.rc}: does it start another shell?`) : error;
+    await this.runs.ready(this.setup.rc ? RC_READY_MS : READY_MS).catch(async error => {
+      // A pane whose shell never reached its prompt is no use: it goes, and the next run opens a new one.
+      await this.close();
+      if (this.setup.rc) throw new Error(`Pair's pane shows no prompt after loading ${this.setup.rc}: does it start another shell?`);
+      // Most often the sandbox could not start here.
+      throw sandboxed ? new Error('its pane showed no prompt: the sandbox may not start here (`pair doctor` checks it); "scoutPane": {"sandbox": false} in the config runs without it') : error;
     });
     this.log(`opened Pair's pane ${this.paneId}${sandboxed ? ' in the sandbox' : ''}${this.setup.rc ? ` with ${this.setup.rc}` : ''}`);
   }

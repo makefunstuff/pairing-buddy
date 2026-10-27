@@ -168,6 +168,15 @@ test('without a board, herdr\'s agents are still read and relayed; a board that 
   }
 });
 
+test('a board command that is not installed is not logged: most machines have none', async () => {
+  const dir = scratch('pair-board-');
+  const logged = [];
+  const agents = new AgentBoard({board: 'no-such-board-command', dir, log: line => logged.push(line)});
+  await agents.poll();
+  assert.deepEqual(agents.list(), []);
+  assert.deepEqual(logged, []);
+});
+
 test('while no session listens there is no baseline: what changed meanwhile is no news for the next session', async () => {
   const dir = scratch('pair-board-');
   const herdr = await fakeHerdr(join(dir, 'herdr.sock'), {agents: [{pane_id: 'w2:p1', cwd: '/n', agent: 'pi', agent_status: 'working'}]});

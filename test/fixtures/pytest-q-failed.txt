@@ -1,0 +1,20 @@
+F.F                                                                      [100%]
+=================================== FAILURES ===================================
+_______________________________ test_waits_long ________________________________
+
+    def test_waits_long():
+>       assert TIMEOUT == 30000
+E       assert 5000 == 30000
+
+test_ws.py:4: AssertionError
+_________________________________ test_raises __________________________________
+
+    def test_raises():
+>       raise KeyError("socket")
+E       KeyError: 'socket'
+
+test_ws.py:10: KeyError
+=========================== short test summary info ============================
+FAILED test_ws.py::test_waits_long - assert 5000 == 30000
+FAILED test_ws.py::test_raises - KeyError: 'socket'
+2 failed, 1 passed in 0.01s

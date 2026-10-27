@@ -79,8 +79,8 @@ pair shell-hook fish | source    # fish, in config.fish
 Open Neovim in your project. In herdr, run `pair` in the pane next to it: a narrow chat pane opens on the right.
 Without herdr, run `:Pair chat` in Neovim, or skip the chat: a Neovim alone is a whole session.
 
-The session takes its goal from the herdr board task of your branch, or from the branch name, and asks only when
-there is neither. Then work as usual. Pair stays quiet until something is worth a word, and shows it under your line:
+The session takes its goal from the herdr board task of your branch, or from the branch name, and asks in the chat
+only when there is neither (on `main`, say); `:Pair goal <what>` sets it from Neovim. Then work as usual. Pair stays quiet until something is worth a word, and shows it under your line:
 
 - `Alt-j` goes where Pair points; `Ctrl-O` comes back.
 - `Alt-y` takes a suggested change.

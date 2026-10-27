@@ -141,7 +141,10 @@ export class AgentBoard {
       if (this.failing[name]) this.log(`agents: ${name} answers again`);
       this.failing[name] = null;
     } catch (error) {
-      if (this.failing[name] !== error.message) this.log(`agents: ${name}: ${error.message}`);
+      // A board command not on PATH is a board that is not installed, as on most machines: nothing to read, nothing
+      // to log. A path of the user's own that is missing is logged.
+      const notInstalled = name === 'board' && error.code === 'ENOENT' && !this.board?.includes('/');
+      if (this.failing[name] !== error.message && !notInstalled) this.log(`agents: ${name}: ${error.message}`);
       this.failing[name] = error.message;
     }
     return this.read[name];

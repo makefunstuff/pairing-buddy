@@ -4,7 +4,7 @@ import {existsSync, mkdtempSync, rmSync} from 'node:fs';
 import {homedir, tmpdir} from 'node:os';
 import {basename, delimiter, dirname, join} from 'node:path';
 import {credentialState} from './auth.mjs';
-import {authPath, configPath, mostThinking, replyTokens, sameModel, sameServer, whereIs} from './config.mjs';
+import {authPath, configPath, mostThinking, oneAtATime, replyTokens, sameModel, sameServer, whereIs} from './config.mjs';
 import {SMALL_CONTEXT} from './context.mjs';
 import {loadSizedConfig} from './context-window.mjs';
 import {fileCredentialStore, readableByOthers} from './credentials.mjs';
@@ -202,12 +202,15 @@ export async function voiceCheck(voice, found = name => onPath(name, process.env
 }
 
 /** How Pair's pane runs its commands: with the user's rc file or not, in the sandbox or not. */
-export function paneCheck(setup, works = sandboxWorks) {
+export function paneCheck(setup, works = sandboxWorks, installed = () => onPath('bwrap', process.env)) {
   if (setup.rc && !existsSync(setup.rc)) return fail('pane', `scoutPane.rc is ${tilde(setup.rc)}, which is not there`);
   const rc = setup.rc ? `, with ${tilde(setup.rc)}` : '';
   if (setup.sandbox === false) return ok('pane', `no sandbox (scoutPane.sandbox is false)${rc}`);
   if (works()) return ok('pane', `commands run in a bubblewrap sandbox, network ${setup.network ? 'on' : 'off'}${rc}`);
   if (setup.sandbox === true) return fail('pane', 'scoutPane.sandbox is true, and bubblewrap (bwrap) is not installed or may not make namespaces here: Pair\'s pane will not open');
+  if (installed()) {
+    return warn('pane', `no sandbox: bubblewrap is installed but cannot make its sandbox here (a container may forbid it), so Pair's commands run without one; set scoutPane.sandbox to false to say that is fine${rc}`);
+  }
   return warn('pane', `no sandbox: install bubblewrap (bwrap) to run Pair's commands in one, or set scoutPane.sandbox to false${rc}`);
 }
 
@@ -324,6 +327,11 @@ export function rolesCheck({watcher, partner}, slot) {
     ? `. Since the daemon started: ${count(slot.scores, 'score')}, ${seconds(slot.scoreMedianMs)} each (median); your questions cancelled `
       + `${count(slot.cancelled.scores, 'score')} and ${count(slot.cancelled.remarks, 'remark')} still at work`
     : '';
+  if (!oneAtATime(watcher, partner)) {
+    return ok('roles', `${sameModel(watcher, partner) ? 'one model serves both' : 'both roles on one provider'}: the Watcher asks for one number `
+      + `without thinking, the Partner thinks. ${watcher.provider} answers both at once, so neither waits for the other`
+      + (slot?.scores ? `. Since the daemon started: ${count(slot.scores, 'score')}, ${seconds(slot.scoreMedianMs)} each (median)` : ''));
+  }
   if (sameModel(watcher, partner)) {
     return ok('roles', 'one model serves both: the Watcher asks it for one number without thinking, the Partner thinks. '
       + `The Watcher waits while the Partner works, and your questions go first${measured}`);

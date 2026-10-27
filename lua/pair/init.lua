@@ -1070,6 +1070,7 @@ local function try_connect()
   end
   local file = project_path(0)
   if file then event({kind = 'enter', file = file}) end
+  send_cursor()
   places.send(true)
   return true
 end
@@ -1217,7 +1218,11 @@ local commands = {
     if M.connect() and arg ~= '' then send({type = 'goal', text = arg}) end
   end,
   goal = function(arg) send({type = 'goal', text = arg}) end,
-  ask = function(arg, selection) send({type = 'ask', text = arg, selection = selection}) end,
+  ask = function(arg, selection)
+    -- The answer starts under the line you are on: Pair knows it before the cursor has moved even once.
+    if not selection then send_cursor() end
+    send({type = 'ask', text = arg, selection = selection})
+  end,
   level = function(arg)
     state.level = arg
     send({type = 'level', level = arg})

@@ -146,7 +146,7 @@ Runs every test that needs no model, in under a minute, with scripted models and
   save end to end: the statusline for each, the remark on the same numbers, the debug line counted and `Alt-j` to
   it, `:Pair runs` with `⏎` and `x` removing the print unsaved.
 - **Tests on save.** The JSON reports of go test (subtests, panics, build failures), jest and vitest, and the real
-  output of cargo test, pytest (`-v`, `-rA`, JUnit), zig test, zig build test, ctest, and node's TAP and JUnit
+  output of cargo test, pytest (plain, `-q`, `-v`, `-rA`, JUnit), zig test, zig build test, ctest, and node's TAP and JUnit
   reporters, each test placed at its line in the project that printed it (`test.each` and template titles too); runs
   in Pair's pane one at a time, a later save stopping a stale run, narrowed to the affected Go packages, jest, vitest
   and pytest files after the baseline; the regression trigger raised once per run with new failures.

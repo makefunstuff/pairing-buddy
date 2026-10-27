@@ -375,6 +375,24 @@ test('several suggestions at once: each its own ghost diff, the jump key goes fr
   }
 });
 
+test(':Pair ask before the cursor has ever been reported still answers under your line', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
+  const {partner, messages, remote, keys, stop} = await pairInNvim('know the code', {knownKeys: ['M-?']});
+  const words = () => JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('pair'), 0, -1, {details = true}))")`))
+    .filter(([, , , details]) => details.virt_lines)
+    .map(([, row, , details]) => [row, details.virt_lines.map(line => line.map(chunk => chunk[0]).join('').trim())]);
+  try {
+    // Headless, CursorHold never fires: the daemon hears of the cursor only from the question itself.
+    keys('3G');
+    partner.setResponses([fauxAssistantMessage([fauxText('z is three.')])]);
+    keys(':Pair ask what is z?<CR>');
+    await until(() => messages.some(message => message.text === 'z is three.'), 'the answer');
+    await until(() => words().length, 'the answer under the line');
+    assert.deepEqual(words(), [[2, ['● z is three.']]]);
+  } finally {
+    await stop();
+  }
+});
+
 test('answers to typed questions show their start under the line they were about, the rest in the chat', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
   const {partner, messages, remote, keys, send, stop} = await pairInNvim('know the code', {knownKeys: ['M-?']});
   const words = () => JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('pair'), 0, -1, {details = true}))")`))

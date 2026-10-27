@@ -794,12 +794,14 @@ export class PairSession {
    * ({file, from, to}) is the lines they asked about. Resolves with what Pair said, '' when it only pointed or the
    * text became the goal.
    */
-  async ask(text, selection = null) {
+  async ask(text, selection = null, {question = false} = {}) {
     if (this.role === 'driver' && this.keepWheel && !this.busy) return this.drive(text, selection);
     this.message('user', selection ? `${text} (${relative(this.root, selection.file)}:${selection.from}-${selection.to})` : text);
     this.usedAt = this.now();
     this.worked = true;
-    if (!this.state.goal && !this.goalSkipped && !selection) {
+    // Typed in the chat, which asked for the goal, the first words are the goal. A `question` (:Pair ask, or asked
+    // aloud, in Neovim, which shows no such prompt) is always answered.
+    if (!this.state.goal && !this.goalSkipped && !selection && !question) {
       if (NO_GOAL.test(text)) {
         this.goalSkipped = true;
         this.message('system', 'No goal then. Ask anything; /goal sets one.');
@@ -817,10 +819,10 @@ export class PairSession {
    * A typed question (:Pair ask, the chat): the answer goes to the chat, and to the editor to show its start under
    * the line it was about: the last selected line, else the line the user was on when they asked.
    */
-  async askTyped(text, selection = null) {
+  async askTyped(text, selection = null, options = {}) {
     const {file, cursor} = this.state;
     const place = selection ? {file: selection.file, line: selection.to} : file && cursor ? {file: join(this.root, file), line: cursor.line} : null;
-    const words = await this.ask(text, selection);
+    const words = await this.ask(text, selection, options);
     if (place && (words || this.target)) this.notify('editor', {type: 'answered', ...place, text: words, pointed: Boolean(this.target)});
   }
 
@@ -1314,8 +1316,22 @@ export class PairSession {
     return 'shown';
   }
 
+  /**
+   * Runs `work` after the points and suggestions called before it. A model may call several at once, and their files
+   * are read in parallel: in order, the first suggestion of a turn is the model's first, not the one read first.
+   */
+  inCallOrder(work) {
+    const done = (this.placing ?? Promise.resolve()).catch(() => {}).then(work);
+    this.placing = done;
+    return done;
+  }
+
   /** Marks lines in the editor, with `code` on the first one underlined; the last point of a turn is where the jump key goes. */
-  async point({file, line, endLine, note, code}) {
+  point(args) {
+    return this.inCallOrder(() => this.pointNow(args));
+  }
+
+  async pointNow({file, line, endLine, note, code}) {
     if (this.asksBack) return 'Not in this remark: ask your one question in words.';
     const path = await projectFile(this.root, file);
     if (!path) return `No file ${file} in the project`;
@@ -1339,7 +1355,11 @@ export class PairSession {
   }
 
   /** Shows a change as an inline diff in the editor; the user accepts it with one key or ignores it. */
-  async suggest({file, line, endLine, text, note}) {
+  suggest(args) {
+    return this.inCallOrder(() => this.suggestNow(args));
+  }
+
+  async suggestNow({file, line, endLine, text, note}) {
     const path = await projectFile(this.root, file);
     if (!path) return `No file ${file} in the project`;
     if (endLine < line) return `end_line ${endLine} is before line ${line}`;

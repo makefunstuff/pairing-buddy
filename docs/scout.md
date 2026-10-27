@@ -115,7 +115,7 @@ The output of every test run, yours, Scout's or the one on save, is parsed for t
 | go test | `--- FAIL:`, `ok`/`FAIL` package lines | `--- FAIL:` names (subtests rather than their parents) | The first line under the first failure, or the compiler error |
 | jest | `Tests: ... total` | `●` headers | The first line under the first header, with `Expected`/`Received` and the location |
 | vitest | `Tests  ... (N)` | `FAIL` lines | The error under the first `FAIL`, with its location |
-| pytest | the `=== ... in 0.12s ===` summary | `FAILED`/`ERROR` lines | The message of the first `FAILED` line, else the first `E` line |
+| pytest | the `=== ... in 0.12s ===` summary, or with `-q` its bare `2 failed, 1 passed in 0.12s` line | `FAILED`/`ERROR` lines | The message of the first `FAILED` line, else the first `E` line |
 | node --test (spec reporter) | `ℹ tests N` | `✖` lines | The error under the first failing test |
 | go test -json | lines of JSON events with `Action` and `Package` | tests with a `fail` event (subtests rather than their parents) | `file.go:12: message` from the test's output, a panic and its first frame outside the runtime, or the compiler error |
 | jest --json, vitest --reporter=json | a JSON line with `testResults` (also among npm's own lines) | `failed` assertion results, named `describe › test` | The first line of the failure message, with `Expected`/`Received`, and its line in the test file from the stack |

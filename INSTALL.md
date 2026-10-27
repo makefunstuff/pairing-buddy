@@ -61,6 +61,11 @@ Write down four facts for the steps below:
      a browser. Tell them that whether a plan may be used from a tool like Pair is up to the provider; Anthropic's
      Claude subscriptions may not (details in [models.md](docs/models.md#before-you-use-a-subscription)).
 
+   Without a GPU, a local model is too slow for the Watcher (it should answer in about a second), so b. is the
+   practical choice; DeepSeek, for one, answers in about a second and costs little. Tell them that with b. or c. their
+   code goes to the provider (what Pair sends: [data.md](docs/data.md)), so on a work machine they should check that
+   their employer allows that provider.
+
    And: **one model for both roles, or two?** Pair asks a small, fast **Watcher** whether a moment is worth a word, and
    a **Partner** that writes what it says. One model for both is simplest. With a paid key or a subscription, every
    Watcher question is a request, so a small local or cheap Watcher next to a cloud Partner saves money.
@@ -205,7 +210,7 @@ not work (some containers forbid user namespaces); `pair doctor` tells, and Pair
 command -v pair && npm ls -g pairing-buddy
 ```
 
-Expected: a path ending in `/bin/pair`, and a tree ending in `pairing-buddy@0.9.0` (or a newer version). If so, skip to step 5 (to upgrade, see [Upgrade](#upgrade)).
+Expected: a path ending in `/bin/pair`, and a tree ending in `pairing-buddy@0.10.0` (or a newer version). If so, skip to step 5 (to upgrade, see [Upgrade](#upgrade)).
 
 **Do:**
 
@@ -257,7 +262,7 @@ The `Models:` line names the example's model until step 6.
 | --- | --- | --- |
 | systemd | `systemctl --user is-enabled pairing-buddy.service; systemctl --user is-active pairing-buddy.service` | `enabled` and `active` |
 | launchd | `launchctl print gui/$(id -u)/io.github.makefunstuff.pairing-buddy \| grep 'state ='` | `state = running` |
-| none | `pair doctor 2>&1 \| grep -E '^[^ ]+ (service\|daemon) '` | `! service  no systemd or launchd here: …` and `✓ daemon   version 0.9.0, …` |
+| none | `pair doctor 2>&1 \| grep -E '^[^ ]+ (service\|daemon) '` | `! service  no systemd or launchd here: …` and `✓ daemon   version 0.10.0, …` |
 
 If it fails:
 

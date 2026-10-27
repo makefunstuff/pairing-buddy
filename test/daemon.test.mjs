@@ -36,6 +36,29 @@ function testConfig(dataDir, settings = {}) {
   });
 }
 
+test('without a goal, a question from Neovim is answered; the first words typed in the chat are the goal', {timeout: 20_000}, async () => {
+  const project = scratch('pair-project-'); // no git: no branch or board task to take a goal from
+  const config = testConfig(scratch('pair-data-'));
+  const {partner, pairModels} = scriptedModels();
+  const daemon = await startDaemon(config, {pairModels, probe: answers, log: () => {}});
+  const editor = client(config.socket, {type: 'hello', role: 'editor', cwd: project});
+  const chat = client(config.socket, {type: 'hello', role: 'chat', cwd: project});
+  try {
+    await chat.next(message => message.text === 'What are we doing this session? Type the goal here, or "later".');
+    partner.setResponses([fauxAssistantMessage([fauxText('It reads the config.')])]);
+    editor.send({type: 'ask', text: 'what does main do?'});
+    await chat.next(message => message.sender === 'pair' && message.text === 'It reads the config.');
+    assert.ok(!chat.received.some(message => message.text === 'Goal: what does main do?'), 'a question is no goal');
+
+    chat.send({type: 'ask', text: 'speed up the parser'});
+    await chat.next(message => message.text === 'Goal: speed up the parser');
+  } finally {
+    editor.close();
+    chat.close();
+    await daemon.close();
+  }
+});
+
 test('a repeated failure becomes a pointed remark; a question is answered; :Pair end writes a note', {timeout: 20_000}, async () => {
   const project = scratch('pair-project-');
   writeFileSync(join(project, 'ws.test.js'), 'test("reconnect", () => {\n  expect(timeout).toBe(30)\n})\n');

@@ -46,6 +46,20 @@ pay-per-use; the Partner runs only when there is something to say:
 **One cloud model for both.** `"model": {"provider": "openai", "model": "..."}` works too, but the Watcher asks
 about every candidate remark, and each of those calls is a paid request or counts against a plan's limits.
 
+**No GPU.** A local model on the CPU is too slow for the Watcher, so take one cheap, fast cloud model for both roles.
+With DeepSeek, for example (`pair auth login deepseek`, then `pair auth models deepseek` for the ids):
+
+```jsonc
+{
+  "model": {"provider": "deepseek", "model": "deepseek-flash"}
+}
+```
+
+Measured on a fresh install: `pair doctor` gets an answer in about 0.8 s, the Watcher's calls take about a second, a
+short question is answered in 3 to 5 s, and one that has Pair trace through code with thinking in up to a minute or
+two. A cloud provider answers both roles at once, so the Watcher never waits for the Partner. Your code goes to the
+provider ([what Pair sends](data.md)): on work code, check that your employer allows that provider first.
+
 `"watcher": "same as partner"` in `models` is the same as one `model`. After a change, run `pair doctor`: it checks
 that each model answers, how fast, and that the Partner thinks.
 
@@ -68,7 +82,9 @@ pair auth logout anthropic  # also `pair logout anthropic`
   (or prints the link) and finishes on a local callback. On a machine without a browser, choose the copy-code or
   device-code login where the provider offers one. The token renews itself before it expires, under a lock, so the
   daemon, `pair doctor` and `pair auth` never renew it twice.
-- **API keys**: every provider takes one. The key is typed at a prompt that does not echo it. A key for your own
+- **API keys**: every provider takes one. The key is typed at a prompt that does not echo it, or piped in from a
+  password manager: `pass show deepseek | pair auth login deepseek` (one answer per line; input that ends before an
+  answer fails with exit 1). A key for your own
   server: `pair auth login my-server` (any name pi-ai does not know), then `"auth": "my-server"` in its model entry.
 - The daemon reads the file as it needs a key, so a login takes effect without a restart.
 - **Keys from environment variables** (`apiKeyEnv`): a service started at login does not get your shell's
@@ -134,7 +150,9 @@ One model can serve both roles, for example the one model a local server has roo
 - **As the Partner**, with thinking at the levels of `thinking`, as with a Partner of its own.
 
 The server never switches models, so it never reloads. Many local servers answer one request at a time, so when both
-roles share a server (one model, or two models on one `baseUrl`), Pair puts the requests in order:
+roles share a server of your own (one model, or two models on one `baseUrl`), Pair puts the requests in order. A cloud
+`provider` answers many requests at once, so there the Watcher and the Partner never wait for each other, and none of
+this applies:
 
 - **The Watcher waits while the Partner works.** A score never queues behind a long answer that thinks: the moment is
   looked at again once the answer is done, and then scored at once. A remark nobody asked for can wait.

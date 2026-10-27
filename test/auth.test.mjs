@@ -155,3 +155,23 @@ test('a pending question gives way when the login finishes in the browser', asyn
     terminal.interaction.close();
   }
 });
+
+test('a key piped in (`… | pair auth login ID`) is read even when the pipe ended before the question; no answer fails', async () => {
+  const piped = async text => {
+    const input = new PassThrough();
+    const output = new PassThrough();
+    let shown = '';
+    output.on('data', chunk => { shown += chunk; });
+    const interaction = terminalInteraction({input, output, openUrl: () => {}});
+    input.end(text);
+    await new Promise(resolve => setTimeout(resolve, 20)); // read to its end before Pair asks
+    try {
+      return {answer: await interaction.prompt({type: 'secret', message: 'API key:'}), shown};
+    } finally {
+      interaction.close();
+    }
+  };
+  assert.deepEqual(await piped('sk-piped\n'), {answer: 'sk-piped', shown: 'API key: \n'});
+  assert.equal((await piped('sk-piped')).answer, 'sk-piped', 'without a newline at the end');
+  await assert.rejects(piped(''), /the input ended before an answer was given/);
+});

@@ -152,7 +152,9 @@ function pytestTests(text) {
 const escapeRegExp = text => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 function pytest(text) {
-  const summary = /^=+ (.*\b(passed|failed|errors?)\b.* in [\d.]+s.*?) =+$/m.exec(text);
+  // Between rows of = by default; bare with -q ("18 failed, 747 passed in 10.65s").
+  const summary = /^=+ (.*\b(passed|failed|errors?)\b.* in [\d.]+s.*?) =+$/m.exec(text)
+    ?? /^((?:\d+ (?:passed|failed|errors?|skipped|deselected|xfailed|xpassed|warnings?)(?:, |\b))+ in [\d.]+s\b.*)$/m.exec(text);
   if (!summary) return null;
   const failures = [...text.matchAll(/^(?:FAILED|ERROR) (\S+)(?: - (.*))?$/gm)];
   const tests = pytestTests(text);

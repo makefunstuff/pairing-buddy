@@ -6,7 +6,7 @@ import {createServer} from 'node:net';
 import {basename, join} from 'node:path';
 import {AgentRelay, itemName} from './agent-relay.mjs';
 import {AgentBoard, STATUSES} from './agents.mjs';
-import {sameServer} from './config.mjs';
+import {oneAtATime} from './config.mjs';
 import {goalFromContext, SOURCES} from './context-card.mjs';
 import {loadSizedConfig} from './context-window.mjs';
 import {byUse, herdrFocus, noteEditor} from './editors.mjs';
@@ -100,8 +100,8 @@ export async function startDaemon(config, {
   let nextRequest = 0;
   const startedAt = Date.now();
 
-  // Both roles on one server, which may answer one request at a time: the slot puts their requests in order.
-  const slot = new ModelSlot({exclusive: sameServer(config.models.watcher, config.models.partner)});
+  // Both roles on one server of your own, which may answer one request at a time: the slot puts their requests in order.
+  const slot = new ModelSlot({exclusive: oneAtATime(config.models.watcher, config.models.partner)});
   // How long the Watcher's calls take, and what Pair asks about while they take long (see pace.mjs).
   const pace = new Pace({on: config.watcherPace ?? true, log});
   let models; // what the daemon builds on the config's models (see buildModels); a config change rebuilds it
@@ -164,7 +164,7 @@ export async function startDaemon(config, {
     const chooseWatcherModel = shareServer(config.models.watcher, config.models.partner)
       ? followLoaded({entries: config.models, watcher: pairModels.watcher, partner: pairModels.partner, log})
       : async () => pairModels.watcher;
-    slot.exclusive = sameServer(config.models.watcher, config.models.partner);
+    slot.exclusive = oneAtATime(config.models.watcher, config.models.partner);
     const partner = await openPartner({
       storage: join(config.dataDir, 'partner.sqlite'),
       models: pairModels.models,
@@ -497,7 +497,7 @@ export async function startDaemon(config, {
     if (!listeners.has(session.root)) {
       listeners.set(session.root, new Listener({
         voice: config.voice, session, dir: join(config.dataDir, 'voice'),
-        ask: (text, selection) => session.ask(text, selection),
+        ask: (text, selection) => session.ask(text, selection, {question: true}),
         log: line => log(`[${basename(session.root)}] ${line}`),
       }));
     }
@@ -677,7 +677,7 @@ export async function startDaemon(config, {
     if (!session) return sendMessage(client.socket, {type: 'message', sender: 'system', text: 'No active session; send hello first', at: Date.now()});
     if (client.role === 'editor') noteEditor(client, message);
     if (message.type === 'event') return receive(session, message.event);
-    if (message.type === 'ask') return session.askTyped(message.text, message.selection ?? null);
+    if (message.type === 'ask') return session.askTyped(message.text, message.selection ?? null, {question: client.role === 'editor'});
     if (message.type === 'goal') return session.setGoal(message.text);
     if (message.type === 'first' && typeof message.text === 'string' && message.text.trim()) return session.setFirst(message.text.trim());
     if (message.type === 'level') return session.setLevel(message.level);
