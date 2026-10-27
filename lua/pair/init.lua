@@ -38,6 +38,8 @@ local ns = draw.ns
 local config = {
   socket = nil, debounce_ms = 2000, max_points = 5, motion = true, glyphs = {},
   accept_key = '<M-y>', jump_key = '<M-j>', useful_key = '<M-u>', noise_key = '<M-n>', listen_key = '<M-t>',
+  listen_mode = 'hold', -- or 'toggle': press to start, press again to ask (see listen.lua)
+  listen_hold_ms = 650, listen_release_ms = 220, listen_silence_ms = false,
   sounds = false, sound_volume = 0.5,
   searches = true, -- your Telescope and snacks.picker searches go to the daemon, for the search trail
   decide_key = '<M-d>', link_key = '<M-l>',
@@ -1302,6 +1304,7 @@ function M.setup(opts)
   earcons.enabled, earcons.volume = config.sounds, config.sound_volume
   ledger.send = send
   ledger.rate = feedback
+  listen.setup({mode = config.listen_mode, hold_ms = config.listen_hold_ms, release_ms = config.listen_release_ms, silence_ms = config.listen_silence_ms})
   agents.setup({send = send, map_keys = map_keys, unmap_keys = unmap_keys, key_label = key_label, redraw_status = redraw_status}, config.agents_key)
   style.apply()
   local group = vim.api.nvim_create_augroup('pair', {clear = true})
@@ -1359,7 +1362,7 @@ function M.setup(opts)
         local from, to = vim.fn.line('v'), vim.fn.line('.')
         local selection = file and {file = file, from = math.min(from, to), to = math.max(from, to)} or nil
         listen.press(send, (config.listen_key:gsub('^<(.*)>$', '%1')), selection)
-      end, {desc = 'Hold to speak to Pair'})
+      end, {desc = config.listen_mode == 'toggle' and 'Press to speak to Pair, again to ask' or 'Hold to speak to Pair'})
     end
   end
   -- Saving is when Pair runs your tests, if you set a command for the project (see docs/tests-on-save.md).
