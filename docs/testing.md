@@ -170,8 +170,9 @@ Stacks can name a `provider` too, with its login or key from `pair auth`. Withou
   point at its cause, a `-Wformat` warning a point at the `printf`, and an unused variable silence.
 - **The hand-over without a test** (`test/live/hand-over.test.mjs`): the captures' hash table, run once with
   `make -s run` as the user did, then handed over with "avg probe stays under 2". One edit, one run of the user's
-  command on the unsaved buffer in the scratch copy, and a hand-back with `✓` and the line the run printed; the file
-  on disk stays as it was.
+  command on the unsaved buffer in the scratch copy, and a hand-back with the line the run printed and a `✓` or `✗`
+  that agrees with it (under 2 at that load takes more than a good hash, and the model does not always get there; the
+  test prints whether it did); the file on disk stays as it was.
 - **The exploration loop** (`test/live/loop.test.mjs`): the captures' hash table built and run for real with
   `make run`, four times. The same numbers after `* 31` score above the bar and get a point at the cause with the
   reason, and the shift that ends the hunt scores above the bar and gets a line with the new number. Its runs go

@@ -131,7 +131,7 @@ function realProject(files, {partner, buffer, sandbox = false}) {
   };
   const pair = new PairSession({
     record: {id: 3, root, conversation_id: 7, goal: 'probe', level: 'normal'},
-    store: {addMessage() {}, addAction: () => 1, updateAction() {}, setRole() {}},
+    store: {addMessage() {}, addAction: () => 1, updateAction() {}, lastRemark: () => null, setRole() {}},
     partner,
     score: async () => ({value: 9, reason: 'worth it'}),
     typingPauseMs: 2000,

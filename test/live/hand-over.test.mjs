@@ -34,7 +34,7 @@ function project() {
 
 describe('the hand-over without a test, on live models', {skip: !stacks.length ? SKIP_REASON : hasBuild ? false : 'needs cc and make'}, () => {
   for (const stack of stacks) {
-    test(`${stack.name}: an intent and a number to reach: one edit, the unsaved buffer built and run, ✓ with the number`, {timeout: 300_000}, async t => {
+    test(`${stack.name}: an intent and a number to reach: one edit, the unsaved buffer built and run, ✓ or ✗ with the number`, {timeout: 300_000}, async t => {
       const {root, output, exit} = project();
       let buffer = PROBE;
       let handback = null;
@@ -51,7 +51,7 @@ describe('the hand-over without a test, on live models', {skip: !stacks.length ?
       const conversation = await partner.createConversation();
       session = new PairSession({
         record: {id: 1, root, conversation_id: conversation, goal: 'see how well the entity table spreads its keys', level: 'normal', role: 'navigator'},
-        store: {addMessage() {}, addAction: () => 1, updateAction() {}, setRole() {}, setGoal() {}},
+        store: {addMessage() {}, addAction: () => 1, updateAction() {}, lastRemark: () => null, setRole() {}, setGoal() {}},
         partner, score: async () => ({value: 0, reason: ''}), typingPauseMs: 2000,
         notify: (_to, message) => { if (message.type === 'handback') handback = message; return 1; },
         requestEditor: async message => {
@@ -72,8 +72,12 @@ describe('the hand-over without a test, on live models', {skip: !stacks.length ?
       assert.equal(tools.filter(call => call.name === 'edit').length, 1, 'one edit');
       assert.equal(session.scout.ran.length, 1, 'one run, by Pair, on the unsaved buffer');
       assert.match(session.scout.ran[0], /\.unsaved\/tree' && \(make -s run\) > /, 'with the user\'s command, in the scratch copy');
-      assert.equal(handback?.tests, 'pass', 'the run met the target');
-      assert.match(handback.check, /^avg probe (0|1)\.\d+$/, 'the line the run printed for it');
+      // Under 2 at this load takes more than a good hash, and a model does not always find it: the check has to say
+      // which it was, with the number the run printed.
+      const printed = /^avg probe (\d+(?:\.\d+)?)$/.exec(handback?.check ?? '');
+      assert.ok(printed, 'the hand-back has the line the run printed for the target');
+      t.diagnostic(`reached the target: ${Number(printed[1]) < 2}`);
+      assert.equal(handback.tests, Number(printed[1]) < 2 ? 'pass' : 'fail', 'its mark says whether the number met the bound');
       assert.ok(handback.text.trim().length > 0, 'Pair says what it changed');
       assert.equal(readFileSync(join(root, 'probe.c'), 'utf8'), PROBE, 'nothing was written to disk');
     });
