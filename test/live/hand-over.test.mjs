@@ -5,10 +5,10 @@
 // played by an in-memory buffer, so the files on disk must stay as they were.
 import assert from 'node:assert/strict';
 import {execFileSync, spawnSync} from 'node:child_process';
-import {copyFileSync, mkdtempSync, readFileSync, writeFileSync} from 'node:fs';
+import {copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {describe, test} from 'node:test';
+import {after, describe, test} from 'node:test';
 import {MemoryStorage} from '@earendil-works/pi-durable';
 import {openPartner} from '../../src/partner.mjs';
 import {PairSession} from '../../src/session.mjs';
@@ -21,10 +21,13 @@ const PROJECT = new URL('../../docs/captures/loop/', import.meta.url);
 const PROBE = readFileSync(new URL('probe.c', PROJECT), 'utf8');
 const hasBuild = ['cc', 'make'].every(tool => spawnSync(tool, ['--version']).status === 0);
 const stacks = liveStacks();
+const scratch = []; // the projects made, removed when the tests end
+after(() => scratch.forEach(dir => rmSync(dir, {recursive: true, force: true})));
 
 /** The loop project in a scratch git repository, built and run once as the user did: its folder and that run. */
 function project() {
   const root = mkdtempSync(join(tmpdir(), 'pair-live-hand-over-'));
+  scratch.push(root);
   copyFileSync(new URL('Makefile', PROJECT), join(root, 'Makefile'));
   writeFileSync(join(root, 'probe.c'), PROBE);
   execFileSync('git', ['init', '-q'], {cwd: root});

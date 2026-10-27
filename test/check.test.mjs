@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import {execFileSync, spawnSync} from 'node:child_process';
-import {mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync} from 'node:fs';
+import {mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {test} from 'node:test';
+import {after, test} from 'node:test';
 import {createModels, fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall} from '@earendil-works/pi-ai';
 import {MemoryStorage} from '@earendil-works/pi-durable';
 import {checkCommand, judge, markOf, numberFor, parseHandOver, targetOf} from '../src/check.mjs';
@@ -15,6 +15,10 @@ import {createPairModels} from '../src/models.mjs';
 import {parseConfig} from '../src/config.mjs';
 import {openPartner} from '../src/partner.mjs';
 import {bashWithoutCores} from './no-core.mjs';
+
+// The scratch folders the real-run tests make, removed when the file's tests end.
+const scratch = [];
+after(() => scratch.forEach(dir => rmSync(dir, {recursive: true, force: true})));
 
 const has = (command, flag = '--version') => spawnSync(command, [flag]).status === 0;
 
@@ -138,12 +142,14 @@ int main(void) {
  */
 function realProject(files, {partner, buffer, sandbox = false, answer = true}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'pair-check-')));
+  scratch.push(root);
   for (const [path, text] of Object.entries(files)) {
     mkdirSync(join(root, path, '..'), {recursive: true});
     writeFileSync(join(root, path), text);
   }
   execFileSync('git', ['init', '-q'], {cwd: root});
   const runs = mkdtempSync(join(tmpdir(), 'pair-check-runs-'));
+  scratch.push(runs);
   const sent = [];
   const ran = [];
   const pane = {
