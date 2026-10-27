@@ -9,7 +9,7 @@ import {PairSession, runReport} from '../src/session.mjs';
 function session({score = async () => ({value: 9, reason: 'worth it'}), answer = 'Line 2 is off.'} = {}) {
   const asked = [];
   const sent = [];
-  const store = {addMessage() {}, addAction: () => 1, updateAction() {}, setGoal() {}, setLevel() {}, endSession() {}, addRemark: () => 1, dropRemark() {}};
+  const store = {addMessage() {}, addAction: () => 1, updateAction() {}, setGoal() {}, setLevel() {}, endSession() {}, lastRemark: () => null, showRemark() {}, addRemark: () => 1, dropRemark() {}};
   const partner = {thinkingOf: () => 'off', ask: async (_id, input) => { asked.push(input); return answer; }};
   const pair = new PairSession({
     record: {id: 1, root: '/project', conversation_id: 7, goal: 'fix it', level: 'normal'},
@@ -67,7 +67,7 @@ test('an unasked remark that arrives while the user types again waits for their 
   const sent = [];
   const pair = new PairSession({
     record: {id: 1, root: process.cwd(), conversation_id: 7, goal: 'fix it', level: 'normal'},
-    store: {addMessage() {}, addAction: () => 1, updateAction() {}, addRemark: () => 1, dropRemark() {}},
+    store: {addMessage() {}, addAction: () => 1, updateAction() {}, lastRemark: () => null, showRemark() {}, addRemark: () => 1, dropRemark() {}},
     // The Partner takes 6 s; the user types again half a second before it answers.
     partner: {thinkingOf: () => 'off', ask: async () => {
       clock += 5500;
@@ -126,7 +126,7 @@ function scoutSession({results = {}, chat = true} = {}) {
   };
   const pair = new PairSession({
     record: {id: 1, root: process.cwd(), conversation_id: 7, goal: 'fix it', level: 'normal', role: 'scout'},
-    store: {addMessage() {}, addAction: () => 1, updateAction() {}, setRole: (_id, role) => roles.push(role)},
+    store: {addMessage() {}, addAction: () => 1, updateAction() {}, lastRemark: () => null, setRole: (_id, role) => roles.push(role)},
     partner: {thinkingOf: () => 'off', ask: async () => 'ok', setRole: async () => {}},
     score: async () => ({value: 9, reason: 'worth it'}),
     typingPauseMs: 2000,
@@ -182,6 +182,14 @@ test('a declined delete cannot be done another way through a read-only program',
     assert.match(await reply, /did not allow/, command);
   }
   assert.deepEqual(ran, []);
+});
+
+test('with the user\'s rc file, Scout\'s commands are judged by what their aliases stand for', async () => {
+  const {pair, pane, ran} = scoutSession();
+  pane.rcNames = async () => ({aliases: {ship: 'git push', ll: 'ls -l'}, functions: []});
+  assert.match(await pair.run({command: 'ship'}), /^Refused: git push changes git history/);
+  assert.match(await pair.run({command: 'll src'}), /^exit 0/);
+  assert.deepEqual(ran, ['ll src']);
 });
 
 test('without a chat pane to ask in, a command that writes does not run', async () => {
@@ -256,7 +264,7 @@ function driverSession({turn = async () => 'ok', editor = true, role = 'navigato
   const toolsOf = []; // the roles whose tools the conversation was given, in order
   const pair = new PairSession({
     record: {id: 1, root: process.cwd(), conversation_id: 7, goal: 'fix it', level: 'normal', role},
-    store: {addMessage() {}, addAction: () => 1, updateAction() {}, setRole: (_id, stored) => roles.push(stored)},
+    store: {addMessage() {}, addAction: () => 1, updateAction() {}, lastRemark: () => null, setRole: (_id, stored) => roles.push(stored)},
     partner: {thinkingOf: () => 'off', ask: async (_id, input) => turn(pair, input), setRole: async (_id, given) => { toolsOf.push(given); }},
     score: async () => ({value: 9, reason: 'worth it'}),
     typingPauseMs: 2000,
@@ -455,7 +463,7 @@ test('drift the budget holds back is judged once the budget allows, if the user 
   const logged = [];
   const pair = new PairSession({
     record: {id: 1, root: '/project', conversation_id: 7, goal: 'fix reconnect after sleep', level: 'normal'},
-    store: {addMessage() {}, addAction: () => 1, updateAction() {}, addRemark: () => 1, dropRemark() {}},
+    store: {addMessage() {}, addAction: () => 1, updateAction() {}, lastRemark: () => null, showRemark() {}, addRemark: () => 1, dropRemark() {}},
     partner: {thinkingOf: () => 'off', ask: async () => 'SILENT'},
     score: async trigger => { scored.push(trigger.kind); return {value: 2}; },
     typingPauseMs: 2000, notify: () => 1, requestEditor: async () => null, now: () => clock, log: line => logged.push(line),
@@ -480,7 +488,7 @@ test('drift is judged by what the file is about, and again after a new goal', as
   writeFileSync(join(root, 'src/billing/ranking.ts'), '// Ranks overdue invoices for the dunning run.\nexport function rankOverdue(invoices) {}\n');
   const pair = new PairSession({
     record: {id: 1, root, conversation_id: 7, goal: 'better search ranking', level: 'normal'},
-    store: {addMessage() {}, addAction: () => 1, updateAction() {}, setGoal() {}, addRemark: () => 1, dropRemark() {}},
+    store: {addMessage() {}, addAction: () => 1, updateAction() {}, setGoal() {}, lastRemark: () => null, showRemark() {}, addRemark: () => 1, dropRemark() {}},
     partner: {thinkingOf: () => 'off', ask: async () => 'SILENT'},
     score: async trigger => { scored.push([trigger.kind, trigger.gist]); return {value: 2}; },
     typingPauseMs: 2000, notify: () => 1, requestEditor: async () => null, now: () => clock,
@@ -526,7 +534,7 @@ function saveSession({partner = {thinkingOf: () => 'off', ask: async () => 'SILE
   };
   const pair = new PairSession({
     record: {id: 1, root, conversation_id: 7, goal: 'totals', level: 'normal'},
-    store: {addMessage() {}, addAction: () => 1, updateAction() {}, setRole() {}, addRemark: () => 1, dropRemark() {}},
+    store: {addMessage() {}, addAction: () => 1, updateAction() {}, setRole() {}, lastRemark: () => null, showRemark() {}, addRemark: () => 1, dropRemark() {}},
     partner,
     score: async () => ({value: 9, reason: 'worth it'}),
     typingPauseMs: 2000,
@@ -717,7 +725,7 @@ test('a moment that comes up while the Partner answers waits for it; its remark 
     ask: (_id, input) => new Promise(resolve => finish.push(() => resolve(input.startsWith('[user]') ? 'The timeout is 5 s.' : 'Line 2 is off.'))),
     cancel: async () => { cancelled.push(true); finish.shift()(null); },
   };
-  const store = {addMessage() {}, setGoal() {}, addRemark: remark => remarks.push(remark), dropRemark() {}};
+  const store = {addMessage() {}, setGoal() {}, lastRemark: () => null, showRemark() {}, addRemark: remark => remarks.push(remark), dropRemark() {}};
   const pair = new PairSession({
     record: {id: 1, root: '/project', conversation_id: 7, goal: 'fix it', level: 'normal'},
     store, partner, score: async () => ({value: 9, reason: 'worth it'}), typingPauseMs: 2000,
@@ -757,7 +765,7 @@ function buildSession() {
   const result = {output: '', exit: 0};
   const pair = new PairSession({
     record: {id: 1, root, conversation_id: 7, goal: 'spread the keys', level: 'normal'},
-    store: {addMessage() {}, addAction: () => 1, updateAction() {}, setRole() {}, addRemark: () => 1, dropRemark() {}},
+    store: {addMessage() {}, addAction: () => 1, updateAction() {}, setRole() {}, lastRemark: () => null, showRemark() {}, addRemark: () => 1, dropRemark() {}},
     partner: {thinkingOf: () => 'off', ask: async () => 'SILENT', setRole: async () => {}},
     score: async () => ({value: 0, reason: 'no'}),
     typingPauseMs: 2000,

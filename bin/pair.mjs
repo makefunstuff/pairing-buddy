@@ -13,11 +13,13 @@ import {loadSizedConfig} from '../src/context-window.mjs';
 import {deviceId, fileCredentialStore} from '../src/credentials.mjs';
 import {startDaemon} from '../src/daemon.mjs';
 import {doctor, tilde} from '../src/doctor.mjs';
+import {gitRoot} from '../src/git.mjs';
 import {herdrRequest} from '../src/herdr.mjs';
 import {terminalInteraction} from '../src/prompt.mjs';
 import {requestDaemon, sendMessage} from '../src/protocol.mjs';
 import {keyVariables, storeServiceEnv} from '../src/service-env.mjs';
 import {serviceManager} from '../src/service.mjs';
+import {sessionRootOf} from '../src/session-root.mjs';
 import {shellHook} from '../src/shell-hook.mjs';
 import {statsReport} from '../src/stats.mjs';
 import {supervise} from '../src/supervise.mjs';
@@ -39,6 +41,7 @@ const USAGE = `usage:
   pair auth list              every provider and whether a login or key is set (never the secrets)
   pair auth models PROVIDER   the models a provider offers, for a model entry's "model"
   pair stats [--days N]   remarks per hour, useful vs dismissed, per trigger, and the tuning (default: 7 days)
+  pair stats --project [DIR]   the same for one project: the one DIR (default: this folder) belongs to
   pair uninstall    stop and remove the service (the config and data stay)
   pair daemon       run the daemon in the foreground
   pair supervise    run the daemon in the foreground, restarted when it fails (what \`pair\` starts without a service)
@@ -207,24 +210,33 @@ async function runDoctor(args) {
   process.exitCode = failed ? 1 : 0;
 }
 
-function stats(args) {
-  const {values} = parseArgs({args, options: {days: {type: 'string', default: '7'}}});
+async function stats(args) {
+  const {values, positionals} = parseArgs({args, allowPositionals: true, options: {days: {type: 'string', default: '7'}, project: {type: 'boolean'}}});
   const days = Number(values.days);
   if (!(days > 0)) throw new Error('--days takes a number of days');
+  if (positionals.length && !values.project) throw new Error('a folder goes with --project');
   const config = loadConfig();
   const path = join(config.dataDir, 'sessions.sqlite');
   if (!existsSync(path)) return console.log('No sessions yet: start one with `pair`.');
+  const root = values.project ? await projectRoot(positionals[0] ?? process.cwd(), config) : null;
   const store = openStore(path);
   const now = Date.now();
   const window = days * 24 * 60 * 60_000;
   try {
+    if (root && !store.knownRoot(root)) return console.log(`No sessions in ${root} yet.`);
     // Tuning looks at its own window, which may be longer than the one shown.
     const remarks = store.remarks(now - Math.max(window, WINDOW_MS));
-    const activeMs = store.activeMs(now - window);
-    console.log(statsReport({remarks, activeMs, now, days, level: config.level, autoTune: config.autoTune}).join('\n'));
+    const activeMs = root ? store.projectActiveMs(root, now - window) : store.activeMs(now - window);
+    console.log(statsReport({remarks, activeMs, now, days, level: config.level, autoTune: config.autoTune, root}).join('\n'));
   } finally {
     store.close();
   }
+}
+
+/** The project `dir` belongs to, as the daemon finds it: its session root in the config, else its git root, else itself. */
+async function projectRoot(dir, config) {
+  const real = realpathSync(dir);
+  return sessionRootOf(real, config.sessionRoots) ?? (await gitRoot(real)) ?? real;
 }
 
 async function daemon(config) {
@@ -284,7 +296,7 @@ try {
   } else if (command === 'supervise') {
     await runSupervised();
   } else if (command === 'stats') {
-    stats(args);
+    await stats(args);
   } else if ([undefined, 'chat', 'daemon'].includes(command)) {
     firstRunConfig();
     const config = loadConfig();

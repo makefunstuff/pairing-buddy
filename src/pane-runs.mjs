@@ -44,19 +44,20 @@ PS1='\\[\\e]133;A\\a\\]scout[$_pair_n] exit $_pair_exit $ \\[\\e]133;B\\a\\]'
 const startMark = number => `\x1b]133;C;aid=pair${number}\x07`;
 const endMark = number => new RegExp(`\\x1b\\]133;D;\\d+;aid=pair${number}\\x07`);
 
+/** Where the rc file is in a pane's folder `dir`; the shell reads it last, with PAIR_RUNS set to `dir`. */
+export const rcFileIn = dir => join(dir, 'pane.bash');
+
 /** The files of the shell in one of Pair's panes, in its own directory `dir`. */
 export class PaneRuns {
   constructor(dir) {
     this.dir = dir;
   }
 
-  /** Writes the rc file and returns the line that starts the shell with it. No rc files of yours, no history file. */
-  async shellLine() {
+  /** Writes the rc file into an empty folder, for a new shell. */
+  async prepare() {
     await this.remove();
     await mkdir(this.dir, {recursive: true, mode: 0o700});
-    await writeFile(join(this.dir, 'pane.bash'), RC);
-    const quote = text => `'${text.replaceAll("'", "'\\''")}'`;
-    return `exec env PAIR_RUNS=${quote(this.dir)} bash --noprofile --rcfile ${quote(join(this.dir, 'pane.bash'))} -i`;
+    await writeFile(rcFileIn(this.dir), RC);
   }
 
   /** Removes the files, once the pane is closed. */

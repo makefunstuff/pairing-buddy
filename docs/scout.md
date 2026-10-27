@@ -6,13 +6,52 @@ Switch with `/scout` and `/navigate` in the chat, or `:Pair scout` and `:Pair na
 
 ## Pair's pane
 
-Switching to Scout opens a pane below the chat pane, labelled `pair scout`. It runs `bash --noprofile` with an rc file of Pair's instead of yours, and the prompt `scout[N] exit X $ `: `N` counts the commands, `X` is the exit code of the last one. The shell writes each command's output and exit code to files as well (see [herdr.md](herdr.md#pairs-own-pane-exact)): that is how Pair knows that a command ended and how, which herdr cannot tell it, and reads all of its output. Your aliases and functions are not there, and `HISTFILE` is empty, so Pair's commands stay out of your shell history.
+Switching to Scout opens a pane below the chat pane, labelled `pair scout`. It runs `bash --noprofile` with an rc file of Pair's and the prompt `scout[N] exit X $ `: `N` counts the commands, `X` is the exit code of the last one. The shell writes each command's output and exit code to files as well (see [herdr.md](herdr.md#pairs-own-pane-exact)): that is how Pair knows that a command ended and how, which herdr cannot tell it, and reads all of its output. `HISTFILE` is empty, so Pair's commands stay out of your shell history. By default your rc files are not loaded, so your aliases and functions are not there; the pane can [load your rc file](#your-rc-file), and Pair's rc file comes after it. Where [bubblewrap](https://github.com/containers/bubblewrap) works, the shell runs in [a sandbox](#the-sandbox).
 
 - One command runs at a time; Pair waits for it to end, then reads its whole output back, also when it printed more than the pane holds. The shell's output goes through `tee`, so a command writes to a pipe, not a terminal: no colours, no pager, no progress bars. A job you start in the background (`cmd &`) keeps running and does not block the pane.
 - A command still running after two minutes is stopped with Ctrl-C, and the model is told so.
 - Each question gets at most four searches or commands. After that the model is told to answer with what it found.
 - For a remark nobody asked for, Scout may read and search, but `run` answers "not now".
-- Switching back to Navigator, or ending the session, closes the pane. A daemon that restarts finds its pane again by the label.
+- Switching back to Navigator, or ending the session, closes the pane. A daemon that restarts finds its pane again by the label, so a change to `scoutPane` in the config shows once the pane opens anew.
+
+The pane's shell is set by `scoutPane` in the config (`pair doctor` says how it runs):
+
+```jsonc
+"scoutPane": {
+  "rc": "~/.bashrc",          // your rc file, loaded before Pair's prompt (true means ~/.bashrc); default: none
+  "sandbox": "auto",          // "auto": in bubblewrap where it works; true: always (no bwrap, no pane); false: never
+  "network": false,           // whether commands in the sandbox reach the network
+  "writable": ["~/.cache"]    // folders besides the project that commands in the sandbox may write
+}
+```
+
+### Your rc file
+
+With `rc` set, the pane runs bash with an rc file of Pair's (`src/scout-pane.bash`) that loads yours first: your aliases, functions and environment (version managers, `PATH`) are there, as in your terminal. Then it puts back what Pair reads the pane by, whatever yours set up: no `PROMPT_COMMAND` or `PS0` of yours (Pair's rc file, read last, sets its own and its prompt), no `DEBUG`, `ERR` or `RETURN` traps, no `errexit`, `nounset` or `pipefail`, emacs keys (Ctrl-U clears the line) and no history file. So the exit codes stay right, and what your rc file prints when it starts stays above the first prompt.
+
+- The command policy sees your aliases and functions: Pair lists them once, from a bash that loads the same rc file. An alias is judged by what it stands for (`ll` for `ls -l` runs at once, `ship` for `git push` is refused), and so is the next word after an alias that ends in a space, as bash does; a quoted or escaped name (`'rm'`, `\rm`) is the program, as in bash. A function asks you first, since Pair cannot see what it does. When the list cannot be made, every command asks.
+- Prompt hooks do not run: a prompt such as starship, `direnv`'s hook and anything built on bash-preexec stay off in this pane. An rc file that starts another shell (`exec zsh`) or replaces readline (ble.sh) gives Pair no prompt to read, and the pane fails to open with a message saying so.
+- Pair's own commands (the `search` tool's `rg`, the `cd` before tests on save) go through your aliases and functions too.
+- Only bash rc files work: the pane's shell is bash.
+
+### The sandbox
+
+With `sandbox` at `"auto"` (the default) and bubblewrap (`bwrap`) installed and allowed to make namespaces, the pane's shell runs in a sandbox, and so does every command typed there: Scout's, the Driver's and your tests on save. The command policy still decides first what runs; the sandbox limits what an allowed command can do.
+
+- The disk is read-only, except the project, the `runs/` folder of the data directory (where the tests on save write their output and their scratch copy), the pane's own folder in `panes/` (its shell's output log and exit codes) and the `writable` folders. Writing anywhere else fails with "Read-only file system".
+- `/tmp` is a private, empty one: what a command writes there is gone when the pane closes.
+- Your cache folder (`~/.cache`, or `XDG_CACHE_HOME`, and `GOCACHE` when it is elsewhere) is writable, but what a command writes there is thrown away when the pane closes: Go's build cache and the like work, and nothing in the sandbox can change what your own builds find there later. It is an overlay on the real folder where bubblewrap can make one (bubblewrap 0.10 and Linux 5.11 on), so what is cached already is still used; elsewhere it is an empty folder, and the first builds are slower.
+- `XDG_RUNTIME_DIR` is empty, and every unix socket of yours that is listening when the pane opens is hidden wherever it is (Pair reads them from `/proc/net/unix`): herdr's API socket and its terminal clients' socket, the daemon's, your editors', agents' and password managers'. So are the docker and podman sockets, which are root's. A command cannot type into your panes through herdr, ask the daemon, reach your desktop session (D-Bus, Wayland, ssh-agent) or start a container.
+- No network unless `network` is true; the loopback interface is there, so tests that serve on `localhost` still work. Name lookups are off too: the sockets of the daemons that look names up for a program (systemd-resolved, nscd, avahi, and the system D-Bus, where systemd-resolved answers too) are hidden, since a lookup of a made-up name would carry data out. Commands see only their own processes (`ps` lists the sandbox's).
+
+The trade-offs:
+
+- Reading is not limited: a command can still read any file you can, your home included. The policy asks before a command names a path outside the project, but a test or build can read what it likes. With the network off, what it reads can leave through the output Pair shows the model, or through a socket on the disk that Pair does not hide and whose daemon reaches the network for its clients.
+- What the sandbox builds into your cache folder is gone when the pane closes, so the next pane builds it again. Listing `~/.cache` in `writable` keeps it, and lets a command change what is cached there for your own builds. Other caches, such as `~/.cargo` and `~/.npm`, are read-only unless listed: Cargo and npm still build and test.
+- Tests that download, or talk to a service on another host, fail with the network off.
+- Sockets of other users are not hidden, apart from those above: a command can still connect to one it may write to, such as a database's socket under `/run`, or, with `network` true, the system D-Bus. A socket of yours made after the pane opened is not hidden either, until the pane opens again.
+- With `network` true, the sandbox shares your network, abstract unix sockets included (some D-Bus and X11 setups use them).
+- Without bubblewrap (other systems, or one that forbids unprivileged namespaces) `"auto"` runs the pane as before, as you, and `pair doctor` warns; `true` makes the pane fail to open rather than run without a sandbox.
 
 ## The tools
 
@@ -59,7 +98,7 @@ Without a chat pane to ask in, the answer is no.
 - Interactive programs that would wait for keys: `less`, `more`, `vim`, `nano`, `top`, `man`, `watch`.
 - More than one line, and an empty command.
 
-The pane is not a sandbox ([#28](https://github.com/makefunstuff/pairing-buddy/issues/28)). An allowed test run can write what tests write, and a read-only program can still read any file inside the project.
+Without [the sandbox](#the-sandbox) an allowed test run can write what tests write, and a read-only program can still read any file inside the project. With it, writes stay in the project and the network is off, but reads are not limited.
 
 ## Test results
 
@@ -99,7 +138,7 @@ the daemon reads the output back from the file, whole, however long it is. Then:
   `crash` and `new_warning` triggers ([docs/watcher.md](watcher.md#crashes-and-new-warnings)). Scout's own commands
   are read for its report to the model: `Crashed: Segmentation fault` or `Build: 2 errors: probe.c:11: ...`.
 - The command is yours, from your config: it does not go through the command policy, and the model can neither
-  start nor change it. As with Scout's commands, the pane is not a sandbox.
+  start nor change it. It runs in [the sandbox](#the-sandbox) when the pane has one, like Scout's commands.
 - One run at a time, sharing the pane's queue with Scout; a save during a run starts one more run after it, for the
   last file saved. After two minutes a run is stopped with Ctrl-C.
 - Switching back to Navigator keeps the pane open while the project has a command; ending the session closes it.

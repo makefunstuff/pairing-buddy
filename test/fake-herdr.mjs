@@ -35,7 +35,7 @@ export async function fakeHerdr(socketPath, {commands = {}, agents = [], nvims =
 
   async function type(pane, text) {
     const shell = panes.get(pane);
-    const runs = /^exec env PAIR_RUNS='([^']+)'/.exec(text)?.[1];
+    const runs = /^exec env .*?PAIR_RUNS=('[^']+'|\S+)/.exec(text)?.[1].replace(/^'|'$/g, '');
     if (runs) {
       Object.assign(shell, {count: 1, runs});
       mkdirSync(runs, {recursive: true});

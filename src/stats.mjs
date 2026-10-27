@@ -1,4 +1,6 @@
-// `pair stats`: how often Pair spoke unasked and what the user made of it, per trigger, and the tuning that follows.
+// `pair stats`: how often Pair spoke unasked and what the user made of it, per trigger, and the tuning that follows,
+// for all projects or, with --project, for one.
+import {basename} from 'node:path';
 import {Budget, BUDGETS} from './budget.mjs';
 import {TRIGGER_KINDS} from './triggers.mjs';
 import {keptShare, NO_TUNING, tally, tuning} from './tuning.mjs';
@@ -36,21 +38,33 @@ function table(rows) {
   return rows.map(row => row.map((cell, column) => (column ? String(cell).padStart(widths[column]) : String(cell).padEnd(widths[column]))).join('  ').trimEnd());
 }
 
+const list = words => (words.length > 1 ? `${words.slice(0, -1).join(', ')} and ${words.at(-1)}` : words[0]);
+
+/** What the tuning of project `root` follows: its own verdicts, those of all projects, or some of each. */
+function tuningLine({triggers, budget}, root) {
+  const own = [...triggers, ...(budget ? ['the budget'] : [])];
+  const rule = 'a project needs 5 verdicts on a trigger to tune its bar, 10 in all for its budget';
+  if (!own.length) return `Tuning follows the verdicts of all projects of the last 30 days until ${basename(root)} has enough of its own: ${rule}.`;
+  return `Tuning follows ${basename(root)}'s own verdicts for ${list(own)}, those of all projects for the rest (${rule}).`;
+}
+
 /**
  * The stats view as lines of text. `remarks` are the stored remarks (newest first) of at least the tuning
- * window, `activeMs` the active time in the last `days`, `level` and `autoTune` the config's.
+ * window, `activeMs` the active time in the last `days`, `level` and `autoTune` the config's. With `root`, the
+ * remarks and the tuning are that project's, and `activeMs` should be too.
  */
-export function statsReport({remarks, activeMs, now, days, level, autoTune}) {
-  const recent = remarks.filter(remark => now - remark.at <= days * DAY);
+export function statsReport({remarks, activeMs, now, days, level, autoTune, root = null}) {
+  const recent = remarks.filter(remark => now - remark.at <= days * DAY && (!root || remark.root === root));
   const hours = activeMs / HOUR;
   const total = tally(recent, now);
   const lines = [
-    `Last ${plural(days, 'day')}, all projects: ${hours.toFixed(1)} h of active pairing, ${plural(total.remarks, 'unasked remark')} (${rate(total.remarks, hours)} per hour)`,
+    `Last ${plural(days, 'day')}, ${root ? `project ${basename(root)}` : 'all projects'}: ${hours.toFixed(1)} h of active pairing, ${plural(total.remarks, 'unasked remark')} (${rate(total.remarks, hours)} per hour)`,
     `useful ${total.useful} · dismissed ${total.dismissed} · ignored ${total.ignored}${total.seen ? ` · seen ${total.seen}` : ''}${total.waiting ? ` · waiting ${total.waiting}` : ''} · kept ${percent(keptShare(total))}`,
     ...[waitLine(recent)].filter(Boolean),
     '',
   ];
-  const budget = new Budget(level, autoTune ? tuning(remarks, now) : NO_TUNING);
+  const tuned = autoTune ? tuning(remarks, now, root) : NO_TUNING;
+  const budget = new Budget(level, tuned);
   const base = BUDGETS[level];
   const kinds = [...new Set([...TRIGGER_KINDS, ...recent.map(remark => remark.trigger)])];
   const rows = kinds.map(kind => {
@@ -62,8 +76,8 @@ export function statsReport({remarks, activeMs, now, days, level, autoTune}) {
   lines.push(...table([['trigger', 'remarks', 'per hour', 'useful', 'dismissed', 'ignored', 'kept', 'bar'], ...rows]));
   const {perHour, minGapMs} = budget.limits();
   lines.push('', `Budget at level ${level}: at most ${perHour} remarks per hour, ${gap(minGapMs)} apart (the level's default: ${base.perHour}, ${gap(base.minGapMs)})`);
-  lines.push(autoTune
-    ? 'Tuning follows your verdicts of the last 30 days: a trigger needs 5 of them to move its bar, the budget 10.'
-    : 'Tuning is off ("autoTune": false in the config): bars and budget are the level\'s defaults.');
+  if (!autoTune) lines.push('Tuning is off ("autoTune": false in the config): bars and budget are the level\'s defaults.');
+  else if (root) lines.push(tuningLine(tuned.project, root));
+  else lines.push('Tuning follows your verdicts of the last 30 days: a trigger needs 5 of them to move its bar, the budget 10. Each project tunes on its own verdicts once it has as many (pair stats --project).');
   return lines;
 }

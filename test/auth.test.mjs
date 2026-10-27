@@ -41,6 +41,14 @@ function scripted(...answers) {
   return {asked, told, prompt: async prompt => { asked.push(prompt); return answers.shift(); }, notify: event => told.push(event)};
 }
 
+test('a subscription login of a provider Pair knows the terms of names them, with the page', async () => {
+  const provider = {...fakeProvider('anthropic'), name: 'Anthropic'};
+  const interaction = scripted('oauth');
+  await login({id: 'anthropic', credentials: store(), interaction, providers: new Map([[provider.id, provider]])});
+  assert.match(interaction.told[0].message, /^Terms: Anthropic allows a Claude subscription login \(Free, Pro, Max, Team, Enterprise\) only in Claude Code and its own apps/);
+  assert.match(interaction.told[0].links[0].url, /^https:\/\/code\.claude\.com\//);
+});
+
 test('a provider with both offers its subscription first, then a key; each is stored', async () => {
   const provider = fakeProvider();
   const providers = new Map([[provider.id, provider]]);
@@ -50,11 +58,13 @@ test('a provider with both offers its subscription first, then a key; each is st
   const bySubscription = scripted('oauth');
   assert.equal(await login({id: 'fake', credentials, interaction: bySubscription, providers}), 'oauth');
   assert.equal(bySubscription.asked[0].type, 'select');
-  assert.equal(bySubscription.told[0].url, 'https://example.invalid/authorize');
+  assert.match(bySubscription.told[0].message, /^Terms: Whether a Fake subscription may be used from Pair is up to Fake's terms/, 'the terms come before the sign-in');
+  assert.equal(bySubscription.told[1].url, 'https://example.invalid/authorize');
   assert.equal((await credentials.read('fake')).access, 'access-secret');
 
   const byKey = scripted('api_key', 'sk-fake');
   assert.equal(await login({id: 'fake', credentials, interaction: byKey, providers}), 'api_key');
+  assert.deepEqual(byKey.told, [], 'a key needs no word on terms');
   assert.equal(byKey.asked[1].type, 'secret', 'the key is asked for as a secret');
   assert.deepEqual(await credentials.read('fake'), {type: 'api_key', key: 'sk-fake'}, 'one credential per provider: the key replaced the login');
 

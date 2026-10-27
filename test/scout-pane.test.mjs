@@ -1,83 +1,67 @@
 import assert from 'node:assert/strict';
-import {spawn, spawnSync} from 'node:child_process';
-import {existsSync, mkdtempSync} from 'node:fs';
+import {spawnSync} from 'node:child_process';
+import {existsSync, mkdtempSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {test} from 'node:test';
-import {PaneRuns, shown} from '../src/pane-runs.mjs';
+import {shown} from '../src/pane-runs.mjs';
+import {sandboxWorks} from '../src/sandbox.mjs';
 import {ScoutPane, shellQuote} from '../src/scout-pane.mjs';
+import {scoutPaneConfig} from '../src/scout-shell.mjs';
 import {fakeHerdr} from './fake-herdr.mjs';
+import {runInPane} from './pane-shell.mjs';
 
 const hasBash = spawnSync('bash', ['--version']).status === 0;
 
-/** Starts the pane's shell in `runs.dir`; `input` is its stdin (a pipe) or null for a terminal. */
-async function paneShell(runs) {
-  return runs.shellLine();
-}
+const COMPOUND = [
+  'echo out; echo err >&2; false',
+  '',
+  'cd / && pwd',
+  'seq 1 2500',
+  'printf "a\\nb\\na\\n" | grep a | wc -l',
+  'echo x | cat',
+  '(cd /tmp && echo sub | cat)',
+  'echo "$(echo nested)"',
+  '(sleep 1; echo late) &',
+  'pwd',
+];
 
-test('the pane\'s shell gives each command its whole output and exit code, whatever its shell syntax', {skip: hasBash ? false : 'bash not installed', timeout: 20_000}, async () => {
-  const runs = new PaneRuns(join(mkdtempSync(join(tmpdir(), 'pair-runs-')), 'w1-p3'));
-  const line = await paneShell(runs);
-  const commands = [
-    'echo out; echo err >&2; false',
-    '',
-    'cd / && pwd',
-    'seq 1 2500',
-    'printf "a\\nb\\na\\n" | grep a | wc -l',
-    'echo x | cat',
-    '(cd /tmp && echo sub | cat)',
-    'echo "$(echo nested)"',
-    '(sleep 1; echo late) &',
-    'pwd',
-  ];
-  const results = [];
-  // One command at a time, as Pair types them: each waits for the one before to end.
-  const child = spawn('bash', ['-c', line], {env: {PATH: process.env.PATH, HOME: runs.dir}, stdio: ['pipe', 'ignore', 'ignore']});
-  await runs.ready(5000);
-  for (const command of commands) {
-    const number = await runs.next();
-    if (command) await runs.clearLog();
-    child.stdin.write(`${command}\n`);
-    if (!command) continue;
-    await runs.ended(number, 5000);
-    results.push(await runs.result(number));
-  }
-  await new Promise(resolve => setTimeout(resolve, 1500)); // the job in the background prints after its command ended
-  child.stdin.end();
-  assert.deepEqual(results[0], {exit: 1, output: 'out\nerr'});
-  assert.deepEqual(results[1], {exit: 0, output: '/'});
-  assert.equal(results[2].output.split('\n').length, 2500, 'more than herdr\'s 1000 lines, from the first');
-  assert.equal(results[2].output.split('\n')[0], '1');
-  assert.deepEqual(results.slice(3, 6), [{exit: 0, output: '2'}, {exit: 0, output: 'x'}, {exit: 0, output: 'sub'}], 'pipes end, a subshell is a command');
-  assert.deepEqual(results[6], {exit: 0, output: 'nested'});
-  assert.equal(results[7].exit, 0);
-  assert.doesNotMatch(results[7].output, /late/, 'a job in the background does not hold its command open, nor add to its output');
-  assert.deepEqual(results[8], {exit: 0, output: '/'}, 'a cd stays: commands run in the pane\'s own shell');
-  assert.equal(await runs.next(), 10, 'empty lines are no commands');
-});
+for (const [name, sandbox] of [['', false], [' in the sandbox', true]]) {
+  const skip = !hasBash ? 'bash not installed' : sandbox && !sandboxWorks() ? 'bubblewrap does not work here' : false;
+  test(`the pane's shell gives each command its whole output and exit code, whatever its shell syntax${name}`, {skip, timeout: 30_000}, async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pair-runs-'));
+    const {results, runs} = await runInPane({setup: scoutPaneConfig({sandbox}), cwd: dir, dir: join(dir, 'pane'), commands: COMPOUND});
+    await new Promise(resolve => setTimeout(resolve, 1500)); // the job in the background prints after its command ended
+    assert.deepEqual(results[0], {exit: 1, output: 'out\nerr'});
+    assert.deepEqual(results[1], {exit: 0, output: '/'});
+    assert.equal(results[2].output.split('\n').length, 2500, 'more than herdr\'s 1000 lines, from the first');
+    assert.equal(results[2].output.split('\n')[0], '1');
+    assert.deepEqual(results.slice(3, 6), [{exit: 0, output: '2'}, {exit: 0, output: 'x'}, {exit: 0, output: 'sub'}], 'pipes end, a subshell is a command');
+    assert.deepEqual(results[6], {exit: 0, output: 'nested'});
+    assert.equal(results[7].exit, 0);
+    assert.doesNotMatch(results[7].output, /late/, 'a job in the background does not hold its command open, nor add to its output');
+    assert.deepEqual(results[8], {exit: 0, output: '/'}, 'a cd stays: commands run in the pane\'s own shell');
+    assert.equal(await runs.next(), 10, 'empty lines are no commands');
+  });
+}
 
 const hasScript = spawnSync('script', ['--version']).status === 0;
 
 test('on a terminal, Ctrl-C ends a command and keeps its output, also with a job left in the background', {skip: hasBash && hasScript ? false : 'needs bash and script (util-linux)', timeout: 20_000}, async () => {
-  const runs = new PaneRuns(join(mkdtempSync(join(tmpdir(), 'pair-runs-')), 'w1-p3'));
-  const line = await paneShell(runs);
-  const child = spawn('script', ['-qec', line, '/dev/null'], {env: {PATH: process.env.PATH, HOME: runs.dir, TERM: 'xterm'}});
-  child.stdout.resume();
+  const dir = mkdtempSync(join(tmpdir(), 'pair-runs-'));
+  const {results, runs, shell} = await runInPane({setup: scoutPaneConfig({sandbox: false}), cwd: dir, dir: join(dir, 'pane'), commands: ['sleep 30 &'], terminal: true});
   try {
-    await runs.ready(5000);
-    child.stdin.write('sleep 30 &\r');
-    await runs.ended(1, 5000);
-    assert.equal((await runs.result(1)).exit, 0);
-    child.stdin.write('echo started; sleep 30\r');
+    assert.equal(results[0].exit, 0);
+    shell.stdin.write('echo started; sleep 30\r');
     await assert.rejects(runs.ended(2, 1000), /timed out/);
-    child.stdin.write('\x03');
+    shell.stdin.write('\x03');
     await runs.ended(2, 5000);
     assert.deepEqual(await runs.result(2), {exit: 130, output: 'started'});
-    child.stdin.write('echo after | cat\r');
+    shell.stdin.write('echo after | cat\r');
     await runs.ended(3, 5000);
     assert.deepEqual(await runs.result(3), {exit: 0, output: 'after'});
   } finally {
-    child.kill();
+    shell.kill();
   }
 });
 
@@ -110,7 +94,34 @@ test('the pane opens beside the chat, runs commands one at a time and types only
 
     await pane.close();
     assert.equal(herdr.panes.has(again.paneId), false);
-    assert.equal(existsSync(join(dir, 'panes', again.paneId.replace(':', '-'))), false, 'its files go with it');
+    assert.equal(existsSync(pane.runs.dir), false, 'its files go with it');
+  } finally {
+    await herdr.close();
+  }
+});
+
+test('the pane starts its shell as the config says, hides herdr\'s socket and lists the rc file\'s names once', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pair-herdr-'));
+  const socketPath = join(dir, 'herdr.sock');
+  const rc = join(dir, 'bashrc');
+  writeFileSync(rc, "alias ll='ls -l'\n");
+  const herdr = await fakeHerdr(socketPath);
+  const daemonSocket = join(dir, 'pair.sock');
+  writeFileSync(daemonSocket, '');
+  const pane = new ScoutPane({socketPath, workspaceId: 'w1', besidePane: 'w1:p2', cwd: dir, runsDir: join(dir, 'panes'), setup: scoutPaneConfig({rc, sandbox: 'auto'}), hidden: [daemonSocket]});
+  try {
+    await pane.open();
+    const [, line] = herdr.sent[0];
+    assert.match(line, new RegExp(`PAIR_SCOUT_RC=${rc} `));
+    if (sandboxWorks()) {
+      assert.match(line, / bwrap /);
+      assert.ok(line.includes(`--ro-bind /dev/null ${socketPath}`) && line.includes(`--ro-bind /dev/null ${daemonSocket}`));
+      assert.ok(line.includes(`--bind ${pane.runs.dir} ${pane.runs.dir}`), 'its folder is writable, to take the shell\'s files');
+    }
+    const names = pane.rcNames();
+    assert.equal(pane.rcNames(), names);
+    assert.deepEqual((await names).aliases, {ll: 'ls -l'});
+    assert.equal(await new ScoutPane({socketPath, cwd: dir, runsDir: join(dir, 'panes')}).rcNames(), undefined, 'without an rc file there are none');
   } finally {
     await herdr.close();
   }

@@ -110,7 +110,8 @@ Pair has one role at a time. It shows in the chat pane's prompt and in Neovim's 
 | Driver | Makes one change in your buffer while you watch, then hands back by itself | `:Pair drive`, `/drive`, or "you take it" / "your turn" in the chat |
 
 What Scout may run is decided in code, not by the model: read-only commands, tests and builds run; writes and
-installs ask you first; commits, pushes, the network and `sudo` are refused ([docs/scout.md](docs/scout.md)). The
+installs ask you first; commits, pushes, the network and `sudo` are refused ([docs/scout.md](docs/scout.md)). Where
+bubblewrap works, Scout's pane is also a [sandbox](docs/scout.md#the-sandbox): only the project is writable. The
 Driver's edit is typed as ghost text, one undo step, never saved; with a test command for the project, Pair tests your
 unsaved buffer before it hands back ([docs/driver.md](docs/driver.md)).
 
@@ -190,8 +191,9 @@ only reads the board and herdr. [docs/agents.md](docs/agents.md)
 said, with a link to the docs when it is sure of one. [docs/tone.md](docs/tone.md),
 [docs/neovim.md](docs/neovim.md#the-idea-behind-it)
 
-**Remembers and learns.** Each session ends with a short note the next one starts from, and your useful/noise verdicts
-tune when Pair talks. `pair stats` shows the numbers. [docs/memory.md](docs/memory.md)
+**Remembers and learns.** Each session ends with a short note the next one starts from, and earlier sessions stay
+searchable ("what did we try last week?"). Your useful/noise verdicts tune when Pair talks, per project. `pair stats`
+shows the numbers. [docs/memory.md](docs/memory.md)
 
 **Listens.** Hold `Alt-t` in Neovim, ask aloud, let go. whisper.cpp writes it down on your CPU, in about half a
 second, and Pair answers under your line. An answer is read aloud only if you are away from the editor when it comes.

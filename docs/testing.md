@@ -50,8 +50,11 @@ Runs every test that needs no model, in under a minute, with scripted models and
   model server (fast, slow, dead, a wrong model name, a stored key it needs, a login that no longer renews); model
   health (one notice, no remarks while down, back after a probe).
 - **Memory and feedback.** The note the next session starts from (in the chat and the Partner's instructions, per
-  project, never a failed note); remarks stored with their verdicts (`+`, `Alt-n`, an accepted suggestion); ignored
-  remarks counting as noise and seen ones as neither; the tuning and its bounds; active time; `pair stats`.
+  project, never a failed note); earlier sessions searched by `recall`, and a question about the past that comes with
+  them; remarks stored with their verdicts (`+`, `Alt-n`, an accepted suggestion, `+2` from `/remarks`, `+` after a
+  daemon restart, end to end in the chat pane); ignored remarks counting as noise and seen ones as neither; the tuning
+  and its bounds, per project with the fallback to all; active time, reading included (scrolling reported from a
+  headless Neovim); `pair stats` and `pair stats --project`.
 - **The tone.** The checker the live tests use (praise, apology, filler, emoji, `!` outside code, headings and lists,
   words over the limit), the tone in the Partner's instructions, and teaching: the Partner asked about the words
   shown, the idea and its link apart for the editor, `?` in the chat about Pair's last words.
@@ -194,9 +197,20 @@ answered, and that while the Partner answers in one project the Watcher of anoth
 it. It prints when each request queued and ran.
 
 **Logins.** Run when `PAIR_LIVE_LOGIN="provider/model"` is set and that provider is logged in with `pair auth login`:
-the model answers as both roles, and a subscription's token renews and is kept. No test makes a subscription login:
-it needs a browser and your account.
+the model answers as both roles, and a subscription's token renews and is kept. No automatic test makes a
+subscription login, since it needs a browser and your account. To check one by hand:
+
+```sh
+test/live/check-login.sh PROVIDER MODEL
+```
+
+It runs `pair auth login PROVIDER` into a credential file of its own (your logins stay as they are), you sign in in
+the browser, and then it runs the login test against it and removes the file. Read the provider's terms first
+([config.md](config.md#before-you-use-a-subscription)).
 
 **The Anthropic API.** Run when `ANTHROPIC_API_KEY` and `PAIR_LIVE_ANTHROPIC_MODEL` are set: the cloud model answers
-the probe as both roles, scores a repeated failure above the bar, and answers a short question as Partner. It has not
-been run against the real API yet ([#44](https://github.com/makefunstuff/pairing-buddy/issues/44)).
+the probe as both roles, scores a repeated failure above the bar, and answers a short question as Partner.
+
+Neither has been run against the real services yet: the Anthropic test has reached the real API, but only with a key
+the API refused, and no subscription has been signed in to with `check-login.sh`. The script itself has been run end
+to end with an API-key login ([#44](https://github.com/makefunstuff/pairing-buddy/issues/44)).

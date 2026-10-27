@@ -28,11 +28,11 @@ function fauxModels() {
   return {faux, models, model: faux.getModel()};
 }
 
-test('the Navigator has say, point, open, read and suggest; Scout adds search and run; the Driver edit and type; nothing else exists', () => {
+test('the Navigator has say, point, open, read, recall and suggest; Scout adds search and run; the Driver edit and type; nothing else exists', () => {
   const {hands} = recordingHands();
-  assert.deepEqual(ROLE_TOOLS.navigator, ['say', 'point', 'open', 'read', 'suggest']);
-  assert.deepEqual(ROLE_TOOLS.scout, ['say', 'point', 'open', 'read', 'suggest', 'search', 'run']);
-  assert.deepEqual(ROLE_TOOLS.driver, ['say', 'point', 'open', 'read', 'suggest', 'search', 'run', 'edit', 'type']);
+  assert.deepEqual(ROLE_TOOLS.navigator, ['say', 'point', 'open', 'read', 'recall', 'suggest']);
+  assert.deepEqual(ROLE_TOOLS.scout, ['say', 'point', 'open', 'read', 'recall', 'suggest', 'search', 'run']);
+  assert.deepEqual(ROLE_TOOLS.driver, ['say', 'point', 'open', 'read', 'recall', 'suggest', 'search', 'run', 'edit', 'type']);
   assert.deepEqual(pairExtension(hands).tools.map(tool => tool.name), ROLE_TOOLS.driver);
 });
 
@@ -46,9 +46,9 @@ test('the policy blocks every tool outside the role', () => {
     assert.match(toolPolicy({name: 'type'}, role).block, /only while the user hands you the wheel; say the command instead/);
   }
   for (const name of ['write', 'bash', 'save', 'Say', 'read_file', 'Edit']) {
-    assert.match(toolPolicy({name}, 'navigator').block, /only say, point, open, read, suggest\.$/);
-    assert.match(toolPolicy({name}, 'scout').block, /only say, point, open, read, suggest, search, run\.$/);
-    assert.match(toolPolicy({name}, 'driver').block, /only say, point, open, read, suggest, search, run, edit, type\.$/);
+    assert.match(toolPolicy({name}, 'navigator').block, /only say, point, open, read, recall, suggest\.$/);
+    assert.match(toolPolicy({name}, 'scout').block, /only say, point, open, read, recall, suggest, search, run\.$/);
+    assert.match(toolPolicy({name}, 'driver').block, /only say, point, open, read, recall, suggest, search, run, edit, type\.$/);
   }
 });
 
@@ -92,7 +92,7 @@ test('the Partner offers the model only its role\'s tools and answers with its f
   ]);
   assert.equal(await partner.ask(id, '[user] what is wrong?'), 'Line 3 loops one too far.');
   assert.deepEqual(calls, [['point', {file: 'a.js', line: 3, endLine: 3, note: 'off by one', code: 'i <= n'}]]);
-  assert.deepEqual(offered, ['open', 'point', 'read', 'say', 'suggest']);
+  assert.deepEqual(offered, ['open', 'point', 'read', 'recall', 'say', 'suggest']);
   await partner.close();
 });
 
@@ -122,12 +122,12 @@ test('switching the role changes the tools offered and the instructions, from th
   await partner.ask(id, '[user] and now?');
   await partner.close();
 
-  assert.deepEqual(seen[0].offered, ['open', 'point', 'read', 'say', 'suggest']);
-  assert.deepEqual(seen[1].offered, ['open', 'point', 'read', 'run', 'say', 'search', 'suggest']);
+  assert.deepEqual(seen[0].offered, ['open', 'point', 'read', 'recall', 'say', 'suggest']);
+  assert.deepEqual(seen[1].offered, ['open', 'point', 'read', 'recall', 'run', 'say', 'search', 'suggest']);
   assert.match(seen[1].system, /Your role now: Scout/);
-  assert.deepEqual(seen[2].offered, ['edit', 'open', 'point', 'read', 'run', 'say', 'search', 'suggest', 'type']);
+  assert.deepEqual(seen[2].offered, ['edit', 'open', 'point', 'read', 'recall', 'run', 'say', 'search', 'suggest', 'type']);
   assert.match(seen[2].system, /Your role now: Driver/);
-  assert.deepEqual(seen[3].offered, ['open', 'point', 'read', 'say', 'suggest']);
+  assert.deepEqual(seen[3].offered, ['open', 'point', 'read', 'recall', 'say', 'suggest']);
   assert.match(seen[3].system, /Your role now: Navigator/);
 });
 

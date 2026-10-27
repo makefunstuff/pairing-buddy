@@ -1,5 +1,6 @@
 // Learning when to talk: the user's verdicts on Pair's unasked remarks raise or lower each trigger's bar and
-// shrink or grow the speak budget, always within fixed bounds. Pure: the caller passes the remarks and the clock.
+// shrink or grow the speak budget, always within fixed bounds, per project once it has verdicts enough. Pure: the
+// caller passes the remarks and the clock.
 
 const DAY = 24 * 60 * 60_000;
 
@@ -50,10 +51,10 @@ function budgetFactor(kept) {
 }
 
 /**
- * The tuning that `remarks` (newest first) call for: `offsets` to each trigger's bar, by trigger kind, and
- * `factor`, which scales how many remarks the budget allows per hour (and divides the gap between them).
+ * What the judged ones of `remarks` (newest first) call for: `offsets` to the bars of the triggers with enough
+ * verdicts, and `factor` for the budget, null with too few verdicts in all.
  */
-export function tuning(remarks, now) {
+function tuned(remarks, now) {
   const byTrigger = new Map();
   for (const remark of remarks) {
     if (now - remark.at > WINDOW_MS || ['waiting', 'seen'].includes(outcome(remark, now))) continue;
@@ -65,8 +66,23 @@ export function tuning(remarks, now) {
     if (judged.length >= MIN_PER_TRIGGER) offsets[trigger] = barOffset(keptShare(tally(judged, now)));
   }
   const counted = [...byTrigger.values()].flat();
-  const factor = counted.length >= MIN_OVERALL ? budgetFactor(keptShare(tally(counted, now))) : 1;
-  return {offsets, factor};
+  return {offsets, factor: counted.length >= MIN_OVERALL ? budgetFactor(keptShare(tally(counted, now))) : null};
 }
 
-export const NO_TUNING = {offsets: {}, factor: 1};
+/**
+ * The tuning that `remarks` (newest first) call for: `offsets` to each trigger's bar, by trigger kind, and
+ * `factor`, which scales how many remarks the budget allows per hour (and divides the gap between them). With
+ * `root`, a project's own verdicts tune it once there are enough of them (per trigger for its bar, in all for the
+ * budget), and the verdicts of all projects until then; `project` says which parts are the project's own.
+ */
+export function tuning(remarks, now, root = null) {
+  const all = tuned(remarks, now);
+  const own = root ? tuned(remarks.filter(remark => remark.root === root), now) : {offsets: {}, factor: null};
+  return {
+    offsets: {...all.offsets, ...own.offsets},
+    factor: own.factor ?? all.factor ?? 1,
+    project: {triggers: Object.keys(own.offsets), budget: own.factor !== null},
+  };
+}
+
+export const NO_TUNING = {offsets: {}, factor: 1, project: {triggers: [], budget: false}};

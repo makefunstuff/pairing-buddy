@@ -1,5 +1,5 @@
 // The ledger: everything Pair did in a project, one line each. What it read, said, pointed at, showed, suggested,
-// searched, ran, typed, asked you and was refused, and the moments it stayed quiet. `:Pair today` in Neovim and
+// searched, recalled, ran, typed, asked you and was refused, and the moments it stayed quiet. `:Pair today` in Neovim and
 // /today in the chat list the day's. An edit of Pair's keeps the file's text before and after it, so it can be undone
 // later, after other edits too: Neovim merges the undo into the buffer as it is now (see lua/pair/merge.lua).
 
@@ -127,7 +127,7 @@ export function today(store, root, now) {
   const rows = ledgerRows(store.actions(root, since));
   const verdicts = store.verdicts(root, since);
   const useful = verdicts.filter(verdict => verdict === 'useful').length;
-  const summary = `${plural(rows.length, 'thing')} · ${plural(verdicts.length, 'remark')}, ${useful} useful · ${duration(store.activeMs(since))}`;
+  const summary = `${plural(rows.length, 'thing')} · ${plural(verdicts.length, 'remark')}, ${useful} useful · ${duration(store.projectActiveMs(root, since))}`;
   return {rows, summary};
 }
 

@@ -391,7 +391,10 @@ export async function startDaemon(config, {
   function watchHerdr(session, herdr) {
     if (watches.has(session.root) || !herdr?.socket) return;
     const sessionLog = line => log(`[${basename(session.root)}] ${line}`);
-    session.scout = new ScoutPane({socketPath: herdr.socket, workspaceId: herdr.workspace, besidePane: herdr.pane, cwd: session.root, runsDir: join(config.dataDir, 'panes'), log: sessionLog});
+    session.scout = new ScoutPane({
+      socketPath: herdr.socket, workspaceId: herdr.workspace, besidePane: herdr.pane, cwd: session.root, runsDir: join(config.dataDir, 'panes'),
+      setup: config.scoutPane, writable: [join(config.dataDir, 'runs')], hidden: [config.socket], log: sessionLog,
+    });
     const watch = new PaneWatch({
       socketPath: herdr.socket,
       workspaceId: herdr.workspace,
@@ -561,7 +564,11 @@ export async function startDaemon(config, {
     if (message.type === 'drive') return session.drive(message.text ?? '', message.selection ?? null);
     if (message.type === 'take_back') return session.takeBack();
     if (message.type === 'confirm') return session.answer(message.id, message.ok === true);
-    if (message.type === 'feedback') return session.feedback({useful: message.useful === true, id: message.remark ?? undefined, implicit: message.implicit === true});
+    if (message.type === 'feedback') {
+      const number = Number.isInteger(message.number) && message.number > 0 ? message.number : undefined;
+      return session.feedback({useful: message.useful === true, id: message.remark ?? undefined, number, implicit: message.implicit === true});
+    }
+    if (message.type === 'remarks') return sendMessage(client.socket, session.remarkList());
     if (message.type === 'seen') return session.seen(message.remark);
     if (message.type === 'today') return sendMessage(client.socket, {type: 'ledger', ...session.today()});
     if (message.type === 'ledger_detail') return sendMessage(client.socket, {type: 'ledger_detail', ids: message.ids, detail: session.ledgerDetail(message.ids ?? [])});

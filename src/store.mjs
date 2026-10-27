@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   ended_at INTEGER,
   note TEXT,
   pickup TEXT, -- JSON: where the next session picks up, {first: {step, file, line, text}, tests} (see debrief.mjs)
-  active_ms INTEGER NOT NULL DEFAULT 0
+  active_ms INTEGER NOT NULL DEFAULT 0,
+  worked INTEGER NOT NULL DEFAULT 0 -- the user worked in it (see WORK_EVENTS in session.mjs), not only read
 );
 CREATE TABLE IF NOT EXISTS messages (
   session_id INTEGER NOT NULL REFERENCES sessions(id),
@@ -29,13 +30,21 @@ CREATE TABLE IF NOT EXISTS remarks (
   score REAL,
   at INTEGER NOT NULL,
   verdict TEXT,
-  waited_ms INTEGER -- how long its trigger waited for the model while the Partner was at work
+  waited_ms INTEGER, -- how long its trigger waited for the model while the Partner was at work
+  shown INTEGER NOT NULL DEFAULT 0 -- it reached the user: stored at the start of its turn, it may never have
 );
 -- Active pairing time per clock hour (hour = ms since the epoch / 3600000), counted when it happened, so a
 -- session left open for days adds to each day it was used.
 CREATE TABLE IF NOT EXISTS activity (
   hour INTEGER PRIMARY KEY,
   ms INTEGER NOT NULL
+);
+-- The same per project (a session root), for \`pair stats --project\`; kept since v0.9, so older hours are missing.
+CREATE TABLE IF NOT EXISTS project_activity (
+  root TEXT NOT NULL,
+  hour INTEGER NOT NULL,
+  ms INTEGER NOT NULL,
+  PRIMARY KEY (root, hour)
 );
 -- The ledger of what Pair did (see ledger.mjs). As JSON: data is what the list shows, detail what one entry opens
 -- to (a command's output, why Pair stayed quiet, a file's text before and after an edit).
@@ -55,8 +64,15 @@ const ACTION_COLUMNS = new Set(['text', 'data', 'detail', 'state']);
 
 /** Columns added since v0.1, by table, with their definitions. */
 const ADDED_COLUMNS = {
-  sessions: {role: 'TEXT NOT NULL DEFAULT \'navigator\'', pickup: 'TEXT', active_ms: 'INTEGER NOT NULL DEFAULT 0'},
-  remarks: {waited_ms: 'INTEGER'},
+  sessions: {role: 'TEXT NOT NULL DEFAULT \'navigator\'', pickup: 'TEXT', active_ms: 'INTEGER NOT NULL DEFAULT 0', worked: 'INTEGER NOT NULL DEFAULT 0'},
+  remarks: {waited_ms: 'INTEGER', shown: 'INTEGER NOT NULL DEFAULT 0'},
+};
+/** What an added column starts with in the rows already there, where its default is wrong. */
+const FILLED = {
+  // Until v0.9 only work counted as active time.
+  'sessions.worked': 'UPDATE sessions SET worked = active_ms > 0',
+  // A remark that said something has its words in the ledger.
+  'remarks.shown': `UPDATE remarks SET shown = EXISTS (SELECT 1 FROM actions a WHERE a.kind = 'said' AND json_extract(a.data, '$.remark') = remarks.id)`,
 };
 
 export function openStore(path) {
@@ -67,6 +83,7 @@ export function openStore(path) {
     for (const [column, definition] of Object.entries(columns)) {
       if (!db.prepare('SELECT 1 FROM pragma_table_info(?) WHERE name = ?').get(table, column)) {
         db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+        if (FILLED[`${table}.${column}`]) db.exec(FILLED[`${table}.${column}`]);
       }
     }
   }
@@ -115,16 +132,56 @@ export function openStore(path) {
     seeRemark: id => db.prepare('UPDATE remarks SET verdict = \'seen\' WHERE id = ? AND verdict IS NULL').run(id),
     /** The remarks of session `id`, oldest first. */
     sessionRemarks: id => db.prepare('SELECT id, trigger, score, at, verdict FROM remarks WHERE session_id = ? ORDER BY id').all(id),
-    /** Every remark since `since`, newest first. */
-    remarks: since => db.prepare('SELECT id, trigger, score, at, verdict, waited_ms AS waitedMs FROM remarks WHERE at >= ? ORDER BY id DESC').all(since),
-    /** Adds `ms` of active pairing, just before `at`, to its hour. */
-    addActive: (at, ms) => db.prepare('INSERT INTO activity (hour, ms) VALUES (?, ?) ON CONFLICT (hour) DO UPDATE SET ms = ms + excluded.ms')
-      .run(Math.floor(at / HOUR), ms),
-    /** Adds `ms` of active pairing to session `id`; `sessionActiveMs` is its total. */
-    addSessionActive: (id, ms) => db.prepare('UPDATE sessions SET active_ms = active_ms + ? WHERE id = ?').run(ms, id),
+    /** The last remark of session `id`, or null: what feedback without a number rates, also after a daemon restart. */
+    lastRemark: id => db.prepare('SELECT id FROM remarks WHERE session_id = ? AND shown ORDER BY id DESC LIMIT 1').get(id)?.id ?? null,
+    /** Records that remark `id` reached the user. */
+    showRemark: id => db.prepare('UPDATE remarks SET shown = 1 WHERE id = ?').run(id),
+    /** Every remark since `since`, newest first, with the project (`root`) it was made in. */
+    remarks: since => db.prepare(`SELECT r.id, r.trigger, r.score, r.at, r.verdict, r.waited_ms AS waitedMs, s.root
+      FROM remarks r JOIN sessions s ON s.id = r.session_id WHERE r.at >= ? ORDER BY r.id DESC`).all(since),
+    /**
+     * The last `limit` remarks in `root` that reached the user, newest first, each with the first line of what Pair said in it (from the
+     * ledger): the list the chat rates an older remark from.
+     */
+    recentRemarks: (root, limit) => db.prepare(`SELECT r.id, r.trigger, r.at, r.verdict,
+        (SELECT a.text FROM actions a WHERE a.kind = 'said' AND json_extract(a.data, '$.remark') = r.id) AS text
+      FROM remarks r JOIN sessions s ON s.id = r.session_id WHERE s.root = ? AND r.shown ORDER BY r.id DESC LIMIT ?`).all(root, limit),
+    /** Adds `ms` of active pairing in project `root`, just before `at`, to its hour. */
+    addActive(at, ms, root) {
+      const hour = Math.floor(at / HOUR);
+      db.prepare('INSERT INTO activity (hour, ms) VALUES (?, ?) ON CONFLICT (hour) DO UPDATE SET ms = ms + excluded.ms').run(hour, ms);
+      db.prepare('INSERT INTO project_activity (root, hour, ms) VALUES (?, ?, ?) ON CONFLICT (root, hour) DO UPDATE SET ms = ms + excluded.ms')
+        .run(root, hour, ms);
+    },
+    /** Adds `ms` of active pairing to session `id`, and that the user `worked` in it; `sessionActiveMs` is its total. */
+    addSessionActive: (id, ms, worked) => db.prepare('UPDATE sessions SET active_ms = active_ms + ?, worked = max(worked, ?) WHERE id = ?')
+      .run(ms, worked ? 1 : 0, id),
     sessionActiveMs: id => db.prepare('SELECT active_ms FROM sessions WHERE id = ?').get(id)?.active_ms ?? 0,
     /** How long the user was active since `since`, in ms, in any session: whole hours, from the one `since` falls in. */
     activeMs: since => db.prepare('SELECT coalesce(sum(ms), 0) AS ms FROM activity WHERE hour >= ?').get(Math.floor(since / HOUR)).ms,
+    /** The same in project `root` alone. */
+    projectActiveMs: (root, since) => db.prepare('SELECT coalesce(sum(ms), 0) AS ms FROM project_activity WHERE root = ? AND hour >= ?')
+      .get(root, Math.floor(since / HOUR)).ms,
+    /** Whether project `root` has any session: `pair stats --project` names a folder that never had one. */
+    knownRoot: root => !!db.prepare('SELECT 1 FROM sessions WHERE root = ? LIMIT 1').get(root),
+
+    /**
+     * What the earlier sessions of `root` (not session `id`) kept that has any of `words` in it: their goals and notes,
+     * as `{session, at, goal, note}`, and their chat lines, as `{session, at, goal, sender, text}`; at most `limit` of
+     * each, newest first. Ranking them is recall.mjs's.
+     */
+    history(root, id, words, limit) {
+      const any = words.map(() => '{column} LIKE ? ESCAPE \'\\\'').join(' OR ');
+      const patterns = words.map(word => `%${word.replace(/[\\%_]/g, '\\$&')}%`);
+      const notes = db.prepare(`SELECT id AS session, coalesce(ended_at, started_at) AS at, goal, note FROM sessions
+        WHERE root = ? AND id != ? AND (${any.replaceAll('{column}', 'note')} OR ${any.replaceAll('{column}', 'goal')})
+        ORDER BY id DESC LIMIT ?`).all(root, id, ...patterns, ...patterns, limit);
+      const lines = db.prepare(`SELECT m.session_id AS session, m.at, s.goal, m.sender, m.text FROM messages m JOIN sessions s ON s.id = m.session_id
+        WHERE s.root = ? AND s.id != ? AND (${any.replaceAll('{column}', 'm.text')})
+          AND (s.note IS NULL OR instr(m.text, s.note) = 0) -- the debrief in the chat is the note again
+        ORDER BY m.rowid DESC LIMIT ?`).all(root, id, ...patterns, limit);
+      return {notes, lines};
+    },
 
     addAction: ({sessionId, at, kind, text, data = {}, detail = null}) => Number(db.prepare('INSERT INTO actions (session_id, at, kind, text, data, detail) VALUES (?, ?, ?, ?, ?, ?)')
       .run(sessionId, at, kind, text, JSON.stringify(data), detail && JSON.stringify(detail)).lastInsertRowid),

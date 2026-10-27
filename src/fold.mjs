@@ -17,6 +17,7 @@ export function initialState({root = null, goal = null} = {}) {
     selection: null,
     lastKeyAt: 0,
     lastEditAt: 0,
+    lastLookAt: 0, // when the user last moved the cursor or scrolled: reading counts as active time too
     edits: [],
     diagnostics: {},
     commands: [],
@@ -159,12 +160,16 @@ const handlers = {
 
   enter: (state, event) => ({...state, file: event.file}),
 
+  // A cursor that stays where it was (Neovim reports it again after any pause) is no sign of reading.
   cursor: (state, event) => ({
     ...state,
     file: event.file,
     cursor: {line: event.line, col: event.col ?? 0},
     selection: event.selection ?? null,
+    lastLookAt: event.file !== state.file || event.line !== state.cursor?.line ? event.at : state.lastLookAt,
   }),
+
+  scroll: (state, event) => ({...state, lastLookAt: event.at}),
 
   diagnostics: (state, event) => {
     // A diagnostic keeps the time it first appeared, so "just appeared in new code" survives later refreshes.

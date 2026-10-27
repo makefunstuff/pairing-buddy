@@ -6,7 +6,7 @@
 - Neovim 0.11 or newer
 - [herdr](https://herdr.dev) for the chat pane, terminal watching, Scout's pane and tests on save. Pair also works
   without it, with the chat in any terminal, as Navigator only.
-- For Scout: `bash` and [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg`)
+- For Scout: `bash` and [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg`); optionally [bubblewrap](https://github.com/containers/bubblewrap) (`bwrap`), to run Pair's commands in [a sandbox](scout.md#the-sandbox)
 - Optional, for the [context card](neovim.md#what-it-knows-the-context-card) and the goal: herdr's work board
   (`herdr-projects`) and GitHub's `gh` for the pull request
 - A model: any OpenAI-compatible local server (for example llama.cpp or Ollama), an Anthropic-compatible API, or any
@@ -90,7 +90,7 @@ user service with `supervisor=supervise-daemon`. Set `PAIR_CONFIG` there if your
 | neovim | How many Neovims are connected, in which projects |
 | herdr | herdr answers on its socket (only checked when run inside herdr) |
 | logins | `auth.json` is readable by you only (shown when there is one) |
-| watcher, partner | The login or key the model needs is there and, for a subscription, still renews (with the token's expiry); the server answers and lists the model; one short completion works, and how long it took (about 1 s is the aim for the Watcher). One line, `models`, when both use the same model |
+| watcher, partner | The login or key the model needs is there and, for a subscription, still renews (with the token's expiry); the server answers and lists the model; one short completion works, and how long it took (about 1 s is the aim for the Watcher). One line, `models`, when both use the same model. A warning when the Watcher runs on a subscription |
 | thinking | The Partner thinks when asked to, and its levels reach the server |
 | roles | When both roles share a server: how [one model](config.md#one-model) serves both, and how the Watcher fared since the daemon started |
 | swap | When two models share a server: whether it reloads when the roles switch (the Watcher asked right after the Partner, then again) |

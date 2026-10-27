@@ -2,6 +2,7 @@
 // pi-ai runs each provider's own login flow; the result goes to the credential store (see credentials.mjs).
 import {createModels} from '@earendil-works/pi-ai';
 import {knownProviders} from './models.mjs';
+import {subscriptionTerms} from './terms.mjs';
 
 const NAME = /^[a-z0-9][a-z0-9._-]*$/;
 
@@ -31,6 +32,10 @@ export async function login({id, credentials, interaction, getDeviceId, provider
   const type = methods.length === 1 ? methods[0].type : await interaction.prompt({
     type: 'select', message: `Log in to ${provider.name} with:`, options: methods.map(method => ({id: method.type, label: method.label})),
   });
+  if (type === 'oauth' && provider.auth.oauth.isSubscription) {
+    const terms = subscriptionTerms(provider);
+    interaction.notify({type: 'info', message: `Terms: ${terms.note}`, links: terms.url ? [{label: 'Read', url: terms.url}] : []});
+  }
   const models = createModels({credentials});
   models.setProvider(provider);
   await models.login(id, type, interaction, {getDeviceId});

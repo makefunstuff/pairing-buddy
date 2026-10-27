@@ -30,7 +30,7 @@ export async function standInHerdr(socketPath, {cwd, nvim, agents = [], log = ()
 
   async function type(pane, text) {
     const shell = panes.get(pane);
-    const runs = /^exec env PAIR_RUNS='([^']+)'/.exec(text)?.[1];
+    const runs = /^exec env .*?PAIR_RUNS=('[^']+'|\S+)/.exec(text)?.[1].replace(/^'|'$/g, '');
     if (runs) {
       Object.assign(shell, {count: 1, runs});
       mkdirSync(runs, {recursive: true});
