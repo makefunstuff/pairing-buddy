@@ -11,8 +11,11 @@ Runs every test that needs no model, in under a minute, with scripted models and
 - **The core.** Event folding, the triggers, the budget and speak gate, the tool policy per role (also with
   file-writing tools installed by mistake, and an edit after the wheel was taken back), the command policy, and the
   test-output parsers, on real output of each runner.
-- **Panes and roles.** Pair's pane and role switching against a fake herdr; hand-over and take-back; `type` (only after
-  a yes, only into your terminal pane, never Enter); the bash hook.
+- **Panes and roles.** Pair's pane and role switching against a fake herdr, and its shell's rc file in a real bash
+  (output and exit codes in files, more than 1000 lines); hand-over and take-back, also by typing at a shell prompt;
+  `type` (only after a yes, only into your terminal pane, never Enter); your panes against a fake herdr's event stream
+  (focus and scroll pushed, typing, a command seen running and one too short for that, no requests while you are in
+  another workspace) and the heuristics on pane text; the shell hooks: bash, and zsh and fish where installed.
 - **The daemon end to end** with scripted models; several projects and Neovims at once; Neovim and the chat pane
   reconnecting after a daemon restart; a question the restart cut off answered late, a remark dropped; a saved config
   taken without a restart (a new model between turns, one with an error refused).

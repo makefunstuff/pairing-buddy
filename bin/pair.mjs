@@ -45,7 +45,7 @@ const USAGE = `usage:
   pair uninstall    stop and remove the service (the config and data stay)
   pair daemon       run the daemon in the foreground
   pair supervise    run the daemon in the foreground, restarted when it fails (what \`pair\` starts without a service)
-  pair shell-hook bash|zsh   print the shell hook that reports exit codes
+  pair shell-hook bash|zsh|fish   print the shell hook that reports exit codes
   pair report --exit N --cmd TEXT   (used by the shell hook)`;
 
 const ONE_MODEL = 'The Watcher asks it for one number without thinking, the Partner thinks; on its server the Watcher waits while the Partner works.';
@@ -189,7 +189,7 @@ Models: ${rolesText(config.models)}. ${sameModel(config.models.watcher, config.m
 Next:
   1. Add the Neovim plugin with lazy.nvim:
 ${LAZY_SPEC}
-  2. Optional, for exit codes: eval "$(pair shell-hook bash)" in your shell's rc file (or zsh)
+  2. Optional, for exit codes: eval "$(pair shell-hook bash)" in your shell's rc file (or zsh; fish: pair shell-hook fish | source)
   3. Run \`pair doctor\` to check everything, then \`pair\` in a herdr pane next to Neovim.`);
 }
 

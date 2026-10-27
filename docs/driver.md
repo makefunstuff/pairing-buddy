@@ -99,14 +99,14 @@ The same one undo step as any hand-over: `u` takes the edit away, and nothing wa
 
 ## Taking the wheel back
 
-Any key you press in Neovim while Pair has the wheel takes it back (scrolling, clicking and the terminal's focus reports are not keys, so you can scroll to watch):
+Any key you press in Neovim while Pair has the wheel takes it back (scrolling, clicking and the terminal's focus reports are not keys, so you can scroll to watch), and so does typing at the prompt of one of your shell panes:
 
 - While Pair is typing its edit, the edit stops and what it typed so far is undone: one change or none. That key, and any you press until the undo is done, does nothing else, so it cannot change the buffer under a half-typed edit. The model is told `Not changed: the user has taken the wheel back.`
 - The plugin refuses edits from that key on, before the daemon has even heard of it.
 - The daemon switches Pair back to Navigator: from then on the policy hook refuses `edit` and `type`, telling the model the user has the wheel, so it can suggest the change instead. The conversation is offered Navigator's tools from its next answer on (tools that vanish in the middle of an answer make some local models write the call as plain text).
 - The chat says "You have the wheel back."
 
-Typing in the chat pane or in a shell pane does not take the wheel back: herdr does not report keystrokes, and the chat is where you talk to Pair while it drives.
+Typing in the chat pane does not take the wheel back: the chat is where you talk to Pair while it drives. herdr does not report keystrokes, so Pair tells typing in a shell pane from its prompt line, which it looks at twice a second while that pane has focus ([herdr.md](herdr.md#the-users-panes-heuristics-and-the-shell-hook)); the text the Driver's `type` puts there does not count, and neither does pressing Enter on it.
 
 ## Ping-pong, with or without a test
 
