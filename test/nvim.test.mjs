@@ -323,7 +323,7 @@ test('suggestions show as a ghost diff that one key accepts; handing over gives 
 });
 
 test('the hand-over without a test: your last run builds and runs the unsaved buffer, and the hand-back line shows the line it printed next to your target', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
-  const {project, partner, remote, keys, send, lines, status, stop} = await pairInNvim('tune the numbers', {runs: true, knownKeys: ['M-?']});
+  const {project, partner, messages, remote, keys, send, lines, status, stop} = await pairInNvim('tune the numbers', {runs: true, knownKeys: ['M-?']});
   const marks = () => JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('pair'), 0, -1, {details = true}))")`));
   const text = chunks => chunks.map(chunk => chunk[0]).join('');
   const toolResult = context => context.messages.filter(message => message.role === 'toolResult').at(-1).content[0].text;
@@ -338,6 +338,10 @@ test('the hand-over without a test: your last run builds and runs the unsaved bu
       context => { reply = toolResult(context); return fauxAssistantMessage([fauxText('x is 100 now.')]); },
     ]);
     send({type: 'drive', text: 'you take it: raise x, x stays over 50'});
+    // The command came from your terminal and is no known test or build: the chat asks first.
+    const question = await until(() => messages.find(message => message.type === 'confirm'), 'the question', 20_000);
+    assert.match(question.text, /^Pair wants to run `node show\.mjs` on the unsaved buffer, in a scratch copy, to check its edit/);
+    send({type: 'confirm', id: question.id, ok: true});
     const words = await until(() => marks().find(([, , , details]) => details.virt_lines), 'the hand-back line', 20_000);
     assert.match(reply, /The user expects: "x stays over 50"\. It printed x 100, which meets it\./);
     assert.deepEqual([words[3].sign_text.trim(), words[3].sign_hl_group], ['✓', 'PairStatusPass']);

@@ -53,7 +53,11 @@ describe('the hand-over without a test, on live models', {skip: !stacks.length ?
         record: {id: 1, root, conversation_id: conversation, goal: 'see how well the entity table spreads its keys', level: 'normal', role: 'navigator'},
         store: {addMessage() {}, addAction: () => 1, updateAction() {}, lastRemark: () => null, setRole() {}, setGoal() {}},
         partner, score: async () => ({value: 0, reason: ''}), typingPauseMs: 2000,
-        notify: (_to, message) => { if (message.type === 'handback') handback = message; return 1; },
+        notify: (_to, message) => {
+          if (message.type === 'handback') handback = message;
+          if (message.type === 'confirm') setImmediate(() => session.answer(message.id, true)); // every question gets a yes
+          return 1;
+        },
         requestEditor: async message => {
           if (message.type === 'read') return {text: buffer};
           if (message.type !== 'edit') return {};
@@ -70,8 +74,10 @@ describe('the hand-over without a test, on live models', {skip: !stacks.length ?
       t.diagnostic(`tools: ${tools.map(call => `${call.name}(${JSON.stringify(call.args)})`).join(', ')}`);
       t.diagnostic(`hand-back: ${JSON.stringify(handback)}`);
       assert.equal(tools.filter(call => call.name === 'edit').length, 1, 'one edit');
-      assert.equal(session.scout.ran.length, 1, 'one run, by Pair, on the unsaved buffer');
-      assert.match(session.scout.ran[0], /\.unsaved\/tree' && \(make -s run\) > /, 'with the user\'s command, in the scratch copy');
+      // The Driver may run its own experiments before it edits; the check is the one run in the scratch copy.
+      const checks = session.scout.ran.filter(command => command.includes('.unsaved/tree'));
+      assert.equal(checks.length, 1, 'one check on the unsaved buffer');
+      assert.match(checks[0], /\.unsaved\/tree' && \(make -s run\) > /, 'with the user\'s command, in the scratch copy');
       // Under 2 at this load takes more than a good hash, and a model does not always find it: the check has to say
       // which it was, with the number the run printed.
       const printed = /^avg probe (\d+(?:\.\d+)?)$/.exec(handback?.check ?? '');

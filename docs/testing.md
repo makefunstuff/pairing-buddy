@@ -42,7 +42,9 @@ Runs every test that needs no model, in under a minute, with scripted models and
 - **The hand-over without a test** (`test/check.test.mjs`): the hand-over split into intent, observable and command;
   a bound read from the words and checked against the run's numbers; the check command chosen (the one in backquotes,
   the command on save, else your last build and run, with the build before a bare `./probe`, in its folder, never one
-  the command policy refuses). A real C Makefile project (and a Zig one, with `zig` on `PATH`) built and run in the
+  the command policy refuses, nor a bare `./probe` with no build known); a terminal command Scout would ask about
+  asking first, a no running nothing and a yes holding for the session; the picture attached only for a model that
+  reads images, and `images` in a model entry. A real C Makefile project (and a Zig one, with `zig` on `PATH`) built and run in the
   scratch copy: a bound met, a bound missed, a deliberate segfault (through `bashWithoutCores`), an expectation in
   words judged by the Partner's `✓`, and a picture the run writes going to the model. The project on disk stays as it
   was.

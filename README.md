@@ -153,7 +153,8 @@ over, the `printf` lines you added for it are counted and one key removes them. 
 
 **Hands over without a test.** Say what you want and what you expect to see: `you take it: make the ids spread over
 the table, avg probe stays under 2`. Pair types the edit, builds and runs your unsaved buffer in a scratch copy with
-your own command (your last `make -s run`, `odin run .`, `zig build run`), and hands back with the line the run
+your own command (your last `make -s run`, `odin run .`, `zig build run`; one Scout would ask about asks you
+first), and hands back with the line the run
 printed next to your target: `✓ avg probe 1.1`. A bound is checked in code; anything else ("the window shows both
 counters") Pair compares with the output. [docs/driver.md](docs/driver.md#the-hand-over-without-a-test)
 

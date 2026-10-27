@@ -4,10 +4,16 @@ import {mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync} from 
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {test} from 'node:test';
+import {createModels, fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall} from '@earendil-works/pi-ai';
+import {MemoryStorage} from '@earendil-works/pi-durable';
 import {checkCommand, judge, markOf, numberFor, parseHandOver, targetOf} from '../src/check.mjs';
 import {measure} from '../src/run-log.mjs';
 import {sandboxWords, sandboxWorks} from '../src/sandbox.mjs';
 import {checkInput, driveInput, PairSession} from '../src/session.mjs';
+import {withPicture} from '../src/tools.mjs';
+import {createPairModels} from '../src/models.mjs';
+import {parseConfig} from '../src/config.mjs';
+import {openPartner} from '../src/partner.mjs';
 import {bashWithoutCores} from './no-core.mjs';
 
 const has = (command, flag = '--version') => spawnSync(command, [flag]).status === 0;
@@ -25,6 +31,11 @@ test('a hand-over splits into what to change, what the user expects to see, and 
   assert.deepEqual(parseHandOver('your turn'), {intent: null, expect: null, command: null});
   assert.deepEqual(parseHandOver(''), {intent: null, expect: null, command: null});
   assert.equal(parseHandOver('it prints the sum, and the loop stops').expect, null, 'the first clause is always the intent');
+  assert.equal(parseHandOver('rename it, keep the old name as an alias').expect, null, 'keep is a change here');
+  assert.equal(parseHandOver('use a range loop, iterate over the slice instead').expect, null);
+  assert.equal(parseHandOver('use a mask, fps over 59').expect, 'fps over 59', 'a bound on a number is an observable');
+  assert.equal(parseHandOver('validate n, it should print an error for n over 100').expect, 'it should print an error for n over 100', 'in words: the Partner judges it');
+  assert.equal(parseHandOver('add the check, it should fail fast').expect, null, 'should alone is no observable');
 });
 
 test('a bound in the expectation names a number: its label, the comparison and the value', () => {
@@ -36,6 +47,7 @@ test('a bound in the expectation names a number: its label, the comparison and t
   assert.deepEqual(targetOf('count equals 3'), {label: 'count', op: '=', value: 3});
   assert.equal(targetOf('the window shows both counters'), null);
   assert.equal(targetOf('under 2'), null, 'a bound without a label names no number');
+  assert.equal(targetOf('it prints an error for n over 100'), null, 'a sentence is no number\'s name: the Partner judges');
   assert.equal(targetOf(null), null);
 });
 
@@ -65,15 +77,29 @@ test('the check: a failed run fails, a bound is checked in code, any other expec
 test('the check command is the user\'s: the one in the hand-over, the command on save, else their last build and run', () => {
   const root = '/p';
   const run = (cmd, cwd = root, by = 'you') => ({cmd, cwd, by});
-  assert.deepEqual(checkCommand({given: 'make -s run', testCommand: 'make test', runs: [run('zig build run')], root}), {command: 'make -s run', from: 'the command in the hand-over'});
-  assert.deepEqual(checkCommand({testCommand: 'make test', runs: [run('zig build run')], root}), {command: 'make test', from: 'the project\'s command on save'});
+  assert.deepEqual(checkCommand({given: 'make -s run', testCommand: 'make test', runs: [run('zig build run')], root}), {command: 'make -s run', from: 'the command in the hand-over', ask: null});
+  assert.deepEqual(checkCommand({testCommand: 'make test', runs: [run('zig build run')], root}), {command: 'make test', from: 'the project\'s command on save', ask: null});
+  assert.equal(checkCommand({testCommand: 'node --test', root}).command, 'node --test', 'a test runner that is no build is still a check');
   assert.equal(checkCommand({runs: [run('make -s run'), run('odin run .'), run('./probe', root, 'pair')], root}).command, 'odin run .', 'the user\'s, not Pair\'s');
   assert.equal(checkCommand({runs: [run('make'), run('ls'), run('./probe')], root}).command, 'make && ./probe', 'the copy has the old program: build it first');
-  assert.equal(checkCommand({runs: [run('./probe')], root}).command, './probe', 'no build known');
+  assert.match(checkCommand({runs: [run('./probe')], root}).none, /^`\.\/probe` runs the program as it was built, so in the copy it would run the old code/, 'no build known: no check');
+  assert.match(checkCommand({given: 'build/probe --n 5', root}).none, /would run the old code/);
+  assert.equal(checkCommand({runs: [run('./build.sh')], root}).command, './build.sh', 'a script builds what it needs');
   assert.equal(checkCommand({runs: [run('zig build', '/p/tool'), run('./zig-out/bin/tool', '/p/tool')], root}).command, "cd 'tool' && zig build && ./zig-out/bin/tool", 'in its folder');
   assert.equal(checkCommand({runs: [run('make run', '/elsewhere')], root}).command, 'make run', 'a folder outside the project is not entered');
   assert.match(checkCommand({given: 'sudo make install', root}).none, /^`sudo make install` is not run for a check: /);
   assert.deepEqual(checkCommand({runs: [], root}), {none: 'no command on save, and no build or run in the user\'s terminal yet'});
+});
+
+test('a command from the terminal that Scout would ask about asks first; the user\'s own words and command on save do not', () => {
+  const root = '/p';
+  const run = cmd => ({cmd, cwd: root, by: 'you'});
+  for (const cmd of ['make install', 'make deploy', './deploy.sh', 'python3 send_mail.py']) {
+    assert.ok(checkCommand({runs: [run(cmd)], root}).ask, `${cmd} asks`);
+  }
+  assert.equal(checkCommand({runs: [run('make test')], root}).ask, null, 'a test target Scout runs at once');
+  assert.equal(checkCommand({given: 'make deploy', root}).ask, null, 'named in the hand-over: the user asked for it');
+  assert.equal(checkCommand({testCommand: 'make run', root}).ask, null, 'the command on save runs at every save anyway');
 });
 
 test('the Driver hears what the user expects and what will run, before it edits', () => {
@@ -107,9 +133,10 @@ int main(void) {
 
 /**
  * A git project in a scratch folder with `files`, and a session in it whose pane runs each command for real; with
- * `sandbox`, in bubblewrap as Pair's pane does, the project and the runs folder writable.
+ * `sandbox`, in bubblewrap as Pair's pane does, the project and the runs folder writable. The chat answers each
+ * question with `answer`.
  */
-function realProject(files, {partner, buffer, sandbox = false}) {
+function realProject(files, {partner, buffer, sandbox = false, answer = true}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'pair-check-')));
   for (const [path, text] of Object.entries(files)) {
     mkdirSync(join(root, path, '..'), {recursive: true});
@@ -136,7 +163,11 @@ function realProject(files, {partner, buffer, sandbox = false}) {
     score: async () => ({value: 9, reason: 'worth it'}),
     typingPauseMs: 2000,
     checkOutput: join(runs, '3.check.out'),
-    notify: (to, message) => { sent.push({to, ...message}); return 1; },
+    notify: (to, message) => {
+      sent.push({to, ...message});
+      if (message.type === 'confirm') setImmediate(() => pair.answer(message.id, answer));
+      return 1;
+    },
     requestEditor: async message => (message.type === 'read' ? {text: buffer} : {ok: true, from: 4, to: 4}),
     now: () => 100_000,
   });
@@ -165,7 +196,9 @@ test('without a test: the hand-over builds and runs the unsaved buffer with the 
   pair.receive({kind: 'command_end', cmd: 'make -s run', exit: 0, output: before, cwd: root});
 
   await pair.drive('you take it: make the keys spread over the table, avg probe stays under 2');
-  assert.match(seen.input, /What the user expects to see: "avg probe stays under 2"\. After your edit, Pair runs `make -s run` \(the build and run the user ran last in their terminal\)/);
+  assert.match(seen.input, /What the user expects to see: "avg probe stays under 2"\. After your edit, Pair runs `make -s run` \(the build and run the user ran last in their terminal\), once the user allows it,/);
+  assert.deepEqual(sent.filter(message => message.type === 'confirm').map(message => message.text),
+    ['Pair wants to run `make -s run` on the unsaved buffer, in a scratch copy, to check its edit (make run runs a target that is not a test or build). Allow?']);
   assert.equal(ran.length, 1);
   assert.match(ran[0], /\.unsaved\/tree' && \(make -s run\) > /, 'in the scratch copy');
   assert.match(seen.reply, /It printed avg probe 1\.\d+, which meets it\./);
@@ -228,7 +261,6 @@ test('a run that writes a picture: the Partner gets it with the edit\'s answer',
   seen.pair = pair;
   pair.receive({kind: 'command_end', cmd: 'cc -o shot shot.c && ./shot', exit: 0, output: 'wrote shot.png\n', cwd: root});
   await pair.drive('you take it: write the shot, the picture shows one pixel');
-  assert.match(seen.reply.text, /The run wrote the picture shot\.png, attached\.$/);
   assert.deepEqual([seen.reply.picture.file, seen.reply.picture.mimeType, seen.reply.picture.data], ['shot.png', 'image/png', png.toString('base64')]);
 });
 
@@ -256,4 +288,74 @@ test('in the sandbox of Pair\'s pane, the check builds and runs in the writable 
   assert.match(ran[0], /pair-check-runs-[^/]+\/3\.check\.out\.unsaved\/tree' && \(make -s run\)/);
   assert.match(seen.reply, /It printed avg probe 1\.\d+, which meets it\./);
   assert.equal(sent.find(message => message.type === 'handback').tests, 'pass');
+});
+
+test('the check waits for the user\'s yes: a no runs nothing; a yes holds for that command for the session', {skip: has('cc') && has('make') ? false : 'needs cc and make', timeout: 60_000}, async () => {
+  const files = {'probe.c': PROBE_C, 'Makefile': 'run: probe\n\t./probe\nprobe: probe.c\n\tcc -O1 -o probe probe.c\n'};
+  const edit = {file: 'probe.c', line: 4, endLine: 4, text: 'static unsigned slot(unsigned key) { return key % 32; }'};
+  const declined = driver(edit);
+  declined.seen.words = 'Done.';
+  const no = realProject(files, {partner: declined.partner, buffer: PROBE_C, answer: false});
+  declined.seen.pair = no.pair;
+  no.pair.receive({kind: 'command_end', cmd: 'make -s run', exit: 0, output: 'avg probe 200.50 worst 400\n', cwd: no.root});
+  await no.pair.drive('you take it: spread the keys, avg probe stays under 2');
+  assert.match(declined.seen.reply, /The user did not allow `make -s run` on the unsaved buffer, so nothing ran\./);
+  assert.deepEqual(no.ran, []);
+
+  const allowed = driver(edit);
+  allowed.seen.words = 'Done.';
+  const yes = realProject(files, {partner: allowed.partner, buffer: PROBE_C});
+  allowed.seen.pair = yes.pair;
+  yes.pair.receive({kind: 'command_end', cmd: 'make -s run', exit: 0, output: 'avg probe 200.50 worst 400\n', cwd: yes.root});
+  await yes.pair.drive('you take it: spread the keys, avg probe stays under 2');
+  await yes.pair.drive('you take it: spread them more, avg probe stays under 2');
+  assert.equal(yes.ran.length, 2, 'both hand-overs ran the check');
+  assert.equal(yes.sent.filter(message => message.type === 'confirm').length, 1, 'asked once');
+});
+
+test('the run\'s picture is attached only for a model that reads images; the config can say a model at a baseUrl does', async () => {
+  const picture = {file: 'shot.png', data: 'iVBO', mimeType: 'image/png'};
+  const apiFor = input => ({agent: async () => ({model: {provider: 'pair-partner', modelId: 'm'}}), models: {getModel: () => ({input})}});
+  const seeing = await withPicture({text: 'Changed.', picture}, apiFor(['text', 'image']), {});
+  assert.deepEqual(seeing.output, [{type: 'text', text: 'Changed.\n\nThe run wrote the picture shot.png, attached.'}, {type: 'image', data: 'iVBO', mimeType: 'image/png'}]);
+  const blind = await withPicture({text: 'Changed.', picture}, apiFor(['text']), {});
+  assert.deepEqual(blind.output, [{type: 'text', text: 'Changed.\n\nThe run wrote the picture shot.png; your model does not read images, so it is not attached.'}]);
+  assert.deepEqual((await withPicture('Changed.', apiFor(['text']), {})).output, [{type: 'text', text: 'Changed.'}]);
+
+  const model = images => ({api: 'openai', baseUrl: 'http://localhost:1/v1', model: 'm', ...(images === undefined ? {} : {images})});
+  assert.deepEqual(createPairModels(parseConfig({models: {watcher: model(), partner: model(true)}})).partner.input, ['text', 'image']);
+  assert.deepEqual(createPairModels(parseConfig({models: {watcher: model(), partner: model()}})).partner.input, ['text']);
+  assert.throws(() => parseConfig({models: {watcher: model(), partner: model('yes')}}), /models\.partner\.images must be true or false/);
+});
+
+test('through the Partner: a model that reads images gets the picture; one that does not gets its name, and no picture is promised', async () => {
+  const picture = {file: 'shot.png', data: Buffer.from('89504e470d0a1a0a', 'hex').toString('base64'), mimeType: 'image/png'};
+  for (const input of [['text', 'image'], ['text']]) {
+    const faux = fauxProvider({provider: 'faux-partner', models: [{id: 'p', input}]});
+    const models = createModels();
+    models.setProvider(faux.provider);
+    let received;
+    faux.setResponses([
+      fauxAssistantMessage([fauxToolCall('edit', {file: 'shot.c', line: 1, new_text: 'x'})], {stopReason: 'toolUse'}),
+      context => { received = context.messages.filter(message => message.role === 'toolResult').at(-1).content; return fauxAssistantMessage([fauxText('Done.')]); },
+    ]);
+    const say = async () => 'shown';
+    const partner = await openPartner({
+      storage: new MemoryStorage(), models, model: faux.getModel(),
+      hands: {say, edit: async () => ({text: 'Changed.', picture}), roleOf: () => 'driver'},
+    });
+    const conversation = await partner.createConversation();
+    await partner.setRole(conversation, 'driver');
+    await partner.ask(conversation, 'go');
+    await partner.close();
+    const texts = received.filter(part => part.type === 'text').map(part => part.text).join('\n');
+    if (input.includes('image')) {
+      assert.deepEqual(received.filter(part => part.type === 'image'), [{type: 'image', data: picture.data, mimeType: 'image/png'}]);
+      assert.match(texts, /The run wrote the picture shot\.png, attached\.$/);
+    } else {
+      assert.equal(received.some(part => part.type === 'image'), false);
+      assert.match(texts, /The run wrote the picture shot\.png; your model does not read images, so it is not attached\.$/);
+      assert.doesNotMatch(texts, /omitted/);
+    }
+  }
 });

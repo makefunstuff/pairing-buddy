@@ -80,9 +80,23 @@ If an answer needs a search or a test run, say so in one sentence: the user can 
 };
 
 const text = value => ({output: [{type: 'text', text: value}]});
-/** A tool's answer that may carry the picture a run wrote: the model sees it, or a note that it cannot. */
-const withPicture = value => (typeof value === 'string' ? text(value)
-  : {output: [{type: 'text', text: value.text}, {type: 'image', data: value.picture.data, mimeType: value.picture.mimeType}]});
+/** Whether the conversation's model reads images; pi-ai would swap an image for a note for one that does not. */
+async function readsImages(api, context) {
+  const ref = (await api.agent(context)).model;
+  const model = ref && api.models.getModel(ref.provider, ref.modelId);
+  return model?.input.includes('image') ?? false;
+}
+
+/**
+ * A tool's answer that may carry the picture a run wrote (`{text, picture}`): attached for a model that reads images,
+ * else only named, so the words never promise a picture the model does not get.
+ */
+export async function withPicture(value, api, context) {
+  if (typeof value === 'string') return text(value);
+  const {file, data, mimeType} = value.picture;
+  if (!(await readsImages(api, context))) return text(`${value.text}\n\nThe run wrote the picture ${file}; your model does not read images, so it is not attached.`);
+  return {output: [{type: 'text', text: `${value.text}\n\nThe run wrote the picture ${file}, attached.`}, {type: 'image', data, mimeType}]};
+}
 
 /** The arguments of suggest and edit: which lines of which file, and what they become. */
 const lineChange = (extra = {}) => Type.Object({
@@ -164,7 +178,7 @@ function tools(hands) {
       name: 'edit',
       description: 'Replace lines line..end_line of a file in the user\'s editor with new_text, as one undo step. The buffer is not saved.',
       parameters: lineChange(),
-      execute: async (args, api) => withPicture(await hands.edit(api.conversationId, changeOf(args))),
+      execute: async (args, api, context) => withPicture(await hands.edit(api.conversationId, changeOf(args)), api, context),
     }),
     defineTool({
       name: 'type',

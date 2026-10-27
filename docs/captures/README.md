@@ -26,8 +26,9 @@ recording comes out the same each time.
   program the live tone tests use ([test/live/probe](../../test/live/probe/)), whose `make run` fails its check with exit 1. The notes scene adds its
   design note, [notes/dead-letters.md](notes/dead-letters.md), which the tests read too. The exploration loop:
   [loop/](loop/), the research's entity table, built and run with `make -s run` in the `:terminal` on the right. The hand-over without a
-  test uses it too: Pair's own pane builds and runs the unsaved buffer there, in a scratch copy. The
-  blank page's scenes start in an empty folder, `ticks`, with no git yet.
+  test uses it too: Pair's own pane builds and runs the unsaved buffer there, in a scratch copy, after a question in
+  the chat that the stage answers yes (`allow` in the scene). The blank page's scenes start in an empty folder,
+  `ticks`, with no git yet.
 - **The blank page's words** are not written for the capture: [ticks.json](ticks.json) holds a real `:Pair new`
   with a cloud model, unedited. It has the three questions (each asked after the answer before it), the slice and the
   two files the Driver typed. Its first slice broke the 90-character rule, so the daemon asked again; the slice

@@ -13,8 +13,9 @@ const QUOTED = /`([^`\n]+)`/;
 const LEAD_IN = /(?:\s*[,;:]?\s*\b(?:and\s+)?(?:check|test|try|run|build|verify)?\s*(?:it\s+)?(?:with|using|by|via)?\s*)$/i;
 const EXPLICIT = /\b(?:expect(?:ed|ing)?|check|so that you see|you should see)\s*:\s*/i;
 const CLAUSE = /\s*(?:[,;]|\s[—–]\s|\s-\s|\.\s+)\s*/;
-// A clause that says what the user expects to see, rather than what to change.
-const OBSERVABLE = /\b(?:prints?|printing|shows?|outputs?|displays?|stays?|keeps?|remains?|under|below|above|over|at (?:least|most)|less than|more than|fewer than|no more than|equals?|exactly|expect(?:s|ed)?|should|still)\b|[<>≤≥=]=?\s*-?\d/i;
+// A clause that says what the user expects to see, rather than what to change: these words, or a bound on a number
+// (targetOf). "keep the old name", "iterate over the slice" are changes.
+const OBSERVABLE = /\b(?:prints?|printing|shows?|outputs?|displays?|stays?|remains?|expect(?:s|ed)?)\b/i;
 
 /**
  * The hand-over in its parts: `{intent, expect, command}`. `words` are the user's ("you take it: make the table
@@ -29,7 +30,7 @@ export function parseHandOver(words = '') {
   const explicit = text.match(EXPLICIT);
   if (explicit) return {intent: text.slice(0, explicit.index).replace(/[\s,;.]+$/, '') || null, expect: tidy(text.slice(explicit.index + explicit[0].length)), command};
   const clauses = text.split(CLAUSE).filter(Boolean);
-  const at = clauses.findIndex((clause, index) => index > 0 && OBSERVABLE.test(clause));
+  const at = clauses.findIndex((clause, index) => index > 0 && (OBSERVABLE.test(clause) || targetOf(clause)));
   if (at < 0) return {intent: tidy(text), expect: null, command};
   return {intent: tidy(clauses.slice(0, at).join(', ')), expect: tidy(clauses.slice(at).join(', ')), command};
 }
@@ -46,6 +47,8 @@ const BOUNDS = {
 const BOUND = /^(.*?)\s*(?:\b(?:stays?|keeps?|remains?|is|are|goes|gets|drops?|falls?|should be|must be|be)\s+)*(\b(?:under|below|less than|fewer than|at most|no more than|over|above|more than|at least|no less than|equals?|exactly)\b|<=|>=|==|≤|≥|<|>|=)\s*(-?\d+(?:\.\d+)?)/i;
 // Words before a label that are no part of it: "keep avg probe under 2", "and the worst stays under 4".
 const NOT_LABEL = /^(?:and|so|with|keep(?:ing)?|make sure|while|the|its|it|that)\s+/i;
+// A label that is a sentence, not a number's name: "it should print an error for n over 100" is the Partner's to judge.
+const NOT_A_NAME = /\b(?:prints?|shows?|outputs?|should|must|when|if|for|error)\b/i;
 
 /** The number an expectation bounds, `{label, op, value}` ("avg probe stays under 2": "avg probe", "<", 2), or null. */
 export function targetOf(expect) {
@@ -54,7 +57,7 @@ export function targetOf(expect) {
   let label = match[1].trim();
   while (NOT_LABEL.test(label)) label = label.replace(NOT_LABEL, '');
   const op = Object.keys(BOUNDS).find(key => BOUNDS[key].test(match[2].replace(/\s+/g, ' ')));
-  return label ? {label: label.toLowerCase(), op, value: Number(match[3])} : null;
+  return label && !NOT_A_NAME.test(label) ? {label: label.toLowerCase(), op, value: Number(match[3])} : null;
 }
 
 const MEETS = {'<': (a, b) => a < b, '<=': (a, b) => a <= b, '>': (a, b) => a > b, '>=': (a, b) => a >= b, '=': (a, b) => a === b};
@@ -95,27 +98,38 @@ export function markOf(said) {
 
 /** The first word of one simple command, past variables, `time` and the like. */
 const firstWord = command => command.trim().replace(/^(?:\w+=\S*\s+)+/, '').replace(/^(?:time|nice|env|command)\s+/, '').split(/\s+/)[0] ?? '';
-/** Whether `cmd` builds something: a run of a program by its path (`./probe`) alone does not. */
-const builds = cmd => cmd.split(/&&|\|\||[;|]/).some(part => isRun(part) && !firstWord(part).includes('/'));
+// A script by its path builds what it needs (`./build.sh`); a program by its path without one (`./probe`) is built.
+const SCRIPT = /\.(?:sh|bash|zsh|py|rb|pl|lua|js|mjs)$/;
+const parts = cmd => cmd.split(/&&|\|\||[;|]/);
+const builtProgram = part => isRun(part) && firstWord(part).includes('/') && !SCRIPT.test(firstWord(part));
+/** Whether `cmd` builds something: a run of a built program by its path (`./probe`) does not. */
+const builds = cmd => parts(cmd).some(part => isRun(part) && !builtProgram(part));
+/** Whether `cmd` runs a built program (`./probe`) and builds nothing first: in the copy that is the old program. */
+const runsOldProgram = cmd => parts(cmd).some(builtProgram) && !builds(cmd);
 
 /**
- * The command that checks the Driver's edit: `{command, from}`, with `from` saying whose it is, or `{none}` with
- * why there is none. `given` is the one in the hand-over, `testCommand` the project's on save, `runs` the run log
- * (run-log.mjs). The user's last run that only runs a program (`./probe`) gets the build they ran before it
- * (`make && ./probe`): the scratch copy has the old program. One that ran in another folder of the project runs there.
+ * The command that checks the Driver's edit: `{command, from, ask}`, with `from` saying whose it is and `ask` why
+ * the user is asked first, or `{none}` with why there is none. `given` is the one in the hand-over, `testCommand`
+ * the project's on save, `runs` the run log (run-log.mjs). The user's last run that only runs a program (`./probe`)
+ * gets the build they ran before it (`make && ./probe`); with none known it is no check, since the scratch copy has
+ * the old program. One that ran in another folder of the project runs there. What the command policy refuses never
+ * runs; a command from the terminal that Scout would ask about (`make install`, `./deploy.sh`) asks too. The
+ * user's own words in the hand-over and their command on save are theirs to run.
  */
 export function checkCommand({given = null, testCommand = null, runs = [], root}) {
-  const allowed = (command, from) => {
+  const checked = (command, from, terminal = false) => {
     const policy = commandPolicy(command);
-    return policy.verdict === 'refuse' ? {none: `\`${command}\` is not run for a check: ${policy.reason}`} : {command, from};
+    if (policy.verdict === 'refuse') return {none: `\`${command}\` is not run for a check: ${policy.reason}`};
+    if (runsOldProgram(command)) return {none: `\`${command}\` runs the program as it was built, so in the copy it would run the old code; the user can name the build and run in backquotes`};
+    return {command, from, ask: terminal && policy.verdict === 'ask' ? policy.reason : null};
   };
-  if (given) return allowed(given, 'the command in the hand-over');
-  if (testCommand) return allowed(testCommand, 'the project\'s command on save');
+  if (given) return checked(given, 'the command in the hand-over');
+  if (testCommand) return checked(testCommand, 'the project\'s command on save');
   const mine = runs.filter(run => run.by === 'you');
   const last = mine.at(-1);
   if (!last) return {none: 'no command on save, and no build or run in the user\'s terminal yet'};
   const build = builds(last.cmd) ? null : mine.findLast(run => run.cwd === last.cwd && builds(run.cmd));
   const folder = last.cwd ? relative(root, last.cwd) : '';
   const inside = folder && !folder.startsWith('..') ? `cd ${shellQuote(folder)} && ` : '';
-  return allowed(`${inside}${build ? `${build.cmd} && ` : ''}${last.cmd}`, 'the build and run the user ran last in their terminal');
+  return checked(`${inside}${build ? `${build.cmd} && ` : ''}${last.cmd}`, 'the build and run the user ran last in their terminal', true);
 }

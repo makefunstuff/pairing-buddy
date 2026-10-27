@@ -105,8 +105,9 @@ export function driveInput(words, description, selection = '', check = '') {
  */
 export function checkInput(expect, check) {
   const expects = expect ? `What the user expects to see: "${expect}". ` : '';
+  const asks = check.ask ? ', once the user allows it,' : '';
   const runs = check.command
-    ? `After your edit, Pair runs \`${check.command}\` (${check.from}) on the unsaved buffer and gives you its output.`
+    ? `After your edit, Pair runs \`${check.command}\` (${check.from})${asks} on the unsaved buffer and gives you its output.`
     : expect ? `Pair cannot run anything to check it: ${check.none}.` : '';
   return expects || check.command ? `${expects}${runs}\n\n` : '';
 }
@@ -277,6 +278,7 @@ export class PairSession {
     this.edited = false; // the Driver made its one edit in this hand-over
     this.handback = null; // that edit's lines and how the check went on them: {file, line, endLine, tests, check}
     this.handOver = null; // the hand-over's intent, expectation and check command (see check.mjs)
+    this.checksAllowed = new Set(); // check commands the user allowed this session
     this.remarkId = null; // the stored remark of the running unasked turn
     this.lastRemark = store.lastRemark(record.id); // the last remark that reached the user: what feedback without an id rates
     this.lastWords = null; // what Pair said in its last turn that said anything: what a teach request without words is about
@@ -1346,6 +1348,7 @@ export class PairSession {
     // A run of its own would read the saved file, see the old code and send small models in circles.
     const {check, expect} = this.handOver;
     if (!check.command) return `${DONE}. Nothing ran on the unsaved buffer: ${check.none}. The file on disk changes only when the user saves, so do not run anything now.`;
+    if (!(await this.checkAllowed(check))) return `${DONE}. The user did not allow \`${check.command}\` on the unsaved buffer, so nothing ran. Do not run it another way.`;
     const runs = check.command === this.testRuns?.command ? this.testRuns : new TestRuns({
       root: this.root, command: check.command, outputFile: this.checkOutput, pane: () => this.scout, report: run => this.testRun(run),
     });
@@ -1354,7 +1357,18 @@ export class PairSession {
     const verdict = this.checked(run);
     Object.assign(this.handback, {tests: verdict.mark, check: expect ? verdict.text : null}); // the line printed for what the user expects
     const said = checkReport(run, {expect, verdict, root: this.root});
-    return run.picture ? {text: `${said}\n\nThe run wrote the picture ${run.picture.file}, attached.`, picture: run.picture} : said;
+    return run.picture ? {text: said, picture: run.picture} : said;
+  }
+
+  /**
+   * Whether the check may run: a command from the user's terminal that Scout would ask about (`make install`,
+   * `./deploy.sh`) asks them first, as Scout does; a yes holds for that command for the rest of the session.
+   */
+  async checkAllowed({command, ask}) {
+    if (!ask || this.checksAllowed.has(command)) return true;
+    const ok = await this.allowed(command, `Pair wants to run \`${command}\` on the unsaved buffer, in a scratch copy, to check its edit (${ask}). Allow?`);
+    if (ok) this.checksAllowed.add(command);
+    return ok;
   }
 
   /** How a run on the unsaved buffer checks the hand-over (see judge in check.mjs). */

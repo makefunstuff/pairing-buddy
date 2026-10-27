@@ -200,9 +200,11 @@ export const scenes = {
   },
   // The hand-over without a test, in C (loop/): you run `make -s run` in your terminal on the right, then hand over
   // with an intent and a number to reach. Pair types the edit, builds and runs the unsaved buffer with your command
-  // in a scratch copy, and hands back with the line the run printed next to the target. The Partner's words are scripted.
+  // in a scratch copy, and hands back with the line the run printed next to the target. Pair asks in the chat before
+  // it runs `make -s run` (a target Scout would ask about), and the stage says yes. The Partner's words are scripted.
   'hand-over-run': {
     project: 'loop',
+    allow: true,
     goal: 'see how well the entity table spreads its keys',
     watcher: score(),
     partner: [
