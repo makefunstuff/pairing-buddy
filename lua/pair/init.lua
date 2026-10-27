@@ -17,6 +17,7 @@ local listen = require('pair.listen')
 local margin = require('pair.margin')
 local merge = require('pair.merge')
 local places = require('pair.places')
+local runs = require('pair.runs')
 local searches = require('pair.searches')
 local style = require('pair.style')
 local tasks = require('pair.tasks')
@@ -53,13 +54,14 @@ local state = {
   wanted = false, -- connect was asked for (:Pair start or auto_connect) and not undone by :Pair stop
   retry = nil, -- the reconnect timer
   models = {}, -- why each model is down, per role: the daemon's health
-  run = nil, -- the test run on save, for the statusline: {state = 'run'|'pass'|'fail'|'error'|'idle', label, text, till, red_since}
+  run = nil, -- the test run on save, for the statusline: {state = 'run'|'pass'|'fail'|'error'|'idle', label, text, at, till, red_since}
   pulse = nil, -- when the statusline last lit up for a green (see delight), until it settles
   thinking = false, -- a Partner turn that thinks is running, for the statusline
   catching_up = false, -- the morning pick-up reads where you stopped, for the statusline
   results = {}, -- what the last finished run found: {name, file, line, ok, failure}, absolute paths
   places = {}, -- where the last build or run crashed or printed errors and warnings: {file, line, col, kind, text, new}
   place_mark = nil, -- {buf, id}: the place of those the jump key goes to
+  run_line = nil, -- what the last build or run showed, for the statusline: {n, kind, text, debug, at} (see run-log.mjs)
   typing = nil, -- while the Driver's edit is being typed: the function that stops it and undoes what it typed
 }
 local RETRY_MS = {1000, 2000, 5000, 10000, 30000} -- then every 30 s
@@ -67,6 +69,7 @@ local READING_MS = 2000 -- how long the statusline names the file Pair reads
 local PASS_MS = 6000 -- how long the statusline shows a passing run; a failing one stays until the next run
 local PULSE_MS = 700 -- the statusline lights up once for a green, and settles
 local DELIGHT_MS = 5000 -- how long the line about a green stays, from when you are at the editor
+local RUN_LINE_MS = 15 * 60 * 1000 -- how long the statusline says what the last run showed
 local LONG_RED_MIN = 10 -- a failing run says how long it has been red after this many minutes (delight.mjs's LONG_RED_MS)
 
 local function default_socket()
@@ -582,7 +585,7 @@ local function on_tests(message)
       test.glow = test.ok and was == false -- it turned green
     end
   end
-  state.run = {state = message.state, label = message.label, text = message.text, till = now_ms() + PASS_MS, red_since = message.redSince}
+  state.run = {state = message.state, label = message.label, text = message.text, at = now_ms(), till = now_ms() + PASS_MS, red_since = message.redSince}
   if message.state == 'pass' then vim.defer_fn(redraw_status, PASS_MS + 50) end
   spin()
   show_all_tests()
@@ -631,6 +634,18 @@ local function on_run(message)
   end
   aim_at_place(news)
   show_all_places()
+end
+
+-- The exploration loop: what the last build or run showed next to the one before, in the statusline. Once the hunt
+-- is over, the debug lines you added for it are counted there, and the jump key goes to the first.
+local function on_run_line(message)
+  local debug = type(message.debug) == 'table' and message.debug or nil
+  local before = state.run_line and state.run_line.debug
+  state.run_line = {n = message.n, kind = message.kind, text = message.text, debug = debug, at = now_ms()}
+  if debug and not (before and before.file == debug.file and before.line == debug.line) and not state.place_mark then
+    aim_at_place({file = debug.file, line = debug.line})
+  end
+  redraw_status()
 end
 
 local function open_split(file, line)
@@ -876,6 +891,14 @@ local handlers = {
   teaching = on_teaching,
   tests = on_tests,
   run = on_run,
+  run_line = on_run_line,
+  runs = function(message)
+    runs.show(message, function(count)
+      if state.run_line then state.run_line.debug = nil end
+      redraw_status()
+      vim.notify(('Pair: removed %d debug line%s, unsaved; u in each buffer brings them back'):format(count, count == 1 and '' or 's'))
+    end)
+  end,
   context = card.update,
   trail = function(message) trail.show(message, function() send({type = 'forget_trail'}) end) end,
   margin = margin.show,
@@ -895,6 +918,7 @@ local handlers = {
     forget_words(false)
     margin.clear()
     state.remark = nil
+    state.run_line = nil
     unmap_feedback()
   end,
   welcome = function(message)
@@ -1004,7 +1028,7 @@ function M.disconnect()
   margin.clear()
   unmap_feedback()
   agents.clear()
-  state.results, state.run, state.thinking = {}, nil, false
+  state.results, state.run, state.thinking, state.run_line = {}, nil, false, nil
   spin()
   show_all_tests()
   on_run({places = {}})
@@ -1043,18 +1067,26 @@ local function status_parts()
     return {glyph = g.fail, text = run.text .. (red >= LONG_RED_MIN and (' · red %d min'):format(red) or ''), hl = 'PairFail', text_hl = 'PairStatusDim'}
   elseif run and run.state == 'error' then
     return {glyph = g.away, text = run.label .. ' · ' .. run.text, hl = 'PairStatusWarn', text_hl = 'PairStatusDim'}
-  elseif run and run.state == 'pass' and now_ms() < run.till then
+  elseif run and run.state == 'pass' and now_ms() < run.till and not (state.run_line and state.run_line.at >= run.at) then
     return {glyph = g.pass, text = run.label .. ' · ' .. run.text, hl = 'PairStatusPass', text_hl = 'PairStatusDim'}
   elseif margin.flash() then
     return {glyph = g.decision, text = 'logged · ' .. margin.flash(), hl = 'PairStatus', text_hl = 'PairStatusDim'}
   end
-  local parts = {'pair'}
+  local line = state.run_line and now_ms() - state.run_line.at < RUN_LINE_MS and state.run_line
+  local parts = {line and line.text or 'pair'}
+  if line and line.debug then
+    local key = key_label('jump', config.jump_key)
+    table.insert(parts, ('%d debug line%s from run %d left'):format(line.debug.count, line.debug.count == 1 and '' or 's', line.debug.run) .. (key and (' · ' .. key) or ''))
+  end
   if state.role and state.role ~= 'navigator' then table.insert(parts, state.role) end
   if state.level and state.level ~= 'normal' then table.insert(parts, state.level) end
   if state.held then table.insert(parts, 'held thought · ' .. (key_label('jump', config.jump_key) or ':Pair jump')) end
   local notes = margin.status()
   if notes then table.insert(parts, notes) end
-  local lit = state.words or state.held
+  local lit = state.words or state.held or (line and (line.kind == 'same' or line.kind == 'moved'))
+  if line and (line.kind == 'crash' or line.kind == 'error') then
+    return {glyph = g.fail, text = table.concat(parts, ' · '), hl = 'PairFail', text_hl = 'PairStatusDim'}
+  end
   return {glyph = g.voice, text = table.concat(parts, ' · '), hl = lit and 'PairStatus' or 'PairStatusDim', text_hl = 'PairStatusDim'}
 end
 
@@ -1097,6 +1129,7 @@ local commands = {
   drive = function(arg, selection) send({type = 'drive', text = arg, selection = selection}) end,
   jump = function() M.jump() end,
   trail = function() send({type = 'trail'}) end,
+  runs = function() send({type = 'runs'}) end,
   accept = M.accept,
   dismiss = M.dismiss,
   today = function() if M.connect() then ledger.open() end end,

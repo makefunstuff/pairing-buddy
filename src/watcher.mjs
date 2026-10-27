@@ -17,6 +17,7 @@ Answer with one number.`;
 // A regression: whether hearing of it now saves time, since the user has not run the tests that found it.
 // The search trail: whether the user is going in circles, with what fails now, which says what they are after.
 // A crash: whether hearing where and why saves a hunt. A new warning: whether it is a bug, not just untidy.
+// The exploration loop: whether a change that did nothing, or a number that moved, has a reason worth a sentence.
 const WHAT_HAPPENED = {
   drift: (trigger, state) => `The user now edits ${trigger.file}.${trigger.gist ? ` What the file is about: ${trigger.gist}` : ''}\n`
     + `Score how clearly this file is unrelated to the goal "${state.goal}", by what it does: 0 if it could be part of it, 10 if it is plainly other work.`,
@@ -31,6 +32,11 @@ const WHAT_HAPPENED = {
     + 'Score how much hearing where and why it crashed would save them: 0 if the output already names the line and the cause plainly, 10 if they would have to hunt for it.',
   new_warning: trigger => `A build printed a warning that was not there before: ${trigger.warnings.slice(0, 3).map(warning => warning.message).join('; ')}\n`
     + 'Score how likely this is a real bug worth a word now: 0 for something untidy while exploring (an unused variable or parameter), 10 for a likely bug (an uninitialised value, a wrong format, an overflow, a missing return).',
+  same_result: trigger => `${trigger.detail}\n`
+    + 'Score how much hearing why the change made no difference would save them: 0 if the change plainly could not touch these numbers (a print, a rename), 10 if they meant it to change them and will try more changes blindly.',
+  number_moved: trigger => `${trigger.detail}\n`
+    + 'Score how much one sentence on what is now true would help: 0 for the plain result of a first try, 10 when it ends a hunt '
+    + '(earlier changes did not move the numbers and this one did, so why this one worked is worth knowing) or when it got much worse.',
   ...PROSE_WATCH,
 };
 

@@ -179,6 +179,20 @@ export const scenes = {
       {wait: 200, say: 'insert writes `keys[1984]`: without the mask, the second key already lands past `CAP`'},
     ],
   },
+  // The exploration loop, in C (loop/, the research's hash table): you build and run it in your own terminal on the
+  // right, four times. A printf for the hunt; a multiply that keeps the numbers where they were, and Pair says why;
+  // a shift that moves them, which the statusline says (a second remark this soon would break the talk budget), with
+  // the printf left from the hunt. The Partner's words are a real model's from the live test (test/live/loop.test.mjs), shortened.
+  'loop': {
+    project: 'loop',
+    goal: 'see how well the entity table spreads its keys',
+    watcher: score('same_result'),
+    partner: [
+      {when: /same_result/, wait: 300, call: ['read', {file: 'probe.c'}]},
+      {wait: 1400, call: ['point', {file: 'probe.c', line: 34, note: 'every id is a multiple of 64', code: 'e * 64'}]},
+      {wait: 200, say: 'the ids come 64 apart and `* 31` keeps them so: still 4096 buckets of 262144, so avg probe stays 23.7. Shift the multiply down instead'},
+    ],
+  },
   // :Pair context: no goal typed (it comes from the board task of the branch), a failing run, two Telescope searches,
   // then the card, and x on a source. No model words: the card is what the daemon reads.
   'context-card': {

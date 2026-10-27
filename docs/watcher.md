@@ -107,6 +107,26 @@ variable or parameter), 10 for a likely bug (an uninitialised value, a wrong for
 The Partner reads the line and speaks only for a bug; otherwise it answers SILENT. Live: a `-Wformat` warning (`%d`
 with a double) scored 8 and got a point at the `printf`; an unused variable scored 2 and got SILENT.
 
+## The exploration loop
+
+Every build and run is read next to the one before by `src/run-log.mjs` ([exploration.md](exploration.md)). Two
+triggers come from it, judged after a new warning and before drift, once per run.
+
+`same_result` is raised when you changed the code since the last run of the command and it printed the same numbers
+(or, without numbers, the same output). A print, a comment or a note is no change. The Watcher gets the runs, each
+with the change before it and its numbers, and the last three outputs. It is asked how much hearing why the change
+did nothing would save you: 0 if the change plainly could not touch these numbers, 10 if you meant it to and will try
+more changes blindly. The Partner reads the change and the code the run goes through, points at the line that
+explains it and says why with the real numbers. Live, on the research's hash table (ids 64 apart, `* 31` that keeps
+them so): scored 8, and the Partner pointed at `id = e * 64` and said why in numbers.
+
+`number_moved` is raised when a change of the code moved a number by a quarter or more, one whose words say which
+way is better, or a time that halved or doubled. When the runs before held the same numbers, the detail says that
+it ends a hunt. The Watcher is asked how much one sentence on what is now true would help: 0 for the plain result of
+a first try, 10 for the end of a hunt or a number that got much worse. The Partner says what is now true and why this
+change worked where the others did not, or SILENT. Live: the shift that ends the hunt scored 8, and the remark
+named 23.7 → 1.1.
+
 ## The search trail
 
 `search_trail` is raised from your picker searches in Neovim ([docs/neovim.md](neovim.md#the-search-trail)): three
