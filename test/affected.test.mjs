@@ -1,14 +1,13 @@
 // Which tests a save can affect: the command on save narrowed to them, where the runner can be told.
 import assert from 'node:assert/strict';
-import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {mkdirSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {affectedCommand} from '../src/affected.mjs';
+import {scratch} from './temp.mjs';
 
-function project(t, files) {
-  const root = mkdtempSync(join(tmpdir(), 'pair-affected-'));
-  t.after(() => rmSync(root, {recursive: true, force: true}));
+function project(files) {
+  const root = scratch('pair-affected-');
   for (const [path, text] of Object.entries(files)) {
     mkdirSync(join(root, path, '..'), {recursive: true});
     writeFileSync(join(root, path), text);
@@ -16,8 +15,8 @@ function project(t, files) {
   return root;
 }
 
-test('go: the saved file\'s package and every package that imports it, directly or through another', async t => {
-  const root = project(t, {
+test('go: the saved file\'s package and every package that imports it, directly or through another', async () => {
+  const root = project({
     'go.mod': 'module example.com/shop\n\ngo 1.22\n',
     'main.go': 'package main\n\nimport "example.com/shop/checkout"\n',
     'cart/cart.go': 'package cart\n',

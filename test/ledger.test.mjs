@@ -1,19 +1,19 @@
 // The ledger: what a session books as Pair works, and today's list as Neovim and the chat show it.
 import assert from 'node:assert/strict';
-import {mkdtempSync, realpathSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {realpathSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {Ledger, ledgerDetail, ledgerRows, ledgerText, startOfDay, today} from '../src/ledger.mjs';
 import {PairSession} from '../src/session.mjs';
 import {openStore} from '../src/store.mjs';
+import {scratch} from './temp.mjs';
 
 const NOON = new Date(2026, 9, 26, 12, 0).getTime();
 const MIN = 60_000;
 
 /** A session in a scratch project on a store in memory; its Partner runs `turns` in order. */
 function pairSession(turns = [], {editor = async () => null, score = 9} = {}) {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'pair-ledger-')));
+  const root = realpathSync(scratch('pair-ledger-'));
   writeFileSync(join(root, 'queue.go'), 'package queue\n\nfunc New() {}\n');
   writeFileSync(join(root, 'worker.go'), 'package delivery\n\nfunc Run() {\n\treturn\n}\n');
   const store = openStore(':memory:');

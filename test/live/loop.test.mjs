@@ -4,8 +4,7 @@
 // did not move, and then what is now true.
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
-import {copyFileSync, mkdtempSync, readFileSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {copyFileSync, readFileSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {describe, test} from 'node:test';
 import {MemoryStorage} from '@earendil-works/pi-durable';
@@ -19,6 +18,7 @@ import {detectTriggers} from '../../src/triggers.mjs';
 import {createWatcher} from '../../src/watcher.mjs';
 import {bashWithoutCores} from '../no-core.mjs';
 import {liveStacks, SKIP_REASON} from './stacks.mjs';
+import {scratch} from '../temp.mjs';
 
 const PROJECT = new URL('../../docs/captures/loop/', import.meta.url);
 const PROBE = readFileSync(new URL('probe.c', PROJECT), 'utf8');
@@ -38,7 +38,7 @@ function makeRun(root) {
 
 /** The four runs of the loop, for real: the session state after each, and the project's folder. */
 function loop() {
-  const root = mkdtempSync(join(tmpdir(), 'pair-live-loop-'));
+  const root = scratch('pair-live-loop-');
   copyFileSync(new URL('Makefile', PROJECT), join(root, 'Makefile'));
   let text = PROBE;
   writeFileSync(join(root, 'probe.c'), text);

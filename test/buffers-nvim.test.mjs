@@ -1,18 +1,17 @@
 // The unsaved buffers Neovim reports for a project (lua/pair/buffers.lua), in a headless Neovim. Skips without nvim.
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {mkdirSync, realpathSync, symlinkSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {test} from 'node:test';
+import {scratch} from './temp.mjs';
 
 const REPO = fileURLToPath(new URL('..', import.meta.url));
 const hasNvim = (() => { try { execFileSync('nvim', ['--version']); return true; } catch { return false; } })();
 
-test('every changed file buffer inside the project, by its real path, with the newline a write would add', {skip: hasNvim ? false : 'nvim not installed'}, t => {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'pair-buffers-')));
-  t.after(() => rmSync(dir, {recursive: true, force: true}));
+test('every changed file buffer inside the project, by its real path, with the newline a write would add', {skip: hasNvim ? false : 'nvim not installed'}, () => {
+  const dir = realpathSync(scratch('pair-buffers-'));
   const root = join(dir, 'project');
   mkdirSync(join(root, 'src'), {recursive: true});
   for (const file of ['src/a.c', 'src/b.c', 'src/kept.c']) writeFileSync(join(root, file), 'int x;\n');

@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import {spawn, spawnSync} from 'node:child_process';
-import {existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdirSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
 import {createServer} from 'node:net';
-import {homedir, tmpdir} from 'node:os';
+import {homedir} from 'node:os';
 import {basename, join} from 'node:path';
 import {test} from 'node:test';
 import {rcFileIn} from '../src/pane-runs.mjs';
@@ -10,8 +10,9 @@ import {cacheFolders, overlayWorks, sandboxWords, sandboxWorks, userSockets} fro
 import {rcNames, scoutPaneConfig, shellLine, shellQuote} from '../src/scout-shell.mjs';
 
 import {runInPane} from './pane-shell.mjs';
+import {scratch as tempDir} from './temp.mjs';
 
-const scratch = () => realpathSync(mkdtempSync(join(tmpdir(), 'pair-shell-')));
+const scratch = () => realpathSync(tempDir('pair-shell-'));
 const plain = scoutPaneConfig({sandbox: false});
 
 // What a user's rc file does that would hide the exit code or end the pane: a prompt of its own, prompt hooks,
@@ -159,7 +160,7 @@ test('in the sandbox, commands write only the project, reach no network and no h
     writeFileSync(rc, RC);
     // Not named as hidden: it is hidden as a socket of yours.
     assert.equal(shellLine({setup: scoutPaneConfig({rc, sandbox: true}), cwd: project, runs: join(dir, 'pane')}).sandboxed, true);
-    const marker = mkdtempSync('/tmp/pair-marker-');
+    const marker = tempDir('pair-marker-', '/tmp');
     const results = await runInShell(scoutPaneConfig({rc, sandbox: true}), project, [
       'touch made && ll',
       `touch ${join(homedir(), '.pair-sandbox-probe')}`,

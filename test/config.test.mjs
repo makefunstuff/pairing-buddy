@@ -1,10 +1,11 @@
 // The config file: JSON with comments, written from the commented example on the first run.
 import assert from 'node:assert/strict';
-import {mkdtempSync, readFileSync, writeFileSync} from 'node:fs';
-import {homedir, tmpdir} from 'node:os';
+import {readFileSync, writeFileSync} from 'node:fs';
+import {homedir} from 'node:os';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {apiKeyOf, authPath, createConfig, loadConfig, parseConfig, rolesText, sameModel, stripComments} from '../src/config.mjs';
+import {scratch} from './temp.mjs';
 
 test('comments are stripped, strings with slashes are kept', () => {
   const text = '{\n  // a comment\n  "url": "http://host/v1", /* another */ "say": "a \\" // not a comment"\n}';
@@ -12,7 +13,7 @@ test('comments are stripped, strings with slashes are kept', () => {
 });
 
 test('the first run writes the commented example, which loads; later runs keep the file', () => {
-  const path = join(mkdtempSync(join(tmpdir(), 'pair-config-')), 'pairing-buddy', 'config.json');
+  const path = join(scratch('pair-config-'), 'pairing-buddy', 'config.json');
   assert.equal(createConfig(path), true);
   assert.match(readFileSync(path, 'utf8'), /^\/\/ pairing-buddy config/);
   const config = loadConfig(path);
@@ -28,7 +29,7 @@ test('the first run writes the commented example, which loads; later runs keep t
 });
 
 test('a broken config says which file and why', () => {
-  const path = join(mkdtempSync(join(tmpdir(), 'pair-config-')), 'config.json');
+  const path = join(scratch('pair-config-'), 'config.json');
   writeFileSync(path, '{"level": "normal",, }');
   assert.throws(() => loadConfig(path), new RegExp(`config: ${path} is not valid JSON`));
   assert.throws(() => loadConfig(join(path, 'missing')), /run `pair setup`/);
@@ -42,7 +43,7 @@ test('scoutPane sets Pair\'s pane: no rc file and the sandbox where it works, un
 });
 
 test('testOnSave maps project folders, ~ included, to the command run on save', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'pair-config-'));
+  const dir = scratch('pair-config-');
   const config = (testOnSave) => parseConfig({testOnSave, models: {watcher: {api: 'anthropic', model: 'w'}, partner: {api: 'anthropic', model: 'p'}}});
   assert.deepEqual(config({[dir]: ' go test -json ./... '}).testOnSave, {[dir]: {command: 'go test -json ./...', timeoutMs: 120_000, affected: true}});
   assert.deepEqual(config({[dir]: {command: 'cargo test', timeoutSeconds: 600, affected: false}}).testOnSave, {[dir]: {command: 'cargo test', timeoutMs: 600_000, affected: false}});
@@ -132,7 +133,7 @@ function withEnv(vars, fn) {
 }
 
 test('`auth` takes the key `pair auth login` stored under that name, kept next to the config', () => {
-  const path = join(mkdtempSync(join(tmpdir(), 'pair-config-')), 'auth.json');
+  const path = join(scratch('pair-config-'), 'auth.json');
   writeFileSync(path, JSON.stringify({'my-server': {type: 'api_key', key: 'sk-stored'}}));
   withEnv({PAIR_AUTH: path}, () => {
     assert.equal(apiKeyOf({auth: 'my-server'}), 'sk-stored');

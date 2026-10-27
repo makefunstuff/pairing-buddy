@@ -20,8 +20,8 @@
     "node": ">=22.19.0"
   },
   "scripts": {
-    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.mjs",
-    "test:live": "node --disable-warning=ExperimentalWarning --test --test-concurrency=1 test/live/*.test.mjs",
+    "test": "node test/run.mjs test/*.test.mjs",
+    "test:live": "node test/run.mjs --test-concurrency=1 test/live/*.test.mjs",
     "check": "npm test"
   },
   "dependencies": {

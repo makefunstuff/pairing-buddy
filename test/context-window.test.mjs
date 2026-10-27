@@ -1,13 +1,13 @@
 // Each model's context window, where the config does not set it: from pi-ai's catalog or from the server.
 import assert from 'node:assert/strict';
-import {mkdtempSync, writeFileSync} from 'node:fs';
+import {writeFileSync} from 'node:fs';
 import {createServer} from 'node:http';
-import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {DEFAULT_CONTEXT, parseConfig} from '../src/config.mjs';
 import {catalogWindow, loadSizedConfig, MAX_FOUND_CONTEXT, servedWindow} from '../src/context-window.mjs';
 import {contextCheck} from '../src/doctor.mjs';
+import {scratch} from './temp.mjs';
 
 /** A server that answers `routes` (path with its query -> JSON) and 404 for the rest; `asked` lists every path. */
 async function server(routes) {
@@ -44,7 +44,7 @@ test('what servers say they serve: vLLM in /models, llama.cpp in /props, LM Stud
 
 test('the daemon\'s config takes the window from the server or the catalog; the config\'s own wins', async () => {
   const vllm = await server({'/v1/models': {data: [{id: 'm', max_model_len: 65536}, {id: 'huge', max_model_len: 1_000_000}, {id: 'tiny', max_model_len: 8192}]}});
-  const dir = mkdtempSync(join(tmpdir(), 'pair-window-'));
+  const dir = scratch('pair-window-');
   const sized = async raw => {
     const path = join(dir, 'config.json');
     writeFileSync(path, JSON.stringify(raw));
@@ -78,7 +78,7 @@ test('without the server or catalog saying, the window is the default', () => {
 
 test('a reload keeps a window the server found before when the server cannot be asked now', async () => {
   const vllm = await server({'/v1/models': {data: [{id: 'm', max_model_len: 65536}]}});
-  const dir = mkdtempSync(join(tmpdir(), 'pair-window-'));
+  const dir = scratch('pair-window-');
   const path = join(dir, 'config.json');
   writeFileSync(path, JSON.stringify({model: at(vllm.url)}));
   const running = await loadSizedConfig(path);

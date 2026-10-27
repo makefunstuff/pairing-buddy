@@ -2,9 +2,8 @@
 // Neovim shows the news at the next breakpoint. Skips without nvim.
 import assert from 'node:assert/strict';
 import {execFileSync, spawn} from 'node:child_process';
-import {chmodSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync} from 'node:fs';
+import {chmodSync, mkdirSync, realpathSync, writeFileSync} from 'node:fs';
 import {connect} from 'node:net';
-import {tmpdir} from 'node:os';
 import {basename, join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {test} from 'node:test';
@@ -13,6 +12,7 @@ import {parseConfig} from '../src/config.mjs';
 import {startDaemon} from '../src/daemon.mjs';
 import {readMessages, sendMessage} from '../src/protocol.mjs';
 import {fakeHerdr} from './fake-herdr.mjs';
+import {scratch, socketDir} from './temp.mjs';
 
 const REPO = fileURLToPath(new URL('..', import.meta.url));
 const hasNvim = (() => { try { execFileSync('nvim', ['--version']); return true; } catch { return false; } })();
@@ -30,9 +30,9 @@ async function until(check, what, timeoutMs = 8000) {
 }
 
 test('another agent\'s news waits for your save, shows as one line in the statusline, Alt-a goes there; :Pair agents lists them all', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
-  const project = realpathSync(mkdtempSync(join(tmpdir(), 'pair-agents-')));
+  const project = realpathSync(scratch('pair-agents-'));
   writeFileSync(join(project, 'probe.c'), 'int main(void) {\n  return 0;\n}\n');
-  const dataDir = mkdtempSync(join(tmpdir(), 'pair-data-'));
+  const dataDir = scratch('pair-data-');
   const repo = basename(project);
 
   // The board: a command that prints its list, and the task files that say where each task's agent runs.
@@ -68,7 +68,7 @@ test('another agent\'s news waits for your save, shows as one line in the status
     {pane_id: 'w9:p1', cwd: '/home/me/notes', agent: 'pi', agent_status: 'working', terminal_title_stripped: 'notes'},
   ]});
 
-  const server = join(mkdtempSync('/tmp/pair-'), 'nvim.sock');
+  const server = join(socketDir(), 'nvim.sock');
   const nvim = spawn('nvim', [
     '--headless', '--clean', '--listen', server,
     '--cmd', `set rtp+=${REPO}`,

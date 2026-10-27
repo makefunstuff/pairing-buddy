@@ -1,7 +1,5 @@
 // A question the daemon was answering when it stopped: finished on restart and shown late; a remark is dropped.
 import assert from 'node:assert/strict';
-import {mkdtempSync} from 'node:fs';
-import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {createModels, fauxAssistantMessage, fauxProvider, fauxText} from '@earendil-works/pi-ai';
@@ -9,6 +7,7 @@ import {parseConfig} from '../src/config.mjs';
 import {startDaemon} from '../src/daemon.mjs';
 import {openPartner} from '../src/partner.mjs';
 import {client} from './daemon-client.mjs';
+import {scratch} from './temp.mjs';
 
 /** A model that never answers, until the daemon stops and aborts its request. */
 const hang = (context, options) => new Promise((resolve, reject) => {
@@ -29,8 +28,8 @@ async function until(check) {
 }
 
 test('a question the daemon was answering when it stopped is answered late, in the chat and in Neovim', {timeout: 20_000}, async () => {
-  const project = mkdtempSync(join(tmpdir(), 'pair-project-'));
-  const dataDir = mkdtempSync(join(tmpdir(), 'pair-data-'));
+  const project = scratch('pair-project-');
+  const dataDir = scratch('pair-data-');
   const config = parseConfig({
     dataDir,
     socket: join(dataDir, 'pair.sock'),
@@ -69,7 +68,7 @@ test('a question the daemon was answering when it stopped is answered late, in t
 });
 
 test('a remark the daemon was making when it stopped is dropped, not finished', {timeout: 20_000}, async () => {
-  const storage = join(mkdtempSync(join(tmpdir(), 'pair-partner-')), 'partner.sqlite');
+  const storage = join(scratch('pair-partner-'), 'partner.sqlite');
   const hands = {roleOf: () => 'navigator'};
   const open = faux => {
     const models = createModels();

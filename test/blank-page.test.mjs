@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
-import {mkdtempSync, readdirSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {readdirSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {cleanQuestion, longLines, parseSlice, questionInput, questionProblem, sliceInput, sliceNote, sliceProblems, sliceText, stackOf} from '../src/blank-page.mjs';
 import {PairSession} from '../src/session.mjs';
+import {scratch} from './temp.mjs';
 
 const SLICE = {
   files: [{path: 'Makefile', does: 'make run builds and runs it'}, {path: 'main.c', does: 'loop, fixed step, counters'}],
@@ -123,7 +123,7 @@ function session(root, answers) {
 }
 
 test(':Pair new asks three questions one at a time, then suggests the slice under the note\'s last line', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'pair-new-'));
+  const root = scratch('pair-new-');
   // The slice comes through the say tool, as some models send it: it is checked before the chat shows anything.
   const said = async () => { await pair.say(JSON.stringify(SLICE)); return ''; };
   const {pair, sent, inputs} = session(root, ['What should it show first?', 'Steps or wall clock?', 'Q3: What do you want to learn?', said]);
@@ -150,7 +150,7 @@ test(':Pair new asks three questions one at a time, then suggests the slice unde
 });
 
 test('a slice that breaks the rules gets one more try with what is wrong, and is not shown when it breaks them again', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'pair-new-'));
+  const root = scratch('pair-new-');
   writeFileSync(join(root, 'NOTES.md'), '# toy\n');
   const slop = JSON.stringify({...SLICE, files: [...SLICE.files, {path: 'README.md'}]});
   const {pair, sent, inputs} = session(root, ['A?', 'B?', 'C?', slop, slop]);
@@ -162,7 +162,7 @@ test('a slice that breaks the rules gets one more try with what is wrong, and is
 });
 
 test('without an idea, Pair first asks what we are making, without the model', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'pair-new-'));
+  const root = scratch('pair-new-');
   const {pair, sent, inputs} = session(root, ['What should it show first?']);
   await pair.startNew('', join(root, 'NOTES.md'));
   assert.deepEqual(sent.filter(m => m.type === 'interview').map(m => [m.n, m.text]), [[0, 'What are we making?']]);
@@ -173,7 +173,7 @@ test('without an idea, Pair first asks what we are making, without the model', a
 });
 
 test('notes outside the project are refused', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'pair-new-'));
+  const root = scratch('pair-new-');
   const {pair, sent} = session(root, []);
   await pair.startNew('x', '/etc/NOTES.md');
   assert.match(sent.at(-1).text, /inside the project/);
@@ -181,7 +181,7 @@ test('notes outside the project are refused', async () => {
 });
 
 test('the Driver can create a file not written yet as a new buffer, and read it back from the editor', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'pair-new-'));
+  const root = scratch('pair-new-');
   const requests = [];
   const pair = new PairSession({
     record: {id: 1, root, conversation_id: 7, goal: null, level: 'normal', role: 'driver'},
@@ -197,7 +197,7 @@ test('the Driver can create a file not written yet as a new buffer, and read it 
 });
 
 test('a question left unanswered does not silence Pair: only remarks about the note wait, and :Pair clear stops the questions', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'pair-new-'));
+  const root = scratch('pair-new-');
   const {pair, sent, inputs} = session(root, ['What should it show first?', 'Line 2 is off.']);
   pair.store.addRemark = () => 1;
   pair.store.dropRemark = () => {};

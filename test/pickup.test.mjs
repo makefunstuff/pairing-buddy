@@ -1,11 +1,11 @@
 // The morning pick-up's parts: finding the place again in today's code, "since yesterday", the request and its
 // line, and the failing run the last session ended with.
 import assert from 'node:assert/strict';
-import {mkdtempSync, utimesSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {utimesSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {codeOn, fallbackLine, pickupInput, pickupLine, relocate, restoredTests, since} from '../src/pickup.mjs';
+import {scratch} from './temp.mjs';
 
 test('the place is found again: on its line, moved to the nearest line with its code, or changed', () => {
   const lines = ['package queue', '', 'func New() {', '\treturn &Queue{ttl: cfg.Budget}', '}'];
@@ -42,7 +42,7 @@ test('the request has the debrief, the step and the code as it is now; the answe
 });
 
 test('the failing run comes back "since yesterday", with the signs of files unchanged since', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'pair-pickup-'));
+  const dir = scratch('pair-pickup-');
   const kept = join(dir, 'queue_test.go');
   const edited = join(dir, 'worker_test.go');
   writeFileSync(kept, '');

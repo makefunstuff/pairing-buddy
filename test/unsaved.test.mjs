@@ -1,21 +1,17 @@
 // Tests on unsaved text: go test reads it through -overlay, other runners in a copy of the project.
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {lstatSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
-import {after, test} from 'node:test';
+import {test} from 'node:test';
 import {parseTestOutput} from '../src/test-output.mjs';
 import {placeTests} from '../src/test-places.mjs';
 import {overlaid, prepareUnsaved} from '../src/unsaved.mjs';
+import {scratch as tempDir} from './temp.mjs';
 
 const has = command => { try { execFileSync(command, ['version']); return true; } catch { return false; } };
 
-const made = [];
-const temp = prefix => { const dir = mkdtempSync(join(tmpdir(), prefix)); made.push(dir); return dir; };
-after(() => { for (const dir of made) rmSync(dir, {recursive: true, force: true}); });
-
-const scratch = () => temp('pair-unsaved-run-');
+const scratch = () => tempDir('pair-unsaved-run-');
 /** A run's scratch folders: `dir` for this run, `tree` for the copy kept between runs. */
 const places = (base = scratch()) => ({dir: join(base, 'run'), tree: join(base, 'tree')});
 
@@ -25,7 +21,7 @@ function git(root) {
 }
 
 function project(files) {
-  const root = realpathSync(temp('pair-unsaved-'));
+  const root = realpathSync(tempDir('pair-unsaved-'));
   for (const [path, text] of Object.entries(files)) {
     mkdirSync(join(root, path, '..'), {recursive: true});
     writeFileSync(join(root, path), text);

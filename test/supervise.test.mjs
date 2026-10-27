@@ -1,10 +1,10 @@
 // The supervisor that restarts the daemon without systemd or launchd.
 import assert from 'node:assert/strict';
-import {existsSync, mkdtempSync, readFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {existsSync, readFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {supervise} from '../src/supervise.mjs';
+import {scratch} from './temp.mjs';
 
 /** A daemon stand-in: counts its starts in `file`, and fails (or crashes) until its `failures`-th start. */
 const standIn = (file, failures, how = 'process.exit(3)') => [
@@ -15,7 +15,7 @@ const standIn = (file, failures, how = 'process.exit(3)') => [
 ];
 
 test('a daemon that fails is started again, and one that stops cleanly is not', {timeout: 10_000}, async () => {
-  const file = join(mkdtempSync(join(tmpdir(), 'pair-supervise-')), 'starts');
+  const file = join(scratch('pair-supervise-'), 'starts');
   const lines = [];
   const supervisor = supervise({command: process.execPath, args: standIn(file, 2), log: line => lines.push(line), restartMs: 10});
   await supervisor.finished;
@@ -24,7 +24,7 @@ test('a daemon that fails is started again, and one that stops cleanly is not', 
 });
 
 test('a daemon killed by a signal is started again', {timeout: 10_000}, async () => {
-  const file = join(mkdtempSync(join(tmpdir(), 'pair-supervise-')), 'starts');
+  const file = join(scratch('pair-supervise-'), 'starts');
   const lines = [];
   const supervisor = supervise({command: process.execPath, args: standIn(file, 1, "process.kill(process.pid, 'SIGKILL')"), log: line => lines.push(line), restartMs: 10});
   await supervisor.finished;
@@ -33,7 +33,7 @@ test('a daemon killed by a signal is started again', {timeout: 10_000}, async ()
 });
 
 test('a daemon that keeps failing is given up on', {timeout: 10_000}, async () => {
-  const file = join(mkdtempSync(join(tmpdir(), 'pair-supervise-')), 'starts');
+  const file = join(scratch('pair-supervise-'), 'starts');
   const lines = [];
   const supervisor = supervise({command: process.execPath, args: standIn(file, 100), log: line => lines.push(line), restartMs: 10, burst: 3});
   await supervisor.finished;
@@ -42,7 +42,7 @@ test('a daemon that keeps failing is given up on', {timeout: 10_000}, async () =
 });
 
 test('stopping the supervisor stops the daemon, which is not started again', {timeout: 10_000}, async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'pair-supervise-'));
+  const dir = scratch('pair-supervise-');
   const ready = join(dir, 'ready');
   const lines = [];
   const supervisor = supervise({

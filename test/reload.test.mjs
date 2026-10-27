@@ -1,7 +1,6 @@
 // The daemon takes a saved config without a restart; a config with an error is refused, and the old one stays.
 import assert from 'node:assert/strict';
-import {mkdirSync, mkdtempSync, renameSync, symlinkSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {mkdirSync, renameSync, symlinkSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {createModels, fauxAssistantMessage, fauxProvider, fauxText} from '@earendil-works/pi-ai';
@@ -9,6 +8,7 @@ import {loadConfig, parseConfig} from '../src/config.mjs';
 import {startDaemon} from '../src/daemon.mjs';
 import {configChanges, watchConfig} from '../src/reload.mjs';
 import {client} from './daemon-client.mjs';
+import {scratch} from './temp.mjs';
 
 const entry = model => ({api: 'openai', baseUrl: 'http://unused', model});
 
@@ -19,7 +19,7 @@ test('the fields that changed, in the order the chat names them', () => {
 });
 
 test('a saved config is read again; one with an error is reported, and a save that changes nothing is no change', {timeout: 10_000}, async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'pair-reload-'));
+  const dir = scratch('pair-reload-');
   const path = join(dir, 'config.json');
   writeFileSync(path, JSON.stringify({model: entry('a')}));
   const seen = [];
@@ -52,7 +52,7 @@ test('a saved config is read again; one with an error is reported, and a save th
 });
 
 test('a config that is a symlink is followed to its target, also after the link is pointed elsewhere', {timeout: 10_000}, async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'pair-reload-'));
+  const dir = scratch('pair-reload-');
   mkdirSync(join(dir, 'dotfiles'));
   mkdirSync(join(dir, 'other'));
   mkdirSync(join(dir, 'config'));
@@ -86,8 +86,8 @@ test('a config that is a symlink is followed to its target, also after the link 
 });
 
 test('the daemon takes a new model between turns, and keeps the old config when the new one has an error', {timeout: 20_000}, async () => {
-  const project = mkdtempSync(join(tmpdir(), 'pair-project-'));
-  const dataDir = mkdtempSync(join(tmpdir(), 'pair-data-'));
+  const project = scratch('pair-project-');
+  const dataDir = scratch('pair-data-');
   const configFile = join(dataDir, 'config', 'config.json');
   mkdirSync(join(dataDir, 'config'));
   const save = raw => writeFileSync(configFile, JSON.stringify({dataDir, socket: join(dataDir, 'pair.sock'), ...raw}));

@@ -5,8 +5,7 @@
 // files on disk must stay as they were.
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {cpSync, mkdtempSync, readFileSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {cpSync, readFileSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {describe, test} from 'node:test';
 import {MemoryStorage} from '@earendil-works/pi-durable';
@@ -15,6 +14,7 @@ import {PairSession} from '../../src/session.mjs';
 import {ROLE_TOOLS} from '../../src/tools.mjs';
 import {FILES, localPane, project} from './project.mjs';
 import {liveStacks, SKIP_REASON} from './stacks.mjs';
+import {scratch} from '../temp.mjs';
 
 /** Neovim's part, played by buffers in memory: read serves them, edit changes them as the plugin does. */
 function buffers(root) {
@@ -36,7 +36,7 @@ function buffers(root) {
 
 /** Whether the project's tests pass with the buffers' text in place of the files. */
 function testsPass(root, editor) {
-  const copy = mkdtempSync(join(tmpdir(), 'pair-driver-run-'));
+  const copy = scratch('pair-driver-run-');
   cpSync(root, copy, {recursive: true});
   for (const file of Object.keys(FILES)) writeFileSync(join(copy, file), editor.text(file));
   const {NODE_TEST_CONTEXT, ...env} = process.env;
@@ -89,7 +89,7 @@ describe('Driver on live models', {skip: stacks.length ? false : SKIP_REASON}, (
           return 1;
         },
         requestEditor: async message => editor.request(message),
-        testOnSave: testOnSave && {command: testOnSave, outputFile: join(mkdtempSync(join(tmpdir(), 'pair-driver-out-')), 'run.out')},
+        testOnSave: testOnSave && {command: testOnSave, outputFile: join(scratch('pair-driver-out-'), 'run.out')},
       });
       session.scout = localPane(root);
       session.panes = {type: async (pane, text) => typed.push([pane, text])};

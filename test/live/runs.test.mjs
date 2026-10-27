@@ -3,8 +3,7 @@
 // warning that is a bug, and stays silent on one that is only untidy.
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
-import {mkdtempSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {describe, test} from 'node:test';
 import {MemoryStorage} from '@earendil-works/pi-durable';
@@ -18,6 +17,7 @@ import {detectTriggers} from '../../src/triggers.mjs';
 import {createWatcher} from '../../src/watcher.mjs';
 import {bashWithoutCores} from '../no-core.mjs';
 import {liveStacks, SKIP_REASON} from './stacks.mjs';
+import {scratch} from '../temp.mjs';
 
 // Exploring a hash table: the user just took the mask out of hash() (line 10), so the index runs past the table.
 const PROBE = `// probe: how well does the table spread its keys?
@@ -65,7 +65,7 @@ function sh(root, command) {
 
 /** The project with probe.c as `text`, and the session state after the user's `events` and commands run for real. */
 function session(text, steps) {
-  const root = mkdtempSync(join(tmpdir(), 'pair-live-runs-'));
+  const root = scratch('pair-live-runs-');
   writeFileSync(join(root, 'probe.c'), text);
   let state = initialState({root, goal: 'see how well the table spreads its keys'});
   let at = NOW - 60_000;

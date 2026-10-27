@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
-import {mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync} from 'node:fs';
+import {mkdirSync, readFileSync, realpathSync, writeFileSync} from 'node:fs';
 import {readFile} from 'node:fs/promises';
-import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {PairSession, runReport} from '../src/session.mjs';
+import {scratch} from './temp.mjs';
 
 function session({score = async () => ({value: 9, reason: 'worth it'}), answer = 'Line 2 is off.'} = {}) {
   const asked = [];
@@ -519,7 +519,7 @@ test('drift the budget holds back is judged once the budget allows, if the user 
 test('drift is judged by what the file is about, and again after a new goal', async () => {
   let clock = 100_000;
   const scored = [];
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'pair-drift-')));
+  const root = realpathSync(scratch('pair-drift-'));
   mkdirSync(join(root, 'src/billing'), {recursive: true});
   writeFileSync(join(root, 'src/billing/ranking.ts'), '// Ranks overdue invoices for the dunning run.\nexport function rankOverdue(invoices) {}\n');
   const pair = new PairSession({
@@ -546,7 +546,7 @@ test('drift is judged by what the file is about, and again after a new goal', as
  * fixture of go test -json, as the project's real run would print it) to the output file the command names.
  */
 function saveSession({partner = {thinkingOf: () => 'off', ask: async () => 'SILENT', setRole: async () => {}}, requestEditor = async () => null} = {}) {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'pair-save-')));
+  const root = realpathSync(scratch('pair-save-'));
   for (const [path, text] of Object.entries({
     'go.mod': 'module example.com/shop\n',
     'cart/cart_test.go': 'package cart\n\nimport "testing"\n\nfunc TestTotal(t *testing.T) {\n}\n\nfunc TestEmptyCart(t *testing.T) {\n}\n',
@@ -795,7 +795,7 @@ test('a moment that comes up while the Partner answers waits for it; its remark 
  * `output` to the output file and ends with `exit`, as the real run would.
  */
 function buildSession() {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'pair-build-')));
+  const root = realpathSync(scratch('pair-build-'));
   mkdirSync(join(root, 'src'));
   for (const file of ['probe.c', 'src/table.c']) writeFileSync(join(root, file), 'int main(void) {\n  return 0;\n}\n'.repeat(8));
   const sent = [];

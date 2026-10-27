@@ -1,11 +1,11 @@
 // Tests on save that ran only what a save affects: what failed before and did not run stays failing until a whole
 // run, which a passing narrowed run asks for, says whether it still fails at all (a test renamed, a test deleted).
 import assert from 'node:assert/strict';
-import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {mkdirSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {PairSession} from '../src/session.mjs';
+import {scratch} from './temp.mjs';
 
 /** go test -json lines for `tests`: [package dir, test name, 'pass' or 'fail']. */
 const goJson = tests => tests.flatMap(([dir, name, action]) => [
@@ -14,9 +14,8 @@ const goJson = tests => tests.flatMap(([dir, name, action]) => [
   {Action: action, Package: `example.com/shop/${dir}`, Test: name},
 ]).map(event => JSON.stringify(event)).join('\n');
 
-function goSession(t) {
-  const root = mkdtempSync(join(tmpdir(), 'pair-narrowed-'));
-  t.after(() => rmSync(root, {recursive: true, force: true}));
+function goSession() {
+  const root = scratch('pair-narrowed-');
   const write = (path, text) => { mkdirSync(join(root, path, '..'), {recursive: true}); writeFileSync(join(root, path), text); };
   write('go.mod', 'module example.com/shop\n');
   write('cart/cart.go', 'package cart\n');
@@ -53,8 +52,8 @@ function goSession(t) {
 const statusOf = message => [message.state, message.label, message.text];
 const signsOf = message => message.results.map(test => `${test.ok ? '✓' : '✗'}${test.name}@${test.line}`).sort();
 
-test('a failing test renamed and fixed: the narrowed run asks for a whole run, which clears it and its old sign', async t => {
-  const {pair, root, write, outputs, ran, ended, settle} = goSession(t);
+test('a failing test renamed and fixed: the narrowed run asks for a whole run, which clears it and its old sign', async () => {
+  const {pair, root, write, outputs, ran, ended, settle} = goSession();
   outputs['go test -json ./...'] = goJson([['cart', 'TestTotal', 'fail'], ['tax', 'TestRate', 'pass']]);
   pair.receive({kind: 'save', file: join(root, 'cart/cart.go')});
   await settle(1);
@@ -73,8 +72,8 @@ test('a failing test renamed and fixed: the narrowed run asks for a whole run, w
   assert.deepEqual(pair.state.savedRunFailed, []);
 });
 
-test('a failing test deleted: gone after the whole run; a test failing elsewhere still fails after it', async t => {
-  const {pair, root, write, outputs, ran, ended, settle} = goSession(t);
+test('a failing test deleted: gone after the whole run; a test failing elsewhere still fails after it', async () => {
+  const {pair, root, write, outputs, ran, ended, settle} = goSession();
   outputs['go test -json ./...'] = goJson([['cart', 'TestTotal', 'fail'], ['tax', 'TestRate', 'fail']]);
   pair.receive({kind: 'save', file: join(root, 'cart/cart.go')});
   await settle(1);

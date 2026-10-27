@@ -2,11 +2,11 @@
 // lines where it has none. Skips without nvim.
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {mkdtempSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {test} from 'node:test';
+import {scratch} from './temp.mjs';
 
 const REPO = fileURLToPath(new URL('..', import.meta.url));
 const hasNvim = (() => { try { execFileSync('nvim', ['--version']); return true; } catch { return false; } })();
@@ -17,7 +17,7 @@ const hasNvim = (() => { try { execFileSync('nvim', ['--version']); return true;
  * text column. `colors` is 'termguicolors'.
  */
 function sweep(numbers, {colors = true} = {}) {
-  const script = join(mkdtempSync(join(tmpdir(), 'pair-gaze-')), 'gaze.lua');
+  const script = join(scratch('pair-gaze-'), 'gaze.lua');
   writeFileSync(script, `vim.o.columns, vim.o.lines = 120, 30
 vim.o.termguicolors = ${colors}
 local style, draw = require('pair.style'), require('pair.draw')
