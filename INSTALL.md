@@ -61,6 +61,11 @@ Write down four facts for the steps below:
      a browser. Tell them that whether a plan may be used from a tool like Pair is up to the provider; Anthropic's
      Claude subscriptions may not (details in [models.md](docs/models.md#before-you-use-a-subscription)).
 
+   Without a GPU, a local model is too slow for the Watcher (it should answer in about a second), so b. is the
+   practical choice; DeepSeek, for one, answers in about a second and costs little. Tell them that with b. or c. their
+   code goes to the provider (what Pair sends: [data.md](docs/data.md)), so on a work machine they should check that
+   their employer allows that provider.
+
    And: **one model for both roles, or two?** Pair asks a small, fast **Watcher** whether a moment is worth a word, and
    a **Partner** that writes what it says. One model for both is simplest. With a paid key or a subscription, every
    Watcher question is a request, so a small local or cheap Watcher next to a cloud Partner saves money.

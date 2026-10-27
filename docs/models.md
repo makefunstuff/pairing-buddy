@@ -46,6 +46,20 @@ pay-per-use; the Partner runs only when there is something to say:
 **One cloud model for both.** `"model": {"provider": "openai", "model": "..."}` works too, but the Watcher asks
 about every candidate remark, and each of those calls is a paid request or counts against a plan's limits.
 
+**No GPU.** A local model on the CPU is too slow for the Watcher, so take one cheap, fast cloud model for both roles.
+With DeepSeek, for example (`pair auth login deepseek`, then `pair auth models deepseek` for the ids):
+
+```jsonc
+{
+  "model": {"provider": "deepseek", "model": "deepseek-flash"}
+}
+```
+
+Measured on a fresh install: `pair doctor` gets an answer in about 0.8 s, the Watcher's calls take about a second, a
+short question is answered in 3 to 5 s, and one that has Pair trace through code with thinking in up to a minute or
+two. A cloud provider answers both roles at once, so the Watcher never waits for the Partner. Your code goes to the
+provider ([what Pair sends](data.md)): on work code, check that your employer allows that provider first.
+
 `"watcher": "same as partner"` in `models` is the same as one `model`. After a change, run `pair doctor`: it checks
 that each model answers, how fast, and that the Partner thinks.
 

@@ -23,6 +23,9 @@ daemon's memory only, for the session.
 Nothing is written to your repository or to the work board (Pair only lists its tasks). Nothing leaves your machine
 except the requests to the model endpoints you configured, `gh pr view` for the
 [context card](neovim.md#what-it-knows-the-context-card) when `gh` is installed and, for a login, to the provider's
-sign-in service. A [decision model](decision.md#what-it-is-told), when you set one, gets each moment's kind and
+sign-in service. Those requests carry your code: the Watcher gets each moment's text (your edits, a command's
+output, a test's failure), and the Partner the files and lines it reads, the diffs it suggests and your questions. With
+a cloud provider, that code goes to the provider: check that your employer allows it before you use Pair on work code;
+a local server keeps it on your machine. A [decision model](decision.md#what-it-is-told), when you set one, gets each moment's kind and
 text, your goal, the paths you edited, your last commands and test counts, and your verdicts on earlier remarks; never
 the contents of a file.
