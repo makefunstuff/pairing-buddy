@@ -348,6 +348,7 @@ export async function startDaemon(config, {
         autoTune: config.autoTune,
         typingPauseMs: config.typingPauseMs,
         testOnSave: testOnSaveOf(root, record.id),
+        checkOutput: join(config.dataDir, 'runs', `${record.id}.check.out`), // the hand-over's check: writable in the sandbox too
         notify: (role, message) => notify(session, role, message),
         requestEditor: message => requestEditor(session, message),
         log: line => log(`[${basename(root)}] ${line}`),

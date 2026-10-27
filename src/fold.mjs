@@ -133,7 +133,7 @@ function foldCommandEnd(state, event) {
     endedAt: event.at,
   };
   command.seen = lookingAt(state.focus, command);
-  const ran = {cmd: command.cmd, by: 'you', at: event.at, reading: command.reading, exit: command.exit, output: event.output ?? ''};
+  const ran = {cmd: command.cmd, by: 'you', at: event.at, reading: command.reading, exit: command.exit, output: event.output ?? '', cwd: event.cwd ?? null};
   const next = {
     ...(isRun(command.cmd) && !tests ? afterLoggedRun(state, ran) : afterRun(state, ran)),
     commands: keepLast(state.commands, command, KEEP.commands),

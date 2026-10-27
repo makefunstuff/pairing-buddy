@@ -5,8 +5,8 @@
 // depth, since a run needs them and does not build them. In node_modules each package is linked, and its caches
 // (.cache, .vite) are left out.
 import {execFile} from 'node:child_process';
-import {copyFile, mkdir, readdir, rm, symlink, writeFile} from 'node:fs/promises';
-import {basename, dirname, join, relative, sep} from 'node:path';
+import {copyFile, mkdir, readdir, readFile, rm, stat, symlink, writeFile} from 'node:fs/promises';
+import {basename, dirname, extname, join, relative, sep} from 'node:path';
 import {promisify} from 'node:util';
 import {shellQuote} from './scout-pane.mjs';
 
@@ -14,6 +14,8 @@ const GO_TEST = /(^|[\s;&|(])go test(?=\s|$)/;
 const MAX_FILES = 5000; // a bigger project is not copied for one run
 const DEPENDENCIES = new Set(['node_modules', '.venv', 'venv']);
 const NODE_MODULES_KEPT = new Set(['.bin', '.pnpm']); // the dot-entries of node_modules that are not caches
+const PICTURES = {'.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp'};
+const MAX_PICTURE_BYTES = 4 << 20;
 
 /** `command` with `go test` reading `overlay`, or null when it runs no `go test`. */
 export const overlaid = (command, overlay) => (GO_TEST.test(command) ? command.replace(GO_TEST, `$1go test -overlay ${shellQuote(overlay)}`) : null);
@@ -79,4 +81,22 @@ export async function prepareUnsaved({root, command, file, text, dir}) {
   await mkdir(dirname(join(tree, inTree)), {recursive: true});
   await writeFile(join(tree, inTree), text);
   return {command, root: tree, texts: new Map(), toProject: path => (path?.startsWith(tree + sep) ? join(root, relative(tree, path)) : path)};
+}
+
+/**
+ * The picture a run wrote in the scratch copy `tree` since `since` (ms), the newest: `{file, data, mimeType}`, with
+ * `file` relative to the tree and `data` in base64, or null. The program's screenshot, when it writes one.
+ */
+export async function pictureSince(tree, since) {
+  const entries = await readdir(tree, {recursive: true, withFileTypes: true}).catch(() => []);
+  let newest = null;
+  for (const entry of entries) {
+    if (!entry.isFile() || !PICTURES[extname(entry.name).toLowerCase()]) continue;
+    const path = join(entry.parentPath, entry.name);
+    const {mtimeMs, size} = await stat(path);
+    if (mtimeMs >= since && size <= MAX_PICTURE_BYTES && mtimeMs > (newest?.mtimeMs ?? -1)) newest = {path, mtimeMs};
+  }
+  if (!newest) return null;
+  const data = (await readFile(newest.path)).toString('base64');
+  return {file: relative(tree, newest.path), data, mimeType: PICTURES[extname(newest.path).toLowerCase()]};
 }

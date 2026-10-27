@@ -136,16 +136,17 @@ function verdict(run, earlier) {
 }
 
 /**
- * The run log with one more run: `cmd` by `by` ("you" or "pair") ended at `at` with `exit` (null when unknown),
- * having printed `output`, which run-output.mjs read as `reading`, with `newWarnings` among its warnings.
+ * The run log with one more run: `cmd` by `by` ("you" or "pair"), run in `cwd`, ended at `at` with `exit` (both
+ * null when unknown), having printed `output`, which run-output.mjs read as `reading`, with `newWarnings` among its warnings.
  * `edits` are the session's edits: those since the run before are this run's change.
  */
-export function logRun(runs, {cmd, by, at, exit = null, output = '', reading, newWarnings = [], edits = []}) {
+export function logRun(runs, {cmd, by, cwd = null, at, exit = null, output = '', reading, newWarnings = [], edits = []}) {
   const last = runs.at(-1);
   const run = {
     n: (last?.n ?? 0) + 1,
     cmd,
     by,
+    cwd,
     at,
     exit,
     output: output.length > OUTPUT_CHARS ? output.slice(-OUTPUT_CHARS) : output,

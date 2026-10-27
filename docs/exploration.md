@@ -92,6 +92,12 @@ and `x` in `:Pair runs` removes them all from their buffers. That is one undo st
 
 ![Run 4: the numbers moved, and the statusline counts the printf from run 2](images/loop-moved.png)
 
+## Handing over in the loop
+
+Your last build and run is also how Pair checks an edit you hand over: say what to change and what the run should
+show (`you take it: make the ids spread over the table, avg probe stays under 2`), and Pair runs your command on the
+unsaved buffer and hands back with `✓ avg probe 1.1`. See [the hand-over without a test](driver.md#the-hand-over-without-a-test).
+
 ## Limits
 
 - The log is for this session only: a daemon restart starts it again, and it keeps the last 30 runs.

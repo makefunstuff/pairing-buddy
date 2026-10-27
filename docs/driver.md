@@ -31,27 +31,71 @@ The accept key is mapped in Normal mode, only in that buffer, and only while the
 | Neovim | `:Pair drive` or `:Pair drive <what to do>` |
 | The chat | `/drive` or `/drive <what to do>`, or a line that is "you take it" or "your turn", alone or followed by punctuation and a request (`you take it: set the timeout to 30 s`); "your turn to explain ..." stays a question |
 
+A request can say what you expect to see after the change, and which command shows it: see [the hand-over without a test](#the-hand-over-without-a-test).
+
 Then:
 
 1. Pair becomes the Driver for one answer. The chat prompt and `require('pair').status()` show `driver`.
 2. It reads the code and calls `edit` once. Neovim types the change while you watch (see [the visible hand-over](neovim.md#the-visible-hand-over)): ghost text with Pair's cursor, each line entering the buffer only when it is whole, all of it one undo step. If no window shows those lines, they open in a split. The edit's answer to the model waits until the typing is done. The chat says `Changed src/ws.mjs:1 (u undoes it).`
    A file that does not exist yet (inside the project, in a folder that does) opens as a new buffer and is typed there, for example the `Makefile` of a [first slice](blank-page.md#the-first-run). Its `read` says it does not exist yet, or shows the buffer once Pair has typed it. The disk has it when you save it.
 3. A second `edit` in the same answer is refused: one change per hand-over. An edit Neovim could not apply (a line past the end of the buffer), or that you stopped halfway, does not count.
-4. If the project has a test command (`testOnSave`), Pair runs it on the unsaved buffer and tells the model the result (below). It says in one sentence what it changed and, when the tests ran, whether they pass. It is told not to run the tests itself: they would read the file on disk, which changes only when you save.
+4. Pair checks the change on the unsaved buffer (below): with the project's command on save (`testOnSave`), or, without one, with the build and run you last ran in your terminal. It tells the model the result. The model says in one sentence what it changed and, when something ran, whether the tests pass or what the run printed for what you expect. It is told not to run them itself: they would read the file on disk, which changes only when you save.
 5. When the answer ends, Pair is Navigator again by itself, also when it answered without an edit, for example with a question.
-6. The hand-back line: its words under the last line it changed, `✓` or `✗` in the sign column there when the tests ran, `▎` on the lines it changed, and `u undoes it`. They go with your next edit. After that, `u` on the edit's line in `:Pair today` still undoes it: Neovim merges the undo into the buffer as it is then, and keeps your later edits, or changes nothing when you edited the same lines ([the ledger](neovim.md#the-ledger)).
+6. The hand-back line: its words under the last line it changed, `✓` or `✗` in the sign column there when the check ran (with the line the run printed for your target first: `✓ avg probe 1.1 · …`), `▎` on the lines it changed, and `u undoes it`. They go with your next edit. After that, `u` on the edit's line in `:Pair today` still undoes it: Neovim merges the undo into the buffer as it is then, and keeps your later edits, or changes nothing when you edited the same lines ([the ledger](neovim.md#the-ledger)).
 
 A hand-over needs Neovim connected (`:Pair start`), and is refused while Pair is still answering something else. No remark nobody asked for starts while Pair has the wheel.
 
-## Tests on the unsaved buffer
+## The check on the unsaved buffer
 
-After the Driver's edit, when the project has a command in `testOnSave`, Pair runs that command once on the buffer as it is, before anything is saved. It runs in Pair's own pane like the tests on save, so you see it, and the model never chooses it.
+After the Driver's edit, Pair runs one command once on the buffer as it is, before anything is saved. It runs in Pair's own pane like the tests on save, so you see it. The command is always yours, never the model's:
+
+1. one in backquotes in the hand-over (`` you take it: …, run `make -s run` ``);
+2. else the project's command in `testOnSave`, tests or a build and run;
+3. else the build and run you last ran in your terminal, as [the run log](exploration.md) knows it: `make -s run`, `odin run .`, `zig build run`, `cc -o probe probe.c && ./probe`. One that only runs a program by its path (`./probe`) gets the build you ran before it in the same folder (`make && ./probe`), since the copy has the old program. One you ran in a folder of the project runs in that folder; one you ran outside the project is no check.
+
+- A command that only runs a built program (`./probe`, `build/probe`) with no build before it is no check: in the copy it would run the old program and judge the old code. The model is told so, and you can name the build and run in backquotes. A script by its path (`./build.sh`) builds what it needs and counts.
+- What Scout's [command policy](scout.md#the-command-policy) refuses (`sudo`, `git push`, `curl`, ...) is never run for a check; the model is told why.
+- A command taken from your terminal that Scout would ask about (`make run`, `make install`, `./deploy.sh`, `python3 send_mail.py`) asks you first in the chat, as Scout does: ``Pair wants to run `make -s run` on the unsaved buffer, in a scratch copy, to check its edit (…). Allow?`` A yes holds for that command for the rest of the session; a no, or no answer within a minute, runs nothing. A command you named in the hand-over, or your command on save, is yours and runs without asking.
+- Without any command, nothing runs and the model is told so.
 
 - **Go**: a command with `go test` in it gets `-overlay`: Go reads the edited file from the buffer's text, and nothing else changes. `go test -json ./...` runs as `go test -overlay <file> -json ./...`.
-- **Other runners** (jest, vitest, pytest, cargo, ...): the command runs in a scratch copy of the project, with the buffer's text in the edited file. The copy has the files git knows (tracked, or untracked and not ignored) and the files git ignores, such as `.env`. Folders git ignores are left out, so what a run builds or caches there (`dist`, `coverage`, `target`, `.pytest_cache`) is made in the copy and never reaches your project; a Rust or TypeScript build starts from scratch. Only dependency folders are linked from the project, at any depth (a workspace package's own `node_modules` too): `.venv` and `venv` as they are, and `node_modules` package by package, without its caches (`.cache`, `.vite`), so a cache a run writes stays in the copy. A project that is not a git repository, has more than 5000 files to copy, or whose edited file is in a dependency folder is not tested; the model is told why. The copy is removed after the run.
-- The statusline shows `⠹ go test ./... (unsaved)`, then `✓ go test ./... (unsaved) · 4 tests, 3 packages` or `✗ 1 failing · TestX`, and the signs on your test functions show this run's results, at the lines your buffer has them on. The chat gets one line about it.
+- **Everything else** (make, cc, zig, odin, c3c, jest, vitest, pytest, cargo, ...): the command runs in a scratch copy of the project, with the buffer's text in the edited file. The copy has the files git knows (tracked, or untracked and not ignored) and the files git ignores, such as `.env`. Folders git ignores are left out, so what a run builds or caches there (`dist`, `coverage`, `target`, `.pytest_cache`) is made in the copy and never reaches your project; a Rust or TypeScript build starts from scratch. Only dependency folders are linked from the project, at any depth (a workspace package's own `node_modules` too): `.venv` and `venv` as they are, and `node_modules` package by package, without its caches (`.cache`, `.vite`), so a cache a run writes stays in the copy. A project that is not a git repository, has more than 5000 files to copy, or whose edited file is in a dependency folder is not tested; the model is told why. The copy is removed after the run.
+- The statusline shows `⠹ go test ./... (unsaved)`, then `✓ go test ./... (unsaved) · 4 tests, 3 packages` or `✗ 1 failing · TestX`, and the signs on your test functions show this run's results, at the lines your buffer has them on. A build and run shows what it found (`✗ make -s run (unsaved) · Segmentation fault`, `· does not build · probe.c:13`), or the line it printed for your target (`✓ make -s run (unsaved) · avg probe 1.1`). The chat gets one line about it.
+- A picture the run writes in the copy (`.png`, `.jpg`, `.gif`, `.webp`, up to 4 MB: a renderer's screenshot) goes to the model with the result, the newest one if there are several, when the model reads images: a provider's model as pi-ai's catalog says, a model at a `baseUrl` only with `"images": true` in its entry ([config](config.md)). Any other model is told the picture's name and that it is not attached.
 - The run is not a baseline for the [tests on save](tests-on-save.md): a test that fails on the buffer and then on save still counts as newly failing against the last run on save.
-- Without a `testOnSave` command, or without Pair's pane, nothing runs and the model is told to leave the tests to you.
+- Without Pair's pane, nothing runs and the model is told why.
+- A run that does not end within 2 minutes is stopped with Ctrl-C, as Scout's are. A program that opens a window keeps it open in the copy until you close it.
+
+## The hand-over without a test
+
+Exploring has no test to make pass: the check is something you can see in the output. So a hand-over can carry an intent and an observable:
+
+```
+you take it: make the ids spread over the table, avg probe stays under 2
+```
+
+![probe.c on the left, your terminal on the right with make -s run printing avg probe 23.7; :Pair drive with an intent and a number; Pair types the new hash, builds and runs the unsaved buffer, and hands back with ✓ avg probe 1.1](images/hand-over-run.gif)
+
+*The hash table of [the exploration loop](exploration.md) ([captures/loop](captures/loop/probe.c)). You ran `make -s run` in your terminal; the hand-over names what to change and the number to reach. Pair types its edit, asks in the chat (not shown, answered yes) and runs your `make -s run` on the unsaved buffer in a scratch copy, and hands back with the line the run printed next to your target. The build and the runs are real; only the Partner's words are scripted. Recorded from [captures/tapes/hand-over-run.tape](captures/tapes/hand-over-run.tape).*
+
+Pair splits the words ([src/check.mjs](../src/check.mjs)):
+
+| Part | Which words | In the example |
+| --- | --- | --- |
+| The intent | the first clause, up to the observable | make the ids spread over the table |
+| The observable | a later clause that says what you will see: with `prints`, `shows`, `stays`, `under`, `above`, `at least`, `equals`, `<`, ..., or what follows `expect:` | avg probe stays under 2 |
+| The command | one in backquotes, with the words that lead in to it (`run`, `check with`) | none: your last build and run |
+
+Before it edits, the Driver hears what you expect and which command will run. After the edit:
+
+- **A number with a bound** (`avg probe stays under 2`, `keep worst at most 4`, `fps above 59`) is checked in code. The run's numbers are read as [the run log](exploration.md#every-run-read) reads them, and the one whose label has the observable's words is compared with the bound. The hand-back line starts with it, `✓ avg probe 1.1` or `✗ avg probe 2.6`, and the model is told whether it met the bound, and to say why when it did not.
+- **Several bounds** (`avg probe under 2 and worst under 5`, or split by commas) are each checked: one missed is `✗`, all met is `✓`, and the line shows every number, `✗ avg probe 1.3 · worst 89`. A bound on a number the run did not print leaves the verdict to the model, which is told the numbers that were found.
+- **Anything else** (`the window shows both counters`, `it prints the sum once`) is the model's to judge: it gets the output and your words, and starts its sentence with `✓` or `✗`. That mark goes in the sign column.
+- **A run that fails** (it does not build, it crashes, it exits with another code) is `✗` whatever you expected, with what went wrong: `✗ Segmentation fault`.
+
+![The hand-back after the hand-over without a test: ✓ in the sign column, "✓ avg probe 1.1 · High bits of a multiply…" under the changed line, and ✓ make -s run (unsaved) · avg probe 1.1 in the statusline](images/run-hand-back.png)
+
+The same one undo step as any hand-over: `u` takes the edit away, and nothing was saved.
 
 ## Taking the wheel back
 
@@ -64,14 +108,14 @@ Any key you press in Neovim while Pair has the wheel takes it back (scrolling, c
 
 Typing in the chat pane does not take the wheel back: the chat is where you talk to Pair while it drives. herdr does not report keystrokes, so Pair tells typing in a shell pane from its prompt line, which it looks at twice a second while that pane has focus ([herdr.md](herdr.md#the-users-panes-heuristics-and-the-shell-hook)); the text the Driver's `type` puts there does not count, and neither does pressing Enter on it.
 
-## Ping-pong TDD
+## Ping-pong, with or without a test
 
-1. You write a failing test, then say "your turn".
-2. Pair is asked to read the test you just edited and the code it tests, and to make the test pass by changing the code, not the test.
+1. You write a failing test, then say "your turn". Or, exploring, you say what you want and what you expect to see.
+2. With a test you just edited, Pair is asked to read it and the code it tests, and to make the test pass by changing the code, not the test. Without one, what you expect to see is the goal.
 3. It makes one edit and hands back.
-4. You run the tests and write the next one.
+4. You run it and write the next test, or say the next thing to see.
 
-As Driver Pair also has `search` and `run` in its own pane (the same command policy and limits as [Scout](scout.md)), so it may run the test before it edits. After the edit, the tests on disk would still see the saved file: with a `testOnSave` command, Pair runs them on the unsaved buffer instead, and says whether they pass. Saving is yours.
+As Driver Pair also has `search` and `run` in its own pane (the same command policy and limits as [Scout](scout.md)), so it may run the test before it edits. After the edit, the files on disk would still be the saved ones: Pair checks the unsaved buffer instead (above), and says whether the tests pass or what the run printed. Saving is yours.
 
 ## Typing into your terminal
 

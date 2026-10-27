@@ -198,6 +198,21 @@ export const scenes = {
       {wait: 200, say: 'the ids come 64 apart and `* 31` keeps them so: still 4096 buckets of 262144, so avg probe stays 23.7. Shift the multiply down instead'},
     ],
   },
+  // The hand-over without a test, in C (loop/): you run `make -s run` in your terminal on the right, then hand over
+  // with an intent and a number to reach. Pair types the edit, builds and runs the unsaved buffer with your command
+  // in a scratch copy, and hands back with the line the run printed next to the target. Pair asks in the chat before
+  // it runs `make -s run` (a target Scout would ask about), and the stage says yes. The Partner's words are scripted.
+  'hand-over-run': {
+    project: 'loop',
+    allow: true,
+    goal: 'see how well the entity table spreads its keys',
+    watcher: score(),
+    partner: [
+      {when: /^\[drive\]/, wait: 900, call: ['read', {file: 'probe.c'}]},
+      {wait: 600, call: ['edit', {file: 'probe.c', line: 13, new_text: '    return (uint32_t)(key * 2654435769u) >> 14;'}]},
+      {wait: 300, say: 'High bits of a multiply: ids 64 apart no longer collide.'},
+    ],
+  },
   // :Pair context: no goal typed (it comes from the board task of the branch), a failing run, two Telescope searches,
   // then the card, and x on a source. No model words: the card is what the daemon reads.
   'context-card': {

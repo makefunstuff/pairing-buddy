@@ -27,6 +27,8 @@ Runs every test that needs no model, in under a minute, with scripted models and
   - the hand-over end to end: the edit typed as ghost text with only whole lines ever in the buffer, the tests run on
     a copy of the project with the buffer's text, the hand-back line with `✓` and `u undoes it`, and a key halfway
     leaving no change and doing nothing else;
+  - the hand-over without a test: your last run from the terminal built and run on the unsaved buffer, and the
+    hand-back line starting with the line it printed for your target (`✓ x 100 · …`);
   - the wrong turn end to end: Pair's words under your line, `Alt-j` to the cause, your next edit counting as seen;
   - tests on save end to end: the spinner, the failing test named, signs on the test functions and the failure after
     its line, `Alt-j` to Pair's suggestion and `Alt-y`, and the passing run;
@@ -42,6 +44,16 @@ Runs every test that needs no model, in under a minute, with scripted models and
     hint, and the keys you used remembered;
   - the accent reaching the chat pane, also after a colorscheme change; the accent itself on a grey palette with one
     warm red, in a coloured scheme whose regexp colour is the error's hue, and in Neovim's own scheme.
+- **The hand-over without a test** (`test/check.test.mjs`): the hand-over split into intent, observable and command;
+  a bound read from the words and checked against the run's numbers; the check command chosen (the one in backquotes,
+  the command on save, else your last build and run, with the build before a bare `./probe`, in its folder, never one
+  the command policy refuses, nor a bare `./probe` with no build known); a terminal command Scout would ask about
+  asking first, a no running nothing and a yes holding for the session; the picture attached only for a model that
+  reads images, and `images` in a model entry. Its scratch projects and runs folders are removed when its tests end, and so are the live
+  test's. A real C Makefile project (and a Zig one, with `zig` on `PATH`) built and run in the
+  scratch copy: a bound met, a bound missed, a deliberate segfault (through `bashWithoutCores`), an expectation in
+  words judged by the Partner's `✓`, and a picture the run writes going to the model. The project on disk stays as it
+  was.
 - **Push-to-talk** without Neovim: the recorder (levels, a pipeline stopped as a whole, a failing recorder said at
   once), whisper.cpp's flags and text, and what is read aloud, only when you are away.
 - **The held thought's rules** without Neovim: which triggers wait, each breakpoint, a thought dropped once the error
@@ -164,6 +176,11 @@ Stacks can name a `provider` too, with its login or key from `pair auth`. Withou
   first step whose place is a file in the project), and the next morning's line being one short line of the model's.
 - **Builds and runs** (`test/live/runs.test.mjs`): a C program built and run for real with `cc`. A segfault gets a
   point at its cause, a `-Wformat` warning a point at the `printf`, and an unused variable silence.
+- **The hand-over without a test** (`test/live/hand-over.test.mjs`): the captures' hash table, run once with
+  `make -s run` as the user did, then handed over with "avg probe stays under 2". One edit, one run of the user's
+  command on the unsaved buffer in the scratch copy, and a hand-back with the line the run printed and a `✓` or `✗`
+  that agrees with it (under 2 at that load takes more than a good hash, and the model does not always get there; the
+  test prints whether it did); the file on disk stays as it was.
 - **The exploration loop** (`test/live/loop.test.mjs`): the captures' hash table built and run for real with
   `make run`, four times. The same numbers after `* 31` score above the bar and get a point at the cause with the
   reason, and the shift that ends the hunt scores above the bar and gets a line with the new number. Its runs go

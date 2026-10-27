@@ -739,8 +739,9 @@ local function edit(message)
   end)
 end
 
--- The hand-back line: Pair's words under the lines it changed, which keep its mark, how the tests went on them in
--- the sign column, and the key that undoes it all. Like any words of Pair's, they go with your next edit.
+-- The hand-back line: Pair's words under the lines it changed, which keep its mark, how the check went on them in
+-- the sign column, and the key that undoes it all. A check the run printed a line for comes first: "✓ avg probe
+-- 1.3 · …". Like any words of Pair's, they go with your next edit.
 local function handback(message)
   local buf = vim.fn.bufnr(message.file)
   if buf == -1 or not vim.api.nvim_buf_is_loaded(buf) then return end
@@ -748,9 +749,13 @@ local function handback(message)
   forget_words(false)
   map_teach()
   local last = math.min(message.endLine, vim.api.nvim_buf_line_count(buf)) - 1
+  local text = message.text ~= '' and message.text or ('changed lines %d to %d'):format(message.line, message.endLine)
+  if type(message.check) == 'string' and signs[message.tests] then
+    text = ('%s %s · %s'):format(signs[message.tests][1], message.check, text)
+  end
   state.words = {
     buf = buf, row = last, undo = true,
-    text = message.text ~= '' and message.text or ('changed lines %d to %d'):format(message.line, message.endLine),
+    text = text,
     sign = signs[message.tests], span = draw.span(buf, math.min(message.line - 1, last), last),
   }
   draw_words(state.words)

@@ -111,6 +111,7 @@ export function modelConfig(role, entry, name = `models.${role}`, found = null) 
   if (typeof entry.model !== 'string' || !entry.model) throw new Error(`config: ${name}.model is missing`);
   if (entry.api === 'openai' && !entry.baseUrl) throw new Error(`config: ${name}.baseUrl is missing`);
   checkLevelMap(entry.thinkingLevelMap, `${name}.thinkingLevelMap`);
+  if (entry.images !== undefined && typeof entry.images !== 'boolean') throw new Error(`config: ${name}.images must be true or false`);
   const contextWindow = entry.contextWindow ?? found?.tokens ?? DEFAULT_CONTEXT;
   const base = {
     baseUrl: entry.api === 'anthropic' ? 'https://api.anthropic.com' : undefined,

@@ -54,4 +54,4 @@ When you hand Pair the wheel, the same command runs once on your unsaved buffer:
 runners in a scratch copy of the project (git's files and ignored files; ignored folders are left out, so builds and
 caches stay in the copy, and only dependency folders such as `node_modules` are linked). The statusline says
 `(unsaved)` after the command, and the run is no baseline for the next run on save. Details in
-[driver.md](driver.md#tests-on-the-unsaved-buffer).
+[driver.md](driver.md#the-check-on-the-unsaved-buffer).
