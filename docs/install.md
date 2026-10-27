@@ -137,12 +137,15 @@ pair shell-hook fish | source    # fish, in config.fish
 
 It runs `pair report` in the background before and after each command, so the prompt never waits; zsh's keys go
 straight to the daemon's socket, at most twice a second, and never the keys themselves. It also emits OSC 133 marks
-(prompt, output, end with the exit code) for a terminal that reads them.
+(prompt, output, end with the exit code) for a terminal that reads them. It names the shell by its process id, which
+tells Pair the `:terminal` buffer or tmux pane the command ran in.
 
 **Without herdr**, run `:Pair chat` in Neovim (or `pair chat` in any terminal). Scout's pane and the tests on save
 run in a `:terminal` along the bottom of Neovim, and the Driver's `type` goes to your own `:terminal` buffers
-([neovim.md](neovim.md#without-herdr)). What herdr adds is the view of your other terminals: without it Pair sees
-your commands' exit codes through the shell hook, but not their output.
+([neovim.md](neovim.md#without-herdr)). Pair reads your own `:terminal` buffers in Neovim, and the panes of the tmux
+session Neovim or the chat runs in: which one you are in, the commands you run there and their output, and with the
+shell hook their exit codes. Terminals in neither (another window of your terminal emulator) send only the shell
+hook's exit codes, without output.
 
 **Several projects** work at once: each project has its own session, chat pane and goal, and the daemon serves them
 all. A project is the git root of the folder Neovim and `pair` start in, so each git worktree is a project of its

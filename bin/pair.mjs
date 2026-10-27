@@ -46,7 +46,7 @@ const USAGE = `usage:
   pair daemon       run the daemon in the foreground
   pair supervise    run the daemon in the foreground, restarted when it fails (what \`pair\` starts without a service)
   pair shell-hook bash|zsh|fish   print the shell hook that reports commands, exit codes and (zsh) typing
-  pair report --start|--exit N|--ready ...   (used by the shell hook)`;
+  pair report --start|--exit N|--ready [--cmd TEXT] [--shell PID] ...   (used by the shell hook)`;
 
 const ONE_MODEL = 'The Watcher asks it for one number without thinking, the Partner thinks; on its server the Watcher waits while the Partner works.';
 const TWO_MODELS = 'On a server that holds one model at a time, give both roles one model instead: "model" in the config (see docs/config.md, "One model").';
@@ -270,11 +270,13 @@ function report(args) {
     exit: {type: 'string'}, cmd: {type: 'string'}, start: {type: 'boolean'}, ready: {type: 'boolean'}, keys: {type: 'boolean'},
     shell: {type: 'string'}, n: {type: 'string'},
   }});
-  const pane = process.env.HERDR_PANE_ID ?? null;
-  const hook = {cwd: process.cwd(), pane, shell: values.shell ?? null, keys: values.keys === true};
+  // The shell's pid names the terminal outside herdr: a Neovim :terminal's or a tmux pane's (src/pane-watch.mjs).
+  const hook = {
+    cwd: process.cwd(), pane: process.env.HERDR_PANE_ID ?? null, tmux: process.env.TMUX_PANE ?? null,
+    shell: Number(values.shell) || null, keys: values.keys === true,
+  };
   const message = values.ready ? {type: 'shell', ...hook}
     : {type: values.start ? 'command_start' : 'command', ...hook, n: Number(values.n ?? 0), cmd: values.cmd ?? '', ...(values.start ? {} : {exit: Number(values.exit)})};
-  if (message.type !== 'command' && !pane) return; // only herdr panes are watched: nothing to tell outside herdr
   const socket = connect(socketPathOf());
   socket.on('error', () => {});
   socket.on('connect', () => {

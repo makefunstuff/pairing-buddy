@@ -219,3 +219,28 @@ test('two Neovims with a :terminal in the same buffer: the question tells them a
   await until(() => /echo hi$/m.test(screen(other)), 'the text in the other Neovim\'s terminal');
   assert.doesNotMatch(screen({lua}), /echo hi/, 'not in the target the question named first');
 });
+
+test('without herdr, Pair reads the commands you run in your own :terminal and their output', {skip, timeout: 60_000}, async t => {
+  const {keys, lua, chat: openChat, project} = await pairWithoutHerdr(t);
+  const chat = await openChat();
+  const card = async () => { // the context card as it is now: chat.next would find the first one again
+    const from = chat.received.length;
+    chat.send({type: 'context'});
+    return JSON.stringify(await until(() => chat.received.slice(from).find(message => message.type === 'context'), 'the card'));
+  };
+  // Its history goes to the project, not to yours.
+  keys(`:terminal env HISTFILE=${join(project, '.history')} bash --norc --noprofile<CR>`);
+  await until(() => lua('return vim.bo.buftype == "terminal"'), 'the terminal');
+  keys('i');
+  await until(() => /\$ $/.test(lua('return table.concat(vim.api.nvim_buf_get_lines(0, 0, -1, false), "\\n")').trimEnd() + ' '), 'the prompt');
+  await sleep(1000); // Pair reads it, as you would before typing
+  // Seen running (sleep is the shell's foreground process), then read from the buffer when the prompt is back.
+  keys('sleep 1; echo some error here<CR>');
+  await until(async () => /sleep 1; echo some error here` failed: some error here/.test(await card()), 'the command and its output on the card');
+
+  // With the shell hook: the exit code, and the output of the terminal its shell's pid names.
+  keys(`source <lt>(${process.execPath} ${join(REPO, 'bin', 'pair.mjs')} shell-hook bash)<CR>`);
+  await sleep(500);
+  keys('echo from the hooked shell; (exit 3)<CR>');
+  await until(async () => /echo from the hooked shell; \(exit 3\)` failed \(exit 3\): from the hooked shell/.test(await card()), 'the hook\'s command with its output');
+});

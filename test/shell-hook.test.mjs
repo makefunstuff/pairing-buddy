@@ -24,17 +24,22 @@ function hookDir(t, shell) {
   return dir;
 }
 
-// The shell's pid differs from run to run.
 const reportsIn = dir => {
-  try { return readFileSync(join(dir, 'log'), 'utf8').trim().split('\n').map(line => line.replace(/--shell \d+/, '--shell PID')); } catch { return []; }
+  try { return readFileSync(join(dir, 'log'), 'utf8').trim().split('\n'); } catch { return []; }
 };
+
+/** The reports with the shell's pid, which differs from run to run, as PID; and the pids, the same in all of them. */
+function shellPids(reports) {
+  const pids = new Set(reports.map(line => Number(/ --shell (\d+)/.exec(line)?.[1])));
+  return {reports: reports.map(line => line.replace(/ --shell \d+/, ' --shell PID')), pids: [...pids]};
+}
 
 /** Runs `commands` in an interactive bash with the hook. */
 function runBash(t, promptCommand, commands) {
   const dir = hookDir(t, 'bash');
   const script = [promptCommand, `source ${join(dir, 'hook')}`, ...commands, 'sleep 1', 'exit', ''].join('\n');
-  const {stdout} = spawnSync('bash', ['--norc', '-i'], {input: script, cwd: dir, env: {...process.env, HISTFILE: join(dir, 'history')}});
-  return {reports: reportsIn(dir), output: stdout.toString()};
+  const {stdout, pid} = spawnSync('bash', ['--norc', '-i'], {input: script, cwd: dir, env: {...process.env, HISTFILE: join(dir, 'history')}});
+  return {reports: reportsIn(dir), output: stdout.toString(), pid};
 }
 
 /**
@@ -68,9 +73,11 @@ const EXPECTED = [
 
 for (const [name, promptCommand] of [['a string', 'PROMPT_COMMAND="echo hi >/dev/null"'], ['an array', 'PROMPT_COMMAND=("echo a >/dev/null" "echo b >/dev/null")']]) {
   test(`the bash hook reports each typed command once, also after an empty line, with PROMPT_COMMAND as ${name}`, {skip: hasBash ? false : 'bash not installed'}, t => {
-    const {reports, output} = runBash(t, promptCommand, COMMANDS);
+    const {reports: logged, output, pid} = runBash(t, promptCommand, COMMANDS);
+    const {reports, pids} = shellPids(logged);
     // Reports run in the background, so they may arrive in any order.
     assert.deepEqual(reports.filter(line => !/--cmd (sleep 1|source )/.test(line)).sort(), [...EXPECTED].sort());
+    assert.deepEqual(pids, [pid], 'each names the shell it ran in');
     assert.ok(!output.includes('reporter noise'), 'the reports write nothing to the terminal');
     assert.ok(output.includes('\x1b]133;C\x07') && output.includes('\x1b]133;D;1\x07') && output.includes('\x1b]133;A\x07'), 'the OSC 133 marks');
   });
@@ -81,7 +88,9 @@ const onTerminal = has('script') ? false : 'script (util-linux) not installed';
 for (const [shell, args, keys] of [['zsh', ['-f', '-i'], ' --keys'], ['fish', ['--no-config', '-i'], '']]) {
   test(`the ${shell} hook reports each typed command once`, {skip: onTerminal || (has(shell) ? false : `${shell} not installed`)}, async t => {
     const expected = EXPECTED.map(line => line.replace('report', `report${keys}`));
-    assert.deepEqual((await runOnTerminal(t, shell, args, COMMANDS)).sort(), expected.sort());
+    const {reports, pids} = shellPids(await runOnTerminal(t, shell, args, COMMANDS));
+    assert.deepEqual(reports.sort(), expected.sort());
+    assert.ok(pids.length === 1 && pids[0] > 0, 'each names the shell it ran in');
   });
 }
 
@@ -94,7 +103,7 @@ async function zshHeard(t, commands, {prelude = ''} = {}) {
   const server = createServer(socket => readMessages(socket, message => heard.push([Date.now() - start, message])));
   await new Promise(resolve => server.listen(join(dir, 'sock'), resolve));
   t.after(() => new Promise(resolve => server.close(resolve)));
-  const reports = await runOnTerminal(t, 'zsh', ['-f', '-i'], commands, dir);
+  const {reports} = shellPids(await runOnTerminal(t, 'zsh', ['-f', '-i'], commands, dir));
   return {reports, typed: heard.filter(([, message]) => message.type === 'typing')};
 }
 
@@ -107,7 +116,7 @@ const within = (typed, from, to) => typed.filter(([at]) => at >= from && at < to
 test('the zsh hook says keys at the prompt to the daemon\'s socket, at most twice a second, and not for a prompt alone', {skip: zsh}, async t => {
   // 'gits' a key every 200 ms from 2400 ms: two reports (2400, 3000); then Ctrl-U at 3500.
   const {typed} = await zshHeard(t, [SETTLE, {keys: [...'gits'], wait: 200}, {keys: ['\x15'], wait: 800}]);
-  assert.ok(typed.every(([, message]) => message.pane === 'w1:p1'), JSON.stringify(typed));
+  assert.ok(typed.every(([, message]) => message.pane === 'w1:p1' && typeof message.tmux === 'string' && message.shell > 0), JSON.stringify(typed));
   assert.deepEqual(within(typed, 700, 2300), [], `nothing while the prompt waits: ${JSON.stringify(typed)}`);
   assert.equal(within(typed, 2300, 3300).length, 2, `the burst over 800 ms: ${JSON.stringify(typed)}`);
   assert.equal(within(typed, 3300, 3700).length, 1, `Ctrl-U: ${JSON.stringify(typed)}`);

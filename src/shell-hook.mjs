@@ -1,8 +1,9 @@
 // The optional shell hook: tells Pair what herdr cannot (see docs/herdr.md). When the shell starts it says the
 // pane has the hook (`report --ready`), so Pair stops polling the pane's processes; then, for each command line,
-// that it started (`--start`) and that it ended with its exit code (`--exit`). Start and end carry the shell's pid
-// and the line's number, so a start that arrives after its own end (each report runs in the background, so the
-// prompt never waits for it) is not taken for a command still running. zsh also says when keys change the line at
+// that it started (`--start`) and that it ended with its exit code (`--exit`). Every report carries the shell's pid,
+// which names the terminal it ran in outside herdr (a Neovim :terminal's or a tmux pane's, src/pane-watch.mjs); start
+// and end also the line's number, so a start that arrives after its own end (each report runs in the background, so
+// the prompt never waits for it) is not taken for a command still running. zsh also says when keys change the line at
 // the prompt, at most twice a second, straight to the daemon's socket through zsh's own zsocket: no process is
 // started for it. bash and fish have no hook for keys, so Pair still tells typing from the pane's text there.
 // The hook also emits the OSC 133 marks that Pair's own pane emits (prompt, output, end with the exit code), for a
@@ -35,9 +36,10 @@ _pair_keys() {
   _pair_line="$CURSOR:$BUFFER"
   (( \${EPOCHREALTIME:-0} - \${_pair_keys_at:-0} < 0.5 )) && return
   _pair_keys_at=\${EPOCHREALTIME:-0}
-  [[ $HERDR_PANE_ID =~ '^[[:alnum:]:_.-]+$' ]] || return
+  local id='^[[:alnum:]:_.%-]*$' # pane ids go into the JSON as they are
+  [[ $HERDR_PANE_ID =~ $id && $TMUX_PANE =~ $id ]] || return
   if zmodload zsh/net/socket 2>/dev/null && zsocket ${quote(socket)} 2>/dev/null; then
-    print -u $REPLY -r -- '{"type":"typing","pane":"'$HERDR_PANE_ID'"}'
+    print -u $REPLY -r -- '{"type":"typing","pane":"'$HERDR_PANE_ID'","tmux":"'$TMUX_PANE'","shell":'$$'}'
     exec {REPLY}>&-
   fi
 }

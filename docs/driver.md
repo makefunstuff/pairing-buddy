@@ -141,7 +141,7 @@ As Driver Pair also has `search` and `run` in its own pane (the same command pol
 
 ## Typing into your terminal
 
-`type(text)` puts one line into your terminal: the herdr pane you last looked at or ran a command in, or the `:terminal` buffer in Neovim you were in last ([without herdr](neovim.md#without-herdr)). It is only for the Driver:
+`type(text)` puts one line into your terminal: the herdr or tmux pane you last looked at or ran a command in, or the `:terminal` buffer in Neovim you were in last ([without herdr](neovim.md#without-herdr)). It is only for the Driver:
 
 - It asks first in the chat: ``Pair wants to type `npm test` into your terminal (pane …), without pressing Enter. Allow? (y, or another terminal: …)`` `y` or `yes` allows it; the name of another of your terminals the question lists types it there instead; anything else, or no answer within a minute, declines.
 - It never presses Enter: running the line is up to you.
