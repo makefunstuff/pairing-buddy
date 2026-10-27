@@ -47,7 +47,8 @@ function runBash(t, promptCommand, commands) {
  * command `{keys, wait}` types keys without Enter, waiting `wait` ms after each (no keys: waits once).
  */
 async function runOnTerminal(t, shell, args, commands, dir = hookDir(t, shell)) {
-  const child = spawn('script', ['-qec', [shell, ...args].join(' '), '/dev/null'], {cwd: dir, env: {...process.env, HOME: dir, XDG_CONFIG_HOME: dir, HERDR_PANE_ID: 'w1:p1'}});
+  // XDG_RUNTIME_DIR too: without it (in a container, say) fish makes its runtime folder in TMPDIR, outside `dir`.
+  const child = spawn('script', ['-qec', [shell, ...args].join(' '), '/dev/null'], {cwd: dir, env: {...process.env, HOME: dir, XDG_CONFIG_HOME: dir, XDG_RUNTIME_DIR: dir, HERDR_PANE_ID: 'w1:p1'}});
   let output = '';
   child.stdout.on('data', data => { output += data; });
   for (const line of [`source ${join(dir, 'hook')}`, ...commands, '\x15exit']) { // Ctrl-U: whatever keys left on the line
