@@ -6,21 +6,23 @@ What Pair cannot do well yet, one GitHub issue each. The full list, with the one
 
 ## herdr
 
-These need a change in herdr itself.
+These need a change in herdr itself. The [shell hook](cli.md#pair-shell-hook) takes away most of them for the
+terminals that have it: commands, their start, end and exit code, and in zsh your typing come from the hook.
 
-- **No command boundaries or exit codes.** Pair learns that a command ran in a herdr pane by watching it, so a command
-  shorter than about a second can be missed, and success or failure is guessed from the output. The
-  [shell hook](cli.md#pair-shell-hook) reports exit codes and fixes this for panes that have it.
-  [#22](https://github.com/makefunstuff/pairing-buddy/issues/22)
-- **A command's output is cut from the screen text by a heuristic**, so a wrapped, cleared or very long output can
-  hide failed tests. Pair's own pane is not affected: tests on save write to a file.
-  [#23](https://github.com/makefunstuff/pairing-buddy/issues/23)
-- **Typing at a shell prompt is guessed** from the pane's screen, since herdr reports no keystrokes; a prompt that
-  changes by itself looks like typing. [#24](https://github.com/makefunstuff/pairing-buddy/issues/24),
-  [herdr.md](herdr.md#what-is-missing)
-- **Output changes are polled.** herdr pushes focus and pane events, but a pane's output cannot be subscribed to,
-  so Pair looks at the focused pane twice a second and at other panes running a command once a second: what you
-  see there reaches Pair up to a second later. [#25](https://github.com/makefunstuff/pairing-buddy/issues/25)
+- **No command boundaries or exit codes without the hook.** In a herdr pane without it, Pair learns that a command
+  ran by watching it, so a command shorter than about a second can be missed, and success or failure is guessed from
+  the output. [#22](https://github.com/makefunstuff/pairing-buddy/issues/22)
+- **A command's output is cut from the screen text**, also with the hook: from the line the command was typed on, at
+  most 1000 lines, so a very long output loses its beginning. Pair's own pane is not affected: its shell writes each
+  output to a file. [#23](https://github.com/makefunstuff/pairing-buddy/issues/23)
+- **Output changes are polled without the hook.** herdr pushes focus and pane events, but a pane's output cannot be
+  subscribed to, so Pair looks at the focused pane twice a second and at other panes running a command once a second.
+  With the hook, a zsh pane is not polled at its prompt, and a running command is looked at only for an editor
+  opening in it. [#25](https://github.com/makefunstuff/pairing-buddy/issues/25)
+- **Typing at a bash or fish prompt is guessed** from the focused pane's screen, as those shells have no hook for
+  keys and herdr reports none; a prompt that changes by itself looks like typing, and typing in a pane without focus
+  is not seen. zsh's hook reports keys from any terminal.
+  [#24](https://github.com/makefunstuff/pairing-buddy/issues/24), [herdr.md](herdr.md#what-is-missing)
 
 ## Without herdr
 

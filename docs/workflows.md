@@ -77,7 +77,8 @@ Without herdr, all of Pair works inside Neovim and tmux:
 - `:Pair chat` opens the chat in a terminal buffer on the right (or run `pair chat` in any terminal);
 - Scout's pane and the tests on save run in a `:terminal` along the bottom of Neovim;
 - Pair reads your own `:terminal` buffers and the panes of the tmux session you work in: which one you are in, the
-  commands you run and their output, and with the [shell hook](cli.md#pair-shell-hook) their exit codes;
+  commands you run and their output, and with the [shell hook](cli.md#pair-shell-hook) their exit codes (and in zsh
+  your typing at the prompt);
 - the Driver's `type` goes to one of those terminals, after your yes.
 
 Only a terminal that is neither (a plain window of your terminal emulator) sends just its exit codes, without output,

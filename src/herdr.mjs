@@ -1,9 +1,9 @@
 // herdr as a source of panes (src/pane-watch.mjs): what Pair learns from herdr's socket API, which pane has focus,
 // which commands run in the user's panes, and their output. Focus, panes coming and going or changing (a title the
 // shell sets), and scrolling come pushed from herdr's event stream. herdr says nothing about commands or keys (see
-// docs/herdr.md), so PaneWatch looks at the focused pane twice a second and at panes running a command once a
-// second, and at nothing while the user is in another workspace with nothing running. Exit codes come from the
-// optional shell hook; the Driver's `type` is the one thing Pair sends to a user's pane.
+// docs/herdr.md): the optional shell hook reports them, and for panes without it PaneWatch looks at the focused pane
+// twice a second and at panes running a command once a second, and at nothing while the user is in another
+// workspace with nothing running. The Driver's `type` is the one thing Pair sends to a user's pane.
 import {connect} from 'node:net';
 import {subscribe} from './herdr-events.mjs';
 import {PaneWatch as PaneWatchBase, plainLine} from './pane-watch.mjs';

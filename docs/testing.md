@@ -15,7 +15,10 @@ Runs every test that needs no model, in under a minute, with scripted models and
   (output and exit codes in files, more than 1000 lines); hand-over and take-back, also by typing at a shell prompt;
   `type` (only after a yes, only into your terminal pane, never Enter); your panes against a fake herdr's event stream
   (focus and scroll pushed, typing, a command seen running and one too short for that, no requests while you are in
-  another workspace) and the heuristics on pane text; the shell hooks: bash, and zsh and fish where installed.
+  another workspace) and the heuristics on pane text; the shell hooks (bash, and zsh and fish where installed): each
+  command's start and end, numbered, a start that arrives after its end, nothing written to the terminal, zsh's keys
+  to the socket at most twice a second (and only where zle's hooks are there), no polling of a hooked zsh pane at its
+  prompt, and an editor that opens late in a hooked command.
 - **Without herdr**, in a headless Neovim: Scout's pane and the tests on save as a `:terminal` there, the Driver's
   `type` into the `:terminal` you used last or another one named in the answer, `:Pair chat`, and a command you run
   in your own `:terminal`, seen running and with its output, and with the bash hook its exit code. In a real tmux

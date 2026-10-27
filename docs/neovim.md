@@ -611,7 +611,8 @@ and, for terminals that are neither Neovim's nor tmux's, their output ([herdr.md
   focus of your terminal emulator, where the emulator reports that), a command seen running (your shell's
   foreground process) and one too short for that (the prompt line), each with its output from the buffer, and
   typing at the prompt, which takes the wheel back from the Driver. With the
-  [shell hook](install.md), its exit codes too: the hook names its shell's process id, which tells the buffer. Neovim
+  [shell hook](install.md), each command's start and end with its exit code too, and in zsh your typing: the hook
+  names its shell's process id, which tells the buffer. Neovim
   wraps long lines in a terminal buffer where the window ends, so a long line reads as two.
 - **tmux.** When Neovim (or the chat) runs in tmux, Pair also reads the panes of that tmux session, the same way:
   the active pane of the window shown has the focus. When that pane is Neovim's and you are in one of its `:terminal`

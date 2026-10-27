@@ -59,6 +59,8 @@ the config ([watcher.md](watcher.md#thinking-the-partner-not-the-watcher)).
 | The statusline says `◌ pair · partner down` | The model stopped answering. Pair checks every 30 seconds and says when it is back. A subscription login may have ended: `pair auth login PROVIDER` again ([when a model is down](models.md#when-a-model-is-down)) |
 | Pair says nothing | That is often right: most moments are not worth a word. `:Pair context` shows what it sees; `/level chatty` lowers the bar for this session, and `pair stats` shows how often it spoke |
 | A key such as `Alt-j` does nothing | The keys are mapped only while there is something for them to do, and only where you have no mapping of your own ([keys](neovim-plugin.md#keys)) |
+| Pair misses short commands in your terminal, or calls a passing one failed | Without the [shell hook](cli.md#pair-shell-hook) Pair watches the pane and guesses from the output. Add the hook to your shell's rc file: each command's start, end and exit code then come from the shell |
+| Typing in a bash or fish terminal does not hold Pair back or take the wheel back | Pair tells typing there only in the pane with focus, from its screen. In zsh the [shell hook](cli.md#pair-shell-hook) reports your keys from any terminal |
 | No colours, or plain marks | Pair's colours need `termguicolors` ([setup](neovim-plugin.md#setup)) |
 
 Still stuck? Look for your problem in the [known limitations](limitations.md), or
