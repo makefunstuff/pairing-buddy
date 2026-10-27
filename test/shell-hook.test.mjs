@@ -23,12 +23,18 @@ const reportsIn = dir => {
   try { return readFileSync(join(dir, 'log'), 'utf8').trim().split('\n'); } catch { return []; }
 };
 
+/** The reports without the shell's pid each ends with, and the pids: one shell's, the same in all of them. */
+function shellPids(reports) {
+  const pids = new Set(reports.map(line => Number(/ --shell (\d+)$/.exec(line)?.[1])));
+  return {reports: reports.map(line => line.replace(/ --shell \d+$/, '')), pids: [...pids]};
+}
+
 /** Runs `commands` in an interactive bash with the hook. */
 function runBash(t, promptCommand, commands) {
   const dir = hookDir(t, 'bash');
   const script = [promptCommand, `source ${join(dir, 'hook')}`, ...commands, 'sleep 1', 'exit', ''].join('\n');
-  const {stdout} = spawnSync('bash', ['--norc', '-i'], {input: script, cwd: dir, env: {...process.env, HISTFILE: join(dir, 'history')}});
-  return {reports: reportsIn(dir), output: stdout.toString()};
+  const {stdout, pid} = spawnSync('bash', ['--norc', '-i'], {input: script, cwd: dir, env: {...process.env, HISTFILE: join(dir, 'history')}});
+  return {reports: reportsIn(dir), output: stdout.toString(), pid};
 }
 
 /** Types `commands` into `shell` on a terminal (zsh and fish run their hooks only there), a line at a time. */
@@ -50,9 +56,11 @@ const EXPECTED = ['report --exit 0 --cmd true', 'report --exit 1 --cmd false', '
 
 for (const [name, promptCommand] of [['a string', 'PROMPT_COMMAND="echo hi >/dev/null"'], ['an array', 'PROMPT_COMMAND=("echo a >/dev/null" "echo b >/dev/null")']]) {
   test(`the bash hook reports each typed command once, also after an empty line, with PROMPT_COMMAND as ${name}`, {skip: hasBash ? false : 'bash not installed'}, t => {
-    const {reports, output} = runBash(t, promptCommand, COMMANDS);
+    const {reports: logged, output, pid} = runBash(t, promptCommand, COMMANDS);
+    const {reports, pids} = shellPids(logged);
     // Reports run in the background, so they may arrive in any order.
     assert.deepEqual(reports.filter(line => !line.includes('sleep 1')).sort(), [...EXPECTED].sort());
+    assert.deepEqual(pids, [pid], 'each names the shell it ran in');
     assert.ok(output.includes('\x1b]133;C\x07') && output.includes('\x1b]133;D;1\x07') && output.includes('\x1b]133;A\x07'), 'the OSC 133 marks');
   });
 }
@@ -61,7 +69,9 @@ for (const [name, promptCommand] of [['a string', 'PROMPT_COMMAND="echo hi >/dev
 const onTerminal = has('script') ? false : 'script (util-linux) not installed';
 for (const [shell, args] of [['zsh', ['-f', '-i']], ['fish', ['--no-config', '-i']]]) {
   test(`the ${shell} hook reports each typed command once`, {skip: onTerminal || (has(shell) ? false : `${shell} not installed`)}, async t => {
-    assert.deepEqual((await runOnTerminal(t, shell, args, COMMANDS)).sort(), [...EXPECTED].sort());
+    const {reports, pids} = shellPids(await runOnTerminal(t, shell, args, COMMANDS));
+    assert.deepEqual(reports.sort(), [...EXPECTED].sort());
+    assert.ok(pids.length === 1 && pids[0] > 0, 'each names the shell it ran in');
   });
 }
 
