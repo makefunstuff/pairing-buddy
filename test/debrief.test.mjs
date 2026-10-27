@@ -58,9 +58,16 @@ test('Pair\'s changes the user kept: accepted suggestions and edits not undone',
 test('the first step and the file:line it names last', () => {
   const {lines, first} = parseDebrief('✓ delivery makes all 5 attempts\n○ open: AttemptTimeout is not enforced\n**Tomorrow, first:** give `send()` a context, in `worker.go:27`.\n');
   assert.equal(lines.length, 3);
-  assert.deepEqual(first, {step: 'give `send()` a context, in `worker.go:27`.', file: 'worker.go', line: 27});
+  assert.deepEqual(first, {step: 'give `send()` a context, in `worker.go:27`.', files: ['worker.go'], line: 27});
   assert.deepEqual(parseDebrief('Tomorrow first: try it on a phone').first, {step: 'try it on a phone'});
   assert.equal(parseDebrief('✓ done').first, null);
+  const place = step => { const {files, line} = parseDebrief(`Tomorrow, first: ${step}`).first; return {files, line}; };
+  assert.deepEqual(place('fix the run target, in Makefile:14.'), {files: ['run target, in Makefile', 'target, in Makefile', 'in Makefile', 'Makefile'], line: 14}, 'a file without an extension');
+  assert.deepEqual(place('the rule in (GNUmakefile:7)'), {files: ['GNUmakefile'], line: 7});
+  assert.deepEqual(place('wrap the head, in `src/ring buffer.c:9`'), {files: ['src/ring buffer.c'], line: 9}, 'in backticks, as written');
+  assert.deepEqual(place('wrap the head, in src/ring buffer.c:9'), {files: ['head, in src/ring buffer.c', 'in src/ring buffer.c', 'src/ring buffer.c', 'buffer.c'], line: 9}, 'a path with a space: the project tells which');
+  assert.deepEqual(place('check ring.odin:12, then arena.zig:40').files.at(-1), 'arena.zig');
+  assert.equal(parseDebrief('Tomorrow, first: start at 09:12 with the queue').first.files, undefined, 'a time of day is no place');
 });
 
 test('a file named by its end resolves to the one file git tracks, or the user had open, with that end', async () => {
@@ -77,9 +84,16 @@ test('a file named by its end resolves to the one file git tracks, or the user h
   assert.equal(await resolveFile(root, 'queue.go'), null, 'two files end in it');
   assert.equal(await resolveFile(root, 'queue.go', ['internal/queue/queue.go']), 'internal/queue/queue.go', 'one of them was open');
   assert.equal(await resolveFile(root, 'nowhere.go'), null);
+  writeFileSync(join(root, 'Makefile'), 'run:\n\t./probe\n');
+  writeFileSync(join(root, 'ring buffer.c'), 'int a;\nint b;\n');
+  execFileSync('git', ['add', '-A'], {cwd: root});
+  for (const [step, file, line] of [['fix the run target, in Makefile:2.', 'Makefile', 2], ['wrap the head, in ring buffer.c:2', 'ring buffer.c', 2]]) {
+    const place = await firstPlace(root, parseDebrief(`Tomorrow, first: ${step}`).first, null, [], readLines);
+    assert.deepEqual([place.file, place.line], [file, line], step);
+  }
 
   const stopped = {file: 'internal/queue/queue.go', line: 1, text: 'package queue'};
-  assert.deepEqual(await firstPlace(root, {step: 'give send a context, in worker.go:4', file: 'worker.go', line: 4}, stopped, [], readLines),
+  assert.deepEqual(await firstPlace(root, {step: 'give send a context, in worker.go:4', files: ['worker.go'], line: 4}, stopped, [], readLines),
     {step: 'give send a context, in worker.go:4', file: 'internal/delivery/worker.go', line: 4, text: '\terr := send()'});
   assert.deepEqual(await firstPlace(root, {step: 'try it on a phone'}, stopped, [], readLines), {step: 'try it on a phone', ...stopped}, 'no place: where the user stopped');
   assert.deepEqual(await firstPlace(root, null, null, [], readLines), null);

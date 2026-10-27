@@ -6,7 +6,12 @@ import {execFileSync} from 'node:child_process';
 import {mkdirSync, mkdtempSync, utimesSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
+import {connect} from 'node:net';
 import {test} from 'node:test';
+import {createModels, fauxAssistantMessage, fauxProvider, fauxText} from '@earendil-works/pi-ai';
+import {parseConfig} from '../src/config.mjs';
+import {startDaemon} from '../src/daemon.mjs';
+import {readMessages, sendMessage} from '../src/protocol.mjs';
 import {PairSession} from '../src/session.mjs';
 import {openStore} from '../src/store.mjs';
 
@@ -190,4 +195,79 @@ test('without a chat pane, Neovim shows the debrief', async () => {
   const shown = sent.find(message => message.type === 'debrief');
   assert.equal(shown.target, 'editors');
   assert.match(shown.text, /\nTomorrow, first: give `send\(\)` a context/);
+});
+
+test('the empty session that follows a debrief ends without one, and /first in it reaches the debrief', async () => {
+  const root = project();
+  const store = openStore(':memory:');
+  const clock = {now: EVENING};
+  const day = pairSession({store, root, clock, answers: [DEBRIEF]});
+  day.pair.receive({kind: 'edit', file: join(root, 'internal/delivery/worker.go'), from: 4, to: 4, text: '\terr := send()'});
+  await day.pair.end();
+
+  // :Pair end, and Neovim starts the next session at once: closing the panel enters the file, CursorHold moves.
+  clock.now += MIN;
+  const next = pairSession({store, root, clock, answers: ['Tomorrow, first: look around, in worker.go:1.']});
+  next.pair.receive({kind: 'enter', file: join(root, 'internal/delivery/worker.go')});
+  next.pair.receive({kind: 'cursor', file: join(root, 'internal/delivery/worker.go'), line: 1, col: 0});
+  await next.pair.setFirst('enforce the timeout, in worker.go:5');
+  await next.pair.end(); // the last Neovim quits
+  assert.deepEqual(next.asked, [], 'no debrief asked for');
+  const last = store.lastSession(root, Infinity);
+  assert.equal(last.id, day.pair.id, 'the day\'s debrief is still the one to pick up from');
+  assert.match(last.note, /\nTomorrow, first: enforce the timeout, in worker\.go:5$/);
+  assert.deepEqual([last.pickup.first.file, last.pickup.first.line], ['internal/delivery/worker.go', 5]);
+});
+
+test('end to end with Neovim alone: :Pair end, the panel, CursorHold and quitting keep the day\'s debrief', {timeout: 20_000}, async () => {
+  const root = project();
+  const dataDir = mkdtempSync(join(tmpdir(), 'pair-data-'));
+  const config = parseConfig({
+    dataDir, socket: join(dataDir, 'pair.sock'), agents: false, board: null,
+    models: {watcher: {api: 'openai', baseUrl: 'http://unused', model: 'w'}, partner: {api: 'openai', baseUrl: 'http://unused', model: 'p'}},
+  });
+  const watcher = fauxProvider({provider: 'faux-watcher'});
+  const partner = fauxProvider({provider: 'faux-partner'});
+  const models = createModels();
+  models.setProvider(watcher.provider);
+  models.setProvider(partner.provider);
+  watcher.setResponses(Array.from({length: 20}, () => fauxAssistantMessage([fauxText('0')])));
+  partner.setResponses([
+    fauxAssistantMessage([fauxText('✓ delivery makes all 5 attempts\nTomorrow, first: enforce the timeout, in worker.go:4.')]),
+    fauxAssistantMessage([fauxText('Tomorrow, first: look around, in worker.go:1.')]),
+  ]);
+  const daemon = await startDaemon(config, {pairModels: {models, watcher: watcher.getModel(), partner: partner.getModel()}, probe: async () => ({ok: true}), log: () => {}, aloneEndMs: 200});
+  const file = join(root, 'internal/delivery/worker.go');
+  const editor = connect(config.socket);
+  const received = [];
+  readMessages(editor, message => received.push(message));
+  const until = async match => { for (let i = 0; i < 100 && !received.some(match); i++) await new Promise(resolve => setTimeout(resolve, 50)); assert.ok(received.some(match)); };
+  try {
+    await new Promise(resolve => editor.on('connect', resolve));
+    sendMessage(editor, {type: 'hello', role: 'editor', cwd: root});
+    await until(message => message.type === 'welcome');
+    sendMessage(editor, {type: 'event', event: {kind: 'edit', file, from: 4, to: 4, text: '\terr := send()'}});
+    sendMessage(editor, {type: 'end'});
+    await until(message => message.type === 'debrief');
+    await until(message => message.type === 'ended');
+    sendMessage(editor, {type: 'hello', role: 'editor', cwd: root}); // what the plugin does on `ended`
+    await until(message => message.type === 'welcome' && received.filter(other => other.type === 'welcome').length === 2);
+    sendMessage(editor, {type: 'event', event: {kind: 'enter', file}}); // q on the panel
+    sendMessage(editor, {type: 'event', event: {kind: 'cursor', file, line: 1, col: 0}}); // CursorHold
+    await new Promise(resolve => setTimeout(resolve, 100));
+    editor.destroy(); // Neovim quits
+    const store = openStore(join(dataDir, 'sessions.sqlite'));
+    try {
+      for (let i = 0; i < 50 && store.activeSession(root); i++) await new Promise(resolve => setTimeout(resolve, 100));
+      assert.equal(store.activeSession(root), undefined, 'the empty session ended');
+      const last = store.lastSession(root, Infinity);
+      assert.match(last.note, /enforce the timeout/);
+      assert.equal(last.pickup.first.line, 4);
+    } finally {
+      store.close();
+    }
+  } finally {
+    editor.destroy();
+    await daemon.close();
+  }
 });

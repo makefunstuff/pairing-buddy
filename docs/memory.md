@@ -22,8 +22,10 @@ A session ends by itself, and writes its note:
 - after 45 minutes in which you neither typed, edited, moved in Neovim, ran a command nor asked anything;
 - a minute after its last Neovim and chat pane closed (a Neovim you restart at once keeps it).
 
-A session you never used (an agent's Neovim, one opened to look) ends without a note: there is nothing to note.
-`/end` still ends one at once.
+A session you did no work in ends without a note, also with `/end`: there is nothing to note. Work is typing, an edit,
+a save, a command, a search or a question; an agent's Neovim, one opened to look, or the empty session Neovim starts
+right after `:Pair end` (moving about, closing the debrief's panel) is none, so it never writes over the day's debrief.
+`/end` still ends a session at once.
 
 ## The session note: the day's end debrief
 

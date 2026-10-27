@@ -529,13 +529,14 @@ pair Day's end: 3 h 05 min in hookd.
 - The wins come from what happened, not from the model's memory: tests that failed during the session and pass now,
   commands that pass again, [numbers that moved](#when-it-goes-green), Pair's suggestions you took and edits you kept,
   and the commits of the session. With them go the goal, `git status` and where your cursor was.
-- `Tomorrow, first` names a place. `worker.go:27` is enough: Pair finds the one file git tracks (or you had open)
+- `Tomorrow, first` names a place. `worker.go:27` or `Makefile:14` is enough, and a path with spaces works in
+  backticks (`` `src/ring buffer.c:9` ``) or as it is: Pair finds the one file git tracks (or you had open)
   with that name. Without a place, the pick-up starts where you stopped.
 - The last line is a rule, not the model: the share of noise among the session's remarks (a remark ignored for ten
   minutes counts as noise) and what most of it was about. With `autoTune` on, those verdicts raise that trigger's bar,
   so Pair says it will keep quieter there; without it, it only says the share. No noise, no line.
 - `e`, right after the debrief, puts the first step on the chat's line as `/first …` to edit; Enter keeps it.
-  `/first <step>` (or `:Pair first <step>`) works any time: in a session you have not used yet it replaces the last
+  `/first <step>` (or `:Pair first <step>`) works any time: in a session you have done no work in yet it replaces the last
   debrief's step, and later this session's debrief takes it in place of its own. A `file:line` in it is the new place.
 - Without a chat pane, Neovim shows the debrief in a small panel; `q` closes it.
 
@@ -651,7 +652,7 @@ to standard ones and does not fade.
 | `:Pair clear` | Remove Pair's points and words, and the marks in a note's margin |
 | `:Pair context` | Show what Pair knows right now: the goal, the board task, git, your commands, buffers, jumps and searches; `x` hides a source for the session, `q` closes |
 | `:Pair end` | End the session now with its [debrief](#the-morning-pick-up-and-the-days-end), which the next session in this project starts from (it also [ends by itself](memory.md#no-ceremony-a-session-starts-and-ends-by-itself)) |
-| `:Pair first <step>` | Tomorrow's first step, with a `file:line` to land on: it replaces the last debrief's in a session not used yet, else this session's debrief takes it |
+| `:Pair first <step>` | Tomorrow's first step, with a `file:line` to land on: it replaces the last debrief's in a session with no work yet, else this session's debrief takes it |
 | `:Pair listen [cancel]` | Push-to-talk without the key: works as a tap of `Alt-t`; `cancel` drops what is being recorded ([voice.md](voice.md)) |
 | `:Pair stop` | Disconnect this Neovim, and stop reconnecting |
 

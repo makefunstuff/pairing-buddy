@@ -417,12 +417,12 @@ export async function startDaemon(config, {
 
   const ending = new Set();
 
-  /** Ends `session`; `why` says it ended by itself, in the chat, and then only a used session gets a note. */
+  /** Ends `session`; `why` says it ended by itself, in the chat. Only a session with work in it gets a debrief. */
   async function endSession(session, why = null) {
     if (ending.has(session)) return;
     ending.add(session);
     if (why) log(`[${basename(session.root)}] session ends by itself: ${why}`);
-    await session.end({withNote: !why || session.usedAt !== null}).finally(() => ending.delete(session));
+    await session.end().finally(() => ending.delete(session));
     contextReads.delete(session);
     listeners.get(session.root)?.close();
     listeners.delete(session.root);

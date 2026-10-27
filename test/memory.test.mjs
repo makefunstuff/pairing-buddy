@@ -38,6 +38,8 @@ function pairSession({store = openStore(':memory:'), root = '/project', answers 
 const failTwice = (pair, at) => {
   for (const offset of [-10_000, -5000]) pair.receive({kind: 'command_end', cmd: 'npm test', exit: 1, output: 'Error: boom', at: at + offset});
 };
+/** `made` after the user typed in it: a session with no work in it ends without a note. */
+const worked = made => { made.pair.receive({kind: 'typing'}); return made; };
 const chatTexts = sent => sent.filter(message => message.type === 'message').map(message => message.text);
 
 test('a remark that reaches the user is stored with its trigger and score; the chat learns its id, the editor also its words', async () => {
@@ -131,6 +133,7 @@ test('the session note is written from the goal and the uncommitted changes, and
   const store = openStore(':memory:');
 
   const first = pairSession({store, root, answers: ['Goal: fix reconnect. Changed: ws.ts timeout. Loose end: test on a phone.']});
+  worked(first);
   await first.pair.end();
   assert.match(first.asked[0], /^\[end\][\s\S]*Goal: fix reconnect\nUncommitted changes \(git status\): \n\?\? ws\.ts$/);
   assert.match(chatTexts(first.sent).at(-1), /^(Day|Session)'s end: under a minute in pair-memory-\w+\.\nGoal: fix reconnect\. Changed: ws\.ts timeout\. Loose end: test on a phone\.$/);
@@ -159,11 +162,12 @@ test('a note loses a heading of its own, and SILENT or nothing is no note', () =
 
 test('a session whose note failed leaves no memory: the next one starts from the last good note', async () => {
   const store = openStore(':memory:');
-  await pairSession({store, answers: ['Loose end: the flaky test.']}).pair.end();
-  const failed = pairSession({store, answers: [() => Promise.reject(new Error('model down'))]});
+  await worked(pairSession({store, answers: ['Loose end: the flaky test.']})).pair.end();
+  const failed = worked(pairSession({store, answers: [() => Promise.reject(new Error('model down'))]}));
   await failed.pair.end();
   assert.equal(chatTexts(failed.sent).at(-1), 'No session note: model down');
-  await pairSession({store, answers: ['SILENT']}).pair.end();
+  await worked(pairSession({store, answers: ['SILENT']})).pair.end();
+  await pairSession({store, answers: ['Loose end: nothing done.']}).pair.end(); // no work in it: no note asked for
   assert.equal(pairSession({store}).pair.previousNote, 'Loose end: the flaky test.');
 });
 

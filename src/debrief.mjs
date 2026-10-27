@@ -86,19 +86,30 @@ ${facts.filter(Boolean).join('\n')}`;
 }
 
 const FIRST = /^\W*tomorrow,?\s*first\W*\s*(.+)$/i;
-const PLACE = /`?([\w./-]*\w\.\w+):(\d+)`?/g;
+// A file:line: in backticks, as written (`src/ring buffer.c:9`); else a name with a letter in it, with or without an
+// extension (worker.go:27, Makefile:14), and not a time of day (09:12).
+const QUOTED = /`([^`]*[A-Za-z][^`]*):(\d+)`/g;
+const PLACE = /([\w./-]*[A-Za-z][\w./-]*):(\d+)/g;
+const WORDS_BEFORE = 3; // an unquoted name may be the end of a path with spaces: up to this many words before it
 
 /**
- * The debrief's lines, and its first step: `{step, file, line}` with the file:line named last in it (file as
- * written), or `{step}` without one; null when there is no "Tomorrow, first" line.
+ * The debrief's lines, and its first step: `{step, files, line}` with the file:line named last in it, or `{step}`
+ * without one; null when there is no "Tomorrow, first" line. `files` are the names the file may have, longest first:
+ * an unquoted `ring buffer.c:9` may be "ring buffer.c" or "buffer.c", and only the project can tell (see firstPlace).
  */
 export function parseDebrief(text) {
   const lines = text.split('\n').map(line => line.trimEnd()).filter(line => line.trim());
   const found = lines.map(line => line.match(FIRST)).find(Boolean);
   if (!found) return {lines, first: null};
   const step = found[1].trim().slice(0, STEP_CHARS);
+  const quoted = [...step.matchAll(QUOTED)].at(-1);
+  if (quoted) return {lines, first: {step, files: [quoted[1]], line: Number(quoted[2])}};
   const place = [...step.matchAll(PLACE)].at(-1);
-  return {lines, first: place ? {step, file: place[1], line: Number(place[2])} : {step}};
+  if (!place) return {lines, first: {step}};
+  const spaced = step[place.index - 1] === ' ';
+  const before = spaced ? step.slice(0, place.index).split(' ').slice(-WORDS_BEFORE - 1, -1).filter(Boolean) : [];
+  const files = before.map((_, i) => [...before.slice(i), place[1]].join(' ')).concat(place[1]);
+  return {lines, first: {step, files, line: Number(place[2])}};
 }
 
 /**
@@ -115,12 +126,21 @@ export async function resolveFile(root, name, known = []) {
   return tracked.length === 1 ? tracked[0] : null;
 }
 
+/** The first of `names` that resolves to a file of the project (see resolveFile), or null. */
+async function firstFile(root, names = [], known) {
+  for (const name of names) {
+    const file = await resolveFile(root, name, known);
+    if (file) return file;
+  }
+  return null;
+}
+
 /**
  * Where the pick-up lands: the first step's place when it names a file in the project, else where the user stopped.
  * `{step, file, line, text}`, `text` the line's code as it was, so the pick-up can tell when it moved or changed.
  */
 export async function firstPlace(root, first, stopped, known, readLines) {
-  const file = first?.file && (await resolveFile(root, first.file, known));
+  const file = await firstFile(root, first?.files, known);
   const lines = file ? await readLines(join(root, file)).catch(() => null) : null;
   if (lines) {
     const line = Math.min(Math.max(1, first.line), lines.length);

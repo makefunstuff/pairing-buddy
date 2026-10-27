@@ -177,6 +177,8 @@ export function cleanNote(text) {
 
 // What the user does, unlike what Pair, herdr's focus or the LSP report: a session nobody uses never ends by itself.
 const USER_EVENTS = new Set(['typing', 'edit', 'enter', 'cursor', 'save', 'command_end', 'search']);
+// Of those, the ones that are work, not only looking around: a session with none of them has nothing to debrief.
+const WORK_EVENTS = new Set(['typing', 'edit', 'save', 'command_end', 'search']);
 // An answer to "What are we doing this session?" that means: no goal, don't ask.
 const NO_GOAL = /^\W*(exit|later|skip|none|no|nothing|-)\W*$/i;
 
@@ -239,6 +241,7 @@ export class PairSession {
     this.runError = null; // the last run that could not run, said once in the chat
     this.wasRed = false; // the last run failed
     this.usedAt = null; // when the user last did something in this session (see USER_EVENTS), since the daemon loaded it
+    this.worked = false; // the user typed, edited, ran, searched or asked something since the daemon loaded it
     this.goalFrom = null; // where the goal came from when the user did not type it: "the board task repo/12"
     this.goalSkipped = false; // the user said "later" to the goal question
     this.ledger = new Ledger({store, sessionId: record.id, changed: () => this.notify('editors', {type: 'ledger_changed'}), now});
@@ -268,6 +271,7 @@ export class PairSession {
     this.state = fold(this.state, folded);
     this.breakpoints.see(folded);
     if (USER_EVENTS.has(event.kind)) this.usedAt = this.now();
+    if (WORK_EVENTS.has(event.kind)) this.worked = true;
     if (event.kind === 'save' && file && !file.startsWith('..')) this.testRuns?.saved(file);
     if (event.kind === 'command_end') {
       const red = failed(this.state.commands.at(-1));
@@ -585,6 +589,7 @@ export class PairSession {
   async ask(text, selection = null) {
     this.message('user', selection ? `${text} (${relative(this.root, selection.file)}:${selection.from}-${selection.to})` : text);
     this.usedAt = this.now();
+    this.worked = true;
     if (!this.state.goal && !this.goalSkipped && !selection) {
       if (NO_GOAL.test(text)) {
         this.goalSkipped = true;
@@ -692,6 +697,15 @@ export class PairSession {
     return {type: 'context', goal: this.state.goal, goalFrom: this.goalFrom, sections: contextCard(this.state, this.now())};
   }
 
+  /**
+   * Whether this session has something to debrief: the user worked in it (see WORK_EVENTS), or did before the daemon
+   * restarted, which its active time shows. Moving about or switching files alone is no work: the empty session that
+   * follows a debrief never writes one over it.
+   */
+  hasWork() {
+    return this.worked || this.activeMs > 0 || this.store.sessionActiveMs(this.id) > 0;
+  }
+
   /** Whether the user used this session and then did nothing for `ms`. */
   idle(ms, now = this.now()) {
     return this.usedAt !== null && now - this.usedAt >= ms;
@@ -751,6 +765,7 @@ export class PairSession {
     if (words) this.message('user', words);
     await this.yieldRemark();
     this.usedAt = this.now();
+    this.worked = true;
     if (this.busy) return this.message('system', 'Pair is still answering; hand over again once it is done.');
     if (!(await this.setRole('driver'))) return;
     this.edited = false;
@@ -857,14 +872,14 @@ export class PairSession {
 
   /**
    * Ends the session with its debrief (see debrief.mjs): its lines are the note the next session in this project
-   * starts from, and its first step is where that session picks up (see pickUp). A session that ends by itself
-   * without having been used gets none (`withNote` false): there is nothing to note.
+   * starts from, and its first step is where that session picks up (see pickUp). A session without work in it (see
+   * hasWork) gets none, also with `/end`: there is nothing to note, and the last debrief stays the one to pick up from.
    */
-  async end({withNote = true} = {}) {
+  async end() {
     await this.scout?.close();
     this.storeActive();
     await this.yieldRemark();
-    const facts = withNote && (await this.debriefFacts());
+    const facts = this.hasWork() && (await this.debriefFacts());
     const note = !facts ? null : await this.partner.ask(this.conversationId, debriefInput(facts)).then(cleanNote, error => {
       this.message('system', `No session note: ${error.message}`);
       return null;
@@ -903,12 +918,12 @@ export class PairSession {
   }
 
   /**
-   * The user's own first step for next time (`/first`): in a session not used yet, it replaces the one the last
+   * The user's own first step for next time (`/first`): in a session without work yet, it replaces the one the last
    * debrief wrote; else this session's debrief takes it in place of its own. A file:line in it is the new place.
    */
   async setFirst(step) {
     const last = this.lastSession;
-    if (this.usedAt !== null || !last) {
+    if (this.hasWork() || !last) {
       this.firstStep = step;
       return this.message('system', `Tomorrow, first: ${step} (the debrief takes it when this session ends).`);
     }
