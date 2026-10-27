@@ -5,6 +5,7 @@ import {execFileSync} from 'node:child_process';
 import {mkdtempSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
+import {DatabaseSync} from 'node:sqlite';
 import {test} from 'node:test';
 import {BUDGETS} from '../src/budget.mjs';
 import {cleanNote, PairSession} from '../src/session.mjs';
@@ -184,4 +185,114 @@ test('active time counts while the user works, not while they are away, and is s
   await pair.end();
   assert.equal(store.activeMs(0), (5 * MIN - 1000) + 5000, 'the five minutes after the key, and at most 5 s of the gap');
   assert.equal(store.activeMs(clock.now - 30 * MIN), 5000, 'counted in the hour it happened: only the end is this hour');
+});
+
+test('after a daemon restart, + and - still rate the session\'s last remark', async () => {
+  const before = pairSession({answers: ['Line 2 is off.']});
+  failTwice(before.pair, before.clock.now);
+  await before.pair.tick();
+  const [{id}] = before.store.remarks(0);
+  // The daemon restarts: the same session is loaded again from the store.
+  const record = before.store.activeSession('/project');
+  const sent = [];
+  const after = new PairSession({
+    record, store: before.store, partner: {thinkingOf: () => 'off', setRole: async () => {}}, score: async () => ({value: 9}),
+    typingPauseMs: 2000, notify: (to, message) => { sent.push({to, ...message}); return 1; }, requestEditor: async () => null,
+  });
+  after.feedback({useful: true});
+  assert.equal(before.store.remarks(0).find(remark => remark.id === id).verdict, 'useful');
+  assert.deepEqual(chatTexts(sent), ['Noted: useful.']);
+});
+
+test('/remarks lists the last remarks in the project, newest first, with their words; +N and -N rate an older one', async () => {
+  const {pair, store, clock, sent} = pairSession({answers: ['The retry count is off by one.', 'The timeout is in seconds, not ms.']});
+  failTwice(pair, clock.now);
+  await pair.tick();
+  clock.now += 10 * MIN;
+  for (const offset of [-10_000, -5000]) pair.receive({kind: 'command_end', cmd: 'npm run build', exit: 2, output: 'TypeError: x is undefined', at: clock.now + offset});
+  await pair.tick();
+  const [newer, older] = store.remarks(0);
+  pair.feedback({useful: true}); // the last one, as before
+
+  const {remarks} = pair.remarkList();
+  assert.deepEqual(remarks.map(remark => [remark.id, remark.trigger, remark.text, remark.outcome]), [
+    [newer.id, newer.trigger, 'The timeout is in seconds, not ms.', 'useful'],
+    [older.id, 'repeated_error', 'The retry count is off by one.', 'ignored'],
+  ]);
+  pair.feedback({useful: false, number: 2});
+  assert.equal(store.remarks(0).find(remark => remark.id === older.id).verdict, 'dismissed');
+  assert.equal(chatTexts(sent).at(-1), 'Noted: not useful (remark 2).');
+  pair.feedback({useful: true, number: 5});
+  assert.equal(chatTexts(sent).at(-1), 'There is no remark 5: /remarks lists them.');
+});
+
+test('earlier sessions are searchable: recall finds their notes and chat lines, newest and best first, never this session\'s', async () => {
+  const store = openStore(':memory:');
+  const old = pairSession({store, answers: ['✓ The reconnect waits 30 s now.\n○ open: try it on a real phone.']});
+  worked(old);
+  old.pair.message('user', 'did raising RECONNECT_TIMEOUT_MS help?');
+  old.pair.message('pair', 'No: the socket closes before the timeout. The phone drops it when it sleeps.');
+  old.pair.message('user', 'unrelated: rename the logger');
+  await old.pair.end();
+  const unrelated = pairSession({store, root: '/elsewhere'});
+  unrelated.pair.message('user', 'the reconnect timeout in another project');
+
+  const now = pairSession({store});
+  now.pair.message('user', 'reconnect timeout, today');
+  const found = now.pair.recall({query: 'what did we try for the reconnect timeout?'});
+  const lines = found.split('\n');
+  assert.equal(lines[0], 'From the earlier sessions of this project, best matches first:');
+  assert.match(lines[1], /^- Session of \d{4}-\d\d-\d\d \(goal: fix reconnect\), its note:$/);
+  assert.equal(lines[2], '✓ The reconnect waits 30 s now.');
+  assert.match(lines[4], /^- \d{4}-\d\d-\d\d \d\d:\d\d \(goal: fix reconnect\), the user: did raising RECONNECT_TIMEOUT_MS help\?$/);
+  assert.match(lines[5], /, you: No: the socket closes before the timeout\. The phone drops it when it sleeps\.$/);
+  assert.equal(lines.length, 6, 'not the logger, not another project, not this session');
+  assert.equal(now.pair.recall({query: 'websocket heartbeat'}), 'Nothing in the earlier sessions of this project mentions websocket, heartbeat.');
+  assert.equal(now.pair.recall({query: 'did we?'}), 'Give recall a few words to look for.');
+});
+
+test('a question about an earlier session comes with what those sessions kept; any other question does not', async () => {
+  const store = openStore(':memory:');
+  const old = pairSession({store, answers: ['✓ Retries back off exponentially now.']});
+  worked(old);
+  await old.pair.end();
+  const {pair, asked} = pairSession({store, answers: ['We made the retries back off.', 'Line 3.']});
+  pair.goalSkipped = true;
+  await pair.ask('What did we do about the retries last week?');
+  assert.match(asked[0], /^\[user\] What did we do about the retries last week\?\n\nFrom the earlier sessions of this project, best matches first:\n- Session of .*, its note:\n✓ Retries back off exponentially now\.\n\nNow:/);
+  await pair.ask('Where are the retries counted?');
+  assert.doesNotMatch(asked[1], /earlier sessions/);
+});
+
+test('reading counts as active time: moving the cursor and scrolling, not a cursor that stays put; reading alone is no work to debrief', async () => {
+  const {pair, store, clock} = pairSession({answers: ['note']});
+  const tickFor = async ms => { for (let t = 0; t < ms; t += 1000) { clock.now += 1000; await pair.tick(); } };
+  pair.receive({kind: 'cursor', file: 'src/ws.ts', line: 10, at: clock.now});
+  await pair.tick();
+  await tickFor(4 * MIN);
+  pair.receive({kind: 'scroll', file: 'src/ws.ts', at: clock.now});
+  await tickFor(4 * MIN);
+  pair.receive({kind: 'cursor', file: 'src/ws.ts', line: 40, at: clock.now});
+  await tickFor(4 * MIN);
+  pair.receive({kind: 'cursor', file: 'src/ws.ts', line: 40, at: clock.now}); // reported again after a pause: no move
+  await tickFor(10 * MIN);
+  assert.equal(pair.hasWork(), false, 'reading is no work: no debrief');
+  await pair.end();
+  assert.equal(store.activeMs(0), 13 * MIN - 1000, 'from the first tick until five minutes after the last move');
+  assert.equal(store.projectActiveMs('/project', 0), store.activeMs(0), 'and in the project\'s own time');
+  assert.equal(store.projectActiveMs('/elsewhere', 0), 0);
+  assert.equal(pairSession({store}).pair.previousNote, null);
+});
+
+test('a store from before reading counted: a session with active time had work, so it keeps its debrief after the upgrade', () => {
+  const path = join(mkdtempSync(join(tmpdir(), 'pair-store-')), 'sessions.sqlite');
+  const old = new DatabaseSync(path);
+  old.exec(`CREATE TABLE sessions (id INTEGER PRIMARY KEY, root TEXT NOT NULL, conversation_id TEXT NOT NULL, goal TEXT,
+    level TEXT NOT NULL, started_at INTEGER NOT NULL, ended_at INTEGER, note TEXT, active_ms INTEGER NOT NULL DEFAULT 0)`);
+  old.exec(`INSERT INTO sessions (root, conversation_id, level, started_at, active_ms) VALUES ('/a', '"c1"', 'normal', 0, 60000), ('/b', '"c2"', 'normal', 0, 0)`);
+  old.close();
+  const store = openStore(path);
+  assert.equal(store.activeSession('/a').worked, 1);
+  assert.equal(store.activeSession('/b').worked, 0);
+  store.close();
 });

@@ -119,7 +119,7 @@ the monorepo's root stays in the root's project. Pair reads, points and suggests
 | chatty | 4 | 15 per hour | 90 s |
 
 Answers to your own questions do not count against the budget. With `autoTune` on, your feedback moves each
-trigger's bar and scales the budget within fixed bounds ([memory.md](memory.md#learning-when-to-talk)). Change the
+trigger's bar and scales the budget within fixed bounds, per project ([memory.md](memory.md#learning-when-to-talk)). Change the
 level for a session with `/level` in the chat or `:Pair level` in Neovim.
 
 ## Logins and keys

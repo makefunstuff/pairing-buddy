@@ -190,8 +190,9 @@ only reads the board and herdr. [docs/agents.md](docs/agents.md)
 said, with a link to the docs when it is sure of one. [docs/tone.md](docs/tone.md),
 [docs/neovim.md](docs/neovim.md#the-idea-behind-it)
 
-**Remembers and learns.** Each session ends with a short note the next one starts from, and your useful/noise verdicts
-tune when Pair talks. `pair stats` shows the numbers. [docs/memory.md](docs/memory.md)
+**Remembers and learns.** Each session ends with a short note the next one starts from, and earlier sessions stay
+searchable ("what did we try last week?"). Your useful/noise verdicts tune when Pair talks, per project. `pair stats`
+shows the numbers. [docs/memory.md](docs/memory.md)
 
 **Listens.** Hold `Alt-t` in Neovim, ask aloud, let go. whisper.cpp writes it down on your CPU, in about half a
 second, and Pair answers under your line. An answer is read aloud only if you are away from the editor when it comes.
