@@ -217,7 +217,7 @@ The first slice comes as a suggestion that adds lines and strikes nothing, and `
 
 ## The search trail
 
-You look for something with Telescope and it is not there under your words. A test is red; you grep for
+You look for something with Telescope or fzf-lua and it is not there under your words. A test is red; you grep for
 "give up": nothing. "dead letter": one comment. You find-file "retry" and open `backoff.go`. Those three searches say
 what you are after better than a goal you typed, and that the code calls it something else. Pair reads the trail
 and, once you pause, says where the thing is, in the code's own word.
