@@ -80,7 +80,9 @@ Runs every test that needs no model, in under a minute, with scripted models and
 - **The Watcher's speed.** The prefilter's rules, the one-number answer, scores remembered, drift checked once per
   file with the file's gist, keep-warm, the Watcher following the model a one-model server has loaded, and, end to
   end against a fake server that swaps and does not say so, the Watcher moving to the Partner's model after two
-  reloads.
+  reloads. The pace: its levels and their border, verdicts ranking what it gives up, and, end to end against a fake
+  server answering in 1.7 s, drift costing no call while a failure is still scored. `node test/pace-bench.mjs` (not
+  part of `npm test`, about 7 minutes) measures calls and waits before and after the pace at set latencies.
 - **Context windows and thinking settings.** The window from vLLM's, llama.cpp's and LM Studio's metadata or pi-ai's
   catalog, the config's own winning; `pair doctor --thinking` against fake servers that take a chat-template switch
   with a budget field, or `reasoning_effort` with three levels.
@@ -139,7 +141,7 @@ Runs every test that needs no model, in under a minute, with scripted models and
   superseded, going back to one, never logged twice); tasks added only after the yes, as whole words; the prose
   triggers, the Watcher's questions for them, and a stall remark held to one question; and the plugin end to end:
   five marks, `Alt-l` to the code, `Alt-d` putting the entry in the log's buffer and not on disk, the tasks panel.
-- **[One model](config.md#one-model).** Each role's request to it (no thinking and 8 tokens for the Watcher, thinking
+- **[One model](models.md#one-model).** Each role's request to it (no thinking and 8 tokens for the Watcher, thinking
   for the Partner); the Watcher waiting while the Partner works in another project, and its remark saying how long it
   waited; a question cancelling the remark still being written (dropped, and no failure of the model); the context
   budget: the reply's room, compaction, and the instructions, tools and longest note fitting the smallest window.
@@ -267,7 +269,7 @@ test/live/check-login.sh PROVIDER MODEL
 
 It runs `pair auth login PROVIDER` into a credential file of its own (your logins stay as they are), you sign in in
 the browser, and then it runs the login test against it and removes the file. Read the provider's terms first
-([config.md](config.md#before-you-use-a-subscription)).
+([models.md](models.md#before-you-use-a-subscription)).
 
 **The Anthropic API.** Run when `ANTHROPIC_API_KEY` and `PAIR_LIVE_ANTHROPIC_MODEL` are set: the cloud model answers
 the probe as both roles, scores a repeated failure above the bar, and answers a short question as Partner.

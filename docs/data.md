@@ -1,7 +1,7 @@
 # Data and privacy
 
 - **Logins and keys** live in `auth.json` next to the config, readable by you only
-  ([config.md](config.md#logins-and-keys)).
+  ([models.md](models.md#logins-and-keys)).
 - **Everything else** lives in the data directory: `~/.local/state/pairing-buddy` by default, or under
   `$XDG_STATE_HOME`, or `dataDir` in the config.
 

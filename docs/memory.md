@@ -104,7 +104,7 @@ Every remark Pair makes unasked can get your verdict: useful, or noise. Answers 
 
 ## Learning when to talk
 
-With `"autoTune": true` (the default), Pair tunes two things from your verdicts. It looks at the verdicts of the last 30 days, at most the last 20 per trigger, so it follows your recent habits.
+With `"autoTune": true` (the default), Pair tunes two things from your verdicts, and on a slow server a third: which kinds of moment it stops asking the Watcher about first ([watcher.md](watcher.md#when-the-server-is-slow)). It looks at the verdicts of the last 30 days, at most the last 20 per trigger, so it follows your recent habits.
 
 **Per project.** A project where drift remarks help and one where they are noise each get their own bar. A trigger's bar follows the project's own verdicts on it once there are enough of them (the minimum below), and the verdicts of all projects until then; the same goes for the budget. A new project starts from all your verdicts, and moves away from them as it gets its own. `pair stats --project` says which parts are the project's own.
 
@@ -128,7 +128,7 @@ With `"autoTune": true` (the default), Pair tunes two things from your verdicts.
 
 The safe bounds hold whatever the numbers say: a bar moves at most 1 down and 2 up from the level's, and stays between 3 and 9, so no trigger is ever silenced completely; the budget scales between half and one and a half times the level's, and always allows at least one remark per hour. The talk level stays yours: `/level` moves all bars and the budget, and the tuning applies on top.
 
-`"autoTune": false` in the config keeps the level's bars and budget. Your verdicts are still recorded, and `pair stats` still shows them.
+`"autoTune": false` in the config keeps the level's bars and budget, and a slow server gives kinds up in its fixed order. Your verdicts are still recorded, and `pair stats` still shows them.
 
 ## `pair stats`
 

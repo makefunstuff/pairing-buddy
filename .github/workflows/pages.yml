@@ -1,10 +1,11 @@
-# Deploys site/ to GitHub Pages on every push to main that changes it.
+# Builds the site (site/, VitePress, from the Markdown in docs/) and deploys it to GitHub Pages on every push to main
+# that changes either.
 name: Pages
 
 on:
   push:
     branches: [main]
-    paths: [site/**, .github/workflows/pages.yml]
+    paths: [site/**, docs/**, .github/workflows/pages.yml]
   workflow_dispatch:
 
 permissions:
@@ -24,9 +25,18 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - run: npm ci
+        working-directory: site
+      - run: npm run build
+        working-directory: site
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:
-          path: site
+          path: site/.vitepress/dist
       - id: deployment
         uses: actions/deploy-pages@v5

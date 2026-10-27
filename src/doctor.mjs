@@ -116,7 +116,7 @@ export async function herdrCheck(env) {
   if (!env.HERDR_SOCKET_PATH) {
     return onPath('herdr', env)
       ? warn('herdr', 'not checked here: run `pair doctor` in a herdr pane to check it')
-      : warn('herdr', 'not installed: Pair works without it as Navigator only, with `pair chat` in any terminal');
+      : warn('herdr', 'not installed: Pair works without it, with `:Pair chat` in Neovim or `pair chat` in any terminal');
   }
   const started = Date.now();
   try {
@@ -207,7 +207,7 @@ export async function loginCheck(entry, models, credentials) {
 /** A warning for a Watcher on a subscription: it would spend the plan fast, and the plan's terms may not allow it. */
 export function subscriptionCheck(name, entry) {
   return warn(name, `the Watcher runs on your ${entry.provider} subscription: it asks about every candidate remark, which spends the plan's `
-    + 'shared limits fast, and the plan\'s terms may not allow it (docs/config.md, "Before you use a subscription"). '
+    + 'shared limits fast, and the plan\'s terms may not allow it (docs/models.md, "Before you use a subscription"). '
     + 'Give the Watcher a local or pay-per-use model');
 }
 

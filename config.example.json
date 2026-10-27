@@ -12,6 +12,10 @@
   // "anthropic" Watcher it is off unless set.
   "keepWarm": true,
 
+  // While the Watcher's calls take 1.5 s or more, Pair asks it about fewer kinds of moment: the ones you can see on
+  // your screen go first, the ones you cannot (a failure you missed, a crash) never. false asks about every kind.
+  "watcherPace": true,
+
   // Tests Pair runs in its own herdr pane when you save a source file in a project: the project's folder and the
   // command, or {"command": ..., "timeoutSeconds": 600, "affected": false} for a longer cap, or the whole command on
   // every save. Most runners also put each test's result on its line (go test -json, jest --json, cargo test, pytest -v).
@@ -59,7 +63,7 @@
     // A cloud model instead: a provider pi-ai knows, with a subscription login or an API key from
     // `pair auth login PROVIDER` (`pair auth list` lists the providers, `pair auth models PROVIDER` their models).
     // A subscription's requests count against its plan's limits, and its terms decide whether a tool like this
-    // may use it (see "Logins and keys" in docs/config.md).
+    // may use it (see "Logins and keys" in docs/models.md).
     // "provider": "anthropic", "model": "your-cloud-model"
   }
 
