@@ -1,0 +1,331 @@
+WEBVTT
+
+00:00:00.280 --> 00:00:03.760
+Coding alone, you lose time in small ways.
+
+00:00:03.760 --> 00:00:06.880
+You fix the wrong file, or skip the tests.
+
+00:00:06.880 --> 00:00:09.580
+And most AI tools wait to be asked,
+
+00:00:09.580 --> 00:00:12.180
+or rewrite your code behind your back.
+
+00:00:13.150 --> 00:00:16.390
+Pairing buddy is the person in the second chair.
+
+00:00:16.390 --> 00:00:18.430
+It sits beside you in Neovim,
+
+00:00:18.430 --> 00:00:21.010
+and speaks up only when it matters.
+
+00:00:21.010 --> 00:00:22.910
+It never touches your files,
+
+00:00:22.910 --> 00:00:24.650
+unless you hand it the wheel.
+
+00:00:25.560 --> 00:00:27.860
+Two models share the work.
+
+00:00:27.860 --> 00:00:30.460
+The Watcher is small and fast:
+
+00:00:30.460 --> 00:00:32.600
+is this moment worth a word?
+
+00:00:32.600 --> 00:00:36.380
+The Partner thinks before it answers, and writes the remark.
+
+00:00:41.050 --> 00:00:43.310
+Install with two commands:
+
+00:00:43.310 --> 00:00:47.250
+npm install, then pair setup.
+
+00:00:47.250 --> 00:00:50.790
+Setup writes the config, and runs Pair in the background,
+
+00:00:50.790 --> 00:00:51.850
+as a service.
+
+00:00:53.480 --> 00:00:57.520
+Pair auth keeps your logins and keys in one file.
+
+00:00:57.520 --> 00:01:00.120
+Choose an API key, type it once,
+
+00:01:00.120 --> 00:01:01.580
+and it's never printed.
+
+00:01:02.730 --> 00:01:05.410
+One local model can play both roles:
+
+00:01:05.410 --> 00:01:07.650
+the Watcher's score from 0 to 10,
+
+00:01:07.650 --> 00:01:11.110
+without thinking, and a Partner that thinks.
+
+00:01:12.220 --> 00:01:17.300
+Pair doctor checks every part, down to whether the Partner really thinks,
+
+00:01:17.300 --> 00:01:19.900
+and the sandbox Pair's commands run in.
+
+00:01:21.110 --> 00:01:23.370
+Pair has three roles.
+
+00:01:23.370 --> 00:01:26.010
+The Navigator watches and points.
+
+00:01:26.010 --> 00:01:29.690
+The Scout also runs commands, in its own pane.
+
+00:01:29.690 --> 00:01:33.210
+The Driver makes one change, then gives the wheel back.
+
+00:01:36.560 --> 00:01:39.280
+Here is a webhook service in Go.
+
+00:01:39.280 --> 00:01:40.980
+A delivery test is red,
+
+00:01:40.980 --> 00:01:44.190
+and you start changing the backoff code.
+
+00:01:44.190 --> 00:01:47.110
+But the failure doesn't name that file.
+
+00:01:47.110 --> 00:01:50.970
+So Pair, the Navigator, reads the code first.
+
+00:01:51.900 --> 00:01:54.420
+Then it speaks, under your line:
+
+00:01:54.420 --> 00:01:55.940
+the shift is fine,
+
+00:01:55.940 --> 00:01:58.460
+the worker gives up one attempt early.
+
+00:01:59.790 --> 00:02:03.250
+Alt J jumps to the exact characters it means.
+
+00:02:05.000 --> 00:02:06.760
+Searching in circles?
+
+00:02:06.760 --> 00:02:10.680
+After three searches, Pair says where the thing is,
+
+00:02:10.680 --> 00:02:12.540
+in the code's own word.
+
+00:02:13.650 --> 00:02:17.910
+Pair context shows everything Pair knows on one card:
+
+00:02:17.910 --> 00:02:19.790
+the goal from your board task,
+
+00:02:19.790 --> 00:02:22.370
+git, your commands and buffers.
+
+00:02:23.640 --> 00:02:26.460
+Builds and runs are read like tests:
+
+00:02:26.460 --> 00:02:29.420
+a compiler error lands on its line in your code,
+
+00:02:29.420 --> 00:02:31.000
+and so does a crash.
+
+00:02:33.933 --> 00:02:37.393
+When you explore, each run of make gets a number,
+
+00:02:37.393 --> 00:02:39.193
+next to the one before.
+
+00:02:39.193 --> 00:02:42.013
+If a change did nothing, Pair says why.
+
+00:02:44.578 --> 00:02:46.678
+Pair runs keeps the notebook,
+
+00:02:46.678 --> 00:02:50.098
+and one key removes the print lines you added for the hunt.
+
+00:02:51.328 --> 00:02:52.588
+Want the why?
+
+00:02:52.588 --> 00:02:56.008
+Alt question mark gives the one idea worth keeping,
+
+00:02:56.008 --> 00:02:56.828
+with a link.
+
+00:02:57.878 --> 00:03:00.478
+A thought that can wait, waits:
+
+00:03:00.478 --> 00:03:03.278
+a dot in the margin until your next save.
+
+00:03:06.488 --> 00:03:08.288
+Tests are optional.
+
+00:03:08.288 --> 00:03:09.528
+Set a test command,
+
+00:03:09.528 --> 00:03:12.408
+and every save runs it in Pair's pane.
+
+00:03:13.478 --> 00:03:16.058
+This fix breaks a queue test.
+
+00:03:16.058 --> 00:03:19.178
+A regression, and you didn't even run the tests.
+
+00:03:20.288 --> 00:03:24.408
+Pair says why, and offers its fix as ghost text:
+
+00:03:24.408 --> 00:03:26.968
+dim, not in your file yet.
+
+00:03:26.968 --> 00:03:28.448
+Alt Y takes it.
+
+00:03:31.865 --> 00:03:34.525
+When a number finally moves the right way,
+
+00:03:34.525 --> 00:03:36.765
+the statusline lights up once.
+
+00:03:40.310 --> 00:03:43.250
+In a Markdown note, Pair thinks with you,
+
+00:03:43.250 --> 00:03:44.750
+never for you:
+
+00:03:44.750 --> 00:03:46.690
+a few marks in the margin.
+
+00:03:46.690 --> 00:03:49.850
+An open question, two lines that clash,
+
+00:03:49.850 --> 00:03:51.690
+what the code really does.
+
+00:03:52.780 --> 00:03:54.920
+Alt D logs a decision,
+
+00:03:54.920 --> 00:03:57.420
+and Pair tasks lists the work.
+
+00:03:58.690 --> 00:04:00.390
+From an empty folder:
+
+00:04:00.390 --> 00:04:03.230
+Pair new, and one sentence.
+
+00:04:03.230 --> 00:04:06.870
+Three short questions, then a first slice that runs.
+
+00:04:10.281 --> 00:04:13.421
+Hand it over, and it types two files.
+
+00:04:13.421 --> 00:04:15.901
+Nothing is on disk until you save.
+
+00:04:23.127 --> 00:04:27.247
+To hand over a change, say Pair drive, or just:
+
+00:04:27.247 --> 00:04:27.847
+you take it.
+
+00:04:27.847 --> 00:04:31.507
+Pair is the Driver, and you watch it type.
+
+00:04:32.577 --> 00:04:36.357
+It tests your unsaved buffer, then hands back.
+
+00:04:36.357 --> 00:04:38.637
+One undo takes it all away.
+
+00:04:39.835 --> 00:04:41.135
+Changed your mind?
+
+00:04:41.135 --> 00:04:43.215
+Any key takes the wheel back.
+
+00:04:44.925 --> 00:04:46.125
+No test?
+
+00:04:46.125 --> 00:04:47.505
+Say what you expect to see.
+
+00:04:47.505 --> 00:04:51.165
+Pair runs the unsaved buffer in a scratch copy,
+
+00:04:51.165 --> 00:04:52.385
+and checks the number.
+
+00:04:55.675 --> 00:04:59.195
+Pair today lists everything Pair did today.
+
+00:04:59.195 --> 00:05:01.855
+The U key undoes one of its edits,
+
+00:05:01.855 --> 00:05:03.155
+even after yours.
+
+00:05:04.325 --> 00:05:07.285
+Other agents' news waits for your next break.
+
+00:05:07.285 --> 00:05:09.725
+Alt A goes to the one that needs you.
+
+00:05:11.615 --> 00:05:14.075
+At the day's end, a debrief:
+
+00:05:14.075 --> 00:05:18.375
+what's true, what's left, and tomorrow's first step.
+
+00:05:19.525 --> 00:05:22.665
+Next morning, Neovim opens right there,
+
+00:05:22.665 --> 00:05:24.765
+with one line on what's left.
+
+00:05:28.015 --> 00:05:29.275
+And more.
+
+00:05:29.275 --> 00:05:31.975
+Hold Alt T to ask aloud.
+
+00:05:31.975 --> 00:05:34.195
+Soft sounds while you're away.
+
+00:05:34.195 --> 00:05:37.795
+Your shell setup in Pair's pane, sandboxed.
+
+00:05:37.795 --> 00:05:40.415
+Several Neovims, one session.
+
+00:05:40.415 --> 00:05:43.195
+And without herdr, the terminal workspace,
+
+00:05:43.195 --> 00:05:45.995
+Pair chat runs inside Neovim.
+
+00:05:47.362 --> 00:05:49.162
+The keys to remember:
+
+00:05:49.162 --> 00:05:52.642
+Alt J, Alt Y, Alt question mark,
+
+00:05:52.642 --> 00:05:54.922
+Pair drive, and U.
+
+00:05:54.922 --> 00:05:57.622
+Pair stays in the second chair.

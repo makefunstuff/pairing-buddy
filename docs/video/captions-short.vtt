@@ -1,0 +1,64 @@
+WEBVTT
+
+00:00:00.320 --> 00:00:02.360
+This is pairing buddy:
+
+00:00:02.360 --> 00:00:05.060
+an AI pair that sits in Neovim,
+
+00:00:05.060 --> 00:00:07.970
+and speaks only when it matters.
+
+00:00:07.970 --> 00:00:09.430
+A test is red,
+
+00:00:09.430 --> 00:00:11.970
+and you start fixing the wrong file.
+
+00:00:11.970 --> 00:00:13.870
+Pair reads the code first,
+
+00:00:13.870 --> 00:00:16.129
+then says it right under your line:
+
+00:00:16.129 --> 00:00:18.050
+the cause is elsewhere.
+
+00:00:18.050 --> 00:00:19.550
+Alt J jumps there.
+
+00:00:22.398 --> 00:00:24.918
+Save, and it runs your tests.
+
+00:00:24.918 --> 00:00:26.838
+Your fix broke a queue test?
+
+00:00:26.838 --> 00:00:30.298
+Pair says why, and Alt Y takes its fix.
+
+00:00:31.968 --> 00:00:34.488
+Or hand it the wheel with Pair drive.
+
+00:00:34.488 --> 00:00:37.608
+You watch it type, it tests your unsaved buffer,
+
+00:00:37.608 --> 00:00:39.968
+and one undo takes it all away.
+
+00:00:41.678 --> 00:00:43.378
+Notes in the margin.
+
+00:00:43.378 --> 00:00:46.158
+A first slice from a blank page.
+
+00:00:46.158 --> 00:00:49.838
+A ledger of everything it did, and a morning pick-up.
+
+00:00:51.675 --> 00:00:54.375
+Any model, local or cloud.
+
+00:00:54.375 --> 00:00:55.555
+Pairing buddy:
+
+00:00:55.555 --> 00:00:57.455
+the person in the second chair.

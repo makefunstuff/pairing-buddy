@@ -178,6 +178,22 @@ section { padding-block: 72px 8px; }
 .step p { color: var(--muted); font-size: 15.5px; }
 .req { font-size: 14.5px; color: var(--muted); margin-top: 26px; }
 
+/* chapters of the tour, and the feature cards */
+.chapters { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.feat-group { font: 400 13px/1.2 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--pair); margin: 34px 0 14px; }
+.feats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.feat { border: 1px solid var(--rule); border-radius: 12px; padding: 12px 12px 14px; display: grid; gap: 8px; align-content: start; min-width: 0; }
+.feat img { width: 100%; height: auto; display: block; border-radius: 7px; background: var(--bezel); }
+.feat h4 { margin: 4px 4px 0; font-size: 18px; line-height: 1.25; font-weight: 700; letter-spacing: -.01em; }
+.feat p { margin: 0 4px; color: var(--muted); font-size: 15px; }
+.feat-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 4px 4px 0; font: 400 12.5px/1 var(--mono); }
+.seek { font: 400 12.5px/1.3 var(--mono); color: var(--pair); background: transparent; border: 1px solid var(--rule); border-radius: 999px; padding: 6px 11px; cursor: pointer; }
+.seek:hover { border-color: var(--pair); }
+.rest { grid-column: span 2; margin: 0; padding: 4px 0 0 0; list-style: none; display: grid; gap: 12px; align-content: start; }
+.rest li { color: var(--muted); font-size: 15.5px; padding-left: 22px; position: relative; }
+.rest li::before { content: ""; position: absolute; left: 2px; top: .62em; width: 8px; height: 8px; border-radius: 2px; background: var(--pair); }
+.rest b { color: var(--ink); }
+
 /* docs */
 .docs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .doc { display: grid; gap: 4px; padding: 16px 18px; border: 1px solid var(--rule); border-radius: 10px; text-decoration: none; color: var(--ink); }
@@ -191,6 +207,8 @@ footer a { color: var(--muted); }
 
 @media (max-width: 860px) {
   .tenets, .roles, .docs { grid-template-columns: minmax(0, 1fr); }
+  .feats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rest { grid-column: span 2; }
   .split { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 640px) {
@@ -198,6 +216,8 @@ footer a { color: var(--muted); }
   .hero { padding-block: 36px 24px; }
   .proto { flex-direction: column; gap: 10px; }
   .stills { grid-template-columns: minmax(0, 1fr); }
+  .feats { grid-template-columns: minmax(0, 1fr); }
+  .rest { grid-column: auto; }
   section { padding-block: 56px 8px; }
   .moment { padding-block: 44px 8px; }
 }
@@ -216,6 +236,7 @@ footer a { color: var(--muted); }
   <nav aria-label="Sections">
     <a href="#moments">Moments</a>
     <a href="#roles">Roles</a>
+    <a class="opt" href="#features">Everything else</a>
     <a class="opt" href="#local">Local models</a>
     <a href="#install">Install</a>
     <a href="#docs">Docs</a>
@@ -240,17 +261,33 @@ footer a { color: var(--muted); }
   <div class="facts"><span><b>v0.9</b> Navigator, Scout, Driver</span><span>local or cloud models</span><span>MIT</span></div>
 </header>
 
-<!-- Hero video: the tour from docs/video, re-encoded to 1280x720 (media/hero.mp4, hero.webm, hero-poster.jpg).
-     A new cut replaces those three files and the caption below; the layout stays. -->
+<!-- Hero video: the tour from docs/video, re-encoded to 1280x720 (media/hero.mp4, hero.webm, hero-poster.jpg,
+     and its captions and chapters, hero.vtt and hero-chapters.vtt). A new cut replaces those files, the chapter
+     buttons below (docs/video/chapters.json) and the "in the tour" times of the feature cards. -->
 <div class="wide hero-video" id="tutorial">
   <div class="stage">
-    <video controls playsinline preload="none" poster="media/hero-poster.jpg" width="1280" height="720" aria-label="Video: a person in the second chair, a three-minute tour of pairing-buddy">
+    <video id="tour" controls playsinline preload="none" poster="media/hero-poster.jpg" width="1280" height="720" aria-label="Video: a person in the second chair, a six-minute tour of everything pairing-buddy does">
       <source src="media/hero.webm" type="video/webm">
       <source src="media/hero.mp4" type="video/mp4">
+      <track kind="captions" src="media/hero.vtt" srclang="en" label="English">
+      <track kind="chapters" src="media/hero-chapters.vtt" srclang="en" label="Chapters">
     </video>
   </div>
+  <div class="chapters" aria-label="Chapters of the tour">
+    <!-- chapters: written by docs/video/site.mjs from chapters.json -->
+    <button class="beat" type="button" data-t="0"><b>0:00</b>Why</button>
+    <button class="beat" type="button" data-t="38.65"><b>0:38</b>Getting started</button>
+    <button class="beat" type="button" data-t="94.18"><b>1:34</b>Exploring code</button>
+    <button class="beat" type="button" data-t="184.108"><b>3:04</b>Tests, if you have them</button>
+    <button class="beat" type="button" data-t="217.89"><b>3:37</b>Notes and the blank page</button>
+    <button class="beat" type="button" data-t="260.727"><b>4:20</b>Handing over</button>
+    <button class="beat" type="button" data-t="293.275"><b>4:53</b>The day around it</button>
+    <button class="beat" type="button" data-t="325.615"><b>5:25</b>And the rest</button>
+    <button class="beat" type="button" data-t="347.042"><b>5:47</b>The keys to remember</button>
+    <!-- /chapters -->
+  </div>
   <div class="caption">
-    <span>The tour · 3 min · the three moments in Neovim, the roles, install in two commands, the keys</span>
+    <span>The tour · 6 min · from install to the day's end, with captions; a chapter button jumps there</span>
     <a href="https://github.com/makefunstuff/pairing-buddy/tree/main/docs/video">How it was made</a>
   </div>
 </div>
@@ -378,11 +415,11 @@ footer a { color: var(--muted); }
     </div>
     <div class="role">
       <h3>Scout</h3>
-      <p>Investigates in its own herdr pane, where you see every command and its output.</p>
+      <p>Investigates in its own pane (herdr's, or a <code>:terminal</code> in Neovim), where you see every command and its output.</p>
       <ul>
         <li>Searches with ripgrep, runs tests and builds, reads <code>git log</code> and <code>git diff</code></li>
         <li>Asks before anything that writes; refuses <code>git push</code>, network and root</li>
-        <li>At most four commands per question</li>
+        <li>At most four commands per question, in a bubblewrap sandbox where it works, with your rc file if you set one</li>
       </ul>
       <div class="switch"><code>/scout</code> · <code>:Pair scout</code></div>
     </div>
@@ -390,12 +427,142 @@ footer a { color: var(--muted); }
       <h3>Driver <span>when you hand over</span></h3>
       <p>Makes one change in your buffer while you watch, then hands back by itself.</p>
       <ul>
-        <li>One edit, one undo step, unsaved until you <code>:w</code>; your tests run on the unsaved buffer</li>
+        <li>Up to five edits, one undo step, unsaved until you <code>:w</code>; your tests, or your last build and run, check the unsaved buffer</li>
         <li>Any key you press takes the wheel back</li>
         <li>Ping-pong TDD: write a failing test, say "your turn"</li>
       </ul>
       <div class="switch"><code>:Pair drive</code> · <code>/drive</code> · "you take it"</div>
     </div>
+  </div>
+</section>
+
+<section class="wide" id="features" aria-labelledby="features-h">
+  <div class="col sec-head">
+    <div class="eyebrow">Everything else</div>
+    <h2 id="features-h">The rest of the day, in the same quiet way</h2>
+    <p>Each card is a real capture of the plugin as it ships. Its button plays that part of the tour above.</p>
+  </div>
+  <h3 class="feat-group">Getting started</h3>
+  <div class="feats">
+    <article class="feat">
+      <img src="media/f-auth.webp" width="640" height="384" loading="lazy" alt="pair auth login anthropic in a terminal: a choice of subscription or API key, and the key stored">
+      <h4><code>pair auth</code>: logins and keys</h4>
+      <p>Log in to a provider with a subscription or an API key, typed once at a prompt that does not echo it. One file, readable by you only; nothing ever prints the secrets. The terms of each subscription are shown before you use it.</p>
+      <div class="feat-foot"><button class="seek" type="button" data-scene="auth" data-t="53.2">▶ in the tour, 0:53</button><a href="https://github.com/makefunstuff/pairing-buddy/blob/main/docs/config.md#logins-and-keys">docs</a></div>
+    </article>
+    <article class="feat">
+      <img src="media/f-doctor.webp" width="640" height="384" loading="lazy" alt="pair doctor: every check passes, one model serves both roles, the Partner thinks">
+      <h4>One model, and a Partner that thinks</h4>
+      <p>One local model can play both roles: the Watcher asks it for one number without thinking, the Partner lets it think. <code>pair doctor</code> checks every part, down to whether the Partner really thinks and how Pair's pane is sandboxed.</p>
+      <div class="feat-foot"><button class="seek" type="button" data-scene="onemodel" data-t="62.41">▶ in the tour, 1:02</button><a href="https://github.com/makefunstuff/pairing-buddy/blob/main/docs/config.md#one-model">docs</a></div>
+    </article>
+  </div>
+  <h3 class="feat-group">Exploring code</h3>
+  <div class="feats">
+    <article class="feat">
+      <img src="media/f-trail.webp" width="640" height="384" loading="lazy" alt="Pair names ErrBudget, the code's word for what you searched, under your line">
+      <h4>The search trail</h4>
+      <p>Three searches in Telescope or snacks.picker without opening a result, and Pair says where the thing is, in the code's own word. <code>:Pair trail</code> shows the searches it saw.</p>
+      <div class="feat-foot"><button class="seek" type="button" data-scene="trail" data-t="124.64">▶ in the tour, 2:04</button><a href="https://github.com/makefunstuff/pairing-buddy/blob/main/docs/neovim.md#the-search-trail">docs</a></div>
+    </article>
+    <article class="feat">
+      <img src="media/f-context.webp" width="640" height="384" loading="lazy" alt="The context card: goal, board task, git, terminal, editor">
+      <h4>The context card</h4>
+      <p><code>:Pair context</code> shows everything that goes with a remark: the goal from your board task, git, your commands, buffers, jumps and searches. <code>x</code> takes a source out for the session.</p>
+      <div class="feat-foot"><button class="seek" type="button" data-scene="context" data-t="133.37">▶ in the tour, 2:13</button><a href="https://github.com/makefunstuff/pairing-buddy/blob/main/docs/neovim.md#what-it-knows-the-context-card">docs</a></div>
+    </article>
+    <article class="feat">
+      <img src="media/f-crash.webp" width="640" height="384" loading="lazy" alt="AddressSanitizer SEGV marked on probe.c line 19, with why">
+      <h4>Crashes and compiler errors</h4>
+      <p>Builds and runs are read like test runs: a segfault, a sanitizer report or a panic lands on the line of its frame in your code, gcc, clang, zig, odin and c3c errors on theirs. A warning your edit brought gets a word.</p>
+      <div class="feat-foot"><button class="seek" type="button" data-scene="crash" data-t="143.32">▶ in the tour, 2:23</button><a href="https://github.com/makefunstuff/pairing-buddy/blob/main/docs/builds.md">docs</a></div>
+    </article>
+    <article class="feat">
+      <img src="media/f-loop.webp" width="640" height="384" loading="lazy" alt=":Pair runs: four runs, each with the change before it">
+      <h4>The exploration loop and <code>:Pair runs</code></h4>
+      <p>Each run of the loop gets a number, read next to the one before: same numbers, or <code>avg probe 23.7 → 1.1</code>. When a change did nothing, Pair says why. <code>:Pair runs</code> keeps the notebook; one key removes the hunt's <code>printf</code> lines.</p>
+      <div class="feat-foot"><button class="seek" type="button" data-scene="loop" data-t="153.653">▶ in the tour, 2:33</button><a href="https://github.com/makefunstuff/pairing-buddy/blob/main/docs/exploration.md">docs</a></div>
+    </article>
+    <article class="feat">
+      <img src="media/f-teach.webp" width="640" height="384" loading="lazy" alt="Under the remark, the idea behind it: C truncates integer division">
+      <h4>The idea behind it: <code>Alt-?</code></h4>
+      <p>Ask why, and Pair gives the one idea worth keeping behind what it said, with a link to the docs when it is sure of one. It never lectures unasked.</p>
+      <div class="feat-foot"><button class="seek" type="button" data-scene="teach" data-t="171.028">▶ in the tour, 2:51</button><a href="https://github.com/makefunstuff/pairing-buddy/blob/main/docs/neovim.md#the-idea-behind-it">docs</a></div>
+    </article>
+    <article class="feat">
+      <img src="media/f-held.webp" width="640" height="384" loading="lazy" alt="A held thought shown after the save, in a grey colorscheme with one warm red">
+      <h4>One look, and the held thought</h4>
+      <p>A few quiet marks in one accent colour taken from your colorscheme. A remark that can wait waits for your next save or pause, with a <code>•</code> in the margin meanwhile.</p>
+      <div class="feat-foot"><button class="seek" type="button" data-scene="held" data-t="177.598">▶ in the tour, 2:57</button><a href="https://github.com/makefunstuff/pairing-buddy/blob/main/docs/neovim.md#the-held-thought">docs</a></div>
+    </article>
+  </div>
+  <h3 class="feat-group">Tests, and the hand-over without one</h3>
+  <div class="feats">
+    <article class="feat">
+      <img src="media/f-delight.webp" width="640" height="384" loading="lazy" alt="The statusline: avg probe 1893.7 → 1.0, and one line under the hash">
+      <h4>It notices a green</h4>
+      <p>When the tests turn green after a red, or a number finally moves the right way, the statusline lights up once and one line says what is now true. Optional earcons play only while you are away.</p>
+      <div class="feat-foot"><button class="seek" type="button" data-scene="green" data-t="211.565">▶ in the tour, 3:31</button><a href="https://github.com/makefunstuff/pairing-buddy/blob/main/docs/neovim.md#when-it-goes-green">docs</a></div>
+    </article>
+    <article class="feat">
+      <img src="media/f-intent.webp" width="640" height="384" loading="lazy" alt="The hand-back: ✓ avg probe 1.1 under the new hash line">
+      <h4>The hand-over without a test</h4>
+      <p>Say what you expect: <code>you take it: make the ids spread, avg probe stays under 2</code>. Pair types the edit, builds and runs your unsaved buffer in a scratch copy with your own command, and hands back with <code>✓ avg probe 1.1</code>.</p>
+      <div class="feat-foot"><button class="seek" type="button" data-scene="intent" data-t="284.605">▶ in the tour, 4:44</button><a href="https://github.com/makefunstuff/pairing-buddy/blob/main/docs/driver.md#the-hand-over-without-a-test">docs</a></div>
+    </article>
+  </div>
+  <h3 class="feat-group">Notes and the blank page</h3>
+  <div class="feats">
+    <article class="feat">
+      <img src="media/f-notes.webp" width="640" height="384" loading="lazy" alt="Marks in the margin of a design note">
+      <h4>Notes in the margin</h4>
+      <p>In a Markdown note Pair thinks with you, never for you: at most five marks, <code>?</code> an open question, <code>≠</code> two lines that clash, <code>→</code> what the code really does. <code>Alt-d</code> logs a decision; <code>:Pair tasks</code> adds nothing until you say yes.</p>
+      <div class="feat-foot"><button class="seek" type="button" data-scene="notes" data-t="219.99">▶ in the tour, 3:39</button><a href="https://github.com/makefunstuff/pairing-buddy/blob/main/docs/notes.md">docs</a></div>
+    </article>
+    <article class="feat">
+      <img src="media/f-blank.webp" width="640" height="384" loading="lazy" alt="NOTES.md with three answers and the first slice">
+      <h4>The blank page: <code>:Pair new</code></h4>
+      <p>In an empty folder, one sentence: Pair asks three short questions, one at a time, then suggests a first slice that runs, two files and what to poke at. No scaffolding, nothing on disk until you save.</p>
+      <div class="feat-foot"><button class="seek" type="button" data-scene="blank" data-t="238.37">▶ in the tour, 3:58</button><a href="https://github.com/makefunstuff/pairing-buddy/blob/main/docs/blank-page.md">docs</a></div>
+    </article>
+  </div>
+  <h3 class="feat-group">The day around it</h3>
+  <div class="feats">
+    <article class="feat">
+      <img src="media/f-ledger.webp" width="640" height="384" loading="lazy" alt=":Pair today, the day's ledger">
+      <h4>The ledger: <code>:Pair today</code></h4>
+      <p>Everything Pair did here today, one quiet line each: what it read, said, suggested, ran and typed, and when it stayed quiet. <code>u</code> undoes one of its edits later, after your own edits too.</p>
+      <div class="feat-foot"><button class="seek" type="button" data-scene="ledger" data-t="295.375">▶ in the tour, 4:55</button><a href="https://github.com/makefunstuff/pairing-buddy/blob/main/docs/neovim.md#the-ledger">docs</a></div>
+    </article>
+    <article class="feat">
+      <img src="media/f-agents.webp" width="640" height="384" loading="lazy" alt="The statusline: #21 needs you, and M-a goes there">
+      <h4>Your other agents</h4>
+      <p>When another herdr agent or a board task needs you, is ready or failed, one line says so at your next break, never while you type. <code>Alt-a</code> goes to it; <code>:Pair agents</code> lists them all.</p>
+      <div class="feat-foot"><button class="seek" type="button" data-scene="agents" data-t="304.025">▶ in the tour, 5:04</button><a href="https://github.com/makefunstuff/pairing-buddy/blob/main/docs/agents.md">docs</a></div>
+    </article>
+    <article class="feat">
+      <img src="media/f-pickup.webp" width="640" height="384" loading="lazy" alt="The morning pick-up: one line on what is left, on queue.go line 18">
+      <h4>Debrief and the morning pick-up</h4>
+      <p><code>/end</code> gives a debrief: what is now true, what is left, tomorrow's first step as a place. The next morning Neovim opens there, and Pair says in one line what is left.</p>
+      <div class="feat-foot"><button class="seek" type="button" data-scene="debrief" data-t="311.315">▶ in the tour, 5:11</button><a href="https://github.com/makefunstuff/pairing-buddy/blob/main/docs/neovim.md#the-morning-pick-up-and-the-days-end">docs</a></div>
+    </article>
+  </div>
+  <h3 class="feat-group">And the rest</h3>
+  <div class="feats">
+    <article class="feat">
+      <img src="media/f-no-herdr.webp" width="640" height="384" loading="lazy" alt="Neovim alone: the chat on the right, Scout's pane along the bottom running go test">
+      <h4>Pair without herdr</h4>
+      <p>All of Pair works inside Neovim too: <code>:Pair chat</code> opens the chat on the right, and Scout's pane and the tests on save run in a <code>:terminal</code> along the bottom. herdr adds the view of your other terminals.</p>
+      <div class="feat-foot"><button class="seek" type="button" data-scene="montage" data-t="327.715">▶ in the tour, 5:27</button><a href="https://github.com/makefunstuff/pairing-buddy/blob/main/docs/neovim.md#without-herdr">docs</a></div>
+    </article>
+    <ul class="rest">
+      <li><b>Push-to-talk.</b> Hold <code>Alt-t</code>, ask aloud, let go: whisper.cpp writes it down on your CPU, and the answer comes under your line. <a href="https://github.com/makefunstuff/pairing-buddy/blob/main/docs/voice.md">docs</a></li>
+      <li><b>Earcons.</b> Short sounds for a green or a moved number, only while you are away from Neovim. Off by default. <a href="https://github.com/makefunstuff/pairing-buddy/blob/main/docs/neovim.md#sounds-while-you-are-away">docs</a></li>
+      <li><b>Scout's rc file and sandbox.</b> Pair's pane can start from your bash rc file, so the command policy sees your aliases; where bubblewrap works it is a sandbox: only the project is writable, no network. <a href="https://github.com/makefunstuff/pairing-buddy/blob/main/docs/scout.md#the-sandbox">docs</a></li>
+      <li><b>Several Neovims, several projects.</b> Neovims in one project share its session, and Pair shows its words in the one you are in; each git worktree is a session of its own. <a href="https://github.com/makefunstuff/pairing-buddy/blob/main/docs/install.md">docs</a></li>
+      <li><b>No ceremony.</b> A session takes its goal from the board task of your branch, or the branch name, and ends by itself with a note the next one starts from. <a href="https://github.com/makefunstuff/pairing-buddy/blob/main/docs/memory.md">docs</a></li>
+      <li><b>It learns when to talk.</b> Your useful and noise verdicts tune each trigger's bar per project; <code>pair stats</code> shows the numbers. <a href="https://github.com/makefunstuff/pairing-buddy/blob/main/docs/memory.md#learning-when-to-talk">docs</a></li>
+    </ul>
   </div>
 </section>
 
@@ -405,13 +572,14 @@ footer a { color: var(--muted); }
       <div class="sec-head">
         <div class="eyebrow">Works with local models</div>
         <h2 id="local-h">Your models, on your machine</h2>
-        <p>Two roles, any server that speaks the OpenAI-compatible or Anthropic API. One model can serve both.</p>
+        <p>Two roles, any server that speaks the OpenAI-compatible or Anthropic API, or a provider you log in to with <code>pair auth</code>. One model can serve both.</p>
       </div>
       <ul class="points">
         <li><b>The Watcher</b> decides whether a moment is worth a remark. It gets under 200 tokens and answers with one number, so a mid-sized local model does it in under a second.</li>
-        <li><b>The Partner</b> writes the words and uses its role's tools. Local or cloud, your choice.</li>
-        <li><b>Built for mid-sized models:</b> few tools, flat arguments, thinking off by default. Limits that matter live in code, so a model that loops can't do harm.</li>
-        <li><b>Your sessions stay local.</b> Memory and feedback are kept in the daemon's data directory, never in your repo. <code>pair doctor</code> checks both models and how fast they answer.</li>
+        <li><b>The Partner</b> thinks before it answers, then writes the words and uses its role's tools. Local or cloud, your choice.</li>
+        <li><b>One model for both.</b> A server with room for one model serves both roles: the Watcher asks it for one number without thinking, and your questions go before its remarks.</li>
+        <li><b>Built for mid-sized models:</b> few tools, flat arguments. Limits that matter live in code, so a model that loops can't do harm.</li>
+        <li><b>Your sessions stay local.</b> Memory and feedback are kept in the daemon's data directory, never in your repo. <code>pair doctor</code> checks both models, how fast they answer, and that the Partner really thinks.</li>
       </ul>
     </div>
     <div class="code">
@@ -456,7 +624,7 @@ footer a { color: var(--muted); }
           <pre id="sh"><code><span class="p">$</span> npm install -g github:makefunstuff/pairing-buddy
 <span class="p">$</span> pair setup</code></pre>
         </div>
-        <p><code>pair setup</code> writes a commented config, installs and starts the <code>pairing-buddy</code> systemd user service, and prints the next steps. Set your two models in the config.</p>
+        <p><code>pair setup</code> writes a commented config, offers a login (<code>pair auth</code>), installs and starts the <code>pairing-buddy</code> user service (systemd or launchd), and prints the next steps. Set your model, or two, in the config.</p>
       </div>
     </div>
     <div class="step">
@@ -477,11 +645,11 @@ footer a { color: var(--muted); }
     <div class="step">
       <h3>Check it, and pair</h3>
       <div>
-        <p>Run <code>pair doctor</code>: one line per part, with the fix when something is wrong. Then run <code>pair</code> in a herdr pane next to Neovim, type the session goal, and work as usual.</p>
+        <p>Run <code>pair doctor</code>: one line per part, with the fix when something is wrong. Then run <code>pair</code> in a herdr pane next to Neovim (or <code>:Pair chat</code> in Neovim) and work as usual: the session takes its goal from your board task or branch.</p>
       </div>
     </div>
   </div>
-  <p class="req">Needs Node.js 22.19+, Neovim 0.11+, and <a href="https://herdr.dev">herdr</a> for the chat pane and Scout (without herdr, Pair runs as Navigator in any terminal). Scout also uses <code>bash</code> and ripgrep.</p>
+  <p class="req">Needs Node.js 22.19+ and Neovim 0.11+. <a href="https://herdr.dev">herdr</a> is its best home; without it, <code>:Pair chat</code> opens the chat inside Neovim and Scout's pane is a <code>:terminal</code> there. Scout also uses <code>bash</code> and ripgrep, and bubblewrap for its sandbox.</p>
 </section>
 
 <section class="wide" id="docs" aria-labelledby="docs-h">
@@ -492,8 +660,12 @@ footer a { color: var(--muted); }
   <div class="docs">
     <a class="doc" href="https://github.com/makefunstuff/pairing-buddy#readme"><b>README</b><span>What it is, the quick start, and links to every doc page.</span></a>
     <a class="doc" href="https://github.com/makefunstuff/pairing-buddy/blob/main/docs/neovim.md"><b>In Neovim</b><span>Its marks and words, tests on save, and the visible hand-over.</span></a>
-    <a class="doc" href="https://github.com/makefunstuff/pairing-buddy/tree/main/docs/video"><b>Video</b><span>The 3-minute tour above: its captures, script and how to render it again.</span></a>
-    <a class="doc" href="https://github.com/makefunstuff/pairing-buddy/blob/main/docs/driver.md"><b>Driver and suggestions</b><span>Hand-over, take-back, and inline suggestions.</span></a>
+    <a class="doc" href="https://github.com/makefunstuff/pairing-buddy/tree/main/docs/video"><b>Video</b><span>The tour above: its captures, script and how to render it again.</span></a>
+    <a class="doc" href="https://github.com/makefunstuff/pairing-buddy/blob/main/docs/install.md"><b>Install and daily use</b><span>Setup, <code>pair doctor</code>, sessions, several Neovims and projects.</span></a>
+    <a class="doc" href="https://github.com/makefunstuff/pairing-buddy/blob/main/docs/config.md"><b>Configuration</b><span>Models, <code>pair auth</code>, local models, one model, talk levels.</span></a>
+    <a class="doc" href="https://github.com/makefunstuff/pairing-buddy/blob/main/docs/exploration.md"><b>The exploration loop</b><span>Every run next to the one before, and <code>:Pair runs</code>.</span></a>
+    <a class="doc" href="https://github.com/makefunstuff/pairing-buddy/blob/main/docs/notes.md"><b>Notes in the margin</b><span>Marks in a Markdown note, the decision log, tasks when asked.</span></a>
+    <a class="doc" href="https://github.com/makefunstuff/pairing-buddy/blob/main/docs/driver.md"><b>Driver and suggestions</b><span>Hand-over, with or without a test, take-back, and inline suggestions.</span></a>
     <a class="doc" href="https://github.com/makefunstuff/pairing-buddy/blob/main/docs/scout.md"><b>Scout</b><span>What it may run, what it asks first, what it refuses.</span></a>
     <a class="doc" href="https://github.com/makefunstuff/pairing-buddy/blob/main/docs/watcher.md"><b>The Watcher</b><span>When Pair speaks, and how it stays under a second.</span></a>
     <a class="doc" href="https://github.com/makefunstuff/pairing-buddy/blob/main/docs/memory.md"><b>Memory and feedback</b><span>Session notes, and how your verdicts tune it.</span></a>
@@ -505,7 +677,7 @@ footer a { color: var(--muted); }
   <span>pairing-buddy · MIT</span>
   <a href="https://github.com/makefunstuff/pairing-buddy">GitHub</a>
   <a href="https://github.com/makefunstuff/pairing-buddy/issues">Issues</a>
-  <span>The captures in “Three moments” are v0.9 with scripted model words, recorded from <a href="https://github.com/makefunstuff/pairing-buddy/tree/main/docs/captures">tapes in the repo</a>.</span>
+  <span>The captures on this page and in the tour are v0.9 with scripted model words, recorded from <a href="https://github.com/makefunstuff/pairing-buddy/tree/main/docs/captures">tapes in the repo</a>.</span>
 </footer>
 
 <script>
@@ -550,6 +722,14 @@ footer a { color: var(--muted); }
       else { v.dataset.paused = '1'; v.pause(); }
     });
   }
+  // the tour: a chapter or a feature card's button plays it from there
+  const tour = document.getElementById('tour');
+  for (const b of document.querySelectorAll('.chapters .beat, .seek')) b.addEventListener('click', () => {
+    if (tour.preload === 'none') tour.preload = 'auto';
+    const go = () => { tour.currentTime = Number(b.dataset.t); tour.play().catch(() => {}); };
+    if (tour.readyState >= 1) go(); else { tour.addEventListener('loadedmetadata', go, {once: true}); tour.load(); }
+    tour.scrollIntoView({behavior: reduce ? 'auto' : 'smooth', block: 'center'});
+  });
   for (const row of document.querySelectorAll('.beats')) {
     const v = document.querySelector(`video[data-v="${row.dataset.for}"]`);
     const beats = [...row.querySelectorAll('.beat')];

@@ -1,13 +1,14 @@
 // The music bed: one instrumental track from Google's Lyria 3 through OpenRouter, streamed and saved as
-// audio/music.<format>. The key is read at run time from $OPENROUTER_KEY_FILE (default /tmp/openrouter.key).
+// audio/music.mp3 (the take twice, crossfaded). The key is read at run time from $OPENROUTER_KEY_FILE (default /tmp/openrouter.key).
 // Usage: node music.mjs
-import {readFileSync, writeFileSync} from 'node:fs';
+import {execFileSync} from 'node:child_process';
+import {readFileSync, renameSync, writeFileSync} from 'node:fs';
 
 const here = new URL('.', import.meta.url).pathname;
 const key = readFileSync(process.env.OPENROUTER_KEY_FILE ?? '/tmp/openrouter.key', 'utf8').trim();
 const PROMPT = 'Instrumental only, no vocals. A calm, focused electronic bed for a software tutorial with a voiceover: '
   + 'soft felt piano, warm analog pad, a gentle brushed beat at 90 BPM. Sparse and steady, no drops, no lead melody '
-  + 'that competes with speech. About three minutes long, ending on a soft resolving fade.';
+  + 'that competes with speech. About six minutes long, with gentle changes every minute or so, ending on a soft resolving fade.';
 
 const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
   method: 'POST',
@@ -30,5 +31,10 @@ for await (const part of response.body.pipeThrough(new TextDecoderStream())) {
   }
 }
 if (!chunks.length) throw new Error('no audio in the answer');
-writeFileSync(`${here}audio/music.${format}`, Buffer.concat(chunks));
-console.log(`audio/music.${format}`);
+// Lyria's takes run about three minutes: the film's bed is the take twice, crossfaded over 8 s.
+const take = `${here}audio/take.${format}`;
+writeFileSync(take, Buffer.concat(chunks));
+execFileSync('ffmpeg', ['-v', 'error', '-y', '-i', take, '-i', take, '-filter_complex', 'acrossfade=d=8:c1=tri:c2=tri', '-b:a', '160k', `${here}audio/music.tmp.mp3`]);
+renameSync(`${here}audio/music.tmp.mp3`, `${here}audio/music.mp3`);
+execFileSync('rm', [take]);
+console.log('audio/music.mp3');

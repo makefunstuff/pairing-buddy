@@ -122,8 +122,9 @@ readMessages(chat, message => {
   if (scene.allow && message.type === 'confirm') sendMessage(chat, {type: 'confirm', id: message.id, ok: true});
 });
 await new Promise(resolve => chat.on('connect', resolve));
-sendMessage(chat, {type: 'hello', role: 'chat', cwd: project, herdr: {socket: herdrSocket, workspace: 'w1', pane: 'w1:p2'}});
-if (scene.goal) sendMessage(chat, {type: 'goal', text: scene.goal}); // else the session takes the board task's, or :Pair new sets it
+// Without herdr, the chat is the one you open in Neovim: this client only listens.
+if (!scene.noHerdr) sendMessage(chat, {type: 'hello', role: 'chat', cwd: project, herdr: {socket: herdrSocket, workspace: 'w1', pane: 'w1:p2'}});
+if (scene.goal && !scene.noHerdr) sendMessage(chat, {type: 'goal', text: scene.goal}); // else the session takes the board task's, or :Pair new sets it
 
 // The day so far, for the debrief: its active time and the user's verdicts on Pair's remarks.
 if (scene.today) {
