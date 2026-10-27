@@ -1,4 +1,4 @@
--- The captures' Neovim: the plugin from this repo, ayu (or with CAP_SCHEME=greys, mini.base16 on a grey palette
+-- The captures' Neovim: the plugin from this repo, ayu (tokyonight for the site's loops; or with CAP_SCHEME=greys, mini.base16 on a grey palette
 -- with one warm red), clangd for C, and nothing of your own config (record.sh also gives Neovim scratch XDG
 -- directories). The :terminal's shell has the shell hook and stands for the herdr pane w1:p3.
 local cap, repo = vim.env.CAP, vim.env.CAP_REPO
@@ -16,6 +16,11 @@ if vim.env.CAP_SCHEME == 'greys' then
     base08 = '#9aa1a5', base09 = '#d9694a', base0A = '#b5b9bb', base0B = '#a3a9ad',
     base0C = '#8f969a', base0D = '#bfc3c5', base0E = '#868d91', base0F = '#d9694a',
   }})
+elseif vim.env.CAP_SCHEME == 'tokyonight' then -- the site's loops (record.sh with CAP_LOOK=site)
+  vim.opt.rtp:append(cap .. '/tokyonight.nvim')
+  require('tokyonight').setup({style = 'night'})
+  vim.cmd.colorscheme('tokyonight')
+  vim.o.scrolloff = 8 -- the larger font leaves fewer rows: keep the lines under the cursor line in sight
 else
   vim.cmd.colorscheme('ayu')
 end

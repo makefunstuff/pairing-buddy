@@ -6,8 +6,8 @@ Pair has two models behind it and three roles in front of you.
 
 | Model | Its job | Speed |
 | --- | --- | --- |
-| **Watcher** | Looks at each moment that might deserve a remark (a failed command you did not see, the same error twice, editing a file unrelated to the failing test) and scores it from 0 to 10. Most moments score low, and Pair stays quiet | About a second. It answers with one number and never thinks |
-| **Partner** | Writes what Pair says, answers your questions and uses the tools of the current role | A few seconds. It thinks before it answers |
+| <span class="role watcher">Watcher</span> | Looks at each moment that might deserve a remark (a failed command you did not see, the same error twice, editing a file unrelated to the failing test) and scores it from 0 to 10. Most moments score low, and Pair stays quiet | About a second. It answers with one number and never thinks |
+| <span class="role partner">Partner</span> | Writes what Pair says, answers your questions and uses the tools of the current role | A few seconds. It thinks before it answers |
 
 One model can play both. Only a moment that clears the bar of your [talk level](config.md#talk-levels), within its
 budget, reaches the Partner, and never while you type. Details in [The Watcher](watcher.md) and
@@ -49,7 +49,7 @@ with the build and run you last ran. Any key you press takes the wheel back.
 
 ## Tools per role
 
-| Tool | Navigator | Scout | Driver |
+| Tool | <span class="role navigator">Navigator</span> | <span class="role scout">Scout</span> | <span class="role driver">Driver</span> |
 | --- | --- | --- | --- |
 | `say`, `point`, `open`, `read`, `recall`, `suggest` | yes | yes | yes |
 | `search`, `run` (in Pair's pane) | | yes | yes |
