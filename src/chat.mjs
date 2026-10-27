@@ -6,6 +6,7 @@ import {dim, formatMessage} from './chat-style.mjs';
 import {LEVELS} from './config.mjs';
 import {ledgerText} from './ledger.mjs';
 import {readMessages, sendMessage} from './protocol.mjs';
+import {tmuxOf} from './tmux.mjs';
 
 const HELP = `/goal <text>   set the session goal
 /level ${LEVELS.join('|')}   how often Pair speaks unasked
@@ -109,6 +110,7 @@ export function runChat(socketPath) {
     herdr: process.env.HERDR_SOCKET_PATH
       ? {socket: process.env.HERDR_SOCKET_PATH, workspace: process.env.HERDR_WORKSPACE_ID, pane: process.env.HERDR_PANE_ID}
       : null,
+    tmux: tmuxOf(process.env),
   });
 
   // When the daemon restarts (systemd, an upgrade), the pane waits for it and carries on.

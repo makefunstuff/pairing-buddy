@@ -14,13 +14,15 @@ import {gitRoot} from './git.mjs';
 import {MODEL_ROLES, ModelHealth} from './health.mjs';
 import {NoteMargin} from './margin.mjs';
 import {oneAnswer} from './note-reading.mjs';
-import {PaneWatch} from './herdr.mjs';
+import {HerdrPanes} from './herdr.mjs';
 import {followLoaded, shareServer} from './loaded-model.mjs';
 import {DETAIL_KEPT_MS} from './ledger.mjs';
 import {Listener} from './listen.mjs';
 import {createPairModels} from './models.mjs';
 import {acquireOwner} from './owner.mjs';
 import {EditorPaneHost, HerdrPaneHost} from './pane-hosts.mjs';
+import {Panes, PaneWatch} from './pane-watch.mjs';
+import {NvimPanes} from './nvim-panes.mjs';
 import {openPartner} from './partner.mjs';
 import {probeModel} from './probe.mjs';
 import {projectContext} from './project-context.mjs';
@@ -33,6 +35,7 @@ import {openRootOf, sessionRootOf} from './session-root.mjs';
 import {ModelSlot} from './slot.mjs';
 import {openStore} from './store.mjs';
 import {Terminals} from './terminals.mjs';
+import {TmuxPanes, tmuxPane} from './tmux.mjs';
 import {ROLE_TOOLS, ROLES} from './tools.mjs';
 import {VERSION} from './version.mjs';
 import {createWatcher, momentOf} from './watcher.mjs';
@@ -79,6 +82,7 @@ export async function startDaemon(config, {
   const live = new Map(); // root -> PairSession, once loaded
   const margins = new Map(); // root -> its NoteMargin
   const watches = new Map(); // root -> PaneWatch
+  const paneSources = new Map(); // root -> what its PaneWatch watches: {herdr, tmux, chatPane}
   const listeners = new Map(); // root -> Listener, once someone holds the listen key there
   const relays = new Map(); // root -> AgentRelay
   const clients = new Set();
@@ -360,7 +364,7 @@ export async function startDaemon(config, {
         requestEditor: message => requestEditor(session, message),
         log: line => log(`[${basename(root)}] ${line}`),
       });
-      session.panes = new Terminals({editors: () => editorsOf(session), ask: askEditor, herdr: () => watches.get(root) ?? null});
+      session.panes = new Terminals({editors: () => editorsOf(session), ask: askEditor, watch: () => watches.get(root) ?? null});
       margins.set(root, new NoteMargin({
         root,
         state: () => session.state,
@@ -412,22 +416,39 @@ export async function startDaemon(config, {
     session.scout ??= scoutPane(session, new EditorPaneHost({editors: () => editorsOf(session), ask: askEditor}));
   }
 
+  /** A chat pane in herdr: Pair's pane moves there, and its PaneWatch watches herdr's panes too. */
   function watchHerdr(session, herdr) {
-    if (watches.has(session.root) || !herdr?.socket) return;
-    const sessionLog = line => log(`[${basename(session.root)}] ${line}`);
+    if (!herdr?.socket || paneSources.get(session.root)?.herdr) return;
     session.scout?.close().catch(() => {}); // a pane it had in Neovim before the herdr chat pane came
     session.scout = scoutPane(session, new HerdrPaneHost({socketPath: herdr.socket, workspaceId: herdr.workspace, besidePane: herdr.pane}));
+    watchPanes(session, {herdr, chatPane: herdr.pane});
+    log(`[${basename(session.root)}] watching herdr workspace ${herdr.workspace}`);
+  }
+
+  /**
+   * The session's PaneWatch over the user's terminals: the :terminal buffers of its Neovims always, the panes of
+   * herdr once a chat pane there says hello, and of the tmux session a Neovim or the chat runs in. A source more
+   * than it has makes it anew. `chatPane` is the chat's, which is Pair's and not the user's.
+   */
+  function watchPanes(session, {herdr = null, tmux = null, chatPane = null} = {}) {
+    const known = paneSources.get(session.root) ?? {herdr: null, tmux: null, chatPane: null};
+    const wanted = {herdr: known.herdr ?? herdr, tmux: known.tmux ?? tmux, chatPane: known.chatPane ?? chatPane};
+    if (watches.has(session.root) && JSON.stringify(wanted) === JSON.stringify(known)) return;
+    paneSources.set(session.root, wanted);
+    watches.get(session.root)?.stop();
+    const sources = [];
+    if (wanted.herdr) sources.push(new HerdrPanes({socketPath: wanted.herdr.socket, workspaceId: wanted.herdr.workspace}));
+    if (wanted.tmux) sources.push(new TmuxPanes({socketPath: wanted.tmux.socket, pane: wanted.tmux.pane}));
+    sources.push(new NvimPanes({editors: () => editorsOf(session), ask: askEditor}));
     const watch = new PaneWatch({
-      socketPath: herdr.socket,
-      workspaceId: herdr.workspace,
-      chatPane: herdr.pane,
+      source: sources.length > 1 ? new Panes(sources) : sources[0],
+      chatPane: wanted.chatPane,
       scout: session.scout,
       emit: event => receive(session, event),
-      log: sessionLog,
+      log: line => log(`[${basename(session.root)}] ${line}`),
     });
     watches.set(session.root, watch);
     watch.start();
-    log(`[${basename(session.root)}] watching herdr workspace ${herdr.workspace}`);
   }
 
   /** The session's push-to-talk (see listen.mjs); null when the config has no voice. */
@@ -464,6 +485,7 @@ export async function startDaemon(config, {
     listeners.delete(session.root);
     watches.get(session.root)?.stop();
     watches.delete(session.root);
+    paneSources.delete(session.root);
     sessions.delete(session.root);
     live.delete(session.root);
     margins.delete(session.root);
@@ -478,7 +500,8 @@ export async function startDaemon(config, {
   async function hello(client, message) {
     client.role = message.role;
     client.activeAt = Date.now();
-    client.pane = message.pane ?? null; // the herdr pane a Neovim runs in
+    // The herdr or tmux pane a Neovim runs in.
+    client.pane = message.pane ?? (message.tmux?.pane ? tmuxPane(message.tmux.pane) : null);
     client.pid = message.pid ?? null; // a Neovim's, which names its terminals (terminals.mjs)
     client.buffers = message.buffers === true; // a plugin that lists its unsaved buffers; an older one never answers
     client.session = await loadSession(await rootOf(message.cwd));
@@ -501,8 +524,11 @@ export async function startDaemon(config, {
     // The first Neovim after a long gap picks up where the last session stopped (see pickup.mjs).
     if (client.role === 'editor') session.pickUp().catch(error => log(`pick-up failed: ${error.stack ?? error}`));
     if (client.role === 'editor') editorPane(session);
+    const tmux = message.tmux?.socket && message.tmux.pane ? {socket: message.tmux.socket, pane: message.tmux.pane} : null;
+    if (client.role === 'editor') watchPanes(session, {tmux});
     if (client.role !== 'chat') return;
     watchHerdr(session, message.herdr);
+    if (!message.herdr?.socket) watchPanes(session, {tmux, chatPane: tmux && tmuxPane(tmux.pane)});
     // A chat pane that reconnects after a daemon restart already shows the history, up to the restart.
     if (message.resume) {
       for (const missed of store.messagesSince(session.id, startedAt)) sendMessage(client.socket, {type: 'message', history: true, ...missed});
@@ -528,7 +554,8 @@ export async function startDaemon(config, {
         goal: session.state.goal,
         editors: editorsOf(session).length,
         chats: clientsOf(session, 'chat').length,
-        herdr: watches.has(session.root),
+        herdr: !!paneSources.get(session.root)?.herdr,
+        tmux: !!paneSources.get(session.root)?.tmux,
       })),
     };
   }
@@ -564,9 +591,12 @@ export async function startDaemon(config, {
     const session = live.get(await rootOf(message.cwd));
     if (!session) return;
     const watch = watches.get(session.root);
-    watch?.markHooked(message.pane);
-    const output = watch && message.pane ? await watch.output(message.pane, message.cmd).catch(() => '') : '';
-    receive(session, {kind: 'command_end', pane: message.pane ?? null, cmd: message.cmd, exit: message.exit, output, cwd: message.cwd});
+    // The terminal of the shell that ran it, else the herdr or tmux pane of its environment.
+    const outer = message.pane ?? (message.tmux ? tmuxPane(message.tmux) : null);
+    const pane = watch ? await watch.paneOf({shell: message.shell ?? null, pane: outer}) : outer;
+    if (pane) watch?.markHooked(pane);
+    const output = watch && pane ? await watch.output(pane, message.cmd).catch(() => '') : '';
+    receive(session, {kind: 'command_end', pane, cmd: message.cmd, exit: message.exit, output, cwd: message.cwd});
   }
 
   async function handle(client, message) {
@@ -612,7 +642,11 @@ export async function startDaemon(config, {
     if (message.type === 'teach') return session.teach(message.text || undefined, message.remark ?? null);
     if (message.type === 'end') return endSession(session);
     if (message.type === 'listen') return listen(client, session, message);
-    if (message.type === 'focus') return listenerOf(session)?.focus(message.on === true);
+    if (message.type === 'focus') {
+      watches.get(session.root)?.refresh(); // its terminal, if you are in one, has the focus no more, or again
+      return listenerOf(session)?.focus(message.on === true);
+    }
+    if (message.type === 'panes') return watches.get(session.root)?.refresh();
     if (message.type === 'agents') return sendMessage(client.socket, agentList(session));
     if (message.type === 'agent_go') return goToAgent(client, session, message.key);
     if (message.type === 'context') return sendCard(client, session);

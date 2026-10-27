@@ -1,5 +1,6 @@
-// The optional shell hook: reports each finished command and its exit code, which herdr cannot tell Pair.
-// It runs `pair report` in the background, so the prompt never waits for it. It also emits the OSC 133 marks
+// The optional shell hook: reports each finished command and its exit code, which herdr cannot tell Pair, with the
+// shell's pid, which names the terminal it ran in outside herdr. It runs `pair report` in the background, so the
+// prompt never waits for it. It also emits the OSC 133 marks
 // that Pair's own pane emits (prompt, output, end with the exit code), for a terminal that reads them; herdr
 // ignores them today (see docs/herdr.md).
 
@@ -7,7 +8,7 @@ const ZSH = bin => `# pairing-buddy: report finished commands to Pair
 _pair_preexec() { _pair_cmd=$1; print -n '\\e]133;C\\a' }
 _pair_precmd() {
   local code=$?
-  [[ -n $_pair_cmd ]] && { print -n "\\e]133;D;$code\\a"; '${process.execPath}' '${bin}' report --exit "$code" --cmd "$_pair_cmd" &! }
+  [[ -n $_pair_cmd ]] && { print -n "\\e]133;D;$code\\a"; '${process.execPath}' '${bin}' report --exit "$code" --cmd "$_pair_cmd" --shell $$ &! }
   _pair_cmd=
   print -n '\\e]133;A\\a'
 }
@@ -28,7 +29,7 @@ _pair_preexec() {
 }
 _pair_precmd() {
   local code=$?
-  [[ -n $_pair_cmd ]] && { printf '\\e]133;D;%s\\a' "$code"; ( '${process.execPath}' '${bin}' report --exit "$code" --cmd "$_pair_cmd" >/dev/null 2>&1 & ) }
+  [[ -n $_pair_cmd ]] && { printf '\\e]133;D;%s\\a' "$code"; ( '${process.execPath}' '${bin}' report --exit "$code" --cmd "$_pair_cmd" --shell $$ >/dev/null 2>&1 & ) }
   _pair_cmd=
   printf '\\e]133;A\\a'
 }
@@ -49,7 +50,7 @@ end
 function _pair_postexec --on-event fish_postexec
     set -l code $status
     printf '\\e]133;D;%s\\a' $code
-    command '${process.execPath}' '${bin}' report --exit $code --cmd $argv[1] >/dev/null 2>&1 &
+    command '${process.execPath}' '${bin}' report --exit $code --cmd $argv[1] --shell $fish_pid >/dev/null 2>&1 &
     disown
 end
 function _pair_prompt --on-event fish_prompt
