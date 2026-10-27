@@ -56,9 +56,9 @@ error. A direct question in the chat is always answered.
 
 For anything unasked:
 
-1. Cheap rules drop what is plainly noise: a `grep` that finds nothing, a command you stopped, editing a file whose
-   path shares a word with the goal.
-2. The Watcher scores the moment from 0 to 10 with a single number. Only scores at or above the talk level's bar reach
+1. Cheap rules drop what is plainly noise: a `grep` that finds nothing, a command you stopped. A moment scored in
+   the last half hour keeps its score.
+2. The Watcher scores the moment from 0 to 10 with a single number; for drift it is told what the file is about. Only scores at or above the talk level's bar reach
    the Partner.
 3. The budget limits how often Pair speaks ([talk levels](config.md#talk-levels)).
 

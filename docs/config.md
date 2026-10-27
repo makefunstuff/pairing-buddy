@@ -29,7 +29,7 @@ One model can do both (`model`), or each has its own (`models`):
 {
   "level": "normal",
   // One model for both roles
-  "model": {"api": "openai", "baseUrl": "http://localhost:8080/v1", "model": "your-model", "contextWindow": 32768}
+  "model": {"api": "openai", "baseUrl": "http://localhost:8080/v1", "model": "your-model"}
 }
 ```
 
@@ -64,12 +64,13 @@ A model entry says where its requests go in one of two ways:
 | `model` | The model id the provider or server expects |
 | `auth` | The name of a key stored with `pair auth login NAME`, for an endpoint (a name pi-ai does not know stores a key for your own server; a provider's id uses that provider's stored key) |
 | `apiKey`, `apiKeyFile`, `apiKeyEnv` | Or the key inline, in a file, or in an environment variable. A local server without a key needs none. The service does not see your shell's variables: `pair setup` stores those named by `apiKeyEnv` in `service.env` next to the config, readable by you only, and `pair doctor` says when one is missing there |
-| `contextWindow` | Tokens of conversation Pair keeps for this model (default 32768, also for a provider's model with a larger window; at least 16384 for the Partner). Pair compacts the conversation before it crowds out the reply |
+| `contextWindow` | Tokens of conversation Pair keeps for this model (at least 16384 for the Partner). Pair compacts the conversation before it crowds out the reply. Without it, Pair asks as the daemon starts: a provider's model has its window from pi-ai's catalog; an OpenAI-compatible server is asked what it serves (vLLM and SGLang list it, llama.cpp's `/props` and LM Studio's model info have it); a found window above 131072 is held to that, since every turn sends the whole conversation. Where nothing says (Ollama, many proxies), it is 32768. `pair doctor` shows where the window came from, and warns when yours is larger than the server serves |
 | `maxTokens` | The Partner's longest answer, its thinking included (default 2048 plus room for its most thinking: 10240 with the default levels, and at most a third of `contextWindow`). The Watcher always answers with one number |
 | `reasoning` | Whether Pair sets the model's thinking. The Partner's default is `true`, so it thinks as `thinking` says; set `false` for a model that cannot think. The Watcher's default is `false`: set `true` for a model that thinks by default, so Pair can switch its thinking off. A provider's model has it from pi-ai's catalog, whatever the role |
-| `thinking` | The Partner only: how much it thinks, `off`, `minimal`, `low`, `medium`, `high` or `xhigh`. One level for every turn, or levels by kind of turn: `navigator` (answers to your questions), `scout`, `driver` and `remark` (what it says unasked). Default `{"navigator": "medium", "scout": "medium", "driver": "medium", "remark": "low"}`. On an OpenAI-compatible server a level is sent only with `compat.supportsReasoningEffort` or `compat.thinkingTokenBudgetField`; without them it only switches thinking on |
+| `thinking` | The Partner only: how much it thinks, `off`, `minimal`, `low`, `medium`, `high` or `xhigh`. One level for every turn, or levels by kind of turn: `navigator` (answers to your questions), `scout`, `driver` and `remark` (what it says unasked). Default `{"navigator": "medium", "scout": "medium", "driver": "medium", "remark": "low"}`. On an OpenAI-compatible server a level is sent only as its `compat` says (`pair doctor --thinking` finds it); without that it only switches thinking on |
 | `samplingParams` | Extra sampling fields sent with each request to an OpenAI-compatible server, for example `{"temperature": 0.3}` when the server's default is high |
-| `compat` | OpenAI-compatibility flags passed to pi-ai (see its "OpenAI Compatibility Settings"): for example `thinkingFormat` for a model whose chat template has a thinking switch, `supportsReasoningEffort: true` for a server that takes the thinking level as `reasoning_effort`, or `thinkingTokenBudgetField` for one that takes a token budget |
+| `compat` | OpenAI-compatibility flags passed to pi-ai (see its "OpenAI Compatibility Settings"): for example `thinkingFormat` and `chatTemplateKwargs` for a model whose chat template has a thinking switch, `supportsReasoningEffort: true` for a server that takes the thinking level as `reasoning_effort`, or `thinkingTokenBudgetField` for one that takes a token budget. `pair doctor --thinking` tries them on your server and prints the block to paste |
+| `thinkingLevelMap` | For an OpenAI-compatible server: the server's own name for a thinking level, or `null` for one it does not have, for example `{"minimal": "low", "xhigh": "high"}` |
 
 The Partner thinks before it answers, and the Watcher never does. The Watcher only scores, on every candidate remark,
 so it must stay under a second. The Partner's words are what you act on, and a few seconds of thinking make them right
@@ -181,17 +182,19 @@ pair auth logout anthropic  # also `pair logout anthropic`
 - A server that keeps only one model loaded at a time (llama.cpp's router mode, for example) reloads on every switch
   between two models. There, use [one model](#one-model) for both roles. With two models on such a server, the
   Watcher uses the Partner's model while only that one is loaded, if the server says which models are loaded;
-  otherwise it swaps on every remark.
+  otherwise once two of its calls after Partner turns took reload-long, and `pair doctor` measures the reload
+  ([watcher.md](watcher.md#two-roles-one-loaded-model)).
 - If the server's default temperature is high, give the Partner `"samplingParams": {"temperature": 0.3}`: its
   yes-or-no calls (speak or stay silent) get much steadier. The Watcher always runs at temperature 0.
 - The prompts and tools are deliberately simple (five tools as Navigator, seven as Scout, nine as Driver, flat
   arguments, one instruction per message), so mid-sized local models handle them. The command policy, the limit of
   four commands per question and the one edit per hand-over are in code, so a model that loops or asks for too much
   cannot do harm.
-- A model that has a thinking switch in its chat template needs `compat.thinkingFormat` on an OpenAI-compatible
-  server, or Pair cannot set it. That switch is only on or off, unless the server also takes a level
-  (`supportsReasoningEffort`, `thinkingTokenBudgetField`). `pair doctor` says when the Partner answers without
-  thinking, when its levels are only on or off, and when the Watcher thinks anyway.
+- A model that has a thinking switch in its chat template needs it in `compat` on an OpenAI-compatible server, or
+  Pair cannot set it. That switch is only on or off, unless the server also takes a level (`reasoning_effort`, or a
+  budget field). `pair doctor` says when the Partner answers without thinking, when its levels are only on or off,
+  and when the Watcher thinks anyway; `pair doctor --thinking` tries the switches and fields Pair knows on your
+  server and prints the `compat` that works.
 
 ## One model
 
