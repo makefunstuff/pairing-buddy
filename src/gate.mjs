@@ -14,7 +14,7 @@ export async function decide({trigger, state, now, budget, score, typingPauseMs}
   const room = budget.allows(now);
   // A lasting trigger (drift: the user is still in that file) is still true once the budget allows again.
   if (!room.ok) return {verdict: trigger.lasting ? 'later' : 'drop', reason: room.reason};
-  const noise = prefilter(trigger, state);
+  const noise = prefilter(trigger);
   if (noise) return {verdict: 'drop', reason: noise.reason, score: noise.value};
   const scored = await score(trigger, state);
   if (scored.deferred) return {verdict: 'wait', reason: scored.reason, held: true};
