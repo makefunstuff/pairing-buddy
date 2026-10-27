@@ -59,6 +59,11 @@ Set your model in `~/.config/pairing-buddy/config.json` ([models](docs/models.md
 part, then `pair` in the herdr pane next to Neovim (or `:Pair chat` in Neovim), and work.
 [Getting started](docs/getting-started.md) walks through it.
 
+**Let your AI agent set it up.** Tell your coding agent "follow
+https://github.com/makefunstuff/pairing-buddy/blob/main/INSTALL.md": [INSTALL.md](INSTALL.md) takes it from a fresh
+machine to a passing `pair doctor`, step by step with checks, and asks you where only you can answer (which model,
+your keys and logins).
+
 ## Documentation
 
 - [Getting started](docs/getting-started.md) and [install and daily use](docs/install.md)
