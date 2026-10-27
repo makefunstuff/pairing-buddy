@@ -79,5 +79,14 @@ your keys and logins).
 The site is [VitePress](https://vitepress.dev): `cd site && npm ci && npm run dev` previews it, and the
 [Pages workflow](.github/workflows/pages.yml) builds and deploys it on every push to main. Its look is pixel art:
 the palette (PICO-8's 16 colours) and the fonts (Pixelify Sans for headings and labels, Inter for text) are in
-[`site/.vitepress/theme/tokens.css`](site/.vitepress/theme/tokens.css), and the sprites and favicon are drawn as pixel
-grids in [`site/sprites/build.mjs`](site/sprites/build.mjs) (`npm run sprites` redraws them).
+[`site/.vitepress/theme/tokens.css`](site/.vitepress/theme/tokens.css), and the sprites, the favicon and the PNG icons
+(with the web manifest) are drawn as pixel grids in [`site/sprites/build.mjs`](site/sprites/build.mjs)
+(`npm run sprites` redraws them).
+
+A shared link shows the page's own title and description: a docs page's `description` from its frontmatter, or else its
+first paragraph, cut to 155 characters ([`site/.vitepress/meta.mjs`](site/.vitepress/meta.mjs)). Give a page a
+`description` when it opens with a list, a heading or a code block. The preview image, `site/public/og.png`
+(1200x630), is [`site/og/card.html`](site/og/card.html): `npm run og` redraws it with a headless Chrome or Chromium,
+and the PNG is committed. After `npm run build`, `npm run check` checks every built page has the full set of tags with
+absolute URLs (the Pages workflow runs it before it deploys), and `node og/previews.mjs OUT` renders mock X, Slack
+and Discord previews of the built pages into `OUT/previews.png`.

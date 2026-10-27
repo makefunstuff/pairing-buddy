@@ -1,3 +1,7 @@
+---
+description: "Install Pair: what it needs, the daemon and the Neovim plugin, a check with pair doctor, and a working session in herdr."
+---
+
 # Install and daily use
 
 ## Requirements

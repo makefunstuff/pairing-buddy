@@ -1,3 +1,7 @@
+---
+description: "Pair sees a crash or a compiler error from make run, zig build or odin run the way it sees a failing test: on its line, one key away."
+---
+
 # Builds and crashes
 
 Most runs are no test runs: `make run`, `./build.sh`, `zig build run`, `odin run .`. Pair sees a crash and a compiler

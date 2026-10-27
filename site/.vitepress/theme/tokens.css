@@ -1,5 +1,6 @@
 /* The site's look in one place: an old-console pixel-art theme. Everything else (style.css, Landing.vue, the sprites in
-   site/sprites/build.mjs) takes its colours and fonts from here, and the tutorial video is made to match them.
+   site/sprites/build.mjs) takes its colours and fonts from here, and the tutorial video and the link-preview image
+   (site/og/card.html) are made to match them.
 
    Palette: PICO-8's 16 colours, solid fills only, nothing soft or fading: borders are hard pixels, shadows are solid
    blocks offset down and right. Colours are fills; text stays black, navy or cream, so it keeps at

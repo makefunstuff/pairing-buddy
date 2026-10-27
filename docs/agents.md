@@ -1,3 +1,7 @@
+---
+description: "When another coding agent needs you, is ready to approve, failed or is done, Pair says so in one line at your next pause, with the key that goes there."
+---
+
 # Your other agents, in one place
 
 When you work through several agents at once, finding out who finished means looking at their panes, and each look

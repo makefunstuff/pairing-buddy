@@ -1,0 +1,83 @@
+<!doctype html>
+<!-- The link-preview image (site/public/og.png, 1200x630): Pair's name, its one-line pitch, and Pair beside your
+     Neovim with one short remark under your line. Same palette, fonts and hard edges as the site (tokens.css).
+     build.mjs screenshots it. The name and the mascot stay inside the middle 630x630, which some apps crop to, and
+     nothing that matters sits in the bottom left corner, where X lays the page's title over the image. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  @font-face { font-family: "Pixelify Sans"; font-weight: 400 700; src: url(../public/fonts/pixelify-sans.woff2) format("woff2"); }
+  @font-face { font-family: "JetBrains Mono"; font-weight: 700; src: url(../public/fonts/jetbrains-mono-700.woff2) format("woff2"); }
+  :root { --black: #000000; --navy: #1D2B53; --plum: #7E2553; --charcoal: #5F574F; --silver: #C2C3C7; --cream: #FFF1E8;
+    --orange: #FFA300; --yellow: #FFEC27; --green: #00E436; --blue: #29ADFF; --lavender: #83769C; --pink: #FF77A8; --peach: #FFCCAA; }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 1200px; height: 630px; overflow: hidden; }
+  body { background: var(--cream); color: var(--black); font-family: "Pixelify Sans", monospace; position: relative; }
+  img { image-rendering: pixelated; display: block; }
+
+  /* a pixel frame: a hard band at the top and bottom, like the site's header rule */
+  .band { position: absolute; left: 0; right: 0; height: 16px; background: var(--navy); }
+  .band.top { top: 0; } .band.bottom { bottom: 0; }
+
+  .name { position: absolute; left: 0; right: 0; top: 46px; display: flex; justify-content: center; align-items: center; gap: 20px;
+    font-size: 68px; font-weight: 700; letter-spacing: .01em; line-height: 1; }
+  .name img { width: 80px; height: 80px; }
+  .pitch { position: absolute; left: 64px; top: 176px; white-space: nowrap; font-size: 46px; font-weight: 600; line-height: 1.12; }
+  .pitch .hl { color: var(--plum); }
+  .chip { position: absolute; left: 64px; top: 372px; display: inline-flex; align-items: center; gap: 14px; padding: 12px 18px;
+    border: 4px solid var(--black); background: var(--yellow); box-shadow: 6px 6px 0 var(--black);
+    font: 700 26px/1 "JetBrains Mono", monospace; }
+  .chip i { width: 16px; height: 16px; background: var(--green); outline: 3px solid var(--black); }
+
+  /* your Neovim: code as blocks of colour, one line Pair speaks under */
+  .vim { position: absolute; left: 676px; top: 160px; width: 460px; height: 390px; background: var(--black);
+    border: 6px solid var(--black); box-shadow: 12px 12px 0 var(--navy); }
+  .vim .bar { height: 34px; background: var(--navy); display: flex; align-items: center; gap: 10px; padding: 0 14px; }
+  .vim .bar i { width: 14px; height: 14px; background: var(--lavender); }
+  .vim .bar span { margin-left: 8px; font: 700 18px/1 "JetBrains Mono", monospace; color: var(--silver); }
+  .code { padding: 18px 20px; display: grid; gap: 12px; }
+  .ln { display: flex; gap: 12px; height: 16px; }
+  .ln b { height: 16px; display: block; }
+  .ln .n { width: 24px; background: var(--charcoal); margin-right: 8px; }
+  .ln.cur .n { background: var(--yellow); }
+  .ln.cur { outline: 0; }
+  .remark { margin: -2px 0 -2px 44px; font: 600 24px/1 "Pixelify Sans", monospace; color: var(--pink); white-space: nowrap; display: flex; gap: 12px; align-items: center; }
+  .remark i { width: 12px; height: 12px; background: var(--pink); }
+  .status { position: absolute; left: 0; right: 0; bottom: 0; height: 30px; background: var(--navy); display: flex; align-items: center; gap: 12px; }
+  .status .mode { height: 100%; padding: 0 12px; background: var(--green); font: 700 18px/30px "JetBrains Mono", monospace; color: var(--black); }
+  .status .pair { margin-left: auto; padding-right: 16px; font: 700 18px/1 "JetBrains Mono", monospace; color: var(--pink); }
+
+  /* Pair, in the second chair beside it */
+  .mascot { position: absolute; left: 520px; top: 432px; width: 266px; height: 161px; }
+</style>
+</head>
+<body>
+  <div class="band top"></div>
+
+  <div class="name"><img src="../public/favicon.svg" alt="">pairing-buddy</div>
+  <p class="pitch">A pair programmer<br>for Neovim that<br><span class="hl">knows when to speak.</span></p>
+  <div class="chip"><i></i>local or cloud models · MIT</div>
+
+  <div class="vim">
+    <div class="bar"><i></i><i></i><i></i><span>backoff.go</span></div>
+    <div class="code">
+      <div class="ln"><b class="n"></b><b style="width:56px;background:#FF77A8"></b><b style="width:110px;background:#29ADFF"></b><b style="width:72px;background:#C2C3C7"></b></div>
+      <div class="ln"><b class="n"></b><b style="width:24px"></b><b style="width:90px;background:#FFF1E8"></b><b style="width:150px;background:#29ADFF"></b></div>
+      <div class="ln cur"><b class="n"></b><b style="width:24px"></b><b style="width:70px;background:#FFF1E8"></b><b style="width:30px;background:#FFA300"></b><b style="width:140px;background:#FFF1E8"></b></div>
+      <div class="remark"><i></i>real cause: worker.go:35</div>
+      <div class="ln"><b class="n"></b><b style="width:24px"></b><b style="width:64px;background:#FFF1E8"></b><b style="width:120px;background:#29ADFF"></b></div>
+      <div class="ln"><b class="n"></b><b style="width:20px;background:#C2C3C7"></b></div>
+      <div class="ln"><b class="n"></b><b style="width:44px;background:#FF77A8"></b><b style="width:200px;background:#FFA300"></b><b style="width:80px;background:#29ADFF"></b></div>
+      <div class="ln"><b class="n"></b><b style="width:24px"></b><b style="width:30px;background:#FF77A8"></b><b style="width:170px;background:#FFF1E8"></b></div>
+      <div class="ln"><b class="n"></b><b style="width:48px"></b><b style="width:110px;background:#FF77A8"></b></div>
+      <div class="ln"><b class="n"></b><b style="width:24px"></b><b style="width:20px;background:#C2C3C7"></b></div>
+    </div>
+    <div class="status"><span class="mode">NORMAL</span><span class="pair">● pair</span></div>
+  </div>
+
+  <img class="mascot" src="../public/sprites/mascot.svg" alt="">
+
+  <div class="band bottom"></div>
+</body>
+</html>

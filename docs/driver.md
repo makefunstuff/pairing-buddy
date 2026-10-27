@@ -1,3 +1,7 @@
+---
+description: "How Pair touches your code in plain sight: a suggestion you take with one key, or as Driver, edits in your buffer as you watch. Nothing is saved until :w."
+---
+
 # Driver and suggestions
 
 You drive; Pair sits in the second chair. Two things let it touch your code, both in plain sight:

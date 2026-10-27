@@ -1,3 +1,7 @@
+---
+description: "Pair asks two models: a fast Watcher that decides when to speak and a Partner that writes the words. Run them locally, with an API key or a subscription."
+---
+
 # Models and providers
 
 Pair asks two models, one for each of its two jobs:
