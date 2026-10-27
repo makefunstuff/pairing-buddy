@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
-import {existsSync, mkdtempSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {test} from 'node:test';
@@ -12,6 +12,13 @@ import {fakeHerdr} from './fake-herdr.mjs';
 import {runInPane} from './pane-shell.mjs';
 
 const hasBash = spawnSync('bash', ['--version']).status === 0;
+
+/** A new folder in the system's temp folder, removed when test `t` ends, passed or failed. */
+function tempDir(t, prefix) {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  t.after(() => rmSync(dir, {recursive: true, force: true}));
+  return dir;
+}
 
 const COMPOUND = [
   'echo out; echo err >&2; false',
@@ -28,8 +35,8 @@ const COMPOUND = [
 
 for (const [name, sandbox] of [['', false], [' in the sandbox', true]]) {
   const skip = !hasBash ? 'bash not installed' : sandbox && !sandboxWorks() ? 'bubblewrap does not work here' : false;
-  test(`the pane's shell gives each command its whole output and exit code, whatever its shell syntax${name}`, {skip, timeout: 30_000}, async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'pair-runs-'));
+  test(`the pane's shell gives each command its whole output and exit code, whatever its shell syntax${name}`, {skip, timeout: 30_000}, async t => {
+    const dir = tempDir(t, 'pair-runs-');
     const {results, runs} = await runInPane({setup: scoutPaneConfig({sandbox}), cwd: dir, dir: join(dir, 'pane'), commands: COMPOUND});
     await new Promise(resolve => setTimeout(resolve, 1500)); // the job in the background prints after its command ended
     assert.deepEqual(results[0], {exit: 1, output: 'out\nerr'});
@@ -45,8 +52,8 @@ for (const [name, sandbox] of [['', false], [' in the sandbox', true]]) {
   });
 }
 
-test('once a command has ended, the shell is at its prompt for the next one, also right away', {skip: hasBash ? false : 'bash not installed', timeout: 60_000}, async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'pair-runs-'));
+test('once a command has ended, the shell is at its prompt for the next one, also right away', {skip: hasBash ? false : 'bash not installed', timeout: 60_000}, async t => {
+  const dir = tempDir(t, 'pair-runs-');
   // runInPane reads `next` the moment each command ended, as a run queued behind it does.
   const {results} = await runInPane({setup: scoutPaneConfig({sandbox: false}), cwd: dir, dir: join(dir, 'pane'), commands: Array.from({length: 300}, (_, i) => `echo ${i}`)});
   assert.equal(results.length, 300);
@@ -55,8 +62,8 @@ test('once a command has ended, the shell is at its prompt for the next one, als
 
 const hasScript = spawnSync('script', ['--version']).status === 0;
 
-test('on a terminal, Ctrl-C ends a command and keeps its output, also with a job left in the background', {skip: hasBash && hasScript ? false : 'needs bash and script (util-linux)', timeout: 20_000}, async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'pair-runs-'));
+test('on a terminal, Ctrl-C ends a command and keeps its output, also with a job left in the background', {skip: hasBash && hasScript ? false : 'needs bash and script (util-linux)', timeout: 20_000}, async t => {
+  const dir = tempDir(t, 'pair-runs-');
   const {results, runs, shell} = await runInPane({setup: scoutPaneConfig({sandbox: false}), cwd: dir, dir: join(dir, 'pane'), commands: ['sleep 30 &'], terminal: true});
   try {
     assert.equal(results[0].exit, 0);
@@ -82,8 +89,8 @@ test('shellQuote makes one word of anything', () => {
   assert.equal(shellQuote("it's $HOME; rm -rf /"), "'it'\\''s $HOME; rm -rf /'");
 });
 
-test('the pane opens beside the chat, runs commands one at a time and types only into itself', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'pair-herdr-'));
+test('the pane opens beside the chat, runs commands one at a time and types only into itself', async t => {
+  const dir = tempDir(t, 'pair-herdr-');
   const socketPath = join(dir, 'herdr.sock');
   const herdr = await fakeHerdr(socketPath, {commands: {'npm test': {output: 'Tests: 1 failed, 1 total', exit: 1}, 'echo two': {output: 'two'}}});
   const pane = new ScoutPane({socketPath, workspaceId: 'w1', besidePane: 'w1:p2', cwd: '/project', runsDir: join(dir, 'panes')});
@@ -108,8 +115,8 @@ test('the pane opens beside the chat, runs commands one at a time and types only
   }
 });
 
-test('the pane starts its shell as the config says, hides herdr\'s socket and lists the rc file\'s names once', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'pair-herdr-'));
+test('the pane starts its shell as the config says, hides herdr\'s socket and lists the rc file\'s names once', async t => {
+  const dir = tempDir(t, 'pair-herdr-');
   const socketPath = join(dir, 'herdr.sock');
   const rc = join(dir, 'bashrc');
   writeFileSync(rc, "alias ll='ls -l'\n");

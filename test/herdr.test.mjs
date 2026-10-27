@@ -1,10 +1,17 @@
 import assert from 'node:assert/strict';
-import {mkdtempSync} from 'node:fs';
+import {mkdtempSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {foregroundCommand, PaneWatch, plainLine} from '../src/herdr.mjs';
 import {fakeHerdr} from './fake-herdr.mjs';
+
+/** A new folder in the system's temp folder, removed when test `t` ends, passed or failed. */
+function tempDir(t, prefix) {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  t.after(() => rmSync(dir, {recursive: true, force: true}));
+  return dir;
+}
 
 test('foregroundCommand is null at the shell prompt and the argv otherwise', () => {
   const shell = {pid: 10, name: 'bash', argv: ['/usr/bin/bash']};
@@ -29,8 +36,8 @@ test('plainLine: one line of text, without Enter or any other control key', () =
   }
 });
 
-test('type sends plain text to the user\'s terminal pane only, and never Enter', async () => {
-  const socketPath = join(mkdtempSync(join(tmpdir(), 'pair-herdr-')), 'herdr.sock');
+test('type sends plain text to the user\'s terminal pane only, and never Enter', async t => {
+  const socketPath = join(tempDir(t, 'pair-herdr-'), 'herdr.sock');
   const herdr = await fakeHerdr(socketPath);
   const watch = new PaneWatch({socketPath, workspaceId: 'w1', chatPane: 'w1:p2', scout: {paneId: 'w1:p3'}, emit: () => {}});
   watch.paneState('w1:p4').editor = true;
@@ -54,7 +61,7 @@ async function until(check, what) {
 }
 
 async function watching(t) {
-  const socketPath = join(mkdtempSync(join(tmpdir(), 'pair-herdr-')), 'herdr.sock');
+  const socketPath = join(tempDir(t, 'pair-herdr-'), 'herdr.sock');
   const herdr = await fakeHerdr(socketPath);
   const events = [];
   const watch = new PaneWatch({socketPath, workspaceId: 'w1', chatPane: 'w1:p2', emit: event => events.push(event)});

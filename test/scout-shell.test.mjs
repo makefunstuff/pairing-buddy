@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {spawn, spawnSync} from 'node:child_process';
-import {existsSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
 import {createServer} from 'node:net';
 import {homedir, tmpdir} from 'node:os';
 import {basename, join} from 'node:path';
@@ -26,8 +26,15 @@ set -euo pipefail
 echo "rc loaded"
 `;
 
-/** Types `commands` into the pane's shell for `setup` in `cwd`: each command's `{exit, output}`. */
-const runInShell = async (setup, cwd, commands) => (await runInPane({setup, cwd, dir: join(scratch(), 'pane'), commands})).results;
+/** Types `commands` into the pane's shell for `setup` in `cwd`: each command's `{exit, output}`. Its files go after. */
+async function runInShell(setup, cwd, commands) {
+  const dir = scratch();
+  try {
+    return (await runInPane({setup, cwd, dir: join(dir, 'pane'), commands})).results;
+  } finally {
+    rmSync(dir, {recursive: true, force: true});
+  }
+}
 
 test('scoutPane in the config: an rc file, the sandbox, its network and the folders it may write', () => {
   assert.deepEqual(scoutPaneConfig(), {rc: null, sandbox: 'auto', network: false, writable: []});
