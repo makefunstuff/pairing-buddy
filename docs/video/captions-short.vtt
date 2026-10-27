@@ -1,64 +1,70 @@
 WEBVTT
 
-00:00:00.320 --> 00:00:02.360
-This is pairing buddy:
+00:00:00.430 --> 00:00:04.470
+Pairing buddy is an AI pair programmer for Neovim.
 
-00:00:02.360 --> 00:00:05.060
-an AI pair that sits in Neovim,
+00:00:04.470 --> 00:00:07.240
+Here are three moments from an ordinary day.
 
-00:00:05.060 --> 00:00:07.970
-and speaks only when it matters.
+00:00:08.550 --> 00:00:11.850
+You edit the wrong file while a test is red.
 
-00:00:07.970 --> 00:00:09.430
-A test is red,
+00:00:11.850 --> 00:00:13.160
+Watch the margin.
 
-00:00:09.430 --> 00:00:11.970
-and you start fixing the wrong file.
+00:00:14.910 --> 00:00:16.640
+You change the backoff.
 
-00:00:11.970 --> 00:00:13.870
-Pair reads the code first,
+00:00:23.508 --> 00:00:26.468
+Pair speaks once, under your line.
 
-00:00:13.870 --> 00:00:16.129
-then says it right under your line:
+00:00:26.468 --> 00:00:29.818
+The real cause is in worker dot go.
 
-00:00:16.129 --> 00:00:18.050
-the cause is elsewhere.
+00:00:29.818 --> 00:00:31.488
+Alt J goes there.
 
-00:00:18.050 --> 00:00:19.550
-Alt J jumps there.
+00:00:37.238 --> 00:00:39.818
+You fix one line, and save.
 
-00:00:22.398 --> 00:00:24.918
-Save, and it runs your tests.
+00:00:39.818 --> 00:00:42.928
+Watch the statusline, then the ghost text.
 
-00:00:24.918 --> 00:00:26.838
-Your fix broke a queue test?
+00:00:44.398 --> 00:00:47.828
+Pair runs your tests on every save.
 
-00:00:26.838 --> 00:00:30.298
-Pair says why, and Alt Y takes its fix.
+00:00:47.828 --> 00:00:51.198
+A test that passed before now fails.
 
-00:00:31.968 --> 00:00:34.488
-Or hand it the wheel with Pair drive.
+00:00:53.218 --> 00:00:56.778
+Alt J shows Pair’s fix as ghost text:
 
-00:00:34.488 --> 00:00:37.608
-You watch it type, it tests your unsaved buffer,
+00:00:56.778 --> 00:01:00.788
+the old line struck through, the new one under it.
 
-00:00:37.608 --> 00:00:39.968
-and one undo takes it all away.
+00:01:00.788 --> 00:01:02.488
+Alt Y takes it.
 
-00:00:41.678 --> 00:00:43.378
-Notes in the margin.
+00:01:02.488 --> 00:01:04.238
+Save, and it’s green.
 
-00:00:43.378 --> 00:00:46.158
-A first slice from a blank page.
+00:01:08.128 --> 00:01:10.488
+You hand Pair the wheel for one change.
 
-00:00:46.158 --> 00:00:49.838
-A ledger of everything it did, and a morning pick-up.
+00:01:10.488 --> 00:01:11.998
+Watch your code.
 
-00:00:51.675 --> 00:00:54.375
-Any model, local or cloud.
+00:01:13.548 --> 00:01:16.058
+Pair drive, and say what you want.
 
-00:00:54.375 --> 00:00:55.555
-Pairing buddy:
+00:01:21.281 --> 00:01:26.251
+It types where you can see it, tests the unsaved buffer, and hands back.
 
-00:00:55.555 --> 00:00:57.455
-the person in the second chair.
+00:01:29.601 --> 00:01:32.691
+U undoes it all, in one step.
+
+00:01:36.581 --> 00:01:37.901
+Pairing buddy.
+
+00:01:37.901 --> 00:01:41.911
+The full tutorial, the docs and the code are on GitHub.

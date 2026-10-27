@@ -2,10 +2,11 @@
 # Records the setup scenes of the film: run.sh <tape> ...  (default: every tape in tapes/). The Neovim scenes come
 # from docs/captures/record.sh instead (see clips.sh).
 # Each tape gets a fresh scratch dir under /tmp: a home with nothing of yours in it, scratch XDG dirs, and for the
-# start tape a git copy of hookd/, a stand-in local model (local-model.mjs) and a daemon on its own socket there
-# (never the running pairing-buddy service). It is /tmp and not $TMPDIR on purpose: the sandbox's paths show in the
-# videos. It goes when the tape ends, recorded, failed or interrupted, with the model, the daemon and Neovim stopped
-# first; CAP_KEEP=1 keeps it. Needs VHS 0.11, ttyd and Neovim 0.11+.
+# start tape a git copy of hookd/, a config for DeepSeek, its key in the sandbox's auth.json (read at run time from
+# ~/.pi/agent/auth.json, never printed) and a daemon on its own socket there (never the running pairing-buddy
+# service). It is /tmp and not $TMPDIR on purpose: the sandbox's paths show in the videos. It goes when the tape
+# ends, recorded, failed or interrupted, with the daemon and Neovim stopped first; CAP_KEEP=1 keeps it.
+# Needs VHS 0.11, ttyd and Neovim 0.11+.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../../.." && pwd)
@@ -46,22 +47,26 @@ ENV
 export npm_config_prefix=$dir/npm-global npm_config_cache=$home/.cache/npm npm_config_update_notifier=false npm_config_fund=false npm_config_audit=false MISE_SKIP_RESHIM=1
 export PATH=$dir/bin:$dir/npm-global/bin:$(dirname "$(command -v node)"):/usr/bin:/bin
 ENV
-  elif [ "$name" = start ]; then # pair setup done, the plugin in Neovim's config, one Neovim connected, one local model
+  elif [ "$name" = start ]; then # pair setup done, the plugin in Neovim's config, one Neovim connected, one cloud model
     mkdir -p "$dir/bin" "$home/.config/pairing-buddy" "$home/.config/pbcap" && cp "$here/systemctl" "$dir/bin/"
     printf '#!/bin/sh\nexec node %s/bin/pair.mjs "$@"\n' "$repo" > "$dir/bin/pair" && chmod +x "$dir/bin/pair"
     cat > "$home/.config/pairing-buddy/config.json" <<'JSON'
 {
-  // One local model for both roles: the Watcher scores, the Partner thinks.
-  "model": {"api": "openai", "baseUrl": "http://localhost:8080/v1", "model": "local-model",
-            "compat": {"supportsReasoningEffort": true}}
+  // One model for both roles: the Watcher scores, the Partner thinks.
+  "model": {"provider": "deepseek", "model": "deepseek-flash"}
 }
 JSON
+    # The key, as `pair auth login deepseek` would store it: pi's entry is the key or "!command" that prints it.
+    node -e '
+      const {readFileSync, writeFileSync} = require("node:fs"), {execFileSync} = require("node:child_process");
+      const {key} = JSON.parse(readFileSync(require("node:os").homedir() + "/.pi/agent/auth.json", "utf8")).deepseek;
+      const secret = key.startsWith("!") ? execFileSync("sh", ["-c", key.slice(1)], {encoding: "utf8"}).trim() : key;
+      writeFileSync(process.argv[1], JSON.stringify({deepseek: {type: "api_key", key: secret}}), {mode: 0o600});
+    ' "$home/.config/pairing-buddy/auth.json"
     printf "vim.opt.rtp:prepend('%s')\nrequire('pair').setup({auto_connect = true})\n" "$repo" > "$home/.config/pbcap/init.lua"
     cat >> "$dir/env.sh" <<ENV
 export PATH=$dir/bin:$(dirname "$(command -v node)"):/usr/bin:/bin NODE_NO_WARNINGS=1
 ENV
-    (cd "$here" && exec node local-model.mjs 8080) > "$dir/model.log" 2>&1 &
-    model=$!
     (set +u; source "$dir/env.sh"; pair setup < /dev/null > "$dir/setup.log" 2>&1; cd "$dir/hookd" && setsid nvim --headless -c "lua require('pair').connect()" internal/delivery/worker.go > /dev/null 2>&1 < /dev/null & echo $! > "$dir/nvim.pid")
   else
     echo "run.sh: no setup for the tape $name" >&2; exit 1

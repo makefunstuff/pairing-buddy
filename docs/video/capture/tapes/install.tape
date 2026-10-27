@@ -2,7 +2,7 @@
 # run.sh fills in @PBCAP@ (its scratch dir) and @HERE@ (this folder).
 Output "@HERE@/../clips/install.mp4"
 Source "@HERE@/head.tape"
-Set FontSize 28
+
 Hide
 Type "source @PBCAP@/env.sh && cd ~ && clear"
 Enter

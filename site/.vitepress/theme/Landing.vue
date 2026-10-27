@@ -1,12 +1,13 @@
 <script setup>
-// The front page: what Pair is, the tour and three moments, how it works, its models, and the install.
-// The tour's chapters come from docs/video/chapters.json, which docs/video/build.mjs writes. The three loops come from
+// The front page: what Pair is, the tutorial and three moments, how it works, its models, and the install.
+// The tutorial's chapters and length come from docs/video/chapters.json, which docs/video/build.mjs writes. The three loops come from
 // docs/captures/encode.sh, and their callouts are timed on those clips.
 import {onBeforeUnmount, onMounted, ref} from 'vue';
 import {withBase} from 'vitepress';
 import tour from '../../../docs/video/chapters.json';
 
 const chapters = tour.chapters;
+const minutes = Math.round(tour.length / 60);
 const video = ref(null);
 const media = path => withBase(`/media/${path}`);
 const sprite = name => withBase(`/sprites/${name}.svg`); // site/sprites/build.mjs draws them
@@ -153,23 +154,23 @@ onBeforeUnmount(() => { near?.disconnect(); seen?.disconnect(); });
         </ul>
         <div class="cta">
           <a class="btn primary" :href="withBase('/getting-started.html')">Get started <span aria-hidden="true">→</span></a>
-          <a class="btn" href="#tour">Watch the 6-minute tour</a>
+          <a class="btn" href="#tour">Watch the {{ minutes }}-minute tutorial</a>
           <a class="btn ghost" href="https://github.com/makefunstuff/pairing-buddy">GitHub</a>
         </div>
       </div>
 
       <div class="wrap wide" id="tour">
         <div class="window">
-          <div class="bar" aria-hidden="true"><i></i><i></i><i></i><span>The tour · 6 min · with captions</span></div>
+          <div class="bar" aria-hidden="true"><i></i><i></i><i></i><span>The tutorial · {{ minutes }} min · with captions</span></div>
           <video ref="video" controls playsinline preload="none" :poster="media('hero-poster.jpg')" width="1280" height="720"
-            aria-label="Video: a six-minute tour of everything pairing-buddy does, with captions">
+            :aria-label="`Video: a ${minutes}-minute tutorial of how pairing-buddy works, with a voiceover and captions`">
             <source :src="media('hero.webm')" type="video/webm">
             <source :src="media('hero.mp4')" type="video/mp4">
             <track kind="captions" :src="media('hero.vtt')" srclang="en" label="English">
             <track kind="chapters" :src="media('hero-chapters.vtt')" srclang="en" label="Chapters">
           </video>
         </div>
-        <div class="chapters" aria-label="Chapters of the tour">
+        <div class="chapters" aria-label="Chapters of the tutorial">
           <button v-for="c in chapters" :key="c.at" class="chip" type="button" @click="seek(c.at)"><b>{{ c.clock }}</b>{{ c.title }}</button>
         </div>
       </div>
@@ -341,7 +342,7 @@ h1 { font: 600 clamp(36px, 6vw, 68px)/1.05 var(--px-font-pixel); letter-spacing:
 .btn.primary { color: var(--px-black); background: var(--px-yellow); }
 .btn.primary:hover { background: var(--px-orange); }
 
-/* framed windows: the tour and the loops */
+/* framed windows: the tutorial and the loops */
 #tour { margin-top: 64px; z-index: 1; }
 .window { position: relative; background: var(--pair-window); border: var(--px-border) solid var(--pair-ink); box-shadow: var(--pair-shadow-lg); }
 .bar { display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px; background: var(--pair-window-bar); border-bottom: var(--px-border) solid var(--pair-ink); }

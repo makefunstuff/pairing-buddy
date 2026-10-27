@@ -2,7 +2,7 @@
 
 The clips and stills of the three moments and the ledger ([docs/neovim.md](../neovim.md) and the site) are recorded
 from the tapes here. They show the plugin and the daemon of this checkout as they ship. Only the models are scripted, so a
-recording comes out the same each time.
+recording comes out the same each time; the tutorial video's scenes use a real model instead ([below](#the-tutorials-scenes)).
 
 - **The daemon** is the real one: `pair daemon`, with a config that points both models at a local stand-in server.
 - **The models:** [model.mjs](model.mjs) is a small OpenAI-compatible server. The Watcher's score depends on the
@@ -69,6 +69,30 @@ recording comes out the same each time.
 | [notes](tapes/notes.tape) | notes in the margin: the marks, a fixed line, a decision logged, the tasks panel |
 | [teach](tapes/teach.tape) | Alt-? on a remark: the idea worth keeping behind it, and its link |
 | [no-herdr](tapes/no-herdr.tape) | without herdr: `:Pair chat` opens the chat in Neovim, and Scout's pane is a `:terminal` along the bottom, sandboxed |
+
+## The tutorial's scenes
+
+The tapes named `t-*` record the scenes of the tutorial video ([docs/video](../video/)). They differ from the ones
+above in three ways:
+
+- **A real model.** With `CAP_MODEL=deepseek`, the stage points both roles at DeepSeek (`deepseek-flash`) instead of
+  the scripted server, so nothing Pair says or does is written in advance. The key is read at run time from
+  `~/.pi/agent/auth.json` (the key itself, or `!command` that prints it) into the scene's own `auth.json`, mode 600,
+  where the daemon finds it; it is never in an environment variable, so the shell VHS types into cannot print it.
+- **The whole screen.** [tutorial/head.tape](tutorial/head.tape) records 1920x1080 at 16 px, an everyday size, and
+  every Neovim scene has the same layout: the code, your terminal under it ([tutorial/terminal.tape](tutorial/terminal.tape)),
+  and Pair's chat on the right, opened with `:Pair chat` ([tutorial/chat.tape](tutorial/chat.tape)), where each scene
+  types its goal.
+- **No herdr.** A `t-` scene is set up as the scene of the same name without the prefix (`t-scout` has its own), and
+  runs without herdr or its stand-in, so Neovim itself tells Pair which terminal you look at, and Pair's pane opens as
+  a `:terminal` along the bottom, on screen.
+
+The tapes wait for what they need to see (a question, a suggestion, `u undoes it`), so a take fails rather than
+going on when the model says something else; record it again.
+
+```sh
+CAP_MODEL=deepseek docs/captures/record.sh t-wrong-turn t-tests-on-save   # and so on; t-push-to-talk also needs CAP_WHISPER_MODEL
+```
 
 ## Recording
 

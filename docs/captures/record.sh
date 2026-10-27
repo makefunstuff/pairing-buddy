@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Records the scenes with VHS into out/: ./record.sh [scene ...] (default: all of them).
+# Records the scenes with VHS into out/: ./record.sh [scene ...] (default: all of them but the tutorial's t-*).
 # CAP_LOOK=site records the site's loops instead: the same scenes in tokyonight with a larger font (tapes/head-site.tape),
 # into out/site/, so that the docs' GIFs and stills in out/ stay as they are.
+# CAP_MODEL=deepseek gives the stage a real model (see README.md, the tutorial's scenes).
 # Each scene gets its own scratch directory under /tmp/paircap.*: the project, the daemon's socket and data, and
 # Neovim's XDG directories. It is /tmp and not $TMPDIR on purpose: its paths show in the videos, and a short one keeps
 # the socket paths short. It goes when the scene ends, recorded, failed or interrupted, with the stage stopped first;
