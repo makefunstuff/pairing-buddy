@@ -6,7 +6,7 @@ import {connect} from 'node:net';
 import {dirname, join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {parseArgs} from 'node:util';
-import {authStates, login, logout, providerModels} from '../src/auth.mjs';
+import {authStates, login, logout, providerDecisionModels, providerModels} from '../src/auth.mjs';
 import {runChat} from '../src/chat.mjs';
 import {authPath, configPath, createConfig, defaultSocketPath, loadConfig, rolesText, sameModel, serviceEnvPath} from '../src/config.mjs';
 import {loadSizedConfig} from '../src/context-window.mjs';
@@ -132,7 +132,9 @@ async function auth([action, id]) {
   if (action === 'list' || action === undefined) return authList();
   if (action === 'models') {
     if (!id) throw new Error('name the provider: `pair auth models PROVIDER`');
-    return console.log(providerModels(id).join('\n'));
+    const decisions = providerDecisionModels(id);
+    const chat = providerModels(id);
+    return console.log([...chat, ...(decisions.length ? [...(chat.length ? [''] : []), 'Decision models, for "decision":', ...decisions] : [])].join('\n'));
   }
   throw new Error(`\`pair auth ${action}\`: the actions are login, logout, list and models`);
 }

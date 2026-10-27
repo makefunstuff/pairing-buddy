@@ -6,7 +6,8 @@ Pair asks two models, one for each of its two jobs:
   about a second, and it never thinks.
 - The **Partner** writes what Pair says and uses its role's tools. It thinks before it answers.
 
-One model can do both. Each model comes from one of three places:
+One model can do both. A third, optional model, the [decision model](decision.md), is a classifier that helps the
+speak gate decide with probabilities. Each model comes from one of three places:
 
 | Where | What you set | Key |
 | --- | --- | --- |
@@ -157,4 +158,6 @@ A model endpoint that stops answering does not turn into a stream of errors:
   in case the model is back, and gets one short error if not.
 - A tiny request every 30 seconds notices when the model answers again; the warning goes away and the chat says so.
 - The daemon also checks both models when it starts, so a dead endpoint shows at once.
+- A [decision model](decision.md#when-it-is-down-or-slow) that is down or slower than its `timeoutMs` is said once
+  the same way. Pair does not go quiet for it: the Watcher's score and the bar decide until it answers again.
 - A Partner request that gets no answer for 90 seconds (four minutes while it thinks) fails, and is retried twice.

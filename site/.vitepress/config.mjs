@@ -79,6 +79,7 @@ export default defineConfig({
       {text: 'Models', items: [
         {text: 'Models and providers', link: '/models'},
         {text: 'The Watcher', link: '/watcher'},
+        {text: 'The decision model', link: '/decision'},
       ]},
       {text: 'Roles', items: [
         {text: 'Roles at a glance', link: '/roles'},

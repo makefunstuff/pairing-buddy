@@ -26,7 +26,9 @@ you think, and take the keyboard only when you hand it over. Pair aims for that:
 
 - **It speaks rarely.** A small, fast model, the Watcher, scores each moment first, and most moments are not worth a
   word. On a slow server Pair skips the moments you can see on screen, and still asks
-  about the ones you cannot ([watcher](docs/watcher.md#when-the-server-is-slow)). Remarks that can wait are held until your next break.
+  about the ones you cannot ([watcher](docs/watcher.md#when-the-server-is-slow)). An optional
+  [decision model](docs/decision.md) (a classifier such as TypeSafe's Jev or Cloudflare's Clef) can sort the moments
+  first and say, with a probability, whether one is worth interrupting you for. Remarks that can wait are held until your next break.
 - **It shows, in place.** Its words appear under the line you are on, it points at the line it means, and a suggested
   change is one key to take.
 - **It runs what you'd skip.** Save, and it runs the project's tests and tells you what your fix broke elsewhere.
@@ -71,7 +73,8 @@ your keys and logins).
 
 - [Getting started](docs/getting-started.md) and [install and daily use](docs/install.md)
 - [How it works](docs/how-it-works.md), [roles](docs/roles.md) and [workflows](docs/workflows.md)
-- [Models and providers](docs/models.md): local servers, API keys, subscription logins, one model for both roles
+- [Models and providers](docs/models.md): local servers, API keys, subscription logins, one model for both roles,
+  and the optional [decision model](docs/decision.md)
 - Reference: [configuration](docs/config.md), [Neovim plugin](docs/neovim-plugin.md), [commands](docs/cli.md)
 - [Troubleshooting](docs/troubleshooting.md) and [known limitations](docs/limitations.md)
 - [Data and privacy](docs/data.md), [tests](docs/testing.md)

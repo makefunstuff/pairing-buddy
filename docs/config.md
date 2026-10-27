@@ -13,8 +13,8 @@ The daemon takes a change as you save the file (also through a symlink), without
 and Neovim what it reloaded. It checks the new config as at start: one with an error is not taken, and the chat says
 why while the daemon keeps the config it runs. Run `pair doctor` after a change to check the models.
 
-- **At once**: the typing pause, `autoTune`, `keepWarm`, `watcherPace`, `testOnSave`, `voice`, `taskCommand` and
-  `board`, in open sessions too.
+- **At once**: the typing pause, `autoTune`, `keepWarm`, `watcherPace`, the `decision` model, `testOnSave`, `voice`,
+  `taskCommand` and `board`, in open sessions too.
 - **Between turns**: new `model` or `models` entries (and their thinking levels). An answer under way finishes on
   the old model; the next one is the new model's, in the same conversation.
 - **For new sessions**: `level` and `sessionRoots`. An open session keeps its own level; `/level` changes it.
@@ -30,6 +30,7 @@ why while the daemon keeps the config it runs. Run `pair doctor` after a change 
 | `autoTune` | `true` | Your feedback tunes the bars and budget ([memory.md](memory.md#learning-when-to-talk)) |
 | `keepWarm` | `true` for a Watcher with `"api": "openai"`, else `false` | While you work, ask the Watcher's model for one token every 4 minutes, so a server that unloads idle models keeps it loaded ([watcher.md](watcher.md#keep-warm)) |
 | `watcherPace` | `true` | While the Watcher's calls take 1.5 s or more (the median of its last calls), ask about fewer kinds of moment: the ones you can see for yourself go first and, with `autoTune` on, those whose remarks you dismiss before those you keep. Every kind comes back once calls take 1 s or less. `false` asks about every kind however slow the server is ([watcher.md](watcher.md#when-the-server-is-slow)) |
+| `decision` | none | A decision (classifier) model the speak gate asks whether a remark is worth it, with probabilities: TypeSafe's Jev, Cloudflare's Clef, OpenAI's Decisions API, or a gateway of your own. Without it the Watcher's score and the bar decide ([decision.md](decision.md#configure)) |
 | `typingPauseMs` | `2000` | How long after a keystroke you count as typing |
 | `testOnSave` | none | A test command per project folder, run when you save ([below](#testonsave), [tests-on-save.md](tests-on-save.md)) |
 | `sessionRoots` | `[]` | Folders that are projects of their own, for a monorepo ([session roots](#session-roots)) |
@@ -75,6 +76,10 @@ so it must stay under a second. The Partner's words are what you act on, and a f
 far more often. `"thinking": {"remark": "medium"}` lets remarks think more, `"thinking": "off"` switches it off
 everywhere. `pair doctor` checks that the Partner does think, and that the Watcher does not. Details in
 [watcher.md](watcher.md#thinking-the-partner-not-the-watcher).
+
+The optional `decision` entry takes the same `provider`, `model` and key fields, an `api` of its own (`"openai"` for
+OpenAI's Decisions API, `"system-one"` or `"llama-cpp"`) at a `baseUrl`, and `timeoutMs` (default 1500): see
+[decision.md](decision.md#configure).
 
 ## `testOnSave`
 
@@ -143,7 +148,8 @@ the monorepo's root stays in the root's project. Pair reads, points and suggests
 | normal | 6 | 6 per hour | 3 min |
 | chatty | 4 | 15 per hour | 90 s |
 
-Answers to your own questions do not count against the budget. With `autoTune` on, your feedback moves each
+With a [decision model](decision.md), the bar is also the share the "speak now" probability needs: 80% at quiet, 60%
+at normal, 40% at chatty. Answers to your own questions do not count against the budget. With `autoTune` on, your feedback moves each
 trigger's bar and scales the budget within fixed bounds, per project ([memory.md](memory.md#learning-when-to-talk)).
 Change the level for a session with `/level` in the chat or `:Pair level` in Neovim.
 

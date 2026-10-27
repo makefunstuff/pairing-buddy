@@ -86,6 +86,14 @@ Runs every test that needs no model, in under a minute, with scripted models and
   reloads. The pace: its levels and their border, verdicts ranking what it gives up, and, end to end against a fake
   server answering in 1.7 s, drift costing no call while a failure is still scored. `node test/pace-bench.mjs` (not
   part of `npm test`, about 2 minutes) measures calls and waits before and after the pace at set latencies.
+- **The decision model.** Fake decision models stand in for a real one (`test/decision.test.mjs`): fixed
+  probabilities, one that is slow and ignores the abort signal (given up at its timeout), one that is down or throws,
+  and malformed answers (the wrong type, a probability outside 0 to 1, a choice that was not offered, none at all).
+  The config entry, the catalog and gateway models pi-ai builds, the gate's sort, its speak probability against the
+  bar and its fallback to the rules, the pace on the Watcher's path only, the state the model is told, the log and
+  the ledger, `pair stats`'s section, and `pair doctor` and pi-ai's System One request against a fake HTTP server.
+  End to end (`test/decision-daemon.test.mjs`): a failure let through without the Watcher, then the model down, said
+  once in the chat, and the next failure scored by the Watcher. No provider is called.
 - **Context windows and thinking settings.** The window from vLLM's, llama.cpp's and LM Studio's metadata or pi-ai's
   catalog, the config's own winning; `pair doctor --thinking` against fake servers that take a chat-template switch
   with a budget field, or `reasoning_effort` with three levels.
