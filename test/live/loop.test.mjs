@@ -105,6 +105,7 @@ describe('the exploration loop on live models', {skip}, () => {
       t.diagnostic(`tools: ${calls.map(call => `${call.name}(${JSON.stringify(call.args)})`).join(', ')}`);
       // say's hand gets the words themselves, point's its arguments.
       const words = [...calls.map(call => (call.name === 'say' ? call.args : call.name === 'point' ? call.args.note : '')), answer].filter(Boolean).join('\n');
+      t.diagnostic(`words: ${words}`);
       return {answer, words, points: calls.filter(call => call.name === 'point' || call.name === 'suggest')};
     }
 
