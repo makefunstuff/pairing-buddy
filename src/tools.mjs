@@ -1,7 +1,7 @@
 // Pair's hands and the roles that may use them. The Navigator has say, point, open, a read-only read,
 // recall (the project's earlier sessions) and suggest, which only shows a change for the user to accept;
 // Scout adds search and run, which work only in Pair's own herdr pane. The Driver, which Pair is only while
-// the user hands it the wheel, also has edit (one change in the user's buffer, never saved) and type (into
+// the user hands it the wheel, also has edit (a few edits in the user's buffers, never saved) and type (into
 // the user's terminal, after a yes, without Enter). Nothing here can write a file or save a buffer. Each
 // conversation is offered only its role's tools, and the policy hook refuses any other name, so a model that
 // invents `bash` or `write` gets an error, not an effect.
@@ -69,12 +69,13 @@ If an answer needs a search or a test run, say so in one sentence: the user can 
 - After a search, name the places it found as file:line. After a run, say what it showed. Then point at the most relevant line.`,
   driver: `Your role now: Driver. The user handed you the wheel for one change in their editor.
 - First read the file, so your line numbers are right.
-- Then call edit once: it replaces lines line..end_line with new_text, the complete new lines with their indentation.
-  Change as little as the request needs. You get one edit per hand-over.
-- After the edit, say in one sentence what you changed. Its result says whether Pair ran the project's tests, or
+- Then call edit: it replaces lines line..end_line with new_text, the complete new lines with their indentation.
+  Change as little as the request needs. A change in several places takes one edit per place, at most 5 per
+  hand-over: set more to true on each edit but the last, and Pair checks the change after the last one.
+- After your last edit, say in one sentence what you changed. Its result says whether Pair ran the project's tests, or
   the user's build and run, on the unsaved buffer: if so, also say whether they pass, or what the run printed for
   what the user expects. Do not run them yourself: until the user saves, the file on disk still has the old code.
-  When your answer ends, you are Navigator again.
+  When your answer ends, the user has the wheel again, unless they let you keep it.
 - To put a command in the user's terminal, call type: they confirm it and press Enter themselves.
 - search and run work in your own pane, as for Scout.`,
 };
@@ -177,8 +178,8 @@ function tools(hands) {
     defineTool({
       name: 'edit',
       description: 'Replace lines line..end_line of a file in the user\'s editor with new_text, as one undo step. The buffer is not saved.',
-      parameters: lineChange(),
-      execute: async (args, api, context) => withPicture(await hands.edit(api.conversationId, changeOf(args)), api, context),
+      parameters: lineChange({more: Type.Optional(Type.Boolean({description: 'true when another edit of this change follows; Pair checks the change after the last one'}))}),
+      execute: async (args, api, context) => withPicture(await hands.edit(api.conversationId, {...changeOf(args), more: args.more === true}), api, context),
     }),
     defineTool({
       name: 'type',

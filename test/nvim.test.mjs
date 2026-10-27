@@ -140,7 +140,7 @@ test('the plugin reports edits, diagnostics and the selection, shows points, ser
     assert.match(seen, /1: const x = 2/, 'read returned the unsaved buffer text');
     assert.equal(readFileSync(join(project, 'a.js'), 'utf8'), 'const x = 1\nconst y = 2\nconst z = 3\n', 'nothing was written to disk');
     const marks = await until(() => Number(remote(`luaeval("#vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('pair'), 0, -1, {})")`)), 'the point extmarks');
-    assert.equal(marks, 2, 'the marked lines, and the note');
+    assert.equal(marks, 3, 'the marked lines, the note, and the answer under your line');
 
     assert.equal(status(), '● reading a.js', 'the statusline names the file Pair just read');
     await until(() => status() === '● pair', 'the statusline to let it go again');
@@ -212,7 +212,7 @@ test('the wrong turn: Pair\'s words show under your line, the jump key goes to t
 test('a note that does not fit after its line goes under it, also when the window narrows; a strike starts at the code, not the indent', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
   const {partner, messages, remote, keys, send, stop} = await pairInNvim('tidy up');
   const marks = namespace => JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('${namespace}'), 0, -1, {details = true}))")`));
-  const noteUnder = () => marks('pair').some(([, , , details]) => details.virt_lines);
+  const noteUnder = () => marks('pair').some(([, , , details]) => details.virt_lines && !details.sign_text); // not the answer's words
   const noteAfter = () => marks('pair').some(([, , , details]) => details.virt_text_pos === 'eol');
   const answered = text => until(() => messages.some(message => message.text === text), `the answer "${text}"`);
   try {
@@ -317,6 +317,128 @@ test('suggestions show as a ghost diff that one key accepts; handing over gives 
     assert.match(refused, /only while the user hands you the wheel/, 'the policy refused the edit, with a reason');
     assert.equal(lines()[0], 'const x = 1');
     assert.equal(status(), '● pair');
+  } finally {
+    await stop();
+  }
+});
+
+test('several suggestions at once: each its own ghost diff, the jump key goes from one to the next, the accept key takes the one under the cursor', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
+  const {partner, messages, remote, keys, send, lines, stop} = await pairInNvim('tune the numbers', {knownKeys: ['M-y', 'M-j', 'M-?']});
+  const marks = () => JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('pair_suggest'), 0, -1, {details = true}))")`));
+  const ghostRows = () => marks().filter(([, , , details]) => details.virt_lines).map(([, row]) => row);
+  const row = () => Number(remote('line(".")'));
+  const answered = text => until(() => messages.some(message => message.text === text), `the answer "${text}"`);
+  try {
+    partner.setResponses([
+      fauxAssistantMessage([
+        fauxToolCall('suggest', {file: 'a.js', line: 1, new_text: 'const x = 10', note: 'ten'}),
+        fauxToolCall('suggest', {file: 'a.js', line: 3, new_text: 'const z = 30', note: 'thirty'}),
+      ], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxText('Two fixes.')]),
+    ]);
+    keys('2G');
+    send({type: 'ask', text: 'what should change?'});
+    await answered('Two fixes.');
+    await until(() => ghostRows().length === 2, 'both ghost diffs');
+    assert.deepEqual(ghostRows(), [0, 2]);
+
+    keys('<M-j>');
+    await until(() => row() === 1, 'the jump to the first suggestion');
+    keys('<M-j>');
+    await until(() => row() === 3, 'the jump on to the second');
+    keys('<M-y>');
+    await until(() => lines()[2] === 'const z = 30', 'the second accepted');
+    assert.equal(lines()[0], 'const x = 1', 'the first is still only suggested');
+    assert.deepEqual(ghostRows(), [0]);
+
+    // A new suggestion on the same lines replaces the one there; one elsewhere joins it.
+    partner.setResponses([
+      fauxAssistantMessage([
+        fauxToolCall('suggest', {file: 'a.js', line: 1, new_text: 'const x = 11', note: 'eleven'}),
+        fauxToolCall('suggest', {file: 'a.js', line: 2, new_text: 'const y = 22', note: 'twenty-two'}),
+      ], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxText('Better.')]),
+    ]);
+    send({type: 'ask', text: 'better?'});
+    await answered('Better.');
+    await until(() => ghostRows().length === 2 && marks().some(([, , , details]) => JSON.stringify(details.virt_lines ?? []).includes('const x = 11')), 'the replaced suggestion');
+    keys('2G:Pair dismiss<CR>');
+    await until(() => ghostRows().length === 1, 'the one under the cursor dismissed');
+    assert.ok(JSON.stringify(marks()).includes('const x = 11'), 'the other stays');
+    keys('<M-y>');
+    await until(() => lines()[0] === 'const x = 11', 'accepted from another line: the newest in the buffer');
+    assert.deepEqual(lines(), ['const x = 11', 'const y = 2', 'const z = 30']);
+    assert.deepEqual(ghostRows(), []);
+  } finally {
+    await stop();
+  }
+});
+
+test('answers to typed questions show their start under the line they were about, the rest in the chat', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
+  const {partner, messages, remote, keys, send, stop} = await pairInNvim('know the code', {knownKeys: ['M-?']});
+  const words = () => JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('pair'), 0, -1, {details = true}))")`))
+    .filter(([, , , details]) => details.virt_lines)
+    .map(([, row, , details]) => [row, details.virt_lines.map(line => line.map(chunk => chunk[0]).join('').trim())]);
+  const answered = text => until(() => messages.some(message => message.text === text), `the answer "${text}"`);
+  try {
+    keys('2G');
+    await sleep(300);
+    send({type: 'event', event: {kind: 'cursor', file: 'a.js', line: 2, col: 0}}); // CursorHold does not fire headless
+    partner.setResponses([fauxAssistantMessage([fauxText('y is two.\nIt feeds `z`.\nNothing else reads it.')])]);
+    send({type: 'ask', text: 'what is y?'});
+    await answered('y is two.\nIt feeds `z`.\nNothing else reads it.');
+    const shown = await until(() => words().length && words(), 'the answer under the line');
+    assert.deepEqual(shown, [[1, ['● y is two.', 'It feeds z. …   the chat has the rest']]], 'two lines, then where the rest is');
+
+    partner.setResponses([fauxAssistantMessage([fauxText('It sets x.')])]);
+    keys(':1Pair ask what is this?<CR>');
+    await answered('It sets x.');
+    await until(() => words()[0]?.[0] === 0, 'the answer under the selected line');
+    assert.deepEqual(words(), [[0, ['● It sets x.']]], 'short: no pointer to the chat');
+    keys('ggA;<Esc>');
+    await until(() => words().length === 0, 'the words to go with your next edit');
+  } finally {
+    await stop();
+  }
+});
+
+test(':Pair drive! keeps the wheel: several edits in one hand-over, each its own undo step, and a request after it is a hand-over too, until a key', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
+  const {partner, messages, remote, keys, send, lines, status, stop} = await pairInNvim('tune the numbers');
+  const marks = () => JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('pair'), 0, -1, {details = true}))")`));
+  const answered = text => until(() => messages.some(message => message.text === text), `the answer "${text}"`);
+  const driving = '◎ pair has the wheel · any key takes it back';
+  try {
+    partner.setResponses([
+      fauxAssistantMessage([fauxToolCall('edit', {file: 'a.js', line: 1, new_text: 'const x = 10', more: true})], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxToolCall('edit', {file: 'a.js', line: 3, new_text: 'const z = 30'})], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxText('Ten and thirty.')]),
+    ]);
+    keys(':Pair drive! x to 10 and z to 30<CR>');
+    await answered('Ten and thirty.');
+    assert.deepEqual(lines(), ['const x = 10', 'const y = 2', 'const z = 30']);
+    const handback = await until(() => marks().find(([, , , details]) => details.virt_lines), 'the hand-back line');
+    assert.equal(handback[1], 2, 'under the last edit');
+    assert.match(handback[3].virt_lines.map(line => line.map(chunk => chunk[0]).join('')).join('|'), /Ten and thirty\.   u undoes each edit/);
+    const signed = marks().filter(([, , , details]) => details.sign_text?.trim() === '▎' && !details.virt_lines).map(([, row]) => row);
+    assert.deepEqual(signed, [0, 2], 'both edits marked');
+    await sleep(300);
+    assert.equal(status(), driving, 'Pair keeps the wheel after its answer');
+
+    partner.setResponses([
+      fauxAssistantMessage([fauxToolCall('edit', {file: 'a.js', line: 2, new_text: 'const y = 20'})], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxText('Twenty.')]),
+    ]);
+    send({type: 'ask', text: 'and y to 20'});
+    await answered('Twenty.');
+    assert.equal(lines()[1], 'const y = 20');
+    assert.equal(status(), driving);
+
+    keys('u');
+    await until(() => status() === '● pair', 'a key takes the wheel back');
+    await until(() => lines()[1] === 'const y = 2', 'and u undoes the last edit');
+    keys('u');
+    await until(() => lines()[2] === 'const z = 3', 'u undoes the edits one by one');
+    assert.equal(lines()[0], 'const x = 10');
   } finally {
     await stop();
   }

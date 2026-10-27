@@ -37,7 +37,7 @@ function project() {
 
 describe('the hand-over without a test, on live models', {skip: !stacks.length ? SKIP_REASON : hasBuild ? false : 'needs cc and make'}, () => {
   for (const stack of stacks) {
-    test(`${stack.name}: an intent and a number to reach: one edit, the unsaved buffer built and run, ✓ or ✗ with the number`, {timeout: 300_000}, async t => {
+    test(`${stack.name}: an intent and a number to reach: a few edits, the unsaved buffer built and run, ✓ or ✗ with the number`, {timeout: 300_000}, async t => {
       const {root, output, exit} = project();
       let buffer = PROBE;
       let handback = null;
@@ -76,10 +76,12 @@ describe('the hand-over without a test, on live models', {skip: !stacks.length ?
       await partner.close();
       t.diagnostic(`tools: ${tools.map(call => `${call.name}(${JSON.stringify(call.args)})`).join(', ')}`);
       t.diagnostic(`hand-back: ${JSON.stringify(handback)}`);
-      assert.equal(tools.filter(call => call.name === 'edit').length, 1, 'one edit');
-      // The Driver may run its own experiments before it edits; the check is the one run in the scratch copy.
+      // A Driver whose first edit misses the target may try again: a check after each edit that ends a change.
+      const edits = tools.filter(call => call.name === 'edit');
+      assert.ok(edits.length >= 1 && edits.length <= 5, 'a few edits');
+      // The Driver may run its own experiments before it edits; the checks are the runs in the scratch copy.
       const checks = session.scout.ran.filter(command => command.includes('.unsaved/tree'));
-      assert.equal(checks.length, 1, 'one check on the unsaved buffer');
+      assert.equal(checks.length, edits.filter(call => !call.args.more).length, 'a check on the unsaved buffer after each edit without more');
       assert.match(checks[0], /\.unsaved\/tree' && \(make -s run\) > /, 'with the user\'s command, in the scratch copy');
       // Under 2 at this load takes more than a good hash, and a model does not always find it: the check has to say
       // which it was, with the number the run printed.

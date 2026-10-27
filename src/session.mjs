@@ -91,9 +91,10 @@ export function watchInput(trigger, description) {
  * What the Partner is asked when the user hands over the wheel: `words` are theirs ("you take it, ...",
  * "your turn"), or empty for a bare :Pair drive.
  */
-export function driveInput(words, description, selection = '', check = '') {
+export function driveInput(words, description, selection = '', check = '', keep = false) {
   const request = words ? `The user said: "${words}"` : 'The user gave no request: make the change you two talked about last.';
-  return `[drive] The user handed you the wheel for one change. ${request}${selection}\n\nNow:\n${description}\n\n${check}`
+  const wheel = keep ? 'You have the wheel until the user takes it back; this request is one change.' : 'The user handed you the wheel for one change.';
+  return `[drive] ${wheel} ${request}${selection}\n\nNow:\n${description}\n\n${check}`
     + 'If they said "your turn" and just wrote a failing test (see the recent edits), read it and the code it tests, '
     + 'and make it pass by changing the code, not the test. Without a test, what they said they expect to see is the goal. '
     + 'Read before you edit. If you do not know what to change, ask one short question instead of editing.';
@@ -117,6 +118,8 @@ const ROLE_NOTES = {
   scout: 'Role: Scout. Pair can also search and run read-only, test and build commands in its own pane; anything else asks you first.',
   driver: 'Role: Driver. Pair has the wheel for one change; any key in Neovim takes it back.',
 };
+const KEEP_NOTE = 'Pair keeps the wheel for each request until you take it back: any key in Neovim, or /navigate.';
+const MAX_EDITS = 5; // per hand-over: a change in a few places, still small enough to watch, and each one undo step
 
 const CONFIRM_MS = 60_000;
 const REMARKS_LISTED = 9; // /remarks lists this many, so +N and -N take one digit
@@ -180,7 +183,7 @@ export function runText({exit, timedOut, tests, reading}) {
 /** What a finished run found, for the chat and the models: its tests, else its crash or compiler errors, else `text`. */
 const summaryOf = (run, text) => (run.tests ? testSummary(run.tests) : (run.reading && readingSummary(run.reading)) || text);
 
-const DONE = 'Changed, as one undo step. That was your one edit: say in one sentence what you changed';
+const DONE = 'Changed, as one undo step. Now say in one sentence what you changed';
 
 /**
  * What the Partner hears after its edit of the check on the unsaved buffer: a test run in short; a build and run
@@ -276,8 +279,10 @@ export class PairSession {
     this.breakpoints = new Breakpoints();
     this.accent = null; // the editor's accent (see style.lua) as #rrggbb, for the chat pane
     this.panes = null; // the user's herdr panes (a PaneWatch), for the Driver's type
-    this.edited = false; // the Driver made its one edit in this hand-over
-    this.handback = null; // that edit's lines and how the check went on them: {file, line, endLine, tests, check}
+    this.edits = 0; // the edits the Driver made in this hand-over
+    this.handback = null; // the lines of its last edit, every edit's, and how the check went: {file, line, endLine, changes, tests, check}
+    this.keepWheel = false; // the user let the Driver keep the wheel for each request until they take it back
+    this.handedFrom = 'navigator'; // the role the user handed over from, which Pair goes back to
     this.handOver = null; // the hand-over's intent, expectation and check command (see check.mjs)
     this.checksAllowed = new Set(); // check commands the user allowed this session
     this.remarkId = null; // the stored remark of the running unasked turn
@@ -703,6 +708,7 @@ export class PairSession {
    * text became the goal.
    */
   async ask(text, selection = null) {
+    if (this.role === 'driver' && this.keepWheel && !this.busy) return this.drive(text, selection);
     this.message('user', selection ? `${text} (${relative(this.root, selection.file)}:${selection.from}-${selection.to})` : text);
     this.usedAt = this.now();
     this.worked = true;
@@ -718,6 +724,17 @@ export class PairSession {
     await this.yieldRemark();
     await this.talk(`[user] ${text}${await this.selected(selection)}${this.recalled(text)}\n\nNow:\n${describeState(this.state, this.now())}\n\n${KEEP.answer}`);
     return this.words.join('\n');
+  }
+
+  /**
+   * A typed question (:Pair ask, the chat): the answer goes to the chat, and to the editor to show its start under
+   * the line it was about: the last selected line, else the line the user was on when they asked.
+   */
+  async askTyped(text, selection = null) {
+    const {file, cursor} = this.state;
+    const place = selection ? {file: selection.file, line: selection.to} : file && cursor ? {file: join(this.root, file), line: cursor.line} : null;
+    const words = await this.ask(text, selection);
+    if (place && (words || this.target)) this.notify('editor', {type: 'answered', ...place, text: words, pointed: Boolean(this.target)});
   }
 
   /**
@@ -864,6 +881,7 @@ export class PairSession {
       return false;
     }
     this.role = role;
+    if (role !== 'driver') this.keepWheel = false;
     await this.configurePartner(role);
     this.announce(role);
     return true;
@@ -884,27 +902,35 @@ export class PairSession {
 
   /**
    * The user hands Pair the wheel for one change (:Pair drive, "you take it", "your turn"). Pair answers as
-   * Driver, with at most one edit, and is Navigator again when the answer is done.
+   * Driver, with up to MAX_EDITS edits, and goes back to the role it was handed over from when the answer is done.
+   * With `keep` (:Pair drive!, /drive!) it keeps the wheel, and each request after it is a hand-over too, until the
+   * user takes the wheel back. Resolves with what Pair said when it changed nothing, else ''.
    */
-  async drive(words = '', selection = null) {
+  async drive(words = '', selection = null, {keep = false} = {}) {
     if (words) this.message('user', words);
     await this.yieldRemark();
     this.usedAt = this.now();
     this.worked = true;
     if (this.busy) return this.message('system', 'Pair is still answering; hand over again once it is done.');
-    if (!(await this.setRole('driver'))) return;
-    this.edited = false;
+    if (this.role !== 'driver') {
+      const from = this.role;
+      if (!(await this.setRole('driver'))) return;
+      this.handedFrom = from;
+    }
+    if (keep && !this.keepWheel) this.message('system', KEEP_NOTE);
+    this.keepWheel ||= keep;
+    this.edits = 0;
     this.handback = null;
     const parts = parseHandOver(words);
     const check = checkCommand({given: parts.command, testCommand: this.testRuns?.command, runs: this.state.runs, root: this.root});
     this.handOver = {...parts, targets: targetsOf(parts.expect), check};
     const description = describeState(this.state, this.now());
-    await this.talk(driveInput(words, description, await this.selected(selection), checkInput(parts.expect, check)));
-    await this.handBack();
+    await this.talk(driveInput(words, description, await this.selected(selection), checkInput(parts.expect, check), this.keepWheel));
+    if (!this.keepWheel) await this.handBack();
     // The hand-back line: what Pair says it did, under the lines it changed, with how the check went on them. An
     // expectation the code could not check is the Partner's to judge: its words start with ✓ or ✗.
+    const said = this.words.join('\n');
     if (this.handback) {
-      const said = this.words.join('\n');
       const tests = this.handback.tests ?? (parts.expect ? markOf(said) : null);
       this.notify('editor', {type: 'handback', ...this.handback, tests, text: said});
     }
@@ -914,6 +940,7 @@ export class PairSession {
     // hook refused edit and type with a reason; a tool that vanished mid-answer leaves small models writing
     // the call as plain text, and the user sees nothing.
     await this.configurePartner(this.role);
+    return this.handback ? '' : said;
   }
 
   /** :Pair new: one question at a time about `idea`, then the first slice, shown in the note `file` (see blank-page.mjs). */
@@ -952,14 +979,16 @@ export class PairSession {
     return this.partner.setRole(this.conversationId, role, this.previousNote);
   }
 
-  /** Pair goes back to Navigator, if it is driving. */
+  /** Pair goes back to the role the user handed over from (Scout, if its pane is still there, else Navigator), if it is driving. */
   async handBack(note) {
     if (this.role !== 'driver') return;
-    this.role = 'navigator'; // at once: an edit or type still on its way is refused from here on
+    const role = this.handedFrom === 'scout' && this.scout ? 'scout' : 'navigator';
+    this.role = role; // at once: an edit or type still on its way is refused from here on
+    this.keepWheel = false;
     if (note) this.message('system', note);
-    this.notify('editors', {type: 'role', role: 'navigator'});
-    await this.closePane();
-    this.announce('navigator');
+    this.notify('editors', {type: 'role', role});
+    if (role === 'navigator') await this.closePane();
+    this.announce(role);
   }
 
   /** A key the user pressed in Neovim or at a shell prompt while Pair was driving. */
@@ -1223,12 +1252,14 @@ export class PairSession {
     const count = (await this.bufferText(path)).split('\n').length;
     if (line > count) return `Line ${line} is past the end of ${file}, which has ${count} lines. Read it first.`;
     this.spoke = true;
-    // The jump key goes to a suggestion before a point: that is where the one key that takes it works.
-    this.target = {file: path, line, endLine, note, suggestion: true};
+    // The jump key goes to the turn's first suggestion before a point: that is where the one key that takes it works.
+    // The editor shows every suggestion, and its jump key goes on from that one to the next.
+    const first = !this.target?.suggestion;
+    if (first) this.target = {file: path, line, endLine, note, suggestion: true};
     const remark = this.remarkId; // now: a suggestion held for the user's pause is shown after the turn ended
     const action = this.ledger.add('suggested', `${relative(this.root, path)}:${line}, ${note}`, {data: {place: {file: path, line}, remark: remark ?? undefined}});
     this.show(() => {
-      this.notify('editor', {type: 'suggest', file: path, line, endLine, text, note, remark, action});
+      this.notify('editor', {type: 'suggest', file: path, line, endLine, text, note, remark, action, aim: first});
       this.message('pair', `${file}:${line}${endLine > line ? `-${endLine}` : ''} suggestion: ${note}\n${text}`);
     });
     return 'Shown in the editor. The user accepts it with one key or ignores it.';
@@ -1324,40 +1355,49 @@ export class PairSession {
     return null;
   }
 
-  /** The Driver's one change in the user's buffer, as one undo step and unsaved. */
-  async edit({file, line, endLine, text}) {
+  /**
+   * One of the Driver's edits in the user's buffer, as one undo step and unsaved. With `more`, another edit of the
+   * same change follows, and the check waits for the last one.
+   */
+  async edit({file, line, endLine, text, more = false}) {
     // A file not written yet opens as a new buffer: the disk has it once the user saves it.
     const path = (await projectFile(this.root, file)) ?? (await newProjectFile(this.root, file));
     if (!path) return `No file ${file} in the project`;
     if (endLine < line) return `end_line ${endLine} is before line ${line}`;
     const refused = this.wheel(); // after the await: the user may have taken the wheel back meanwhile
     if (refused) return refused;
-    if (this.edited) return 'You already made your one change. Say in one sentence what you changed.';
-    this.edited = true; // before the await, so two calls in one step cannot both pass
+    if (this.edits >= MAX_EDITS) return `That was your last edit: ${MAX_EDITS} per hand-over. Say in one sentence what you changed.`;
+    this.edits++; // before the await, so calls in one step cannot pass the bound together
     const reply = await this.requestEditor({type: 'edit', file: path, line, endLine, text}).catch(error => ({error: error.message}));
     if (reply?.error) {
-      this.edited = false;
+      this.edits--;
       return `Not changed: ${reply.error}.`;
     }
     this.message('pair', `Changed ${file}:${line}${endLine > line ? `-${endLine}` : ''} (u undoes it).`);
     // The editor says which lines it changed: lines the edit kept as they were are not Pair's.
     const count = text === '' ? 0 : text.replace(/\n$/, '').split('\n').length;
-    this.handback = {file: path, line: reply.from ?? line, endLine: reply.to ?? line + Math.max(count, 1) - 1, tests: null, check: null};
+    const changed = {file: path, line: reply.from ?? line, endLine: reply.to ?? line + Math.max(count, 1) - 1};
+    this.handback = {...changed, changes: [...(this.handback?.changes ?? []), changed], tests: null, check: null};
     // With the buffer's text before and after, the ledger can undo the edit later, after other edits too.
     const patch = Array.isArray(reply.before) && Array.isArray(reply.after) ? {file: path, before: reply.before, after: reply.after} : null;
     const name = relative(this.root, path);
-    const changed = this.handback.endLine - this.handback.line + 1;
-    const typed = count ? `${changed === 1 ? 'a line' : `${changed} lines`} in ${name}` : `lines ${line}-${endLine} of ${name} deleted`;
+    const lines = changed.endLine - changed.line + 1;
+    const typed = count ? `${lines === 1 ? 'a line' : `${lines} lines`} in ${name}` : `lines ${line}-${endLine} of ${name} deleted`;
     this.ledger.add('typed', typed, {data: {place: {file: path, line: this.handback.line}, note: 'one undo step', undo: !!patch}, detail: patch && {patch}});
     // A run of its own would read the saved file, see the old code and send small models in circles.
     // An edit outside a hand-over (the blank page's slice) is checked like a bare one: no expectation.
     const {check, expect} = this.handOver ?? {check: checkCommand({testCommand: this.testRuns?.command, runs: this.state.runs, root: this.root}), expect: null};
+    const left = MAX_EDITS - this.edits;
+    if (more && left) return `Changed, as one undo step. Make your next edit (${left} left); Pair checks the change after the last one, the one without more.`;
     if (!check.command) return `${DONE}. Nothing ran on the unsaved buffer: ${check.none}. The file on disk changes only when the user saves, so do not run anything now.`;
     if (!(await this.checkAllowed(check))) return `${DONE}. The user did not allow \`${check.command}\` on the unsaved buffer, so nothing ran. Do not run it another way.`;
     const runs = check.command === this.testRuns?.command ? this.testRuns : new TestRuns({
       root: this.root, command: check.command, outputFile: this.checkOutput, pane: () => this.scout, report: run => this.testRun(run),
     });
-    const run = await runs.unsaved(path, await this.bufferText(path));
+    // Every file this hand-over changed, as its buffer has it: the check sees the whole change.
+    const texts = new Map();
+    for (const {file: changedFile} of this.handback.changes) texts.set(changedFile, await this.bufferText(changedFile));
+    const run = await runs.unsaved(texts);
     if (run.state === 'error') return `${DONE}. \`${run.label}\` could not run on the unsaved buffer: ${run.error}.`;
     const verdict = this.checked(run);
     // The line printed for what the user expects, when the code judged it; else the Partner's ✓ or ✗ says it.

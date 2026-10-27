@@ -73,7 +73,7 @@ test('edit runs only while driving: not offered otherwise, and refused by the ho
   assert.match(results[0], /not available/);
   assert.match(results[1], /only while the user hands you the wheel/);
   assert.equal(results[2], 'edit done');
-  assert.deepEqual(calls, [['edit', {file: 'a.js', line: 1, endLine: 1, text: 'x'}]]);
+  assert.deepEqual(calls, [['edit', {file: 'a.js', line: 1, endLine: 1, text: 'x', more: false}]]);
 });
 
 test('the Partner offers the model only its role\'s tools and answers with its final text', async () => {

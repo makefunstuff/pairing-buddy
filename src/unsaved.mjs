@@ -58,28 +58,33 @@ async function copyProject(root, tree) {
 }
 
 /**
- * How `command` runs on `text` as file `file` (absolute, inside `root`), with scratch files in `dir`:
- * `{command, root, texts, toProject}`. It runs in `root`; `texts` maps files to the text a run sees in them, where
- * that differs from the disk; `toProject(path)` maps a path in the run back to the project.
+ * How `command` runs on `texts` (a Map from files, absolute and inside `root`, to their unsaved text), with scratch
+ * files in `dir`: `{command, root, texts, toProject}`. It runs in `root`; `texts` maps files to the text a run sees
+ * in them, where that differs from the disk; `toProject(path)` maps a path in the run back to the project.
  */
-export async function prepareUnsaved({root, command, file, text, dir}) {
+export async function prepareUnsaved({root, command, texts, dir}) {
   await rm(dir, {recursive: true, force: true});
   await mkdir(dir, {recursive: true});
   const overlay = join(dir, 'overlay.json');
   const goCommand = overlaid(command, overlay);
   if (goCommand) {
-    const copy = join(dir, basename(file));
-    await writeFile(copy, text);
-    await writeFile(overlay, JSON.stringify({Replace: {[file]: copy}}));
-    return {command: goCommand, root, texts: new Map([[file, text]]), toProject: path => path};
+    const replace = {};
+    for (const [index, [file, text]] of [...texts].entries()) {
+      replace[file] = join(dir, `${index}-${basename(file)}`); // two edited files may share a name
+      await writeFile(replace[file], text);
+    }
+    await writeFile(overlay, JSON.stringify({Replace: replace}));
+    return {command: goCommand, root, texts, toProject: path => path};
   }
   const tree = join(dir, 'tree');
   const linked = await copyProject(root, tree);
-  const inTree = relative(root, file);
-  // Written through a link, the text would land in the project itself.
-  if (linked.some(folder => inTree.startsWith(folder + sep))) throw new Error(`${inTree} is in a dependency folder`);
-  await mkdir(dirname(join(tree, inTree)), {recursive: true});
-  await writeFile(join(tree, inTree), text);
+  for (const [file, text] of texts) {
+    const inTree = relative(root, file);
+    // Written through a link, the text would land in the project itself.
+    if (linked.some(folder => inTree.startsWith(folder + sep))) throw new Error(`${inTree} is in a dependency folder`);
+    await mkdir(dirname(join(tree, inTree)), {recursive: true});
+    await writeFile(join(tree, inTree), text);
+  }
   return {command, root: tree, texts: new Map(), toProject: path => (path?.startsWith(tree + sep) ? join(root, relative(tree, path)) : path)};
 }
 

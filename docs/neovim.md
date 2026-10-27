@@ -187,7 +187,8 @@ unsaved buffer; only the models' words are scripted.*
 4. It hands back: its words under the last line it changed, `✓` (or `✗`) in the sign column there and in the
    statusline, the `▎` still on the lines it changed, and `u undoes it`. Like any of its words, they go with your
    next edit.
-5. Everything it typed is one undo step: one `u` takes it all away, `Ctrl-R` brings it back. Nothing is saved
+5. Everything an edit typed is one undo step: one `u` takes it all away, `Ctrl-R` brings it back. A change in
+   several places is several edits, each typed like this and each its own undo step ([up to five](driver.md#handing-over)). Nothing is saved
    until you `:w`. After your next edits, the [ledger](#the-ledger) still undoes it.
 
 ![While it drives: the ghost text and Pair's cursor, a bar on each line it entered, the wheel in the statusline](images/driving.png)
@@ -197,7 +198,7 @@ unsaved buffer; only the models' words are scripted.*
 **Taking it back halfway.** Any key you press while Pair types ends it at once, and leaves **no change**: the
 lines it already entered are undone, and that key, and any you press until they are, does nothing else, so it
 cannot change the buffer under a half-typed edit. Scrolling and clicking to watch are not keys. After the typing,
-a key still takes the wheel back, and leaves the one change.
+a key still takes the wheel back, and leaves the edits it made.
 
 ![A key halfway: the lines Pair typed go, and the statusline is back at ● pair](images/take-back.gif)
 
@@ -441,13 +442,17 @@ silent. The sounds are made from sine waves by [sounds/make.sh](../sounds/make.s
 ## What each thing looks like
 
 **Words.** One or two lines under the line you are on, indented with your code, with `●` before them. At most
-three lines; the chat pane has all of them. Your next edit, anywhere, takes them away. The keys that act on them
+three lines; the chat pane has all of them. Your next edit, anywhere, takes them away.
+
+An answer to a question you typed, in the chat or with `:Pair ask`, shows the same way, under the line it was about:
+the line you were on when you asked, or the last line you selected for `:'<,'>Pair ask`. Two lines at most, then
+`… the chat has the rest` when there is more. `answers = false` keeps answers in the chat only. The keys that act on them
 follow, dimmed, each with what it does until you have used it once (`M-j goes there · M-? why`), then the key alone;
 on a line of their own when they do not fit.
 
 **Points.** The lines Pair points at get `▎` in the sign column and a faint tint; the code it means on the first
 line is underlined. Its note goes after the line when it fits in the window, else under the line, and moves when
-you resize. Editing a pointed line removes the point. The last point is where `Alt-j` (or `:Pair jump`) goes, unless Pair suggested a change since: then it goes to the suggestion, where `Alt-y` takes it.
+you resize. Editing a pointed line removes the point. The last point is where `Alt-j` (or `:Pair jump`) goes, unless Pair suggested a change since: then it goes to the suggestion, where `Alt-y` takes it, and on to the next one when Pair suggested several.
 
 **The gaze.** While Pair reads a file you have open, the line numbers it reads light up in the accent, one after
 another, with a trail of two fading behind, in about 0.8 s whatever the length. In a window without line numbers
@@ -457,7 +462,8 @@ also when it is not on screen.
 ![The gaze mid-sweep: line 19 lit, 18 and 17 fading behind it, and the statusline naming the file](images/gaze.png)
 
 **Suggestions.** The old lines are struck through from their first character (the indent stays clean), the new
-lines sit right under them on a faint tint, and the note follows with `M-y`.
+lines sit right under them on a faint tint, and the note follows with `M-y`. Several can show at once, each with its
+own: `M-y` takes the one under your cursor ([driver.md](driver.md#suggestions)).
 
 ![A suggestion in Neovim's own light colorscheme](images/suggestion.png)
 
@@ -608,8 +614,8 @@ require('pair').setup({
 | `socket` | the daemon's default | The daemon's socket |
 | `debounce_ms` | `2000` | How long after you stop typing an edit is sent |
 | `max_points` | `5` | Points kept at once |
-| `jump_key` | `'<M-j>'` | Goes where Pair pointed last, or shows a held thought. Mapped in Normal mode while it points somewhere or holds a thought |
-| `accept_key` | `'<M-y>'` | Accepts a suggestion. Mapped in Normal mode, only in that buffer and only while a suggestion shows. Avoid `<Tab>`: terminals send it for Ctrl-I, the jumplist's forward jump |
+| `jump_key` | `'<M-j>'` | Goes where Pair pointed last, or shows a held thought; from one suggestion on to the next. Mapped in Normal mode while it points somewhere or holds a thought |
+| `accept_key` | `'<M-y>'` | Accepts the suggestion under the cursor, else the newest in the buffer. Mapped in Normal mode, only in a buffer with a suggestion and only while one shows. Avoid `<Tab>`: terminals send it for Ctrl-I, the jumplist's forward jump |
 | `listen_key` | `'<M-t>'` | Hold it to speak to Pair ([voice.md](voice.md)). Mapped in Normal and Visual mode from the start |
 | `useful_key`, `noise_key` | `'<M-u>'`, `'<M-n>'` | Your verdict on Pair's last unasked remark. Mapped in Normal mode only while a remark waits for one |
 | `teach_key` | `'<M-?>'` | Asks for the idea behind Pair's words under your line, then opens its link ([below](#the-idea-behind-it)). Mapped in Normal mode while they show |
@@ -619,6 +625,7 @@ require('pair').setup({
 | `searches` | `true` | Read your Telescope and snacks.picker searches for the [search trail](#the-search-trail) |
 | `sounds` | `false` | Short [sounds](#sounds-while-you-are-away) for a green, a regression, a remark and the hand-back, only while Neovim does not have the focus |
 | `sound_volume` | `0.5` | Their volume, 0 to 1 |
+| `answers` | `true` | The first two lines of Pair's answer to a question you typed (`:Pair ask`, the chat) show under the line it was about, too ([below](#what-each-thing-looks-like)) |
 | `land` | `true` | The [morning pick-up](#the-morning-pick-up-and-the-days-end) opens an empty Neovim (or a start screen) on the place the last session's debrief named |
 | `glyphs` | plain Unicode | Pair's marks (below) |
 
@@ -643,16 +650,17 @@ to standard ones and does not fade.
 | `:Pair start [goal]` | Connect to the daemon (not needed with `auto_connect`), optionally setting the session goal |
 | `:Pair new [idea]` | Start something new: three questions in `NOTES.md`, one at a time, then a first slice of two files ([details](blank-page.md)) |
 | `:Pair goal <text>` | Set the session goal |
-| `:Pair ask <text>` | Ask Pair something (the answer appears in the chat pane); with a range (`:'<,'>Pair ask ...`), about those lines |
+| `:Pair ask <text>` | Ask Pair something (the answer appears in the chat pane, and its start under your line); with a range (`:'<,'>Pair ask ...`), about those lines, and the answer starts under the last of them |
 | `:Pair level quiet\|normal\|chatty` | How often Pair speaks unasked |
 | `:Pair scout` | Switch to Scout: Pair may search and run commands in its own pane |
 | `:Pair navigate` | Switch back to Navigator (the default) |
 | `:Pair drive [what]` | Hand Pair the wheel for one change; any key takes it back. With a range, for those lines |
+| `:Pair drive! [what]` | The same, and Pair keeps the wheel for each request after it until you take it back ([driver.md](driver.md#keeping-the-wheel)) |
 | `:Pair jump` | Go where Pair pointed last (same as `Alt-j`); `Ctrl-O` comes back. While Pair holds a thought, show it now |
 | `:Pair trail` | Show your searches since your last edit, as Pair saw them; `x` forgets them |
 | `:Pair runs` | The session's builds and runs, newest last, with the change before each and its numbers; `⏎` its output, `d` its change, `x` removes the hunt's debug lines ([exploration.md](exploration.md)) |
-| `:Pair accept` | Accept Pair's suggestion (same as `Alt-y`); for a suggestion in an unasked remark, that rates the remark useful |
-| `:Pair dismiss` | Drop Pair's suggestion; for a suggestion in an unasked remark, that rates the remark not useful |
+| `:Pair accept` | Accept Pair's suggestion under the cursor, else the newest in the buffer (same as `Alt-y`); for a suggestion in an unasked remark, that rates the remark useful |
+| `:Pair dismiss` | Drop the same suggestion, and only that one; for a suggestion in an unasked remark, that rates the remark not useful |
 | `:Pair useful` | Pair's last unasked remark was useful (same as `Alt-u`) |
 | `:Pair noise` | It was not (same as `Alt-n`) |
 | `:Pair why` | The idea worth keeping behind Pair's words under your line (same as `Alt-?`); again, it opens the link that came with it |
