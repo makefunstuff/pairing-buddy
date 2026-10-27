@@ -47,8 +47,25 @@ export const CHEATS = [
 
 const at = (t, plus) => (plus ? {t, plus} : {t}); // a time in the take
 
+// The five roles' sprites, 12x12 pixels each: w white, b blue, k black, y yellow, g green, r red, o orange, l grey.
+const COLORS = {w: '#fff1e8', b: '#29adff', k: '#000000', y: '#ffec27', g: '#00e436', r: '#ff004d', o: '#ffa300', l: '#c2c3c7'};
+const SPRITES = {
+  watcher: ['............', '....wwww....', '..ww....ww..', '.w..bbbb..w.', 'w..bbkkbb..w', 'w..bkkkkb..w',
+    'w..bkkkkb..w', 'w..bbkkbb..w', '.w..bbbb..w.', '..ww....ww..', '....wwww....', '............'],
+  partner: ['............', '.wwwwwwwwww.', 'w..........w', 'w..........w', 'w.gg.gg.gg.w', 'w.gg.gg.gg.w',
+    'w..........w', 'w..........w', '.wwwwww.www.', '.......ww...', '......w.....', '............'],
+  navigator: ['....yyyy....', '..yy....yy..', '.y...rr...y.', '.y...rr...y.', 'y...rrrr...y', 'y....rr....y',
+    'y....ll....y', 'y....ll....y', '.y...ll...y.', '.y........y.', '..yy....yy..', '....yyyy....'],
+  scout: ['...bbbb.....', '..b....b....', '.b..ww..b...', '.b.w....b...', '.b......b...', '.b......b...',
+    '..b....b....', '...bbbbo....', '.......oo...', '........oo..', '.........oo.', '..........o.'],
+  driver: ['....wwww....', '..ww....ww..', '.w........w.', '.w........w.', 'w....oo....w', 'wwwwwoowwwww',
+    'w....oo....w', 'w....ww....w', '.w...ww...w.', '.w...ww...w.', '..ww.ww.ww..', '....wwww....'],
+};
+const sprite = name => `<svg viewBox="0 0 12 12" shape-rendering="crispEdges" aria-hidden="true">${SPRITES[name]
+  .flatMap((row, y) => [...row].map((c, x) => (c === '.' ? '' : `<rect x="${x}" y="${y}" width="1" height="1" fill="${COLORS[c]}"/>`))).join('')}</svg>`;
+
 const key = list => list.map(k => `<span class="key">${k}</span>`).join('<span class="plus">+</span>');
-const node = (i, name, kind, text, status) => `<div class="node r${i}"><div class="node-n">${name}</div><div class="node-k">${kind}</div><div class="node-t">${text}</div>${status ? `<div class="node-s">${status}</div>` : ''}</div>`;
+const node = (i, name, kind, text, status) => `<div class="node r${i}">${sprite(name.toLowerCase())}<div class="node-n">${name}</div><div class="node-k">${kind}</div><div class="node-t">${text}</div>${status ? `<div class="node-s">${status}</div>` : ''}</div>`;
 const map = (areas, lit) => `<div class="map">${areas.map(([name, x, y, w, h]) => `<div class="map-a${lit.includes(name) ? ' map-on' : ''}" style="left:${x}%;top:${y}%;width:${w}%;height:${h}%"><span>${name}</span></div>`).join('')}</div>`;
 
 export const TOUR = [
@@ -229,7 +246,7 @@ export const TOUR = [
       {at: 4.4, until: 9.6, box: G(0, 37, 82, 2), label: 'wants 5 attempts, gets 4', place: 'above'},
       {at: 11.4, until: 15.4, box: G(4, 19, 28, 1), label: 'your change', place: 'below'},
       {at: at(17.2), until: at(34.6), area: 'pair', label: 'pair · thinking', place: 'above'},
-      {at: at(36.7), until: at(44.1), box: G(10, 20, 108, 2), label: 'Pair’s words, under the line you changed', place: 'below'},
+      {at: at(36.7), until: at(44.1), box: G(10, 20.25, 108, 1.9), label: 'Pair’s words, under the line you changed', place: 'below'},
       {at: at(46.1), box: G(6, 17, 86, 1), label: 'the real cause, where Alt-J landed', place: 'below'},
     ],
     keys: [{at: at(44.4), keys: ['Alt', 'J'], note: 'go where Pair points'}],
@@ -534,7 +551,7 @@ export const SHORT = [
     ],
     spots: [
       {at: at(11.4), until: at(15.4), box: G(4, 19, 28, 1), label: 'your change', place: 'below'},
-      {at: at(36.7), until: at(44.1), box: G(10, 20, 108, 2), label: 'Pair’s words, under your line', place: 'below'},
+      {at: at(36.7), until: at(44.1), box: G(10, 20.25, 108, 1.9), label: 'Pair’s words, under your line', place: 'below'},
       {at: at(46.1), box: G(6, 17, 86, 1), label: 'the real cause', place: 'below'},
     ],
     keys: [{at: at(44.4), keys: ['Alt', 'J']}],

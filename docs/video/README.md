@@ -23,6 +23,16 @@ where the chapter buttons jump into it.
   voice is there. Waits (a model thinking, you typing an answer) are sped up and say so ("Pair thinks · 4× speed").
 - **Captions** for everything said, and chips for what is typed and the keys pressed.
 
+## The look
+
+An old console, to match the site's pixel-art theme: flat colours from a small palette (PICO-8's), no gradients,
+glows, blur or soft shadows. Titles are in Press Start 2P, labels in Silkscreen, captions and the cards' sentences in
+Pixelify Sans; borders are hard, corners square and shadows solid and stepped. The capture sits in a pixel window
+whose title bar names the scene, and the five roles each have a 12x12 sprite. Cards come in with a pixel wipe and go
+with a stepped dissolve, boxes blink on, the camera moves in a few hard steps, and once it zooms past 1:1 the capture
+is scaled with nearest neighbour, so the zoomed text stays crisp. The capture itself is a real Neovim at 16 px.
+Quiet square-wave blips (`sfx.sh`) mark each card and key press, over a chiptune bed.
+
 ## What is real
 
 - **The Neovim scenes** (`docs/captures/tapes/t-*.tape`) run the plugin and the daemon of this checkout with a real
@@ -51,7 +61,8 @@ capture/run.sh                 # clips/install.mp4 and clips/start.mp4 (or name 
 ./clips.sh                     # the Neovim takes into clips/
 node tts.mjs [line ...]        # audio/<line>.mp3 for each line of script.mjs (new or changed lines only, unless named)
 node words.mjs                 # words.json: when each word is said, for the captions
-node music.mjs                 # audio/music.mp3, the bed under the voice
+node music.mjs                 # audio/music.mp3, the chiptune bed under the voice
+./sfx.sh                       # audio/sfx-card.mp3 and audio/sfx-key.mp3, the blips
 node build.mjs                 # index.html, captions.vtt, chapters.json, chapters.vtt and frames/
 node build.mjs short           # short.html and captions-short.vtt
 npx hyperframes@0.8.205 render . --quality delivery --no-browser-gpu --output renders/final.mp4
@@ -86,4 +97,4 @@ variable whose name holds KEY, TOKEN, SECRET or PASSWORD. The scratch folders go
 video is published, OCR its frames and check them and the file's metadata for usernames, home paths, hosts, IP
 addresses, ports and keys.
 
-Fonts: Inter and JetBrains Mono (`fonts/`, SIL Open Font License). The colorscheme of the captures is ayu (MIT).
+Fonts: Press Start 2P, Silkscreen, Pixelify Sans and JetBrains Mono (`fonts/`, SIL Open Font License). The colorscheme of the captures is ayu (MIT).
