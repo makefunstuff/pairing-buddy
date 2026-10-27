@@ -1,4 +1,5 @@
-// The site: the front page (docs/index.md, the Landing component) and the docs, built from the Markdown in docs/.
+// The site: the front page (docs/index.md, the Landing component) and the docs, built from the Markdown in docs/. Its
+// colours and fonts are in theme/tokens.css; its sprites are drawn by ../sprites/build.mjs.
 // Usage, in site/: npm ci, then npm run dev (a local preview) or npm run build (to .vitepress/dist).
 import {dirname, posix} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -41,6 +42,7 @@ export default defineConfig({
   head: [
     ['link', {rel: 'icon', href: '/pairing-buddy/favicon.svg', type: 'image/svg+xml'}],
     ['link', {rel: 'preload', href: '/pairing-buddy/fonts/inter-500.woff2', as: 'font', type: 'font/woff2', crossorigin: ''}],
+    ['link', {rel: 'preload', href: '/pairing-buddy/fonts/pixelify-sans.woff2', as: 'font', type: 'font/woff2', crossorigin: ''}],
     ['meta', {property: 'og:title', content: 'pairing-buddy: a pair programmer for Neovim'}],
     ['meta', {property: 'og:description', content: 'Not completion, not a chat sidebar: a pair that watches, speaks when it matters and types only when you hand over.'}],
     ['meta', {property: 'og:image', content: 'https://makefunstuff.github.io/pairing-buddy/media/og.jpg'}],
@@ -54,7 +56,7 @@ export default defineConfig({
     theme: {light: 'tokyo-night', dark: 'tokyo-night'}, // code is dark in both, in the colours of the editor the loops show
   },
   vite: {
-    // The site's own files (the videos, fonts, favicon) live next to the config, not among the docs.
+    // The site's own files (the videos, fonts, sprites, favicon) live next to the config, not among the docs.
     publicDir: fileURLToPath(new URL('../public', import.meta.url)),
     server: {fs: {allow: [fileURLToPath(new URL('../..', import.meta.url))]}},
     // The pages are compiled from docs/, which has no node_modules: their imports resolve from here.
