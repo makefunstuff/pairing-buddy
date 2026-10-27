@@ -1,14 +1,14 @@
 // :Pair context in a headless Neovim against the daemon: the card, live, and trimmed with x. Skips without nvim.
 import assert from 'node:assert/strict';
 import {execFileSync, spawn} from 'node:child_process';
-import {mkdtempSync, realpathSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {realpathSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {test} from 'node:test';
 import {createModels, fauxProvider} from '@earendil-works/pi-ai';
 import {parseConfig} from '../src/config.mjs';
 import {startDaemon} from '../src/daemon.mjs';
+import {scratch, socketDir} from './temp.mjs';
 
 const REPO = fileURLToPath(new URL('..', import.meta.url));
 const hasNvim = (() => { try { execFileSync('nvim', ['--version']); return true; } catch { return false; } })();
@@ -25,12 +25,12 @@ async function until(check, what, timeoutMs = 8000) {
 }
 
 test(':Pair context shows the goal and every source, where you have been, and x hides a source and brings it back', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
-  const project = realpathSync(mkdtempSync(join(tmpdir(), 'pair-card-')));
+  const project = realpathSync(scratch('pair-card-'));
   execFileSync('git', ['init', '-q', '-b', 'work/3-faster-hash'], {cwd: project});
   writeFileSync(join(project, 'probe.c'), 'int probe(int n) {\n  return n * 31;\n}\n');
   writeFileSync(join(project, 'main.c'), 'int main(void) {\n  return probe(3);\n}\n');
   execFileSync('git', ['-c', 'user.name=dev', '-c', 'user.email=dev@example.com', 'commit', '-q', '--allow-empty', '-m', 'start'], {cwd: project});
-  const dataDir = mkdtempSync(join(tmpdir(), 'pair-data-'));
+  const dataDir = scratch('pair-data-');
   const config = parseConfig({
     dataDir, socket: join(dataDir, 'pair.sock'), board: null, agents: false,
     models: {watcher: {api: 'openai', baseUrl: 'http://unused', model: 'w'}, partner: {api: 'openai', baseUrl: 'http://unused', model: 'p'}},
@@ -42,7 +42,7 @@ test(':Pair context shows the goal and every source, where you have been, and x 
   models.setProvider(partner.provider);
   const daemon = await startDaemon(config, {pairModels: {models, watcher: watcher.getModel(), partner: partner.getModel()}, probe: async () => ({ok: true}), log: () => {}});
 
-  const server = join(mkdtempSync('/tmp/pair-'), 'nvim.sock');
+  const server = join(socketDir(), 'nvim.sock');
   const nvim = spawn('nvim', [
     '--headless', '--clean', '--listen', server,
     '--cmd', `set rtp+=${REPO}`,

@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
-import {chmodSync, mkdtempSync, readFileSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {chmodSync, readFileSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {fold, initialState} from '../src/fold.mjs';
 import {NoteMargin, READ_PAUSE_MS, taskArgs} from '../src/margin.mjs';
+import {scratch} from './temp.mjs';
 
 const NOTE = readFileSync(new URL('../docs/captures/notes/dead-letters.md', import.meta.url), 'utf8');
 const ROOT = '/project';
@@ -116,7 +116,7 @@ test('the decide key on a line that decides nothing says so, and logs nothing', 
 });
 
 test(':Pair tasks shows the model\'s tasks and adds nothing; the yes runs the task command once per task', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'pair-tasks-'));
+  const root = scratch('pair-tasks-');
   const script = join(root, 'add-task');
   writeFileSync(script, '#!/bin/sh\nprintf "%s|%s\\n" "$1" "$2" >> added.txt\n');
   chmodSync(script, 0o755);

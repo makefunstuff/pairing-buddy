@@ -1,13 +1,13 @@
 // The held thought: a remark that can wait shows at the user's next breakpoint, with a dot in the margin meanwhile.
 import assert from 'node:assert/strict';
-import {mkdtempSync, realpathSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {realpathSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {initialState} from '../src/fold.mjs';
 import {BREAK, Breakpoints, placeOf, stillTrue, urgent} from '../src/held.mjs';
 import {PairSession} from '../src/session.mjs';
 import {openStore} from '../src/store.mjs';
+import {scratch} from './temp.mjs';
 
 test('a wrong turn, a regression and a failure speak at the next pause; drift, a stall and a new error can wait', () => {
   for (const kind of ['edit_while_red', 'regression', 'repeated_error', 'failed_command']) assert.equal(urgent(kind), true, kind);
@@ -56,7 +56,7 @@ const SOURCE = '#include <stdio.h>\n\nint main(void) {\n\treturn n;\n}\n';
 
 /** A session in a scratch C project, whose Partner points at the error in main.c and says why. */
 function pairSession() {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'pair-held-')));
+  const root = realpathSync(scratch('pair-held-'));
   writeFileSync(join(root, 'main.c'), SOURCE);
   const store = openStore(':memory:');
   const clock = {now: 1_000_000};

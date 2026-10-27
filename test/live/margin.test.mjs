@@ -1,10 +1,9 @@
 // Notes in the margin against real models: the marks on a design note are few and specific and name the code, the
 // tasks come from the note, and the prose triggers ask a question back instead of writing for you.
 import assert from 'node:assert/strict';
-import {cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync} from 'node:fs';
+import {cpSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {readFile} from 'node:fs/promises';
 import {execFileSync} from 'node:child_process';
-import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {describe, test} from 'node:test';
@@ -18,6 +17,7 @@ import {PairSession} from '../../src/session.mjs';
 import {ROLE_TOOLS} from '../../src/tools.mjs';
 import {createWatcher} from '../../src/watcher.mjs';
 import {liveStacks, SKIP_REASON} from './stacks.mjs';
+import {scratch} from '../temp.mjs';
 
 const HOOKD = fileURLToPath(new URL('../../docs/captures/hookd', import.meta.url));
 const NOTE = readFileSync(new URL('../../docs/captures/notes/dead-letters.md', import.meta.url), 'utf8');
@@ -26,7 +26,7 @@ const NOW = 1_000_000;
 
 /** The webhook service of the captures, in git, with the dead-letters note in docs/. */
 function project(note = NOTE) {
-  const root = mkdtempSync(join(tmpdir(), 'pair-live-note-'));
+  const root = scratch('pair-live-note-');
   cpSync(HOOKD, root, {recursive: true});
   mkdirSync(join(root, 'docs'));
   writeFileSync(join(root, FILE), note);

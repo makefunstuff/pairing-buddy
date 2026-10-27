@@ -1,17 +1,17 @@
 // Tests on unsaved text: go test reads it through -overlay, other runners in a copy of the project.
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {parseTestOutput} from '../src/test-output.mjs';
 import {placeTests} from '../src/test-places.mjs';
 import {overlaid, prepareUnsaved} from '../src/unsaved.mjs';
+import {scratch as tempDir} from './temp.mjs';
 
 const has = command => { try { execFileSync(command, ['version']); return true; } catch { return false; } };
 
-const scratch = () => mkdtempSync(join(tmpdir(), 'pair-unsaved-run-'));
+const scratch = () => tempDir('pair-unsaved-run-');
 
 function git(root) {
   execFileSync('git', ['init', '-q'], {cwd: root});
@@ -19,7 +19,7 @@ function git(root) {
 }
 
 function project(files) {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'pair-unsaved-')));
+  const root = realpathSync(tempDir('pair-unsaved-'));
   for (const [path, text] of Object.entries(files)) {
     mkdirSync(join(root, path, '..'), {recursive: true});
     writeFileSync(join(root, path), text);
@@ -44,7 +44,7 @@ test('go test on the unsaved buffer: the buffer\'s fix passes while the file on 
   const file = join(root, 'cart/cart.go');
   const goTest = command => { try { return execFileSync('bash', ['-c', command], {cwd: root, encoding: 'utf8'}); } catch (error) { return error.stdout; } };
   assert.equal(parseTestOutput(goTest('go test -json ./...')).failedCount, 1, 'the file on disk fails');
-  const run = await prepareUnsaved({root, command: 'go test -json ./...', texts: new Map([[file, broken.replace('i := 1', 'i := 0')]]), dir: mkdtempSync(join(tmpdir(), 'pair-overlay-'))});
+  const run = await prepareUnsaved({root, command: 'go test -json ./...', texts: new Map([[file, broken.replace('i := 1', 'i := 0')]]), dir: tempDir('pair-overlay-')});
   assert.equal(run.root, root);
   const output = goTest(run.command);
   const tests = parseTestOutput(output);

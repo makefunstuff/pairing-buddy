@@ -1,9 +1,8 @@
 // The Lua plugin in a headless Neovim against the daemon, with scripted models. Skips without nvim.
 import assert from 'node:assert/strict';
 import {execFile, execFileSync, spawn} from 'node:child_process';
-import {existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync} from 'node:fs';
 import {connect, createServer} from 'node:net';
-import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {test} from 'node:test';
@@ -14,6 +13,7 @@ import {readMessages, sendMessage} from '../src/protocol.mjs';
 import {openStore} from '../src/store.mjs';
 import {fakeHerdr} from './fake-herdr.mjs';
 import {bashWithoutCores} from './no-core.mjs';
+import {scratch, socketDir} from './temp.mjs';
 
 const REPO = fileURLToPath(new URL('..', import.meta.url));
 const hasNvim = (() => { try { execFileSync('nvim', ['--version']); return true; } catch { return false; } })();
@@ -44,9 +44,9 @@ const runIn = cwd => command => new Promise(resolve => {
  * `stop()` ends them all.
  */
 async function pairInNvim(goal, {testOnSave, runs = false, thinks = false, voice, rtp = [], knownKeys = []} = {}) {
-  const project = realpathSync(mkdtempSync(join(tmpdir(), 'pair-nvim-')));
+  const project = realpathSync(scratch('pair-nvim-'));
   writeFileSync(join(project, 'a.js'), 'const x = 1\nconst y = 2\nconst z = 3\n');
-  const dataDir = mkdtempSync(join(tmpdir(), 'pair-data-'));
+  const dataDir = scratch('pair-data-');
   const config = parseConfig({
     dataDir,
     socket: join(dataDir, 'pair.sock'),
@@ -65,9 +65,9 @@ async function pairInNvim(goal, {testOnSave, runs = false, thinks = false, voice
   const herdrSocket = join(dataDir, 'herdr.sock');
   const herdr = await fakeHerdr(herdrSocket, {commands: testOnSave || runs ? runIn(project) : {}});
 
-  const server = join(mkdtempSync('/tmp/pair-'), 'nvim.sock'); // short: socket paths max out near 100 bytes
+  const server = join(socketDir(), 'nvim.sock'); // short: socket paths max out near 100 bytes
   // Its own state directory, where the plugin keeps the keys you have used (lua/pair/hints.lua).
-  const state = mkdtempSync(join(tmpdir(), 'pair-state-'));
+  const state = scratch('pair-state-');
   if (knownKeys.length) {
     mkdirSync(join(state, 'nvim', 'pair'), {recursive: true});
     writeFileSync(join(state, 'nvim', 'pair', 'keys.json'), JSON.stringify(Object.fromEntries(knownKeys.map(key => [key, true]))));
@@ -986,7 +986,7 @@ test('the chat pane gets the accent Neovim derived, and a new one when the color
 
 test('another remark leaves a held thought\'s dot and Alt-j alone; its own remark takes them away', {skip: hasNvim ? false : 'nvim not installed', timeout: 20_000}, async () => {
   // A stand-in daemon: it greets Neovim and sends what the test says.
-  const dir = mkdtempSync('/tmp/pair-');
+  const dir = socketDir();
   let editor;
   const received = [];
   const server = createServer(socket => {
@@ -994,7 +994,7 @@ test('another remark leaves a held thought\'s dot and Alt-j alone; its own remar
     readMessages(socket, message => received.push(message));
   });
   await new Promise(resolve => server.listen(join(dir, 'pair.sock'), resolve));
-  const project = realpathSync(mkdtempSync(join(tmpdir(), 'pair-nvim-')));
+  const project = realpathSync(scratch('pair-nvim-'));
   writeFileSync(join(project, 'a.c'), 'int a;\nint b;\nint c;\nint d;\n');
   const nvimSocket = join(dir, 'nvim.sock');
   const nvim = spawn('nvim', ['--headless', '--clean', '--listen', nvimSocket, '--cmd', `set rtp+=${REPO}`,
@@ -1025,7 +1025,7 @@ test('another remark leaves a held thought\'s dot and Alt-j alone; its own remar
 
 test('scrolling the window you read in is reported, at most every ten seconds; a split Pair opens is not', {skip: hasNvim ? false : 'nvim not installed', timeout: 20_000}, async () => {
   // A stand-in daemon that records what Neovim sends.
-  const dir = mkdtempSync('/tmp/pair-');
+  const dir = socketDir();
   let editor;
   const received = [];
   const server = createServer(socket => {
@@ -1033,7 +1033,7 @@ test('scrolling the window you read in is reported, at most every ten seconds; a
     readMessages(socket, message => received.push(message));
   });
   await new Promise(resolve => server.listen(join(dir, 'pair.sock'), resolve));
-  const project = realpathSync(mkdtempSync(join(tmpdir(), 'pair-nvim-')));
+  const project = realpathSync(scratch('pair-nvim-'));
   writeFileSync(join(project, 'a.c'), Array.from({length: 300}, (_, i) => `int v${i};`).join('\n'));
   const nvimSocket = join(dir, 'nvim.sock');
   const nvim = spawn('nvim', ['--headless', '--clean', '--listen', nvimSocket, '--cmd', `set rtp+=${REPO}`,
@@ -1063,7 +1063,7 @@ test('scrolling the window you read in is reported, at most every ten seconds; a
 
 test('push-to-talk: hold Alt-t, a meter under your line; let go, your words, then Pair\'s answer in their place; a tap listens until the next one', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
   // The microphone is a loud tone, and whisper a script that hears one question.
-  const bin = mkdtempSync(join(tmpdir(), 'pair-whisper-'));
+  const bin = scratch('pair-whisper-');
   writeFileSync(join(bin, 'whisper-cli'), '#!/bin/sh\nprintf " Why does attempt 5 give up?\\n"\n', {mode: 0o755});
   const record = `node -e 'const b = Buffer.alloc(3200); for (let i = 0; i < 1600; i++) b.writeInt16LE(i % 8 < 4 ? 9000 : -9000, i * 2); setInterval(() => process.stdout.write(b), 100)'`;
   const voice = {model: 'unused.bin', whisper: join(bin, 'whisper-cli'), record};

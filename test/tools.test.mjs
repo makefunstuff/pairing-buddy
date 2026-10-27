@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
-import {existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {BACKGROUND_CONTEXT as C} from '@earendil-works/chord/context';
@@ -11,8 +10,9 @@ import {CodingTools} from '@earendil-works/pi-durable/tools';
 import {insideRoot, numberedLines, readProjectPath} from '../src/files.mjs';
 import {openPartner} from '../src/partner.mjs';
 import {pairExtension, ROLE_TOOLS, toolPolicy} from '../src/tools.mjs';
+import {scratch} from './temp.mjs';
 
-const project = () => mkdtempSync(join(tmpdir(), 'pair-tools-'));
+const project = () => scratch('pair-tools-');
 
 function recordingHands(role = 'navigator') {
   const calls = [];

@@ -1,18 +1,18 @@
 // The pair's accent (lua/pair/style.lua) on a few kinds of colorscheme, in a headless Neovim. Skips without nvim.
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {mkdtempSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {test} from 'node:test';
+import {scratch} from './temp.mjs';
 
 const REPO = fileURLToPath(new URL('..', import.meta.url));
 const hasNvim = (() => { try { execFileSync('nvim', ['--version']); return true; } catch { return false; } })();
 
 /** The accent style.lua picks after `setup` (Lua that sets a colorscheme's groups), as #rrggbb. */
 function accentAfter(setup) {
-  const script = join(mkdtempSync(join(tmpdir(), 'pair-style-')), 'accent.lua');
+  const script = join(scratch('pair-style-'), 'accent.lua');
   writeFileSync(script, `vim.o.termguicolors = true
 vim.o.background = 'dark'
 local function hi(name, fg) vim.api.nvim_set_hl(0, name, {fg = fg}) end
@@ -62,7 +62,7 @@ test('Neovim\'s own scheme keeps its cyan', {skip: hasNvim ? false : 'nvim not i
 });
 
 test('turning true colours on gives the groups their colours, where they were links before', {skip: hasNvim ? false : 'nvim not installed'}, () => {
-  const script = join(mkdtempSync(join(tmpdir(), 'pair-style-')), 'switch.lua');
+  const script = join(scratch('pair-style-'), 'switch.lua');
   writeFileSync(script, `vim.o.termguicolors = false
 local style = require('pair.style')
 style.apply()

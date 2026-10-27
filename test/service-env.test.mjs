@@ -1,14 +1,14 @@
 // The variables named by "apiKeyEnv", stored for a service that does not get the shell's environment.
 import assert from 'node:assert/strict';
-import {chmodSync, mkdtempSync, statSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {chmodSync, statSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {apiKeyOf, parseConfig} from '../src/config.mjs';
 import {keysCheck} from '../src/doctor.mjs';
 import {keyVariables, readServiceEnv, storeServiceEnv} from '../src/service-env.mjs';
+import {scratch as tempDir} from './temp.mjs';
 
-const scratch = () => mkdtempSync(join(tmpdir(), 'pair-env-'));
+const scratch = () => tempDir('pair-env-');
 const entry = name => ({api: 'openai', baseUrl: 'http://unused', model: 'm', apiKeyEnv: name});
 
 test('the variables the config takes keys from, each once', () => {

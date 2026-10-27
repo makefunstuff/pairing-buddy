@@ -5,8 +5,7 @@
 // by buffers in memory: the folder on disk stays empty.
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
-import {mkdtempSync, readdirSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {readdirSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {describe, test} from 'node:test';
 import {MemoryStorage} from '@earendil-works/pi-durable';
@@ -14,6 +13,7 @@ import {openPartner} from '../../src/partner.mjs';
 import {PairSession} from '../../src/session.mjs';
 import {ROLE_TOOLS} from '../../src/tools.mjs';
 import {liveStacks, SKIP_REASON} from './stacks.mjs';
+import {scratch} from '../temp.mjs';
 
 /** Neovim's buffers, in memory: read serves them, edit changes them (a missing file is an empty buffer). */
 function buffers() {
@@ -86,7 +86,7 @@ describe('The blank page on live models', {skip: stacks.length ? false : SKIP_RE
   for (const stack of stacks) {
     /** :Pair new `idea` in an empty folder, answering each question in turn; resolves when the slice is shown. */
     async function interview({idea, answers}) {
-      const root = mkdtempSync(join(tmpdir(), 'pair-new-'));
+      const root = scratch('pair-new-');
       const note = join(root, 'NOTES.md');
       const editor = buffers();
       editor.request({type: 'edit', file: note, line: 1, endLine: 1, text: `# toy\n\n${idea}`});
@@ -160,7 +160,7 @@ describe('The blank page on live models', {skip: stacks.length ? false : SKIP_RE
         for (const file of editor.files().filter(file => file !== result.note)) t.diagnostic(`${file.slice(root.length + 1)}:\n${editor.text(file)}`);
         assert.deepEqual(readdirSync(root), [], 'still nothing on disk: the user saves');
         // The user saves both and runs it.
-        const copy = mkdtempSync(join(tmpdir(), 'pair-new-run-'));
+        const copy = scratch('pair-new-run-');
         for (const file of editor.files().filter(file => file !== result.note)) writeFileSync(join(copy, file.slice(root.length + 1)), editor.text(file));
         // The slice's part is the wiring: make reads the Makefile, and its run target builds the source Pair typed.
         const plan = spawnSync('make', ['-n', 'run'], {cwd: copy, encoding: 'utf8'});

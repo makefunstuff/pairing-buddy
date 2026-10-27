@@ -1,19 +1,19 @@
 // What the editor is sent besides the chat: where Pair reads (its gaze), its words under your line with the
 // place it points at, and what became of the remark. With a real store in memory and a scratch project.
 import assert from 'node:assert/strict';
-import {mkdtempSync, realpathSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {realpathSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {PairSession} from '../src/session.mjs';
 import {openStore} from '../src/store.mjs';
+import {scratch} from './temp.mjs';
 
 const BACKOFF = 'package retry\n\nfunc Next(attempt int) int {\n\treturn 1 << attempt\n}\n';
 const WORKER = 'package delivery\n\nfunc Run() {\n\tif elapsed+wait >= budget {\n\t\treturn\n\t}\n}\n';
 
 /** A session in a scratch project; its Partner runs `turns` in order, each with the session to call tools on. */
 function pairSession(turns = []) {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'pair-remark-')));
+  const root = realpathSync(scratch('pair-remark-'));
   writeFileSync(join(root, 'backoff.go'), BACKOFF);
   writeFileSync(join(root, 'worker.go'), WORKER);
   const store = openStore(':memory:');

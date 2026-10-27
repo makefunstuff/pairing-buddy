@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
-import {mkdtempSync, writeFileSync} from 'node:fs';
+import {writeFileSync} from 'node:fs';
 import {readFile} from 'node:fs/promises';
-import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {DebugLines, isDebugLine, printedBy} from '../src/debug-lines.mjs';
@@ -9,6 +8,7 @@ import {fold, initialState} from '../src/fold.mjs';
 import {changeLine, isRun, logRun, measure, runLine, runLines, verdictText} from '../src/run-log.mjs';
 import {readRun} from '../src/run-output.mjs';
 import {detectTriggers} from '../src/triggers.mjs';
+import {scratch} from './temp.mjs';
 
 // The hash table of the research's prototype: four runs of ./run, the numbers its last line prints.
 const report = (probe, worst, ms) => `190000 keys  load 0.72  avg probe ${probe}  worst ${worst}  ${ms} ms\n`;
@@ -145,7 +145,7 @@ test('debug lines: the prints of each language, and how many lines one printed',
 });
 
 test('debug lines are the prints the user added in the session that are still in the code, with the run they came before', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'pair-debug-'));
+  const root = scratch('pair-debug-');
   const path = join(root, 'probe.c');
   writeFileSync(path, 'int main(void) {\n  printf("%d keys\\n", n);\n}\n');
   const lines = new DebugLines({root, read: file => readFile(file, 'utf8')});

@@ -2,13 +2,13 @@
 // line from the verdicts, and the break hints at natural ends.
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {mkdirSync, mkdtempSync, writeFileSync} from 'node:fs';
+import {mkdirSync, writeFileSync} from 'node:fs';
 import {readFile} from 'node:fs/promises';
-import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {Breaks} from '../src/breaks.mjs';
 import {debriefInput, duration, firstPlace, heading, keptChanges, lessonLine, parseDebrief, resolveFile, Wins} from '../src/debrief.mjs';
+import {scratch} from './temp.mjs';
 
 const MIN = 60_000;
 const readLines = path => readFile(path, 'utf8').then(text => text.split('\n'));
@@ -71,7 +71,7 @@ test('the first step and the file:line it names last', () => {
 });
 
 test('a file named by its end resolves to the one file git tracks, or the user had open, with that end', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'pair-debrief-'));
+  const root = scratch('pair-debrief-');
   mkdirSync(join(root, 'internal/delivery'), {recursive: true});
   mkdirSync(join(root, 'internal/queue'), {recursive: true});
   writeFileSync(join(root, 'internal/delivery/worker.go'), 'package delivery\n\nfunc Deliver() {\n\terr := send()\n}\n');

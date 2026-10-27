@@ -2,8 +2,7 @@
 // and cannot change files however it is asked.
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {mkdirSync, readFileSync, readdirSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {describe, test} from 'node:test';
 import {MemoryStorage} from '@earendil-works/pi-durable';
@@ -15,6 +14,7 @@ import {watchInput} from '../../src/session.mjs';
 import {parseTestOutput} from '../../src/test-output.mjs';
 import {detectTriggers} from '../../src/triggers.mjs';
 import {liveStacks, SKIP_REASON} from './stacks.mjs';
+import {scratch} from '../temp.mjs';
 
 const WS = `export const RECONNECT_TIMEOUT_MS = 5000;
 
@@ -32,7 +32,7 @@ test('reconnect waits up to 30 s after sleep', () => {
 
 /** A small project whose test fails on the timeout; `fixed` makes the code match the test. */
 function project({fixed = false} = {}) {
-  const root = mkdtempSync(join(tmpdir(), 'pair-live-'));
+  const root = scratch('pair-live-');
   mkdirSync(join(root, 'src'));
   mkdirSync(join(root, 'test'));
   writeFileSync(join(root, 'src', 'ws.ts'), fixed ? WS.replace('5000', '30000') : WS);
@@ -125,7 +125,7 @@ const red = budget => `✖ retries five times within the ${budget} s budget (1.2
  * `line`, and the watch input of the wrong-turn trigger that edit raises. The test run is red from before the edit.
  */
 function wrongTurn({budget, edited, line}) {
-  const root = mkdtempSync(join(tmpdir(), 'pair-live-'));
+  const root = scratch('pair-live-');
   mkdirSync(join(root, 'src'));
   mkdirSync(join(root, 'test'));
   writeFileSync(join(root, 'src', 'backoff.js'), BACKOFF);
@@ -187,7 +187,7 @@ function nodeTest(root) {
 
 /** The project after the user's fix of the worker, the real red run of its tests, and the regression trigger's input. */
 function regression() {
-  const root = mkdtempSync(join(tmpdir(), 'pair-live-'));
+  const root = scratch('pair-live-');
   mkdirSync(join(root, 'src'));
   mkdirSync(join(root, 'test'));
   writeFileSync(join(root, 'package.json'), '{"type": "module"}\n');
