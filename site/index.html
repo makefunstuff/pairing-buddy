@@ -313,32 +313,32 @@ footer a { color: var(--muted); }
   </div>
   <div class="col proto" role="note">
     <span class="tag">Captures</span>
-    <p><b>Recorded from v0.9 as it ships:</b> the plugin and the daemon in a clean Neovim, with real <code>go test</code> runs. Only the models are scripted: a stand-in server answers the daemon with fixed words and timing, so <a href="https://github.com/makefunstuff/pairing-buddy/tree/main/docs/captures">the tapes</a> record the same clips every time.</p>
+    <p><b>Recorded from the shipped plugin and daemon:</b> the code on this branch in a clean Neovim, with real <code>go test</code> runs. Only the models are scripted: a stand-in server answers the daemon with fixed words and timing, so <a href="https://github.com/makefunstuff/pairing-buddy/tree/main/docs/captures">the tapes</a> record the same clips every time.</p>
   </div>
 
   <article class="moment" id="wrong-turn" aria-labelledby="m1-h">
     <div class="col moment-head">
       <div class="num">01 · it stops the wrong turn</div>
       <h3 id="m1-h">It stops the wrong turn before it costs you twenty minutes</h3>
-      <p>A retry test wants five attempts and gets four. It looks like an off-by-one in the backoff, so you go and fix the shift. As you pause, the pair reads your edit and the worker. Two quiet lines under your edit: the shift is fine, attempt five lands at exactly 15&nbsp;s, and the worker gives up on <code>&gt;=</code>.</p>
+      <p>A retry test wants five attempts and gets four. It looks like an off-by-one in the backoff, so you go and fix the shift. As you pause, the pair reads your edit and then the worker: the statusline says <code>reading backoff.go</code>, then <code>reading worker.go</code>. Two quiet lines appear under your edit: the shift is fine, attempt five lands at exactly 15&nbsp;s, and <code>worker.go:35</code> gives up on <code>&gt;=</code> — with <code>M-j</code> to go there and <code>M-?</code> to ask why.</p>
     </div>
     <div>
-      <div class="stage loop"><video data-v="m1" muted loop playsinline preload="none" poster="media/m1-still1.webp" width="1280" height="768" aria-label="Capture of v0.9: the pair corrects a wrong turn in backoff.go">
+      <div class="stage loop"><video data-v="m1" muted loop playsinline preload="none" poster="media/m1-still1.webp" width="1280" height="768" aria-label="Capture: Pair reads backoff.go and worker.go, writes two lines under your edit, and M-j takes you to the real cause">
         <source data-src="media/m1.webm" type="video/webm"><source data-src="media/m1.mp4" type="video/mp4">
       </video></div>
       <div class="beats" data-for="m1">
-        <button class="beat" data-t="0"><b>0:00</b>the test fails: 4 attempts, want 5</button>
-        <button class="beat" data-t="6.5"><b>0:07</b>you open backoff.go and change the shift</button>
-        <button class="beat" data-t="10"><b>0:10</b>it reads backoff.go, then worker.go</button>
-        <button class="beat" data-t="12.6"><b>0:13</b>two quiet lines under your edit</button>
-        <button class="beat" data-t="16.5"><b>0:17</b>you undo; M-j goes to worker.go:35</button>
-        <button class="beat" data-t="20.3"><b>0:20</b>&gt;= becomes &gt;; the test passes</button>
+        <button class="beat" data-t="2"><b>0:02</b>the test fails: attempts = 4, want 5</button>
+        <button class="beat" data-t="5"><b>0:05</b>you open backoff.go and change the shift</button>
+        <button class="beat" data-t="10.5"><b>0:10</b>the statusline: reading backoff.go, then worker.go</button>
+        <button class="beat" data-t="13"><b>0:13</b>two quiet lines under your edit: M-j goes there · M-? why</button>
+        <button class="beat" data-t="17"><b>0:17</b>you undo; M-j goes to worker.go:35</button>
+        <button class="beat" data-t="20.5"><b>0:21</b>&gt;= becomes &gt;, saved: ok, the delivery tests pass</button>
       </div>
     </div>
-    <p class="col why"><b>Why it matters.</b> It did the arithmetic (1+2+4+8 = 15) across two files at the moment you committed to the wrong one, then got out of the way. No chat window opened and nothing moved your cursor: its words sit where your eyes already are.</p>
+    <p class="col why"><b>Why it matters.</b> It did the arithmetic (<code>1s 2s 4s 8s</code>, and 15&nbsp;s is the budget) across two files at the moment you committed to the wrong one, then got out of the way. No chat window opened and nothing moved your cursor: its words sit where your eyes already are, each with the key that acts on it.</p>
     <div class="stills">
-      <figure><img src="media/m1-still1.webp" width="1280" height="768" loading="lazy" decoding="async" alt="Two quiet lines under the edited shift in backoff.go, naming worker.go:35"><figcaption>The remark under your edit: the arithmetic, and where the real cause is.</figcaption></figure>
-      <figure><img src="media/m1-still2.webp" width="1280" height="768" loading="lazy" decoding="async" alt="worker.go line 33 tinted, with the >= underlined and a short note"><figcaption>After M-j: the line is tinted, <code>&gt;=</code> underlined, one note at the end.</figcaption></figure>
+      <figure><img src="media/m1-still1.webp" width="1280" height="768" loading="lazy" decoding="async" alt="Two quiet lines under the edited shift in backoff.go: the shift is fine, attempt 5 lands at exactly 15s, and worker.go:35 gives up on >=, with M-j goes there and M-? why"><figcaption>The remark under your edit: the arithmetic, where the real cause is, and the two keys it offers.</figcaption></figure>
+      <figure><img src="media/m1-still2.webp" width="1280" height="768" loading="lazy" decoding="async" alt="worker.go line 35 tinted, with one line at its end: 7s + 8s = 15s, still inside the budget; the statusline says 1 change, before #2"><figcaption>After M-j: the line is tinted, one line of why at its end, and the ledger's undo hint in the statusline.</figcaption></figure>
     </div>
   </article>
 
@@ -346,25 +346,26 @@ footer a { color: var(--muted); }
     <div class="col moment-head">
       <div class="num">02 · it runs what you'd skip</div>
       <h3 id="m2-h">It runs what you'd skip, and finds what your fix broke</h3>
-      <p>The delivery tests pass, so you'd push. The pair ran <code>go test -json ./...</code> in its own pane as you saved: the statusline spins, then names the one test that fails, and a ✗ marks it in the test file. Attempt five now starts the instant the queue's lease on the job expires, so a second worker can take the same webhook. It shows a one-line fix in <code>queue.go</code>, and M-y takes it.</p>
+      <p>The delivery tests pass, so you'd push. The pair ran <code>go test -json ./...</code> in its own pane as you saved, narrowed to what your change touches: the statusline spins, then names the one test that fails, and a ✗ marks it on its function with the failure under the line that asserts it. Attempt five now starts the instant the queue's lease on the job expires, so a second worker can take the same webhook. The why lands under the line you changed, and the one-line fix in <code>queue.go</code> comes with it: M-y takes it.</p>
     </div>
     <div>
-      <div class="stage loop"><video data-v="m2" muted loop playsinline preload="none" poster="media/m2-still1.webp" width="1280" height="768" aria-label="Capture of v0.9: the pair runs all tests on save and suggests the fix in the queue lease">
+      <div class="stage loop"><video data-v="m2" muted loop playsinline preload="none" poster="media/m2-still1.webp" width="1280" height="768" aria-label="Capture: Pair runs the tests on save, names the failing test, says why under your line, and puts a one-line fix in queue.go that M-y takes">
         <source data-src="media/m2.webm" type="video/webm"><source data-src="media/m2.mp4" type="video/mp4">
       </video></div>
       <div class="beats" data-for="m2">
-        <button class="beat" data-t="0.5"><b>0:01</b>a save: go test ./... spins in the statusline</button>
-        <button class="beat" data-t="1"><b>0:01</b>red on the delivery test, the bug you know</button>
-        <button class="beat" data-t="5.3"><b>0:05</b>the fix, saved: TestNoDoubleDelivery fails instead</button>
-        <button class="beat" data-t="9.5"><b>0:10</b>why, under the line you just changed</button>
-        <button class="beat" data-t="15"><b>0:15</b>M-j: queue.go:18 with the change in place</button>
-        <button class="beat" data-t="18"><b>0:18</b>M-y, save: 4 tests, 3 packages pass</button>
+        <button class="beat" data-t="1.5"><b>0:01</b>the bug you know: ✗ 1 failing · TestDeliveryRetriesUntilDeadLetter</button>
+        <button class="beat" data-t="4.5"><b>0:04</b>a save: the run finishes in the statusline</button>
+        <button class="beat" data-t="6.3"><b>0:06</b>the fix, saved: TestNoDoubleDelivery fails instead</button>
+        <button class="beat" data-t="7.5"><b>0:07</b>the statusline: reading queue_test.go, then queue.go</button>
+        <button class="beat" data-t="13"><b>0:13</b>why, under the line you just changed: M-j goes there · M-? why</button>
+        <button class="beat" data-t="15.3"><b>0:15</b>M-j: queue.go:18 with the change in place · M-y takes it</button>
+        <button class="beat" data-t="19.8"><b>0:20</b>M-y, save: ✓ go test ./internal/queue · 2 tests, 1 package</button>
       </div>
     </div>
     <p class="col why"><b>Why it matters.</b> A second person keeps an eye on everything you aren't looking at. Here that's a double-delivered webhook, the kind of bug that otherwise reaches you a week later as a customer's duplicate charge. It doesn't arrive as a test log: it arrives as one sentence, under the line that caused it.</p>
     <div class="stills">
-      <figure><img src="media/m2-still1.webp" width="1280" height="768" loading="lazy" decoding="async" alt="A remark under worker.go:35 explaining the lease; a cross on the failing test below, and the statusline names it"><figcaption>One failing test, named in the statusline and marked on its function; the reason is under the line that caused it.</figcaption></figure>
-      <figure><img src="media/m2-still2.webp" width="1280" height="768" loading="lazy" decoding="async" alt="queue.go line 18 struck through with the suggested line under it"><figcaption>The change in place: the old line struck through, the new one under it, M-y to take it.</figcaption></figure>
+      <figure><img src="media/m2-still1.webp" width="1280" height="768" loading="lazy" decoding="async" alt="A remark under worker.go:35: the lease passes now, queue doesn't, with M-j goes there and M-? why; a ✗ on TestNoDoubleDelivery below and its failure under the assert; the statusline names the failing test"><figcaption>One failing test: named in the statusline, ✗ on its function, its failure under the line that asserts it; the reason is under the line that caused it.</figcaption></figure>
+      <figure><img src="media/m2-still2.webp" width="1280" height="768" loading="lazy" decoding="async" alt="queue.go line 18 struck through with the suggested line under it and the note: the lease has to outlive the last attempt, M-y takes it"><figcaption>The change in place: the old line struck through, the new one under it with its one-line why, M-y to take it.</figcaption></figure>
     </div>
   </article>
 
@@ -372,25 +373,26 @@ footer a { color: var(--muted); }
     <div class="col moment-head">
       <div class="num">03 · the visible hand-over</div>
       <h3 id="m3-h">It takes the keyboard for the boring part, and gives it back</h3>
-      <p>You write the first table case and hand over with <code>:Pair drive the edge cases</code>. The pair types the other six into your buffer while you watch, including the one you'd skip: an attempt of 64 shifts past the top bit. It runs <code>go test -overlay</code> on your unsaved buffer, says they pass, and gives the keyboard back. One <code>u</code> takes all six away.</p>
+      <p>You write the first table case and hand over with <code>:Pair drive the edge cases</code>. The statusline says <code>pair has the wheel · any key takes it back</code>, and the pair types the other six into your buffer while you watch, a whole line at a time, each with a bar in the margin, including the one you'd skip: an attempt of 64 shifts past the top bit. It runs the tests on your unsaved buffer — <code>✓ go test ./... (unsaved) · 4 tests, 3 packages</code> — says they pass, and gives the keyboard back. One <code>u</code> takes all six away, <code>Ctrl-R</code> brings them back.</p>
     </div>
     <div>
-      <div class="stage loop"><video data-v="m3" muted loop playsinline preload="none" poster="media/m3-still2.webp" width="1280" height="768" aria-label="Capture of v0.9: the pair types table test cases as the Driver, tests the unsaved buffer, then hands back">
+      <div class="stage loop"><video data-v="m3" muted loop playsinline preload="none" poster="media/m3-still2.webp" width="1280" height="768" aria-label="Capture: the Driver types six table test cases as ghost text, tests the unsaved buffer, hands back, and u takes all six away">
         <source data-src="media/m3.webm" type="video/webm"><source data-src="media/m3.mp4" type="video/mp4">
       </video></div>
       <div class="beats" data-for="m3">
         <button class="beat" data-t="0"><b>0:00</b>you wrote the first case</button>
-        <button class="beat" data-t="1.2"><b>0:01</b>:Pair drive the edge cases: it has the wheel</button>
-        <button class="beat" data-t="5.3"><b>0:05</b>ghost text, a whole line at a time</button>
-        <button class="beat" data-t="11"><b>0:11</b>tests the unsaved buffer, hands back</button>
-        <button class="beat" data-t="15.8"><b>0:16</b>u removes all six</button>
+        <button class="beat" data-t="3.4"><b>0:03</b>:Pair drive the edge cases: pair has the wheel</button>
+        <button class="beat" data-t="6.4"><b>0:06</b>ghost text, a whole line at a time · any key takes it back</button>
+        <button class="beat" data-t="11"><b>0:11</b>it tests the unsaved buffer</button>
+        <button class="beat" data-t="15.8"><b>0:16</b>✓ 4 tests, 3 packages: it hands back</button>
+        <button class="beat" data-t="16.4"><b>0:16</b>u takes all six away · 6 fewer lines</button>
         <button class="beat" data-t="17.8"><b>0:18</b>Ctrl-R brings them back</button>
       </div>
     </div>
     <p class="col why"><b>Why it matters.</b> A hand-over feels safe when you can see it happen. The statusline says who has the wheel, the lines arrive at reading speed, and any key you press takes it back. At the end there is one change, one undo step and a tested result, and nothing is saved until you decide.</p>
     <div class="stills">
-      <figure><img src="media/m3-still1.webp" width="1280" height="768" loading="lazy" decoding="async" alt="The pair typing a table case; the statusline says pair has the wheel, any key takes it back"><figcaption>While it drives: its cursor at the end of the ghost text, a bar on each line it entered, and the wheel in the statusline.</figcaption></figure>
-      <figure><img src="media/m3-still2.webp" width="1280" height="768" loading="lazy" decoding="async" alt="Six new test cases, a check mark in the margin, and a two-line hand-back note"><figcaption>Handed back: ✓ in the margin and the statusline, and a note on the case you'd have skipped.</figcaption></figure>
+      <figure><img src="media/m3-still1.webp" width="1280" height="768" loading="lazy" decoding="async" alt="Pair typing the sixth table case, its cursor in the ghost text; a bar on each line it entered; the statusline: pair has the wheel · any key takes it back"><figcaption>While it drives: its cursor at the end of the ghost text, a bar on each line it entered, and the wheel in the statusline.</figcaption></figure>
+      <figure><img src="media/m3-still2.webp" width="1280" height="768" loading="lazy" decoding="async" alt="Six new table cases with ✓ on each; the note says six cases, one undo step, and they pass, with u undoes it and M-? why; the statusline: ✓ go test ./... (unsaved) · 4 tests, 3 packages"><figcaption>Handed back: ✓ on the lines it entered, the run on the unsaved buffer in the statusline, and a note on the case you'd have skipped.</figcaption></figure>
     </div>
   </article>
 </section>
@@ -677,7 +679,7 @@ footer a { color: var(--muted); }
   <span>pairing-buddy · MIT</span>
   <a href="https://github.com/makefunstuff/pairing-buddy">GitHub</a>
   <a href="https://github.com/makefunstuff/pairing-buddy/issues">Issues</a>
-  <span>The captures on this page and in the tour are v0.9 with scripted model words, recorded from <a href="https://github.com/makefunstuff/pairing-buddy/tree/main/docs/captures">tapes in the repo</a>.</span>
+  <span>The captures on this page and in the tour show the shipped plugin and daemon, with scripted model words, recorded from <a href="https://github.com/makefunstuff/pairing-buddy/tree/main/docs/captures">tapes in the repo</a>.</span>
 </footer>
 
 <script>
