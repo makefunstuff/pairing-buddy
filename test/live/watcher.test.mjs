@@ -63,6 +63,19 @@ const SCENARIOS = {
   },
 };
 
+// Drift judged by what a file does (its gist, see gist.mjs), where the words of its path mislead: a path word in
+// common with an unrelated goal, and an on-goal file with none.
+const DRIFT_BY_MEANING = [
+  {goal: 'better search ranking for product queries', file: 'src/billing/ranking.ts', drifted: true,
+    gist: 'Ranks overdue invoices for the dunning run, oldest debt first. It defines rankOverdueInvoices, DUNNING_LEVELS.'},
+  {goal: 'better search ranking for product queries', file: 'src/catalog/scoring.ts', drifted: false,
+    gist: 'BM25 scoring of products against a query, title boosted over description. It defines scoreProduct, tokenize.'},
+  {goal: 'reconnect waits 30 s after the phone sleeps', file: 'src/net/backoff.ts', drifted: false,
+    gist: 'The delay before the next connection attempt, doubling up to a cap. It defines nextDelay, MAX_DELAY_MS.'},
+  {goal: 'reconnect waits 30 s after the phone sleeps', file: 'src/sleep/sheep-counter.ts', drifted: true,
+    gist: 'Counts sheep for the bedtime story screen and plays the animation. It defines countSheep, SheepAnimation.'},
+];
+
 function triggerOf(state) {
   const [trigger] = detectTriggers(state, NOW);
   assert.ok(trigger, 'the scenario raises a trigger');
@@ -91,6 +104,15 @@ describe('Watcher on live models', {skip: stacks.length ? false : SKIP_REASON}, 
         const result = await score(trigger, state);
         t.diagnostic(`${trigger.kind} scored ${result.value}`);
         assert.ok(result.value < BUDGETS.normal.bar, `score ${result.value} reaches the normal bar`);
+      });
+    }
+
+    for (const {goal, file, gist, drifted} of DRIFT_BY_MEANING) {
+      test(`${stack.name}: drift by what ${file} does, under "${goal}": ${drifted ? 'other work' : 'on the goal'}`, async t => {
+        const state = scenario([{kind: 'edit', file, from: 1, to: 4, at: sec(20)}]);
+        const result = await score({...triggerOf({...state, goal}), gist}, {...state, goal});
+        t.diagnostic(`drift scored ${result.value}`);
+        assert.equal(result.value >= BUDGETS.normal.bar, drifted, `score ${result.value}`);
       });
     }
 

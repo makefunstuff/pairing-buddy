@@ -54,8 +54,13 @@ Runs every test that needs no model, in under a minute, with scripted models and
 - **The tone.** The checker the live tests use (praise, apology, filler, emoji, `!` outside code, headings and lists,
   words over the limit), the tone in the Partner's instructions, and teaching: the Partner asked about the words
   shown, the idea and its link apart for the editor, `?` in the chat about Pair's last words.
-- **The Watcher's speed.** The prefilter's rules, the one-number answer, drift checked once per file, keep-warm, and
-  the Watcher following the model a one-model server has loaded.
+- **The Watcher's speed.** The prefilter's rules, the one-number answer, scores remembered, drift checked once per
+  file with the file's gist, keep-warm, the Watcher following the model a one-model server has loaded, and, end to
+  end against a fake server that swaps and does not say so, the Watcher moving to the Partner's model after two
+  reloads.
+- **Context windows and thinking settings.** The window from vLLM's, llama.cpp's and LM Studio's metadata or pi-ai's
+  catalog, the config's own winning; `pair doctor --thinking` against fake servers that take a chat-template switch
+  with a budget field, or `reasoning_effort` with three levels.
 - **The wrong turn's trigger.** Raised once per red run and file, never for the code the failure names, its test,
   notes, or a run that passed since.
 - **The search trail.** Three searches with one closed empty make a trail, an edit or the time window ends it; the

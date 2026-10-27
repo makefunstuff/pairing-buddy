@@ -8,6 +8,7 @@ import {AgentRelay, itemName} from './agent-relay.mjs';
 import {AgentBoard, STATUSES} from './agents.mjs';
 import {sameServer} from './config.mjs';
 import {goalFromContext, SOURCES} from './context-card.mjs';
+import {loadSizedConfig} from './context-window.mjs';
 import {byUse, herdrFocus, noteEditor} from './editors.mjs';
 import {gitRoot} from './git.mjs';
 import {MODEL_ROLES, ModelHealth} from './health.mjs';
@@ -24,6 +25,7 @@ import {probeModel} from './probe.mjs';
 import {projectContext} from './project-context.mjs';
 import {readMessages, sendMessage} from './protocol.mjs';
 import {configChanges, RESTART_FIELDS, watchConfig} from './reload.mjs';
+import {rememberScores} from './score-memory.mjs';
 import {ScoutPane} from './scout-pane.mjs';
 import {PairSession} from './session.mjs';
 import {openRootOf, sessionRootOf} from './session-root.mjs';
@@ -31,7 +33,7 @@ import {ModelSlot} from './slot.mjs';
 import {openStore} from './store.mjs';
 import {ROLE_TOOLS, ROLES} from './tools.mjs';
 import {VERSION} from './version.mjs';
-import {createWatcher} from './watcher.mjs';
+import {createWatcher, momentOf} from './watcher.mjs';
 
 const EDITOR_REPLY_MS = 2000;
 const EDIT_REPLY_MS = 30_000; // Neovim replies to the Driver's edit once it has typed it
@@ -115,6 +117,9 @@ export async function startDaemon(config, {
     return session.useTool(name, args);
   };
 
+  let partnerAsked = false; // since the Watcher's last call: its next call may find the Partner's model loaded
+  const deferred = {deferred: true, reason: 'the Partner has the model'};
+
   /** The Watcher's scoring and the Partner on `pairModels`, as the config sets them. */
   async function buildModels(pairModels) {
     // Two models on one server: the Watcher follows what the server has loaded (see loaded-model.mjs).
@@ -134,16 +139,23 @@ export async function startDaemon(config, {
       },
     });
     const scoreRemark = createWatcher({models: pairModels.models, model: pairModels.watcher, chooseModel: chooseWatcherModel});
-    return {pairModels, chooseWatcherModel, partner, scoreRemark};
+    // Scores are remembered for these models only: other models may score the same moment otherwise.
+    const remembered = rememberScores(async (trigger, state) => {
+      const afterPartner = partnerAsked;
+      const started = Date.now();
+      const result = await slot.watch(signal => scoreRemark(trigger, state, {signal}));
+      if (!result) return deferred;
+      partnerAsked = false;
+      chooseWatcherModel.timed?.(Date.now() - started, afterPartner);
+      health.report('watcher', result.error);
+      return result;
+    }, {momentOf});
+    return {pairModels, chooseWatcherModel, partner, scoreRemark, remembered};
   }
   models = await buildModels(pairModels);
 
-  const score = async (trigger, state) => {
-    const result = await slot.watch(signal => models.scoreRemark(trigger, state, {signal}));
-    if (!result) return {deferred: true, reason: 'the Partner has the model'};
-    health.report('watcher', result.error);
-    return result;
-  };
+  // A remembered score waits for the Partner too: on one server the remark it lets through would queue behind it.
+  const score = (trigger, state) => (slot.exclusive && slot.busy() ? deferred : models.remembered(trigger, state));
   // The sessions' Partner: always the one on the config's models, its turns put in order by the slot.
   const sessionPartner = {
     createConversation: () => models.partner.createConversation(),
@@ -159,7 +171,7 @@ export async function startDaemon(config, {
           asked: options?.kind !== 'remark',
           cancel: () => partner.cancel(conversationId).catch(error => log(`cancelling a remark failed: ${error.message}`)),
         },
-        () => reported('partner', partner.ask(conversationId, content, options)),
+        () => { partnerAsked = true; return reported('partner', partner.ask(conversationId, content, options)); },
       );
     },
     finish: (conversationId, submissionId) => slot.turn(
@@ -650,6 +662,8 @@ export async function startDaemon(config, {
   health.start();
   agents?.start();
   const configWatch = configFile && watchConfig(configFile, {
+    // The windows asked again as at start; one a server cannot tell now stays as the running config has it.
+    load: path => loadSizedConfig(path, {before: saved}),
     onChange: next => reload(next).catch(error => refuse(error.message)),
     onError: refuse,
   });
