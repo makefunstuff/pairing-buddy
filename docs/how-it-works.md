@@ -18,8 +18,9 @@ its role's tools.
 
 - **Neovim.** The plugin sends edits (about 2 s after you stop typing), the current file, cursor, selection, LSP
   diagnostics, your Telescope and snacks.picker searches, and that you scroll (at most every 10 s: only that you read).
-- **herdr.** The daemon watches your herdr panes for focus, commands and their output
-  ([herdr.md](herdr.md) says how, and what herdr lacks).
+- **Your terminals.** The daemon watches your herdr panes, the panes of the tmux session you work in and your
+  `:terminal` buffers in Neovim for focus, commands and their output ([herdr.md](herdr.md) says how, and what herdr
+  lacks; [neovim.md](neovim.md#without-herdr) for Neovim and tmux).
 - **Where you have been.** Your buffers and jumplist, the herdr work board's task for your branch, and git (branch,
   last commit, changed files, pull request). The [context card](neovim.md#what-it-knows-the-context-card) shows all of
   it, and what you hide there is not sent.
