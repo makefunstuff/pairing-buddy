@@ -1,11 +1,13 @@
 -- pairing-buddy for Neovim: sends what you do to the pair daemon and shows what Pair says, points at and
 -- suggests, in the visual language of style.lua, drawn by draw.lua.
--- Pair never saves a buffer, and never moves your cursor: its jump key does, when you press it. It changes a
+-- Pair never saves a buffer, and never moves your cursor: its jump key does, when you press it (the one exception is
+-- the morning pick-up, which opens an empty Neovim where you stopped; `land = false` turns it off). It changes a
 -- buffer only while you hand it the wheel (the Driver role): one edit, typed while you watch (drive.lua) as one
 -- undo step, and refused or undone as soon as you press any key. Once connected, it stays connected: when the
 -- daemon restarts, it reconnects by itself.
 local agents = require('pair.agents')
 local card = require('pair.card')
+local debrief = require('pair.debrief')
 local draw = require('pair.draw')
 local drive = require('pair.drive')
 local hints = require('pair.hints')
@@ -37,6 +39,7 @@ local config = {
   decide_key = '<M-d>', link_key = '<M-l>',
   teach_key = '<M-?>',
   agents_key = '<M-a>',
+  land = true, -- the morning pick-up opens an empty Neovim where the last session stopped
 }
 local state = {
   channel = nil, partial = '', attached = {}, pending = {}, open_request = nil, level = nil, role = nil,
@@ -54,6 +57,7 @@ local state = {
   run = nil, -- the test run on save, for the statusline: {state = 'run'|'pass'|'fail'|'error'|'idle', label, text, at, till, red_since}
   pulse = nil, -- when the statusline last lit up for a green (see delight), until it settles
   thinking = false, -- a Partner turn that thinks is running, for the statusline
+  catching_up = false, -- the morning pick-up reads where you stopped, for the statusline
   results = {}, -- what the last finished run found: {name, file, line, ok, failure}, absolute paths
   places = {}, -- where the last build or run crashed or printed errors and warnings: {file, line, col, kind, text, new}
   place_mark = nil, -- {buf, id}: the place of those the jump key goes to
@@ -105,6 +109,15 @@ local function flush(buf)
   event({kind = 'edit', file = file, from = pending.from, to = last, text = table.concat(lines, '\n')})
   local cursor = vim.api.nvim_win_get_cursor(0)
   event({kind = 'cursor', file = file, line = cursor[1], col = cursor[2]})
+end
+
+--- Sends every edit still waiting for its debounce now, so it goes to the session it was made in; with `drop`,
+--- forgets them instead, once that session has ended without them.
+local function flush_all(drop)
+  for buf, pending in pairs(state.pending) do
+    if pending.timer and not pending.timer:is_closing() then pending.timer:close() end
+    if drop then state.pending[buf] = nil else flush(buf) end
+  end
 end
 
 local function redraw_status()
@@ -160,7 +173,7 @@ end
 --- The keys after Pair's words, each with what it does until you have used it once: `M-j goes there · M-? why`.
 --- The teach key shows only until then, and not once it was asked: it works on any words of Pair's.
 local function words_keys(words)
-  local keys = {}
+  local keys = {words.key} -- a key with where it goes, such as the pick-up's `M-j the failing test`
   local jump = words.jump and key_label('jump', config.jump_key)
   if jump then table.insert(keys, hints.label(jump, 'goes there')) end
   if words.undo then table.insert(keys, 'u undoes it') end
@@ -450,6 +463,7 @@ local function on_lines(_, buf, _, first, last, new_last)
   pending.timer = pending.timer or vim.uv.new_timer()
   state.pending[buf] = pending
   pending.timer:start(config.debounce_ms, 0, vim.schedule_wrap(function()
+    if state.pending[buf] ~= pending then return end -- flushed already (see flush_all)
     pending.timer:close()
     flush(buf)
   end))
@@ -786,7 +800,7 @@ local function pulse()
 end
 
 local function on_delight(message)
-  pulse()
+  if not message.calm then pulse() end -- a break hint after a commit says its line without the glow
   local text = type(message.text) == 'string' and message.text or ''
   local buf = vim.api.nvim_get_current_buf()
   if text == '' or state.words or not project_path(buf) then return end -- Pair's own words stay
@@ -798,7 +812,66 @@ local function on_delight(message)
   redraw_status()
 end
 
+-- The morning pick-up: an empty Neovim (or a start screen) lands where the last session stopped, the statusline says
+-- Pair catches up while its gaze reads there again, and one line under that line says what is left. The jump key
+-- goes to the test that was failing then, or to that place when you had opened something else.
+
+local START_SCREENS = {alpha = true, dashboard = true, snacks_dashboard = true, ministarter = true, starter = true}
+
+local function empty_start()
+  local buf = vim.api.nvim_get_current_buf()
+  if START_SCREENS[vim.bo[buf].filetype] then return true end
+  return vim.api.nvim_buf_get_name(buf) == '' and vim.bo[buf].buftype == '' and not vim.bo[buf].modified
+    and vim.api.nvim_buf_line_count(buf) == 1 and vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1] == ''
+end
+
+local function land(message)
+  state.catching_up = true
+  redraw_status()
+  if not (config.land and empty_start()) then return end
+  local buf = load(message.file)
+  vim.api.nvim_win_set_buf(0, buf)
+  vim.bo[buf].buflisted = true
+  local row = math.min(message.line, vim.api.nvim_buf_line_count(buf)) - 1
+  vim.api.nvim_win_set_cursor(0, {row + 1, draw.column(buf, row)})
+  vim.cmd('normal! zz')
+end
+
+--- A place the jump key goes to, without a point drawn there.
+local function aim_at(file, line)
+  local buf = load(file)
+  local row = math.min(line, vim.api.nvim_buf_line_count(buf)) - 1
+  aim({buf = buf, ns = ns, id = vim.api.nvim_buf_set_extmark(buf, ns, row, 0, {})})
+  map_keys('jump', {{config.jump_key, M.jump, 'Go where Pair points'}})
+  return key_label('jump', config.jump_key)
+end
+
+local function pickup(message)
+  state.catching_up = false
+  local buf = vim.api.nvim_get_current_buf()
+  local here = vim.api.nvim_buf_get_name(buf) == message.file
+  local jump = type(message.jump) == 'table' and message.jump or nil
+  local key
+  if jump then
+    key = aim_at(jump.file, jump.line)
+    if key then key = key .. ' ' .. jump.what end
+  elseif not here then
+    key = aim_at(message.file, message.line)
+    if key then key = key .. ' where you stopped' end
+  end
+  if not project_path(buf) then return redraw_status() end
+  local row = here and math.min(message.line, vim.api.nvim_buf_line_count(buf)) - 1 or vim.api.nvim_win_get_cursor(0)[1] - 1
+  forget_words(false)
+  state.words = {buf = buf, row = row, text = message.text, key = key}
+  draw_words(state.words)
+  if here and type(message.code) == 'string' then state.words.span = draw.code(buf, row, message.code) end
+  redraw_status()
+end
+
 local handlers = {
+  land = land,
+  pickup = pickup,
+  debrief = function(message) debrief.show(message.text) end,
   delight = on_delight,
   earcon = function(message) earcons.play(message.sound) end,
   look = look,
@@ -858,7 +931,11 @@ local handlers = {
   message = function(message)
     if message.sender == 'system' then vim.notify('Pair: ' .. message.text) end
   end,
-  ended = hello,
+  -- The session ended (/end in the chat, or by itself): edits still waiting were made in it, not in the next one.
+  ended = function()
+    flush_all(true)
+    hello()
+  end,
   listening = function(message) listen.level(message.level) end,
   heard = listen.heard,
   -- The answer to what you said: Pair's words under the line you asked on, in place of yours.
@@ -983,6 +1060,8 @@ local function status_parts()
     return {glyph = style.spinner[spinner.frame], text = run.label, hl = 'PairStatus', text_hl = 'PairStatusDim'}
   elseif state.thinking then
     return {glyph = style.spinner[spinner.frame], text = 'pair · thinking', hl = 'PairStatus', text_hl = 'PairStatusDim'}
+  elseif state.catching_up then
+    return {glyph = g.away, text = 'pair · catching up', hl = 'PairStatusDim', text_hl = 'PairStatusDim'}
   elseif run and run.state == 'fail' then
     local red = type(run.red_since) == 'number' and math.floor((os.time() * 1000 - run.red_since) / 60000) or 0
     return {glyph = g.fail, text = run.text .. (red >= LONG_RED_MIN and (' · red %d min'):format(red) or ''), hl = 'PairFail', text_hl = 'PairStatusDim'}
@@ -1058,7 +1137,12 @@ local commands = {
   noise = function() feedback(false, state.remark) end,
   why = function() M.teach() end,
   agents = agents.request,
-  ['end'] = function() send({type = 'end'}) end,
+  -- Your last edits belong to the session that ends: its debrief counts them, and the next one starts empty.
+  ['end'] = function()
+    flush_all()
+    send({type = 'end'})
+  end,
+  first = function(arg) send({type = 'first', text = arg}) end,
   context = function()
     if not state.channel then return vim.notify('Pair: not connected, so there is no card; :Pair start connects', vim.log.levels.WARN) end
     card.open(send)

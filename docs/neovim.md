@@ -502,6 +502,77 @@ herdr's work board ([captures/board.mjs](captures/board.mjs)).*
 
 ![x on the terminal: its rows are struck through and no longer go to the Partner](images/context-trimmed.png)
 
+## The morning pick-up and the day's end
+
+Ending well is half of starting well. When a session ends, Pair writes the day down in a few lines, with the one step
+to start with next time, and the next morning Neovim opens there.
+
+**The day's end.** `/end` in the chat (or `:Pair end`, or the session [ending by itself](memory.md#no-ceremony-a-session-starts-and-ends-by-itself))
+gives the debrief: how long you worked, what is now true, what is left, tomorrow's first step with the place it
+starts (`file:line`), and what your verdicts on Pair's remarks say it should do differently.
+
+![The lease fix turns the queue green; /end in the chat gives the day in a few lines, and e puts tomorrow's first step on the line to edit](images/debrief.gif)
+
+*The plugin, the daemon and `go test` as shipped; the stage seeds the day's three hours and its five verdicts, and the
+debrief's words are scripted.*
+
+```
+pair Day's end: 3 h 05 min in hookd.
+     ✓ delivery makes all 5 attempts
+     ✓ leases outlast the last attempt: TestNoDoubleDelivery passes
+     ○ open: AttemptTimeout is set, but nothing enforces it yet
+     Tomorrow, first: give send() a context with that timeout, in worker.go:27.
+     2 of my 5 remarks were noise, both about drift: I'll keep quieter there.
+·· e edits tomorrow's first step
+```
+
+- The wins come from what happened, not from the model's memory: tests that failed during the session and pass now,
+  commands that pass again, [numbers that moved](#when-it-goes-green), Pair's suggestions you took and edits you kept,
+  and the commits of the session. With them go the goal, `git status` and where your cursor was.
+- `Tomorrow, first` names a place. `worker.go:27` or `Makefile:14` is enough, and a path with spaces works in
+  backticks (`` `src/ring buffer.c:9` ``) or as it is: Pair finds the one file git tracks (or you had open)
+  with that name. Without a place, the pick-up starts where you stopped.
+- The last line is a rule, not the model: the share of noise among the session's remarks (a remark ignored for ten
+  minutes counts as noise) and what most of it was about. With `autoTune` on, those verdicts raise that trigger's bar,
+  so Pair says it will keep quieter there; without it, it only says the share. No noise, no line.
+- `e`, right after the debrief, puts the first step on the chat's line as `/first …` to edit; Enter keeps it.
+  `/first <step>` (or `:Pair first <step>`) works any time: in a session you have done no work in yet it replaces the last
+  debrief's step, and later this session's debrief takes it in place of its own. A `file:line` in it is the new place.
+- Without a chat pane, Neovim shows the debrief in a small panel; `q` closes it.
+
+**The morning pick-up.** The first Neovim in a project, at least 30 minutes after its last session ended and before
+you do anything, picks up where that session stopped.
+
+![Neovim opens empty and lands on queue.go:18; the statusline catches up while the gaze reads, one line says what is left, and Alt-j goes to the test that was failing](images/pickup.gif)
+
+*The plugin and the daemon as shipped, in a clean Neovim with ayu; yesterday's session is seeded, and the line's words
+are scripted.*
+
+1. A Neovim opened without a file (or on a start screen such as alpha, dashboard or mini.starter) opens the debrief's
+   place, on its line; this is the one time Pair moves your cursor, and `land = false` turns it off. A Neovim you
+   opened on a file stays there.
+2. The statusline says `◌ pair · catching up` while Pair's gaze reads the lines around the place again. The place
+   follows its code: a line that moved since is found where it is now, and one whose code changed is said to have.
+3. One line under that line says what is left, checked against the code as it is now, so a debrief the code no
+   longer bears out does not send you the wrong way. The code it names is underlined. Without the model (it is down,
+   or does not answer), the line is the first step as the debrief wrote it.
+4. A test that was red when the session ended is still in the statusline, `✗ 1 failing since yesterday ·
+   TestNoDoubleDelivery`, with its signs while its file is unchanged, until the next run. `Alt-j` goes to it; when
+   nothing failed and you opened another file, `Alt-j` goes to the place.
+
+![The line under queue.go:18, the code it means underlined, and the statusline still red since yesterday](images/pickup.png)
+
+![Alt-j: the failing test, with why it failed after its line](images/pickup-jump.png)
+
+A session that starts sooner (`/end`, and the chat starts the next one at once) carries on without a pick-up, and the
+chat does not show the debrief again as "Last time". The line goes to the chat too, and the ledger keeps what Pair read.
+
+**Break hints.** After 50 minutes of focus, Pair suggests a break, but only at a natural end: the tests turn green, a
+command passes again, a number finally moves, or a commit. Never in the middle of a red, never on a timer.
+`52 min of focus, and green: a good moment for a short break.` goes with the green's own line under yours and in the
+chat; after 90 minutes it says a longer break. At most one per 50 minutes of focus; five minutes away is a break, and
+the count starts again. `level quiet` turns them off.
+
 ## Setup
 
 The lazy.nvim spec is in [install.md](install.md#install). Without a plugin manager:
@@ -517,6 +588,7 @@ require('pair').setup({
   searches = true,     -- false: your Telescope and snacks.picker searches stay in Neovim, and there is no search trail
   sounds = false,      -- true: short sounds while you are away from Neovim (see above)
   sound_volume = 0.5,  -- 0 to 1
+  land = true,         -- false: the morning pick-up does not open an empty Neovim where you stopped
 })
 ```
 
@@ -537,6 +609,7 @@ require('pair').setup({
 | `searches` | `true` | Read your Telescope and snacks.picker searches for the [search trail](#the-search-trail) |
 | `sounds` | `false` | Short [sounds](#sounds-while-you-are-away) for a green, a regression, a remark and the hand-back, only while Neovim does not have the focus |
 | `sound_volume` | `0.5` | Their volume, 0 to 1 |
+| `land` | `true` | The [morning pick-up](#the-morning-pick-up-and-the-days-end) opens an empty Neovim (or a start screen) on the place the last session's debrief named |
 | `glyphs` | plain Unicode | Pair's marks (below) |
 
 Every key option takes `false` for none; the commands work either way. The keys are mapped only where you have no
@@ -579,7 +652,8 @@ to standard ones and does not fade.
 | `:Pair tasks` | List the work in the current note as tasks; nothing is added until `y` ([notes.md](notes.md#tasks-only-when-you-ask)) |
 | `:Pair clear` | Remove Pair's points and words, and the marks in a note's margin |
 | `:Pair context` | Show what Pair knows right now: the goal, the board task, git, your commands, buffers, jumps and searches; `x` hides a source for the session, `q` closes |
-| `:Pair end` | End the session now; Pair writes a short session note, which the next session in this project starts from (it also [ends by itself](memory.md#no-ceremony-a-session-starts-and-ends-by-itself)) |
+| `:Pair end` | End the session now with its [debrief](#the-morning-pick-up-and-the-days-end), which the next session in this project starts from (it also [ends by itself](memory.md#no-ceremony-a-session-starts-and-ends-by-itself)) |
+| `:Pair first <step>` | Tomorrow's first step, with a `file:line` to land on: it replaces the last debrief's in a session with no work yet, else this session's debrief takes it |
 | `:Pair listen [cancel]` | Push-to-talk without the key: works as a tap of `Alt-t`; `cancel` drops what is being recorded ([voice.md](voice.md)) |
 | `:Pair stop` | Disconnect this Neovim, and stop reconnecting |
 
@@ -604,6 +678,8 @@ vim.o.statusline = "%f %m%=%{%v:lua.require'pair'.statusline()%}  %l:%c "
 | `● run 3 · exit 0 · 55 ms · avg probe 23.7 · same numbers as run 2` | For 15 minutes after a build or run: what it showed next to the one before, and once the hunt is over, `· 1 debug line from run 2 left · M-j` ([exploration.md](exploration.md)). A crash or a broken build shows with `✗` |
 | `⠹ go test ./...`, `✗ 1 failing · TestX`, `✓ go test ./... · 4 tests, 3 packages` | [Tests on save](tests-on-save.md); `(unsaved)` after the command for the run on the Driver's edit |
 | `◎ pair has the wheel · any key takes it back` | While it drives (`· thinking` while its model thinks, the hint again while it types) |
+| `◌ pair · catching up` | While the [morning pick-up](#the-morning-pick-up-and-the-days-end) reads where you stopped |
+| `✗ 1 failing since yesterday · TestX` | A test that was red when the last session ended, until the next run |
 | `◌ pair · partner down` (or `models down`) | While a model is down |
 | `◌ pair · reconnecting` | While the daemon is away |
 

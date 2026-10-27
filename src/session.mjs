@@ -1,21 +1,24 @@
 // One pairing session: folds its events, decides when Pair speaks and carries out the Partner's tools.
 import {readFile} from 'node:fs/promises';
-import {isAbsolute, join, relative} from 'node:path';
+import {basename, isAbsolute, join, relative} from 'node:path';
+import {Breaks} from './breaks.mjs';
 import {Budget} from './budget.mjs';
 import {commandPolicy} from './command-policy.mjs';
 import {contextCard} from './context-card.mjs';
+import {debriefInput, firstPlace, heading, keptChanges, lessonLine, parseDebrief, Wins} from './debrief.mjs';
 import {Delight, LONG_RED_MS} from './delight.mjs';
 import {describeState} from './describe.mjs';
 import {insideRoot, MAX_LINES, numberedLines, projectFile, readProjectPath} from './files.mjs';
 import {failed, fold, initialState} from './fold.mjs';
 import {decide} from './gate.mjs';
 import {gist} from './gist.mjs';
-import {gitStatus} from './git.mjs';
+import {gitCommitsSince, gitStatus} from './git.mjs';
 import {Breakpoints, placeOf, stillTrue, urgent} from './held.mjs';
 import {plainLine} from './herdr.mjs';
 import {keptOutput, Ledger, ledgerDetail, today} from './ledger.mjs';
 import {DebugLines, printedBy} from './debug-lines.mjs';
 import {changeLine, headline, runLine, verdictText} from './run-log.mjs';
+import {around, codeOn, fallbackLine, PICKUP_AFTER_MS, pickupInput, pickupLine, relocate, restoredTests} from './pickup.mjs';
 import {placeRun} from './run-places.mjs';
 import {crashText, hasNews, readingSummary, readRun} from './run-output.mjs';
 import {RUN_TIMEOUT_MS, shellQuote} from './scout-pane.mjs';
@@ -28,6 +31,12 @@ import {tuning, WINDOW_MS} from './tuning.mjs';
 import {KEEP, splitTeaching, teachInput} from './tone.mjs';
 
 const SILENT = /^\W*silent\W*$/i;
+const readLines = path => readFile(path, 'utf8').then(text => text.split('\n'));
+/** `note` with its "Tomorrow, first" line saying `step`. */
+const withFirst = (note, step) => {
+  const line = `Tomorrow, first: ${step}`;
+  return /^\W*tomorrow,?\s*first/im.test(note) ? note.replace(/^\W*tomorrow,?\s*first.*$/im, line) : `${note}\n${line}`;
+};
 // "…so no drift here — SILENT.": a model that explains its SILENT still means silence.
 const silent = text => SILENT.test(text) || /\bSILENT\W*$/.test(text);
 
@@ -159,21 +168,8 @@ export function verdictLine({verdict, reason, score, bar}, level) {
   return `The Watcher scored it ${score}/10; the bar at ${level} is ${bar}${verdict === 'speak' ? ', so Pair looked for it' : ''}.`;
 }
 
-const NOTE_CHANGES = 20; // lines of git status the note request shows
-
-/** What the Partner is asked at the end: the note the next session in this project starts from. */
-export function noteInput(state, changes) {
-  const lines = changes ? changes.split('\n') : [];
-  const shown = lines.length > NOTE_CHANGES ? [...lines.slice(0, NOTE_CHANGES), `(${lines.length - NOTE_CHANGES} more)`] : lines;
-  return `[end] The session is over. Write a short session note in plain text, at most 6 lines, for the next session in this project:
-the goal, what changed, and loose ends. No heading and no tool calls.
-
-Goal: ${state.goal ?? '(not set)'}
-Uncommitted changes (git status): ${shown.length ? `\n${shown.join('\n')}` : 'none'}`;
-}
-
-// "Session note:", "# Session Notes", "**Session note**" and the like, alone on the first line or before the text.
-const HEADING = /^[\s#*_]*session notes?[*_]*[ \t]*(:[*_]*[ \t]*|\n|$)/i;
+// "Session note:", "# Debrief", "**Session note**" and the like, alone on the first line or before the text.
+const HEADING = /^[\s#*_]*(session notes?|debrief)[*_]*[ \t]*(:[*_]*[ \t]*|\n|$)/i;
 
 export const NOTE_CHARS = 1200; // six lines and some: the next session's instructions carry it on every turn
 
@@ -191,6 +187,8 @@ export function cleanNote(text) {
 
 // What the user does, unlike what Pair, herdr's focus or the LSP report: a session nobody uses never ends by itself.
 const USER_EVENTS = new Set(['typing', 'edit', 'enter', 'cursor', 'save', 'command_end', 'search']);
+// Of those, the ones that are work, not only looking around: a session with none of them has nothing to debrief.
+const WORK_EVENTS = new Set(['typing', 'edit', 'save', 'command_end', 'search']);
 // An answer to "What are we doing this session?" that means: no goal, don't ask.
 const NO_GOAL = /^\W*(exit|later|skip|none|no|nothing|-)\W*$/i;
 
@@ -203,11 +201,12 @@ export class PairSession {
    * `record` is the stored session row. `notify(target, message)` sends to this session's "chat" clients,
    * all its "editors", or the "editor" the user used last, and returns how many got it; `requestEditor(message)`
    * asks the editor and resolves with its reply. While `health` says a model is down, Pair makes no remarks.
-   * `previousNote` is the note of the last session in this project. With `autoTune`, the user's verdicts on
-   * past remarks tune the budget (see tuning.mjs).
+   * `previousNote` is the note of the last session in this project, and `lastSession` that session as the store
+   * keeps it, with where to pick up (see pickup.mjs). With `autoTune`, the user's verdicts on past remarks tune the
+   * budget (see tuning.mjs).
    */
-  constructor({record, store, partner, score, typingPauseMs, notify, requestEditor, previousNote = null, autoTune = false, health = {ok: () => true}, testOnSave = null, log = () => {}, now = Date.now}) {
-    Object.assign(this, {record, store, partner, score, typingPauseMs, notify, requestEditor, previousNote, autoTune, health, log, now});
+  constructor({record, store, partner, score, typingPauseMs, notify, requestEditor, previousNote = null, lastSession = null, autoTune = false, health = {ok: () => true}, testOnSave = null, log = () => {}, now = Date.now}) {
+    Object.assign(this, {record, store, partner, score, typingPauseMs, notify, requestEditor, previousNote, lastSession, autoTune, health, log, now});
     this.state = initialState({root: record.root, goal: record.goal});
     this.budget = new Budget(record.level);
     this.role = record.role ?? 'navigator';
@@ -252,6 +251,7 @@ export class PairSession {
     this.runError = null; // the last run that could not run, said once in the chat
     this.wasRed = false; // the last run failed
     this.usedAt = null; // when the user last did something in this session (see USER_EVENTS), since the daemon loaded it
+    this.worked = false; // the user typed, edited, ran, searched or asked something since the daemon loaded it
     this.goalFrom = null; // where the goal came from when the user did not type it: "the board task repo/12"
     this.goalSkipped = false; // the user said "later" to the goal question
     this.ledger = new Ledger({store, sessionId: record.id, changed: () => this.notify('editors', {type: 'ledger_changed'}), now});
@@ -261,6 +261,10 @@ export class PairSession {
     this.debugOffered = false; // the hunt is over and its debug lines were offered for clean-up
     this.printed = new Map(); // run number -> how many lines of its output the user's debug lines printed
     this.runLineShown = null; // the statusline's line about the last run (see showRunLine)
+    this.wins = new Wins(); // what went right, for the debrief
+    this.breaks = new Breaks(); // when a break is due, at the next natural end
+    this.pickedUp = false; // the morning pick-up ran, or this session carries straight on from the last
+    this.firstStep = null; // the user's own first step for next time (/first), for this session's debrief
   }
 
   /** Runs the tests on each save with `testOnSave` ({command, outputFile}) from now on, or none when it is null. */
@@ -276,6 +280,7 @@ export class PairSession {
   receive(event) {
     const file = event.file && isAbsolute(event.file) ? relative(this.root, event.file) : event.file;
     const {run, runs} = this.state;
+    const last = this.state.git?.last; // the last commit, until a context event reads it again
     const folded = {at: this.now(), ...event, ...(file ? {file} : {})};
     this.state = fold(this.state, folded);
     if (event.kind === 'enter' && file && !file.startsWith('..')) this.debugLines.opened(file);
@@ -284,8 +289,14 @@ export class PairSession {
     }
     this.breakpoints.see(folded);
     if (USER_EVENTS.has(event.kind)) this.usedAt = this.now();
+    if (WORK_EVENTS.has(event.kind)) this.worked = true;
     if (event.kind === 'save' && file && !file.startsWith('..')) this.testRuns?.saved(file);
-    if (event.kind === 'command_end') this.delighted(this.delight.command({cmd: event.cmd ?? '', failed: failed(this.state.commands.at(-1)), output: event.output}, folded.at));
+    if (event.kind === 'command_end') {
+      const red = failed(this.state.commands.at(-1));
+      this.wins.command(event.cmd ?? '', red);
+      this.delighted(this.delight.command({cmd: event.cmd ?? '', failed: red, output: event.output}, folded.at));
+    }
+    if (event.kind === 'context' && last && event.git?.last && event.git.last !== last) this.breakHint('committed');
     if (this.state.run !== run) this.showRun(this.state.run);
     if (this.state.runs !== runs) this.showRunLine(this.state.runs.at(-1));
   }
@@ -343,8 +354,24 @@ export class PairSession {
    */
   delighted(moment) {
     if (!moment) return;
-    if (moment.sound === 'green') this.notify('editor', {type: 'delight', text: moment.text});
+    if (moment.moved) this.wins.moment(moment.text);
+    if (moment.sound === 'green') {
+      const hint = this.breakHint('green', {show: false});
+      this.notify('editor', {type: 'delight', text: [moment.text, hint].filter(Boolean).join(' ') || null});
+    }
     this.earcon(moment.sound);
+  }
+
+  /**
+   * A natural end (see breaks.mjs): after long focus, one line suggests a break, in the chat and, with `show`, in
+   * the editor. Returns it, or null when it is not time.
+   */
+  breakHint(what, {show = true} = {}) {
+    const hint = this.breaks.natural(what, this.now(), {level: this.budget.level, red: this.wasRed});
+    if (!hint) return null;
+    this.message('system', hint);
+    if (show) this.notify('editor', {type: 'delight', text: hint, calm: true});
+    return hint;
   }
 
   earcon(sound) {
@@ -369,6 +396,7 @@ export class PairSession {
     const failing = run.placed.filter(test => !test.ok);
     const files = [...new Set(failing.map(test => relative(this.root, test.failure?.file ?? test.file)))];
     const last = this.state.run;
+    if (run.tests) this.wins.tests(run.tests.failed);
     this.receive({kind: 'test_run', cmd: run.label, tests: run.tests, files, saved: run.saved, reading: run.reading, exit: run.exit, output: run.output});
     const fresh = this.state.run !== last ? this.state.run.newWarnings.length : 0; // this run's
     const text = !red && fresh ? `${fresh} new warning${fresh === 1 ? '' : 's'}` : runText(run);
@@ -455,6 +483,7 @@ export class PairSession {
   /** Looks for a trigger worth a remark; called about once a second. Ticks never overlap. */
   async tick() {
     this.countActive();
+    this.breaks.saw(this.lastActivity());
     this.showDue();
     if (this.ticking || this.role === 'driver' || !this.health.ok()) return;
     const now = this.now();
@@ -510,8 +539,12 @@ export class PairSession {
 
   /** Whether the user typed, edited or ran a command in the last few minutes. */
   active(now = this.now()) {
-    const lastActivity = Math.max(this.state.lastKeyAt, this.state.lastEditAt, this.state.commands.at(-1)?.endedAt ?? 0);
-    return now - lastActivity < IDLE_AFTER_MS;
+    return now - this.lastActivity() < IDLE_AFTER_MS;
+  }
+
+  /** When the user last typed, edited or ran a command. */
+  lastActivity() {
+    return Math.max(this.state.lastKeyAt, this.state.lastEditAt, this.state.commands.at(-1)?.endedAt ?? 0);
   }
 
   /** Adds the time since the last tick to the active time while the user is at work, for `pair stats`. */
@@ -528,7 +561,10 @@ export class PairSession {
   }
 
   storeActive() {
-    if (this.activeMs) this.store.addActive(this.activeAt, this.activeMs);
+    if (this.activeMs) {
+      this.store.addActive(this.activeAt, this.activeMs);
+      this.store.addSessionActive(this.id, this.activeMs);
+    }
     this.activeMs = 0;
   }
 
@@ -608,6 +644,7 @@ export class PairSession {
   async ask(text, selection = null) {
     this.message('user', selection ? `${text} (${relative(this.root, selection.file)}:${selection.from}-${selection.to})` : text);
     this.usedAt = this.now();
+    this.worked = true;
     if (!this.state.goal && !this.goalSkipped && !selection) {
       if (NO_GOAL.test(text)) {
         this.goalSkipped = true;
@@ -715,6 +752,15 @@ export class PairSession {
     return {type: 'context', goal: this.state.goal, goalFrom: this.goalFrom, sections: contextCard(this.state, this.now())};
   }
 
+  /**
+   * Whether this session has something to debrief: the user worked in it (see WORK_EVENTS), or did before the daemon
+   * restarted, which its active time shows. Moving about or switching files alone is no work: the empty session that
+   * follows a debrief never writes one over it.
+   */
+  hasWork() {
+    return this.worked || this.activeMs > 0 || this.store.sessionActiveMs(this.id) > 0;
+  }
+
   /** Whether the user used this session and then did nothing for `ms`. */
   idle(ms, now = this.now()) {
     return this.usedAt !== null && now - this.usedAt >= ms;
@@ -774,6 +820,7 @@ export class PairSession {
     if (words) this.message('user', words);
     await this.yieldRemark();
     this.usedAt = this.now();
+    this.worked = true;
     if (this.busy) return this.message('system', 'Pair is still answering; hand over again once it is done.');
     if (!(await this.setRole('driver'))) return;
     this.edited = false;
@@ -879,21 +926,97 @@ export class PairSession {
   }
 
   /**
-   * Ends the session with a note, which the next session in this project starts from. A session that ends by itself
-   * without having been used gets none (`withNote` false): there is nothing to note.
+   * Ends the session with its debrief (see debrief.mjs): its lines are the note the next session in this project
+   * starts from, and its first step is where that session picks up (see pickUp). A session without work in it (see
+   * hasWork) gets none, also with `/end`: there is nothing to note, and the last debrief stays the one to pick up from.
    */
-  async end({withNote = true} = {}) {
+  async end() {
     await this.scout?.close();
     this.storeActive();
     await this.yieldRemark();
-    const input = withNote && noteInput(this.state, await gitStatus(this.root));
-    const note = !input ? null : await this.partner.ask(this.conversationId, input).then(cleanNote, error => {
+    const facts = this.hasWork() && (await this.debriefFacts());
+    const note = !facts ? null : await this.partner.ask(this.conversationId, debriefInput(facts)).then(cleanNote, error => {
       this.message('system', `No session note: ${error.message}`);
       return null;
     });
-    this.store.endSession(this.id, note, this.now());
-    if (note) this.message('pair', `Session note:\n${note}`);
+    const debrief = note && parseDebrief(this.firstStep ? withFirst(note, this.firstStep) : note);
+    const first = debrief && (await firstPlace(this.root, debrief.first, facts.stopped, this.state.edited, readLines));
+    const tests = this.testsShown?.state === 'fail' && !this.testsShown.since ? this.testsShown : null; // a red of its own
+    this.store.endSession(this.id, debrief && debrief.lines.join('\n'), this.now(), debrief && {first, tests});
+    if (debrief) this.showDebrief(debrief, first);
     this.notify('editors', {type: 'clear'});
+  }
+
+  /** What the debrief is written from: the goal, the wins, the changes and where the user stopped. */
+  async debriefFacts() {
+    const since = this.record.started_at;
+    const [changes, commits, stopped] = await Promise.all([gitStatus(this.root), gitCommitsSince(this.root, since), this.stoppedAt()]);
+    const failing = this.state.tests?.failedCount ? this.state.tests.failed : [];
+    return {goal: this.state.goal, wins: this.wins, kept: keptChanges(this.store.actions(this.root, since)), commits, changes, stopped, failing};
+  }
+
+  /** Where the user was: their cursor, else their last edit, with the code on that line; null when unknown. */
+  async stoppedAt() {
+    const {file, cursor, edits} = this.state;
+    const place = file && cursor ? {file, line: cursor.line} : edits.length ? {file: edits.at(-1).file, line: edits.at(-1).from} : null;
+    if (!place || place.file.startsWith('..')) return null;
+    const lines = await readLines(join(this.root, place.file)).catch(() => null);
+    return lines ? {...place, text: lines[place.line - 1] ?? ''} : null;
+  }
+
+  /** The debrief in the chat, or in Neovim when no chat pane is open: its heading, its lines and what Pair learned. */
+  showDebrief(debrief, first) {
+    const lesson = lessonLine(this.store.sessionRemarks(this.id), this.now(), {tuned: this.autoTune});
+    const text = [heading(this.now(), this.store.sessionActiveMs(this.id), basename(this.root)), ...debrief.lines, lesson].filter(Boolean).join('\n');
+    this.message('pair', text);
+    if (!this.notify('chat', {type: 'first', step: first?.step ?? null})) this.notify('editors', {type: 'debrief', text});
+  }
+
+  /**
+   * The user's own first step for next time (`/first`): in a session without work yet, it replaces the one the last
+   * debrief wrote; else this session's debrief takes it in place of its own. A file:line in it is the new place.
+   */
+  async setFirst(step) {
+    const last = this.lastSession;
+    if (this.hasWork() || !last) {
+      this.firstStep = step;
+      return this.message('system', `Tomorrow, first: ${step} (the debrief takes it when this session ends).`);
+    }
+    const first = await firstPlace(this.root, parseDebrief(`Tomorrow, first: ${step}`).first, null, this.state.edited, readLines);
+    last.pickup = {...last.pickup, first: {...last.pickup?.first, ...first}};
+    last.note = withFirst(last.note, step);
+    this.previousNote = last.note;
+    this.store.updateDebrief(last.id, last.note, last.pickup);
+    this.message('system', `Tomorrow, first: ${step}`);
+  }
+
+  /**
+   * The morning pick-up (see pickup.mjs): when an editor connects to a session nobody used yet, a while after the
+   * last one ended, it lands on the last debrief's first step, Pair's gaze reads the code there, and one line says
+   * what is left. A test that was red when that session ended shows in the statusline, "since yesterday".
+   */
+  async pickUp() {
+    const last = this.lastSession;
+    if (this.pickedUp || this.usedAt !== null || !last || this.now() - last.endedAt < PICKUP_AFTER_MS) return;
+    this.pickedUp = true;
+    if (this.store.sessionActiveMs(this.id)) return; // used before the daemon restarted: it picked up then
+    const tests = await restoredTests(last.pickup?.tests, last.endedAt, this.now());
+    if (tests && !this.testsShown) this.showTests(tests);
+    const first = last.pickup?.first;
+    const path = first?.file && (await projectFile(this.root, first.file));
+    if (!path) return;
+    const lines = (await this.bufferText(path)).split('\n');
+    const {line, moved, changed} = relocate(lines, first);
+    this.notify('editor', {type: 'land', file: path, line});
+    const code = await this.read({file: first.file, ...around(line, lines.length)}); // the gaze
+    const failing = tests ? last.pickup.tests.results.filter(test => !test.ok).map(test => test.name) : [];
+    const input = pickupInput({note: last.note, place: {...first, line}, code, moved: moved && first.line, changed, failing, ended: last.endedAt, now: this.now()});
+    const words = this.health.ok('partner') ? await this.partner.ask(this.conversationId, input).then(pickupLine, () => null) : null;
+    const text = words ?? fallbackLine(first, changed);
+    const test = tests?.results.find(result => !result.ok); // one whose sign is still in place
+    const jump = test && {...(test.failure?.file ? test.failure : test), what: 'the failing test'};
+    this.notify('editor', {type: 'pickup', file: path, line, text, code: codeOn(text, lines[line - 1]), jump: jump ? {file: jump.file, line: jump.line, what: jump.what} : null});
+    this.message('pair', text);
   }
 
   // The ledger (see ledger.mjs): today's list, what an entry opens to, and Pair's edits undone or done again.
@@ -935,7 +1058,9 @@ export class PairSession {
   }
 
   greet() {
-    if (this.previousNote) this.message('system', `Last time:\n${this.previousNote}`);
+    // Right after the last session's debrief, it is still on screen.
+    const fresh = this.lastSession && this.now() - this.lastSession.endedAt < PICKUP_AFTER_MS;
+    if (this.previousNote && !fresh) this.message('system', `Last time:\n${this.previousNote}`);
     if (this.state.goal) this.message('system', `Goal${this.goalFrom ? `, from ${this.goalFrom}` : ''}: ${this.state.goal}`);
     else this.message('system', 'What are we doing this session? Type the goal here, or "later".');
   }

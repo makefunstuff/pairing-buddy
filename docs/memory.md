@@ -22,20 +22,31 @@ A session ends by itself, and writes its note:
 - after 45 minutes in which you neither typed, edited, moved in Neovim, ran a command nor asked anything;
 - a minute after its last Neovim and chat pane closed (a Neovim you restart at once keeps it).
 
-A session you never used (an agent's Neovim, one opened to look) ends without a note: there is nothing to note.
-`/end` still ends one at once.
+A session you did no work in ends without a note, also with `/end`: there is nothing to note. Work is typing, an edit,
+a save, a command, a search or a question; an agent's Neovim, one opened to look, or the empty session Neovim starts
+right after `:Pair end` (moving about, closing the debrief's panel) is none, so it never writes over the day's debrief.
+An edit Neovim has not sent yet (it waits for a pause in typing) goes with the session that ends: `:Pair end` sends
+it first, and a session that ends otherwise takes it along, so the next one starts empty.
+`/end` still ends a session at once.
 
-## The session note
+## The session note: the day's end debrief
 
-`/end` in the chat (or `:Pair end`) ends the session, and so does Pair [by itself](#no-ceremony-a-session-starts-and-ends-by-itself). Pair then asks the Partner for a short note of at most six lines: the goal, what changed, and the loose ends. With the request it gets the session goal and `git status --short` (the first 20 lines), so even a small model can say which files changed. The note shows in the chat and is kept with the session.
+`/end` in the chat (or `:Pair end`) ends the session, and so does Pair [by itself](#no-ceremony-a-session-starts-and-ends-by-itself). Pair then asks the Partner for the debrief, in a fixed form: one to three `✓` lines on what is now true, up to two `○ open:` lines on what is left, and `Tomorrow, first: <step>, in <file>:<line>.` With the request it gets the facts, so even a small model writes from what happened rather than from memory:
 
-A heading the model adds itself (`Session note:`, `# Session Notes`, …) is dropped, also when the text follows on the same line. If the Partner cannot answer (the model is down) or answers with nothing, no note is kept (the chat says why when the model failed): the next session then starts from the last good note.
+- the goal;
+- the tests that failed during the session and pass now, the commands that pass again after failing, and the numbers that moved the right way;
+- Pair's changes you kept (suggestions you took, edits you did not undo) and the session's commits (`git log`);
+- the tests still failing, `git status --short` (the first 20 lines), and where your cursor was, with the code on that line.
+
+The chat shows it under a heading with the session's active time (`Day's end: 3 h 05 min in hookd.`, or `Session's end` before three in the afternoon), followed by one line of Pair's own about your verdicts on its remarks. Its lines are the note kept with the session; its first step is kept as a place (the file, the line and its code), which the next morning's [pick-up](neovim.md#the-morning-pick-up-and-the-days-end) lands on, with the failing run if the session ended red. `/first <step>` changes that step.
+
+A heading the model adds itself (`Session note:`, `# Debrief`, …) is dropped, also when the text follows on the same line. If the Partner cannot answer (the model is down) or answers with nothing, no note is kept (the chat says why when the model failed): the next session then starts from the last good note.
 
 ## The next session starts from it
 
 The next session in the same project (the same git root, or [session root](config.md#session-roots)) starts from the last note, in two ways:
 
-- The chat shows it before the new goal (or before asking for one):
+- The chat shows it before the new goal (or before asking for one), unless the last session ended less than 30 minutes ago and its debrief is still on screen:
 
   ```
   ·· Last time:
@@ -46,6 +57,8 @@ The next session in the same project (the same git root, or [session root](confi
   ```
 
 - The Partner's instructions carry it, with the advice to use it when you ask about the last session or its loose ends, and not to bring it up otherwise. "What did we leave open last time?" gets an answer from it; a remark nobody asked for is not made because of it.
+
+- The first Neovim, at least 30 minutes after that session ended, [picks up](neovim.md#the-morning-pick-up-and-the-days-end) at the debrief's first step.
 
 Each project has its own memory. Only the last note is carried over, not the whole chat or the old conversation: that keeps the context small for local models. The chat history and every note stay in `sessions.sqlite`.
 

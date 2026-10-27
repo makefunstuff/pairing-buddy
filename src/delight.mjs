@@ -100,7 +100,7 @@ function moved(now, runs) {
 /**
  * The moments of one session. Each method returns a moment, or null when nothing changed: `sound` is 'green' when
  * something turned good (the editor glows) or 'red' when a test that passed before fails, and `text` is the one line
- * for a green that is worth words.
+ * for a green that is worth words; `moved` marks a number that moved.
  */
 export class Delight {
   constructor() {
@@ -160,7 +160,7 @@ export class Delight {
     const now = numbersOf(output);
     const text = moved(now, known.runs);
     known.runs = text ? [now] : [...known.runs.slice(1 - HISTORY), now]; // a number that moved holds from its new value
-    return text ? {sound: 'green', text} : null;
+    return text ? {sound: 'green', text, moved: true} : null;
   }
 
   known(cmd) {
