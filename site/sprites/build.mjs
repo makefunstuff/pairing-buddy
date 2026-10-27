@@ -1,10 +1,12 @@
 // The site's pixel-art sprites: the five parts of Pair, the three ways to get a model, the three install steps, the
 // mascot and the favicon. Each is drawn below as a grid of palette letters ('.' is empty); the black outline is added
-// here, around every filled pixel, so the grids hold only the fills. Writes site/public/sprites/*.svg and
-// site/public/favicon.svg.
+// here, around every filled pixel, so the grids hold only the fills. Writes site/public/sprites/*.svg,
+// site/public/favicon.svg, and the same head as PNG icons (browser tabs, iOS home screen, Android) with the web
+// manifest that lists them.
 // Usage, in site/: npm run sprites
 import {mkdirSync, writeFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
+import {crc32, deflateSync} from 'node:zlib';
 
 // The site's 16 colours (site/.vitepress/theme/tokens.css), by letter.
 const PALETTE = {
@@ -209,12 +211,11 @@ function overlay(base, top, x, y) {
   }).join(''));
 }
 
-/** The grid as an SVG: outlined, and centred on a square canvas (the mascot keeps its own size), at 4 screen pixels per pixel. */
-function sprite(name, rows) {
+/** The grid with its outline, as rows of palette letters: every empty pixel next to a filled one (four neighbours) turns black. */
+function outlined(name, rows) {
   const w = rows[0].length;
   rows.forEach((r, i) => { if (r.length !== w) throw new Error(`${name}: row ${i} is ${r.length} wide, not ${w}`); });
   const at = (x, y) => (rows[y]?.[x] ?? '.');
-  // the outline: every empty pixel next to a filled one (four neighbours) turns black
   const W = w + 2, H = rows.length + 2;
   const px = [];
   for (let y = 0; y < H; y++) {
@@ -225,10 +226,20 @@ function sprite(name, rows) {
       else px[y].push([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => at(x - 1 + dx, y - 1 + dy) !== '.') ? OUTLINE : '.');
     }
   }
-  const size = Math.max(W, H);
+  return px;
+}
+
+/** The outlined grid centred on a square, as rows of palette letters. */
+function squared(px) {
+  const W = px[0].length, H = px.length, size = Math.max(W, H);
   const ox = Math.floor((size - W) / 2), oy = Math.floor((size - H) / 2);
-  const vw = name === 'mascot' ? W : size, vh = name === 'mascot' ? H : size;
-  const dx = name === 'mascot' ? 0 : ox, dy = name === 'mascot' ? 0 : oy;
+  return Array.from({length: size}, (_, y) => Array.from({length: size}, (_, x) => px[y - oy]?.[x - ox] ?? '.'));
+}
+
+/** The grid as an SVG: outlined, and centred on a square canvas (the mascot keeps its own size), at 4 screen pixels per pixel. */
+function sprite(name, rows) {
+  const px = name === 'mascot' ? outlined(name, rows) : squared(outlined(name, rows));
+  const vw = px[0].length, vh = px.length;
   // one <path> per colour, each pixel run on a row as one rectangle
   const runs = {};
   px.forEach((row, y) => {
@@ -236,7 +247,7 @@ function sprite(name, rows) {
       const c = row[x];
       let n = 1;
       while (row[x + n] === c) n++;
-      if (c !== '.') (runs[c] ??= []).push(`M${x + dx} ${y + dy}h${n}v1h-${n}z`);
+      if (c !== '.') (runs[c] ??= []).push(`M${x} ${y}h${n}v1h-${n}z`);
       x += n;
     }
   });
@@ -247,10 +258,64 @@ function sprite(name, rows) {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${vw} ${vh}" width="${vw * 4}" height="${vh * 4}" shape-rendering="crispEdges">${paths}</svg>\n`;
 }
 
+/**
+ * The square grid as a PNG, `scale` screen pixels per pixel (no smoothing), with `pad` pixels around it on `bg` (a
+ * palette letter; none is transparent).
+ */
+function png(grid, scale, pad = 0, bg) {
+  const size = grid.length * scale + 2 * pad;
+  const rgba = c => c === '.' ? (bg ? rgba(bg) : [0, 0, 0, 0]) : [...PALETTE[c].match(/[0-9A-F]{2}/gi).map(h => parseInt(h, 16)), 255];
+  const raw = Buffer.alloc(size * (size * 4 + 1));
+  for (let y = 0; y < size; y++) {
+    raw[y * (size * 4 + 1)] = 0; // no filter
+    for (let x = 0; x < size; x++) {
+      const gx = Math.floor((x - pad) / scale), gy = Math.floor((y - pad) / scale);
+      raw.set(rgba(grid[gy]?.[gx] ?? '.'), y * (size * 4 + 1) + 1 + x * 4);
+    }
+  }
+  const chunk = (type, data) => {
+    const len = Buffer.alloc(4), crc = Buffer.alloc(4), td = Buffer.concat([Buffer.from(type), data]);
+    len.writeUInt32BE(data.length); crc.writeUInt32BE(crc32(td));
+    return Buffer.concat([len, td, crc]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(size, 0); ihdr.writeUInt32BE(size, 4); ihdr.set([8, 6, 0, 0, 0], 8); // 8-bit RGBA
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw, {level: 9})), chunk('IEND', Buffer.alloc(0))]);
+}
+
+// The head (16x16 with its outline) as PNG icons, each a whole number of screen pixels per pixel. The ones an OS puts
+// on a tile of its own (iOS, Android's maskable) sit on cream, inside the middle the OS keeps.
+const ICONS = [
+  {file: 'favicon-16.png', scale: 1},
+  {file: 'favicon-32.png', scale: 2},
+  {file: 'favicon-48.png', scale: 3},
+  {file: 'apple-touch-icon.png', scale: 10, pad: 10, bg: '7'}, // 180x180
+  {file: 'icon-192.png', scale: 12, manifest: 'any'},
+  {file: 'icon-512.png', scale: 32, manifest: 'any'},
+  {file: 'icon-maskable-512.png', scale: 20, pad: 96, bg: '7', manifest: 'maskable'},
+];
+
 const site = fileURLToPath(new URL('..', import.meta.url));
 mkdirSync(`${site}public/sprites`, {recursive: true});
 for (const [name, rows] of Object.entries(SPRITES)) {
   const svg = sprite(name, rows);
   writeFileSync(name === 'head' ? `${site}public/favicon.svg` : `${site}public/sprites/${name}.svg`, svg);
 }
-console.log(`${Object.keys(SPRITES).length} sprites`);
+const head = squared(outlined('head', SPRITES.head));
+for (const {file, scale, pad, bg} of ICONS) writeFileSync(`${site}public/${file}`, png(head, scale, pad, bg));
+// The manifest: what Android and installed-app lists show. Paths are relative to it, so it works under any base.
+writeFileSync(`${site}public/site.webmanifest`, `${JSON.stringify({
+  name: 'pairing-buddy',
+  short_name: 'Pair',
+  description: 'A pair programmer for Neovim that knows when to speak.',
+  start_url: './',
+  scope: './',
+  display: 'browser',
+  background_color: PALETTE[7],
+  theme_color: PALETTE[1],
+  icons: ICONS.filter(i => i.manifest).map(({file, scale, pad = 0, manifest}) => {
+    const n = head.length * scale + 2 * pad;
+    return {src: file, sizes: `${n}x${n}`, type: 'image/png', purpose: manifest};
+  }),
+}, null, 2)}\n`);
+console.log(`${Object.keys(SPRITES).length} sprites, ${ICONS.length} icons`);

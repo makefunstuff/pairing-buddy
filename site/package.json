@@ -6,7 +6,9 @@
     "dev": "vitepress dev",
     "build": "vitepress build",
     "preview": "vitepress preview",
-    "sprites": "node sprites/build.mjs"
+    "check": "node check-meta.mjs",
+    "sprites": "node sprites/build.mjs",
+    "og": "node og/build.mjs"
   },
   "devDependencies": {
     "vitepress": "1.6.4"

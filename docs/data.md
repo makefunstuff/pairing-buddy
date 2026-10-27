@@ -1,3 +1,7 @@
+---
+description: "What Pair keeps and where: logins in auth.json, the rest in its data directory. Nothing goes into your repository or leaves your machine but model calls."
+---
+
 # Data and privacy
 
 - **Logins and keys** live in `auth.json` next to the config, readable by you only

@@ -1,3 +1,7 @@
+---
+description: "How Pair talks: short, specific and plain, like a colleague in the second chair rather than an assistant, and how that is tested."
+---
+
 # Pair's tone
 
 Pair has a visual language in Neovim ([neovim.md](neovim.md)). This is the same for its words. Most of what makes
