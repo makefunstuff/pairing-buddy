@@ -21,7 +21,7 @@ import {TRIGGER_KINDS} from './triggers.mjs';
 export const SLOW_MS = 1500; // the median call at or over which Pair starts giving kinds up
 export const VERY_SLOW_MS = 3000; // at or over this, only the moments you cannot see are asked about
 export const FAST_MS = 1000; // at or under this, every kind is asked about again
-export const MIN_CALLS = 3; // calls before the median says anything
+export const MIN_CALLS = 5; // calls before the median says anything: two reload-long ones among them are not the norm
 const SAMPLES = 12; // the latest this many calls count, and
 const MIN_VERDICTS = 5; // judged remarks a kind needs before its kept share ranks it (as in tuning.mjs)
 
@@ -34,7 +34,7 @@ export const KEPT = TRIGGER_KINDS.filter(kind => !GIVE_UP.includes(kind));
 const median = values => {
   if (!values.length) return null;
   const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.floor((sorted.length - 1) / 2)]; // the lower middle: two reloads among four calls are not the norm
+  return sorted[Math.floor((sorted.length - 1) / 2)]; // the lower middle: a slow half does not make a slow server
 };
 
 const seconds = ms => `${(ms / 1000).toFixed(1)} s`;

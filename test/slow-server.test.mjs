@@ -54,8 +54,8 @@ test('on a slow server the daemon stops asking the Watcher about drift, and stil
     await chat.next(message => message.type === 'welcome');
     chat.send({type: 'goal', text: 'fix the reconnect after sleep'});
     await chat.next(message => message.text === 'Goal: fix the reconnect after sleep');
-    // Three failures, each failing twice: three repeated errors the Watcher is asked about, each in LATENCY_MS.
-    for (const [i, cmd] of ['npm test', 'cargo build', 'make'].entries()) {
+    // Five failures, each failing twice: five repeated errors the Watcher is asked about, each in LATENCY_MS.
+    for (const [i, cmd] of ['npm test', 'cargo build', 'make', 'pytest', 'go vet'].entries()) {
       for (let n = 0; n < 2; n++) editor.send({type: 'command', cwd: project, pane: null, cmd, exit: 1});
       await until(() => server.asked.length > i, `score ${i + 1}`);
     }

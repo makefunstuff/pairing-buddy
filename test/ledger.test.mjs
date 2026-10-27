@@ -71,7 +71,7 @@ test('a remark is booked as Pair works: reads in a row as one line, then where i
 test('a moment the Watcher was not asked about on a slow server is booked as such', async () => {
   const {pair, clock} = pairSession([async () => 'SILENT'], {score: 2});
   pair.pace = new Pace();
-  for (let i = 0; i < 3; i++) pair.pace.hear(4000);
+  for (let i = 0; i < 5; i++) pair.pace.hear(4000);
   failTwice(pair, clock.now);
   await pair.tick(); // a repeated error is news you cannot see: scored 2, under the bar
   pair.receive({kind: 'edit', file: 'worker.go', from: 4, to: 4, at: clock.now - 1000}); // drift, which a slow server gives up

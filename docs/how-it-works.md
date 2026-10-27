@@ -60,8 +60,9 @@ error. A direct question in the chat is always answered.
 For anything unasked:
 
 1. Cheap rules drop what is plainly noise: a `grep` that finds nothing, a command you stopped. A moment scored in
-   the last half hour keeps its score. While the Watcher's calls take 1.5 s or more, kinds of moment you can see
-   for yourself are not asked about ([watcher.md](watcher.md#when-the-server-is-slow)).
+   the last half hour keeps its score. While the Watcher's calls take 1.5 s or more, half the kinds of moment you
+   can see for yourself are not asked about, and from 3 s all of them
+   ([watcher.md](watcher.md#when-the-server-is-slow)).
 2. The Watcher scores the moment from 0 to 10 with a single number; for drift it is told what the file is about. Only scores at or above the talk level's bar reach
    the Partner.
 3. The budget limits how often Pair speaks ([talk levels](config.md#talk-levels)).

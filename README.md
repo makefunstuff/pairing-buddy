@@ -25,8 +25,8 @@ does something else. They notice when you start fixing the wrong file, run the t
 you think, and take the keyboard only when you hand it over. Pair aims for that:
 
 - **It speaks rarely.** A small, fast model, the Watcher, scores each moment first, and most moments are not worth a
-  word. On a slow server it is asked about less, never about what you cannot see
-  ([watcher](docs/watcher.md#when-the-server-is-slow)). Remarks that can wait are held until your next break.
+  word. On a slow server Pair skips the moments you can see on screen, and still asks
+  about the ones you cannot ([watcher](docs/watcher.md#when-the-server-is-slow)). Remarks that can wait are held until your next break.
 - **It shows, in place.** Its words appear under the line you are on, it points at the line it means, and a suggested
   change is one key to take.
 - **It runs what you'd skip.** Save, and it runs the project's tests and tells you what your fix broke elsewhere.

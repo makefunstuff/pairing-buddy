@@ -14,10 +14,10 @@ const hearAll = (pace, ...calls) => calls.forEach(ms => pace.hear(ms));
 test('a fast server keeps every kind; a slow one gives half the kinds up, a very slow one all but the news you cannot see', () => {
   const logged = [];
   const pace = new Pace({log: line => logged.push(line)});
-  hearAll(pace, 600, 900, 1000);
+  hearAll(pace, 600, 900, 1000, 800, 700);
   assert.equal(pace.level, 'fast');
   assert.equal(pace.skips('note_drift'), null);
-  hearAll(pace, SLOW_MS, SLOW_MS + 200, SLOW_MS + 400, SLOW_MS + 600);
+  hearAll(pace, SLOW_MS, SLOW_MS + 200, SLOW_MS + 400, SLOW_MS + 600, SLOW_MS + 800, SLOW_MS + 1000);
   assert.equal(pace.level, 'slow');
   assert.deepEqual(pace.given(), GIVE_UP.slice(0, GIVE_UP.length / 2));
   assert.match(pace.skips('drift').reason, /^the Watcher takes 1\.5 s a call: Pair is not asking about drift/);
@@ -38,7 +38,7 @@ test('every kind is ranked: the kinds given up and the kinds kept are all the tr
 test('coming back needs a median under FAST_MS: a server at the border keeps the pace it has', () => {
   const logged = [];
   const pace = new Pace({log: line => logged.push(line)});
-  hearAll(pace, 2000, 2000, 2000);
+  hearAll(pace, ...Array(5).fill(2000));
   assert.equal(pace.level, 'slow');
   hearAll(pace, ...Array(12).fill(FAST_MS + 200));
   assert.equal(pace.level, 'slow', 'between FAST_MS and SLOW_MS nothing changes');
@@ -48,9 +48,9 @@ test('coming back needs a median under FAST_MS: a server at the border keeps the
   assert.equal(pace.snapshot().changes, 2);
 });
 
-test('fewer than three calls say nothing, and one slow call among fast ones changes nothing', () => {
+test('fewer than five calls say nothing, and one slow call among fast ones changes nothing', () => {
   const pace = new Pace();
-  hearAll(pace, 9000, 9000);
+  hearAll(pace, 9000, 9000, 9000, 9000);
   assert.equal(pace.level, 'fast');
   const steady = new Pace();
   hearAll(steady, 500, 500, 9000, 500, 500);
@@ -59,7 +59,7 @@ test('fewer than three calls say nothing, and one slow call among fast ones chan
 
 test('with watcherPace off every kind is asked about, however slow', () => {
   const pace = new Pace({on: false});
-  hearAll(pace, 5000, 5000, 5000);
+  hearAll(pace, ...Array(5).fill(5000));
   assert.equal(pace.level, 'off');
   assert.equal(pace.skips('note_drift'), null);
   assert.equal(pace.snapshot().medianMs, 5000, 'it still measures');
@@ -69,7 +69,7 @@ test('with watcherPace off every kind is asked about, however slow', () => {
 
 test('turned on again, the pace goes by the calls measured while off, not the level it had', () => {
   const pace = new Pace();
-  hearAll(pace, 5000, 5000, 5000);
+  hearAll(pace, ...Array(5).fill(5000));
   assert.equal(pace.level, 'very-slow');
   pace.on = false;
   hearAll(pace, ...Array(12).fill(500));
@@ -81,17 +81,23 @@ test('turned on again, the pace goes by the calls measured while off, not the le
   assert.equal(pace.level, 'fast');
 });
 
-test('two reload-long calls among the first four do not make the server slow', () => {
+test('two reload-long calls among the first ones do not make the server slow, in any order', () => {
+  for (const calls of [[5000, 5000, 300, 300, 300], [5000, 300, 5000, 300, 300], [300, 300, 300, 5000, 5000], [400, 6000, 450, 6000, 500]]) {
+    const pace = new Pace();
+    for (const [i, ms] of calls.entries()) {
+      pace.hear(ms);
+      assert.equal(pace.level, 'fast', `${calls.slice(0, i + 1)}`);
+    }
+  }
   const pace = new Pace();
-  hearAll(pace, 400, 6000, 450, 6000);
-  assert.equal(pace.level, 'fast');
-  assert.equal(pace.snapshot().changes, 0);
+  hearAll(pace, 5000, 5000, 5000, 300, 300);
+  assert.equal(pace.level, 'very-slow', 'three of five: the server is slow');
 });
 
 test('the log, pair doctor and the gate name the same kinds once verdicts change the order', () => {
   const logged = [];
   const pace = new Pace({log: line => logged.push(line)});
-  hearAll(pace, 2000, 2000, 2000);
+  hearAll(pace, ...Array(5).fill(2000));
   pace.rank({note_drift: {share: 1, judged: 6}, stall: {share: 0, judged: 6}});
   const given = ['stall', 'note_stall', 'drift', 'search_trail'];
   assert.deepEqual(pace.given(), given);
@@ -121,7 +127,7 @@ test('the user\'s own verdicts rank what goes first: a kind they dismiss before 
 
 test('the gate asks the Watcher nothing about a kind the pace gives up, after typing, budget and prefilter', async () => {
   const pace = new Pace();
-  hearAll(pace, 4000, 4000, 4000);
+  hearAll(pace, ...Array(5).fill(4000));
   const asked = [];
   const score = async trigger => { asked.push(trigger.kind); return {value: 9, reason: 'worth it'}; };
   const gate = (kind, extra = {}) => decide({trigger: {kind, key: kind, detail: kind, ...extra}, state: initialState(), now: 600_000, budget: new Budget('normal'), score, typingPauseMs: 2000, pace});
@@ -136,7 +142,7 @@ test('the gate asks the Watcher nothing about a kind the pace gives up, after ty
 
 test('a session books a kind it did not ask about as not asked, not as over the budget', async () => {
   const pace = new Pace();
-  hearAll(pace, 4000, 4000, 4000);
+  hearAll(pace, ...Array(5).fill(4000));
   const scored = [];
   const quiet = [];
   const pair = new PairSession({
