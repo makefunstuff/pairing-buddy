@@ -13,6 +13,7 @@ import {listModels, shareServer, SWAP_FACTOR, SWAP_MS} from './loaded-model.mjs'
 import {createPairModels, knownProviders} from './models.mjs';
 import {levelGroups, probeModel, probeThinking} from './probe.mjs';
 import {requestDaemon} from './protocol.mjs';
+import {sandboxWorks} from './sandbox.mjs';
 import {keyVariables, readServiceEnv} from './service-env.mjs';
 import {serviceManager} from './service.mjs';
 import {VERSION} from './version.mjs';
@@ -58,6 +59,7 @@ export async function* doctor({
   yield await herdrCheck(env);
   if (existsSync(auth)) yield loginsCheck(auth);
   if (keyVariables(config).length) yield keysCheck(keyVariables(config), env, serviceEnv);
+  yield paneCheck(config.scoutPane);
   yield await voiceCheck(config.voice);
   yield* modelChecks(config, status, credentials);
 }
@@ -167,6 +169,16 @@ export async function voiceCheck(voice, found = name => onPath(name, process.env
   const records = voice.record ? 'your record command' : recorder[0];
   const speaks = speech ? `, and \`${speech}\` reads answers aloud when you are away` : '';
   return ok('voice', `${records} records, whisper.cpp hears a second in ${seconds(Date.now() - started)} on the CPU${speaks}`);
+}
+
+/** How Pair's pane runs its commands: with the user's rc file or not, in the sandbox or not. */
+export function paneCheck(setup, works = sandboxWorks) {
+  if (setup.rc && !existsSync(setup.rc)) return fail('pane', `scoutPane.rc is ${tilde(setup.rc)}, which is not there`);
+  const rc = setup.rc ? `, with ${tilde(setup.rc)}` : '';
+  if (setup.sandbox === false) return ok('pane', `no sandbox (scoutPane.sandbox is false)${rc}`);
+  if (works()) return ok('pane', `commands run in a bubblewrap sandbox, network ${setup.network ? 'on' : 'off'}${rc}`);
+  if (setup.sandbox === true) return fail('pane', 'scoutPane.sandbox is true, and bubblewrap (bwrap) is not installed or may not make namespaces here: Pair\'s pane will not open');
+  return warn('pane', `no sandbox: install bubblewrap (bwrap) to run Pair's commands in one, or set scoutPane.sandbox to false${rc}`);
 }
 
 /**

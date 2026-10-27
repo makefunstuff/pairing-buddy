@@ -184,6 +184,14 @@ test('a declined delete cannot be done another way through a read-only program',
   assert.deepEqual(ran, []);
 });
 
+test('with the user\'s rc file, Scout\'s commands are judged by what their aliases stand for', async () => {
+  const {pair, pane, ran} = scoutSession();
+  pane.rcNames = async () => ({aliases: {ship: 'git push', ll: 'ls -l'}, functions: []});
+  assert.match(await pair.run({command: 'ship'}), /^Refused: git push changes git history/);
+  assert.match(await pair.run({command: 'll src'}), /^exit 0/);
+  assert.deepEqual(ran, ['ll src']);
+});
+
 test('without a chat pane to ask in, a command that writes does not run', async () => {
   const {pair, ran} = scoutSession({chat: false});
   assert.match(await pair.run({command: 'npm install'}), /did not allow/);
