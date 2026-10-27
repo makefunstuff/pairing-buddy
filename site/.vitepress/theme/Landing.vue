@@ -324,7 +324,10 @@ h1 { font: 600 clamp(36px, 6vw, 68px)/1.05 var(--px-font-pixel); letter-spacing:
 .versus { list-style: none; padding: 0; margin: 36px 0 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
 .versus li { padding: 14px 16px; border: 2px dashed var(--vp-c-border); color: var(--vp-c-text-2); font-size: 15px; line-height: 1.5; }
 .versus b { display: block; font: 500 15px/1.2 var(--px-font-pixel); letter-spacing: .04em; text-transform: uppercase; color: var(--vp-c-text-3); margin-bottom: 6px; }
-.versus li:not(.us) b { text-decoration: line-through; text-decoration-thickness: 2px; }
+/* the two it is not: a red pixel cross before the name (a strike-through cuts the pixel font's C in half) */
+.versus b { display: flex; align-items: center; gap: 8px; }
+.versus li:not(.us) b::before { content: ""; flex: none; width: 15px; height: 15px; image-rendering: pixelated;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 5 5' shape-rendering='crispEdges'%3E%3Cpath fill='%23FF004D' d='M0 0h1v1H0zM4 0h1v1H4zM1 1h1v1H1zM3 1h1v1H3zM2 2h1v1H2zM1 3h1v1H1zM3 3h1v1H3zM0 4h1v1H0zM4 4h1v1H4z'/%3E%3C/svg%3E") center / 15px 15px no-repeat; }
 .versus li.us { border: var(--px-border) solid var(--pair-ink); color: var(--px-black); background: var(--px-yellow); box-shadow: var(--pair-shadow); }
 .versus li.us b { color: var(--px-black); }
 
@@ -383,7 +386,8 @@ p :deep(code), .note { font-family: var(--vp-font-family-mono); font-size: .86em
 .ff { position: absolute; left: 12px; top: 12px; font: 500 15px/1 var(--px-font-pixel); color: var(--px-black); background: var(--px-orange); border: 2px solid var(--px-black); padding: 5px 8px; visibility: hidden; }
 .ff.on { visibility: visible; }
 /* callouts: a yellow box in a black frame, pointing at Pair's line with a pixel arrow */
-.callout { font: 500 17px/1.3 var(--px-font-pixel); letter-spacing: .01em; color: var(--px-black); }
+/* the words are Inter: they name files and lines (worker.go:35), where the pixel font's 5 reads as an S */
+.callout { font: 700 15.5px/1.35 var(--vp-font-family-base); color: var(--px-black); }
 .callout :deep(kbd) { font: 700 .82em/1 var(--vp-font-family-mono); padding: 2px 5px; background: var(--px-cream); border: 2px solid var(--px-black); }
 .callout.over { position: absolute; right: 3%; max-width: 36%; padding: 10px 14px; background: var(--px-yellow); border: var(--px-border) solid var(--px-black); box-shadow: var(--pair-shadow); visibility: hidden; pointer-events: none; }
 .callout.over::before { content: ""; position: absolute; left: -15px; top: 50%; width: 12px; height: 18px; margin-top: -9px; background: var(--px-black);
