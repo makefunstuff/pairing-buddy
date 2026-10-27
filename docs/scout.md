@@ -1,6 +1,6 @@
 # Scout
 
-As Scout, Pair investigates for you in its own herdr pane: it searches the project, runs the tests, looks at `git log` and `git diff`. Every command is typed into that pane, so you see what runs and what it prints; the result also goes back to the model. Scout never types into your own panes (only the Driver's `type` does, after your yes and without Enter; see [driver.md](driver.md)).
+As Scout, Pair investigates for you in its own pane (in herdr, or without it a `:terminal` in Neovim, see [neovim.md](neovim.md#without-herdr)): it searches the project, runs the tests, looks at `git log` and `git diff`. Every command is typed into that pane, so you see what runs and what it prints; the result also goes back to the model. Scout never types into your own panes (only the Driver's `type` does, after your yes and without Enter; see [driver.md](driver.md)).
 
 Switch with `/scout` and `/navigate` in the chat, or `:Pair scout` and `:Pair navigate` in Neovim. Navigator is the default, and a new session always starts in it. While you hand Pair the wheel, the Driver has `search` and `run` too, in the same pane, under the same policy and limits.
 
@@ -144,5 +144,4 @@ the daemon reads the output back from the file, whole, however long it is. Then:
 - Switching back to Navigator keeps the pane open while the project has a command; ending the session closes it.
   The session's first run (also after a daemon restart) is the baseline: what fails in it failed already, so it
   raises no regression. A run of your own is no baseline: it may have run other tests.
-  Without herdr there is no pane: nothing runs, the chat says why once, and Neovim's statusline says
-  `◌ go test ./... · needs \`pair\` in herdr`.
+  Without herdr the pane is a `:terminal` in Neovim.

@@ -115,8 +115,7 @@ can. Details in [docs/watcher.md](watcher.md#regressions).
 - **Statusline.** `⠹ go test ./...` while it runs, with the flags that only ask for JSON left out. Then
   `✗ 1 failing · TestNoDoubleDelivery` (`+2` when more fail, `does not build` for a Go build error) until the next
   run, or `✓ go test ./... · 4 tests, 3 packages` for six seconds before it rests at `● pair` again. Pair reading,
-  driving, or away comes first. Without Pair's pane (no `pair` in herdr) it says `◌ go test ./... · needs \`pair\` in
-  herdr` instead, until a run can start.
+  driving, or away comes first.
 - **Signs.** With a JSON report (`go test -json`, `jest --json`, `vitest --reporter=json`), each test that ran gets
   `✓` or `✗` in the sign column of its function (Go) or its `test(...)` line (jest, vitest), in every buffer you have
   open and in test files you open later. Passing signs are quiet; failing ones are your colorscheme's error colour.
@@ -583,6 +582,23 @@ command passes again, a number finally moves, or a commit. Never in the middle o
 chat; after 90 minutes it says a longer break. At most one per 50 minutes of focus; five minutes away is a break, and
 the count starts again. `level quiet` turns them off.
 
+## Without herdr
+
+All of Pair works inside Neovim too; herdr only adds the view of your other terminals
+([herdr.md](herdr.md)).
+
+- **The chat.** `:Pair chat` opens `pair chat` in a terminal buffer on the right, in Insert mode, connected to the
+  daemon; again, it goes back to it. `pair chat` in any other terminal works the same.
+- **Pair's pane.** With no herdr chat pane in the project, `:Pair scout` and the tests on save open Pair's pane as
+  a `:terminal` along the bottom of the Neovim you are in, without moving your cursor. It is the same shell as in
+  herdr ([scout.md](scout.md)): every command typed where you see it, the prompt `scout[N] exit X $ `, the sandbox.
+  Closing its window leaves it running; it closes with the switch back to Navigator. When a herdr chat pane comes,
+  Pair's pane moves there.
+- **The Driver's `type`.** It goes to the `:terminal` buffer of yours you were in last (Pair's pane and the chat
+  are not yours). The question in the chat names it, `nvim:<buffer>`, and lists your other terminals: answer `y`,
+  or the name of another one to type there instead. With two Neovims in the project, a buffer number both have is
+  named with the Neovim's process id too, `nvim:<pid>:<buffer>` ([driver.md](driver.md#typing-into-your-terminal)).
+
 ## Setup
 
 The lazy.nvim spec is in [install.md](install.md#install). Without a plugin manager:
@@ -666,6 +682,7 @@ to standard ones and does not fade.
 | `:Pair end` | End the session now with its [debrief](#the-morning-pick-up-and-the-days-end), which the next session in this project starts from (it also [ends by itself](memory.md#no-ceremony-a-session-starts-and-ends-by-itself)) |
 | `:Pair first <step>` | Tomorrow's first step, with a `file:line` to land on: it replaces the last debrief's in a session with no work yet, else this session's debrief takes it |
 | `:Pair listen [cancel]` | Push-to-talk without the key: works as a tap of `Alt-t`; `cancel` drops what is being recorded ([voice.md](voice.md)) |
+| `:Pair chat` | The chat in a terminal buffer on the right, for Neovim without herdr ([above](#without-herdr)) |
 | `:Pair stop` | Disconnect this Neovim, and stop reconnecting |
 
 ## Statusline

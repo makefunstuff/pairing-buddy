@@ -5,7 +5,7 @@ Neovim plugin ──┐                         ┌── Watcher model: is this
 chat pane ──────┼── pair daemon (socket) ─┤
 shell hook ─────┤   events → session state└── Partner model: the words, and its role's tools
 herdr panes ────┘   → triggers → speak gate + budget        │
-                                                             ├── Pair's own herdr pane (Scout: search, run)
+                                                             ├── Pair's own pane, herdr's or Neovim's (Scout: search, run)
                                                              └── your buffer and terminal (Driver: edit, type)
 ```
 
@@ -81,7 +81,7 @@ Each role has a fixed set of tools:
 | `read` | Read a file as the editor has it, or list a directory; Neovim shows where it reads | yes | yes | yes |
 | `recall` | Search the project's earlier sessions: their goals, notes and chats ([memory.md](memory.md#earlier-sessions)) | yes | yes | yes |
 | `suggest` | Show a change in place that you accept with one key or ignore | yes | yes | yes |
-| `search` | ripgrep, typed in Pair's own herdr pane | no | yes | yes |
+| `search` | ripgrep, typed in Pair's own pane | no | yes | yes |
 | `run` | One command line in Pair's own pane, under the [command policy](scout.md#the-command-policy) | no | yes | yes |
 | `edit` | One change in your buffer, typed while you watch, one undo step | no | no | once per hand-over |
 | `type` | One line into your terminal, after your yes, without Enter | no | no | after a yes |

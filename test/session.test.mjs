@@ -231,7 +231,7 @@ test('without herdr there is no pane, so the role stays Navigator', async () => 
   pair.scout = null;
   await pair.setRole('scout');
   assert.equal(pair.role, 'navigator');
-  assert.ok(sent.some(message => /Scout needs its own herdr pane/.test(message.text)));
+  assert.ok(sent.some(message => /Scout needs its own pane/.test(message.text)));
 });
 
 test('a question gets at most four searches or commands; the next turn starts again', async () => {
@@ -272,7 +272,7 @@ function driverSession({turn = async () => 'ok', editor = true, role = 'navigato
     requestEditor: async message => { edits.push(message); return {ok: true}; },
     now: () => 100_000,
   });
-  pair.panes = {type: async (pane, text) => typed.push([pane, text])};
+  pair.panes = {type: async (pane, text) => typed.push([pane, text]), list: async () => []};
   const roleChanges = () => sent.filter(message => message.type === 'role' && message.to === 'editors').map(message => message.role);
   return {pair, sent, typed, roles, edits, toolsOf, roleChanges};
 }
@@ -433,6 +433,42 @@ test('the Driver types into the user\'s terminal only after a yes, never Enter, 
   }
   assert.match(await pair.type({text: 'git push --force'}), /^Refused: git push/);
   assert.deepEqual(typed, [['w1:p1', 'npm test']]);
+});
+
+test('the question names the terminal and the others; an answer naming another one types there instead', async () => {
+  const {pair, sent, typed} = driverSession();
+  pair.panes.list = async () => ['w1:p1', 'nvim:42:3'];
+  pair.role = 'driver';
+  pair.receive({kind: 'terminal', pane: 'w1:p1'});
+  const confirmed = async (answer, ok = false) => {
+    const typing = pair.type({text: 'npm test'});
+    await new Promise(resolve => setImmediate(resolve));
+    pair.answer(lastConfirm(sent).id, ok, undefined, answer);
+    return typing;
+  };
+  assert.match(await confirmed('NVIM:3'), /^Typed/);
+  assert.match(lastConfirm(sent).text, /into your terminal \(pane w1:p1\), without pressing Enter\. Allow\? \(y, or another terminal: nvim:3\)$/);
+  assert.ok(sent.some(message => message.text === 'Allowed, in nvim:3.'));
+  assert.match(await confirmed('nvim:9'), /did not allow/, 'a name the question did not list is a no');
+  assert.match(await confirmed('y', true), /^Typed/);
+  assert.deepEqual(typed, [['nvim:42:3', 'npm test'], ['w1:p1', 'npm test']]);
+});
+
+test('two Neovims with a terminal in the same buffer: the question names them apart, and the answer types into the one it names', async () => {
+  const {pair, sent, typed} = driverSession();
+  pair.panes.list = async () => ['nvim:41:3', 'nvim:42:3', 'nvim:42:2'];
+  pair.role = 'driver';
+  pair.receive({kind: 'terminal', pane: 'nvim:41:3'});
+  const typing = pair.type({text: 'echo hi'});
+  await new Promise(resolve => setImmediate(resolve));
+  assert.match(lastConfirm(sent).text, /\(pane nvim:41:3\), without pressing Enter\. Allow\? \(y, or another terminal: nvim:42:3, nvim:2\)$/);
+  pair.answer(lastConfirm(sent).id, false, undefined, 'nvim:3');
+  assert.match(await typing, /did not allow/, 'the short name both share is no answer');
+  const again = pair.type({text: 'echo hi'});
+  await new Promise(resolve => setImmediate(resolve));
+  pair.answer(lastConfirm(sent).id, false, undefined, 'nvim:42:3');
+  assert.match(await again, /^Typed/);
+  assert.deepEqual(typed, [['nvim:42:3', 'echo hi']]);
 });
 
 test('type needs the Driver role, a known terminal pane, and the wheel still in Pair\'s hands after the yes', async () => {
@@ -673,9 +709,9 @@ test('without Pair\'s pane, a save says once in the chat why the tests did not r
   pair.receive({kind: 'save', file: join(root, 'a.go')});
   await until(() => sent.length >= 3, 'both saves');
   assert.deepEqual(sent.filter(message => message.to === 'chat').map(message => message.text), [
-    'Pair could not run `go test ./...`: tests on save need Pair\'s own herdr pane: start Pair with `pair` inside herdr.',
+    'Pair could not run `go test ./...`: tests on save need Pair\'s own pane: run `pair` inside herdr, or :Pair start in Neovim.',
   ]);
-  assert.deepEqual(tests().at(-1), {to: 'editors', type: 'tests', state: 'error', label: 'go test ./...', text: 'needs `pair` in herdr'});
+  assert.deepEqual(tests().at(-1), {to: 'editors', type: 'tests', state: 'error', label: 'go test ./...', text: 'needs herdr or Neovim'});
 });
 
 test('after the Driver\'s edit, the tests run on the unsaved buffer: the Partner hears how, the hand-back line shows it, and no baseline changes', async () => {
