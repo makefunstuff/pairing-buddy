@@ -6,8 +6,9 @@ page, the hand-over (and taking the wheel back), voice, and Pair with or without
 and the screen you will see, and ends on the keys to remember. A short cut for social media shows three of its
 moments.
 
-It plays in the [README](../../README.md) and on the [website](https://makefunstuff.github.io/pairing-buddy/#tour),
-where the chapter buttons jump into it.
+It plays on the [website](https://makefunstuff.github.io/pairing-buddy/#tour), where the chapter buttons jump into
+it. The [README](../../README.md) shows its poster, linked to the website, until the tutorial is uploaded to GitHub
+(below): GitHub plays a video in a README only from its own uploads.
 
 ## How a scene teaches
 
@@ -77,9 +78,9 @@ suggestion, "u undoes it") rather than for a fixed time, and fail when it does n
 
 `finish.sh` writes `renders/pairing-buddy-tutorial.mp4` (for the README), the site's `hero.mp4`, `hero.webm`,
 `hero-poster.jpg`, `hero.vtt` and `hero-chapters.vtt`, and `renders/pairing-buddy-short.mp4`, the cut for social
-media. The README plays the tutorial from a GitHub attachment (GitHub plays a video in a README only from its own
-attachments, not from a file in the repository): drop the file into any comment box on github.com and put the
-`user-attachments` link it gives in the README. The chapter times in the README and on the site come from
+media. To play the tutorial in the README, it has to be a GitHub attachment (GitHub plays a video in a README only
+from its own attachments, not from a file in the repository): drop the file into any comment box on github.com and
+put the `user-attachments` link it gives in the README, in place of the poster. The chapter times in the README and on the site come from
 `chapters.json`.
 
 `script.mjs` holds the scenes: the title cards, the shots (which stretch of a take, and how fast), the lines of the
