@@ -9,6 +9,7 @@ import {describeState} from './describe.mjs';
 import {insideRoot, MAX_LINES, numberedLines, projectFile, readProjectPath} from './files.mjs';
 import {failed, fold, initialState} from './fold.mjs';
 import {decide} from './gate.mjs';
+import {gist} from './gist.mjs';
 import {gitStatus} from './git.mjs';
 import {Breakpoints, placeOf, stillTrue, urgent} from './held.mjs';
 import {plainLine} from './herdr.mjs';
@@ -412,7 +413,7 @@ export class PairSession {
       if (triggers.length && this.autoTune) this.budget.tune(tuning(this.store.remarks(now - WINDOW_MS), now));
       for (const trigger of triggers) {
         if (this.thought && !urgent(trigger.kind)) continue; // one held thought at a time
-        const decision = await decide({trigger, state: this.state, now, budget: this.budget, score: this.score, typingPauseMs: this.typingPauseMs});
+        const decision = await decide({trigger, state: this.state, now, budget: this.budget, score: (judged, state) => this.scoreWithGist(judged, state), typingPauseMs: this.typingPauseMs});
         if (!this.repeats(trigger, decision)) this.log(`${trigger.kind}: ${decision.verdict} (${decision.reason})`);
         if (decision.held) this.waitFor(trigger, now);
         else this.waited(trigger, now);
@@ -966,6 +967,14 @@ export class PairSession {
     this.ledger.add('read', `${relative(this.root, path)} ${first}-${last}`, {data: {place: {file: path, line: first}}});
     this.notify('editor', {type: 'look', file: path, from: first, to: last});
     return numberedLines(text, from, to);
+  }
+
+  /** The Watcher's score; drift comes with what the file is about (see gist.mjs), read only once it is asked. */
+  async scoreWithGist(trigger, state) {
+    if (trigger.kind !== 'drift') return this.score(trigger, state);
+    const path = await projectFile(this.root, trigger.file).catch(() => null);
+    const about = path ? gist(await this.bufferText(path).catch(() => '')) : '';
+    return this.score({...trigger, gist: about}, state);
   }
 
   /** The text of the file at `path` as the user sees it: the editor's buffer wins over the disk, unsaved changes included. */

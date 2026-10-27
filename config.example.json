@@ -44,14 +44,14 @@
   "model": {
     "api": "openai",                        // "openai" (any OpenAI-compatible server) or "anthropic"; or a "provider"
     "baseUrl": "http://localhost:8080/v1",
-    "model": "your-model",
-    "contextWindow": 32768                  // what the server serves; at least 16384
+    "model": "your-model"
+    // "contextWindow": 32768,              // Pair asks the server what it serves; set it where the server does not say (32768 then)
     // How much the Partner thinks, by kind of turn (these are the defaults), or one level for all; "off" switches
     // it off. Levels: off, minimal, low, medium, high, xhigh. A remark comes a few seconds later; that is fine.
     // "thinking": {"navigator": "medium", "scout": "medium", "driver": "medium", "remark": "low"},
     // "reasoning": false,                  // for a model that cannot think: Pair then sends it no thinking level
-    // Its chat template's thinking switch, and a server that takes the level as reasoning_effort (without that,
-    // every level is just "on"; `pair doctor` says which it is):
+    // How the server takes thinking: its chat template's switch, and the level as reasoning_effort or a budget
+    // (without that, every level is just "on"). `pair doctor --thinking` finds it and prints the line:
     // "compat": {"thinkingFormat": "...", "supportsReasoningEffort": true},
     // "samplingParams": {"temperature": 0.3}, // steadier Partner answers when the server's default is high
     // "auth": "my-server"                  // a key stored by `pair auth login my-server`; or "apiKeyEnv", "apiKey", "apiKeyFile"
@@ -66,8 +66,8 @@
   // Partner. The Watcher never thinks ("reasoning": true on a model that thinks by default lets Pair switch it off).
   // "watcher" may also be "same as partner".
   // "models": {
-  //   "watcher": {"api": "openai", "baseUrl": "http://localhost:8080/v1", "model": "your-small-model", "contextWindow": 32768},
-  //   "partner": {"api": "openai", "baseUrl": "http://localhost:8081/v1", "model": "your-larger-model", "contextWindow": 65536}
+  //   "watcher": {"api": "openai", "baseUrl": "http://localhost:8080/v1", "model": "your-small-model"},
+  //   "partner": {"api": "openai", "baseUrl": "http://localhost:8081/v1", "model": "your-larger-model"}
   // }
 
   // Push-to-talk: hold Alt-t in Neovim and ask aloud. whisper.cpp writes it down on the CPU (see docs/voice.md).

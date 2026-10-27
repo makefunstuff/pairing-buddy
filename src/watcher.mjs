@@ -9,16 +9,17 @@ const SYSTEM = `Score 0-10 how much a pair programmer would want a short remark 
 0-3: noise, obvious, or they are already on it. 7-10: they will lose time without it.
 Answer with one number.`;
 
-// What happened, for triggers whose detail is written for the Partner. Drift: the file alone, and a question
-// with the goal right next to it. Asked whether you would want a remark, models score how important the work
-// is, not whether it drifted; and the Partner's longer detail costs tokens without helping the score.
+// What happened, for triggers whose detail is written for the Partner. Drift: the file and what it is about (its
+// gist: the words of a path say little, `billing/ranking.ts` is no search ranking), and a question with the goal
+// right next to it. Asked whether you would want a remark, models score how important the work is, not whether it
+// drifted; and the Partner's longer detail costs tokens without helping the score.
 // The wrong turn: the Watcher cannot see the code, so it is asked whether a check of the file would save time.
 // A regression: whether hearing of it now saves time, since the user has not run the tests that found it.
 // The search trail: whether the user is going in circles, with what fails now, which says what they are after.
 // A crash: whether hearing where and why saves a hunt. A new warning: whether it is a bug, not just untidy.
 const WHAT_HAPPENED = {
-  drift: (trigger, state) => `The user now edits ${trigger.file}.\n`
-    + `Score how clearly this file is unrelated to the goal "${state.goal}": 0 if it could be part of it, 10 if it is plainly other work.`,
+  drift: (trigger, state) => `The user now edits ${trigger.file}.${trigger.gist ? ` What the file is about: ${trigger.gist}` : ''}\n`
+    + `Score how clearly this file is unrelated to the goal "${state.goal}", by what it does: 0 if it could be part of it, 10 if it is plainly other work.`,
   edit_while_red: trigger => `The tests are red. The failure points at ${trigger.named.slice(0, 4).join(', ')}, but the user is changing ${trigger.file}, a file it does not name.\n`
     + `Score how much a quick check of whether ${trigger.file} can cause this failure would save them: 0 if ${trigger.file} is plainly the code that fails, 10 if they may be fixing the wrong file.`,
   regression: trigger => `The user saved ${trigger.file}. The tests Pair ran right after show ${trigger.newly.slice(0, 4).join(', ')} failing, which did not fail before. The user has not run them.\n`
@@ -32,6 +33,9 @@ const WHAT_HAPPENED = {
     + 'Score how likely this is a real bug worth a word now: 0 for something untidy while exploring (an unused variable or parameter), 10 for a likely bug (an uninitialised value, a wrong format, an overflow, a missing return).',
   ...PROSE_WATCH,
 };
+
+/** What the Watcher is asked about `trigger`: the same text is the same moment (see score-memory.mjs). */
+export const momentOf = (trigger, state) => WHAT_HAPPENED[trigger.kind]?.(trigger, state) ?? trigger.detail;
 
 const MAX_TOKENS = 8; // a number, with room for a model that wraps it in a word or two
 
@@ -69,13 +73,13 @@ export function createWatcher({models, model, chooseModel = async () => model, n
   };
 
   async function score(trigger, state, {signal} = {}) {
-    const happened = WHAT_HAPPENED[trigger.kind]?.(trigger, state) ?? trigger.detail;
+    const happened = momentOf(trigger, state);
     const message = await ask(`${describeBriefly(state, now())}\n\nWhat just happened (${trigger.kind}): ${happened}`, MAX_TOKENS, signal);
     const text = message.content.filter(block => block.type === 'text').map(block => block.text).join('');
     const parsed = parseScore(text);
     if (parsed) return parsed;
     if (message.errorMessage) return {value: 0, reason: `watcher failed: ${message.errorMessage}`, error: message.errorMessage};
-    return {value: 0, reason: 'watcher gave no score'};
+    return {value: 0, reason: 'watcher gave no score', unscored: true};
   }
   score.lastCallAt = now(); // the daemon probes every model as it starts
   score.warm = async () => {

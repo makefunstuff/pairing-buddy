@@ -64,6 +64,9 @@ const THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'];
 export const THINKING_DEFAULTS = {navigator: 'medium', scout: 'medium', driver: 'medium', remark: 'low'};
 
 export const ANSWER_TOKENS = 2048; // the Partner's words and tool calls, on top of its thinking
+// A model entry's window when neither the config nor the model's server or catalog says: local servers are often
+// started with a small context.
+export const DEFAULT_CONTEXT = 32768;
 
 /**
  * The Partner's `thinking`: one level for every kind of turn, or some kinds' levels with the defaults for the rest.
@@ -79,6 +82,16 @@ export function thinkingConfig(raw = {}, name = 'models.partner.thinking') {
   return {...THINKING_DEFAULTS, ...levels};
 }
 
+/** `thinkingLevelMap`: a level -> the server's name for it, or null for a level it does not have. */
+function checkLevelMap(map, name) {
+  if (map === undefined) return;
+  if (!map || typeof map !== 'object' || Array.isArray(map)) throw new Error(`config: ${name} must map thinking levels to the server's names for them`);
+  for (const [level, sent] of Object.entries(map)) {
+    if (!THINKING_LEVELS.includes(level)) throw new Error(`config: ${name}.${level}: the levels are ${THINKING_LEVELS.join(', ')}`);
+    if (sent !== null && typeof sent !== 'string') throw new Error(`config: ${name}.${level} must be a name the server takes, or null`);
+  }
+}
+
 /** The highest of `thinking`'s levels. */
 export function mostThinking(thinking) {
   return Object.values(thinking).reduce((most, level) => (THINKING_LEVELS.indexOf(level) > THINKING_LEVELS.indexOf(most) ? level : most), 'off');
@@ -92,16 +105,24 @@ export const replyTokens = level => ANSWER_TOKENS + (level === 'off' ? 0 : think
  * (`reasoning`, so Pair can set its level); the Watcher never does, and answers with one number whatever its
  * `maxTokens` (see watcher.mjs).
  */
-export function modelConfig(role, entry, name = `models.${role}`) {
+export function modelConfig(role, entry, name = `models.${role}`, found = null) {
   if (!entry || typeof entry !== 'object') throw new Error(`config: ${name} is missing`);
   checkSource(name, entry);
   if (typeof entry.model !== 'string' || !entry.model) throw new Error(`config: ${name}.model is missing`);
   if (entry.api === 'openai' && !entry.baseUrl) throw new Error(`config: ${name}.baseUrl is missing`);
-  const base = {baseUrl: entry.api === 'anthropic' ? 'https://api.anthropic.com' : undefined, contextWindow: 32768};
+  checkLevelMap(entry.thinkingLevelMap, `${name}.thinkingLevelMap`);
+  const contextWindow = entry.contextWindow ?? found?.tokens ?? DEFAULT_CONTEXT;
+  const base = {
+    baseUrl: entry.api === 'anthropic' ? 'https://api.anthropic.com' : undefined,
+    contextWindow,
+    // Where the window comes from, for `pair doctor`: the config, `found` (see context-window.mjs) or the default.
+    windowFrom: entry.contextWindow !== undefined ? 'config' : found?.from ?? 'default',
+    ...(entry.contextWindow !== undefined && found?.served ? {servedWindow: found.tokens} : {}),
+  };
   if (role !== 'partner') return {...base, maxTokens: ANSWER_TOKENS, reasoning: false, ...entry};
-  const contextWindow = entry.contextWindow ?? base.contextWindow;
   if (contextWindow < MIN_CONTEXT) {
-    throw new Error(`config: ${name}.contextWindow is ${contextWindow}: the Partner needs at least ${MIN_CONTEXT} tokens, for its tools, a file it reads and its reply`);
+    const told = base.windowFrom === 'config' ? '' : ` (${base.windowFrom}; set "contextWindow" to say otherwise)`;
+    throw new Error(`config: ${name}.contextWindow is ${contextWindow}${told}: the Partner needs at least ${MIN_CONTEXT} tokens, for its tools, a file it reads and its reply`);
   }
   const thinking = thinkingConfig(entry.thinking, `${name}.thinking`);
   return {
@@ -139,16 +160,21 @@ export const whereIs = entry => (entry.provider ? `${entry.model} on ${entry.pro
  * `{watcher, partner}`: one `model` for both roles, or `models` with an entry for each, where the Watcher's may be
  * "same as partner".
  */
-function parseModels(raw) {
+function parseModels(raw, windows) {
   if (raw.model !== undefined && raw.models !== undefined) throw new Error('config: set "model" (one model for both roles) or "models", not both');
   if (raw.model !== undefined) {
-    const partner = modelConfig('partner', raw.model, 'model');
-    return {watcher: modelConfig('watcher', watcherOn(raw.model), 'model'), partner};
+    const partner = modelConfig('partner', raw.model, 'model', windows.partner);
+    return {watcher: modelConfig('watcher', watcherOn(raw.model), 'model', windows.partner), partner};
   }
   const watcher = raw.models?.watcher;
   if (typeof watcher === 'string' && watcher !== SAME_AS_PARTNER) throw new Error(`config: models.watcher is a model entry, or "${SAME_AS_PARTNER}"`);
-  const partner = modelConfig('partner', raw.models?.partner);
-  return {watcher: watcher === SAME_AS_PARTNER ? modelConfig('watcher', watcherOn(raw.models.partner)) : modelConfig('watcher', watcher), partner};
+  const partner = modelConfig('partner', raw.models?.partner, undefined, windows.partner);
+  return {
+    watcher: watcher === SAME_AS_PARTNER
+      ? modelConfig('watcher', watcherOn(raw.models.partner), undefined, windows.partner)
+      : modelConfig('watcher', watcher, undefined, windows.watcher),
+    partner,
+  };
 }
 
 /** One line on which models serve the two roles, for `pair setup`. */
@@ -211,10 +237,14 @@ function sessionRoots(raw = []) {
   });
 }
 
-export function parseConfig(raw) {
+/**
+ * The daemon's config from the file's `raw` JSON. `windows` holds the context window each role's model has where
+ * the config does not say, `{tokens, from, served}` (see context-window.mjs).
+ */
+export function parseConfig(raw, {windows = {}} = {}) {
   const level = raw.level ?? 'normal';
   if (!LEVELS.includes(level)) throw new Error(`config: level must be one of ${LEVELS.join(', ')}`);
-  const models = parseModels(raw);
+  const models = parseModels(raw, windows);
   if (raw.agents !== undefined && typeof raw.agents !== 'boolean') throw new Error('config: agents must be true or false');
   return {
     level,
@@ -230,6 +260,7 @@ export function parseConfig(raw) {
     voice: voiceConfig(raw.voice), // push-to-talk; null when off (see voice.mjs)
     taskCommand: taskCommand(raw.taskCommand),
     board: boardCommand(raw.board),
+    windows, // as found (see context-window.mjs), so a reload can keep one a server cannot tell then
     agents: raw.agents ?? true, // relays your other agents' news (see agents.mjs)
     models,
   };
@@ -248,10 +279,13 @@ export function createConfig(path = configPath()) {
   return true;
 }
 
-export function loadConfig(path = configPath()) {
+/** The config file's JSON, its comments stripped. */
+export function readConfig(path = configPath()) {
   let text;
   try { text = readFileSync(path, 'utf8'); } catch { throw new Error(`No config at ${path}; run \`pair setup\``); }
-  let raw;
-  try { raw = JSON.parse(stripComments(text)); } catch (error) { throw new Error(`config: ${path} is not valid JSON (${error.message})`); }
-  return parseConfig(raw);
+  try { return JSON.parse(stripComments(text)); } catch (error) { throw new Error(`config: ${path} is not valid JSON (${error.message})`); }
+}
+
+export function loadConfig(path = configPath()) {
+  return parseConfig(readConfig(path));
 }
