@@ -129,8 +129,8 @@ how often Pair talks. It never interrupts your typing. [docs/how-it-works.md](do
 **Stops a wrong turn.** While a test is red and you edit a file the failure does not name, Pair traces the test and,
 only if the cause is elsewhere, says so under your edit. [docs/neovim.md](docs/neovim.md#the-wrong-turn)
 
-**Follows your search trail.** When you search in circles (three Telescope or snacks.picker searches, one of them
-without a result you opened), Pair says where the thing is, in the code's own word. `:Pair trail` shows the searches it saw. [docs/neovim.md](docs/neovim.md#the-search-trail)
+**Follows your search trail.** When you search in circles (three Telescope, snacks.picker or fzf-lua searches, one of
+them without a result you opened), Pair says where the thing is, in the code's own word. `:Pair trail` shows the searches it saw. [docs/neovim.md](docs/neovim.md#the-search-trail)
 
 **Thinks in Markdown with you, never for you.** In a note, Pair puts at most five marks in the margin: `?` a question
 the note leaves open, `≠` two lines that cannot both hold, `→` what the code it names really does, `◆` a decision,

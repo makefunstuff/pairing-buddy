@@ -39,7 +39,7 @@ local config = {
   socket = nil, debounce_ms = 2000, max_points = 5, motion = true, glyphs = {},
   accept_key = '<M-y>', jump_key = '<M-j>', useful_key = '<M-u>', noise_key = '<M-n>', listen_key = '<M-t>',
   sounds = false, sound_volume = 0.5,
-  searches = true, -- your Telescope and snacks.picker searches go to the daemon, for the search trail
+  searches = true, -- your Telescope, snacks.picker and fzf-lua searches go to the daemon, for the search trail
   decide_key = '<M-d>', link_key = '<M-l>',
   teach_key = '<M-?>',
   agents_key = '<M-a>',

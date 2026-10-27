@@ -265,9 +265,15 @@ closes it) and snacks.picker (as its input window closes, whether you confirm fr
 the result count and the selected entry, then whether that file is where you are now (in a new split too). No mapping, action or
 picker setting of yours changes, and nothing is written to the picker's own history; Telescope's history keeps
 only searches that ended in a selection, and the ones you gave up on are the telling ones. A picker closed with an
-empty prompt is no search. fzf-lua has no hook for its close, so its searches are not read
-([#56](https://github.com/makefunstuff/pairing-buddy/issues/56)). `searches = false` in
-`setup` turns all of this off.
+empty prompt is no search.
+
+fzf-lua (`FileType fzf`, then its window closing, which it does whether it ends fzf or, as it does by default, only
+hides it for a resume) is read the same way, with two differences, as fzf-lua does not hand out what you selected.
+What you opened is where the picker's action took you: the window you came from, now on another file or another
+line. The result count is fzf's own, read off its screen while it runs. The picker is its command (`live_grep` is
+Live Grep, `grep_cword` Grep Cword); for `grep` and `grep_cword` your words are the words grepped for, not the
+fuzzy filter typed over them. A resumed picker, closed again, is a search again. `searches = false` in `setup` turns
+all of this off.
 
 ## The held thought
 
@@ -498,7 +504,7 @@ herdr's work board ([captures/board.mjs](captures/board.mjs)).*
 | board | the task, its state, and how many of the repo's other tasks are working or need you | the herdr work board: the task whose number is in the branch name, in this repo |
 | git | branch, last commit, how many files changed, the pull request | `git`, and `gh pr view` at most every five minutes |
 | terminal | the last three commands, how they ended and how long ago | the herdr panes and the shell hook |
-| editor | your buffers, the jumplist, and your searches with what you opened from them | Neovim, and the searches the [search trail](#the-search-trail) reads from Telescope and snacks.picker |
+| editor | your buffers, the jumplist, and your searches with what you opened from them | Neovim, and the searches the [search trail](#the-search-trail) reads from Telescope, snacks.picker and fzf-lua |
 
 - **`x` hides a source** for the rest of the session: it is struck through on the card and no longer sent. `x` on
   it again brings it back. `q` or `Esc` closes the card. A hidden terminal also means no remark about a failed
@@ -619,7 +625,7 @@ require('pair').setup({
   listen_key = '<M-t>', -- hold it to speak to Pair (docs/voice.md); false for none
   motion = true,       -- false: no fades, the gaze lights one line at a time without its trail, and the Driver's edit lands at once
   glyphs = {},         -- for example {voice = '\u{f444}', wheel = '\u{f030c}'} with a Nerd Font
-  searches = true,     -- false: your Telescope and snacks.picker searches stay in Neovim, and there is no search trail
+  searches = true,     -- false: your Telescope, snacks.picker and fzf-lua searches stay in Neovim, and there is no search trail
   sounds = false,      -- true: short sounds while you are away from Neovim (see above)
   sound_volume = 0.5,  -- 0 to 1
   land = true,         -- false: the morning pick-up does not open an empty Neovim where you stopped
@@ -640,7 +646,7 @@ require('pair').setup({
 | `agents_key` | `'<M-a>'` | Goes to the agent whose news Pair relayed, or puts the line away when it has no pane ([agents.md](agents.md)). Mapped in Normal mode while such a line shows |
 | `motion` | `true` | Fades, the glow of a green, and the trail behind the gaze; without it the gaze still steps line by line |
 | `decide_key`, `link_key` | `'<M-d>'`, `'<M-l>'` | In a note's margin: log the decision on your line, open the code a mark names. Mapped in Normal mode only in a note with such a mark ([notes.md](notes.md)) |
-| `searches` | `true` | Read your Telescope and snacks.picker searches for the [search trail](#the-search-trail) |
+| `searches` | `true` | Read your Telescope, snacks.picker and fzf-lua searches for the [search trail](#the-search-trail) |
 | `sounds` | `false` | Short [sounds](#sounds-while-you-are-away) for a green, a regression, a remark and the hand-back, only while Neovim does not have the focus |
 | `sound_volume` | `0.5` | Their volume, 0 to 1 |
 | `answers` | `true` | The first two lines of Pair's answer to a question you typed (`:Pair ask`, the chat) show under the line it was about, too ([below](#what-each-thing-looks-like)) |
