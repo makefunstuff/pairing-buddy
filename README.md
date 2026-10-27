@@ -10,7 +10,7 @@ edits land unsaved in your buffer as one undo step, and the disk changes only wh
 **Docs: [makefunstuff.github.io/pairing-buddy](https://makefunstuff.github.io/pairing-buddy/)** (source in
 [`docs/`](docs/), built from [`site/`](site/)).
 
-[![The tutorial: Pair's words under the line you changed, in a pixel window](docs/images/tutorial.jpg)](https://makefunstuff.github.io/pairing-buddy/#tour)
+https://github.com/user-attachments/assets/d723d090-0b41-45b0-83df-e57fda572562
 
 *The tutorial, 13 minutes with a voiceover and captions, one idea per scene, recorded live with a real model.
 Chapters: 0:00 what Pair is · 0:59 setup and `pair doctor` · 2:44 the roles · 4:19 exploring code · 5:19 tests · 6:42
