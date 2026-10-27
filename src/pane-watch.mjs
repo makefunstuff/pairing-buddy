@@ -3,10 +3,12 @@
 // buffers of the session's Neovims (src/nvim-panes.mjs), or several of them as one (Panes): Neovim's terminals in
 // herdr or tmux. The source lists them, says what runs in one, reads its text and types into it; herdr pushes focus,
 // pane and scroll events, tmux is polled, and Neovim says when the user goes into one of its terminals or out of it.
-// The prompt line tells typing from a command too short to be seen running (pane-text.mjs); the shell hook reports
-// commands with their exit codes.
+// The prompt line tells typing from a command too short to be seen running (pane-text.mjs). In a terminal with the
+// shell hook, the hook says when a command starts and ends, with its exit code, and in zsh when keys are pressed at
+// the prompt (shell-hook.mjs): Pair then polls nothing there at the prompt, reads the terminal only for a command's
+// output, and while a command runs looks only for an editor opening in it.
 // The one thing Pair sends to a user's terminal is the Driver's `type`: plain text, never Enter.
-import {commandOutput, linesOf, promptChange} from './pane-text.mjs';
+import {commandLine, commandOutput, linesOf, promptChange} from './pane-text.mjs';
 
 const EDITORS = new Set(['nvim', 'vim', 'vi']);
 const FOCUSED_MS = 500; // the focused pane: typing, and commands as short as this
@@ -15,6 +17,7 @@ const PROMPT_LINES = 50; // read at the prompt; more when a command's output pus
 const OUTPUT_LINES = 1000; // the most a source reads at once (herdr's pane.read maximum)
 const SETTLE_MS = 100; // after a command ended, between reads until the prompt is back
 const SETTLE_TRIES = 6;
+const TYPED_MS = 1500; // keys the hook reports this soon after the Driver's `type` are its text arriving
 
 /** Whether command line `cmd` runs an editor: `nvim a.js`, `/usr/bin/vim`. */
 export const isEditor = cmd => EDITORS.has(cmd?.trim().split(/\s/)[0].split('/').at(-1));
@@ -108,8 +111,8 @@ export class PaneWatch {
   constructor({source, chatPane = null, scout = null, emit, log = () => {}}) {
     Object.assign(this, {source, chatPane, scout, emit, log});
     this.panes = new Map(); // pane id -> what Pair knows of the user's pane (see paneState)
-    this.hooked = new Set();
-    this.typedByPair = new Map(); // pane id -> the text the Driver typed there, which is not the user typing
+    this.hooked = new Map(); // pane id -> its shell hook: {shell (pid), keys, started, ended (line numbers)}
+    this.typedByPair = new Map(); // pane id -> when the Driver typed there, which is not the user typing
     this.focused = null; // the source's focused pane: {pane, scrolled}
     this.focus = null;
     this.failing = null; // the error of the last request, if it failed
@@ -159,6 +162,7 @@ export class PaneWatch {
     const panes = await this.source.list();
     const ids = new Set(panes.map(({pane}) => pane));
     for (const id of this.panes.keys()) if (!ids.has(id)) this.panes.delete(id);
+    for (const id of this.hooked.keys()) if (!ids.has(id)) this.hooked.delete(id);
     for (const {pane} of panes) {
       // A new pane is looked at once, for an editor in it; then only while it has focus or runs a command.
       if (this.isUsers(pane) && !this.panes.has(pane)) await this.pollPane(pane);
@@ -169,21 +173,39 @@ export class PaneWatch {
     this.emitFocus();
   }
 
+  /**
+   * Whether `id` needs looking at: a pane while it has focus or runs a command. With the hook, a command running
+   * is looked at only for an editor that opens late (`git commit` after a pre-commit hook), and the prompt only
+   * when the shell does not report keys (bash, fish), for typing.
+   */
+  needsLook(id) {
+    if (!this.isUsers(id)) return false;
+    const focused = id === this.focused?.pane;
+    const running = !!this.panes.get(id)?.running;
+    const hook = this.hooked.get(id);
+    if (hook) return running || (focused && !hook.keys);
+    return focused || running;
+  }
+
   /** Looks again in FOCUSED_MS or RUNNING_MS, or not before the next event when nothing needs looking at. */
   schedule() {
     if (this.ticking) return; // the look under way schedules the next one when it is done
     clearTimeout(this.timer);
-    const focused = this.focused && this.isUsers(this.focused.pane);
-    const running = [...this.panes.values()].some(pane => pane.running);
+    const focused = this.focused && this.needsLook(this.focused.pane);
+    const running = [...this.panes.keys()].some(id => this.needsLook(id));
     if (this.stopped || (!focused && !running)) return;
     this.timer = setTimeout(() => this.tick(), focused ? FOCUSED_MS : RUNNING_MS);
   }
 
   async tick() {
     this.ticking = true;
-    const panes = [...this.panes].filter(([id, pane]) => pane.running || id === this.focused?.pane).map(([id]) => id);
+    const panes = [...this.panes.keys()].filter(id => this.needsLook(id));
     try {
-      for (const pane of panes) await this.pollPane(pane);
+      for (const pane of panes) {
+        if (!this.hooked.has(pane)) await this.pollPane(pane);
+        else if (this.paneState(pane).running) await this.lookForEditor(pane);
+        else await this.atPrompt(pane, this.paneState(pane), true);
+      }
       this.answered();
     } catch (error) {
       this.failed(error);
@@ -199,10 +221,96 @@ export class PaneWatch {
     return this.panes.get(id);
   }
 
-  /** Panes with the shell hook report their own commands, exit codes included; Pair then only reads their output. */
-  markHooked(pane) {
-    this.hooked.add(pane);
-    if (this.panes.has(pane)) this.paneState(pane).running = null;
+  /**
+   * What the shell hook said of `pane`: it runs the hook, in the shell with pid `shell`, which reports keys or not.
+   * A new shell in the pane starts the count of its command lines anew.
+   */
+  hook(pane, {shell = null, keys = false} = {}) {
+    const known = this.hooked.get(pane);
+    const hook = known && (shell === null || known.shell === shell) ? known : {shell, keys: false, started: 0, ended: 0};
+    hook.keys ||= keys;
+    this.hooked.set(pane, hook);
+    return hook;
+  }
+
+  /** A shell with the hook started in `pane`: its commands come from the hook from now on, not from polling. */
+  shellReady(pane, info) {
+    if (!this.isUsers(pane)) return;
+    this.hook(pane, info);
+    this.paneState(pane).running = null;
+    this.schedule();
+  }
+
+  /**
+   * The hook says command line `n` (`cmd`) started in `pane`. Pair reads the pane once, to find the line it was
+   * typed on, where its output will start, and to see whether it is an editor.
+   */
+  async commandStarted(pane, {cmd = '', n = 0, ...info}) {
+    if (!this.isUsers(pane)) return;
+    const hook = this.hook(pane, info);
+    if (n && n <= hook.ended) return; // its end came first: it is over already
+    hook.started = n;
+    const state = this.paneState(pane);
+    Object.assign(state, {running: cmd || 'a command', anchor: null});
+    this.schedule();
+    const text = await this.read(pane, OUTPUT_LINES);
+    if (hook.started !== n || hook.ended >= n) return; // ended, or another started, meanwhile
+    const lines = linesOf(text);
+    const at = commandLine([...lines, ''], {cmd}); // its line may still be the last: commandLine skips the last (the prompt)
+    state.anchor = at === -1 ? null : lines.slice(0, at + 1).join('\n');
+    await this.lookForEditor(pane);
+  }
+
+  /** Whether the command running in hooked pane `pane` is an editor now; the focus says so when that changes. */
+  async lookForEditor(pane) {
+    const cmd = await this.source.commandOf(pane);
+    const state = this.paneState(pane);
+    if (!state.running) return; // the command ended meanwhile
+    state.editor = isEditor(cmd);
+    this.emitFocus();
+  }
+
+  /**
+   * The hook says command line `n` (`cmd`) ended in `pane`: its output, cut out of the pane's text from the line
+   * it was typed on, once the prompt is back. Null for Pair's own panes. Test runners print the failed tests far
+   * above their summary.
+   */
+  async commandEnded(pane, {cmd = '', n = 0, ...info}) {
+    if (!this.isUsers(pane)) return null;
+    const hook = this.hook(pane, info);
+    hook.ended = Math.max(hook.ended, n);
+    const state = this.paneState(pane);
+    // A hook without line numbers (an older one) has no start reports: the last look at the prompt is the anchor.
+    const anchor = !n ? state.anchor ?? state.before : hook.started === n ? state.anchor : null;
+    const wasEditor = state.editor;
+    Object.assign(state, {running: null, editor: false, anchor: null});
+    if (wasEditor) this.emitFocus();
+    this.schedule();
+    const text = await this.promptBack(pane, state.prompt);
+    Object.assign(state, {before: text, prompt: linesOf(text).at(-1)});
+    return commandOutput(text, {before: anchor, cmd}).output;
+  }
+
+  /**
+   * The hook says keys changed the line at a prompt: of the terminal whose shell has pid `shell`, else of `pane`
+   * (herdr's or tmux's), among the terminals seen so far: it comes twice a second, so no source is asked again.
+   * Whether that terminal is this watch's.
+   */
+  keysTypedIn({shell = null, pane = null}) {
+    const typedIn = (shell && this.source.paneOfShell?.(shell)) || pane;
+    if (!typedIn || !this.panes.has(typedIn)) return false;
+    this.keysTyped(typedIn);
+    return true;
+  }
+
+  /** The hook says keys changed the line at the prompt of `pane`. The Driver's own `type` does not count. */
+  keysTyped(pane) {
+    if (!this.isUsers(pane) || !this.panes.has(pane)) return;
+    this.hook(pane, {keys: true});
+    this.schedule();
+    const typed = this.typedByPair.get(pane);
+    if (typed !== undefined && Date.now() - typed < TYPED_MS) return this.typedByPair.delete(pane);
+    this.emit({kind: 'typing', source: 'terminal', pane});
   }
 
   read(pane, lines) {
@@ -217,12 +325,6 @@ export class PaneWatch {
     if (!shell || !this.source.paneOfShell) return pane;
     if (!this.source.paneOfShell(shell)) await this.listPanes().catch(() => {}); // a terminal opened since the last look
     return this.source.paneOfShell(shell) ?? pane;
-  }
-
-  /** The output of `cmd`, which just ended in `pane`. Test runners print the failed tests far above their summary. */
-  async output(pane, cmd) {
-    const state = this.paneState(pane);
-    return commandOutput(await this.read(pane, OUTPUT_LINES), {before: state.anchor ?? state.before, cmd}).output;
   }
 
   async pollPane(pane) {
@@ -296,7 +398,7 @@ export class PaneWatch {
   async type(pane, text) {
     if (!plainLine(text)) throw new Error('Only one line of plain text can be typed');
     if (this.targetOf(pane) !== 'terminal') throw new Error(`Pane ${pane} is not one of the user's terminals`);
-    this.typedByPair.set(pane, text);
+    this.typedByPair.set(pane, Date.now());
     await this.source.send(pane, text);
   }
 

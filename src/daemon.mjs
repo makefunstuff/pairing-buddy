@@ -594,23 +594,48 @@ export async function startDaemon(config, {
     if (shown) relay.clear();
   }
 
+  /** The pane watch of the session of the shell hook's `message`, or null when its project has none. */
+  async function hookWatch(message) {
+    const session = live.get(await rootOf(message.cwd));
+    return session ? {session, watch: watches.get(session.root) ?? null} : null;
+  }
+
+  /** The herdr or tmux pane of a shell hook's environment, or null. */
+  const outerPane = message => message.pane || (message.tmux ? tmuxPane(message.tmux) : null);
+
+  /** The terminal of the shell that sent a hook's `message` (a Neovim :terminal's, by its pid), else its outer pane. */
+  const hookPane = (watch, message) => watch.paneOf({shell: message.shell ?? null, pane: outerPane(message)});
+
   /** A command the shell hook saw end, with its exit code. Ignored when its project has no session. */
   async function shellCommand(message) {
-    const session = live.get(await rootOf(message.cwd));
+    const {session, watch} = await hookWatch(message) ?? {};
     if (!session) return;
-    const watch = watches.get(session.root);
-    // The terminal of the shell that ran it, else the herdr or tmux pane of its environment.
-    const outer = message.pane ?? (message.tmux ? tmuxPane(message.tmux) : null);
-    const pane = watch ? await watch.paneOf({shell: message.shell ?? null, pane: outer}) : outer;
-    if (pane) watch?.markHooked(pane);
-    const output = watch && pane ? await watch.output(pane, message.cmd).catch(() => '') : '';
+    const pane = watch ? await hookPane(watch, message) : outerPane(message);
+    const output = watch && pane ? await watch.commandEnded(pane, message).catch(() => '') : '';
+    if (output === null) return; // one of Pair's own panes (the chat's, Scout's), whose shell has the user's hook
     receive(session, {kind: 'command_end', pane, cmd: message.cmd, exit: message.exit, output, cwd: message.cwd});
+  }
+
+  /** The shell hook in a terminal: a shell started, or a command started in it (see shell-hook.mjs). */
+  async function shellStarted(message) {
+    const {watch} = await hookWatch(message) ?? {};
+    const pane = watch && await hookPane(watch, message);
+    if (!pane) return;
+    if (message.type === 'shell') watch.shellReady(pane, message);
+    else await watch.commandStarted(pane, message).catch(error => log(`shell hook: ${error.message}`));
+  }
+
+  /** zsh's hook says keys were pressed at a prompt. It sends no cwd: the watch that has its terminal tells the session. */
+  function shellTyping(message) {
+    for (const watch of watches.values()) watch.keysTypedIn({shell: message.shell ?? null, pane: outerPane(message)});
   }
 
   async function handle(client, message) {
     if (message.type === 'hello') return (client.ready = hello(client, message));
     if (message.type === 'status') return sendMessage(client.socket, status());
     if (message.type === 'command') return shellCommand(message);
+    if (message.type === 'shell' || message.type === 'command_start') return shellStarted(message);
+    if (message.type === 'typing') return shellTyping(message);
     if (message.type === 'reply') return replies.get(message.id)?.(message.result);
     // A client may send right after its hello; wait until the hello has found its session.
     await client.ready;
