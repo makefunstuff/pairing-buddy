@@ -6,7 +6,7 @@ import {join} from 'node:path';
 import {after, test} from 'node:test';
 import {createModels, fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall} from '@earendil-works/pi-ai';
 import {MemoryStorage} from '@earendil-works/pi-durable';
-import {checkCommand, judge, markOf, numberFor, parseHandOver, targetOf} from '../src/check.mjs';
+import {checkCommand, judge, markOf, numberFor, parseHandOver, targetOf, targetsOf} from '../src/check.mjs';
 import {measure} from '../src/run-log.mjs';
 import {sandboxWords, sandboxWorks} from '../src/sandbox.mjs';
 import {checkInput, driveInput, PairSession} from '../src/session.mjs';
@@ -66,13 +66,25 @@ test('the number a bound names is found by its label, or by its words', () => {
 test('the check: a failed run fails, a bound is checked in code, any other expectation is the Partner\'s to judge', () => {
   const numbers = measure('avg probe 1.30 worst 3\n');
   const target = targetOf('avg probe stays under 2');
-  assert.deepEqual(judge({red: false, numbers, target, expect: 'avg probe stays under 2', text: 'passed'}), {mark: 'pass', text: 'avg probe 1.30'});
-  assert.deepEqual(judge({red: false, numbers: measure('avg probe 2.6\n'), target, expect: 'x', text: 'passed'}), {mark: 'fail', text: 'avg probe 2.6'});
-  assert.deepEqual(judge({red: true, failure: 'Segmentation fault', numbers, target, expect: 'x', text: 'x'}), {mark: 'fail', text: 'Segmentation fault'});
-  assert.deepEqual(judge({red: false, numbers: measure('load 0.4\n'), target, expect: 'avg probe stays under 2', text: 'passed'}), {mark: null, text: null},
+  assert.deepEqual(judge({red: false, numbers, targets: [target], expect: 'avg probe stays under 2', text: 'passed'}), {mark: 'pass', text: 'avg probe 1.30'});
+  assert.deepEqual(judge({red: false, numbers: measure('avg probe 2.6\n'), targets: [target], expect: 'x', text: 'passed'}), {mark: 'fail', text: 'avg probe 2.6'});
+  assert.deepEqual(judge({red: true, failure: 'Segmentation fault', numbers, targets: [target], expect: 'x', text: 'x'}), {mark: 'fail', text: 'Segmentation fault'});
+  assert.deepEqual(judge({red: false, numbers: measure('load 0.4\n'), targets: [target], expect: 'avg probe stays under 2', text: 'passed'}), {mark: null, text: null},
     'a bound on a number the run did not print: the Partner reads the output');
-  assert.deepEqual(judge({red: false, numbers, target: null, expect: 'the window shows both counters', text: 'passed'}), {mark: null, text: null});
-  assert.deepEqual(judge({red: false, numbers, target: null, expect: null, text: 'passed'}), {mark: 'pass', text: 'passed'}, 'no expectation: it went through');
+  assert.deepEqual(judge({red: false, numbers, expect: 'the window shows both counters', text: 'passed'}), {mark: null, text: null});
+  assert.deepEqual(judge({red: false, numbers, expect: null, text: 'passed'}), {mark: 'pass', text: 'passed'}, 'no expectation: it went through');
+  // Two bounds: each is checked, and one missed fails it.
+  const both = targetsOf('avg probe stays under 2 and worst stays under 5');
+  assert.deepEqual(both, [{label: 'avg probe', op: '<', value: 2}, {label: 'worst', op: '<', value: 5}]);
+  assert.deepEqual(targetsOf('avg probe under 2, worst under 5'), both);
+  assert.deepEqual(targetsOf('the window shows both counters'), []);
+  const printed = output => measure(output);
+  assert.deepEqual(judge({red: false, numbers: printed('190000 keys  avg probe 1.3  worst 89  12 ms\n'), targets: both, expect: 'x', text: 'passed'}),
+    {mark: 'fail', text: 'avg probe 1.3 · worst 89'}, 'the second bound is missed');
+  assert.deepEqual(judge({red: false, numbers: printed('190000 keys  avg probe 1.3  worst 3  12 ms\n'), targets: both, expect: 'x', text: 'passed'}),
+    {mark: 'pass', text: 'avg probe 1.3 · worst 3'});
+  assert.deepEqual(judge({red: false, numbers: printed('avg probe 1.3\n'), targets: both, expect: 'x', text: 'passed'}),
+    {mark: null, text: 'avg probe 1.3'}, 'a bound on a number the run did not print: the Partner judges');
   assert.equal(markOf('✓ both counters show.'), 'pass');
   assert.equal(markOf(' ✗ only one counter.'), 'fail');
   assert.equal(markOf('Both counters show.'), null);
@@ -90,7 +102,7 @@ test('the check command is the user\'s: the one in the hand-over, the command on
   assert.match(checkCommand({given: 'build/probe --n 5', root}).none, /would run the old code/);
   assert.equal(checkCommand({runs: [run('./build.sh')], root}).command, './build.sh', 'a script builds what it needs');
   assert.equal(checkCommand({runs: [run('zig build', '/p/tool'), run('./zig-out/bin/tool', '/p/tool')], root}).command, "cd 'tool' && zig build && ./zig-out/bin/tool", 'in its folder');
-  assert.equal(checkCommand({runs: [run('make run', '/elsewhere')], root}).command, 'make run', 'a folder outside the project is not entered');
+  assert.equal(checkCommand({runs: [run('make run', '/elsewhere')], root}).none, '`make run` ran in /elsewhere, outside the project, so it checks nothing here');
   assert.match(checkCommand({given: 'sudo make install', root}).none, /^`sudo make install` is not run for a check: /);
   assert.deepEqual(checkCommand({runs: [], root}), {none: 'no command on save, and no build or run in the user\'s terminal yet'});
 });
@@ -364,4 +376,19 @@ test('through the Partner: a model that reads images gets the picture; one that 
       assert.doesNotMatch(texts, /omitted/);
     }
   }
+});
+
+test('two bounds through a real run: the first met and the second missed comes back ✗ with both numbers', {skip: has('cc') && has('make') ? false : 'needs cc and make', timeout: 60_000}, async () => {
+  const fixed = PROBE_C.replace('return key % 16;', 'return (key * 2654435761u) >> 22;');
+  const {partner, seen} = driver({file: 'probe.c', line: 4, endLine: 4, text: 'static unsigned slot(unsigned key) { return (key * 2654435761u) >> 22; }'});
+  seen.words = 'High bits.';
+  const {pair, root, sent} = realProject({'probe.c': PROBE_C, 'Makefile': 'run: probe\n\t./probe\nprobe: probe.c\n\tcc -O1 -o probe probe.c\n'}, {partner, buffer: fixed});
+  seen.pair = pair;
+  pair.receive({kind: 'command_end', cmd: 'make -s run', exit: 0, output: 'avg probe 200.50 worst 400\n', cwd: root});
+  await pair.drive('you take it: speed up the hash, avg probe stays under 2 and worst stays under 1');
+  assert.match(seen.reply, /It printed avg probe 1\.\d+ · worst \d+, which does not meet it: say why/);
+  const handback = sent.find(message => message.type === 'handback');
+  assert.equal(handback.tests, 'fail');
+  assert.match(handback.check, /^avg probe 1\.\d+ · worst \d+$/);
+  assert.equal(sent.filter(message => message.type === 'tests').at(-1).state, 'fail', 'the statusline too');
 });

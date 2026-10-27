@@ -3,7 +3,7 @@
 // never the model's: one in backquotes in the hand-over, else the project's command on save, else the build and
 // run the user ran last in their terminal. A number with a bound is checked here, in code; any other expectation
 // the Partner compares with the output. Pure: no files, no clock.
-import {relative} from 'node:path';
+import {isAbsolute, relative} from 'node:path';
 import {commandPolicy} from './command-policy.mjs';
 import {isRun} from './run-log.mjs';
 import {shellQuote} from './scout-pane.mjs';
@@ -60,6 +60,12 @@ export function targetOf(expect) {
   return label && !NOT_A_NAME.test(label) ? {label: label.toLowerCase(), op, value: Number(match[3])} : null;
 }
 
+/**
+ * Every number an expectation bounds, each as targetOf gives it: "avg probe under 2 and worst under 5" bounds two.
+ * Empty when it bounds none.
+ */
+export const targetsOf = expect => (expect ?? '').split(/\s*(?:[,;]|\band\b)\s*/i).map(targetOf).filter(Boolean);
+
 const MEETS = {'<': (a, b) => a < b, '<=': (a, b) => a <= b, '>': (a, b) => a > b, '>=': (a, b) => a >= b, '=': (a, b) => a === b};
 const words = text => text.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
 
@@ -73,21 +79,23 @@ export function numberFor(numbers, target) {
     ?? null;
 }
 
-const numberText = number => `${number.label} ${number.text}${number.unit ? `${/^[a-zµ]/i.test(number.unit) ? ' ' : ''}${number.unit}` : ''}`;
+/** A number as the hand-back shows it, by the label the user gave it: "avg probe 1.3". */
+const numberText = (label, number) => `${label} ${number.text}${number.unit ? `${/^[a-zµ]/i.test(number.unit) ? ' ' : ''}${number.unit}` : ''}`;
 
 /**
  * How the check went: `{mark, text}`, mark 'pass', 'fail' or null (the Partner judges), and text what the run
- * printed for it ("avg probe 1.3"), or null. A run that failed (`red`, with `failure` its words: "does not build",
- * "Segmentation fault") fails whatever was expected; a bound is checked against the number it names; an expectation
- * without one is the Partner's to judge. Without an expectation, a run that went through passes, with `text`.
+ * printed for it ("avg probe 1.3 · worst 89"), or null. A run that failed (`red`, with `failure` its words: "does
+ * not build", "Segmentation fault") fails whatever was expected. Each of the `targets` is checked against the number
+ * it names: one missed fails it, all met pass it; a bound on a number the run did not print, or an expectation
+ * without one, is the Partner's to judge. Without an expectation, a run that went through passes, with `text`.
  */
-export function judge({red, failure, numbers, target, expect, text}) {
+export function judge({red, failure, numbers, targets = [], expect, text}) {
   if (red) return {mark: 'fail', text: failure};
-  if (target) {
-    const number = numberFor(numbers, target);
-    if (number) return {mark: MEETS[target.op](number.value, target.value) ? 'pass' : 'fail', text: numberText(number)};
-  }
-  return expect ? {mark: null, text: null} : {mark: 'pass', text};
+  const found = targets.map(target => ({target, number: numberFor(numbers, target)})).filter(each => each.number);
+  const printed = found.map(({target, number}) => numberText(target.label, number)).join(' · ') || null;
+  if (found.some(({target, number}) => !MEETS[target.op](number.value, target.value))) return {mark: 'fail', text: printed};
+  if (found.length && found.length === targets.length) return {mark: 'pass', text: printed};
+  return expect ? {mark: null, text: printed} : {mark: 'pass', text};
 }
 
 /** The mark the Partner's words start with ("✓ avg probe 1.3 …"), or null. */
@@ -130,6 +138,7 @@ export function checkCommand({given = null, testCommand = null, runs = [], root}
   if (!last) return {none: 'no command on save, and no build or run in the user\'s terminal yet'};
   const build = builds(last.cmd) ? null : mine.findLast(run => run.cwd === last.cwd && builds(run.cmd));
   const folder = last.cwd ? relative(root, last.cwd) : '';
-  const inside = folder && !folder.startsWith('..') ? `cd ${shellQuote(folder)} && ` : '';
+  if (folder.startsWith('..') || isAbsolute(folder)) return {none: `\`${last.cmd}\` ran in ${last.cwd}, outside the project, so it checks nothing here`};
+  const inside = folder ? `cd ${shellQuote(folder)} && ` : '';
   return checked(`${inside}${build ? `${build.cmd} && ` : ''}${last.cmd}`, 'the build and run the user ran last in their terminal', true);
 }

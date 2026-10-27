@@ -4,7 +4,7 @@ import {basename, isAbsolute, join, relative} from 'node:path';
 import {BlankPage} from './blank-page.mjs';
 import {Breaks} from './breaks.mjs';
 import {Budget} from './budget.mjs';
-import {checkCommand, judge, markOf, parseHandOver, targetOf} from './check.mjs';
+import {checkCommand, judge, markOf, parseHandOver, targetsOf} from './check.mjs';
 import {commandPolicy} from './command-policy.mjs';
 import {contextCard} from './context-card.mjs';
 import {debriefInput, firstPlace, heading, keptChanges, lessonLine, parseDebrief, Wins} from './debrief.mjs';
@@ -197,7 +197,8 @@ export function checkReport(run, {expect, verdict, root}) {
     const meets = verdict.mark === 'pass' ? 'meets it' : 'does not meet it: say why from the output in a few words';
     return `${DONE}, and the line the run printed for what the user expects. ${asked} It printed ${verdict.text}, which ${meets}. ${ran}`;
   }
-  return `${DONE}. ${asked} Compare the output with it: start your sentence with ✓ if the run shows that, or ✗ if it does not, `
+  const found = verdict.text ? ` Of the numbers it bounds, the run printed ${verdict.text}; the rest is not in the output.` : '';
+  return `${DONE}. ${asked}${found} Compare the output with it: start your sentence with ✓ if the run shows that, or ✗ if it does not, `
     + `then say what it printed for it. ${ran}`;
 }
 
@@ -894,7 +895,7 @@ export class PairSession {
     this.handback = null;
     const parts = parseHandOver(words);
     const check = checkCommand({given: parts.command, testCommand: this.testRuns?.command, runs: this.state.runs, root: this.root});
-    this.handOver = {...parts, target: targetOf(parts.expect), check};
+    this.handOver = {...parts, targets: targetsOf(parts.expect), check};
     const description = describeState(this.state, this.now());
     await this.talk(driveInput(words, description, await this.selected(selection), checkInput(parts.expect, check)));
     await this.handBack();
@@ -1357,7 +1358,8 @@ export class PairSession {
     const run = await runs.unsaved(path, await this.bufferText(path));
     if (run.state === 'error') return `${DONE}. \`${run.label}\` could not run on the unsaved buffer: ${run.error}.`;
     const verdict = this.checked(run);
-    Object.assign(this.handback, {tests: verdict.mark, check: expect ? verdict.text : null}); // the line printed for what the user expects
+    // The line printed for what the user expects, when the code judged it; else the Partner's ✓ or ✗ says it.
+    Object.assign(this.handback, {tests: verdict.mark, check: expect && verdict.mark ? verdict.text : null});
     const said = checkReport(run, {expect, verdict, root: this.root});
     return run.picture ? {text: said, picture: run.picture} : said;
   }
@@ -1375,8 +1377,8 @@ export class PairSession {
 
   /** How a run on the unsaved buffer checks the hand-over (see judge in check.mjs). */
   checked(run) {
-    const {target = null, expect = null} = this.handOver ?? {};
-    return judge({red: isRed(run), failure: runText(run), numbers: measure(run.output), target, expect, text: runText(run)});
+    const {targets = [], expect = null} = this.handOver ?? {};
+    return judge({red: isRed(run), failure: runText(run), numbers: measure(run.output), targets, expect, text: runText(run)});
   }
 
   /** Types one line into the user's terminal pane once they allow it; Enter stays with them. */

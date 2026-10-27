@@ -51,7 +51,7 @@ After the Driver's edit, Pair runs one command once on the buffer as it is, befo
 
 1. one in backquotes in the hand-over (`` you take it: …, run `make -s run` ``);
 2. else the project's command in `testOnSave`, tests or a build and run;
-3. else the build and run you last ran in your terminal, as [the run log](exploration.md) knows it: `make -s run`, `odin run .`, `zig build run`, `cc -o probe probe.c && ./probe`. One that only runs a program by its path (`./probe`) gets the build you ran before it in the same folder (`make && ./probe`), since the copy has the old program. One you ran in a folder of the project runs in that folder.
+3. else the build and run you last ran in your terminal, as [the run log](exploration.md) knows it: `make -s run`, `odin run .`, `zig build run`, `cc -o probe probe.c && ./probe`. One that only runs a program by its path (`./probe`) gets the build you ran before it in the same folder (`make && ./probe`), since the copy has the old program. One you ran in a folder of the project runs in that folder; one you ran outside the project is no check.
 
 - A command that only runs a built program (`./probe`, `build/probe`) with no build before it is no check: in the copy it would run the old program and judge the old code. The model is told so, and you can name the build and run in backquotes. A script by its path (`./build.sh`) builds what it needs and counts.
 - What Scout's [command policy](scout.md#the-command-policy) refuses (`sudo`, `git push`, `curl`, ...) is never run for a check; the model is told why.
@@ -89,6 +89,7 @@ Pair splits the words ([src/check.mjs](../src/check.mjs)):
 Before it edits, the Driver hears what you expect and which command will run. After the edit:
 
 - **A number with a bound** (`avg probe stays under 2`, `keep worst at most 4`, `fps above 59`) is checked in code. The run's numbers are read as [the run log](exploration.md#every-run-read) reads them, and the one whose label has the observable's words is compared with the bound. The hand-back line starts with it, `✓ avg probe 1.1` or `✗ avg probe 2.6`, and the model is told whether it met the bound, and to say why when it did not.
+- **Several bounds** (`avg probe under 2 and worst under 5`, or split by commas) are each checked: one missed is `✗`, all met is `✓`, and the line shows every number, `✗ avg probe 1.3 · worst 89`. A bound on a number the run did not print leaves the verdict to the model, which is told the numbers that were found.
 - **Anything else** (`the window shows both counters`, `it prints the sum once`) is the model's to judge: it gets the output and your words, and starts its sentence with `✓` or `✗`. That mark goes in the sign column.
 - **A run that fails** (it does not build, it crashes, it exits with another code) is `✗` whatever you expected, with what went wrong: `✗ Segmentation fault`.
 
