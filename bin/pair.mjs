@@ -8,7 +8,7 @@ import {fileURLToPath} from 'node:url';
 import {parseArgs} from 'node:util';
 import {authStates, login, logout, providerDecisionModels, providerModels} from '../src/auth.mjs';
 import {runChat} from '../src/chat.mjs';
-import {authPath, configPath, createConfig, defaultSocketPath, loadConfig, rolesText, sameModel, serviceEnvPath} from '../src/config.mjs';
+import {authPath, configPath, createConfig, defaultSocketPath, loadConfig, oneAtATime, rolesText, sameModel, serviceEnvPath} from '../src/config.mjs';
 import {loadSizedConfig} from '../src/context-window.mjs';
 import {deviceId, fileCredentialStore} from '../src/credentials.mjs';
 import {startDaemon} from '../src/daemon.mjs';
@@ -48,7 +48,9 @@ const USAGE = `usage:
   pair shell-hook bash|zsh|fish   print the shell hook that reports commands, exit codes and (zsh) typing
   pair report --start|--exit N|--ready [--cmd TEXT] [--shell PID] ...   (used by the shell hook)`;
 
-const ONE_MODEL = 'The Watcher asks it for one number without thinking, the Partner thinks; on its server the Watcher waits while the Partner works.';
+const ONE_MODEL = 'The Watcher asks it for one number without thinking, the Partner thinks';
+const ONE_SERVER = '; on its server the Watcher waits while the Partner works.';
+const ONE_PROVIDER = '; the provider answers both at once.';
 const TWO_MODELS = 'On a server that holds one model at a time, give both roles one model instead: "model" in the config (see docs/models.md, "One model").';
 const LAZY_SPEC = `  {
     'makefunstuff/pairing-buddy',
@@ -186,13 +188,19 @@ async function setup() {
   storeKeyVariables(config);
   console.log(`${SERVICE ? await installService(config) : await withoutService(config)}
 Config: ${tilde(configPath())} (the daemon takes a change as you save it)
-Models: ${rolesText(config.models)}. ${sameModel(config.models.watcher, config.models.partner) ? ONE_MODEL : TWO_MODELS}
+Models: ${rolesText(config.models)}.${modelsNote(config.models)}
 
 Next:
   1. Add the Neovim plugin with lazy.nvim:
 ${LAZY_SPEC}
   2. Optional, for exact commands and exit codes in your panes: eval "$(pair shell-hook bash)" in your shell's rc file (or zsh; fish: pair shell-hook fish | source)
-  3. Run \`pair doctor\` to check everything, then \`pair\` in a herdr pane next to Neovim.`);
+  3. Run \`pair doctor\` to check everything, then open Neovim in a project: in herdr, run \`pair\` in a pane next to it for the chat; without herdr, \`:Pair chat\` in Neovim (or \`pair chat\` in any terminal).`);
+}
+
+/** What \`pair setup\` says about how the roles share their models. */
+function modelsNote({watcher, partner}) {
+  if (!sameModel(watcher, partner)) return watcher.provider ? '' : ` ${TWO_MODELS}`;
+  return ` ${ONE_MODEL}${oneAtATime(watcher, partner) ? ONE_SERVER : ONE_PROVIDER}`;
 }
 
 async function uninstall() {
