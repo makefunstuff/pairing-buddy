@@ -10,7 +10,7 @@ import {test} from 'node:test';
 import {createModels, fauxAssistantMessage, fauxProvider, fauxText} from '@earendil-works/pi-ai';
 import {parseConfig} from '../src/config.mjs';
 import {startDaemon} from '../src/daemon.mjs';
-import {foregroundCommand} from '../src/foreground.mjs';
+import {foregroundCommand, processCommand} from '../src/foreground.mjs';
 import {NvimPanes} from '../src/nvim-panes.mjs';
 import {Panes, PaneWatch} from '../src/pane-watch.mjs';
 import {tmux, TmuxPanes, tmuxOf} from '../src/tmux.mjs';
@@ -85,23 +85,29 @@ test('tmux: the focused pane, a command seen running and its output, typing, and
   assert.equal(await watch.paneOf({shell, pane: null}), id);
 });
 
-test('tmux pane and Neovim terminals as one source: the terminal you are in has the focus over its Neovim\'s pane', async () => {
+test('tmux pane and Neovim terminals as one source: a Neovim terminal you are in has the focus only while tmux shows that Neovim', async () => {
+  let tmuxFocus = 'tmux:%0';
   const tmuxSource = {
     name: 'tmux', owns: pane => pane.startsWith('tmux:'), start() {}, stop() {},
-    list: async () => [{pane: 'tmux:%0', focused: true, scrolled: false, weight: 1}, {pane: 'tmux:%1', focused: false, scrolled: false, weight: 1}],
+    list: async () => ['tmux:%0', 'tmux:%1'].map(pane => ({pane, focused: pane === tmuxFocus, scrolled: false, weight: 1})),
     paneOfShell: pid => (pid === 11 ? 'tmux:%1' : null),
     commandOf: async pane => (pane === 'tmux:%0' ? 'nvim a.js' : null),
   };
   let current = null;
-  const editors = [{pid: 7, focused: null}];
+  const editors = [{pid: 7, focused: null, pane: 'tmux:%0'}];
   const ask = async (editor, message) => (message.type === 'terminals' ? {terminals: [{pane: 'nvim:7:3', pid: 12}], current, scrolled: false} : null);
-  const panes = new Panes([tmuxSource, new NvimPanes({editors: () => editors, ask, foreground: async pid => (pid === 12 ? 'make' : null)})]);
+  const logged = [];
+  const panes = new Panes([tmuxSource, new NvimPanes({editors: () => editors, ask, foreground: async pid => (pid === 12 ? 'make' : null)})], {log: line => logged.push(line)});
   const focused = async () => (await panes.list()).filter(pane => pane.focused).map(pane => pane.pane);
 
   assert.deepEqual(await focused(), ['tmux:%0'], 'in Neovim, not in a terminal of it: tmux\'s pane, which runs Neovim');
   current = 'nvim:7:3';
   assert.deepEqual(await focused(), ['nvim:7:3']);
-  editors[0].focused = false; // Neovim lost the terminal's focus
+  // To another tmux pane, with tmux's focus-events off: Neovim never hears it lost the focus, tmux says where you are.
+  tmuxFocus = 'tmux:%1';
+  assert.deepEqual(await focused(), ['tmux:%1']);
+  tmuxFocus = 'tmux:%0';
+  editors[0].focused = false; // Neovim lost the terminal's focus (focus-events on)
   assert.deepEqual(await focused(), ['tmux:%0']);
   assert.equal(await panes.commandOf('nvim:7:3'), 'make');
   assert.equal(await panes.commandOf('nvim:7'), 'nvim', 'a Neovim is an editor');
@@ -110,15 +116,62 @@ test('tmux pane and Neovim terminals as one source: the terminal you are in has 
   assert.equal(panes.paneOfShell(11), 'tmux:%1');
   assert.equal(panes.paneOfShell(13), null);
 
-  // tmux gone: Neovim's terminals are still watched.
-  tmuxSource.list = async () => { throw new Error('tmux list-panes: no server running'); };
-  current = 'nvim:7:3';
+  // No client on the tmux session: the Neovim's own focus stands.
+  tmuxFocus = null;
   editors[0].focused = null;
   assert.deepEqual(await focused(), ['nvim:7:3']);
+
+  // tmux gone: Neovim's terminals are still watched, and one line says so, not one per look; one when it is back.
+  const list = tmuxSource.list;
+  tmuxSource.list = async () => { throw new Error('tmux list-panes: no server running'); };
+  assert.deepEqual(await focused(), ['nvim:7:3']);
+  await focused();
+  tmuxSource.list = list;
+  await focused();
+  assert.deepEqual(logged, ['tmux: tmux list-panes: no server running', 'tmux answers again']);
   current = null;
 
-  // Without tmux or herdr, Neovim itself has the focus while you are in it, out of its terminals.
-  assert.deepEqual((await new NvimPanes({editors: () => editors, ask}).list()).filter(pane => pane.focused).map(pane => pane.pane), ['nvim:7']);
+  // A Neovim in no herdr or tmux pane, and no other source: Neovim itself has the focus while you are in it.
+  const alone = [{pid: 7, focused: null, pane: null}];
+  assert.deepEqual(await new Panes([new NvimPanes({editors: () => alone, ask})]).list().then(list => list.filter(pane => pane.focused).map(pane => pane.pane)), ['nvim:7']);
+});
+
+test('tmux: a pane that runs Neovim in place of a shell is an editor; the Neovim terminal loses the focus when you go to another pane', {skip: skip || (has('nvim') ? false : 'nvim not installed'), timeout: 40_000}, async t => {
+  const {socket, pane: shellPane, keys} = await tmuxServer(t);
+  const editorPane = (await tmux(socket, ['split-window', '-d', '-P', '-F', '#{pane_id}', '-t', shellPane, 'nvim --clean -n -i NONE'])).trim();
+  const nvimPid = Number((await tmux(socket, ['display', '-p', '-t', editorPane, '#{pane_pid}'])).trim());
+  await until(async () => /nvim/.test(await processCommand(nvimPid)), 'Neovim in the pane');
+  // The Neovim as the daemon knows it: its tmux pane, a :terminal of it you are in, and no word about focus.
+  const editors = [{pid: 7, focused: null, pane: `tmux:${editorPane}`}];
+  const ask = async (editor, message) => (message.type === 'terminals' ? {terminals: [{pane: 'nvim:7:3', pid: 999999}], current: 'nvim:7:3', scrolled: false} : null);
+  const events = [];
+  const tmuxPanes = new TmuxPanes({socketPath: socket, pane: shellPane});
+  const watch = new PaneWatch({source: new Panes([tmuxPanes, new NvimPanes({editors: () => editors, ask})]), emit: event => events.push(event)});
+  const focus = () => events.filter(event => event.kind === 'focus').at(-1);
+
+  await tmux(socket, ['select-pane', '-t', editorPane]);
+  watch.start();
+  t.after(() => watch.stop());
+  await until(() => focus()?.pane === 'nvim:7:3', 'the focus in the Neovim terminal you are in');
+  assert.equal(await tmuxPanes.commandOf(`tmux:${editorPane}`), 'nvim --clean -n -i NONE');
+  assert.ok(!watch.terminals().includes(`tmux:${editorPane}`), 'the Neovim pane is no terminal to type into');
+  assert.ok(watch.terminals().includes(`tmux:${shellPane}`));
+
+  await tmux(socket, ['select-pane', '-t', shellPane]);
+  await until(() => focus()?.pane === `tmux:${shellPane}` && focus().target === 'terminal', 'the focus in the tmux pane you went to');
+  await sleep(1000); // read at its prompt
+  await keys('-l', 'echo seen in the tmux pane');
+  await until(() => events.some(event => event.kind === 'typing' && event.pane === `tmux:${shellPane}`), 'typing there');
+  await keys('Enter');
+  await until(() => events.some(event => event.kind === 'command_end' && event.cmd === 'echo seen in the tmux pane' && event.output === 'seen in the tmux pane'), 'the command there');
+
+  await tmux(socket, ['select-pane', '-t', editorPane]);
+  await until(() => focus()?.pane === 'nvim:7:3', 'the focus back in the Neovim terminal');
+  editors[0].pane = null;
+  await tmux(socket, ['select-pane', '-t', shellPane]);
+  watch.refresh();
+  await sleep(1500);
+  assert.equal(focus().pane, 'nvim:7:3', 'a Neovim in no tmux pane keeps its own focus');
 });
 
 test('the tmux server and pane come from $TMUX and $TMUX_PANE', () => {

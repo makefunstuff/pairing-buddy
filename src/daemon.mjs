@@ -440,12 +440,13 @@ export async function startDaemon(config, {
     if (wanted.herdr) sources.push(new HerdrPanes({socketPath: wanted.herdr.socket, workspaceId: wanted.herdr.workspace}));
     if (wanted.tmux) sources.push(new TmuxPanes({socketPath: wanted.tmux.socket, pane: wanted.tmux.pane}));
     sources.push(new NvimPanes({editors: () => editorsOf(session), ask: askEditor}));
+    const sessionLog = line => log(`[${basename(session.root)}] ${line}`);
     const watch = new PaneWatch({
-      source: sources.length > 1 ? new Panes(sources) : sources[0],
+      source: new Panes(sources, {log: sessionLog}),
       chatPane: wanted.chatPane,
       scout: session.scout,
       emit: event => receive(session, event),
-      log: line => log(`[${basename(session.root)}] ${line}`),
+      log: sessionLog,
     });
     watches.set(session.root, watch);
     watch.start();

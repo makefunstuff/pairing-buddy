@@ -16,45 +16,67 @@ const OUTPUT_LINES = 1000; // the most a source reads at once (herdr's pane.read
 const SETTLE_MS = 100; // after a command ended, between reads until the prompt is back
 const SETTLE_TRIES = 6;
 
+/** Whether command line `cmd` runs an editor: `nvim a.js`, `/usr/bin/vim`. */
+export const isEditor = cmd => EDITORS.has(cmd?.trim().split(/\s/)[0].split('/').at(-1));
+
 /** Whether `text` is one line of plain text: no Enter, no Ctrl-C or other control keys, no escape sequences. */
 export const plainLine = text => text.trim() !== '' && !/[\x00-\x1f\x7f]/.test(text);
 
 /**
  * Several sources as one: herdr or tmux, and the :terminal buffers of the Neovims in them. A pane belongs to the
- * source that `owns` it, else to the one that owns no ids of its own (herdr). Of the focused panes the one with the
- * highest `weight` has the focus: the Neovim terminal you are in (2), else herdr's or tmux's focused pane (1), else
- * a Neovim itself (0), which is all there is to say outside herdr and tmux.
+ * source that `owns` it, else to the one that owns no ids of its own (herdr). The focus is herdr's or tmux's focused
+ * pane, unless that pane runs a Neovim (`in`, the pane a Neovim runs in) which says you are in one of its terminals
+ * (`weight` 2) or in it (0): then that terminal, or that Neovim. Without herdr's or tmux's focus (in another
+ * workspace, or no client attached), a Neovim's focus stands by itself. A Neovim that runs in neither (`in` null)
+ * has the focus over theirs while it holds the terminal's focus, as far as Neovim knows.
  */
 export class Panes {
-  constructor(sources) {
+  /** `log(line)` hears when one source stops answering and when it is back; the others are watched meanwhile. */
+  constructor(sources, {log = () => {}} = {}) {
     this.sources = sources;
+    this.log = log;
     this.name = sources.map(source => source.name).join(' and ');
+    this.failing = new Map(); // source -> the message of its last failure
   }
 
   sourceOf(pane) {
     return this.sources.find(source => source.owns?.(pane)) ?? this.sources.find(source => !source.owns);
   }
 
-  start(look, scrolled, failed) {
-    for (const source of this.sources) source.start(look, scrolled, failed);
+  /** A source's own failures (herdr's event stream closing) are its own lines too, not the watch's. */
+  start(look, scrolled) {
+    for (const source of this.sources) source.start(look, scrolled, error => this.heard(source, {status: 'rejected', reason: error}));
   }
 
   stop() {
     for (const source of this.sources) source.stop();
   }
 
+  /** One line when a source starts failing and one when it answers again. */
+  heard(source, list) {
+    const was = this.failing.get(source);
+    if (list.status === 'fulfilled') {
+      if (was) this.log(`${source.name} answers again`);
+      this.failing.delete(source);
+      return;
+    }
+    if (was !== list.reason.message) this.log(`${source.name}: ${list.reason.message}`);
+    this.failing.set(source, list.reason.message);
+  }
+
   /** The panes of every source that answers: herdr closed leaves Neovim's terminals watched. None answering fails. */
   async list() {
     const lists = await Promise.allSettled(this.sources.map(source => source.list()));
+    lists.forEach((list, i) => this.heard(this.sources[i], list));
     if (lists.every(list => list.status === 'rejected')) throw lists[0].reason;
     const panes = lists.flatMap(list => list.value ?? []);
-    const top = Math.max(-1, ...panes.filter(pane => pane.focused).map(pane => pane.weight ?? 1));
-    let given = false;
-    return panes.map(pane => {
-      const focused = pane.focused && !given && (pane.weight ?? 1) === top;
-      given ||= focused;
-      return {...pane, focused};
-    });
+    const outer = panes.find(pane => pane.focused && (pane.weight ?? 1) === 1)?.pane ?? null;
+    // A Neovim's focus counts where herdr or tmux shows its pane, or where it runs in neither of them.
+    const counts = pane => (pane.weight ?? 1) === 1 || !outer || !pane.in || pane.in === outer;
+    const candidates = panes.filter(pane => pane.focused && counts(pane));
+    const top = Math.max(-1, ...candidates.map(pane => pane.weight ?? 1));
+    const winner = candidates.find(pane => (pane.weight ?? 1) === top) ?? null;
+    return panes.map(pane => ({...pane, focused: pane === winner}));
   }
 
   focused(pane) {
@@ -206,7 +228,7 @@ export class PaneWatch {
   async pollPane(pane) {
     const cmd = await this.source.commandOf(pane);
     const state = this.paneState(pane);
-    state.editor = EDITORS.has(cmd?.split(/[\s/]/).filter(Boolean)[0]);
+    state.editor = isEditor(cmd);
     if (state.editor) return;
     const hooked = this.hooked.has(pane);
     if (cmd) {

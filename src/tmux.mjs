@@ -1,9 +1,11 @@
 // tmux as a source of panes (src/pane-watch.mjs): the panes of the tmux session a Neovim or the chat runs in, read
 // with tmux's own commands. tmux pushes nothing without a control client, so Pair lists the panes every second
 // (focus, scrolling, panes coming and going); the command running in one is its shell's foreground process
-// (foreground.mjs), and its text comes from capture-pane, wrapped lines joined as herdr's recent_unwrapped does.
+// (foreground.mjs), or Neovim when the pane runs it in place of a shell, and its text comes from capture-pane,
+// wrapped lines joined as herdr's recent_unwrapped does.
 import {execFile} from 'node:child_process';
-import {foregroundCommand} from './foreground.mjs';
+import {foregroundCommand, processCommand} from './foreground.mjs';
+import {isEditor} from './pane-watch.mjs';
 
 const LIST_MS = 1000;
 const PREFIX = 'tmux:';
@@ -30,8 +32,8 @@ export class TmuxPanes {
   name = 'tmux';
 
   /** The panes of the tmux session that pane `pane` (tmux's own id, `%3`) is in, on the server at `socketPath`. */
-  constructor({socketPath, pane, foreground = foregroundCommand, listMs = LIST_MS}) {
-    Object.assign(this, {socketPath, pane, foreground, listMs});
+  constructor({socketPath, pane, foreground = foregroundCommand, ownCommand = processCommand, listMs = LIST_MS}) {
+    Object.assign(this, {socketPath, pane, foreground, ownCommand, listMs});
     this.shells = new Map(); // pane id -> its shell's pid, from the last list
     this.timer = null;
   }
@@ -83,8 +85,16 @@ export class TmuxPanes {
     return null;
   }
 
-  commandOf(pane) {
-    return this.foreground(this.shells.get(pane));
+  /**
+   * The command running in a pane. A pane's own process is mostly a shell, but may be Neovim itself (`tmux new nvim`):
+   * that pane is an editor, never a shell at its prompt.
+   */
+  async commandOf(pane) {
+    const pid = this.shells.get(pane);
+    const running = await this.foreground(pid);
+    if (running) return running;
+    const own = await this.ownCommand(pid);
+    return isEditor(own) ? own : null;
   }
 
   async read(pane, lines) {

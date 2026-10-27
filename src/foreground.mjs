@@ -27,6 +27,16 @@ async function psCommand(pid) {
   return (await run('ps', ['-o', 'command=', '-p', String(pid)])).trim();
 }
 
+/** The command line of process `pid`, or null when it is gone. */
+export async function processCommand(pid, {proc = process.platform === 'linux'} = {}) {
+  if (!Number.isInteger(pid) || pid <= 0) return null;
+  try {
+    return (await (proc ? procCommand(pid) : psCommand(pid))) || null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * The command line running in the foreground of shell `pid`'s terminal, or null while the shell waits at its
  * prompt, or is gone. `proc` says whether /proc is there to read (Linux).

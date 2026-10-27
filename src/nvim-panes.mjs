@@ -13,8 +13,8 @@ export class NvimPanes {
 
   /**
    * `editors()` lists the session's Neovims (daemon clients with the `pid` of their hello, the one used last first,
-   * `focused` false once Neovim lost the terminal's focus: editors.mjs); `ask(editor, message)` asks one and resolves
-   * with its reply.
+   * `focused` false once Neovim lost the terminal's focus: editors.mjs, and the herdr or tmux `pane` it runs in);
+   * `ask(editor, message)` asks one and resolves with its reply. Use it inside Panes, which picks the focus.
    */
   constructor({editors, ask, foreground = foregroundCommand}) {
     Object.assign(this, {editors, ask, foreground});
@@ -44,24 +44,25 @@ export class NvimPanes {
   }
 
   /**
-   * Each Neovim and its terminals. The focus is in the Neovim used last that has the terminal's focus: in the
-   * terminal you are in there, else in the Neovim itself; `weight` 2 or 0 says which (see Panes).
+   * Each Neovim and its terminals, with the herdr or tmux pane the Neovim runs in (`in`). Each Neovim that has the
+   * terminal's focus (as far as it knows) says where you are in it: in the terminal you are in there, else in the
+   * Neovim itself; `weight` 2 or 0 says which. Panes picks one among them and herdr's or tmux's focus.
    */
   async list() {
     const panes = [];
     const shells = new Map();
-    let focusGiven = false;
     for (const editor of this.editors()) {
       if (!editor.pid) continue;
       const reply = await this.ask(editor, {type: 'terminals'}).catch(() => null);
       if (!reply) continue;
-      const focused = !focusGiven && editor.focused !== false;
-      focusGiven ||= focused;
+      const focused = editor.focused !== false;
+      const where = editor.pane ?? null;
       const current = (reply.terminals ?? []).find(terminal => terminal.pane === reply.current);
-      panes.push({pane: `nvim:${editor.pid}`, focused: focused && !current, scrolled: false, weight: 0});
+      panes.push({pane: `nvim:${editor.pid}`, focused: focused && !current, scrolled: false, weight: 0, in: where});
       for (const {pane, pid} of reply.terminals ?? []) {
         shells.set(pane, pid);
-        panes.push({pane, focused: focused && pane === current?.pane, scrolled: focused && pane === current?.pane && reply.scrolled === true, weight: 2});
+        const here = focused && pane === current?.pane;
+        panes.push({pane, focused: here, scrolled: here && reply.scrolled === true, weight: 2, in: where});
       }
     }
     this.shells = shells;
