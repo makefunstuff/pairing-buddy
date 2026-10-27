@@ -70,6 +70,11 @@ For anything unasked:
    the Partner.
 3. The budget limits how often Pair speaks ([talk levels](config.md#talk-levels)).
 
+With a [decision model](decision.md) in the config, a classifier such as TypeSafe's Jev sorts each moment before the
+Watcher: what it is sure is noise is dropped, and what it is sure is worth a remark needs no Watcher call. Whether to
+speak is then the probability that a remark is worth interrupting you for now, against the bar. It is told your
+typing, your recent work and your verdicts on earlier remarks. If it is down or slow, the rules above decide at once.
+
 Pair never speaks while you type in Neovim or the chat pane: a remark that is ready while you type waits for your
 next pause. One that can wait (drift, a stall, an error in code you moved on from) waits longer, for your next break:
 a save, a run that ended, a stop out of Insert mode, or a quiet stretch. Meanwhile a `•` in Neovim's margin marks it,

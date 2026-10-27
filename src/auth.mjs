@@ -1,6 +1,6 @@
 // `pair auth`: log in to a model provider with its subscription (OAuth) or an API key, log out, and say what is set.
 // pi-ai runs each provider's own login flow; the result goes to the credential store (see credentials.mjs).
-import {createModels} from '@earendil-works/pi-ai';
+import {createModels, getModelType} from '@earendil-works/pi-ai';
 import {knownProviders} from './models.mjs';
 import {subscriptionTerms} from './terms.mjs';
 
@@ -91,4 +91,11 @@ export function providerModels(id, providers = knownProviders()) {
   const provider = providers.get(id);
   if (!provider) throw new Error(`"${id}" is not a provider pi-ai knows; \`pair auth list\` lists them`);
   return provider.getModels().map(model => model.id);
+}
+
+/** The ids of a provider's decision (classifier) models, for a `decision` entry (see decision.mjs). */
+export function providerDecisionModels(id, providers = knownProviders()) {
+  const provider = providers.get(id);
+  if (!provider) throw new Error(`"${id}" is not a provider pi-ai knows; \`pair auth list\` lists them`);
+  return (provider.getAllModels?.() ?? []).filter(model => getModelType(model) === 'classifier').map(model => model.id);
 }

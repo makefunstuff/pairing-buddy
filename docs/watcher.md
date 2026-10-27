@@ -7,8 +7,13 @@ Every candidate remark (a failed command you missed, the same error again, a new
 1. **Typing.** While you type, the trigger waits for your next pause; nothing is asked.
 2. **Budget.** When the talk level's budget is spent (too many remarks this hour, or the last one too recent), the trigger is dropped; nothing is asked.
 3. **Prefilter.** Cheap rules drop what is plainly noise, without a model (below).
-4. **Pace.** While the Watcher's calls take long, kinds of moment you can see for yourself are dropped without asking ([below](#when-the-server-is-slow)).
-5. **Watcher.** The model scores what is left. Below the trigger's bar the trigger is dropped; at or above it, the Partner gets it.
+4. **Decision model**, when the config has one ([decision.md](decision.md)). It sorts the moment. What it is sure
+   is noise is dropped, and what it is sure is worth a remark goes on by its "speak now" probability. Neither costs a
+   Watcher call. Anything else goes on to the Watcher.
+5. **Pace.** While the Watcher's calls take long, kinds of moment you can see for yourself are dropped without asking ([below](#when-the-server-is-slow)).
+6. **Watcher.** The model scores what is left. Below the trigger's bar the trigger is dropped; at or above it, the
+   Partner gets it. With a decision model, the "speak now" probability, asked again with the score, decides against
+   the bar as a share, and the score against the bar only when the model gives no answer.
 
 Each trigger is looked at once: a dropped trigger does not come back. Drift is the exception for the budget: it lasts as long as you stay in that file, so when the budget holds it back it is looked at again on each tick (logged once) until the budget allows, and then judged.
 

@@ -19,6 +19,8 @@ test('a description is the first paragraph of prose, as plain text', () => {
   // a paragraph that leads into a list keeps only its sentences before that
   assert.equal(describe('# T\n\nYou drive. Two things let it touch your code:\n\n- one\n'), 'You drive.');
   assert.equal(describe('---\nlayout: page\n---\n\n<Landing />\n'), '');
+  // A straight double quote would end the meta tag's attribute: it becomes a curly one.
+  assert.equal(describe('# T\n\nIt asks "yes or no?" and 3" more.\n'), 'It asks “yes or no?” and 3” more.');
 });
 
 test('a long description is cut at a sentence end, or at a word with …', () => {
@@ -66,7 +68,7 @@ function page(pageData, {drop = [], change = {}} = {}) {
 
 function dist() {
   const dir = scratch('pair-site-');
-  for (const f of ['og.png', 'favicon.svg', 'favicon-32.png', 'apple-touch-icon.png', 'site.webmanifest', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png']) {
+  for (const f of ['og-v2.png', 'favicon.svg', 'favicon-32.png', 'apple-touch-icon.png', 'site.webmanifest', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png']) {
     copyFileSync(new URL(f, pub), join(dir, f));
   }
   return dir;
@@ -86,8 +88,8 @@ test('the check names each missing, relative or wrong tag', () => {
   const dir = dist();
   const problems = (opts, data = models) => checkPage(dir, 'models.html', page(data, opts));
   assert.deepEqual(problems({drop: ['og:image:alt', 'twitter:title']}), ['models.html: no og:image:alt', 'models.html: no twitter:title', 'models.html: og:title and twitter:title differ']);
-  assert.deepEqual(problems({change: {'og:image': {content: '/pairing-buddy/og.png'}, 'twitter:image': {content: '/pairing-buddy/og.png'}}}),
-    ['models.html: og:image is not an absolute URL: /pairing-buddy/og.png', 'models.html: twitter:image is not an absolute URL: /pairing-buddy/og.png']);
+  assert.deepEqual(problems({change: {'og:image': {content: '/pairing-buddy/og-v2.png'}, 'twitter:image': {content: '/pairing-buddy/og-v2.png'}}}),
+    ['models.html: og:image is not an absolute URL: /pairing-buddy/og-v2.png', 'models.html: twitter:image is not an absolute URL: /pairing-buddy/og-v2.png']);
   assert.deepEqual(problems({change: {'og:image:height': {content: '600'}}}), ['models.html: og:image is 1200x630, the tags say 1200x600']);
   assert.deepEqual(problems({drop: ['canonical', 'theme-color']}), ['models.html: no canonical link', 'models.html: no theme-color for light', 'models.html: no theme-color for dark']);
   assert.deepEqual(problems({}, {...models, description: ''}), ['models.html: has the front page\'s description, not its own']);
@@ -97,8 +99,8 @@ test('the check names each missing, relative or wrong tag', () => {
 });
 
 test('the preview image is the size its tags say', () => {
-  const png = readFileSync(new URL('og.png', pub));
+  const png = readFileSync(new URL('og-v2.png', pub));
   assert.equal(png.toString('ascii', 12, 16), 'IHDR');
   assert.deepEqual([png.readUInt32BE(16), png.readUInt32BE(20)], [IMAGE.width, IMAGE.height]);
-  assert.equal(IMAGE.url, `${SITE_URL}og.png`);
+  assert.equal(IMAGE.url, `${SITE_URL}og-v2.png`);
 });

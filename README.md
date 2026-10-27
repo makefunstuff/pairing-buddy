@@ -27,7 +27,9 @@ you think, and take the keyboard only when you hand it over. Pair aims for that:
 
 - **It speaks rarely.** A small, fast model, the Watcher, scores each moment first, and most moments are not worth a
   word. On a slow server Pair skips the moments you can see on screen, and still asks
-  about the ones you cannot ([watcher](docs/watcher.md#when-the-server-is-slow)). Remarks that can wait are held until your next break.
+  about the ones you cannot ([watcher](docs/watcher.md#when-the-server-is-slow)). An optional
+  [decision model](docs/decision.md) (a classifier such as TypeSafe's Jev or Cloudflare's Clef) can sort the moments
+  first and say, with a probability, whether one is worth interrupting you for. Remarks that can wait are held until your next break.
 - **It shows, in place.** Its words appear under the line you are on, it points at the line it means, and a suggested
   change is one key to take.
 - **It runs what you'd skip.** Save, and it runs the project's tests and tells you what your fix broke elsewhere.
@@ -72,7 +74,8 @@ your keys and logins).
 
 - [Getting started](docs/getting-started.md) and [install and daily use](docs/install.md)
 - [How it works](docs/how-it-works.md), [roles](docs/roles.md) and [workflows](docs/workflows.md)
-- [Models and providers](docs/models.md): local servers, API keys, subscription logins, one model for both roles
+- [Models and providers](docs/models.md): local servers, API keys, subscription logins, one model for both roles,
+  and the optional [decision model](docs/decision.md)
 - Reference: [configuration](docs/config.md), [Neovim plugin](docs/neovim-plugin.md), [commands](docs/cli.md)
 - [Troubleshooting](docs/troubleshooting.md) and [known limitations](docs/limitations.md)
 - [Data and privacy](docs/data.md), [tests](docs/testing.md)
@@ -86,8 +89,10 @@ the palette (PICO-8's 16 colours) and the fonts (Pixelify Sans for headings and 
 
 A shared link shows the page's own title and description: a docs page's `description` from its frontmatter, or else its
 first paragraph, cut to 155 characters ([`site/.vitepress/meta.mjs`](site/.vitepress/meta.mjs)). Give a page a
-`description` when it opens with a list, a heading or a code block. The preview image, `site/public/og.png`
+`description` when it opens with a list, a heading or a code block. The preview image, `site/public/og-v2.png`
 (1200x630), is [`site/og/card.html`](site/og/card.html): `npm run og` redraws it with a headless Chrome or Chromium,
-and the PNG is committed. After `npm run build`, `npm run check` checks every built page has the full set of tags with
-absolute URLs (the Pages workflow runs it before it deploys), and `node og/previews.mjs OUT` renders mock X, Slack
-and Discord previews of the built pages into `OUT/previews.png`.
+and the PNG is committed. X caches card images by URL, so a changed design goes out under a new file name (change it
+in `site/og/build.mjs` and `meta.mjs`); otherwise X keeps showing the old image.
+After `npm run build`, `npm run check` checks every built page has the full set of tags with absolute URLs (the Pages
+workflow runs it before it deploys), and `node og/previews.mjs OUT` renders mock X, Slack and Discord previews of the
+built pages into `OUT/previews.png`.

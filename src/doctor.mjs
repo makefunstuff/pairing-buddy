@@ -10,7 +10,8 @@ import {loadSizedConfig} from './context-window.mjs';
 import {fileCredentialStore, readableByOthers} from './credentials.mjs';
 import {herdrRequest} from './herdr.mjs';
 import {listModels, shareServer, SWAP_FACTOR, SWAP_MS} from './loaded-model.mjs';
-import {createPairModels, knownProviders} from './models.mjs';
+import {createDecider, probeDecision} from './decision.mjs';
+import {createDecisionModel, createPairModels, knownProviders} from './models.mjs';
 import {FAST_MS, SLOW_MS} from './pace.mjs';
 import {levelGroups, probeModel, probeThinking} from './probe.mjs';
 import {requestDaemon} from './protocol.mjs';
@@ -46,7 +47,7 @@ export async function* doctor({
     yield fail('config', error.message);
     return;
   }
-  const examples = Object.values(config.models).filter(entry => EXAMPLE_MODELS.includes(entry.model));
+  const examples = [...Object.values(config.models), config.decision].filter(entry => EXAMPLE_MODELS.includes(entry?.model));
   yield examples.length
     ? warn('config', `${tilde(path)} still has the example's model names: set your models there`)
     : ok('config', tilde(path));
@@ -63,6 +64,34 @@ export async function* doctor({
   yield paneCheck(config.scoutPane);
   yield await voiceCheck(config.voice);
   yield* modelChecks(config, status, credentials);
+  yield await decisionCheck(config, status, credentials);
+}
+
+/**
+ * The decision model (see decision.mjs): none is fine; one that fails or cannot answer within its timeout is a
+ * failure, since the gate then goes by its own rules each time.
+ */
+export async function decisionCheck(config, status, credentials, {build = createDecisionModel} = {}) {
+  const entry = config.decision;
+  if (!entry) return ok('decision', 'none: the speak gate goes by the Watcher\'s score and the bar (docs/decision.md tells how to add one)');
+  const where = whereIs(entry);
+  let built;
+  try {
+    built = build(config, {credentials});
+  } catch (error) {
+    return fail('decision', error.message);
+  }
+  const login = await loginCheck(entry, built.models, credentials);
+  if (login.error) return fail('decision', `${where}: ${login.error}`);
+  const probe = await probeDecision(createDecider({models: built.models, model: built.model, timeoutMs: entry.timeoutMs}));
+  if (!probe.ok) {
+    return fail('decision', `${where} fails: ${probe.error}. Until it answers, the gate goes by its own rules`
+      + `${/within/.test(probe.error) ? '; a faster model, or a higher "timeoutMs", lets it decide' : ''}`);
+  }
+  const down = status?.decision?.down ? `; the daemon still has it as down (${status.decision.down}) and checks again within 30 s` : '';
+  const used = status?.decision?.calls ? `; since the daemon started it was asked ${count(status.decision.calls, 'time')} and the gate fell back ${count(status.decision.fallbacks, 'time')}` : '';
+  const text = `${where} answers in ${seconds(probe.ms)} (it may take ${seconds(entry.timeoutMs)})${login.note ? `; ${login.note}` : ''}${used}${down}`;
+  return down ? warn('decision', text) : ok('decision', text);
 }
 
 /** The service's `state` under `manager` (see service.mjs); without one, the supervisor restarts the daemon. */

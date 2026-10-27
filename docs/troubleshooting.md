@@ -19,7 +19,7 @@ Start with `pair doctor`. It checks every part, one line each, and names the fix
 
 | Check | What it looks at |
 | --- | --- |
-| config | The file parses, and its models are not still the example's |
+| config | The file parses, and its models (and the decision model) are not still the example's |
 | service | The systemd unit or launchd agent is installed, starts at login, runs, and its Node.js still exists |
 | daemon | It answers on its socket, with the same version as `pair` |
 | plugin | Neovim, started headless with your config, loads the plugin |
@@ -31,6 +31,7 @@ Start with `pair doctor`. It checks every part, one line each, and names the fix
 | voice | Off, or the recorder, the whisper.cpp model and program, and the `speak` command ([voice.md](voice.md)) |
 | watcher, partner | The login or key the model needs is there and, for a subscription, still renews (with the token's expiry); the server answers and lists the model; one short completion works, and how long it took (about 1 s is the aim for the Watcher). One line, `models`, when both use the same model. A warning when the Watcher runs on a subscription |
 | thinking | The Partner thinks when asked to, and its levels reach the server |
+| decision | The [decision model](decision.md): none set, or its login or key, one small question and how long the answer took against its `timeoutMs`, and, while the daemon runs, how often it was asked and the gate fell back to its rules. It fails when the model does not answer in time; the gate then goes by its own rules |
 | pace | When the daemon runs: the Watcher's median call (of its last 12), and the kinds of moment Pair is not asking about while that takes 1.5 s or more ([watcher.md](watcher.md#when-the-server-is-slow)) |
 | roles | When both roles share a server: how [one model](models.md#one-model) serves both, and how the Watcher fared since the daemon started |
 | swap | When two models share a server: whether it reloads when the roles switch (the Watcher asked right after the Partner, then again) |

@@ -7,9 +7,10 @@ export const SITE_NAME = 'pairing-buddy';
 // The front page's title and description; the description is also the site's, and the fallback of a page without one.
 export const HOME_TITLE = 'pairing-buddy: a pair programmer for Neovim';
 export const DESCRIPTION = 'Pair watches you code in Neovim, says one short line when something matters, and types only when you hand it the keyboard. Local or cloud models.';
-// The preview image (site/og/card.html, drawn by site/og/build.mjs)
+// The preview image (site/og/card.html, drawn by site/og/build.mjs). X caches a card image per URL: publish a new
+// design under a new file name (og-v3.png, ...) so shared links pick it up.
 export const IMAGE = {
-  url: `${SITE_URL}og.png`, width: 1200, height: 630, type: 'image/png',
+  url: `${SITE_URL}og-v2.png`, width: 1200, height: 630, type: 'image/png',
   alt: 'pairing-buddy: a pair programmer for Neovim that knows when to speak. A pixel-art robot beside a Neovim window, pointing out the real cause of a bug.',
 };
 // The longest description the previews show whole: Google cuts at about 155 characters, Slack and X near 200.
@@ -36,7 +37,10 @@ export function describe(markdown) {
   return text ? fit(text, MAX_DESCRIPTION) : '';
 }
 
-/** Markdown inline syntax to plain text: links and images to their text, no code ticks, emphasis or tags. */
+/**
+ * Markdown inline syntax to plain text: links and images to their text, no code ticks, emphasis or tags. Straight
+ * double quotes become curly ones: the description goes into a meta tag's attribute, where a straight one ends it.
+ */
 function plain(md) {
   return md
     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
@@ -44,6 +48,8 @@ function plain(md) {
     .replace(/`([^`]*)`/g, '$1')
     .replace(/(\*\*|__)(.+?)\1/g, '$2')
     .replace(/(^|[\s(])[*_](\S.*?)[*_](?=[\s).,;:!?]|$)/g, '$1$2')
+    .replace(/"([^"]*)"/g, '“$1”')
+    .replace(/"/g, '”')
     .replace(/\s+/g, ' ')
     .trim();
 }

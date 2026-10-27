@@ -18,7 +18,7 @@ export function readServiceEnv(path) {
 }
 
 /** The names of the variables the config's model entries take their keys from. */
-export const keyVariables = config => [...new Set(Object.values(config.models).map(entry => entry.apiKeyEnv).filter(Boolean))];
+export const keyVariables = config => [...new Set([...Object.values(config.models), config.decision].map(entry => entry?.apiKeyEnv).filter(Boolean))];
 
 /**
  * Stores each of `names` that `env` has in the file at `path`, readable by its owner only, next to what it holds.
