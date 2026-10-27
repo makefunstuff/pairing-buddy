@@ -41,8 +41,6 @@ stay herdr's:
   events. A terminal that is slow to repeat turns a hold into a tap; `listen_mode = 'toggle'` (press to start, press
   again to ask) never guesses ([voice.md](voice.md#4-the-key)).
   [#55](https://github.com/makefunstuff/pairing-buddy/issues/55)
-- **The search trail reads Telescope and snacks.picker only**, not fzf-lua.
-  [#56](https://github.com/makefunstuff/pairing-buddy/issues/56)
 
 ## Models
 

@@ -8,7 +8,7 @@ You read, search and try things; Pair follows along and speaks only when it can 
 
 - **The wrong turn.** While a test is red and you edit a file the failure does not name, Pair traces the test and,
   only if the cause is elsewhere, says so under your edit ([the wrong turn](neovim.md#the-wrong-turn)).
-- **The search trail.** Three Telescope or snacks.picker searches in circles, and Pair says where the thing is, in
+- **The search trail.** Three Telescope, snacks.picker or fzf-lua searches in circles, and Pair says where the thing is, in
   the code's own word. `:Pair trail` shows the searches it saw ([the search trail](neovim.md#the-search-trail)).
 - **The exploration loop.** Build, run, change one thing, run again: each run gets a number and is read next to the
   one before. When a change did nothing, Pair says why. `:Pair runs` keeps the runs ([exploration.md](exploration.md)).

@@ -33,7 +33,7 @@ require('pair').setup({
   listen_mode = 'hold', -- 'toggle': press it to start, press it again to ask
   motion = true,       -- false: no fades, the gaze lights one line at a time without its trail, and the Driver's edit lands at once
   glyphs = {},         -- for example {voice = '\u{f444}', wheel = '\u{f030c}'} with a Nerd Font
-  searches = true,     -- false: your Telescope and snacks.picker searches stay in Neovim, and there is no search trail
+  searches = true,     -- false: your Telescope, snacks.picker and fzf-lua searches stay in Neovim, and there is no search trail
   sounds = false,      -- true: short sounds while you are away from Neovim (see [sounds](neovim.md#sounds-while-you-are-away))
   sound_volume = 0.5,  -- 0 to 1
   land = true,         -- false: the morning pick-up does not open an empty Neovim where you stopped
@@ -57,7 +57,7 @@ require('pair').setup({
 | `agents_key` | `'<M-a>'` | Goes to the agent whose news Pair relayed, or puts the line away when it has no pane ([agents.md](agents.md)). Mapped in Normal mode while such a line shows |
 | `motion` | `true` | Fades, the glow of a green, and the trail behind the gaze; without it the gaze still steps line by line |
 | `decide_key`, `link_key` | `'<M-d>'`, `'<M-l>'` | In a note's margin: log the decision on your line, open the code a mark names. Mapped in Normal mode only in a note with such a mark ([notes.md](notes.md)) |
-| `searches` | `true` | Read your Telescope and snacks.picker searches for the [search trail](neovim.md#the-search-trail) |
+| `searches` | `true` | Read your Telescope, snacks.picker and fzf-lua searches for the [search trail](neovim.md#the-search-trail) |
 | `sounds` | `false` | Short [sounds](neovim.md#sounds-while-you-are-away) for a green, a regression, a remark and the hand-back, only while Neovim does not have the focus |
 | `sound_volume` | `0.5` | Their volume, 0 to 1 |
 | `answers` | `true` | The first two lines of Pair's answer to a question you typed (`:Pair ask`, the chat) show under the line it was about, too ([what each thing looks like](neovim.md#what-each-thing-looks-like)) |
