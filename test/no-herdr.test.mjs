@@ -3,8 +3,7 @@
 // daemon with scripted models; no herdr anywhere. Skips without nvim.
 import assert from 'node:assert/strict';
 import {execFileSync, spawn} from 'node:child_process';
-import {mkdtempSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {realpathSync, rmSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {test} from 'node:test';
@@ -12,6 +11,7 @@ import {createModels, fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall
 import {parseConfig} from '../src/config.mjs';
 import {startDaemon} from '../src/daemon.mjs';
 import {client} from './daemon-client.mjs';
+import {scratch, socketDir} from './temp.mjs';
 
 const REPO = fileURLToPath(new URL('..', import.meta.url));
 const hasNvim = (() => { try { execFileSync('nvim', ['--version']); return true; } catch { return false; } })();
@@ -28,9 +28,9 @@ async function until(check, what, timeoutMs = 10_000) {
   throw new Error(`timed out waiting for ${what}`);
 }
 
-/** A new folder removed when test `t` ends; `base` for sockets, whose paths max out near 100 bytes. */
-function tempDir(t, prefix, base = tmpdir()) {
-  const dir = realpathSync(mkdtempSync(join(base, prefix)));
+/** A new folder removed when test `t` ends; a short one with `socket`, as socket paths max out near 100 bytes. */
+function tempDir(t, prefix, {socket = false} = {}) {
+  const dir = realpathSync(socket ? socketDir(prefix) : scratch(prefix));
   t.after(() => rmSync(dir, {recursive: true, force: true}));
   return dir;
 }
@@ -43,7 +43,7 @@ function tempDir(t, prefix, base = tmpdir()) {
 async function pairWithoutHerdr(t, {testOnSave} = {}) {
   const project = tempDir(t, 'pair-nvim-');
   writeFileSync(join(project, 'a.js'), 'const x = 1\n');
-  const dataDir = tempDir(t, 'pair-data-', '/tmp');
+  const dataDir = tempDir(t, 'pair-data-', {socket: true});
   const raw = {
     dataDir,
     socket: join(dataDir, 'pair.sock'),
