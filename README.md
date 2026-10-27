@@ -17,7 +17,7 @@ Chapters: 0:00 what Pair is · 0:59 setup and `pair doctor` · 2:44 the roles ·
 notes and the blank page · 9:12 the hand-over · 10:50 voice · 11:36 with or without herdr · 12:12 the keys to
 remember. Its script and how to render it again are in [docs/video](docs/video/).*
 
-Version 0.9.
+Version 0.10.
 
 ## Why
 

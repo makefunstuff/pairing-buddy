@@ -79,7 +79,7 @@ export default defineConfig({
     nav: [
       {text: 'Get started', link: '/getting-started'},
       {text: 'Docs', link: '/how-it-works', activeMatch: '^/(?!$|getting-started)'},
-      {text: 'v0.9', items: [
+      {text: 'v0.10', items: [
         {text: 'Known limitations', link: '/limitations'},
         {text: 'Issues', link: `${REPO}/issues`},
       ]},

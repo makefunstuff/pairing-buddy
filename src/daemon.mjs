@@ -497,7 +497,7 @@ export async function startDaemon(config, {
     if (!listeners.has(session.root)) {
       listeners.set(session.root, new Listener({
         voice: config.voice, session, dir: join(config.dataDir, 'voice'),
-        ask: (text, selection) => session.ask(text, selection),
+        ask: (text, selection) => session.ask(text, selection, {question: true}),
         log: line => log(`[${basename(session.root)}] ${line}`),
       }));
     }
@@ -677,7 +677,7 @@ export async function startDaemon(config, {
     if (!session) return sendMessage(client.socket, {type: 'message', sender: 'system', text: 'No active session; send hello first', at: Date.now()});
     if (client.role === 'editor') noteEditor(client, message);
     if (message.type === 'event') return receive(session, message.event);
-    if (message.type === 'ask') return session.askTyped(message.text, message.selection ?? null);
+    if (message.type === 'ask') return session.askTyped(message.text, message.selection ?? null, {question: client.role === 'editor'});
     if (message.type === 'goal') return session.setGoal(message.text);
     if (message.type === 'first' && typeof message.text === 'string' && message.text.trim()) return session.setFirst(message.text.trim());
     if (message.type === 'level') return session.setLevel(message.level);
