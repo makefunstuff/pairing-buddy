@@ -12,7 +12,7 @@
   (`herdr-projects`) and GitHub's `gh` for the pull request
 - A model: any OpenAI-compatible local server (for example llama.cpp or Ollama), an Anthropic-compatible API, or any
   provider [pi-ai](https://www.npmjs.com/package/@earendil-works/pi-ai) supports, with an API key or a subscription
-  login ([config.md](config.md)).
+  login ([models.md](models.md)).
 
 ## Install
 
@@ -29,9 +29,9 @@ pair setup
 1. Writes a commented config to `~/.config/pairing-buddy/config.json` if there is none yet. Set your models there
    ([config.md](config.md)).
 2. In a terminal, offers to log in to a model provider (a subscription or an API key; see
-   [Logins and keys](config.md#logins-and-keys)). Enter skips it.
+   [Logins and keys](models.md#logins-and-keys)). Enter skips it.
 3. Stores the environment variables your model entries take keys from (`apiKeyEnv`) for the service, which does not
-   get your shell's environment ([config.md](config.md#logins-and-keys)).
+   get your shell's environment ([models.md](models.md#logins-and-keys)).
 4. Installs the daemon as a service that starts at login and restarts when it fails: a systemd user service,
    `pairing-buddy.service`, on Linux, and a launchd agent, `io.github.makefunstuff.pairing-buddy`, on macOS. Without
    either, see below.
@@ -50,7 +50,7 @@ Then add the plugin to your lazy.nvim specs:
 
 With `auto_connect`, every Neovim connects to the daemon at startup. Without a plugin manager:
 `vim.opt.rtp:append('/path/to/pairing-buddy')` and `require('pair').setup({auto_connect = true})` in your config.
-The plugin's options are in [neovim.md](neovim.md#setup).
+The plugin's options are in [neovim.md](neovim-plugin.md#setup).
 
 **Upgrading.** Run `npm install -g github:makefunstuff/pairing-buddy` and `pair setup` again, also after upgrading
 Node.js: the service names the Node.js binary it runs, and setup rewrites it and restarts the daemon.
@@ -69,39 +69,8 @@ user service with `supervisor=supervise-daemon`. Set `PAIR_CONFIG` there if your
 
 ## Check it: `pair doctor`
 
-`pair doctor` checks every part and says what is wrong in plain words, one line each, with the fix:
-
-```
-✓ config   ~/.config/pairing-buddy/config.json
-✓ service  starts at login, running
-✓ daemon   version 0.9.0, up 42 min, 2 sessions
-✓ plugin   your Neovim config loads it
-✓ neovim   2 connected, in shop, blog
-✓ herdr    answers in 3 ms, 4 panes in this workspace
-! watcher  your-small-model at http://localhost:8080/v1 answers, but takes 2.4 s: the Watcher scores every candidate remark and should take about 1 s. ...
-✓ partner  your-larger-model at http://localhost:8081/v1 answers in 1.1 s
-```
-
-| Check | What it looks at |
-| --- | --- |
-| config | The file parses, and its models are not still the example's |
-| service | The systemd unit or launchd agent is installed, starts at login, runs, and its Node.js still exists |
-| daemon | It answers on its socket, with the same version as `pair` |
-| plugin | Neovim, started headless with your config, loads the plugin |
-| neovim | How many Neovims are connected, in which projects |
-| herdr | herdr answers on its socket (only checked when run inside herdr) |
-| logins | `auth.json` is readable by you only (shown when there is one) |
-| watcher, partner | The login or key the model needs is there and, for a subscription, still renews (with the token's expiry); the server answers and lists the model; one short completion works, and how long it took (about 1 s is the aim for the Watcher). One line, `models`, when both use the same model. A warning when the Watcher runs on a subscription |
-| thinking | The Partner thinks when asked to, and its levels reach the server |
-| roles | When both roles share a server: how [one model](config.md#one-model) serves both, and how the Watcher fared since the daemon started |
-| swap | When two models share a server: whether it reloads when the roles switch (the Watcher asked right after the Partner, then again) |
-| context | Where the Partner's window comes from (the config, the server or pi-ai's catalog), that the reply has the room its thinking needs, that the window is not so small that compaction comes every few turns, and not larger than the server serves |
-
-It exits with 1 when a check fails, so scripts can use it too.
-
-`pair doctor --thinking` finds the thinking settings an OpenAI-compatible Partner's server takes: it tries the known
-thinking switches and level fields on the model, says what each did, and ends with the `compat` line to paste into
-the config ([watcher.md](watcher.md#thinking-the-partner-not-the-watcher)).
+`pair doctor` checks every part and says what is wrong in plain words, one line each, with the fix. What each line
+looks at, and the usual fixes, are in [Troubleshooting](troubleshooting.md).
 
 ## A session in herdr
 
@@ -119,12 +88,9 @@ the config ([watcher.md](watcher.md#thinking-the-partner-not-the-watcher)).
 
 The chat pane is optional: a Neovim alone is a whole session.
 
-**Chat commands.** `/goal <text>`, `/level quiet|normal|chatty`, `/scout`, `/navigate`, `/drive [what]`, `/drive! [what]`, `+` or
-`/useful` and `-` or `/noise` (your verdict on Pair's last unasked remark), `/today` (what Pair did here today, as in
-`:Pair today`, without the keys), `/agents` (your other agents and board tasks), `?` or `/why` (the idea worth keeping behind what Pair said last), `/end`, and `/quit` (closes the pane; the
-session goes on). A line that starts with "you take it" or "your turn" hands Pair the wheel too; anything else is a
-question for Pair. When Pair asks before running or typing a command, your next line is the answer: `y` or `yes`
-allows it, anything else declines.
+**Chat commands.** `/goal`, `/level`, `/scout`, `/navigate`, `/drive`, `+` and `-` for your verdict, `/why`,
+`/end` and the rest are in the [command reference](cli.md#chat-commands). Anything else you type is a question for
+Pair, and "you take it" or "your turn" hands it the wheel.
 
 **The shell hook.** Optional, for exit codes and the shortest commands; add it to your shell's rc file:
 
@@ -152,7 +118,7 @@ as its LSP's diagnostics or a file it reloads while you are elsewhere, never mak
 whichever Neovim has it loaded, the one you are in first.
 
 **Restarts.** If the daemon restarts, the chat pane says so, waits for it and carries on, without printing the
-history again. Neovim reconnects by itself too ([neovim.md](neovim.md#setup)). If you had asked something the
+history again. Neovim reconnects by itself too ([neovim.md](neovim-plugin.md#setup)). If you had asked something the
 restart cut off, Pair finishes that answer and shows it marked as late, in the chat and in Neovim, also when they
 reconnect after it. A remark Pair was making unasked, or a hand-over, is dropped instead.
 
@@ -162,7 +128,7 @@ the terminal's cyan, and with `NO_COLOR` set it prints no colours.
 
 ## Other commands
 
-- `pair auth` logs in to model providers and lists what is set ([config.md](config.md#logins-and-keys)).
+- `pair auth` logs in to model providers and lists what is set ([models.md](models.md#logins-and-keys)).
 - `pair stats` shows how often Pair spoke unasked and what you made of it ([memory.md](memory.md#pair-stats)).
 - `pair daemon` runs the daemon in the foreground; `pair supervise` too, restarting it when it fails.
 - The daemon's log goes to the journal under systemd (`journalctl --user -u pairing-buddy`), to

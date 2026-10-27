@@ -1,0 +1,84 @@
+/* ayu-based like the editor the captures show; one accent, ayu's regexp teal. Light first for reading, dark to match
+   the editor. Every text colour here keeps at least 7:1 (body) or 4.5:1 (secondary) on its background. */
+@font-face { font-family: "Inter"; font-weight: 500; font-display: swap; src: url(/fonts/inter-500.woff2) format("woff2"); }
+@font-face { font-family: "Inter"; font-weight: 700; font-display: swap; src: url(/fonts/inter-700.woff2) format("woff2"); }
+@font-face { font-family: "Inter"; font-weight: 800; font-display: swap; src: url(/fonts/inter-800.woff2) format("woff2"); }
+@font-face { font-family: "JetBrains Mono"; font-weight: 400; font-display: swap; src: url(/fonts/jetbrains-mono-400.woff2) format("woff2"); }
+@font-face { font-family: "JetBrains Mono"; font-weight: 700; font-display: swap; src: url(/fonts/jetbrains-mono-700.woff2) format("woff2"); }
+
+:root {
+  --vp-font-family-base: "Inter", "Segoe UI", system-ui, sans-serif;
+  --vp-font-family-mono: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+
+  --vp-c-bg: #FBFCFA;
+  --vp-c-bg-alt: #F1F4F1;
+  --vp-c-bg-soft: #EAEFEB;
+  --vp-c-bg-elv: #FFFFFF;
+  --vp-c-text-1: #14191F;
+  --vp-c-text-2: #3E4953;
+  --vp-c-text-3: #5F6B75;
+  --vp-c-divider: #DCE2DE;
+  --vp-c-gutter: #DCE2DE;
+  --vp-c-border: #C9D2CD;
+
+  --vp-c-brand-1: #15654F;
+  --vp-c-brand-2: #1E7A65;
+  --vp-c-brand-3: #1E7A65;
+  --vp-c-brand-soft: rgba(30, 122, 101, .12);
+  --vp-button-brand-text: #FFFFFF;
+  --vp-button-brand-hover-text: #FFFFFF;
+  --vp-button-brand-active-text: #FFFFFF;
+
+  --vp-code-block-bg: #0F1419;
+  --vp-code-color: #15654F;
+  --vp-code-bg: rgba(30, 122, 101, .09);
+
+  --pair-bezel: #070A0D;
+  --pair-fail: #B8434A;
+}
+
+.dark {
+  --vp-c-bg: #0B0F13;
+  --vp-c-bg-alt: #080B0E;
+  --vp-c-bg-soft: #121820;
+  --vp-c-bg-elv: #121820;
+  --vp-c-text-1: #E6E1CF;
+  --vp-c-text-2: #AEB6BF;
+  --vp-c-text-3: #838D98;
+  --vp-c-divider: #1D2630;
+  --vp-c-gutter: #070A0D;
+  --vp-c-border: #2A3540;
+
+  --vp-c-brand-1: #95E6CB;
+  --vp-c-brand-2: #B3EED9;
+  --vp-c-brand-3: #95E6CB;
+  --vp-c-brand-soft: rgba(149, 230, 203, .12);
+  --vp-button-brand-text: #0B0F13;
+  --vp-button-brand-hover-text: #0B0F13;
+  --vp-button-brand-active-text: #0B0F13;
+
+  --vp-code-block-bg: #0F1419;
+  --vp-code-color: #95E6CB;
+  --vp-code-bg: rgba(149, 230, 203, .1);
+
+  --pair-fail: #F07178;
+}
+
+/* code blocks are always dark, like the terminal they come from (the highlighter's theme is ayu dark in both) */
+.vp-doc div[class*='language-'] { color-scheme: dark; }
+html:not(.dark) .vp-doc [class*='language-'] > span.lang { color: #8A94A0; }
+html:not(.dark) .vp-doc [class*='language-'] > button.copy { border-color: #2A3540; background-color: #121820; }
+
+/* reading: a little more air than the defaults */
+.vp-doc { font-size: 16.5px; }
+.vp-doc p, .vp-doc li { line-height: 1.72; }
+.vp-doc li + li { margin-top: 6px; }
+.vp-doc h1 { font-weight: 800; letter-spacing: -.025em; }
+.vp-doc h2 { font-weight: 800; letter-spacing: -.02em; border-top: 0; padding-top: 12px; margin-top: 48px; }
+.vp-doc h3 { font-weight: 700; letter-spacing: -.01em; }
+.vp-doc table { font-size: 15px; line-height: 1.55; }
+.vp-doc table code { white-space: nowrap; }
+.vp-doc td, .vp-doc th { vertical-align: top; }
+.vp-doc img { border-radius: 8px; background: var(--pair-bezel); }
+.vp-doc :not(pre) > code { font-size: .86em; }
+.VPNavBarTitle .title { font-family: var(--vp-font-family-mono); font-weight: 700; font-size: 15px; }
