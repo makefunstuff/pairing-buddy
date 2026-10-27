@@ -17,7 +17,7 @@ test('a fast server keeps every kind; a slow one gives half the kinds up, a very
   hearAll(pace, 600, 900, 1000);
   assert.equal(pace.level, 'fast');
   assert.equal(pace.skips('note_drift'), null);
-  hearAll(pace, SLOW_MS, SLOW_MS + 200, SLOW_MS + 400);
+  hearAll(pace, SLOW_MS, SLOW_MS + 200, SLOW_MS + 400, SLOW_MS + 600);
   assert.equal(pace.level, 'slow');
   assert.deepEqual(pace.given(), GIVE_UP.slice(0, GIVE_UP.length / 2));
   assert.match(pace.skips('drift').reason, /^the Watcher takes 1\.5 s a call: Pair is not asking about drift/);
@@ -64,8 +64,45 @@ test('with watcherPace off every kind is asked about, however slow', () => {
   assert.equal(pace.skips('note_drift'), null);
   assert.equal(pace.snapshot().medianMs, 5000, 'it still measures');
   pace.on = true;
-  pace.hear(5000);
+  assert.equal(pace.level, 'very-slow', 'turned on, it goes by the calls it measured');
+});
+
+test('turned on again, the pace goes by the calls measured while off, not the level it had', () => {
+  const pace = new Pace();
+  hearAll(pace, 5000, 5000, 5000);
   assert.equal(pace.level, 'very-slow');
+  pace.on = false;
+  hearAll(pace, ...Array(12).fill(500));
+  pace.on = true;
+  assert.equal(pace.level, 'fast');
+  pace.on = false;
+  hearAll(pace, ...Array(12).fill(1200)); // between FAST_MS and SLOW_MS: no level to keep from before
+  pace.on = true;
+  assert.equal(pace.level, 'fast');
+});
+
+test('two reload-long calls among the first four do not make the server slow', () => {
+  const pace = new Pace();
+  hearAll(pace, 400, 6000, 450, 6000);
+  assert.equal(pace.level, 'fast');
+  assert.equal(pace.snapshot().changes, 0);
+});
+
+test('the log, pair doctor and the gate name the same kinds once verdicts change the order', () => {
+  const logged = [];
+  const pace = new Pace({log: line => logged.push(line)});
+  hearAll(pace, 2000, 2000, 2000);
+  pace.rank({note_drift: {share: 1, judged: 6}, stall: {share: 0, judged: 6}});
+  const given = ['stall', 'note_stall', 'drift', 'search_trail'];
+  assert.deepEqual(pace.given(), given);
+  assert.deepEqual(pace.snapshot().givenUp, given);
+  assert.match(paceCheck(pace.snapshot()).text, /not asking about stall, note_stall, drift, search_trail until/);
+  assert.equal(pace.skips('note_drift'), null);
+  assert.ok(pace.skips('stall'));
+  assert.equal(logged.at(-1), 'the user\'s verdicts change what Pair gives up: it is not asking about stall, note_stall, drift, search_trail while the server is this slow');
+  const lines = logged.length;
+  pace.rank({note_drift: {share: 1, judged: 6}, stall: {share: 0, judged: 7}});
+  assert.equal(logged.length, lines, 'the same kinds: nothing to log');
 });
 
 test('the user\'s own verdicts rank what goes first: a kind they dismiss before one they keep', () => {
@@ -114,12 +151,14 @@ test('a session books a kind it did not ask about as not asked, not as over the 
     now: () => 100_000,
   });
   pair.ledger.quiet = (kind, reason, flags) => quiet.push({kind, reason, ...flags});
+  pace.rank({drift: {share: 1, judged: 9}}); // verdicts from when autoTune was on
   const warn = 'probe.c:21:14: warning: comparison of integers of different signs [-Wsign-compare]';
   pair.receive({kind: 'command_end', pane: 'w1:p3', cmd: 'make', exit: 0, output: 'probe.c:9:7: warning: unused variable', at: 90_000});
   pair.receive({kind: 'edit', file: 'probe.c', from: 21, to: 21, at: 92_000}); // a warning is new in a file you edited
   pair.receive({kind: 'command_end', pane: 'w1:p3', cmd: 'make', exit: 0, output: `probe.c:9:7: warning: unused variable\n${warn}`, at: 95_000});
   await pair.tick();
   assert.deepEqual(scored, [], 'the Watcher was not asked');
+  assert.deepEqual(pace.keptOf, {}, 'without autoTune, verdicts rank nothing');
   assert.deepEqual(quiet.map(({kind, budget, slow}) => [kind, budget, slow]), [['new_warning', false, true], ['drift', false, true]], 'the edit raised drift, given up too');
 });
 

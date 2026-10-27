@@ -263,7 +263,6 @@ export class PairSession {
     this.paneUses = 0; // searches and commands in the running turn
     this.fired = new Set();
     this.deferred = new Set(); // keys of lasting triggers the budget holds back
-    this.kept = {}; // each kind's kept share of the user's judged remarks, which ranks what the pace gives up (see pace.mjs)
     this.waitReason = null; // why the last tick waited, logged once
     this.waits = new Map(); // trigger key -> {since} while it waits for the model, then {ms} it waited
     this.busy = false; // a Partner turn is running
@@ -569,11 +568,13 @@ export class PairSession {
       if (triggers.length && this.autoTune) {
         const remarks = this.store.remarks(now - WINDOW_MS);
         this.budget.tune(tuning(remarks, now, this.root));
-        this.kept = keptShares(remarks, now);
+        this.pace?.rank(keptShares(remarks, now)); // what the pace gives up first (see pace.mjs)
+      } else if (!this.autoTune) {
+        this.pace?.rank({}); // without autoTune, verdicts change nothing: the pace's own order
       }
       for (const trigger of triggers) {
         if (this.thought && !urgent(trigger.kind)) continue; // one held thought at a time
-        const decision = await decide({trigger, state: this.state, now, budget: this.budget, score: (judged, state) => this.scoreWithGist(judged, state), typingPauseMs: this.typingPauseMs, pace: this.pace, kept: this.kept});
+        const decision = await decide({trigger, state: this.state, now, budget: this.budget, score: (judged, state) => this.scoreWithGist(judged, state), typingPauseMs: this.typingPauseMs, pace: this.pace});
         if (!this.repeats(trigger, decision)) this.log(`${trigger.kind}: ${decision.verdict} (${decision.reason})`);
         if (decision.held) this.waitFor(trigger, now);
         else this.waited(trigger, now);

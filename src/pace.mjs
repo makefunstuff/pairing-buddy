@@ -34,7 +34,7 @@ export const KEPT = TRIGGER_KINDS.filter(kind => !GIVE_UP.includes(kind));
 const median = values => {
   if (!values.length) return null;
   const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.floor(sorted.length / 2)];
+  return sorted[Math.floor((sorted.length - 1) / 2)]; // the lower middle: two reloads among four calls are not the norm
 };
 
 const seconds = ms => `${(ms / 1000).toFixed(1)} s`;
@@ -58,24 +58,41 @@ export function giveUp(level, keptOf = {}) {
  * How much the Watcher's calls say Pair can ask about, from `hear(ms)` for each call it made (a score, a keep-warm
  * ping: everything the server answers). `level` is `fast` (ask about everything), `slow` (give the least yielding
  * kinds up), `very-slow` (ask only about the moments you cannot see) or `off` (`on: false`: ask about everything,
- * whatever the server costs). `skips(kind, keptOf)` says whether a kind costs no call now, with the reason for the
- * ledger; a kind of KEPT is never skipped. `snapshot()` is what `pair doctor` shows.
+ * whatever the server costs). `rank(keptOf)` takes the user's verdicts on each kind (see giveUp), which order what is
+ * given up for the sessions, the log and `pair doctor` alike. `skips(kind)` says whether a kind costs no call now,
+ * with the reason for the ledger; a kind of KEPT is never skipped. `snapshot()` is what `pair doctor` shows.
  *
  * A slow server that stops being asked stops answering: the calls of the kinds kept, and the keep-warm pings, keep
  * measuring, so the pace finds its way back to `fast` on its own.
  */
 export class Pace {
   constructor({on = true, log = () => {}} = {}) {
-    Object.assign(this, {on, log});
+    this.log = log;
     this.samples = [];
+    this.keptOf = {}; // the user's verdicts on each kind, which rank what is given up
     this.changes = 0; // level changes, for `pair doctor`
-  }
-
-  get level() {
-    return this.on ? this.#level : 'off';
+    this.#on = on;
   }
 
   #level = 'fast';
+  #on = true;
+
+  get level() {
+    return this.#on ? this.#level : 'off';
+  }
+
+  get on() {
+    return this.#on;
+  }
+
+  /** Turned on again, the pace goes by the calls measured while it was off, not the level it had before. */
+  set on(on) {
+    if (on === this.#on) return;
+    this.#on = on;
+    if (!on) return;
+    this.#level = 'fast';
+    this.#judge();
+  }
 
   get medianMs() {
     return median(this.samples);
@@ -84,14 +101,29 @@ export class Pace {
   /** One Watcher call answered in `ms`: a score, or a keep-warm ping. */
   hear(ms) {
     this.samples = [...this.samples.slice(1 - SAMPLES), ms];
-    if (this.samples.length < MIN_CALLS || !this.on) return;
+    if (this.#on) this.#judge();
+  }
+
+  /** The verdicts that rank the kinds given up, `{kind: {share, judged}}` from tuning.mjs's keptShares. */
+  rank(keptOf) {
+    const before = [...this.given()].sort().join();
+    this.keptOf = keptOf;
+    if ([...this.given()].sort().join() === before) return;
+    this.log(`the user's verdicts change what Pair gives up: it is not asking about ${this.given().join(', ')} while the server is this slow`);
+  }
+
+  #judge() {
+    if (this.samples.length < MIN_CALLS) {
+      this.#level = 'fast';
+      return;
+    }
     const middle = median(this.samples);
     // Going down needs SLOW_MS; coming back needs FAST_MS. Between the two the pace keeps what it is.
     const next = middle >= VERY_SLOW_MS ? 'very-slow' : middle >= SLOW_MS ? 'slow' : middle <= FAST_MS ? 'fast' : this.#level;
     if (next === this.#level) return;
     this.changes += 1;
     this.#level = next;
-    const given = giveUp(next);
+    const given = this.given();
     if (given.length) {
       this.log(`the Watcher takes ${seconds(middle)} a call: Pair is not asking about ${given.join(', ')} while the server is this slow`);
     } else {
@@ -99,22 +131,22 @@ export class Pace {
     }
   }
 
-  /** The kinds given up now, ranked as `keptOf` says (see giveUp). */
-  given(keptOf = {}) {
-    return giveUp(this.level, keptOf);
+  /** The kinds given up now, ranked by the user's verdicts (see giveUp). */
+  given() {
+    return giveUp(this.level, this.keptOf);
   }
 
   /**
    * `{reason}` when `kind` costs no Watcher call at this pace, and Pair stays quiet about it; null when it is asked
    * about as usual.
    */
-  skips(kind, keptOf = {}) {
-    if (!this.given(keptOf).includes(kind)) return null;
+  skips(kind) {
+    if (!this.given().includes(kind)) return null;
     return {reason: `the Watcher takes ${seconds(this.medianMs)} a call: Pair is not asking about ${kind} while the server is this slow`};
   }
 
   /** What `pair doctor` shows: the pace, the Watcher's median call, and what it is not asking about. */
-  snapshot(keptOf = {}) {
-    return {level: this.level, medianMs: this.medianMs, calls: this.samples.length, changes: this.changes, givenUp: this.given(keptOf)};
+  snapshot() {
+    return {level: this.level, medianMs: this.medianMs, calls: this.samples.length, changes: this.changes, givenUp: this.given()};
   }
 }
