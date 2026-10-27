@@ -65,14 +65,20 @@ export async function* probeThinkingSettings(config, {measureWith = measure} = {
   }
   const kept = Object.fromEntries(Object.entries(entry.compat ?? {}).filter(([key]) => !THINKING_KEYS.includes(key)));
   let chosen = null;
+  let answered = false;
   for (const candidate of SWITCHES) {
     const result = await measureWith(config, {...kept, ...candidate.compat}, ['off', 'high']);
     if (result.error) { yield {level: 'warn', name: 'thinking', text: `${candidate.name}: the server rejects it (${result.error})`}; continue; }
+    answered = true;
     const switches = !result.off.thought && result.high.thought;
     yield {level: switches ? 'ok' : 'warn', name: 'thinking', text: `${candidate.name}: ${result.off.thought ? 'thinks with thinking off' : 'no thinking when off'}, `
       + `${result.high.thought ? `thinks when on (${tokens(result.high)})` : 'no thinking when on'}`};
     if (switches) { chosen = candidate; break; }
     if (!chosen && result.high.thought) chosen = {...candidate, alwaysThinks: true}; // thinks, but cannot be switched off
+  }
+  if (!answered) {
+    yield {level: 'fail', name: 'thinking', text: 'every request failed, so nothing was learned: run `pair doctor` to check the server and its key, then try again'};
+    return;
   }
   if (!chosen) {
     yield {level: 'warn', name: 'thinking', text: 'the model never thinks: set "reasoning": false on its entry, so Pair sends no thinking level'};

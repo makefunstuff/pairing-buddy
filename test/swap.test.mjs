@@ -41,7 +41,7 @@ async function until(check) {
   }
 }
 
-test('after two reload-slow Watcher calls that follow Partner turns, the Watcher scores with the Partner\'s model', {timeout: 40_000}, async () => {
+test('after two reload-slow Watcher calls that follow Partner turns, the Watcher scores with the Partner\'s model', {timeout: 60_000}, async () => {
   const server = await swappingServer();
   const project = mkdtempSync(join(tmpdir(), 'pair-project-'));
   const dataDir = mkdtempSync(join(tmpdir(), 'pair-data-'));
@@ -56,18 +56,24 @@ test('after two reload-slow Watcher calls that follow Partner turns, the Watcher
     await chat.next(message => message.type === 'welcome');
     chat.send({type: 'goal', text: 'fix the cart'});
     await chat.next(message => message.text === 'Goal: fix the cart');
+    /** The same failure again: a repeated error, which the Watcher scores 1, so no remark is made. */
+    const failAndScore = async () => {
+      const before = server.asked.length;
+      for (let i = 0; i < 2; i++) editor.send({type: 'command', cwd: project, pane: null, cmd: 'npm test', exit: 1});
+      await until(() => server.asked.length > before);
+      await new Promise(resolve => setTimeout(resolve, 2500)); // the score, a reload included
+    };
+    // Two scores with no Partner turn before them: how long the Watcher's calls usually take.
+    for (let i = 0; i < 2; i++) await failAndScore();
     for (let round = 1; round <= 3; round++) {
       chat.send({type: 'ask', text: `question ${round}`});
       await until(() => server.asked.filter(model => model === 'large').length >= round);
       await chat.next(message => message.sender === 'pair' && chat.received.filter(each => each.sender === 'pair').length >= round);
-      const before = server.asked.length;
-      // The same failure again: a repeated error each round, which the Watcher scores 1, so no remark is made.
-      for (let i = 0; i < 2; i++) editor.send({type: 'command', cwd: project, pane: null, cmd: 'npm test', exit: 1});
-      await until(() => server.asked.length > before);
-      await new Promise(resolve => setTimeout(resolve, 2500)); // the score, a reload included
+      await failAndScore();
     }
-    // Question, score, question, score: each a reload. Then the third score uses the model the question loaded.
-    assert.deepEqual(server.asked, ['large', 'small', 'large', 'small', 'large', 'large']);
+    // Two usual scores; then question, score, question, score, each a reload. The third score uses the model the
+    // question loaded.
+    assert.deepEqual(server.asked, ['small', 'small', 'large', 'small', 'large', 'small', 'large', 'large']);
     assert.ok(logged.some(line => /seems to reload on each switch/.test(line)), logged.join('\n'));
   } finally {
     editor.close();

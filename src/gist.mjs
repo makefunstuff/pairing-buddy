@@ -16,8 +16,21 @@ const DEFINES = /^\s*(?:export\s+)?(?:default\s+)?(?:pub(?:\(\w+\))?\s+)?(?:asyn
 /** The text of the first comment of `lines` above the code, without markers; a licence does not count. */
 function leadingComment(lines) {
   let found = [];
+  let docstring = null; // the quotes of a docstring that spans lines, until they close
   const text = () => found.join(' ').replace(/\s+/g, ' ').trim();
   for (const line of lines) {
+    if (docstring) {
+      const end = line.indexOf(docstring);
+      found.push(end < 0 ? line : line.slice(0, end));
+      if (end >= 0) docstring = null;
+      continue;
+    }
+    const opens = /^\s*("""|''')(.*)$/.exec(line);
+    if (opens && !opens[2].includes(opens[1])) {
+      docstring = opens[1];
+      found.push(opens[2]);
+      continue;
+    }
     const comment = COMMENT.exec(line);
     if (comment) { if (comment[1]) found.push(comment[1]); continue; }
     if (found.length && !LICENSE.test(text())) break;

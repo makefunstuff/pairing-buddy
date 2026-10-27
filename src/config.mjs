@@ -258,6 +258,7 @@ export function parseConfig(raw, {windows = {}} = {}) {
     voice: voiceConfig(raw.voice), // push-to-talk; null when off (see voice.mjs)
     taskCommand: taskCommand(raw.taskCommand),
     board: boardCommand(raw.board),
+    windows, // as found (see context-window.mjs), so a reload can keep one a server cannot tell then
     agents: raw.agents ?? true, // relays your other agents' news (see agents.mjs)
     models,
   };

@@ -54,17 +54,24 @@ async function windowOf(entry, providers) {
   return tokens && {tokens: Math.min(tokens, MAX_FOUND_CONTEXT), from: tokens > MAX_FOUND_CONTEXT ? `the server, which serves ${tokens}` : 'the server', served: true};
 }
 
-/** The `windows` parseConfig takes, for both roles of `config` (one ask when one model serves both). */
-export async function foundWindows(config, providers = knownProviders()) {
+/**
+ * The `windows` parseConfig takes, for both roles of `config` (one ask when one model serves both). A role whose
+ * server does not answer now keeps what was found `before` (the running config) for the same model.
+ */
+export async function foundWindows(config, {providers = knownProviders(), before = null} = {}) {
   const {watcher, partner} = config.models;
-  const forPartner = windowOf(partner, providers);
-  const forWatcher = sameModel(watcher, partner) ? forPartner : windowOf(watcher, providers);
+  const kept = role => (before && sameModel(config.models[role], before.models[role]) ? before.windows?.[role] ?? null : null);
+  const forPartner = windowOf(partner, providers).then(found => found ?? kept('partner'));
+  const forWatcher = sameModel(watcher, partner) ? forPartner : windowOf(watcher, providers).then(found => found ?? kept('watcher'));
   const [w, p] = await Promise.all([forWatcher, forPartner]);
   return {...(w ? {watcher: w} : {}), ...(p ? {partner: p} : {})};
 }
 
-/** The config at `path`, with each model's window from its catalog or server where the config does not set one. */
-export async function loadSizedConfig(path = configPath()) {
+/**
+ * The config at `path`, with each model's window from its catalog or server where the config does not set one;
+ * `before` is the config the daemon runs, whose windows stand where a server cannot be asked now.
+ */
+export async function loadSizedConfig(path = configPath(), {before = null} = {}) {
   const raw = readConfig(path);
-  return parseConfig(raw, {windows: await foundWindows(parseConfig(raw))});
+  return parseConfig(raw, {windows: await foundWindows(parseConfig(raw), {before})});
 }

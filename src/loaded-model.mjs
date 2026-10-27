@@ -34,6 +34,7 @@ export function shareServer(a, b) {
 export const SWAP_MS = 2000; // a call after a Partner turn that takes longer than this, and
 export const SWAP_FACTOR = 4; // this many times the Watcher's usual call, looks like a reload
 const SWAPS_SEEN = 2; // in a row: then the server swaps
+const BASELINE = 2; // Watcher calls not after a Partner turn, before a reload can be told from a slow server
 
 const median = values => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
 
@@ -64,7 +65,8 @@ export function followLoaded({entries, watcher, partner, list = listModels, log 
   choose.timed = (ms, afterPartner) => {
     if (swaps || using !== watcher) return;
     if (!afterPartner) { usual = [...usual.slice(-19), ms]; return; }
-    const reload = ms > SWAP_MS && (!usual.length || ms > SWAP_FACTOR * median(usual));
+    // Without the Watcher's usual time to compare with, a slow call says nothing: the server may be slow every time.
+    const reload = usual.length >= BASELINE && ms > SWAP_MS && ms > SWAP_FACTOR * median(usual);
     seen = reload ? seen + 1 : 0;
     swaps = seen >= SWAPS_SEEN;
   };

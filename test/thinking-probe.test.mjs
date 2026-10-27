@@ -88,3 +88,14 @@ test('a model that never thinks, and a provider entry, need no probe', async () 
   const [line] = await probe(parseConfig({model: {provider: 'deepseek', model: 'deepseek-flash'}}));
   assert.match(line.text, /^only an OpenAI-compatible endpoint needs this/);
 });
+
+test('when every request fails, the probe fails instead of giving advice', {timeout: 30_000}, async () => {
+  const server = await fakeServer({thinkingOf: () => 0, rejects: () => true});
+  try {
+    const last = (await probe(configAt(server.url))).at(-1);
+    assert.equal(last.level, 'fail');
+    assert.match(last.text, /^every request failed, so nothing was learned/);
+  } finally {
+    server.close();
+  }
+});

@@ -75,3 +75,19 @@ test('without the server or catalog saying, the window is the default', () => {
   assert.deepEqual([partner.contextWindow, partner.windowFrom], [DEFAULT_CONTEXT, 'default']);
   assert.equal(catalogWindow({provider: 'deepseek', model: 'no-such-model'}), null);
 });
+
+test('a reload keeps a window the server found before when the server cannot be asked now', async () => {
+  const vllm = await server({'/v1/models': {data: [{id: 'm', max_model_len: 65536}]}});
+  const dir = mkdtempSync(join(tmpdir(), 'pair-window-'));
+  const path = join(dir, 'config.json');
+  writeFileSync(path, JSON.stringify({model: at(vllm.url)}));
+  const running = await loadSizedConfig(path);
+  vllm.close();
+  await new Promise(resolve => setTimeout(resolve, 50));
+  writeFileSync(path, JSON.stringify({level: 'quiet', model: at(vllm.url)}));
+  const reloaded = await loadSizedConfig(path, {before: running});
+  assert.deepEqual([reloaded.models.partner.contextWindow, reloaded.models.partner.windowFrom], [65536, 'the server']);
+  assert.equal(JSON.stringify(reloaded.models), JSON.stringify(running.models), 'so the models are no change');
+  const other = (await loadSizedConfig(path, {before: {...running, models: {...running.models, partner: {...running.models.partner, model: 'x'}}}})).models.partner;
+  assert.equal(other.windowFrom, 'default', 'a window found for another model is not kept');
+});

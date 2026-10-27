@@ -8,6 +8,7 @@ import {AgentRelay, itemName} from './agent-relay.mjs';
 import {AgentBoard, STATUSES} from './agents.mjs';
 import {sameServer} from './config.mjs';
 import {goalFromContext, SOURCES} from './context-card.mjs';
+import {loadSizedConfig} from './context-window.mjs';
 import {byUse, herdrFocus, noteEditor} from './editors.mjs';
 import {gitRoot} from './git.mjs';
 import {MODEL_ROLES, ModelHealth} from './health.mjs';
@@ -657,6 +658,8 @@ export async function startDaemon(config, {
   health.start();
   agents?.start();
   const configWatch = configFile && watchConfig(configFile, {
+    // The windows asked again as at start; one a server cannot tell now stays as the running config has it.
+    load: path => loadSizedConfig(path, {before: saved}),
     onChange: next => reload(next).catch(error => refuse(error.message)),
     onError: refuse,
   });

@@ -60,4 +60,13 @@ test('on a server that does not say, two reload-slow calls after Partner turns m
   slow.timed(4000, true);
   slow.timed(4200, true);
   assert.equal(await slow(), 'W', 'a server that is slow every time does not swap');
+
+  const fresh = followLoaded({entries, watcher: 'W', partner: 'P', list: async () => null});
+  fresh.timed(3000, true);
+  fresh.timed(3100, true);
+  assert.equal(await fresh(), 'W', 'without the Watcher\'s usual time, slow calls after Partner turns may just be a slow server');
+  fresh.timed(400, false);
+  fresh.timed(6000, true);
+  fresh.timed(6000, true);
+  assert.equal(await fresh(), 'W', 'one usual call is not enough to compare with');
 });

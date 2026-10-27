@@ -11,6 +11,9 @@ test('the gist is the leading comment and the names the file defines', () => {
     'Search ranking: BM25 over the title and body. It defines score, Ranker.');
   assert.equal(gist('package billing\n\nimport "fmt"\n\n// Invoice is one bill.\ntype Invoice struct {}\n\nfunc (i *Invoice) Total() int {}\n'),
     'Invoice is one bill. It defines Invoice, Total.', 'a comment after the preamble counts too');
+  assert.equal(gist('"""\nBackoff for reconnecting\nafter sleep.\n"""\nimport time\ndef next_delay(n): pass\n'),
+    'Backoff for reconnecting after sleep. It defines next_delay.', 'a docstring whose quotes stand on lines of their own');
+  assert.equal(gist('"""Retries webhooks.\n\nWith a backoff."""\n'), 'Retries webhooks. With a backoff.');
   assert.equal(gist('#!/usr/bin/env python3\n# Retries the webhook with backoff.\nimport time\n'), 'Retries the webhook with backoff.');
   assert.equal(gist('/**\n * Reconnects the socket after the phone sleeps.\n */\npub fn reconnect() {}\n'),
     'Reconnects the socket after the phone sleeps. It defines reconnect.');
