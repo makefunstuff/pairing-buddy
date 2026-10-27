@@ -1,20 +1,21 @@
 // Temp dirs for the tests: every one under one root per run, removed when a test file ends or is interrupted.
 //
-// test/run.mjs (what `npm test` runs) makes the run's root, `pair-test-XXXXXX` in $TMPDIR, and loads this module
+// test/run.mjs (what `npm test` runs) makes the run's root, `pair-test-XXXXXX` in $TMPDIR (or /tmp, when $TMPDIR
+// is too long for sockets: test/teardown.mjs), and loads this module
 // into every test file's process with --import. Run a file by itself and this module makes the root. Each test
 // file gets a folder of its own in the root, and $TMPDIR points into it, so whatever the file, the code under test,
 // its daemons and its Neovims put in the temp dir lands there too.
 //
-// When the file's tests end (or on SIGINT and SIGTERM): the processes it started and left running are stopped,
+// When the file's tests end (or on SIGINT and SIGTERM): the processes it started and left running are stopped
+// (and theirs),
 // the dirs `scratch` made are removed, and anything else still in the file's folder is a leak. It is named on
 // stderr with the test file, the file fails, and the folder goes anyway.
-import {execFileSync} from 'node:child_process';
 import {mkdtempSync, readdirSync, rmSync} from 'node:fs';
-import {tmpdir} from 'node:os';
 import {basename, join} from 'node:path';
+import {descendants, stop, tempBase} from './teardown.mjs';
 
 const testFile = process.argv[1] ?? 'test';
-const runRoot = process.env.PAIR_TEST_ROOT || mkdtempSync(join(tmpdir(), 'pair-test-'));
+const runRoot = process.env.PAIR_TEST_ROOT || mkdtempSync(join(tempBase(), 'pair-test-'));
 const ownRoot = !process.env.PAIR_TEST_ROOT;
 /** This test file's own folder in the run's root, and $TMPDIR from here on. */
 export const fileRoot = mkdtempSync(join(runRoot, `${basename(testFile).replace(/\.test\.mjs$|\.mjs$/, '')}-`));
@@ -41,41 +42,13 @@ export function socketDir(prefix = 'pair-') {
   return join(dir, 'nvim.sock.0').length <= 90 ? dir : scratch(prefix, '/tmp');
 }
 
-/**
- * The processes this one started that still run, by pid (`ps` knows them on Linux and macOS). A zombie has ended:
- * nothing reaps it while the exit handler blocks.
- */
-function children() {
-  try {
-    return execFileSync('ps', ['-A', '-o', 'pid=,ppid=,stat='], {encoding: 'utf8'}).trim().split('\n')
-      .map(line => line.trim().split(/\s+/))
-      .filter(([pid, ppid, stat]) => Number(ppid) === process.pid && !stat.startsWith('Z')).map(([pid]) => Number(pid));
-  } catch {
-    return [];
-  }
-}
-
-const pause = ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
-
-/** Stops what the file left running (a Neovim, a fake server's shell), with SIGTERM and after 2 s SIGKILL. */
-function stopChildren() {
-  let pids = children();
-  for (const pid of pids) try { process.kill(pid, 'SIGTERM'); } catch {}
-  const end = Date.now() + 2000;
-  while (pids.length && Date.now() < end) {
-    pause(20);
-    pids = children().filter(pid => pids.includes(pid));
-  }
-  for (const pid of pids) try { process.kill(pid, 'SIGKILL'); } catch {}
-}
-
 let done = false;
 
 /** Stops the file's processes, removes its dirs and reports what else it left in the temp dir (unless `quiet`). */
 function cleanup({quiet = false} = {}) {
   if (done) return;
   done = true;
-  stopChildren();
+  stop(descendants(process.pid));
   for (const dir of dirs) rmSync(dir, {recursive: true, force: true});
   let left = [];
   try { left = readdirSync(fileRoot); } catch {}

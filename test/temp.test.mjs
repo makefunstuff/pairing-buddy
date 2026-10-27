@@ -1,8 +1,8 @@
 // The tests' temp dirs: every one under the run's root in $TMPDIR, and a test file that leaves one behind fails,
 // named. Also that no test makes a temp dir of its own, past test/temp.mjs.
 import assert from 'node:assert/strict';
-import {spawnSync} from 'node:child_process';
-import {existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync} from 'node:fs';
+import {spawn, spawnSync} from 'node:child_process';
+import {existsSync, readdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {join, relative} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {test} from 'node:test';
@@ -36,7 +36,7 @@ function runFile(file, root) {
 }
 
 test('no test makes a temp dir past test/temp.mjs: no mkdtemp, no tmpdir(), no dir made in /tmp', () => {
-  const own = new Set(['temp.mjs', 'run.mjs', 'temp.test.mjs'].map(name => join(TESTS, name)));
+  const own = new Set(['temp.mjs', 'run.mjs', 'teardown.mjs', 'temp.test.mjs'].map(name => join(TESTS, name)));
   const found = sources().filter(path => !own.has(path)).flatMap(path => readFileSync(path, 'utf8').split('\n')
     .map((line, i) => /mkdtemp|tmpdir\(\)|\(\s*['"`]\/tmp\//.test(line) ? `${relative(TESTS, path)}:${i + 1}: ${line.trim()}` : null)
     .filter(Boolean));
@@ -85,11 +85,29 @@ test('npm test\'s runner keeps the run under one root in $TMPDIR, removes it, an
   assert.equal(existsSync(join(outer, 'pair-leak-y')), false);
 });
 
-test('a TMPDIR too long for the tests\' sockets stops the run at once, with what to do, instead of hanging it', () => {
-  const outer = join(scratch('pair-tmpdir-', '/tmp'), 'a-folder-name-long-enough-for-sockets-to-fail');
-  mkdirSync(outer);
-  const result = spawnSync(process.execPath, [RUN, testFile('tidy.test.mjs', '')], {encoding: 'utf8', env: {...ENV, TMPDIR: outer, PAIR_TEST_ROOT: ''}});
-  assert.equal(result.status, 2);
-  assert.match(result.stderr, /TMPDIR is too long .* at most 26 characters/);
-  assert.deepEqual(readdirSync(outer), []);
+test('a TMPDIR too long for the tests\' sockets, as macOS\'s own is, gives way to /tmp; a missing one is made', () => {
+  const long = join(scratch('pair-tmpdir-', '/tmp'), 'var', 'folders', 'zz', 'zyxvpxvq6csfxvn_n0000000000000', 'T');
+  const result = spawnSync(process.execPath, [RUN, testFile('tidy.test.mjs', `if (!tmpdir().startsWith('/tmp/pair-test-')) throw new Error(tmpdir());`)],
+    {encoding: 'utf8', env: {...ENV, TMPDIR: long, PAIR_TEST_ROOT: ''}});
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stderr, /too long for the sockets .* the run is in \/tmp/);
+  assert.deepEqual(readdirSync(long), [], 'made, and left empty');
+});
+
+test('what a test started goes before its folder, a shell\'s child too, also when the run is stopped with SIGTERM', async () => {
+  const outer = scratch('pair-tmpdir-', '/tmp');
+  const pidFile = join(scratch('pair-pid-'), 'pid');
+  const file = testFile('slow.test.mjs', `
+    spawn('sh', ['-c', 'sleep 60 & echo $! > ${pidFile}; wait'], {stdio: 'ignore'});
+    await new Promise(resolve => setTimeout(resolve, 60_000));`);
+  const run = spawn(process.execPath, [RUN, file], {stdio: 'ignore', env: {...ENV, TMPDIR: outer, PAIR_TEST_ROOT: ''}});
+  const end = Date.now() + 20_000;
+  while (!existsSync(pidFile) && Date.now() < end) await new Promise(resolve => setTimeout(resolve, 50));
+  await new Promise(resolve => setTimeout(resolve, 100));
+  const pid = Number(readFileSync(pidFile, 'utf8'));
+  assert.ok(pid > 0);
+  run.kill('SIGTERM');
+  await new Promise(resolve => run.on('exit', resolve));
+  assert.throws(() => process.kill(pid, 0), 'the sleep was stopped');
+  assert.deepEqual(readdirSync(outer), [], 'and the root is gone');
 });

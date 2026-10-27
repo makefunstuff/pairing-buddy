@@ -138,18 +138,20 @@ Runs every test that needs no model, in under a minute, with scripted models and
   budget: the reply's room, compaction, and the instructions, tools and longest note fitting the smallest window.
 
 **Temp dirs.** `npm test` runs through [test/run.mjs](../test/run.mjs), which puts the whole run under one folder,
-`pair-test-XXXXXX` in `$TMPDIR` (`/tmp` when it is not set), and removes it when the run ends, also on Ctrl-C. To
-run the tests somewhere else, for example when `/tmp` is a small tmpfs, set `TMPDIR` to a short path (at most
-26 characters: the tests make Unix sockets a few folders down, and a socket's path maxes out near 104 bytes; the
-runner stops at once with a longer one):
+`pair-test-XXXXXX` in `$TMPDIR` (`/tmp` when it is not set), and removes it when the run ends, also on Ctrl-C and
+SIGTERM, once what the run started has stopped. To run the tests somewhere else, for example when `/tmp` is a small
+tmpfs, set `TMPDIR` (the folder is made if it is missing):
 
 ```sh
-TMPDIR=~/.cache/pair-tests npm test
+TMPDIR=/var/tmp/pair npm test
 ```
+
+Keep it to 26 characters or fewer: the tests make Unix sockets a few folders down, and a socket's path maxes out near
+104 bytes. With a longer `TMPDIR`, as macOS's own `/var/folders/…/T` is, the run says so and uses `/tmp`.
 
 [test/temp.mjs](../test/temp.mjs), loaded into every test file, gives each file its own folder in the run's one and
 points `$TMPDIR` there, so the daemons, Neovims and programs a test starts put their temp files there too. When the
-file ends, the processes it left running are stopped, the dirs it made with `scratch()` (or `socketDir()`, for a
+file ends, the processes it left running are stopped (and the ones they started), the dirs it made with `scratch()` (or `socketDir()`, for a
 socket's short path) are removed, and anything else left in its folder fails the file with a line naming the file
 and what it left. A test makes its temp dirs with those two, never `mkdtemp` or `tmpdir()` itself
 ([test/temp.test.mjs](../test/temp.test.mjs) checks the sources). A single file run with `node --test` gets the

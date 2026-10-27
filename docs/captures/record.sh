@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Records the scenes with VHS into out/: ./record.sh [scene ...] (default: all of them).
 # Each scene gets its own scratch directory under /tmp/paircap.*: the project, the daemon's socket and data, and
-# Neovim's XDG directories. It goes once the scene is recorded (CAP_KEEP=1 keeps it); a failed scene keeps its logs.
+# Neovim's XDG directories. It is /tmp and not $TMPDIR on purpose: its paths show in the videos, and a short one keeps
+# the socket paths short. It goes when the scene ends, recorded, failed or interrupted, with the stage stopped first;
+# CAP_KEEP=1 keeps it and its logs.
 # Nothing of your own Neovim, pair config, history or daemon is read or touched. The clock is UTC, so the times the
 # ledger shows are not your time zone.
 set -euo pipefail
@@ -21,6 +23,16 @@ fetch() { # fetch <github repo> <commit> <dir>: one commit, no history
   git init -q "$3" && git -C "$3" fetch -q --depth 1 "https://github.com/$1" "$2" && git -C "$3" checkout -q FETCH_HEAD
 }
 
+CAP= stage= tape=
+cleanup() { # stops the scene's VHS and stage, and removes its scratch directory
+  for pid in $tape $stage; do kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; done
+  if [ -n "$CAP" ]; then if [ -n "${CAP_KEEP:-}" ]; then echo "logs in $CAP"; else rm -rf "$CAP"; fi; fi
+  CAP= stage= tape=
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
 for scene in "${SCENES[@]}"; do
   CAP=$(mktemp -d /tmp/paircap.XXXXXX)
   mkdir -p "$CAP/ayu/colors" "$CAP/mini/lua/mini" "$CAP/xdg/config" "$CAP/xdg/data" "$CAP/xdg/state" "$CAP/xdg/cache"
@@ -36,7 +48,11 @@ for scene in "${SCENES[@]}"; do
   stage=$!
   for _ in $(seq 300); do [ -e "$CAP/ready" ] && break; sleep 0.1; done
   [ -e "$CAP/ready" ] || { cat "$CAP/stage.log"; exit 1; }
-  (cd "$HERE" && vhs "tapes/$scene.tape") > "$CAP/vhs.log" 2>&1 || { tail "$CAP/vhs.log"; kill $stage; exit 1; }
-  kill $stage; wait $stage || true
-  if [ -n "${CAP_KEEP:-}" ]; then echo "$scene: out/$scene.mp4 (logs in $CAP)"; else rm -rf "$CAP"; echo "$scene: out/$scene.mp4"; fi
+  # In the background, so that a SIGTERM's trap runs at once rather than after VHS.
+  (cd "$HERE" && exec vhs "tapes/$scene.tape") > "$CAP/vhs.log" 2>&1 &
+  tape=$!
+  wait $tape || { tape=; tail "$CAP/vhs.log"; exit 1; }
+  tape=
+  echo "$scene: out/$scene.mp4"
+  cleanup
 done
