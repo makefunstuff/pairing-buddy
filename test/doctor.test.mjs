@@ -10,7 +10,7 @@ import {createModels, fauxProvider, InMemoryCredentialStore, ModelsError} from '
 import {loadConfig, parseConfig} from '../src/config.mjs';
 import {startDaemon} from '../src/daemon.mjs';
 import {fileCredentialStore} from '../src/credentials.mjs';
-import {contextCheck, daemonCheck, doctor, loginCheck, loginsCheck, rolesCheck, serviceCheck, swapCheck} from '../src/doctor.mjs';
+import {contextCheck, daemonCheck, doctor, loginCheck, loginsCheck, rolesCheck, serviceCheck, subscriptionCheck, swapCheck} from '../src/doctor.mjs';
 import {sendMessage} from '../src/protocol.mjs';
 import {launchd} from '../src/launchd.mjs';
 import {systemd} from '../src/systemd.mjs';
@@ -223,10 +223,18 @@ test('the login check: none, an expired login that no longer renews, and a live 
   assert.deepEqual(await loginCheck({api: 'openai'}, models, credentials), {}, 'a key of its own, or none: nothing to check');
 
   await credentials.modify('anthropic', async () => ({type: 'oauth', access: 'a', refresh: 'r', expires: Date.now() + 3_600_000}));
-  assert.match((await loginCheck({provider: 'anthropic'}, models, credentials)).note, /^logged in; the token renews itself \(this one until \d\d:\d\d\)$/);
+  const live = await loginCheck({provider: 'anthropic'}, models, credentials);
+  assert.match(live.note, /^logged in; the token renews itself \(this one until \d\d:\d\d\)$/);
+  assert.equal(live.subscription, true, 'a Claude Pro/Max login is a subscription');
   const revoked = {...models, getAuth: async () => { throw new ModelsError('oauth', 'refresh failed: invalid_grant'); }};
   assert.deepEqual(await loginCheck({provider: 'anthropic'}, revoked, credentials),
     {error: 'the anthropic login has expired or was revoked (refresh failed: invalid_grant): run `pair auth login anthropic` again'});
+});
+
+test('a Watcher on a subscription gets a warning that names the cost and the terms', () => {
+  const check = subscriptionCheck('watcher', {provider: 'anthropic', model: 'm'});
+  assert.equal(check.level, 'warn');
+  assert.match(check.text, /^the Watcher runs on your anthropic subscription: .*terms may not allow it .*Give the Watcher a local or pay-per-use model$/);
 });
 
 test('a logins file others can read fails, with the chmod', () => {

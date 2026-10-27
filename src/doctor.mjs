@@ -10,7 +10,7 @@ import {loadSizedConfig} from './context-window.mjs';
 import {fileCredentialStore, readableByOthers} from './credentials.mjs';
 import {herdrRequest} from './herdr.mjs';
 import {listModels, shareServer, SWAP_FACTOR, SWAP_MS} from './loaded-model.mjs';
-import {createPairModels} from './models.mjs';
+import {createPairModels, knownProviders} from './models.mjs';
 import {levelGroups, probeModel, probeThinking} from './probe.mjs';
 import {requestDaemon} from './protocol.mjs';
 import {keyVariables, readServiceEnv} from './service-env.mjs';
@@ -171,7 +171,8 @@ export async function voiceCheck(voice, found = name => onPath(name, process.env
 
 /**
  * Whether the login or key a model entry needs is there and, for a subscription, still renews: `{error}` with the fix
- * when not, else `{note}` on the login (nothing for an entry with its own key or none).
+ * when not, else `{note}` on the login, with `subscription` for a subscription's (nothing for an entry with its own key
+ * or none).
  */
 export async function loginCheck(entry, models, credentials) {
   const id = entry.provider ?? entry.auth;
@@ -186,7 +187,15 @@ export async function loginCheck(entry, models, credentials) {
   } catch (error) {
     return {error: `the ${id} login has expired or was revoked (${error.message}): ${relogin} again`};
   }
-  return {note: credentialState(await credentials.read(id))};
+  const subscription = Boolean(knownProviders().get(id)?.auth.oauth?.isSubscription);
+  return {note: credentialState(await credentials.read(id)), subscription};
+}
+
+/** A warning for a Watcher on a subscription: it would spend the plan fast, and the plan's terms may not allow it. */
+export function subscriptionCheck(name, entry) {
+  return warn(name, `the Watcher runs on your ${entry.provider} subscription: it asks about every candidate remark, which spends the plan's `
+    + 'shared limits fast, and the plan\'s terms may not allow it (docs/config.md, "Before you use a subscription"). '
+    + 'Give the Watcher a local or pay-per-use model');
 }
 
 /** The model ids an OpenAI-compatible server lists (null when it does not list), or `{error}` when it does not answer. */
@@ -235,6 +244,7 @@ async function* modelChecks(config, status, credentials) {
     } else {
       yield ok(name, `${where} answers in ${seconds(probe.ms)}${login.note ? `; ${login.note}` : ''}`);
     }
+    if (role === 'watcher' && login.subscription) yield subscriptionCheck(name, entry);
     if (role === 'watcher' && probe.thought) {
       yield warn(name, `${where} thinks although the Watcher's thinking is off, so it is slow and may give no score: set "reasoning": true `
         + 'and, on an OpenAI-compatible server, its thinking switch (`pair doctor --thinking` finds it), or use a model that does not think');
