@@ -70,6 +70,7 @@ If an answer needs a search or a test run, say so in one sentence: the user can 
   driver: `Your role now: Driver. The user handed you the wheel for one change in their editor.
 - First read the file, so your line numbers are right.
 - Then call edit: it replaces lines line..end_line with new_text, the complete new lines with their indentation.
+  To change part of a line, also give old_text, the exact text there: new_text replaces only it.
   Change as little as the request needs. A change in several places takes one edit per place, at most 5 per
   hand-over: set more to true on each edit but the last, and Pair checks the change after the last one.
 - After your last edit, say in one sentence what you changed. Its result says whether Pair ran the project's tests, or
@@ -178,8 +179,11 @@ function tools(hands) {
     defineTool({
       name: 'edit',
       description: 'Replace lines line..end_line of a file in the user\'s editor with new_text, as one undo step. The buffer is not saved.',
-      parameters: lineChange({more: Type.Optional(Type.Boolean({description: 'true when another edit of this change follows; Pair checks the change after the last one'}))}),
-      execute: async (args, api, context) => withPicture(await hands.edit(api.conversationId, {...changeOf(args), more: args.more === true}), api, context),
+      parameters: lineChange({
+        old_text: Type.Optional(Type.String({description: 'To change part of a line: the exact text in lines line..end_line that new_text replaces; the rest stays'})),
+        more: Type.Optional(Type.Boolean({description: 'true when another edit of this change follows; Pair checks the change after the last one'})),
+      }),
+      execute: async (args, api, context) => withPicture(await hands.edit(api.conversationId, {...changeOf(args), old: args.old_text, more: args.more === true}), api, context),
     }),
     defineTool({
       name: 'type',

@@ -280,6 +280,7 @@ export class PairSession {
     this.accent = null; // the editor's accent (see style.lua) as #rrggbb, for the chat pane
     this.panes = null; // the user's herdr panes (a PaneWatch), for the Driver's type
     this.edits = 0; // the edits the Driver made in this hand-over
+    this.unchecked = false; // its last edit said more would follow, so its change is not checked yet
     this.handback = null; // the lines of its last edit, every edit's, and how the check went: {file, line, endLine, changes, tests, check}
     this.keepWheel = false; // the user let the Driver keep the wheel for each request until they take it back
     this.handedFrom = 'navigator'; // the role the user handed over from, which Pair goes back to
@@ -921,11 +922,14 @@ export class PairSession {
     this.keepWheel ||= keep;
     this.edits = 0;
     this.handback = null;
+    this.unchecked = false;
     const parts = parseHandOver(words);
     const check = checkCommand({given: parts.command, testCommand: this.testRuns?.command, runs: this.state.runs, root: this.root});
     this.handOver = {...parts, targets: targetsOf(parts.expect), check};
     const description = describeState(this.state, this.now());
     await this.talk(driveInput(words, description, await this.selected(selection), checkInput(parts.expect, check), this.keepWheel));
+    // An answer that ended after an edit with `more`: its change is checked all the same, for the hand-back line.
+    if (this.unchecked) await this.checkChange();
     if (!this.keepWheel) await this.handBack();
     // The hand-back line: what Pair says it did, under the lines it changed, with how the check went on them. An
     // expectation the code could not check is the Partner's to judge: its words start with ✓ or ✗.
@@ -1356,14 +1360,20 @@ export class PairSession {
   }
 
   /**
-   * One of the Driver's edits in the user's buffer, as one undo step and unsaved. With `more`, another edit of the
-   * same change follows, and the check waits for the last one.
+   * One of the Driver's edits in the user's buffer, as one undo step and unsaved: lines `line`..`endLine` become
+   * `text`, or with `old`, only that text in them does. With `more`, another edit of the same change follows, and
+   * the check waits for the last one.
    */
-  async edit({file, line, endLine, text, more = false}) {
+  async edit({file, line, endLine, text, old, more = false}) {
     // A file not written yet opens as a new buffer: the disk has it once the user saves it.
     const path = (await projectFile(this.root, file)) ?? (await newProjectFile(this.root, file));
     if (!path) return `No file ${file} in the project`;
     if (endLine < line) return `end_line ${endLine} is before line ${line}`;
+    if (old !== undefined) {
+      const lines = await this.replacedIn(path, line, endLine, old, text);
+      if (lines.error) return lines.error;
+      text = lines.text;
+    }
     const refused = this.wheel(); // after the await: the user may have taken the wheel back meanwhile
     if (refused) return refused;
     if (this.edits >= MAX_EDITS) return `That was your last edit: ${MAX_EDITS} per hand-over. Say in one sentence what you changed.`;
@@ -1384,11 +1394,34 @@ export class PairSession {
     const lines = changed.endLine - changed.line + 1;
     const typed = count ? `${lines === 1 ? 'a line' : `${lines} lines`} in ${name}` : `lines ${line}-${endLine} of ${name} deleted`;
     this.ledger.add('typed', typed, {data: {place: {file: path, line: this.handback.line}, note: 'one undo step', undo: !!patch}, detail: patch && {patch}});
+    const left = MAX_EDITS - this.edits;
+    this.unchecked = more && left > 0;
+    if (this.unchecked) return `Changed, as one undo step. Make your next edit (${left} left); Pair checks the change after the last one, the one without more.`;
+    return this.checkChange();
+  }
+
+  /**
+   * The lines `line`..`endLine` of the buffer of `path` with the one `old` in them replaced by `text`, as `{text}`,
+   * or `{error}` for the model when `old` is not there exactly once.
+   */
+  async replacedIn(path, line, endLine, old, text) {
+    const buffer = await this.bufferText(path).catch(() => null);
+    const region = buffer?.split('\n').slice(line - 1, endLine).join('\n') ?? '';
+    const at = old ? region.indexOf(old) : -1;
+    if (at < 0) return {error: `Not changed: old_text is not in lines ${line}-${endLine}. Read them again.`};
+    if (region.indexOf(old, at + 1) >= 0) return {error: `Not changed: old_text is in lines ${line}-${endLine} more than once. Give more of it, or fewer lines.`};
+    return {text: region.slice(0, at) + text + region.slice(at + old.length)};
+  }
+
+  /**
+   * Checks the hand-over's change on the unsaved buffers it touched, with the user's command (see check.mjs), and
+   * says how it went, for the Partner.
+   */
+  async checkChange() {
+    this.unchecked = false;
     // A run of its own would read the saved file, see the old code and send small models in circles.
     // An edit outside a hand-over (the blank page's slice) is checked like a bare one: no expectation.
     const {check, expect} = this.handOver ?? {check: checkCommand({testCommand: this.testRuns?.command, runs: this.state.runs, root: this.root}), expect: null};
-    const left = MAX_EDITS - this.edits;
-    if (more && left) return `Changed, as one undo step. Make your next edit (${left} left); Pair checks the change after the last one, the one without more.`;
     if (!check.command) return `${DONE}. Nothing ran on the unsaved buffer: ${check.none}. The file on disk changes only when the user saves, so do not run anything now.`;
     if (!(await this.checkAllowed(check))) return `${DONE}. The user did not allow \`${check.command}\` on the unsaved buffer, so nothing ran. Do not run it another way.`;
     const runs = check.command === this.testRuns?.command ? this.testRuns : new TestRuns({

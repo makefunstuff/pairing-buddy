@@ -65,6 +65,7 @@ local state = {
   place_mark = nil, -- {buf, id}: the place of those the jump key goes to
   run_line = nil, -- what the last build or run showed, for the statusline: {n, kind, text, debug, at} (see run-log.mjs)
   typing = nil, -- while the Driver's edit is being typed: the function that stops it and undoes what it typed
+  commanding = nil, -- true while you type a command line during a hand-over: only one that is not Pair's takes the wheel back
 }
 local RETRY_MS = {1000, 2000, 5000, 10000, 30000} -- then every 30 s
 local READING_MS = 2000 -- how long the statusline names the file Pair reads
@@ -705,20 +706,41 @@ local function pressed(key)
   return not (name:find('Mouse') or name:find('ScrollWheel') or name:find('Drag') or name:find('Release') or name:find('Focus'))
 end
 
+local function take_back()
+  state.role = 'navigator' -- edits on their way are refused from this key on
+  vim.schedule(function()
+    -- The take-back first: undoing a half-typed edit answers it with a refusal, which must not end the turn
+    -- before the daemon knows the wheel is back.
+    send({type = 'take_back'})
+    if state.typing then state.typing() end
+    vim.on_key(nil, ns)
+    redraw_status()
+  end)
+end
+
+-- While Pair keeps the wheel between its answers, a `:Pair` command (`:Pair ask and y to 20`) is how you talk to it
+-- from here: the keys of a command line wait for it to end, and only one that is not Pair's takes the wheel back.
+local COMMAND_MODES = {n = true, v = true, V = true, ['\22'] = true}
+local PAIR_COMMAND = "^[%s%d,'<>%.%$%%]*Pair!?%s"
+
+local function command_ended()
+  local ended = state.commanding and not vim.v.event.abort and vim.fn.getcmdline():match(PAIR_COMMAND)
+  state.commanding = nil
+  if state.role == 'driver' and not ended then take_back() end
+end
+
 local function watch_keys(on)
   vim.on_key(on and function(key)
     if not pressed(key) then return end
-    if state.role == 'driver' then -- a burst of keys takes the wheel back once
-      state.role = 'navigator' -- edits on their way are refused from this key on
-      vim.schedule(function()
-        -- The take-back first: undoing a half-typed edit answers it with a refusal, which must not end the turn
-        -- before the daemon knows the wheel is back.
-        send({type = 'take_back'})
-        if state.typing then state.typing() end
-        vim.on_key(nil, ns)
-        redraw_status()
-      end)
+    if state.role == 'driver' and not state.typing then
+      if state.commanding then return end
+      if key == ':' and COMMAND_MODES[vim.api.nvim_get_mode().mode] then
+        state.commanding = true
+        vim.api.nvim_create_autocmd('CmdlineLeave', {once = true, callback = command_ended})
+        return
+      end
     end
+    if state.role == 'driver' then take_back() end -- a burst of keys takes the wheel back once
     if state.typing then return '' end
   end or nil, ns)
 end

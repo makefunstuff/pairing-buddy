@@ -424,17 +424,25 @@ test(':Pair drive! keeps the wheel: several edits in one hand-over, each its own
     await sleep(300);
     assert.equal(status(), driving, 'Pair keeps the wheel after its answer');
 
+    // A request typed in Neovim keeps the wheel too; its edit changes part of a line.
+    let input;
     partner.setResponses([
-      fauxAssistantMessage([fauxToolCall('edit', {file: 'a.js', line: 2, new_text: 'const y = 20'})], {stopReason: 'toolUse'}),
+      context => {
+        input = context.messages.at(-1).content;
+        return fauxAssistantMessage([fauxToolCall('edit', {file: 'a.js', line: 2, old_text: '2', new_text: '20'})], {stopReason: 'toolUse'});
+      },
       fauxAssistantMessage([fauxText('Twenty.')]),
     ]);
-    send({type: 'ask', text: 'and y to 20'});
+    keys(':Pair ask and y to 20<CR>');
     await answered('Twenty.');
+    assert.match(input, /^\[drive\] You have the wheel until the user takes it back/);
     assert.equal(lines()[1], 'const y = 20');
     assert.equal(status(), driving);
+    assert.equal(messages.some(message => message.text === 'You have the wheel back.'), false);
 
+    keys(':let g:other = 1<CR>');
+    await until(() => status() === '● pair', 'a command that is not Pair\'s takes the wheel back');
     keys('u');
-    await until(() => status() === '● pair', 'a key takes the wheel back');
     await until(() => lines()[1] === 'const y = 2', 'and u undoes the last edit');
     keys('u');
     await until(() => lines()[2] === 'const z = 3', 'u undoes the edits one by one');

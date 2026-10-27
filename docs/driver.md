@@ -43,10 +43,10 @@ A request can say what you expect to see after the change, and which command sho
 Then:
 
 1. Pair becomes the Driver for one answer. The chat prompt and `require('pair').status()` show `driver`.
-2. It reads the code and calls `edit`, once for each place the change touches, in one file or several. Neovim types the change while you watch (see [the visible hand-over](neovim.md#the-visible-hand-over)): ghost text with Pair's cursor, each line entering the buffer only when it is whole, all of it one undo step. If no window shows those lines, they open in a split. The edit's answer to the model waits until the typing is done. The chat says `Changed src/ws.mjs:1 (u undoes it).`
+2. It reads the code and calls `edit`, once for each place the change touches, in one file or several. An edit replaces whole lines, or, with `old_text`, only that text in them (`retries + 1` becomes `retries` and the rest of the line stays); `old_text` that is not in those lines exactly once changes nothing, and the model is told why. Neovim types the change while you watch (see [the visible hand-over](neovim.md#the-visible-hand-over)): ghost text with Pair's cursor, each line entering the buffer only when it is whole, all of it one undo step. If no window shows those lines, they open in a split. The edit's answer to the model waits until the typing is done. The chat says `Changed src/ws.mjs:1 (u undoes it).`
    A file that does not exist yet (inside the project, in a folder that does) opens as a new buffer and is typed there, for example the `Makefile` of a [first slice](blank-page.md#the-first-run). Its `read` says it does not exist yet, or shows the buffer once Pair has typed it. The disk has it when you save it.
 3. Each edit is its own undo step. Up to five edits per hand-over: a sixth is refused, and the model is told to say what it changed. An edit Neovim could not apply (a line past the end of the buffer), or that you stopped halfway, does not count. Five keeps a change small enough to watch, and a model that loops harmless.
-4. Pair checks the change on the unsaved buffers (below), once the model says its edit is the last of the change (an edit with `more` waits for the next one): with the project's command on save (`testOnSave`), or, without one, with the build and run you last ran in your terminal. It tells the model the result. The model says in one sentence what it changed and, when something ran, whether the tests pass or what the run printed for what you expect. It is told not to run them itself: they would read the file on disk, which changes only when you save.
+4. Pair checks the change on the unsaved buffers (below), once the model says its edit is the last of the change (an edit with `more` waits for the next one; an answer that ends after one is checked when it ends, for the hand-back line): with the project's command on save (`testOnSave`), or, without one, with the build and run you last ran in your terminal. It tells the model the result. The model says in one sentence what it changed and, when something ran, whether the tests pass or what the run printed for what you expect. It is told not to run them itself: they would read the file on disk, which changes only when you save.
 5. When the answer ends, Pair goes back to the role you handed over from by itself: Navigator, or Scout with its pane, also when it answered without an edit, for example with a question. Unless you let it [keep the wheel](#keeping-the-wheel).
 6. The hand-back line: its words under the last line it changed, `✓` or `✗` in the sign column there when the check ran (with the line the run printed for your target first: `✓ avg probe 1.1 · …`), `▎` on the lines of every edit, and `u undoes it` (`u undoes each edit` after several: one `u` per edit, in the buffer it changed). They go with your next edit. After that, `u` on the edit's line in `:Pair today` still undoes it: Neovim merges the undo into the buffer as it is then, and keeps your later edits, or changes nothing when you edited the same lines ([the ledger](neovim.md#the-ledger)).
 
@@ -59,8 +59,10 @@ Driver and keeps the wheel when the answer ends: each question you type after it
 is a hand-over of its own, with its own edits, check and hand-back line. The chat says
 `Pair keeps the wheel for each request until you take it back: any key in Neovim, or /navigate.`
 
-It ends as any hand-over does when you take the wheel back (any key in Neovim, typing at a shell prompt), or with
-`/navigate`, `/scout` or `:Pair navigate`. Pair then goes back to the role you handed over from. No remark nobody
+In Neovim, a `:Pair` command (`:Pair ask and y to 20`, `:'<,'>Pair ask ...`) is how you talk to it: the keys of
+that command line do not take the wheel back. It ends as any hand-over does when you take the wheel back (any other
+key in Neovim, any other command line or one you abort, typing at a shell prompt), or with `/navigate`, `/scout` or
+`:Pair navigate`. Pair then goes back to the role you handed over from. No remark nobody
 asked for starts while it keeps the wheel.
 
 ## The check on the unsaved buffer

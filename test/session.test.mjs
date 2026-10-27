@@ -340,6 +340,36 @@ test('a sixth edit in one hand-over is refused, and edits at once cannot pass th
   assert.equal(edits.length, 5);
 });
 
+test('an edit with old_text changes only that text in its lines; text that is not there once changes nothing', async () => {
+  let replies;
+  const {pair, edits} = driverSession({turn: async pair => {
+    pair.requestEditor = async message => (message.type === 'read' ? {text: 'const a = 1\nconst b = 1 + 1\nconst c = 3\n'} : (edits.push(message), {ok: true}));
+    replies = [
+      await pair.edit({file: 'package.json', line: 1, endLine: 2, old: 'b = 1 +', text: 'b = 2 *', more: true}),
+      await pair.edit({file: 'package.json', line: 1, endLine: 2, old: 'x', text: 'y'}),
+      await pair.edit({file: 'package.json', line: 1, endLine: 2, old: '1', text: '2'}),
+    ];
+    return 'ok';
+  }});
+  await pair.drive('you take it');
+  assert.deepEqual(edits.map(({line, endLine, text}) => ({line, endLine, text})), [{line: 1, endLine: 2, text: 'const a = 1\nconst b = 2 * 1'}]);
+  assert.match(replies[1], /^Not changed: old_text is not in lines 1-2/);
+  assert.match(replies[2], /^Not changed: old_text is in lines 1-2 more than once/);
+});
+
+test('an answer that ends after an edit with more still gets its change checked, for the hand-back line', async () => {
+  const partner = {
+    thinkingOf: () => 'off',
+    setRole: async () => {},
+    ask: async () => { await pair.edit({file: 'cart/cart_test.go', line: 6, endLine: 6, text: '}', more: true}); return 'Done.'; },
+  };
+  const {pair, ran, sent, setReport} = saveSession({partner, requestEditor: async message => (message.type === 'read' ? {text: 'x\n'} : {ok: true})});
+  setReport('go-test-pass');
+  await pair.drive('your turn');
+  assert.equal(ran.length, 1, 'checked once the answer ended');
+  assert.equal(sent.find(message => message.type === 'handback').tests, 'pass');
+});
+
 test('handed over from Scout, Pair goes back to Scout, with its pane still open', async () => {
   const {pair, sent, roles, roleChanges} = driverSession({role: 'scout', turn: async pair => {
     await pair.edit({file: 'package.json', line: 1, endLine: 1, text: '{'});

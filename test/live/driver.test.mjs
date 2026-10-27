@@ -157,6 +157,14 @@ describe('Driver on live models', {skip: stacks.length ? false : SKIP_REASON}, (
       assert.ok(result.unchanged, 'nothing was written to disk');
     });
 
+    test(`${stack.name}: a change to part of a line: old_text names it, and the rest of the line stays`, {timeout: 300_000}, async t => {
+      const result = await turn(session => session.drive('you take it: in src/config.mjs change only the retries value to 7, as a change to part of the line'));
+      report(t, result);
+      assert.ok(edits(result).some(({args}) => args.old), 'an edit with old_text');
+      assert.equal(result.editor.text('src/config.mjs'), FILES['src/config.mjs'].replace('retries: 5', 'retries: 7'));
+      assert.ok(result.unchanged);
+    });
+
     test(`${stack.name}: the Driver types the test command for the user and leaves Enter to them`, {timeout: 300_000}, async t => {
       const result = await turn(session => session.drive('you take it: put the command that runs the tests in my terminal'));
       report(t, result);

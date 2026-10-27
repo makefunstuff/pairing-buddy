@@ -198,7 +198,8 @@ unsaved buffer; only the models' words are scripted.*
 **Taking it back halfway.** Any key you press while Pair types ends it at once, and leaves **no change**: the
 lines it already entered are undone, and that key, and any you press until they are, does nothing else, so it
 cannot change the buffer under a half-typed edit. Scrolling and clicking to watch are not keys. After the typing,
-a key still takes the wheel back, and leaves the edits it made.
+a key still takes the wheel back, and leaves the edits it made. Only a `:Pair` command does not: with it you talk to
+Pair while it [keeps the wheel](driver.md#keeping-the-wheel).
 
 ![A key halfway: the lines Pair typed go, and the statusline is back at ● pair](images/take-back.gif)
 
