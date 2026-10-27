@@ -7,7 +7,8 @@ Every candidate remark (a failed command you missed, the same error again, a new
 1. **Typing.** While you type, the trigger waits for your next pause; nothing is asked.
 2. **Budget.** When the talk level's budget is spent (too many remarks this hour, or the last one too recent), the trigger is dropped; nothing is asked.
 3. **Prefilter.** Cheap rules drop what is plainly noise, without a model (below).
-4. **Watcher.** The model scores what is left. Below the trigger's bar the trigger is dropped; at or above it, the Partner gets it.
+4. **Pace.** While the Watcher's calls take long, kinds of moment you can see for yourself are dropped without asking ([below](#when-the-server-is-slow)).
+5. **Watcher.** The model scores what is left. Below the trigger's bar the trigger is dropped; at or above it, the Partner gets it.
 
 Each trigger is looked at once: a dropped trigger does not come back. Drift is the exception for the budget: it lasts as long as you stay in that file, so when the budget holds it back it is looked at again on each tick (logged once) until the budget allows, and then judged.
 
@@ -172,7 +173,26 @@ The simple fix is one model for both roles (`"model"` in the config; see [models
 
 A server that does not say what it has loaded shows it in the time it takes. The daemon times each Watcher call and notes whether a Partner turn came before it. The Watcher's usual time is known once two of its calls came with no Partner turn before them. From then on, when two calls in a row after a Partner turn take over 2 s and over four times that usual time, the server is reloading on each switch, and the Watcher scores with the Partner's model. A server that is slow every time is not taken for one that swaps: before the usual time is known, slow calls count for nothing. `pair doctor` measures it too: it asks the Watcher right after the Partner and then again, and a `swap` line says whether the first took far longer. The daemon's log says when the Watcher switches. The health probe follows the same choice, so it does not swap models either.
 
-What Pair cannot change is a server that is slow on every request: each new moment (one not remembered, above) waits for one Watcher call, and `pair doctor` warns when that takes over 1.5 s.
+## When the server is slow
+
+Every candidate remark waits for one Watcher call, and Pair cannot make that call faster. What it can do is ask fewer of them. The prefilter drops what it is sure is noise (a `grep` that found nothing, a run you stopped yourself) without asking, and a moment seen in the last half hour gets its last score again (above). On a slow server, what is left is still one call per new moment, and moments come several at a time: a failure that comes up after a drift and two numbers waits for all three scores before its own.
+
+So the daemon times each Watcher call, keep-warm pings included, and goes by the median of the last twelve. At 1.5 s or more (where `pair doctor` warns), Pair stops asking about half the kinds you can see for yourself: a note's drift and stalled question, drift, and a search trail. At 3 s or more it stops asking about all of them, the numbers that moved or did not, a new warning and a stall too. A remark on those would tell you what is already on your screen. It never stops asking about news you cannot see: a failure you missed, the same error again, an error in code you moved on from, an edit while a test is red, a regression, a crash. With `autoTune` on (the default), once you have judged five remarks of a kind, the share you kept ranks it instead of the list, so a kind you keep dismissing is the first to go and one you keep using the last. Every kind is asked about again when the median is 1 s or less; between 1 and 1.5 s the pace stays as it is, so a server at the border does not change its mind on every call. It takes five calls to say anything, and the median is the lower middle, so two reload-long calls among the first five (a cold load at start, a reload after the first Partner turn) change nothing; it takes more than half of the calls being slow.
+
+The daemon's log says when the pace changes, `pair doctor` has a `pace` line with the median and the kinds not asked, and `:Pair today` books those moments as "not asked, the server is slow". `"watcherPace": false` asks about every kind however slow the server is.
+
+Measured with `node test/pace-bench.mjs`: a fake Watcher answering in a set time, and 40 moments of an hour coming up four at a time through the speak gate, the score memory and the pace (not the daemon's slot), 2 of them noise for the prefilter and 2 remembered. Before is `"watcherPace": false`:
+
+| Watcher call | Calls | Watcher busy | Wait for news you cannot see, median |
+| --- | --- | --- | --- |
+| 0.3 s | 36 → 36 | 10.8 s → 10.8 s | 0.9 s → 0.9 s |
+| 1.0 s | 36 → 36 | 36.0 s → 36.0 s | 3.0 s → 3.0 s |
+| 1.7 s | 36 → 26 | 61.2 s → 44.2 s | 5.1 s → 3.4 s |
+| 3.5 s | 36 → 15 | 126.1 s → 52.5 s | 10.5 s → 3.5 s |
+
+A cloud API asked as the Watcher (36 calls, one model in both roles) took 0.92 to 0.95 s per call (median), 1.4 s at most: it stays at full pace and gives nothing up.
+
+What Pair still cannot change is the call itself: on a slow server each new moment worth asking about waits for one.
 
 ## Thinking: the Partner, not the Watcher
 

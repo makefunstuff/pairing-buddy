@@ -51,16 +51,25 @@ function budgetFactor(kept) {
 }
 
 /**
- * What the judged ones of `remarks` (newest first) call for: `offsets` to the bars of the triggers with enough
- * verdicts, and `factor` for the budget, null with too few verdicts in all.
+ * The judged remarks of `remarks` (newest first), per trigger kind, at most the latest PER_TRIGGER of each: what
+ * says what the user made of that kind of remark.
  */
-function tuned(remarks, now) {
+function judgedByTrigger(remarks, now) {
   const byTrigger = new Map();
   for (const remark of remarks) {
     if (now - remark.at > WINDOW_MS || ['waiting', 'seen'].includes(outcome(remark, now))) continue;
     const judged = byTrigger.get(remark.trigger) ?? [];
     if (judged.length < PER_TRIGGER) byTrigger.set(remark.trigger, [...judged, remark]);
   }
+  return byTrigger;
+}
+
+/**
+ * What the judged ones of `remarks` (newest first) call for: `offsets` to the bars of the triggers with enough
+ * verdicts, and `factor` for the budget, null with too few verdicts in all.
+ */
+function tuned(remarks, now) {
+  const byTrigger = judgedByTrigger(remarks, now);
   const offsets = {};
   for (const [trigger, judged] of byTrigger) {
     if (judged.length >= MIN_PER_TRIGGER) offsets[trigger] = barOffset(keptShare(tally(judged, now)));
@@ -86,3 +95,12 @@ export function tuning(remarks, now, root = null) {
 }
 
 export const NO_TUNING = {offsets: {}, factor: 1, project: {triggers: [], budget: false}};
+
+/**
+ * For each trigger kind of `remarks` (newest first), `{share, judged}`: the share of its judged remarks the user
+ * kept, and how many were judged. What the Watcher's pace gives up first (see pace.mjs): a kind whose remarks are
+ * dismissed costs no call.
+ */
+export function keptShares(remarks, now) {
+  return Object.fromEntries([...judgedByTrigger(remarks, now)].map(([kind, judged]) => [kind, {share: keptShare(tally(judged, now)) ?? 0, judged: judged.length}]));
+}

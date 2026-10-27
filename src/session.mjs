@@ -32,7 +32,7 @@ import {TestRuns, treeOf} from './test-runs.mjs';
 import {named} from './terminals.mjs';
 import {currentTrail, trailMatches, trailSummary} from './trail.mjs';
 import {detectTriggers} from './triggers.mjs';
-import {outcome, tuning, WINDOW_MS} from './tuning.mjs';
+import {keptShares, outcome, tuning, WINDOW_MS} from './tuning.mjs';
 import {prepareUnsaved, withTree} from './unsaved.mjs';
 import {KEEP, splitTeaching, teachInput} from './tone.mjs';
 
@@ -251,8 +251,8 @@ export class PairSession {
    * budget (see tuning.mjs). `checkOutput` is where the hand-over's check writes its output and scratch copy when it
    * is not the command on save (see check.mjs): in the sandbox's writable runs folder.
    */
-  constructor({record, store, partner, score, typingPauseMs, notify, requestEditor, previousNote = null, lastSession = null, autoTune = false, health = {ok: () => true}, testOnSave = null, checkOutput = null, log = () => {}, now = Date.now}) {
-    Object.assign(this, {record, store, partner, score, typingPauseMs, notify, requestEditor, previousNote, lastSession, autoTune, health, log, now});
+  constructor({record, store, partner, score, pace = null, typingPauseMs, notify, requestEditor, previousNote = null, lastSession = null, autoTune = false, health = {ok: () => true}, testOnSave = null, checkOutput = null, log = () => {}, now = Date.now}) {
+    Object.assign(this, {record, store, partner, score, pace, typingPauseMs, notify, requestEditor, previousNote, lastSession, autoTune, health, log, now});
     this.checkOutput = checkOutput ?? join(tmpdir(), `pair-check-${process.pid}-${record.id}`, 'check.out'); // its copy of the project goes next to it
     this.state = initialState({root: record.root, goal: record.goal});
     this.budget = new Budget(record.level);
@@ -565,10 +565,16 @@ export class PairSession {
     if (this.busy) return triggers.forEach(trigger => this.waitFor(trigger, now));
     this.ticking = true;
     try {
-      if (triggers.length && this.autoTune) this.budget.tune(tuning(this.store.remarks(now - WINDOW_MS), now, this.root));
+      if (triggers.length && this.autoTune) {
+        const remarks = this.store.remarks(now - WINDOW_MS);
+        this.budget.tune(tuning(remarks, now, this.root));
+        this.pace?.rank(keptShares(remarks, now)); // what the pace gives up first (see pace.mjs)
+      } else if (!this.autoTune) {
+        this.pace?.rank({}); // without autoTune, verdicts change nothing: the pace's own order
+      }
       for (const trigger of triggers) {
         if (this.thought && !urgent(trigger.kind)) continue; // one held thought at a time
-        const decision = await decide({trigger, state: this.state, now, budget: this.budget, score: (judged, state) => this.scoreWithGist(judged, state), typingPauseMs: this.typingPauseMs});
+        const decision = await decide({trigger, state: this.state, now, budget: this.budget, score: (judged, state) => this.scoreWithGist(judged, state), typingPauseMs: this.typingPauseMs, pace: this.pace});
         if (!this.repeats(trigger, decision)) this.log(`${trigger.kind}: ${decision.verdict} (${decision.reason})`);
         if (decision.held) this.waitFor(trigger, now);
         else this.waited(trigger, now);
@@ -580,7 +586,7 @@ export class PairSession {
         }
         this.fired.add(trigger.key);
         if (decision.verdict === 'speak') return await (this.remarking = this.remark(trigger, decision.score, this.waits.get(trigger.key)?.ms));
-        this.ledger.quiet(trigger.kind, decision.reason, {budget: decision.score === undefined});
+        this.ledger.quiet(trigger.kind, decision.reason, {budget: decision.score === undefined && !decision.skipped, slow: decision.skipped});
       }
     } finally {
       this.ticking = false;
