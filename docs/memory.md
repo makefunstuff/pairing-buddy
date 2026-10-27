@@ -1,6 +1,6 @@
 # Memory and feedback
 
-Pair remembers where the last session in a project stopped, and learns from you when a remark is worth making. Both live in the daemon's data directory (`sessions.sqlite`), never in your repository, and never leave your machine.
+Pair remembers where the last session in a project stopped, can look up what earlier ones said, and learns from you when a remark is worth making. Both live in the daemon's data directory (`sessions.sqlite`), never in your repository, and never leave your machine.
 
 ## No ceremony: a session starts and ends by itself
 
@@ -19,7 +19,7 @@ The chat says where the goal came from (`Goal, from the board task hookd/7: Retr
 
 A session ends by itself, and writes its note:
 
-- after 45 minutes in which you neither typed, edited, moved in Neovim, ran a command nor asked anything;
+- after 45 minutes in which you neither typed, edited, moved or scrolled in Neovim, ran a command nor asked anything;
 - a minute after its last Neovim and chat pane closed (a Neovim you restart at once keeps it).
 
 A session you did no work in ends without a note, also with `/end`: there is nothing to note. Work is typing, an edit,
@@ -60,7 +60,21 @@ The next session in the same project (the same git root, or [session root](confi
 
 - The first Neovim, at least 30 minutes after that session ended, [picks up](neovim.md#the-morning-pick-up-and-the-days-end) at the debrief's first step.
 
-Each project has its own memory. Only the last note is carried over, not the whole chat or the old conversation: that keeps the context small for local models. The chat history and every note stay in `sessions.sqlite`.
+Each project has its own memory. Only the last note is carried over on every turn, not the whole chat or the old conversation: that keeps the context small for local models. The chat history and every note stay in `sessions.sqlite`, where Pair looks them up when they matter.
+
+## Earlier sessions
+
+"What did we try last week?" reaches further back than the last note. The Partner has a `recall` tool, in every role: it searches the goals, notes and chat lines of the project's earlier sessions for a few words, and answers with the best matches, each with its day:
+
+```
+From the earlier sessions of this project, best matches first:
+- Session of 2026-10-20 (goal: reconnect drops), its note:
+✓ The reconnect waits 30 s now.
+- 2026-10-20 14:02 (goal: reconnect drops), the user: did raising RECONNECT_TIMEOUT_MS help?
+- 2026-10-20 14:03 (goal: reconnect drops), you: No: the socket closes before the timeout.
+```
+
+A question that is plainly about the past ("last week", "yesterday", "did we", "we tried", "do you remember") comes with that search already done, so even a small model that would not think of the tool answers from what was said then, not from a guess. Other questions do not, and no remark is made because of what an old session said. The search stays in the project: another project's sessions, and this session's own chat (the Partner has that already), are never in it. Each search is a `recalled` line in the [ledger](neovim.md#the-ledger).
 
 ## Feedback on remarks
 
@@ -72,7 +86,16 @@ Every remark Pair makes unasked can get your verdict: useful, or noise. Answers 
 | Neovim | `Alt-u` (`<M-u>`, or `:Pair useful`) | `Alt-n` (`<M-n>`, or `:Pair noise`) |
 | A suggestion in the remark | accepting it (`Alt-y`, `:Pair accept`) | `:Pair dismiss` |
 
-- In the chat, a remark ends with a dim `+ useful  - noise` line. The verdict goes to the last remark.
+- In the chat, a remark ends with a dim `+ useful  - noise` line. The verdict goes to the last remark, also after the daemon restarted.
+- **An older remark** is rated from a list. In the chat, `/remarks` lists the last nine remarks in the project, newest first, with the first line of each and what became of it; `+2` (or `/useful 2`) rates the second last useful, `-3` (or `/noise 3`) the third last noise, and so on:
+
+  ```
+  ·· 1  14:05  drift           Edits in docs/ are off the goal.  (waiting)
+  ·· 2  10-26 09:30  failed_command  The retry count is off by one.  (ignored)
+  ·· +2 or -2 rates the second last, and so on
+  ```
+
+  The numbers are those of the list you saw, even when Pair made another remark since. In Neovim, `:Pair today` lists the day's remarks with the rest of the [ledger](neovim.md#the-ledger), where `+` and `-` rate the one under the cursor.
 - In Neovim, `Alt-u` and `Alt-n` are mapped (in Normal mode) only while a remark waits for a verdict, and only if you have no mapping of your own on them; they go away after the verdict. Change them with the plugin's `useful_key` and `noise_key` options, or `false` for none; the commands work either way.
 - A later verdict replaces an earlier one: `-`, then accepting the suggestion after all, counts as useful.
 - **A remark you see and work on is neither.** In Neovim, Pair's words go with your next edit, and that edit (or `Alt-j` to where it points) counts the remark as seen: neither useful nor noise, and it does not move the tuning. A verdict still replaces it.
@@ -81,7 +104,9 @@ Every remark Pair makes unasked can get your verdict: useful, or noise. Answers 
 
 ## Learning when to talk
 
-With `"autoTune": true` (the default), Pair tunes two things from your verdicts. It looks at the verdicts of the last 30 days, at most the last 20 per trigger, so it follows your recent habits. It tunes the bars and budget of every project together.
+With `"autoTune": true` (the default), Pair tunes two things from your verdicts. It looks at the verdicts of the last 30 days, at most the last 20 per trigger, so it follows your recent habits.
+
+**Per project.** A project where drift remarks help and one where they are noise each get their own bar. A trigger's bar follows the project's own verdicts on it once there are enough of them (the minimum below), and the verdicts of all projects until then; the same goes for the budget. A new project starts from all your verdicts, and moves away from them as it gets its own. `pair stats --project` says which parts are the project's own.
 
 **Each trigger's bar** (the Watcher score a remark needs), once a trigger has at least 5 verdicts:
 
@@ -107,7 +132,7 @@ The safe bounds hold whatever the numbers say: a bar moves at most 1 down and 2 
 
 ## `pair stats`
 
-`pair stats` shows the last 7 days (`--days N` for another span), across all projects. It reads the data directory, so it works whether the daemon runs or not.
+`pair stats` shows the last 7 days (`--days N` for another span), across all projects; `pair stats --project` shows the project of the folder you are in (or `pair stats --project DIR`, of that folder), with its own bars and budget. It reads the data directory, so it works whether the daemon runs or not.
 
 ```
 Last 7 days, all projects: 6.5 h of active pairing, 15 unasked remarks (2.3 per hour)
@@ -122,10 +147,10 @@ drift                      5       0.8       0          2        3    0%  8 (+2)
 edit_while_red             1       0.2       1          0        0  100%       6
 
 Budget at level normal: at most 5 remarks per hour, 4 min apart (the level's default: 6, 3 min)
-Tuning follows your verdicts of the last 30 days: a trigger needs 5 of them to move its bar, the budget 10.
+Tuning follows your verdicts of the last 30 days: a trigger needs 5 of them to move its bar, the budget 10. Each project tunes on its own verdicts once it has as many (pair stats --project).
 ```
 
-- **Active pairing** is the time in which you typed, edited or ran a command in the last five minutes, while a session was open. It is stored per clock hour, when it happened, so a session left open for days counts toward each day you used it, and `--days 1` shows today's work even in a session started last week. Remarks per hour are counted against it, not against the hours a session stood open, and shown from six minutes of it on.
+- **Active pairing** is the time in which you typed, edited, ran a command, moved the cursor or scrolled in the last five minutes, while a session was open: reading code counts. A cursor Neovim reports again where it already was does not, nor a split Pair opens. Reading alone is no work for a [debrief](#the-session-note-the-days-end-debrief), though: a session you only read in ends without one. It is stored per clock hour, when it happened, so a session left open for days counts toward each day you used it, and `--days 1` shows today's work even in a session started last week. Remarks per hour are counted against it, not against the hours a session stood open, and shown from six minutes of it on. With `--project`, it is the time in that project (counted per project since v0.9).
 - **kept** is useful ÷ (useful + dismissed + ignored); remarks still waiting, and seen ones, do not count. The first line also counts the seen remarks, when there are any.
 - **bar** is the Watcher score each trigger needs now, with the tuning's change from the level's bar in brackets.
 - **Budget** is what the tuned budget allows now at your configured level.

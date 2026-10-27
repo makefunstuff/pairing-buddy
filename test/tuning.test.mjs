@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {IGNORED_AFTER_MS, keptShare, outcome, tally, tuning, WINDOW_MS} from '../src/tuning.mjs';
+import {IGNORED_AFTER_MS, keptShare, NO_TUNING, outcome, tally, tuning, WINDOW_MS} from '../src/tuning.mjs';
 
 const NOW = 100 * 24 * 60 * 60_000;
 const HOUR = 60 * 60_000;
@@ -45,5 +45,24 @@ test('only recent verdicts count: the last twenty per trigger, within the window
   const changed = remarks('drift', [...Array(20).fill('useful'), ...Array(40).fill('dismissed')]);
   assert.equal(tuning(changed, NOW).offsets.drift, -1);
   const old = remarks('drift', Array(10).fill('dismissed')).map(remark => ({...remark, at: remark.at - WINDOW_MS}));
-  assert.deepEqual(tuning(old, NOW), {offsets: {}, factor: 1});
+  assert.deepEqual(tuning(old, NOW), NO_TUNING);
+});
+
+test('a project with verdicts enough tunes on its own, per trigger and for the budget; the rest follows all projects', () => {
+  const at = root => remark => ({...remark, root});
+  const noisyDrift = remarks('drift', Array(5).fill('dismissed')).map(at('/docs'));
+  const usefulDrift = remarks('drift', Array(5).fill('useful')).map(at('/app'));
+  const stalls = remarks('stall', ['useful', 'useful', 'useful', 'useful', 'dismissed']).map(at('/app'));
+  const all = [...noisyDrift, ...usefulDrift, ...stalls];
+
+  assert.deepEqual(tuning(all, NOW).offsets, {drift: 0, stall: -1}, 'all projects pooled: drift half kept');
+  const docs = tuning(all, NOW, '/docs');
+  assert.deepEqual(docs.offsets, {drift: 2, stall: -1}, 'its own drift bar; stall from all projects');
+  assert.deepEqual(docs.project, {triggers: ['drift'], budget: false});
+  assert.equal(docs.factor, 1, 'five verdicts are too few for its own budget: that of all projects, 60% kept');
+  const app = tuning(all, NOW, '/app');
+  assert.deepEqual(app.offsets, {drift: -1, stall: -1});
+  assert.deepEqual(app.project, {triggers: ['drift', 'stall'], budget: true});
+  assert.equal(app.factor, 1.5, 'its own budget: 90% kept');
+  assert.deepEqual(tuning(all, NOW, '/new').offsets, tuning(all, NOW).offsets, 'a project without verdicts follows all of them');
 });

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {mkdtempSync, writeFileSync} from 'node:fs';
+import {mkdirSync, mkdtempSync, realpathSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -52,24 +52,37 @@ test('remarks that waited for the model while the Partner was at work say how lo
 });
 
 test('`pair stats` reads the data directory, also while no daemon runs, and counts active time when it happened', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'pair-stats-'));
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'pair-stats-')));
   const config = join(dir, 'config.json');
   writeFileSync(config, JSON.stringify({dataDir: dir, models: {watcher: {api: 'openai', baseUrl: 'http://x/v1', model: 'w'}, partner: {api: 'openai', baseUrl: 'http://x/v1', model: 'p'}}}));
-  const run = args => execFileSync(process.execPath, ['--disable-warning=ExperimentalWarning', BIN, 'stats', ...args], {encoding: 'utf8', env: {...process.env, PAIR_CONFIG: config}});
+  const run = (args, cwd = dir) => execFileSync(process.execPath, ['--disable-warning=ExperimentalWarning', BIN, 'stats', ...args], {encoding: 'utf8', cwd, env: {...process.env, PAIR_CONFIG: config}});
   assert.match(run([]), /No sessions yet/);
 
   // A session left open for ten days (the usual case: it lasts until /end), used ten days ago and today.
+  const [project, other] = ['hookd', 'other'].map(name => join(dir, name));
+  for (const folder of [project, other]) mkdirSync(folder);
   const store = openStore(join(dir, 'sessions.sqlite'));
   const now = Date.now();
-  const session = store.createSession({root: '/project', conversationId: 'c', level: 'normal', at: now - 10 * 24 * HOUR});
-  store.addActive(now - 10 * 24 * HOUR + HOUR, HOUR);
-  store.addActive(now, 2 * HOUR);
+  const session = store.createSession({root: project, conversationId: 'c', level: 'normal', at: now - 10 * 24 * HOUR});
+  store.addActive(now - 10 * 24 * HOUR + HOUR, HOUR, project);
+  store.addActive(now, 2 * HOUR, project);
   store.rateRemark(store.addRemark({sessionId: session.id, trigger: 'stall', score: 8, at: now - HOUR}), 'useful');
   store.addRemark({sessionId: session.id, trigger: 'stall', score: 7, at: now - 10 * 24 * HOUR + HOUR}); // outside 7 days
+  // Another project, today: all projects count it, --project in hookd does not.
+  const elsewhere = store.createSession({root: other, conversationId: 'd', level: 'normal', at: now - HOUR});
+  store.addActive(now, 2 * HOUR, other);
+  store.rateRemark(store.addRemark({sessionId: elsewhere.id, trigger: 'drift', score: 7, at: now - HOUR}), 'dismissed');
   store.close();
   const shown = run(['--days', '7']);
-  assert.match(shown, /^Last 7 days, all projects: 2\.0 h of active pairing, 1 unasked remark \(0\.5 per hour\)$/m);
-  assert.match(shown, /^stall +1 +0\.5 +1 +0 +0 +100% +6$/m);
-  assert.match(run(['--days', '1']), /^Last 1 day, all projects: 2\.0 h of active pairing, 1 unasked remark \(0\.5 per hour\)$/m);
-  assert.match(run(['--days', '30']), /3\.0 h of active pairing, 2 unasked remarks/);
+  assert.match(shown, /^Last 7 days, all projects: 4\.0 h of active pairing, 2 unasked remarks \(0\.5 per hour\)$/m);
+  assert.match(shown, /^stall +1 +0\.3 +1 +0 +0 +100% +6$/m);
+  assert.match(run(['--days', '1']), /^Last 1 day, all projects: 4\.0 h of active pairing, 2 unasked remarks \(0\.5 per hour\)$/m);
+  assert.match(run(['--days', '30']), /5\.0 h of active pairing, 3 unasked remarks/);
+
+  const own = run(['--project'], project);
+  assert.match(own, /^Last 7 days, project hookd: 2\.0 h of active pairing, 1 unasked remark \(0\.5 per hour\)$/m);
+  assert.match(own, /^drift +0 /m);
+  assert.match(own, /Tuning follows the verdicts of all projects .* until hookd has enough of its own/);
+  assert.match(run(['--project', other]), /^Last 7 days, project other: 2\.0 h of active pairing, 1 unasked remark/m);
+  assert.match(run(['--project', dir]), /No sessions in .* yet/);
 });

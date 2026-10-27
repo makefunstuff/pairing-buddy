@@ -19,6 +19,7 @@ import {keptOutput, Ledger, ledgerDetail, today} from './ledger.mjs';
 import {DebugLines, printedBy} from './debug-lines.mjs';
 import {changeLine, headline, runLine, verdictText} from './run-log.mjs';
 import {around, codeOn, fallbackLine, PICKUP_AFTER_MS, pickupInput, pickupLine, relocate, restoredTests} from './pickup.mjs';
+import {asksAboutBefore, recall} from './recall.mjs';
 import {placeRun} from './run-places.mjs';
 import {crashText, hasNews, readingSummary, readRun} from './run-output.mjs';
 import {RUN_TIMEOUT_MS, shellQuote} from './scout-pane.mjs';
@@ -27,7 +28,7 @@ import {parseTestOutput, testSummary} from './test-output.mjs';
 import {TestRuns} from './test-runs.mjs';
 import {currentTrail, trailMatches, trailSummary} from './trail.mjs';
 import {detectTriggers} from './triggers.mjs';
-import {tuning, WINDOW_MS} from './tuning.mjs';
+import {outcome, tuning, WINDOW_MS} from './tuning.mjs';
 import {KEEP, splitTeaching, teachInput} from './tone.mjs';
 
 const SILENT = /^\W*silent\W*$/i;
@@ -102,6 +103,7 @@ const ROLE_NOTES = {
 };
 
 const CONFIRM_MS = 60_000;
+const REMARKS_LISTED = 9; // /remarks lists this many, so +N and -N take one digit
 const PANE_USES_PER_TURN = 4; // small steps: a few searches or commands per question, not a long plan
 const SEARCH_LINES = 50;
 const RUN_OUTPUT_CHARS = 3000;
@@ -186,13 +188,13 @@ export function cleanNote(text) {
 }
 
 // What the user does, unlike what Pair, herdr's focus or the LSP report: a session nobody uses never ends by itself.
-const USER_EVENTS = new Set(['typing', 'edit', 'enter', 'cursor', 'save', 'command_end', 'search']);
+const USER_EVENTS = new Set(['typing', 'edit', 'enter', 'cursor', 'scroll', 'save', 'command_end', 'search']);
 // Of those, the ones that are work, not only looking around: a session with none of them has nothing to debrief.
 const WORK_EVENTS = new Set(['typing', 'edit', 'save', 'command_end', 'search']);
 // An answer to "What are we doing this session?" that means: no goal, don't ask.
 const NO_GOAL = /^\W*(exit|later|skip|none|no|nothing|-)\W*$/i;
 
-const IDLE_AFTER_MS = 5 * 60_000; // no key, edit or command for this long: the user is away, and active time stops
+const IDLE_AFTER_MS = 5 * 60_000; // no key, edit, command, cursor move or scroll for this long: the user is away, and active time stops
 const ACTIVE_FLUSH_MS = 60_000;
 const MAX_TICK_GAP_MS = 5000; // a longer gap between ticks (a suspended laptop) is not active time
 
@@ -237,7 +239,7 @@ export class PairSession {
     this.edited = false; // the Driver made its one edit in this hand-over
     this.handback = null; // that edit's lines and how the tests went on them: {file, line, endLine, tests}
     this.remarkId = null; // the stored remark of the running unasked turn
-    this.lastRemark = null; // the last remark that reached the user: what feedback without an id rates
+    this.lastRemark = store.lastRemark(record.id); // the last remark that reached the user: what feedback without an id rates
     this.lastWords = null; // what Pair said in its last turn that said anything: what a teach request without words is about
     this.tickedAt = null;
     this.activeMs = 0; // active time not yet stored
@@ -493,7 +495,7 @@ export class PairSession {
     if (this.busy) return triggers.forEach(trigger => this.waitFor(trigger, now));
     this.ticking = true;
     try {
-      if (triggers.length && this.autoTune) this.budget.tune(tuning(this.store.remarks(now - WINDOW_MS), now));
+      if (triggers.length && this.autoTune) this.budget.tune(tuning(this.store.remarks(now - WINDOW_MS), now, this.root));
       for (const trigger of triggers) {
         if (this.thought && !urgent(trigger.kind)) continue; // one held thought at a time
         const decision = await decide({trigger, state: this.state, now, budget: this.budget, score: (judged, state) => this.scoreWithGist(judged, state), typingPauseMs: this.typingPauseMs});
@@ -537,14 +539,14 @@ export class PairSession {
     return repeated;
   }
 
-  /** Whether the user typed, edited or ran a command in the last few minutes. */
+  /** Whether the user typed, edited, ran a command or read (moved the cursor, scrolled) in the last few minutes. */
   active(now = this.now()) {
     return now - this.lastActivity() < IDLE_AFTER_MS;
   }
 
-  /** When the user last typed, edited or ran a command. */
+  /** When the user last typed, edited, ran a command or read. */
   lastActivity() {
-    return Math.max(this.state.lastKeyAt, this.state.lastEditAt, this.state.commands.at(-1)?.endedAt ?? 0);
+    return Math.max(this.state.lastKeyAt, this.state.lastEditAt, this.state.lastLookAt, this.state.commands.at(-1)?.endedAt ?? 0);
   }
 
   /** Adds the time since the last tick to the active time while the user is at work, for `pair stats`. */
@@ -562,8 +564,8 @@ export class PairSession {
 
   storeActive() {
     if (this.activeMs) {
-      this.store.addActive(this.activeAt, this.activeMs);
-      this.store.addSessionActive(this.id, this.activeMs);
+      this.store.addActive(this.activeAt, this.activeMs, this.root);
+      this.store.addSessionActive(this.id, this.activeMs, this.worked);
     }
     this.activeMs = 0;
   }
@@ -594,6 +596,7 @@ export class PairSession {
       this.show(() => {
         this.budget.spend(this.now());
         this.lastRemark = id;
+        this.store.showRemark(id);
         this.notify('chat', {type: 'remark', id});
         this.notify('editor', {type: 'remark', id, text: words.join('\n'), target});
         this.earcon('tick');
@@ -621,14 +624,24 @@ export class PairSession {
   }
 
   /**
-   * The user's verdict on a remark: on remark `id`, else on the last one. Accepting or dismissing a suggestion
-   * is `implicit` feedback, which the chat does not confirm.
+   * The user's verdict on a remark: on remark `id`, else on the `number`th last in this project (as /remarks lists
+   * them), else on the last one. Accepting or dismissing a suggestion is `implicit` feedback, which the chat does not
+   * confirm.
    */
-  feedback({useful, id = this.lastRemark, implicit = false}) {
-    const rated = id !== null && this.store.rateRemark(id, useful ? 'useful' : 'dismissed');
+  feedback({useful, id, number, implicit = false}) {
+    const remark = id ?? (number ? this.store.recentRemarks(this.root, number)[number - 1]?.id ?? null : this.lastRemark);
+    const rated = remark !== null && this.store.rateRemark(remark, useful ? 'useful' : 'dismissed');
     if (implicit) return;
-    if (!rated) return this.message('system', 'There is no remark of Pair to rate yet.');
-    this.message('system', useful ? 'Noted: useful.' : 'Noted: not useful.');
+    if (!rated) return this.message('system', number ? `There is no remark ${number}: /remarks lists them.` : 'There is no remark of Pair to rate yet.');
+    this.message('system', `${useful ? 'Noted: useful' : 'Noted: not useful'}${number ? ` (remark ${number})` : ''}.`);
+  }
+
+  /** The last remarks in this project, newest first, numbered, for the chat to rate an older one (`+2`, `-3`). */
+  remarkList() {
+    const now = this.now();
+    const remarks = this.store.recentRemarks(this.root, REMARKS_LISTED)
+      .map(({id, trigger, at, text, ...remark}) => ({id, trigger, at, text, outcome: outcome({...remark, at}, now)}));
+    return {type: 'remarks', remarks};
   }
 
   /** The user's remark seen: they edited after it showed. Neither useful nor noise; a verdict still replaces it. */
@@ -655,7 +668,7 @@ export class PairSession {
       return '';
     }
     await this.yieldRemark();
-    await this.talk(`[user] ${text}${await this.selected(selection)}\n\nNow:\n${describeState(this.state, this.now())}\n\n${KEEP.answer}`);
+    await this.talk(`[user] ${text}${await this.selected(selection)}${this.recalled(text)}\n\nNow:\n${describeState(this.state, this.now())}\n\n${KEEP.answer}`);
     return this.words.join('\n');
   }
 
@@ -670,6 +683,15 @@ export class PairSession {
     if (!this.words.length) return;
     const message = {type: 'message', sender: 'system', text: `Late answer to "${asked}": ${this.words.join('\n')}`, at: this.now()};
     if (!this.notify('editors', message)) this.lateForEditors = message;
+  }
+
+  /**
+   * For a question about earlier sessions, what they kept about it (see recall.mjs), so even a model that would not
+   * call recall answers from them; '' for any other question.
+   */
+  recalled(question) {
+    const found = asksAboutBefore(question) && recall(this.store, this.root, this.id, question);
+    return found ? `\n\n${found}` : '';
   }
 
   /** The lines the user selected, for the Partner's input; '' without a selection. */
@@ -754,11 +776,11 @@ export class PairSession {
 
   /**
    * Whether this session has something to debrief: the user worked in it (see WORK_EVENTS), or did before the daemon
-   * restarted, which its active time shows. Moving about or switching files alone is no work: the empty session that
-   * follows a debrief never writes one over it.
+   * restarted, which its stored row says. Moving about, reading or switching files alone is no work: the empty session
+   * that follows a debrief never writes one over it.
    */
   hasWork() {
-    return this.worked || this.activeMs > 0 || this.store.sessionActiveMs(this.id) > 0;
+    return this.worked || !!this.record.worked;
   }
 
   /** Whether the user used this session and then did nothing for `ms`. */
@@ -1080,6 +1102,12 @@ export class PairSession {
   voiced(text) {
     if (!this.asksBack || !text) return text;
     return this.said ? null : oneQuestion(text);
+  }
+
+  /** Searches the earlier sessions of this project (see recall.mjs). */
+  recall({query}) {
+    this.ledger.add('recalled', query);
+    return recall(this.store, this.root, this.id, query) ?? 'Give recall a few words to look for.';
   }
 
   say(words) {

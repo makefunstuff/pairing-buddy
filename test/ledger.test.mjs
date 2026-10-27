@@ -181,7 +181,7 @@ test('today starts at local midnight; runs of one command with one result are on
   for (let i = 0; i < 3; i++) ledger.add('ran', 'make test', {data: {note: '4 tests', result: 'pass'}, detail: {output: `run ${i}`}});
   ledger.add('typed', '6 lines in backoff_test.c', {data: {note: 'one undo step', undo: true}});
   store.updateAction(ledger.last.id, {state: 'undone'});
-  store.addActive(NOON, 130 * MIN);
+  store.addActive(NOON, 130 * MIN, '/p');
   const listed = today(store, '/p', NOON);
   assert.deepEqual(listed.rows.map(row => [row.text, row.note, row.ids.length]), [['make test', '4 tests · 3 times', 3], ['6 lines in backoff_test.c', 'one undo step', 1]]);
   assert.equal(ledgerDetail(store, '/p', listed.rows[0].ids).text, 'run 2', 'the output of the last run');
