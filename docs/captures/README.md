@@ -25,7 +25,8 @@ recording comes out the same each time.
   agents scene: [hashtab/](hashtab/), another C hash table, timed with `make`. Teach on request is in the C
   program the live tone tests use ([test/live/probe](../../test/live/probe/)), whose `make run` fails its check with exit 1. The notes scene adds its
   design note, [notes/dead-letters.md](notes/dead-letters.md), which the tests read too. The exploration loop:
-  [loop/](loop/), the research's entity table, built and run with `make -s run` in the `:terminal` on the right. The
+  [loop/](loop/), the research's entity table, built and run with `make -s run` in the `:terminal` on the right. The hand-over without a
+  test uses it too: Pair's own pane builds and runs the unsaved buffer there, in a scratch copy. The
   blank page's scenes start in an empty folder, `ticks`, with no git yet.
 - **The blank page's words** are not written for the capture: [ticks.json](ticks.json) holds a real `:Pair new`
   with a cloud model, unedited. It has the three questions (each asked after the answer before it), the slice and the
@@ -60,6 +61,7 @@ recording comes out the same each time.
 | [debrief](tapes/debrief.tape) | the day's end: the lease fix goes green, `/end` in the chat pane, and `e` on tomorrow's first step |
 | [crash](tapes/crash.tape) | a compiler error, a crash and its frame, and a new warning, from `make run` on save |
 | [loop](tapes/loop.tape) | the exploration loop: four runs of `make` in your terminal, the same numbers and why, `:Pair runs` |
+| [hand-over-run](tapes/hand-over-run.tape) | the hand-over without a test: an intent and a number to reach; the unsaved buffer built and run with your `make -s run`; `✓ avg probe 1.1` |
 | [agents](tapes/agents.tape) | your other agents' news, one line at your next breakpoint, and `:Pair agents` |
 | [notes](tapes/notes.tape) | notes in the margin: the marks, a fixed line, a decision logged, the tasks panel |
 | [teach](tapes/teach.tape) | Alt-? on a remark: the idea worth keeping behind it, and its link |

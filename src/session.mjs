@@ -1345,7 +1345,7 @@ export class PairSession {
     const {check, expect} = this.handOver;
     if (!check.command) return `${DONE}. Nothing ran on the unsaved buffer: ${check.none}. The file on disk changes only when the user saves, so do not run anything now.`;
     const runs = check.command === this.testRuns?.command ? this.testRuns : new TestRuns({
-      root: this.root, command: check.command, outputFile: join(tmpdir(), `pair-check-${this.id}.out`), pane: () => this.scout, report: run => this.testRun(run),
+      root: this.root, command: check.command, outputFile: join(tmpdir(), `pair-check-${process.pid}-${this.id}.out`), pane: () => this.scout, report: run => this.testRun(run),
     });
     const run = await runs.unsaved(path, await this.bufferText(path));
     if (run.state === 'error') return `${DONE}. \`${run.label}\` could not run on the unsaved buffer: ${run.error}.`;
