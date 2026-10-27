@@ -107,6 +107,33 @@ small one is enough. pi-ai's catalog has these (`pair auth models PROVIDER` list
 - **Check it with `pair doctor`.** It asks the model one small question and says how long the answer took
   (below). Then let `pair stats` show, after a few days, whether its remarks are kept more often than the rules'.
 
+## Measured
+
+`node test/decision-check.mjs` with `typesafe/jev-1.14` on OpenRouter, at `normal`, on the 16 recorded moments
+(one run, 22 calls):
+
+| | Result |
+| --- | --- |
+| Gate right, with the model | 13 of 16 (81%) |
+| Gate right, by the rules alone | 16 of 16 (100%) |
+| Sorted noise or worth it with 80% or more | none, so no Watcher call was saved |
+| Latency per call | median 282 ms, p90 349 ms, slowest 414 ms; one call of 22 passed the 1.5 s timeout |
+| Cost per call | $0.000031, 741 input tokens |
+
+The rules' 100% says less than it looks: each recorded moment carries a Watcher score that agrees with its label, so
+the rules cannot miss on this set. What the run does show:
+
+- **The model is fast and cheap.** About 0.3 s and $0.00003 a call, well inside the 1.5 s timeout.
+- **Jev is not sure enough to replace the Watcher here.** Its sorts stayed between 47% and 76%, so every moment went
+  on to the Watcher. Its three misses were remarks that were wanted, and its "speak now" probability put them under
+  the 60% bar: the same failure twice (39%), a warning that is a likely bug (54%), drift into the billing code (53%).
+- **One slow answer costs 30 s of decisions.** The call that passed the timeout marked the model down, and the rules
+  decided the last four moments.
+
+With this model, Pair talks a little less than with the rules alone, and the Watcher is asked as often as before.
+Raise the level (`chatty` needs 40%) to counter that, or leave the model out until your own `pair stats` shows its
+remarks are kept more often than the rules' remarks.
+
 ## When it is down or slow
 
 A decision model that fails, or does not answer within `timeoutMs`, is down at once:
