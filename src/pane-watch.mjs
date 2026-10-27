@@ -43,8 +43,11 @@ export class Panes {
     for (const source of this.sources) source.stop();
   }
 
+  /** The panes of every source that answers: herdr closed leaves Neovim's terminals watched. None answering fails. */
   async list() {
-    const panes = (await Promise.all(this.sources.map(source => source.list()))).flat();
+    const lists = await Promise.allSettled(this.sources.map(source => source.list()));
+    if (lists.every(list => list.status === 'rejected')) throw lists[0].reason;
+    const panes = lists.flatMap(list => list.value ?? []);
     const top = Math.max(-1, ...panes.filter(pane => pane.focused).map(pane => pane.weight ?? 1));
     let given = false;
     return panes.map(pane => {

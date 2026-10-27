@@ -110,9 +110,14 @@ test('tmux pane and Neovim terminals as one source: the terminal you are in has 
   assert.equal(panes.paneOfShell(11), 'tmux:%1');
   assert.equal(panes.paneOfShell(13), null);
 
-  // Without tmux or herdr, Neovim itself has the focus while you are in it, out of its terminals.
-  current = null;
+  // tmux gone: Neovim's terminals are still watched.
+  tmuxSource.list = async () => { throw new Error('tmux list-panes: no server running'); };
+  current = 'nvim:7:3';
   editors[0].focused = null;
+  assert.deepEqual(await focused(), ['nvim:7:3']);
+  current = null;
+
+  // Without tmux or herdr, Neovim itself has the focus while you are in it, out of its terminals.
   assert.deepEqual((await new NvimPanes({editors: () => editors, ask}).list()).filter(pane => pane.focused).map(pane => pane.pane), ['nvim:7']);
 });
 
