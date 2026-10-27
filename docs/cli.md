@@ -45,7 +45,7 @@ Logins and keys for model providers, kept in `auth.json` next to the config, rea
 
 | Command | What it does |
 | --- | --- |
-| `pair auth login PROVIDER` | Log in with a subscription or store an API key (also `pair login PROVIDER`). A name pi-ai does not know stores a key for your own server, for `"auth"` |
+| `pair auth login PROVIDER` | Log in with a subscription or store an API key (also `pair login PROVIDER`). A name pi-ai does not know stores a key for your own server, for `"auth"`. Not on a terminal, it reads its answers from standard input, one per line: `pass show deepseek \| pair auth login deepseek` stores a key from a password manager (a choice comes first where the provider offers more than one login). Input that ends before an answer fails with "the input ended before an answer was given" and exit 1 |
 | `pair auth logout PROVIDER` | Remove that login or key (also `pair logout PROVIDER`) |
 | `pair auth list` | Every provider and whether a login or key is set; never the secrets. Also plain `pair auth` |
 | `pair auth models PROVIDER` | The models a provider offers, for a model entry's `"model"`, then its decision models, for a [`decision`](decision.md) entry |

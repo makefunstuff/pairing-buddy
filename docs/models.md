@@ -82,7 +82,9 @@ pair auth logout anthropic  # also `pair logout anthropic`
   (or prints the link) and finishes on a local callback. On a machine without a browser, choose the copy-code or
   device-code login where the provider offers one. The token renews itself before it expires, under a lock, so the
   daemon, `pair doctor` and `pair auth` never renew it twice.
-- **API keys**: every provider takes one. The key is typed at a prompt that does not echo it. A key for your own
+- **API keys**: every provider takes one. The key is typed at a prompt that does not echo it, or piped in from a
+  password manager: `pass show deepseek | pair auth login deepseek` (one answer per line; input that ends before an
+  answer fails with exit 1). A key for your own
   server: `pair auth login my-server` (any name pi-ai does not know), then `"auth": "my-server"` in its model entry.
 - The daemon reads the file as it needs a key, so a login takes effect without a restart.
 - **Keys from environment variables** (`apiKeyEnv`): a service started at login does not get your shell's
