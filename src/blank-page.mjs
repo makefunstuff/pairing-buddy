@@ -53,10 +53,28 @@ export function cleanQuestion(text) {
 
 const words = text => text.split(/\s+/).filter(Boolean).length;
 
-/** What is wrong with a question, for the Partner's second try; null when nothing is. */
-export function questionProblem(question) {
+// Words that say nothing about what a question asks.
+const FILLER = new Set(['should', 'would', 'could', 'only', 'also', 'just', 'being', 'with', 'that', 'this', 'what', 'when',
+  'which', 'there', 'their', 'then', 'than', 'from', 'into', 'about', 'does', 'have', 'your', 'first', 'version']);
+const topics = text => new Set((text.toLowerCase().match(/[a-z0-9]+/g) ?? []).filter(word => word.length > 3 && !FILLER.has(word)));
+const REPEAT = 0.6; // of the smaller question's topics, this share in common makes it the same question
+
+/** The earlier question that `question` asks again, or null. */
+function repeated(question, earlier) {
+  const mine = topics(question);
+  return earlier.find(other => {
+    const theirs = topics(other);
+    const shared = [...mine].filter(word => theirs.has(word)).length;
+    return Math.min(mine.size, theirs.size) > 0 && shared / Math.min(mine.size, theirs.size) >= REPEAT;
+  }) ?? null;
+}
+
+/** What is wrong with a question, for the Partner's second try; null when nothing is. `earlier` are the ones asked before. */
+export function questionProblem(question, earlier = []) {
   if (!question) return 'That was not a question. Ask exactly one question.';
   if (words(question) > QUESTION_WORDS) return `That question has ${words(question)} words; ask it in at most ${QUESTION_WORDS}.`;
+  const again = repeated(question, earlier);
+  if (again) return `That asks again what "${again}" asked, and the user answered it. Ask about something else.`;
   return null;
 }
 
@@ -198,7 +216,8 @@ export class BlankPage {
   async next() {
     const listing = await this.listing();
     if (this.qa.length >= QUESTIONS) return this.slice(listing);
-    const question = await this.consult(questionInput({idea: this.idea, qa: this.qa, listing}), cleanQuestion, questionProblem);
+    const asked = this.qa.map(item => item.question);
+    const question = await this.consult(questionInput({idea: this.idea, qa: this.qa, listing}), cleanQuestion, found => questionProblem(found, asked));
     if (question) return this.ask(question, this.qa.length + 1);
     this.close();
     this.session.message('system', 'Pair asked no question it could use, so the questions stop here. :Pair new starts again.');

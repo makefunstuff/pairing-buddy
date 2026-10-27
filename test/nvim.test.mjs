@@ -1080,3 +1080,33 @@ test('notes in the margin: five marks in a note, a fixed line loses its mark, a 
     await stop();
   }
 });
+
+test('a daemon restart while a :Pair new question waits ends the questions in Neovim too: no answer goes nowhere', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
+  const {project, dataDir, partner, remote, keys, status, restartDaemon, stop} = await pairInNvim('anything');
+  const question = () => Number(remote(`luaeval("#vim.tbl_filter(function(m) return m[4].virt_lines ~= nil end, vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('pair'), 0, -1, {details = true}))")`));
+  try {
+    partner.setResponses([fauxAssistantMessage([fauxText('What should the first run show?')])]);
+    keys(':Pair new a small toy in C<CR>');
+    await until(() => status() === '● pair · question 1 of a few', 'the first question');
+    let asked = 0;
+    await restartDaemon();
+    partner.setResponses([() => { asked++; return fauxAssistantMessage([fauxText('Sim steps or wall clock?')]); }]);
+    await until(() => status() === '● pair', 'Neovim back, and the question gone from the statusline', 15_000);
+    assert.equal(question(), 0, 'and from under the idea');
+    keys('o- two counters<Esc>');
+    await sleep(2500); // past the settle time an answer would have been sent after
+    assert.equal(asked, 0, 'nothing asks the Partner about an answer to a question the new daemon never asked');
+    // An answer that reaches the new daemon anyway, from a client that missed the restart, is told why it goes nowhere.
+    const late = connect(join(dataDir, 'pair.sock'));
+    const heard = [];
+    readMessages(late, message => heard.push(message));
+    late.on('connect', () => {
+      sendMessage(late, {type: 'hello', role: 'chat', cwd: project, resume: true});
+      sendMessage(late, {type: 'answer', text: 'two counters'});
+    });
+    await until(() => heard.some(message => /No questions of :Pair new are running here/.test(message.text ?? '')), 'the reply');
+    late.destroy();
+  } finally {
+    await stop();
+  }
+});

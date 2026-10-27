@@ -23,8 +23,9 @@ the answer before it.*
    mode (`Esc`) and changed nothing for a second and a half. Going back into Insert mode, or fixing a typo in
    Normal mode, waits again, so it is the fixed answer that goes. The next question shows under it, and the one
    before goes.
-4. A question has at most 18 words: one question, no code, no list of options. One that breaks this gets one
-   more try, with what was wrong.
+4. A question has at most 18 words: one question, no code, no list of options, and not one you answered already
+   (most of its words the same as an earlier question's). One that breaks this gets one more try, with what was
+   wrong; the second try is shown as it comes.
 
 While a question waits, Pair makes no remarks about the note. Its remarks about everything else go on: a question
 you leave unanswered does not silence it. `:Pair clear` ends the questions; `:Pair new` starts again.
@@ -112,6 +113,7 @@ land in the frame after the stall:
 ## Limits
 
 - Three questions, always, unless Pair asks none it can use or you stop them with `:Pair clear`.
+- A daemon restart ends the questions: Neovim says so, and `:Pair new` starts again.
 - `NOTES.md` is in Neovim's current folder, and must be inside the project (the git root, or the folder itself
   when there is no git yet).
 - An answer that has gone cannot be taken back: once it has settled after `Esc`, the next question comes.

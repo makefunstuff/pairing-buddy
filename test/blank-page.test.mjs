@@ -52,6 +52,10 @@ test('the question is cleaned of labels and quotes; one without a question mark,
   assert.match(questionProblem(null), /not a question/);
   assert.match(questionProblem(`${'word '.repeat(20)}?`), /21 words/);
   assert.equal(questionProblem('Sim steps or wall clock?'), null);
+  // The live JS run asked about adds and deletes twice.
+  const q2 = 'Should it report only content edits, or also files being added, deleted, or renamed?';
+  assert.match(questionProblem('Should a "change" include only edits, or also files being added or deleted?', [q2]), /asks again what "Should it report/);
+  assert.equal(questionProblem('Should the stall be a real clock sleep, and roughly how long?', ['What should visibly catch up after a stall — a moving dot, or just printed numbers?']), null, 'one shared word is no repeat');
 });
 
 test('the slice is read from the JSON in the answer, and becomes the note\'s sections', () => {

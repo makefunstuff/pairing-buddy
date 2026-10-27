@@ -544,7 +544,7 @@ export async function startDaemon(config, {
     if (message.type === 'drive') return session.drive(message.text ?? '', message.selection ?? null);
     if (message.type === 'take_back') return session.takeBack();
     if (message.type === 'new') return session.startNew(message.idea ?? '', message.file ?? 'NOTES.md');
-    if (message.type === 'answer') return session.blankPage?.answer(message.text ?? '');
+    if (message.type === 'answer') return session.blankPage?.open ? session.blankPage.answer(message.text ?? '') : session.message('system', 'No questions of :Pair new are running here (the daemon may have restarted). :Pair new starts again.');
     if (message.type === 'new_stop') return session.blankPage?.stop();
     if (message.type === 'confirm') return session.answer(message.id, message.ok === true);
     if (message.type === 'feedback') return session.feedback({useful: message.useful === true, id: message.remark ?? undefined, implicit: message.implicit === true});

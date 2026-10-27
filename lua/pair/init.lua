@@ -908,6 +908,10 @@ disconnected = function()
   listen.cancel(function() end) -- nor what you were saying
   spin()
   if state.role == 'driver' then set_role('navigator') end -- a restarted daemon has ended the hand-over
+  if blank.status() then -- nor does its :Pair new: an answer now would reach no one
+    blank.on_interview({done = true})
+    vim.notify('Pair: the daemon went away, so the questions of :Pair new stop here; :Pair new starts again', vim.log.levels.WARN)
+  end
   redraw_status()
   if state.wanted then schedule_retry(1) end
 end
