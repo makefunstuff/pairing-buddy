@@ -6,6 +6,7 @@ import {join} from 'node:path';
 import {test} from 'node:test';
 import {checkCommand, judge, markOf, numberFor, parseHandOver, targetOf} from '../src/check.mjs';
 import {measure} from '../src/run-log.mjs';
+import {sandboxWords, sandboxWorks} from '../src/sandbox.mjs';
 import {checkInput, driveInput, PairSession} from '../src/session.mjs';
 import {bashWithoutCores} from './no-core.mjs';
 
@@ -104,21 +105,26 @@ int main(void) {
 }
 `;
 
-/** A git project in a scratch folder with `files`, and a session in it whose pane runs each command for real. */
-function realProject(files, {partner, buffer}) {
+/**
+ * A git project in a scratch folder with `files`, and a session in it whose pane runs each command for real; with
+ * `sandbox`, in bubblewrap as Pair's pane does, the project and the runs folder writable.
+ */
+function realProject(files, {partner, buffer, sandbox = false}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'pair-check-')));
   for (const [path, text] of Object.entries(files)) {
     mkdirSync(join(root, path, '..'), {recursive: true});
     writeFileSync(join(root, path), text);
   }
   execFileSync('git', ['init', '-q'], {cwd: root});
+  const runs = mkdtempSync(join(tmpdir(), 'pair-check-runs-'));
   const sent = [];
   const ran = [];
   const pane = {
     close: async () => {},
     run: async command => {
       ran.push(command);
-      const [file, args] = bashWithoutCores(command); // the crash tests crash on purpose: no core dumps
+      const [bash, words] = bashWithoutCores(command); // the crash tests crash on purpose: no core dumps
+      const [file, ...args] = sandbox ? [...sandboxWords({cwd: root, writable: [runs]}), bash, ...words] : [bash, ...words];
       const result = spawnSync(file, args, {encoding: 'utf8', timeout: 60_000});
       return {exit: result.status ?? 128 + 11, output: '', timedOut: false};
     },
@@ -129,6 +135,7 @@ function realProject(files, {partner, buffer}) {
     partner,
     score: async () => ({value: 9, reason: 'worth it'}),
     typingPauseMs: 2000,
+    checkOutput: join(runs, '3.check.out'),
     notify: (to, message) => { sent.push({to, ...message}); return 1; },
     requestEditor: async message => (message.type === 'read' ? {text: buffer} : {ok: true, from: 4, to: 4}),
     now: () => 100_000,
@@ -235,5 +242,18 @@ test('a Zig project: the check builds and runs it in the copy', {skip: has('zig'
   pair.receive({kind: 'command_end', cmd: 'zig run main.zig', exit: 0, output: 'count 7\n', cwd: root});
   await pair.drive('you take it: count to three, count equals 3');
   assert.match(seen.reply, /It printed count 3, which meets it\./);
+  assert.equal(sent.find(message => message.type === 'handback').tests, 'pass');
+});
+
+test('in the sandbox of Pair\'s pane, the check builds and runs in the writable runs folder', {skip: !sandboxWorks() ? 'needs bubblewrap' : has('cc') && has('make') ? false : 'needs cc and make', timeout: 60_000}, async () => {
+  const fixed = PROBE_C.replace('return key % 16;', 'return (key * 2654435761u) >> 22;');
+  const {partner, seen} = driver({file: 'probe.c', line: 4, endLine: 4, text: 'static unsigned slot(unsigned key) { return (key * 2654435761u) >> 22; }'});
+  seen.words = 'High bits.';
+  const {pair, root, sent, ran} = realProject({'probe.c': PROBE_C, 'Makefile': 'run: probe\n\t./probe\nprobe: probe.c\n\tcc -O1 -o probe probe.c\n'}, {partner, buffer: fixed, sandbox: true});
+  seen.pair = pair;
+  pair.receive({kind: 'command_end', cmd: 'make -s run', exit: 0, output: 'avg probe 200.50 worst 400\n', cwd: root});
+  await pair.drive('you take it: spread the keys, avg probe stays under 2');
+  assert.match(ran[0], /pair-check-runs-[^/]+\/3\.check\.out\.unsaved\/tree' && \(make -s run\)/);
+  assert.match(seen.reply, /It printed avg probe 1\.\d+, which meets it\./);
   assert.equal(sent.find(message => message.type === 'handback').tests, 'pass');
 });

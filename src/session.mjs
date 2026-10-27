@@ -241,10 +241,12 @@ export class PairSession {
    * asks the editor and resolves with its reply. While `health` says a model is down, Pair makes no remarks.
    * `previousNote` is the note of the last session in this project, and `lastSession` that session as the store
    * keeps it, with where to pick up (see pickup.mjs). With `autoTune`, the user's verdicts on past remarks tune the
-   * budget (see tuning.mjs).
+   * budget (see tuning.mjs). `checkOutput` is where the hand-over's check writes its output and scratch copy when it
+   * is not the command on save (see check.mjs): in the sandbox's writable runs folder.
    */
-  constructor({record, store, partner, score, typingPauseMs, notify, requestEditor, previousNote = null, lastSession = null, autoTune = false, health = {ok: () => true}, testOnSave = null, log = () => {}, now = Date.now}) {
+  constructor({record, store, partner, score, typingPauseMs, notify, requestEditor, previousNote = null, lastSession = null, autoTune = false, health = {ok: () => true}, testOnSave = null, checkOutput = null, log = () => {}, now = Date.now}) {
     Object.assign(this, {record, store, partner, score, typingPauseMs, notify, requestEditor, previousNote, lastSession, autoTune, health, log, now});
+    this.checkOutput = checkOutput ?? join(tmpdir(), `pair-check-${process.pid}-${record.id}.out`);
     this.state = initialState({root: record.root, goal: record.goal});
     this.budget = new Budget(record.level);
     this.role = record.role ?? 'navigator';
@@ -1345,7 +1347,7 @@ export class PairSession {
     const {check, expect} = this.handOver;
     if (!check.command) return `${DONE}. Nothing ran on the unsaved buffer: ${check.none}. The file on disk changes only when the user saves, so do not run anything now.`;
     const runs = check.command === this.testRuns?.command ? this.testRuns : new TestRuns({
-      root: this.root, command: check.command, outputFile: join(tmpdir(), `pair-check-${process.pid}-${this.id}.out`), pane: () => this.scout, report: run => this.testRun(run),
+      root: this.root, command: check.command, outputFile: this.checkOutput, pane: () => this.scout, report: run => this.testRun(run),
     });
     const run = await runs.unsaved(path, await this.bufferText(path));
     if (run.state === 'error') return `${DONE}. \`${run.label}\` could not run on the unsaved buffer: ${run.error}.`;
