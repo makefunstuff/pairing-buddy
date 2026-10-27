@@ -342,6 +342,7 @@ export async function startDaemon(config, {
       const session = new PairSession({
         record, store, partner: sessionPartner, score, health,
         previousNote: store.previousNote(root, record.id),
+        lastSession: store.lastSession(root, record.id),
         autoTune: config.autoTune,
         typingPauseMs: config.typingPauseMs,
         testOnSave: testOnSaveOf(root, record.id),
@@ -431,12 +432,12 @@ export async function startDaemon(config, {
 
   const ending = new Set();
 
-  /** Ends `session`; `why` says it ended by itself, in the chat, and then only a used session gets a note. */
+  /** Ends `session`; `why` says it ended by itself, in the chat. Only a session with work in it gets a debrief. */
   async function endSession(session, why = null) {
     if (ending.has(session)) return;
     ending.add(session);
     if (why) log(`[${basename(session.root)}] session ends by itself: ${why}`);
-    await session.end({withNote: !why || session.usedAt !== null}).finally(() => ending.delete(session));
+    await session.end().finally(() => ending.delete(session));
     contextReads.delete(session);
     listeners.get(session.root)?.close();
     listeners.delete(session.root);
@@ -473,6 +474,8 @@ export async function startDaemon(config, {
       sendMessage(client.socket, session.lateForEditors);
       session.lateForEditors = null;
     }
+    // The first Neovim after a long gap picks up where the last session stopped (see pickup.mjs).
+    if (client.role === 'editor') session.pickUp().catch(error => log(`pick-up failed: ${error.stack ?? error}`));
     if (client.role !== 'chat') return;
     watchHerdr(session, message.herdr);
     // A chat pane that reconnects after a daemon restart already shows the history, up to the restart.
@@ -554,6 +557,7 @@ export async function startDaemon(config, {
     if (message.type === 'event') return receive(session, message.event);
     if (message.type === 'ask') return session.ask(message.text, message.selection ?? null);
     if (message.type === 'goal') return session.setGoal(message.text);
+    if (message.type === 'first' && typeof message.text === 'string' && message.text.trim()) return session.setFirst(message.text.trim());
     if (message.type === 'level') return session.setLevel(message.level);
     if (message.type === 'role' && ROLES.includes(message.role)) return session.setRole(message.role);
     if (message.type === 'drive') return session.drive(message.text ?? '', message.selection ?? null);

@@ -52,7 +52,7 @@ test('a number that held still over the runs before and then moved the right way
   assert.equal(run(bench('23.7')), null);
   assert.equal(run(bench('23.9')), null);
   assert.equal(run(bench('23.7')), null);
-  assert.deepEqual(run(bench('1.1')), {sound: 'green', text: 'avg probe 23.7 → 1.1, after 3 runs at 23.7.'});
+  assert.deepEqual(run(bench('1.1')), {sound: 'green', text: 'avg probe 23.7 → 1.1, after 3 runs at 23.7.', moved: true});
   assert.equal(run(bench('1.1')), null, 'it holds from its new value');
   assert.equal(run(bench('1.0')), null);
 });

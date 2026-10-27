@@ -71,7 +71,7 @@ test('a repeated failure becomes a pointed remark; a question is answered; :Pair
     partner.setResponses([fauxAssistantMessage([fauxText('Goal: reconnect. Changed: nothing yet. Loose end: timeout.')])]);
     chat.send({type: 'end'});
     await chat.next(message => message.type === 'ended');
-    assert.ok(chat.received.some(message => message.text?.startsWith('Session note:\nGoal: reconnect.')));
+    assert.ok(chat.received.some(message => /^(Day|Session)'s end: .+\nGoal: reconnect\./.test(message.text ?? '')));
     await editor.next(message => message.type === 'clear');
   } finally {
     editor.close();
@@ -354,8 +354,9 @@ test('the next session in a repo starts from the last note; a remark is rated wi
     chat.send({type: 'end'});
     await chat.next(message => message.type === 'ended');
     chat.send({type: 'hello', role: 'chat', cwd: project}); // what the chat pane does after an end
-    await chat.next(message => message.text === 'Last time:\nGoal: fix reconnect. Loose end: the timeout.');
+    // The debrief is still on screen, so the next session does not show it again as "Last time".
     await chat.next(message => message.text === 'What are we doing this session? Type the goal here, or "later".');
+    assert.ok(!chat.received.some(message => message.text?.startsWith('Last time')));
 
     let instructions;
     partner.setResponses([context => {

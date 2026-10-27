@@ -18,6 +18,7 @@ test('/scout and /navigate switch the role, /today lists what Pair did; other li
   assert.deepEqual(parseInput('/scout'), {type: 'role', role: 'scout'});
   assert.deepEqual(parseInput('  /navigate '), {type: 'role', role: 'navigator'});
   assert.deepEqual(parseInput('/level chatty'), {type: 'level', level: 'chatty'});
+  assert.deepEqual(parseInput('/first lease past the last attempt, in queue.go:18'), {type: 'first', text: 'lease past the last attempt, in queue.go:18'});
   assert.deepEqual(parseInput('where else do we set that?'), {type: 'ask', text: 'where else do we set that?'});
   assert.deepEqual(parseInput('/drivel'), {local: 'help'});
   assert.deepEqual(parseInput('/today'), {type: 'today'});
