@@ -639,6 +639,7 @@ to standard ones and does not fade.
 | `:Pair drive [what]` | Hand Pair the wheel for one change; any key takes it back. With a range, for those lines |
 | `:Pair jump` | Go where Pair pointed last (same as `Alt-j`); `Ctrl-O` comes back. While Pair holds a thought, show it now |
 | `:Pair trail` | Show your searches since your last edit, as Pair saw them; `x` forgets them |
+| `:Pair runs` | The session's builds and runs, newest last, with the change before each and its numbers; `⏎` its output, `d` its change, `x` removes the hunt's debug lines ([exploration.md](exploration.md)) |
 | `:Pair accept` | Accept Pair's suggestion (same as `Alt-y`); for a suggestion in an unasked remark, that rates the remark useful |
 | `:Pair dismiss` | Drop Pair's suggestion; for a suggestion in an unasked remark, that rates the remark not useful |
 | `:Pair useful` | Pair's last unasked remark was useful (same as `Alt-u`) |
@@ -674,6 +675,7 @@ vim.o.statusline = "%f %m%=%{%v:lua.require'pair'.statusline()%}  %l:%c "
 | `⠹ pair · thinking` | While its model thinks |
 | `● pair · held thought · M-j` | While a remark waits for your next break |
 | `● pair · 5 notes in the margin`, `◆ logged · docs/decisions.md` | In a note with [marks](notes.md), and for a moment after a decision is logged |
+| `● run 3 · exit 0 · 55 ms · avg probe 23.7 · same numbers as run 2` | For 15 minutes after a build or run: what it showed next to the one before, and once the hunt is over, `· 1 debug line from run 2 left · M-j` ([exploration.md](exploration.md)). A crash or a broken build shows with `✗` |
 | `⠹ go test ./...`, `✗ 1 failing · TestX`, `✓ go test ./... · 4 tests, 3 packages` | [Tests on save](tests-on-save.md); `(unsaved)` after the command for the run on the Driver's edit |
 | `◎ pair has the wheel · any key takes it back` | While it drives (`· thinking` while its model thinks, the hint again while it types) |
 | `◌ pair · catching up` | While the [morning pick-up](#the-morning-pick-up-and-the-days-end) reads where you stopped |

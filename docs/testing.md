@@ -83,6 +83,13 @@ Runs every test that needs no model, in under a minute, with scripted models and
   program's own words in a run that ended with exit 0; the frame in the project; paths from where a command ran; new
   warnings only in files you edited; the crash and new-warning triggers; and in Neovim the `✗` and `△` on their lines,
   `Alt-j` to the crash or first error at its column, and a clean run clearing them.
+- **The exploration loop.** The run log on the research's four runs (the same numbers after a print and after a
+  change of the code, a number that moved, a time that only moves at half or double, a number that got worse, the
+  output compared without numbers, a crash and a broken build); which commands are runs; the numbers of a run (no
+  listing, place or address); the triggers once per run, and none from a hidden terminal; each language's debug
+  prints and the lines one printed; debug lines added in the session and still in the code. In Neovim, four runs on
+  save end to end: the statusline for each, the remark on the same numbers, the debug line counted and `Alt-j` to
+  it, `:Pair runs` with `⏎` and `x` removing the print unsaved.
 - **Tests on save.** The JSON reports of go test (subtests, panics, build failures), jest and vitest, each test placed
   at its line; runs in Pair's pane one at a time; the regression trigger raised once per run with new failures.
 - **Tests on unsaved text.** A real `go test -overlay` passing on the buffer's fix while the file on disk fails; a copy
@@ -108,7 +115,8 @@ Runs every test that needs no model, in under a minute, with scripted models and
 [test/no-core.mjs](../test/no-core.mjs), which sets the core limit to 1 byte. With systemd-coredump in
 `/proc/sys/kernel/core_pattern`, `ulimit -c 0` is not enough: the kernel still hands the crash to it, and it logs the
 crash and shows a notification. At 1 byte the kernel gives up before the pipe. A new test that crashes something on
-purpose should run it the same way (`bashWithoutCores(command)`).
+purpose should run it the same way (`bashWithoutCores(command)`); so do the live tests' builds and runs, which crash
+only when a change goes wrong.
 
 ## Live tests against real models
 
@@ -142,6 +150,10 @@ Stacks can name a `provider` too, with its login or key from `pair auth`. Withou
   first step whose place is a file in the project), and the next morning's line being one short line of the model's.
 - **Builds and runs** (`test/live/runs.test.mjs`): a C program built and run for real with `cc`. A segfault gets a
   point at its cause, a `-Wformat` warning a point at the `printf`, and an unused variable silence.
+- **The exploration loop** (`test/live/loop.test.mjs`): the captures' hash table built and run for real with
+  `make run`, four times. The same numbers after `* 31` score above the bar and get a point at the cause with the
+  reason, and the shift that ends the hunt scores above the bar and gets a line with the new number. Its runs go
+  through `bashWithoutCores` too, like every program a test runs.
 - **Notes in the margin:** at most five specific marks on a design note, with its contradiction and a mark on what
   the code does; tasks with its open question as one; after a stalled question, one question back about it, through
   a real session; one question about a section that left the note, and silence for one that did not.
