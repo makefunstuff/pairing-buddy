@@ -30,7 +30,8 @@ CREATE TABLE IF NOT EXISTS remarks (
   score REAL,
   at INTEGER NOT NULL,
   verdict TEXT,
-  waited_ms INTEGER -- how long its trigger waited for the model while the Partner was at work
+  waited_ms INTEGER, -- how long its trigger waited for the model while the Partner was at work
+  shown INTEGER NOT NULL DEFAULT 0 -- it reached the user: stored at the start of its turn, it may never have
 );
 -- Active pairing time per clock hour (hour = ms since the epoch / 3600000), counted when it happened, so a
 -- session left open for days adds to each day it was used.
@@ -64,12 +65,14 @@ const ACTION_COLUMNS = new Set(['text', 'data', 'detail', 'state']);
 /** Columns added since v0.1, by table, with their definitions. */
 const ADDED_COLUMNS = {
   sessions: {role: 'TEXT NOT NULL DEFAULT \'navigator\'', pickup: 'TEXT', active_ms: 'INTEGER NOT NULL DEFAULT 0', worked: 'INTEGER NOT NULL DEFAULT 0'},
-  remarks: {waited_ms: 'INTEGER'},
+  remarks: {waited_ms: 'INTEGER', shown: 'INTEGER NOT NULL DEFAULT 0'},
 };
 /** What an added column starts with in the rows already there, where its default is wrong. */
 const FILLED = {
   // Until v0.9 only work counted as active time.
   'sessions.worked': 'UPDATE sessions SET worked = active_ms > 0',
+  // A remark that said something has its words in the ledger.
+  'remarks.shown': `UPDATE remarks SET shown = EXISTS (SELECT 1 FROM actions a WHERE a.kind = 'said' AND json_extract(a.data, '$.remark') = remarks.id)`,
 };
 
 export function openStore(path) {
@@ -130,17 +133,19 @@ export function openStore(path) {
     /** The remarks of session `id`, oldest first. */
     sessionRemarks: id => db.prepare('SELECT id, trigger, score, at, verdict FROM remarks WHERE session_id = ? ORDER BY id').all(id),
     /** The last remark of session `id`, or null: what feedback without a number rates, also after a daemon restart. */
-    lastRemark: id => db.prepare('SELECT id FROM remarks WHERE session_id = ? ORDER BY id DESC LIMIT 1').get(id)?.id ?? null,
+    lastRemark: id => db.prepare('SELECT id FROM remarks WHERE session_id = ? AND shown ORDER BY id DESC LIMIT 1').get(id)?.id ?? null,
+    /** Records that remark `id` reached the user. */
+    showRemark: id => db.prepare('UPDATE remarks SET shown = 1 WHERE id = ?').run(id),
     /** Every remark since `since`, newest first, with the project (`root`) it was made in. */
     remarks: since => db.prepare(`SELECT r.id, r.trigger, r.score, r.at, r.verdict, r.waited_ms AS waitedMs, s.root
       FROM remarks r JOIN sessions s ON s.id = r.session_id WHERE r.at >= ? ORDER BY r.id DESC`).all(since),
     /**
-     * The last `limit` remarks made in `root`, newest first, each with the first line of what Pair said in it (from the
+     * The last `limit` remarks in `root` that reached the user, newest first, each with the first line of what Pair said in it (from the
      * ledger): the list the chat rates an older remark from.
      */
     recentRemarks: (root, limit) => db.prepare(`SELECT r.id, r.trigger, r.at, r.verdict,
         (SELECT a.text FROM actions a WHERE a.kind = 'said' AND json_extract(a.data, '$.remark') = r.id) AS text
-      FROM remarks r JOIN sessions s ON s.id = r.session_id WHERE s.root = ? ORDER BY r.id DESC LIMIT ?`).all(root, limit),
+      FROM remarks r JOIN sessions s ON s.id = r.session_id WHERE s.root = ? AND r.shown ORDER BY r.id DESC LIMIT ?`).all(root, limit),
     /** Adds `ms` of active pairing in project `root`, just before `at`, to its hour. */
     addActive(at, ms, root) {
       const hour = Math.floor(at / HOUR);

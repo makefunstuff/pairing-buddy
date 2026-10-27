@@ -199,9 +199,13 @@ test('after a daemon restart, + and - still rate the session\'s last remark', as
     record, store: before.store, partner: {thinkingOf: () => 'off', setRole: async () => {}}, score: async () => ({value: 9}),
     typingPauseMs: 2000, notify: (to, message) => { sent.push({to, ...message}); return 1; }, requestEditor: async () => null,
   });
+  // The daemon stopped while Pair was making another remark: its row is stored, but it never reached the user.
+  const unseen = before.store.addRemark({sessionId: record.id, trigger: 'stall', score: 8, at: before.clock.now});
   after.feedback({useful: true});
-  assert.equal(before.store.remarks(0).find(remark => remark.id === id).verdict, 'useful');
+  assert.equal(before.store.remarks(0).find(remark => remark.id === id).verdict, 'useful', 'the remark the user saw');
+  assert.equal(before.store.remarks(0).find(remark => remark.id === unseen).verdict, null, 'not the one they never saw');
   assert.deepEqual(chatTexts(sent), ['Noted: useful.']);
+  assert.deepEqual(after.remarkList().remarks.map(remark => remark.id), [id], '/remarks lists only remarks that reached the user');
 });
 
 test('/remarks lists the last remarks in the project, newest first, with their words; +N and -N rate an older one', async () => {
@@ -294,5 +298,23 @@ test('a store from before reading counted: a session with active time had work, 
   const store = openStore(path);
   assert.equal(store.activeSession('/a').worked, 1);
   assert.equal(store.activeSession('/b').worked, 0);
+  store.close();
+});
+
+test('remarks stored before the shown mark count as shown when Pair said something in them', () => {
+  const path = join(mkdtempSync(join(tmpdir(), 'pair-store-')), 'sessions.sqlite');
+  const old = new DatabaseSync(path);
+  old.exec(`CREATE TABLE sessions (id INTEGER PRIMARY KEY, root TEXT NOT NULL, conversation_id TEXT NOT NULL, goal TEXT,
+    level TEXT NOT NULL, started_at INTEGER NOT NULL, ended_at INTEGER, note TEXT);
+    CREATE TABLE remarks (id INTEGER PRIMARY KEY, session_id INTEGER NOT NULL, trigger TEXT NOT NULL, score REAL, at INTEGER NOT NULL, verdict TEXT);
+    CREATE TABLE actions (id INTEGER PRIMARY KEY, session_id INTEGER NOT NULL, at INTEGER NOT NULL, kind TEXT NOT NULL, text TEXT NOT NULL,
+      data TEXT NOT NULL DEFAULT '{}', detail TEXT, state TEXT);
+    INSERT INTO sessions (root, conversation_id, level, started_at) VALUES ('/a', '"c1"', 'normal', 0);
+    INSERT INTO remarks (session_id, trigger, at) VALUES (1, 'failed_command', 1), (1, 'stall', 2);
+    INSERT INTO actions (session_id, at, kind, text, data) VALUES (1, 1, 'said', 'Line 2 is off.', '{"remark": 1}');`);
+  old.close();
+  const store = openStore(path);
+  assert.equal(store.lastRemark(1), 1);
+  assert.deepEqual(store.recentRemarks('/a', 9).map(remark => remark.id), [1]);
   store.close();
 });

@@ -157,11 +157,12 @@ test('from the chat pane, an older remark is rated from /remarks, and + still ra
   const verdicts = () => store.remarks(0).map(remark => remark.verdict);
   try {
     await shown('What are we doing this session?');
-    // Two remarks Pair made in this session, with what it said in each.
+    // Two remarks Pair made in this session and showed, with what it said in each.
     const {id: sessionId} = store.activeSession(dir);
     for (const [trigger, words] of [['failed_command', 'The retry count is off by one.'], ['drift', 'docs/ is off the goal.']]) {
       const remark = store.addRemark({sessionId, trigger, score: 8, at: Date.now()});
       store.addAction({sessionId, at: Date.now(), kind: 'said', text: words, data: {remark}});
+      store.showRemark(remark);
     }
     chat.stdin.write('/remarks\n');
     await shown('·· 2  ');

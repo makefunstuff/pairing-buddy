@@ -596,6 +596,7 @@ export class PairSession {
       this.show(() => {
         this.budget.spend(this.now());
         this.lastRemark = id;
+        this.store.showRemark(id);
         this.notify('chat', {type: 'remark', id});
         this.notify('editor', {type: 'remark', id, text: words.join('\n'), target});
         this.earcon('tick');
