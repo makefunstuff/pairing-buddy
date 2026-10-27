@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {spawnSync} from 'node:child_process';
+import {spawn, spawnSync} from 'node:child_process';
 import {existsSync, mkdtempSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -10,18 +10,75 @@ import {fakeHerdr} from './fake-herdr.mjs';
 
 const hasBash = spawnSync('bash', ['--version']).status === 0;
 
-test('the pane\'s shell writes each command\'s whole output and exit code, not the rest of its rc file', {skip: hasBash ? false : 'bash not installed'}, async () => {
+/** Starts the pane's shell in `runs.dir`; `input` is its stdin (a pipe) or null for a terminal. */
+async function paneShell(runs) {
+  return runs.shellLine();
+}
+
+test('the pane\'s shell gives each command its whole output and exit code, whatever its shell syntax', {skip: hasBash ? false : 'bash not installed', timeout: 20_000}, async () => {
   const runs = new PaneRuns(join(mkdtempSync(join(tmpdir(), 'pair-runs-')), 'w1-p3'));
-  const line = await runs.shellLine();
-  const typed = ['echo out; echo err >&2; false', '', 'cd / && pwd', 'seq 1 2500', 'pwd', ''].join('\n');
-  spawnSync('bash', ['-c', line], {input: typed, env: {PATH: process.env.PATH, HOME: runs.dir}});
-  assert.deepEqual(await runs.result(1), {exit: 1, output: 'out\nerr'});
-  assert.deepEqual(await runs.result(2), {exit: 0, output: '/'});
-  const long = await runs.result(3);
-  assert.equal(long.output.split('\n').length, 2500, 'more than herdr\'s 1000 lines, from the first');
-  assert.equal(long.output.split('\n')[0], '1');
-  assert.deepEqual(await runs.result(4), {exit: 0, output: '/'}, 'a cd stays: commands run in the pane\'s own shell');
-  assert.equal(await runs.next(), 5, 'empty lines are no commands');
+  const line = await paneShell(runs);
+  const commands = [
+    'echo out; echo err >&2; false',
+    '',
+    'cd / && pwd',
+    'seq 1 2500',
+    'printf "a\\nb\\na\\n" | grep a | wc -l',
+    'echo x | cat',
+    '(cd /tmp && echo sub | cat)',
+    'echo "$(echo nested)"',
+    '(sleep 1; echo late) &',
+    'pwd',
+  ];
+  const results = [];
+  // One command at a time, as Pair types them: each waits for the one before to end.
+  const child = spawn('bash', ['-c', line], {env: {PATH: process.env.PATH, HOME: runs.dir}, stdio: ['pipe', 'ignore', 'ignore']});
+  await runs.ready(5000);
+  for (const command of commands) {
+    const number = await runs.next();
+    if (command) await runs.clearLog();
+    child.stdin.write(`${command}\n`);
+    if (!command) continue;
+    await runs.ended(number, 5000);
+    results.push(await runs.result(number));
+  }
+  await new Promise(resolve => setTimeout(resolve, 1500)); // the job in the background prints after its command ended
+  child.stdin.end();
+  assert.deepEqual(results[0], {exit: 1, output: 'out\nerr'});
+  assert.deepEqual(results[1], {exit: 0, output: '/'});
+  assert.equal(results[2].output.split('\n').length, 2500, 'more than herdr\'s 1000 lines, from the first');
+  assert.equal(results[2].output.split('\n')[0], '1');
+  assert.deepEqual(results.slice(3, 6), [{exit: 0, output: '2'}, {exit: 0, output: 'x'}, {exit: 0, output: 'sub'}], 'pipes end, a subshell is a command');
+  assert.deepEqual(results[6], {exit: 0, output: 'nested'});
+  assert.equal(results[7].exit, 0);
+  assert.doesNotMatch(results[7].output, /late/, 'a job in the background does not hold its command open, nor add to its output');
+  assert.deepEqual(results[8], {exit: 0, output: '/'}, 'a cd stays: commands run in the pane\'s own shell');
+  assert.equal(await runs.next(), 10, 'empty lines are no commands');
+});
+
+const hasScript = spawnSync('script', ['--version']).status === 0;
+
+test('on a terminal, Ctrl-C ends a command and keeps its output, also with a job left in the background', {skip: hasBash && hasScript ? false : 'needs bash and script (util-linux)', timeout: 20_000}, async () => {
+  const runs = new PaneRuns(join(mkdtempSync(join(tmpdir(), 'pair-runs-')), 'w1-p3'));
+  const line = await paneShell(runs);
+  const child = spawn('script', ['-qec', line, '/dev/null'], {env: {PATH: process.env.PATH, HOME: runs.dir, TERM: 'xterm'}});
+  child.stdout.resume();
+  try {
+    await runs.ready(5000);
+    child.stdin.write('sleep 30 &\r');
+    await runs.ended(1, 5000);
+    assert.equal((await runs.result(1)).exit, 0);
+    child.stdin.write('echo started; sleep 30\r');
+    await assert.rejects(runs.ended(2, 1000), /timed out/);
+    child.stdin.write('\x03');
+    await runs.ended(2, 5000);
+    assert.deepEqual(await runs.result(2), {exit: 130, output: 'started'});
+    child.stdin.write('echo after | cat\r');
+    await runs.ended(3, 5000);
+    assert.deepEqual(await runs.result(3), {exit: 0, output: 'after'});
+  } finally {
+    child.kill();
+  }
 });
 
 test('the output reads as the pane shows it: no escape sequences, a progress bar at its last state', () => {

@@ -8,7 +8,7 @@ Switch with `/scout` and `/navigate` in the chat, or `:Pair scout` and `:Pair na
 
 Switching to Scout opens a pane below the chat pane, labelled `pair scout`. It runs `bash --noprofile` with an rc file of Pair's instead of yours, and the prompt `scout[N] exit X $ `: `N` counts the commands, `X` is the exit code of the last one. The shell writes each command's output and exit code to files as well (see [herdr.md](herdr.md#pairs-own-pane-exact)): that is how Pair knows that a command ended and how, which herdr cannot tell it, and reads all of its output. Your aliases and functions are not there, and `HISTFILE` is empty, so Pair's commands stay out of your shell history.
 
-- One command runs at a time; Pair waits for it to end, then reads its whole output back, also when it printed more than the pane holds. The output goes through `tee`, so the command writes to a pipe, not a terminal: no colours, no pager, no progress bars.
+- One command runs at a time; Pair waits for it to end, then reads its whole output back, also when it printed more than the pane holds. The shell's output goes through `tee`, so a command writes to a pipe, not a terminal: no colours, no pager, no progress bars. A job you start in the background (`cmd &`) keeps running and does not block the pane.
 - A command still running after two minutes is stopped with Ctrl-C, and the model is told so.
 - Each question gets at most four searches or commands. After that the model is told to answer with what it found.
 - For a remark nobody asked for, Scout may read and search, but `run` answers "not now".

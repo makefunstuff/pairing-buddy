@@ -74,6 +74,7 @@ export class ScoutPane {
     const {runs} = this;
     const number = await runs.next();
     if (number === null) throw new Error('Pair\'s pane is busy: its shell is not at the prompt');
+    await runs.clearLog();
     // Ctrl-U first clears anything typed at the prompt by hand.
     await this.request('pane.send_text', {pane_id: this.paneId, text: `\x15${command}\r`});
     let timedOut = false;

@@ -4,7 +4,7 @@
 // bash in the project, shows the prompt Scout's bash would show and writes the files its rc file would (see
 // src/pane-runs.mjs). Nothing changes focus in a capture, so the event stream only says it started.
 import {execFile} from 'node:child_process';
-import {mkdirSync, writeFileSync} from 'node:fs';
+import {appendFileSync, mkdirSync, writeFileSync} from 'node:fs';
 import {createServer} from 'node:net';
 import {join} from 'node:path';
 import {readMessages, sendMessage} from '../../src/protocol.mjs';
@@ -45,7 +45,8 @@ export async function standInHerdr(socketPath, {cwd, nvim, agents = [], log = ()
     writeFileSync(join(shell.runs, 'next'), `running ${shell.count}\n`);
     const {output, exit} = await run(command, cwd);
     if (output) shell.lines.push(...output.split('\n'));
-    writeFileSync(join(shell.runs, `${shell.count}.out`), output ? `${output}\n` : '');
+    const marked = `\x1b]133;C;aid=pair${shell.count}\x07${output ? `${output}\n` : ''}\x1b]133;D;${exit};aid=pair${shell.count}\x07`;
+    appendFileSync(join(shell.runs, 'pane.log'), marked);
     writeFileSync(join(shell.runs, `${shell.count}.exit`), `${exit}\n`);
     writeFileSync(join(shell.runs, 'next'), `${++shell.count}\n`);
     shell.lines.push(`scout[${shell.count}] exit ${exit} $ `);
