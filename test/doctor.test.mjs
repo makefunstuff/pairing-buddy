@@ -259,6 +259,8 @@ test('the pane check says whether Pair\'s commands run in the sandbox and with w
   const rc = join(scratch('pair-doctor-'), 'bashrc');
   const setup = (fields = {}) => ({rc: null, sandbox: 'auto', network: false, writable: [], ...fields});
   assert.deepEqual(paneCheck(setup(), () => true), {level: 'ok', name: 'pane', text: 'commands run in a bubblewrap sandbox, network off'});
+  assert.match(paneCheck(setup(), () => false, () => false).text, /^no sandbox: install bubblewrap/);
+  assert.match(paneCheck(setup(), () => false, () => true).text, /^no sandbox: bubblewrap is installed but cannot make its sandbox here/);
   assert.equal(paneCheck(setup(), () => false).level, 'warn');
   assert.equal(paneCheck(setup({sandbox: true}), () => false).level, 'fail');
   assert.match(paneCheck(setup({sandbox: false}), () => true).text, /^no sandbox/);

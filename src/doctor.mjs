@@ -202,12 +202,15 @@ export async function voiceCheck(voice, found = name => onPath(name, process.env
 }
 
 /** How Pair's pane runs its commands: with the user's rc file or not, in the sandbox or not. */
-export function paneCheck(setup, works = sandboxWorks) {
+export function paneCheck(setup, works = sandboxWorks, installed = () => onPath('bwrap', process.env)) {
   if (setup.rc && !existsSync(setup.rc)) return fail('pane', `scoutPane.rc is ${tilde(setup.rc)}, which is not there`);
   const rc = setup.rc ? `, with ${tilde(setup.rc)}` : '';
   if (setup.sandbox === false) return ok('pane', `no sandbox (scoutPane.sandbox is false)${rc}`);
   if (works()) return ok('pane', `commands run in a bubblewrap sandbox, network ${setup.network ? 'on' : 'off'}${rc}`);
   if (setup.sandbox === true) return fail('pane', 'scoutPane.sandbox is true, and bubblewrap (bwrap) is not installed or may not make namespaces here: Pair\'s pane will not open');
+  if (installed()) {
+    return warn('pane', `no sandbox: bubblewrap is installed but cannot make its sandbox here (a container may forbid it), so Pair's commands run without one; set scoutPane.sandbox to false to say that is fine${rc}`);
+  }
   return warn('pane', `no sandbox: install bubblewrap (bwrap) to run Pair's commands in one, or set scoutPane.sandbox to false${rc}`);
 }
 

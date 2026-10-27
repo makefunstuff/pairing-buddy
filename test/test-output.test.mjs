@@ -1,4 +1,5 @@
-// The parsers against real output of each runner (test/fixtures), each with two failed tests and one passed.
+// The parsers against real output of each runner (test/fixtures), each with two failed tests and one passed (pytest
+// also with -q, whose last line has no rows of =).
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
@@ -20,13 +21,14 @@ const EXPECTED = {
     firstError: 'AssertionError: expected 5000 to be 30000 // Object.is equality at ws2.test.mjs:4:64',
   },
   pytest: {failed: ['test_ws.py::test_waits_long', 'test_ws.py::test_raises'], passed: 1, firstError: 'assert 5000 == 30000'},
+  'pytest-q': {failed: ['test_ws.py::test_waits_long', 'test_ws.py::test_raises'], passed: 1, firstError: 'assert 5000 == 30000'},
   node: {failed: ['waits long'], passed: 1, firstError: 'AssertionError [ERR_ASSERTION]: Expected values to be strictly equal: 5000 !== 30000'},
 };
 
 for (const [runner, expected] of Object.entries(EXPECTED)) {
   test(`${runner}: the failed tests and the first error line`, () => {
     const {tests: _tests, ...result} = parseTestOutput(fixture(runner));
-    assert.deepEqual(result, {runner, failedCount: expected.failed.length, ...expected});
+    assert.deepEqual(result, {runner: runner.replace(/-q$/, ''), failedCount: expected.failed.length, ...expected});
   });
 }
 
@@ -36,6 +38,7 @@ test('passing runs have no failures', () => {
   assert.equal(parseTestOutput('Tests:       3 passed, 3 total\nTime: 1 s').failedCount, 0);
   assert.equal(parseTestOutput(' Test Files  2 passed (2)\n      Tests  9 passed (9)').runner, 'vitest');
   assert.equal(parseTestOutput('============ 4 passed in 0.03s ============').passed, 4);
+  assert.equal(parseTestOutput('....\n4 passed, 1 warning in 0.03s').passed, 4, 'pytest -q');
   assert.equal(parseTestOutput('ok  \texample.com/ws\t0.004s').failedCount, 0);
   assert.equal(parseTestOutput('ℹ tests 5\nℹ pass 5\nℹ fail 0').passed, 5);
 });

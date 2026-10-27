@@ -12,7 +12,7 @@ import {authPath, configPath, createConfig, defaultSocketPath, loadConfig, oneAt
 import {loadSizedConfig} from '../src/context-window.mjs';
 import {deviceId, fileCredentialStore} from '../src/credentials.mjs';
 import {startDaemon} from '../src/daemon.mjs';
-import {doctor, tilde} from '../src/doctor.mjs';
+import {doctor, nvimHasPlugin, tilde} from '../src/doctor.mjs';
 import {gitRoot} from '../src/git.mjs';
 import {herdrRequest} from '../src/herdr.mjs';
 import {terminalInteraction} from '../src/prompt.mjs';
@@ -191,8 +191,8 @@ Config: ${tilde(configPath())} (the daemon takes a change as you save it)
 Models: ${rolesText(config.models)}.${modelsNote(config.models)}
 
 Next:
-  1. Add the Neovim plugin with lazy.nvim:
-${LAZY_SPEC}
+  1. ${await nvimHasPlugin(process.env) === 'yes' ? 'The Neovim plugin: your Neovim config loads it already.' : `Add the Neovim plugin with lazy.nvim (other plugin managers: INSTALL.md):
+${LAZY_SPEC}`}
   2. Optional, for exact commands and exit codes in your panes: eval "$(pair shell-hook bash)" in your shell's rc file (or zsh; fish: pair shell-hook fish | source)
   3. Run \`pair doctor\` to check everything, then open Neovim in a project: in herdr, run \`pair\` in a pane next to it for the chat; without herdr, \`:Pair chat\` in Neovim (or \`pair chat\` in any terminal).`);
 }

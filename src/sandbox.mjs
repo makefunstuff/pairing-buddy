@@ -21,9 +21,12 @@ const probe = args => spawnSync(BWRAP, ['--ro-bind', '/', '/', '--unshare-all', 
 let works;
 let overlays;
 
-/** Whether bubblewrap is installed and may make namespaces here (some systems forbid it to users); checked once. */
+/**
+ * Whether bubblewrap is installed and may make namespaces here (some systems forbid it to users), with the mounts the
+ * pane's sandbox makes: a container may allow the namespaces and still refuse a new /proc. Checked once.
+ */
 export function sandboxWorks() {
-  works ??= probe([]);
+  works ??= probe(['--dev', '/dev', '--proc', '/proc', '--tmpfs', '/tmp']);
   return works;
 }
 
