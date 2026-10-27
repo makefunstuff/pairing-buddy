@@ -6,7 +6,7 @@ import {connect} from 'node:net';
 import {dirname, join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {parseArgs} from 'node:util';
-import {authStates, login, logout, providerModels} from '../src/auth.mjs';
+import {authStates, login, logout, providerDecisionModels, providerModels} from '../src/auth.mjs';
 import {runChat} from '../src/chat.mjs';
 import {authPath, configPath, createConfig, defaultSocketPath, loadConfig, rolesText, sameModel, serviceEnvPath} from '../src/config.mjs';
 import {loadSizedConfig} from '../src/context-window.mjs';
@@ -40,7 +40,7 @@ const USAGE = `usage:
   pair auth logout PROVIDER   remove that login or key (also \`pair logout PROVIDER\`)
   pair auth list              every provider and whether a login or key is set (never the secrets)
   pair auth models PROVIDER   the models a provider offers, for a model entry's "model"
-  pair stats [--days N]   remarks per hour, useful vs dismissed, per trigger, and the tuning (default: 7 days)
+  pair stats [--days N]   remarks per hour, useful vs dismissed, per trigger, the tuning, and how the decision model did (default: 7 days)
   pair stats --project [DIR]   the same for one project: the one DIR (default: this folder) belongs to
   pair uninstall    stop and remove the service (the config and data stay)
   pair daemon       run the daemon in the foreground
@@ -132,7 +132,9 @@ async function auth([action, id]) {
   if (action === 'list' || action === undefined) return authList();
   if (action === 'models') {
     if (!id) throw new Error('name the provider: `pair auth models PROVIDER`');
-    return console.log(providerModels(id).join('\n'));
+    const decisions = providerDecisionModels(id);
+    const chat = providerModels(id);
+    return console.log([...chat, ...(decisions.length ? [...(chat.length ? [''] : []), 'Decision models, for "decision":', ...decisions] : [])].join('\n'));
   }
   throw new Error(`\`pair auth ${action}\`: the actions are login, logout, list and models`);
 }
@@ -227,7 +229,8 @@ async function stats(args) {
     // Tuning looks at its own window, which may be longer than the one shown.
     const remarks = store.remarks(now - Math.max(window, WINDOW_MS));
     const activeMs = root ? store.projectActiveMs(root, now - window) : store.activeMs(now - window);
-    console.log(statsReport({remarks, activeMs, now, days, level: config.level, autoTune: config.autoTune, root}).join('\n'));
+    const decisions = store.decisions(now - window); // what the decision model judged, if there is one
+    console.log(statsReport({remarks, activeMs, now, days, level: config.level, autoTune: config.autoTune, root, decisions}).join('\n'));
   } finally {
     store.close();
   }

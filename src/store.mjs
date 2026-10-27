@@ -33,6 +33,25 @@ CREATE TABLE IF NOT EXISTS remarks (
   waited_ms INTEGER, -- how long its trigger waited for the model while the Partner was at work
   shown INTEGER NOT NULL DEFAULT 0 -- it reached the user: stored at the start of its turn, it may never have
 );
+-- What the decision model (see decision.mjs) answered about each moment the gate judged with it, and what came of it:
+-- the gate's verdict, what the old rules (the Watcher's score against the bar) would have done, and the remark it led
+-- to, whose verdict is the outcome. \`fallback\` says why the model gave no answer, when the rules decided instead.
+CREATE TABLE IF NOT EXISTS decisions (
+  id INTEGER PRIMARY KEY,
+  session_id INTEGER NOT NULL REFERENCES sessions(id),
+  at INTEGER NOT NULL,
+  trigger TEXT NOT NULL,
+  sort TEXT, -- noise, worth or ask
+  sort_p REAL,
+  speak_p REAL, -- that a remark is worth interrupting for now
+  score REAL, -- the Watcher's, when it was asked
+  bar REAL,
+  rule TEXT, -- speak or drop: the score against the bar; null when the Watcher was not asked
+  verdict TEXT NOT NULL, -- the gate's: speak or drop
+  fallback TEXT, -- down, timeout, error or malformed
+  remark_id INTEGER,
+  state TEXT -- JSON: what the model was told about the moment (see decision.mjs), so the moment can be judged again
+);
 -- Active pairing time per clock hour (hour = ms since the epoch / 3600000), counted when it happened, so a
 -- session left open for days adds to each day it was used.
 CREATE TABLE IF NOT EXISTS activity (
@@ -66,6 +85,7 @@ const ACTION_COLUMNS = new Set(['text', 'data', 'detail', 'state']);
 const ADDED_COLUMNS = {
   sessions: {role: 'TEXT NOT NULL DEFAULT \'navigator\'', pickup: 'TEXT', active_ms: 'INTEGER NOT NULL DEFAULT 0', worked: 'INTEGER NOT NULL DEFAULT 0'},
   remarks: {waited_ms: 'INTEGER', shown: 'INTEGER NOT NULL DEFAULT 0'},
+  decisions: {state: 'TEXT'},
 };
 /** What an added column starts with in the rows already there, where its default is wrong. */
 const FILLED = {
@@ -146,6 +166,20 @@ export function openStore(path) {
     recentRemarks: (root, limit) => db.prepare(`SELECT r.id, r.trigger, r.at, r.verdict,
         (SELECT a.text FROM actions a WHERE a.kind = 'said' AND json_extract(a.data, '$.remark') = r.id) AS text
       FROM remarks r JOIN sessions s ON s.id = r.session_id WHERE s.root = ? AND r.shown ORDER BY r.id DESC LIMIT ?`).all(root, limit),
+    /** Logs one decision of the gate's made with the decision model (see the decisions table); returns its id. */
+    addDecision: ({sessionId, at, trigger, sort = null, sortP = null, speakP = null, score = null, bar = null, rule = null, verdict, fallback = null, state = null}) => Number(db.prepare(
+      'INSERT INTO decisions (session_id, at, trigger, sort, sort_p, speak_p, score, bar, rule, verdict, fallback, state) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    ).run(sessionId, at, trigger, sort, sortP, speakP, score, bar, rule, verdict, fallback, state && JSON.stringify(state)).lastInsertRowid),
+    /** The remark decision `id` led to. */
+    linkDecision: (id, remarkId) => db.prepare('UPDATE decisions SET remark_id = ? WHERE id = ?').run(remarkId, id),
+    /**
+     * The decisions since `since`, newest first, with the project they were made in and what became of their remark:
+     * `remarkAt` and `verdict`, both null when it said nothing (or there was none).
+     */
+    decisions: since => db.prepare(`SELECT d.id, d.trigger, d.at, d.sort, d.sort_p AS sortP, d.speak_p AS speakP, d.score, d.bar, d.rule, d.verdict AS decided,
+        d.fallback, d.remark_id AS remarkId, d.state, s.root, r.at AS remarkAt, r.verdict, r.shown
+      FROM decisions d JOIN sessions s ON s.id = d.session_id LEFT JOIN remarks r ON r.id = d.remark_id WHERE d.at >= ? ORDER BY d.id DESC`).all(since)
+      .map(row => ({...row, state: row.state && JSON.parse(row.state)})),
     /** Adds `ms` of active pairing in project `root`, just before `at`, to its hour. */
     addActive(at, ms, root) {
       const hour = Math.floor(at / HOUR);

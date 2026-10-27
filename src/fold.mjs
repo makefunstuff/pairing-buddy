@@ -5,7 +5,7 @@ import {isRun, logRun} from './run-log.mjs';
 import {hasNews, readingSummary, readRun, warningKey} from './run-output.mjs';
 import {namedFiles, parseTestOutput, testSummary} from './test-output.mjs';
 
-const KEEP = {edits: 20, commands: 10, outputChars: 2000, diagnostics: 30, searches: 12, places: 20, buildCommands: 20, warnings: 200, edited: 200};
+const KEEP = {typed: 120, edits: 20, commands: 10, outputChars: 2000, diagnostics: 30, searches: 12, places: 20, buildCommands: 20, warnings: 200, edited: 200};
 
 export function initialState({root = null, goal = null} = {}) {
   return {
@@ -16,6 +16,7 @@ export function initialState({root = null, goal = null} = {}) {
     cursor: null,
     selection: null,
     lastKeyAt: 0,
+    typed: [], // when the user typed lately (Neovim says so at most every half second): how fast they type
     lastEditAt: 0,
     lastLookAt: 0, // when the user last moved the cursor or scrolled: reading counts as active time too
     edits: [],
@@ -147,7 +148,7 @@ function foldCommandEnd(state, event) {
 }
 
 const handlers = {
-  typing: (state, event) => ({...state, lastKeyAt: event.at}),
+  typing: (state, event) => ({...state, lastKeyAt: event.at, typed: keepLast(state.typed, event.at, KEEP.typed)}),
 
   edit: (state, event) => ({
     ...state,

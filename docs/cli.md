@@ -27,8 +27,8 @@ Without systemd or launchd it installs no service, and `pair` starts the daemon 
 
 ## `pair doctor`
 
-Checks the config, the service, the daemon, the plugin, Neovim, herdr, logins and keys, Pair's pane, voice and both
-models, one line each, with the fix when something is wrong. It exits with 1 when a check fails.
+Checks the config, the service, the daemon, the plugin, Neovim, herdr, logins and keys, Pair's pane, voice, both
+models and the [decision model](decision.md#pair-doctor-and-pair-stats), one line each, with the fix when something is wrong. It exits with 1 when a check fails.
 
 ```sh
 pair doctor              # every check
@@ -48,12 +48,13 @@ Logins and keys for model providers, kept in `auth.json` next to the config, rea
 | `pair auth login PROVIDER` | Log in with a subscription or store an API key (also `pair login PROVIDER`). A name pi-ai does not know stores a key for your own server, for `"auth"` |
 | `pair auth logout PROVIDER` | Remove that login or key (also `pair logout PROVIDER`) |
 | `pair auth list` | Every provider and whether a login or key is set; never the secrets. Also plain `pair auth` |
-| `pair auth models PROVIDER` | The models a provider offers, for a model entry's `"model"` |
+| `pair auth models PROVIDER` | The models a provider offers, for a model entry's `"model"`, then its decision models, for a [`decision`](decision.md) entry |
 
 ## `pair stats`
 
 How often Pair spoke unasked, how much of it was useful, per trigger, and how the tuning moved
-([memory.md](memory.md#pair-stats)).
+([memory.md](memory.md#pair-stats)). With a decision model, also what it sorted, the Watcher calls it saved, and its
+remarks next to the rules' ([decision.md](decision.md#pair-doctor-and-pair-stats)).
 
 ```sh
 pair stats               # the last 7 days, every project

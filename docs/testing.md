@@ -90,6 +90,22 @@ Runs every test that needs no model, in under a minute, with scripted models and
   reloads. The pace: its levels and their border, verdicts ranking what it gives up, and, end to end against a fake
   server answering in 1.7 s, drift costing no call while a failure is still scored. `node test/pace-bench.mjs` (not
   part of `npm test`, about 2 minutes) measures calls and waits before and after the pace at set latencies.
+- **The decision model.** Fake decision models stand in for a real one (`test/decision.test.mjs`): fixed
+  probabilities, one that is slow and ignores the abort signal (given up at its timeout), one that is down or throws,
+  and malformed answers (the wrong type, a probability outside 0 to 1, a choice that was not offered, none at all).
+  The config entry, the catalog and gateway models pi-ai builds, the gate's sort, its speak probability against the
+  bar and its fallback to the rules, the pace on the Watcher's path only, the state the model is told, the log and
+  the ledger, `pair stats`'s section, and `pair doctor` and pi-ai's System One request against a fake HTTP server.
+  End to end (`test/decision-daemon.test.mjs`): a failure let through without the Watcher, then the model down, said
+  once in the chat, and the next failure scored by the Watcher. No provider is called.
+  `node test/decision-check.mjs` (not part of `npm test`) is the live check. It runs moments through the real gate
+  and prefilter with the config's `decision` model, or `--entry '{...}'`. The moments are either the 16 hand-written
+  samples in `test/fixtures/decision-moments.json`, each with a Watcher score and a label chosen by hand and a sample
+  history of verdicts the model is told, or, with `--store PATH`, the moments the daemon recorded: each logged
+  decision keeps the state the model was told, and your verdict on its remark is the label. It reports how often the
+  gate was right with the model and with the rules alone, how often the prefilter's sure sorts were right, the
+  Watcher calls saved, and latency and cost per call, for each of `--runs N`. It asks a real model with your login or
+  key, so it runs by hand; `--fake` checks the script. The results are in [decision.md](decision.md#measured).
 - **Context windows and thinking settings.** The window from vLLM's, llama.cpp's and LM Studio's metadata or pi-ai's
   catalog, the config's own winning; `pair doctor --thinking` against fake servers that take a chat-template switch
   with a budget field, or `reasoning_effort` with three levels.

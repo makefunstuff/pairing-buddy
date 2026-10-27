@@ -19,6 +19,8 @@ test('a description is the first paragraph of prose, as plain text', () => {
   // a paragraph that leads into a list keeps only its sentences before that
   assert.equal(describe('# T\n\nYou drive. Two things let it touch your code:\n\n- one\n'), 'You drive.');
   assert.equal(describe('---\nlayout: page\n---\n\n<Landing />\n'), '');
+  // A straight double quote would end the meta tag's attribute: it becomes a curly one.
+  assert.equal(describe('# T\n\nIt asks "yes or no?" and 3" more.\n'), 'It asks “yes or no?” and 3” more.');
 });
 
 test('a long description is cut at a sentence end, or at a word with …', () => {

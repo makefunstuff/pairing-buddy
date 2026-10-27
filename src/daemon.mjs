@@ -11,6 +11,7 @@ import {goalFromContext, SOURCES} from './context-card.mjs';
 import {loadSizedConfig} from './context-window.mjs';
 import {byUse, herdrFocus, noteEditor} from './editors.mjs';
 import {gitRoot} from './git.mjs';
+import {createDecider, DecisionModel} from './decision.mjs';
 import {MODEL_ROLES, ModelHealth} from './health.mjs';
 import {NoteMargin} from './margin.mjs';
 import {oneAnswer} from './note-reading.mjs';
@@ -18,7 +19,7 @@ import {HerdrPanes} from './herdr.mjs';
 import {followLoaded, shareServer} from './loaded-model.mjs';
 import {DETAIL_KEPT_MS} from './ledger.mjs';
 import {Listener} from './listen.mjs';
-import {createPairModels} from './models.mjs';
+import {createDecisionModel, createPairModels} from './models.mjs';
 import {acquireOwner} from './owner.mjs';
 import {EditorPaneHost, HerdrPaneHost} from './pane-hosts.mjs';
 import {Panes, PaneWatch} from './pane-watch.mjs';
@@ -55,6 +56,13 @@ const ALONE_END_MS = 60_000;
 const CONTEXT_EVERY_MS = 60_000; // git and the board are read again this often, and when a command ends
 const CONTEXT_FRESH_MS = 5000; // the context card reads them again when they are older than this
 
+/** What the chat says when the decision model goes down (`reason`) or answers again (null). */
+export function decisionNote(reason) {
+  return reason
+    ? `The decision model is not answering (${reason}). Pair decides by its own rules until it answers again; \`pair doctor\` checks it.`
+    : 'The decision model answers again.';
+}
+
 /** What the chat says when a model goes down (`reason`) or answers again (null). */
 export function healthNote(role, reason) {
   return reason
@@ -68,10 +76,11 @@ const defaultLog = line => process.stderr.write(`${timestamp()} ${line}\n`);
 /**
  * `probe(role)` checks that a model answers (see probe.mjs); tests pass their own, a short `keepWarmMs`, and a short
  * `agentsPollMs` for the agent relay's board and herdr. With `configFile`, the daemon takes changes to it as they are
- * saved (see reload.mjs); `modelsFor(config)` builds the models of a config, at start and after a change.
+ * saved (see reload.mjs); `modelsFor(config)` builds the models of a config, at start and after a change, and
+ * `decisionFor(config)` its decision model (`{models, model}`, or null; see decision.mjs).
  */
 export async function startDaemon(config, {
-  configFile = null, modelsFor = createPairModels, pairModels = modelsFor(config), probe, log = defaultLog, keepWarmMs = KEEP_WARM_MS,
+  configFile = null, modelsFor = createPairModels, pairModels = modelsFor(config), decisionFor = createDecisionModel, probe, log = defaultLog, keepWarmMs = KEEP_WARM_MS,
   idleEndMs = IDLE_END_MS, aloneEndMs = ALONE_END_MS, agentsPollMs,
 } = {}) {
   mkdirSync(config.dataDir, {recursive: true, mode: 0o700});
@@ -108,6 +117,26 @@ export async function startDaemon(config, {
       }
     },
   });
+  /**
+   * The gate's decision model, as the config sets it (null without one). Down or slow, it says so once and the gate
+   * goes by its own rules until a probe finds it answering again.
+   */
+  let decision = null;
+  function useDecision(built) {
+    decision?.stop();
+    decision = built && new DecisionModel({
+      ask: createDecider({models: built.models, model: built.model, timeoutMs: config.decision.timeoutMs}),
+      log,
+      onChange(reason) {
+        log(reason ? `decision model down: ${reason}` : 'decision model answers again');
+        for (const client of clients) {
+          if (client.role) sendMessage(client.socket, {type: 'health', models: health.snapshot(), text: decisionNote(reason)});
+        }
+      },
+    });
+  }
+  useDecision(decisionFor(config));
+
   /** `promise`, reported to the health of `role`'s model as it settles. */
   const reported = (role, promise) => promise.then(
     value => { health.report(role); return value; },
@@ -239,15 +268,19 @@ export async function startDaemon(config, {
     const changed = configChanges(saved, next);
     if (!changed.length) return;
     let nextModels = null;
-    if (changed.includes('models')) {
-      try {
-        nextModels = modelsFor(next);
-      } catch (error) {
-        return refuse(error.message);
-      }
+    let nextDecision = null;
+    try {
+      if (changed.includes('models')) nextModels = modelsFor(next);
+      if (changed.includes('decision')) nextDecision = decisionFor(next);
+    } catch (error) {
+      return refuse(error.message);
     }
     saved = next;
     config = {...next, socket: config.socket, dataDir: config.dataDir, agents: config.agents};
+    if (changed.includes('decision')) {
+      useDecision(nextDecision);
+      decision?.start();
+    }
     pace.on = config.watcherPace ?? true;
     for (const session of live.values()) {
       session.typingPauseMs = config.typingPauseMs;
@@ -359,7 +392,7 @@ export async function startDaemon(config, {
       const record = store.activeSession(root)
         ?? store.createSession({root, conversationId: await sessionPartner.createConversation(), goal: null, level: config.level, at: Date.now()});
       const session = new PairSession({
-        record, store, partner: sessionPartner, score, pace, health,
+        record, store, partner: sessionPartner, score, pace, health, decision: () => decision,
         previousNote: store.previousNote(root, record.id),
         lastSession: store.lastSession(root, record.id),
         autoTune: config.autoTune,
@@ -556,6 +589,7 @@ export async function startDaemon(config, {
       models: health.snapshot(),
       slot: slot.snapshot(),
       pace: pace.snapshot(), // what the Watcher's calls cost, and what Pair is not asking about
+      decision: decision?.snapshot() ?? null, // whether the decision model is down, and how often the gate fell back
       sessions: [...live.values()].map(session => ({
         root: session.root,
         role: session.role,
@@ -766,6 +800,7 @@ export async function startDaemon(config, {
   }, TICK_MS);
 
   health.start();
+  decision?.start();
   agents?.start();
   const configWatch = configFile && watchConfig(configFile, {
     // The windows asked again as at start; one a server cannot tell now stays as the running config has it.
@@ -785,6 +820,7 @@ export async function startDaemon(config, {
       configWatch?.close();
       clearInterval(ticker);
       health.stop();
+      decision?.stop();
       agents?.stop();
       for (const watch of watches.values()) watch.stop();
       for (const listener of listeners.values()) listener.close();
