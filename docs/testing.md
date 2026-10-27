@@ -30,6 +30,8 @@ Runs every test that needs no model, in under a minute, with scripted models and
     yours and `u` again making it again, nothing changing when you edited its lines, and `⏎` showing a run's output;
   - a held thought end to end: the `•` where it points and the statusline while you type in Insert mode, nothing in
     the chat, and `Alt-j` showing it at once;
+  - the blank page: `:Pair new` opening `NOTES.md` unsaved, each question under the answer it follows (also when
+    you type on before it comes), an answer fixed after `Esc` sent as fixed, and `Alt-y` taking the slice in;
   - push-to-talk: the held key's meter, the words heard and the answer in their place, and a tap;
   - teaching on request: `Alt-?` showing the idea under Pair's words and then opening its link, each key's first-use
     hint, and the keys you used remembered;
@@ -99,6 +101,10 @@ Runs every test that needs no model, in under a minute, with scripted models and
   of the project for other runners (git's files and ignored files copied, dependency folders linked at any depth
   without their caches, builds into ignored folders staying in the copy, a file in a dependency folder refused); the
   Driver hearing the result.
+- **The blank page.** The stack from your words ("go" and "node" in plain English name none), the question and slice
+  rules with one more try, a slice that breaks them not shown, a long line asked about but never refused, remarks
+  about the note held while a question waits and every other remark going on, `:Pair clear` ending the questions,
+  and the Driver typing a file that does not exist yet.
 - **The ledger.** What a session books (reads in a row as one line, the place a remark pointed at, its verdict,
   commands with their output, what it asked and was refused, the moments it stayed quiet and why), today from local
   midnight, the three-way merge that undoes an edit, details forgotten after a week, and `/today` in the chat.
@@ -167,6 +173,14 @@ Stacks can name a `provider` too, with its login or key from `pair auth`. Withou
 
 The Scout and Driver tests work in a scratch project with a local bash in place of the herdr pane; the Driver's
 editor is played by buffers in memory, and the files on disk must stay as they were.
+
+**The blank page.** `test/live/blank-page.test.mjs` runs `:Pair new` in an empty folder for C, Odin, Zig, Go and
+JavaScript, and a node idea where files "go" somewhere: three questions of at most 18 words, then a slice of two files
+with the build file the stack wants, and nothing on disk. For C and Zig, handed the wheel twice, the Driver types the
+Makefile and the source into new buffers; once saved, make takes the Makefile and its `run` target builds the
+source. Whether the program the model typed then compiles and runs cleanly is reported, not failed: in live runs it
+mostly did, and twice it did not (a C file that needed `_POSIX_C_SOURCE` for `clock_gettime`, a Zig arena read after
+`deinit`).
 
 **The search trail.** `test/live/trail.test.mjs` plays the captures' Go project with a red test and three searches;
 the cue has to name the real cause in the code's own words. The trail alone, without the failing test, is run too,

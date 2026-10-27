@@ -10,6 +10,7 @@ local card = require('pair.card')
 local debrief = require('pair.debrief')
 local draw = require('pair.draw')
 local drive = require('pair.drive')
+local blank = require('pair.new')
 local hints = require('pair.hints')
 local ledger = require('pair.ledger')
 local earcons = require('pair.earcons')
@@ -387,10 +388,12 @@ local function clear_suggestion()
   if config.accept_key then pcall(vim.keymap.del, 'n', config.accept_key, {buffer = suggestion.buf}) end
 end
 
--- The lines under the suggestion now, which may have moved since it was shown.
+-- The lines under the suggestion now, which may have moved since it was shown. A suggestion to insert lines is
+-- marked on the line they go under.
 local function suggested_range(suggestion)
   local first = draw.row(suggestion.buf, suggestion.ids[1], draw.suggest_ns)
   if not first then return nil end
+  if suggestion.insert then first = first + 1 end
   return first, first + #suggestion.old
 end
 
@@ -430,16 +433,18 @@ local function suggest(message)
   if message.line > count then return vim.notify('Pair: its suggestion is past the end of the buffer, so it was dropped') end
   local first = message.line - 1
   local last = math.max(first, math.min(message.endLine or message.line, count) - 1)
-  local old = vim.api.nvim_buf_get_lines(buf, first, last + 1, false)
+  -- With `insert`, the new lines go under `line` and nothing is struck through: the slice of :Pair new.
+  local old = message.insert and {} or vim.api.nvim_buf_get_lines(buf, first, last + 1, false)
   local new = text_lines(message.text)
-  local key = config.accept_key and hints.label(label(config.accept_key), 'takes it')
+  local does = type(message.keyNote) == 'string' and message.keyNote or 'takes it'
+  local key = config.accept_key and hints.label(label(config.accept_key), does)
   if config.accept_key then
     vim.keymap.set('n', config.accept_key, M.accept, {buffer = buf, desc = 'Accept Pair\'s suggestion'})
   end
   -- JSON null arrives as vim.NIL: a suggestion in an answer to you is no remark.
   local remark = message.remark ~= vim.NIL and message.remark or nil
   local ids = draw.suggestion(buf, first, old, new, message.note, key)
-  state.suggestion = {buf = buf, ids = ids, old = old, new = new, remark = remark, action = message.action, target = {buf = buf, ns = draw.suggest_ns, id = ids[1]}}
+  state.suggestion = {buf = buf, ids = ids, old = old, new = new, remark = remark, insert = message.insert == true, action = message.action, target = {buf = buf, ns = draw.suggest_ns, id = ids[1]}}
   aim(state.suggestion.target) -- the jump key goes there: where the accept key works
   map_keys('jump', {{config.jump_key, M.jump, 'Go where Pair points'}})
   state.reading = nil
@@ -882,6 +887,10 @@ local handlers = {
   suggest = suggest,
   edit = edit,
   handback = handback,
+  interview = function(message)
+    blank.on_interview(message, send)
+    redraw_status()
+  end,
   revert = revert,
   ledger = ledger.show,
   ledger_detail = ledger.detail,
@@ -917,6 +926,7 @@ local handlers = {
     clear_points()
     clear_suggestion()
     forget_words(false)
+    blank.on_interview({done = true})
     margin.clear()
     state.remark = nil
     state.run_line = nil
@@ -1000,6 +1010,10 @@ disconnected = function()
   listen.cancel(function() end) -- nor what you were saying
   spin()
   if state.role == 'driver' then set_role('navigator') end -- a restarted daemon has ended the hand-over
+  if blank.status() then -- nor does its :Pair new: an answer now would reach no one
+    blank.on_interview({done = true})
+    vim.notify('Pair: the daemon went away, so the questions of :Pair new stop here; :Pair new starts again', vim.log.levels.WARN)
+  end
   redraw_status()
   if state.wanted then schedule_retry(1) end
 end
@@ -1073,6 +1087,8 @@ local function status_parts()
   elseif margin.flash() then
     return {glyph = g.decision, text = 'logged · ' .. margin.flash(), hl = 'PairStatus', text_hl = 'PairStatusDim'}
   end
+  local asking = blank.status() or (state.suggestion and state.suggestion.insert and 'a suggestion')
+  if asking then return {glyph = g.voice, text = 'pair · ' .. asking, hl = 'PairStatus', text_hl = 'PairStatusDim'} end
   local line = state.run_line and now_ms() - state.run_line.at < RUN_LINE_MS and state.run_line
   local parts = {line and line.text or 'pair'}
   if line and line.debug then
@@ -1128,6 +1144,10 @@ local commands = {
   scout = function() send({type = 'role', role = 'scout'}) end,
   navigate = function() send({type = 'role', role = 'navigator'}) end,
   drive = function(arg, selection) send({type = 'drive', text = arg, selection = selection}) end,
+  new = function(arg)
+    if not M.connect() then return vim.notify('Pair: not connected, so no questions yet; :Pair new again once it is', vim.log.levels.WARN) end
+    blank.start(arg, send)
+  end,
   jump = function() M.jump() end,
   trail = function() send({type = 'trail'}) end,
   runs = function() send({type = 'runs'}) end,
@@ -1156,6 +1176,10 @@ local commands = {
     clear_points()
     forget_words(false)
     margin.clear()
+    if blank.status() then
+      blank.on_interview({done = true})
+      send({type = 'new_stop'})
+    end
   end,
   decide = function() margin.decide() end,
   tasks = function()

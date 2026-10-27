@@ -2,5 +2,5 @@ vim.api.nvim_create_user_command('Pair', function(opts) require('pair').command(
   nargs = '*',
   range = true,
   complete = function() return require('pair').complete() end,
-  desc = 'pairing-buddy: start [goal] | goal | ask | level | scout | navigate | drive | jump | trail | accept | decide | tasks | dismiss | useful | noise | context | end | first | open | clear | listen | stop',
+  desc = 'pairing-buddy: start [goal] | new [idea] | goal | ask | level | scout | navigate | drive | jump | trail | accept | decide | tasks | dismiss | useful | noise | context | end | first | open | clear | listen | stop',
 })

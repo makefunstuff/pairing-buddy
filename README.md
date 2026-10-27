@@ -93,9 +93,9 @@ to do:
 | `Alt-a` | Go to the agent whose news Pair relayed ([your other agents](docs/agents.md)) |
 | any key | Take the wheel back while Pair drives |
 
-The main commands are `:Pair ask <question>`, `:Pair drive [what]`, `:Pair scout`, `:Pair navigate`, `:Pair context`,
-`:Pair today`, `:Pair runs`, `:Pair agents`, `:Pair tasks` and `:Pair end` (with its debrief; `:Pair first` changes tomorrow's first
-step).
+The main commands are `:Pair ask <question>`, `:Pair new [idea]`, `:Pair drive [what]`, `:Pair scout`, `:Pair navigate`,
+`:Pair context`, `:Pair today`, `:Pair runs`, `:Pair agents`, `:Pair tasks` and `:Pair end` (with its debrief; `:Pair first`
+changes tomorrow's first step).
 All options, commands, the statusline segment and the highlight groups are in [docs/neovim.md](docs/neovim.md), with
 captures of each moment.
 
@@ -191,6 +191,11 @@ only reads the board and herdr. [docs/agents.md](docs/agents.md)
 said, with a link to the docs when it is sure of one. [docs/tone.md](docs/tone.md),
 [docs/neovim.md](docs/neovim.md#the-idea-behind-it)
 
+**Starts from a blank page.** In an empty folder, `:Pair new` and one sentence: Pair asks three short questions in
+`NOTES.md`, one at a time, then suggests a first slice that runs: two files (a `Makefile` and `main.c`, `go.mod` and
+`main.go`, ...), what to poke at, when the first test is worth writing, and what to leave out. No scaffolding, no
+library you did not name, nothing on disk until you save. [docs/blank-page.md](docs/blank-page.md)
+
 **Remembers and learns.** Each session ends with a short note the next one starts from, and earlier sessions stay
 searchable ("what did we try last week?"). Your useful/noise verdicts tune when Pair talks, per project. `pair stats`
 shows the numbers. [docs/memory.md](docs/memory.md)
@@ -206,6 +211,7 @@ Off until you set `"voice"` in the config. [docs/voice.md](docs/voice.md)
 - [How it works](docs/how-it-works.md): what Pair sees, when it speaks, its tools per role
 - [Neovim](docs/neovim.md): the visual language, the three moments, options, commands, statusline
 - [Scout](docs/scout.md): Pair's pane, the command policy, test output parsing
+- [The blank page](docs/blank-page.md): `:Pair new`, three questions, a first slice of two files
 - [Driver and suggestions](docs/driver.md): handing over, tests on the unsaved buffer, taking the wheel back
 - [Tests on save](docs/tests-on-save.md)
 - [Builds and crashes](docs/builds.md): crashes, compiler errors and new warnings, read from your runs

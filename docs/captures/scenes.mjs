@@ -4,6 +4,7 @@
 import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {sliceText} from '../../src/blank-page.mjs';
 
 const score = (...kinds) => prompt => (kinds.some(kind => prompt.includes(`(${kind})`)) ? '9' : '0');
 
@@ -40,6 +41,10 @@ const CASES = [
   '\t\t{"negative attempt", -1, 0},',
   '\t\t{"shift past 63 bits", 64, time.Minute},',
 ].join('\n');
+
+// The blank page's scenes replay a real :Pair new with a cloud model, unedited: its three questions (each asked after the
+// answer before it), the slice, and the Makefile and main.c it typed when handed the wheel.
+const TICKS = JSON.parse(readFileSync(new URL('./ticks.json', import.meta.url), 'utf8'));
 
 // The teach scene's words are a real model's, from one run of the live tone test on the same project, unedited.
 const REMARK = 'table.c:35 divides size_t by size_t, so `t->len / t->cap` is always 0 and the table never grows; at load 0.98 linear probing blows past 3 probes.';
@@ -267,6 +272,30 @@ export const scenes = {
     partner: [
       {when: /edge cases/, wait: 600, call: ['edit', {file: TABLE, line: 15, new_text: CASES}]},
       {say: 'Okay, yours.'},
+    ],
+  },
+  // The blank page: an empty folder, :Pair new and one sentence; three questions one at a time, then the first slice.
+  'blank-page': {
+    blank: 'ticks',
+    watcher: score(),
+    partner: [
+      ...TICKS.questions.map(question => ({when: /^\[new\]/, wait: 1600, say: question})),
+      {when: /^\[new\]/, wait: 2600, say: JSON.stringify(TICKS.slice)},
+    ],
+  },
+  // The first run: the slice is in the note; handed the wheel twice, Pair types the Makefile and main.c, and it runs.
+  'first-run': {
+    blank: 'ticks',
+    watcher: score(),
+    setup: project => writeFileSync(join(project, 'NOTES.md'),
+      `# ticks\n\n${TICKS.idea}\n${TICKS.answers.map(answer => `- ${answer}`).join('\n')}\n\n${sliceText(TICKS.slice)}\n`),
+    partner: [
+      {when: /Makefile/, wait: 700, call: ['read', {file: 'NOTES.md'}]},
+      {wait: 900, call: ['edit', {file: 'Makefile', line: 1, new_text: TICKS.makefile}]},
+      {wait: 300, say: TICKS.makefileSaid},
+      {when: /main\.c/, wait: 800, call: ['read', {file: 'Makefile'}]},
+      {wait: 1100, call: ['edit', {file: 'main.c', line: 1, new_text: TICKS.main}]},
+      {wait: 300, say: TICKS.mainSaid},
     ],
   },
   // Notes in the margin: you finish a sentence in the dead-letters design note. At the pause the rule marks the

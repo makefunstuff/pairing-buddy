@@ -24,18 +24,24 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const log = line => console.error(`${new Date().toISOString().slice(11, 23)} ${line}`);
 
 // The project (hookd, unless the scene names another), committed as it is when the scene starts; built with the
-// scene's `build`, or a Go project's packages, so the first run is quick.
+// scene's `build`, or a Go project's packages, so the first run is quick. A scene of the blank page starts in a folder
+// of its own with no git yet: empty, or with what its setup puts there.
 const source = join(HERE, scene.project ?? 'hookd');
-const project = join(dir, basename(source));
-cpSync(source, project, {recursive: true});
-scene.setup?.(project);
-const git = (...args) => execFileSync('git', ['-c', 'user.name=dev', '-c', 'user.email=dev@example.com', ...args], {cwd: project});
-git('init', '-q');
-git('add', '-A');
-git('commit', '-qm', 'hookd');
-if (scene.branch) git('checkout', '-qb', scene.branch);
-if (scene.build) execFileSync(scene.build[0], scene.build.slice(1), {cwd: project, stdio: 'ignore'});
-else if (existsSync(join(project, 'go.mod'))) execFileSync('go', ['test', '-count=1', '-run', '^$', './...'], {cwd: project, stdio: 'ignore'});
+const project = join(dir, scene.blank ?? basename(source));
+if (scene.blank) {
+  mkdirSync(project);
+  scene.setup?.(project);
+} else {
+  cpSync(source, project, {recursive: true});
+  scene.setup?.(project);
+  const git = (...args) => execFileSync('git', ['-c', 'user.name=dev', '-c', 'user.email=dev@example.com', ...args], {cwd: project});
+  git('init', '-q');
+  git('add', '-A');
+  git('commit', '-qm', 'hookd');
+  if (scene.branch) git('checkout', '-qb', scene.branch);
+  if (scene.build) execFileSync(scene.build[0], scene.build.slice(1), {cwd: project, stdio: 'ignore'});
+  else if (existsSync(join(project, 'go.mod'))) execFileSync('go', ['test', '-count=1', '-run', '^$', './...'], {cwd: project, stdio: 'ignore'});
+}
 
 // The scene's other agents: a stand-in board (its command prints the list; its task files say where each task's
 // agent runs) and herdr's agents. Scenes without them read no board at all, never yours.
@@ -113,7 +119,7 @@ const chat = connect(socket);
 readMessages(chat, message => { if (message.type === 'message') log(`chat: ${message.sender}: ${message.text}`); });
 await new Promise(resolve => chat.on('connect', resolve));
 sendMessage(chat, {type: 'hello', role: 'chat', cwd: project, herdr: {socket: herdrSocket, workspace: 'w1', pane: 'w1:p2'}});
-if (scene.goal) sendMessage(chat, {type: 'goal', text: scene.goal}); // else the session takes the board task's
+if (scene.goal) sendMessage(chat, {type: 'goal', text: scene.goal}); // else the session takes the board task's, or :Pair new sets it
 
 // The day so far, for the debrief: its active time and the user's verdicts on Pair's remarks.
 if (scene.today) {

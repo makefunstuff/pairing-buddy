@@ -1,0 +1,45 @@
+{
+  "idea": "a tiny C toy with a Makefile, to see how a fixed-timestep loop catches up after a stall",
+  "questions": [
+    "What should visibly catch up after a stall — a moving dot, or just printed numbers?",
+    "Should the stall be a real clock sleep, and roughly how long should it last?",
+    "With 25 catch-up steps landing in one frame, should we cap steps per frame?"
+  ],
+  "answers": [
+    "printed numbers. one line per frame: frame, steps this frame, total steps",
+    "a real sleep of half a second, once, at frame 20. the sim steps at 50 Hz",
+    "no cap yet, I want to see all 25 land in one frame. the cap comes after"
+  ],
+  "slice": {
+    "files": [
+      {
+        "path": "Makefile",
+        "does": "builds main.c and runs it when you type make run"
+      },
+      {
+        "path": "main.c",
+        "does": "50 Hz loop, one 0.5s sleep at frame 20, one line per frame"
+      }
+    ],
+    "run": "make run",
+    "shows": "A line per frame: frame, steps, total. 20 quiet frames, one with 25 steps, then quiet.",
+    "needs": [],
+    "probes": [
+      "Move the sleep to frame 30: watch the big line move, still 25 steps",
+      "Make the sleep 0.1s: 5 steps land instead of 25",
+      "Run 100 frames instead of 40: totals keep pace with frames",
+      "Sleep twice: two big lines, both 25, total never lags frames"
+    ],
+    "test": "0.5s at 50 Hz is 25: assert that line shows 25 steps and the total tracks frames.",
+    "later": [
+      "the cap on steps per frame",
+      "a moving dot or any drawing",
+      "interpolated positions between steps",
+      "timing stats or a frame-rate summary"
+    ]
+  },
+  "makefile": "CC ?= cc\nCFLAGS ?= -std=c11 -Wall -Wextra -O2\n\nrun: main\n\t./main\n\nmain: main.c\n\t$(CC) $(CFLAGS) -o main main.c\n\nclean:\n\trm -f main\n\n.PHONY: run clean\n",
+  "makefileSaid": "I wrote the Makefile: `make run` builds main.c with cc and runs it, plus a `clean` target — no tests were run. Note main.c doesn't exist yet, so `make run` will fail until we write it.",
+  "main": "#define _POSIX_C_SOURCE 199309L\n\n#include <stdio.h>\n#include <time.h>\n\n#define FRAMES 40\n#define STALL_FRAME 20\n#define FRAME_MS 20\n#define STALL_MS 500\n\nstatic double now_s(void)\n{\n    struct timespec ts;\n    clock_gettime(CLOCK_MONOTONIC, &ts);\n    return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;\n}\n\nstatic void sleep_ms(long ms)\n{\n    struct timespec ts;\n    ts.tv_sec = ms / 1000;\n    ts.tv_nsec = (ms % 1000) * 1000000L;\n    nanosleep(&ts, NULL);\n}\n\nint main(void)\n{\n    const double dt = FRAME_MS / 1000.0; /* one sim step is 20 ms: 50 Hz */\n    double t0 = now_s();\n    double acc = 0.0;\n    int total = 0;\n\n    for (int frame = 1; frame <= FRAMES; frame++) {\n        sleep_ms(frame == STALL_FRAME ? STALL_MS : FRAME_MS);\n\n        double t1 = now_s();\n        acc += t1 - t0;\n        t0 = t1;\n\n        int steps = 0;\n        while (acc >= dt) {\n            acc -= dt;\n            steps++;\n            total++;\n        }\n\n        printf(\"frame %2d  steps %2d  total %3d\\n\", frame, steps, total);\n    }\n\n    return 0;\n}\n",
+  "mainSaid": "I wrote main.c: a 40-frame loop that paces each frame with a 20 ms sleep (500 ms at frame 20), adds the measured elapsed time to an accumulator and runs 50 Hz steps while it lasts, printing frame, steps and total. No tests ran; expect 1 step per frame except frame 20 at 25."
+}

@@ -31,6 +31,9 @@ if [ -e "$OUT/push-to-talk.mp4" ]; then
   cp "$OUT/listening.png" "$IMAGES/listening.png"
   cp "$OUT/answer.png" "$IMAGES/spoken-answer.png"
 fi
+# The blank page: its clip as a GIF, the first run's stills.
+gif blank-page
+for name in blank-question blank-slice first-run-typing first-run; do cp "$OUT/$name.png" "$IMAGES/$name.png"; done
 ls -l "$SITE"/m?.* "$SITE"/m?-still* "$IMAGES"/*.gif
 # The search trail: the README's GIF and the docs' stills.
 gif search-trail

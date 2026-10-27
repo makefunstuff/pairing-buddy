@@ -204,6 +204,15 @@ a key still takes the wheel back, and leaves the one change.
 A long edit types faster, to take about four seconds; with `motion = false` it lands at once, as one undo step.
 If no window shows the lines it changes, they open in a split first, so you can watch; your cursor stays where it was.
 
+## The blank page
+
+At the start of something new, `:Pair new` and one sentence: Pair asks three questions in `NOTES.md`, one at a
+time, each under your last answer, in its usual voice (`●` and its words). Your answer goes once you leave Insert mode and it settles.
+The first slice comes as a suggestion that adds lines and strikes nothing, and `Alt-y` takes it into the note. See
+**[docs/blank-page.md](blank-page.md)**.
+
+![The slice under the last answer, nothing struck through, and Alt-y to take it into the note](images/blank-slice.png)
+
 ## The search trail
 
 You look for something with Telescope and it is not there under your words. A test is red; you grep for
@@ -632,6 +641,7 @@ to standard ones and does not fade.
 | Command | What it does |
 | --- | --- |
 | `:Pair start [goal]` | Connect to the daemon (not needed with `auto_connect`), optionally setting the session goal |
+| `:Pair new [idea]` | Start something new: three questions in `NOTES.md`, one at a time, then a first slice of two files ([details](blank-page.md)) |
 | `:Pair goal <text>` | Set the session goal |
 | `:Pair ask <text>` | Ask Pair something (the answer appears in the chat pane); with a range (`:'<,'>Pair ask ...`), about those lines |
 | `:Pair level quiet\|normal\|chatty` | How often Pair speaks unasked |
@@ -651,7 +661,7 @@ to standard ones and does not fade.
 | `:Pair today` | The [ledger](#the-ledger): everything Pair did in this project today; `⏎` goes there or shows the output, `u` undoes one of its edits later |
 | `:Pair decide` | Log the decision on the cursor's line of a note in `decisions.md` next to it (same as `Alt-d`; [notes.md](notes.md#the-decision-log)) |
 | `:Pair tasks` | List the work in the current note as tasks; nothing is added until `y` ([notes.md](notes.md#tasks-only-when-you-ask)) |
-| `:Pair clear` | Remove Pair's points and words, and the marks in a note's margin |
+| `:Pair clear` | Remove Pair's points and words and the marks in a note's margin, and end the questions of `:Pair new` |
 | `:Pair context` | Show what Pair knows right now: the goal, the board task, git, your commands, buffers, jumps and searches; `x` hides a source for the session, `q` closes |
 | `:Pair end` | End the session now with its [debrief](#the-morning-pick-up-and-the-days-end), which the next session in this project starts from (it also [ends by itself](memory.md#no-ceremony-a-session-starts-and-ends-by-itself)) |
 | `:Pair first <step>` | Tomorrow's first step, with a `file:line` to land on: it replaces the last debrief's in a session with no work yet, else this session's debrief takes it |
