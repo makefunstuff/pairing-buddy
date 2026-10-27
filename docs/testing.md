@@ -15,7 +15,10 @@ Runs every test that needs no model, in under a minute, with scripted models and
   (output and exit codes in files, more than 1000 lines); hand-over and take-back, also by typing at a shell prompt;
   `type` (only after a yes, only into your terminal pane, never Enter); your panes against a fake herdr's event stream
   (focus and scroll pushed, typing, a command seen running and one too short for that, no requests while you are in
-  another workspace) and the heuristics on pane text; the shell hooks: bash, and zsh and fish where installed.
+  another workspace) and the heuristics on pane text; the shell hooks (bash, and zsh and fish where installed): each
+  command's start and end, numbered, a start that arrives after its end, nothing written to the terminal, zsh's keys
+  to the socket at most twice a second (and only where zle's hooks are there), no polling of a hooked zsh pane at its
+  prompt, and an editor that opens late in a hooked command.
 - **Without herdr**, in a headless Neovim: Scout's pane and the tests on save as a `:terminal` there, the Driver's
   `type` into the `:terminal` you used last or another one named in the answer, `:Pair chat`, and a command you run
   in your own `:terminal`, seen running and with its output, and with the bash hook its exit code. In a real tmux
@@ -88,7 +91,12 @@ Runs every test that needs no model, in under a minute, with scripted models and
   notes, or a run that passed since.
 - **The search trail.** Three searches with one closed empty make a trail, an edit or the time window ends it; the
   trigger waits for a pause and carries what fails now; the Watcher's question; what the project has for each query;
-  a trail remark and `:Pair trail` showing the same searches; a held trail remark dropped once you edit.
+  a trail remark and `:Pair trail` showing the same searches; a held trail remark dropped once you edit. In a
+  headless Neovim, the searches read from a stand-in for Telescope and from the real fzf-lua, at a pinned commit
+  fetched once into `node_modules/.cache` (skipped without `fzf` or the network): live_grep and files given up with
+  `Esc` in fzf-lua's default setup, which hides the picker, a resumed picker with fewer words, grep words with
+  punctuation as you gave them, grep_cWORD and grep_cword, what you opened, and fzf-lua set to end fzf, in fzf's own
+  bottom-up layout with a `>` pointer, where a result line starts like the prompt.
 - **The context card and no ceremony.** The board task matched by repo and number (never another repo's task of the
   same number, nor a version branch), the board's agent launches left out of your commands, each source's rows and
   budget, a hidden source left out of what the Partner gets and raising no remark (no failed command with a hidden

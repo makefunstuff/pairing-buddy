@@ -57,7 +57,9 @@ Add the plugin with lazy.nvim:
 
 Set your model in `~/.config/pairing-buddy/config.json` ([models](docs/models.md)), run `pair doctor` to check every
 part, then `pair` in the herdr pane next to Neovim (or `:Pair chat` in Neovim), and work.
-[Getting started](docs/getting-started.md) walks through it.
+[Getting started](docs/getting-started.md) walks through it. Optionally add the
+[shell hook](docs/cli.md#pair-shell-hook) (`eval "$(pair shell-hook bash)"`, or zsh, or fish) to your shell's rc file:
+Pair then gets every command you run, with its exit code, from the shell itself, and in zsh your typing too.
 
 ## Documentation
 

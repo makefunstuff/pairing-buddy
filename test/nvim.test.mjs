@@ -12,6 +12,7 @@ import {startDaemon} from '../src/daemon.mjs';
 import {readMessages, sendMessage} from '../src/protocol.mjs';
 import {openStore} from '../src/store.mjs';
 import {fakeHerdr} from './fake-herdr.mjs';
+import {fzfLua} from './fzf-lua.mjs';
 import {bashWithoutCores} from './no-core.mjs';
 import {scratch, socketDir} from './temp.mjs';
 
@@ -79,7 +80,7 @@ async function pairInNvim(goal, {testOnSave, runs = false, thinks = false, voice
     '-c', `cd ${project}`,
     '-c', 'edit a.js',
     '-c', `Pair start ${goal}`,
-  ], {stdio: 'ignore', env: {...process.env, XDG_STATE_HOME: state}});
+  ], {stdio: 'ignore', env: {...process.env, XDG_STATE_HOME: state, TMPDIR: scratch('pair-nvim-tmp-')}}); // its tempname() dir stays when killed
   const remote = expr => execFileSync('nvim', ['--server', server, '--remote-expr', expr], {encoding: 'utf8'}).trim();
   const keys = text => execFileSync('nvim', ['--server', server, '--remote-send', text]);
 
@@ -1209,6 +1210,111 @@ test('Telescope searches reach the trail with what you opened; :Pair trail shows
     assert.deepEqual(panel(), ['What the pair saw you look for, oldest first', '', 'No searches since your last edit.', 'q closes']);
     keys('q');
     await until(() => remote('win_gettype()') === '', 'q to close it');
+  } finally {
+    await stop();
+  }
+});
+
+const fzf = hasNvim ? fzfLua() : {skip: 'nvim not installed'};
+test('fzf-lua searches reach the trail, given up with Esc or opened: live_grep, files, grep, grep_cWORD, grep_cword and resumed pickers', {skip: fzf.skip ?? false, timeout: 60_000}, async () => {
+  const {project, watcher, remote, keys, stop} = await pairInNvim('retries pass', {rtp: [fzf.dir]});
+  const screen = () => JSON.parse(remote('json_encode(getline(1, "$"))'));
+  const escaped = text => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  /**
+   * Opens a picker with `call` (none: the one open) and types `typed`, once fzf shows its prompt, then waits for
+   * `count` matches on the prompt line; with `shown`, the prompt line must end in just
+   * those words before them.
+   */
+  const pick = async (call, typed, count, shown) => {
+    if (call) remote(`luaeval("${call} and 0 or 0")`);
+    await until(() => remote('&filetype') === 'fzf' && screen().some(line => /\d+\/\d+/.test(line)), `fzf for ${call}`);
+    if (typed) keys(typed);
+    const ready = new RegExp(`${shown === undefined ? '' : `${escaped(shown)}\\s+`}\\b${count}/\\d+`);
+    await until(Object.assign(() => screen().some(line => ready.test(line)), {last: () => screen().join('\n')}), `${count} matches for ${shown ?? call}`);
+  };
+  /** Ends the picker with `key`, as typed in Neovim (fzf-lua maps Esc), and waits for it to be gone. */
+  const end = async key => {
+    keys(key);
+    await until(() => remote('&filetype') !== 'fzf', 'the picker to close');
+    await sleep(200);
+  };
+  const where = () => remote('expand("%:t") . ":" . line(".")');
+  try {
+    watcher.setResponses(Array.from({length: 10}, () => fauxAssistantMessage([fauxText('0')]))); // not worth a remark
+    writeFileSync(join(project, 'backoff.js'), 'export const next = attempt => 2 ** attempt\n');
+    writeFileSync(join(project, 'worker.js'), 'const tries = 5\n// give up after tries.max()\n');
+    remote(`luaeval("require('fzf-lua').setup({}) and 0 or 0")`); // its default profile hides pickers
+
+    // Given up with Esc: fzf-lua hides the picker and only then hears the query from fzf.
+    await pick('FzfLua.live_grep()', 'dead letter', 0, '> dead letter');
+    await end('<Esc>');
+    // Resumed, the words cut down, and given up again: the new words, not the ones fzf-lua kept.
+    await pick('FzfLua.resume()', '<BS><BS><BS><BS><BS><BS><BS>', 0, '> dead');
+    await end('<Esc>');
+    await pick('FzfLua.files()', 'nothing here', 0, 'nothing here');
+    await end('<Esc>');
+    await pick('FzfLua.files()', 'backoff', 1, 'backoff');
+    await end('<CR>');
+    assert.equal(where(), 'backoff.js:1');
+    // The words as given, not as fzf-lua escapes them for rg.
+    await pick(`FzfLua.grep({search = 'tries.max('})`, '', 1);
+    await end('<CR>');
+    assert.equal(where(), 'worker.js:2');
+    await pick('FzfLua.resume()', '', 1);
+    await end('<Esc>');
+    keys('2G$'); // on "tries.max()"
+    await pick('FzfLua.grep_cWORD()', '', 1);
+    await end('<Esc>');
+    keys('2G18|'); // on "tries"
+    await pick('FzfLua.grep_cword()', '', 2);
+    await end('<Esc>');
+    assert.equal(where(), 'worker.js:2');
+
+    keys(':Pair trail<CR>');
+    const lines = await until(() => remote('&filetype') === '' && remote('win_gettype()') === 'popup' && screen(), 'the trail panel');
+    assert.equal(lines[0], 'What the pair saw you look for, oldest first');
+    const rows = lines.slice(2, 10).map(line => line.replace(/^\+ +\d+s {2}/, '').replace(/ {2,}/g, '  '));
+    assert.deepEqual(rows, [
+      'Live Grep  "dead letter"  0 results  closed, nothing opened',
+      'Live Grep  "dead"  0 results  closed, nothing opened',
+      'Files  "nothing here"  0 results  closed, nothing opened',
+      'Files  "backoff"  1 result  → backoff.js',
+      'Grep  "tries.max("  1 result  → worker.js',
+      'Grep  "tries.max("  1 result  closed, nothing opened',
+      'Grep CWORD  "tries.max()"  1 result  closed, nothing opened',
+      'Grep Cword  "tries"  2 results  closed, nothing opened',
+    ]);
+    assert.match(lines[11], /^8 searches in \d+ s since your last edit; 6 closed with nothing opened; "tries\.max\(" more than once\.$/);
+    keys('q');
+  } finally {
+    await stop();
+  }
+});
+
+test('fzf-lua set to end fzf rather than hide it, in fzf\'s own layout with a > pointer: its searches reach the trail too', {skip: fzf.skip ?? false, timeout: 60_000}, async () => {
+  const {project, watcher, remote, keys, stop} = await pairInNvim('retries pass', {rtp: [fzf.dir]});
+  const screen = () => JSON.parse(remote('json_encode(getline(1, "$"))'));
+  try {
+    watcher.setResponses(Array.from({length: 10}, () => fauxAssistantMessage([fauxText('0')])));
+    writeFileSync(join(project, 'backoff.js'), 'export const next = attempt => 2 ** attempt\n');
+    remote(`luaeval("require('fzf-lua').setup({defaults = {no_hide = true}, fzf_opts = {['--layout'] = 'default', ['--info'] = 'default', ['--pointer'] = '>'}}) and 0 or 0")`);
+    for (const [call, query, count, key] of [['FzfLua.live_grep()', 'attempt', 1, '<Esc>'], ['FzfLua.files()', 'backoff', 1, '<CR>']]) {
+      remote(`luaeval("${call} and 0 or 0")`);
+      await until(() => remote('&filetype') === 'fzf' && screen().some(line => /\d+\/\d+/.test(line)), `fzf for ${call}`);
+      keys(query);
+      await until(() => screen().at(-1).includes(query) && new RegExp(`^\\s*${count}/\\d+`).test(screen().at(-2)), `${count} matches for "${query}"`);
+      if (key === '<Esc>') assert.ok(screen().some(line => /^> .*backoff\.js/.test(line)), 'a result under the > pointer, starting like the prompt');
+      keys(key);
+      await until(() => remote('&filetype') !== 'fzf', 'the picker to close');
+    }
+    assert.equal(remote('expand("%:t")'), 'backoff.js');
+    assert.equal(remote('luaeval("require(\'fzf-lua.utils\').fzf_winobj() == nil and 1 or 0")'), '1', 'no picker hidden: fzf ended');
+
+    keys(':Pair trail<CR>');
+    const lines = await until(() => remote('win_gettype()') === 'popup' && screen(), 'the trail panel');
+    assert.match(lines[2], /^\+ +\d+s {2}Live Grep +"attempt" +1 result +closed, nothing opened$/);
+    assert.match(lines[3], /^\+ +\d+s {2}Files +"backoff" +1 result +→ backoff\.js$/);
+    keys('q');
   } finally {
     await stop();
   }

@@ -17,14 +17,17 @@ its role's tools.
 ## What it sees
 
 - **Neovim.** The plugin sends edits (about 2 s after you stop typing), the current file, cursor, selection, LSP
-  diagnostics, your Telescope and snacks.picker searches, and that you scroll (at most every 10 s: only that you read).
+  diagnostics, your Telescope, snacks.picker and fzf-lua searches, and that you scroll (at most every 10 s: only that you read).
 - **Your terminals.** The daemon watches your herdr panes, the panes of the tmux session you work in and your
   `:terminal` buffers in Neovim for focus, commands and their output ([herdr.md](herdr.md) says how, and what herdr
   lacks; [neovim.md](neovim.md#without-herdr) for Neovim and tmux).
 - **Where you have been.** Your buffers and jumplist, the herdr work board's task for your branch, and git (branch,
   last commit, changed files, pull request). The [context card](neovim.md#what-it-knows-the-context-card) shows all of
   it, and what you hide there is not sent.
-- **The shell hook** (optional, bash, zsh or fish) adds exit codes, and catches every command however short.
+- **The shell hook** (optional, bash, zsh or fish) says when each command starts and ends, with its exit code, so
+  every command is caught however short and Pair no longer polls the pane's processes to find commands; in zsh it
+  also says when you type at the prompt, so a zsh pane is not read at its prompt at all (bash and fish panes with focus
+  still are, twice a second, for typing).
 - **Builds and runs** are read for a crash and where in your code it happened, and for the compiler's errors and
   warnings with their file and line ([builds.md](builds.md)). A segfault counts as a failure also without an exit code.
 - **Test output** is parsed (cargo, go test, jest, vitest, pytest, `node --test`, zig, ctest, TAP, JUnit XML): which
@@ -50,7 +53,7 @@ A remark can come from one of these moments (its **trigger**):
 | `number_moved` | A change of the code moved a number the run prints, most worth a word at the end of a hunt ([exploration.md](exploration.md)) |
 | `note_stall` | In a Markdown note, you wrote a question and then nothing for 90 s: one question back, never the answer ([notes.md](notes.md#what-the-triggers-mean-in-prose)) |
 | `note_drift` | In a Markdown note, a new section shares no word with the note's title or the goal: one question, "is this still the … note?" |
-| `search_trail` | Three or more Telescope or snacks.picker searches since your last edit, one of them closed with nothing opened, or repeated. The remark gets what fails now, so it can say where the thing is in the code's own word ([neovim.md](neovim.md#the-search-trail)) |
+| `search_trail` | Three or more Telescope, snacks.picker or fzf-lua searches since your last edit, one of them closed with nothing opened, or repeated. The remark gets what fails now, so it can say where the thing is in the code's own word ([neovim.md](neovim.md#the-search-trail)) |
 
 A failed test run counts as failed even without an exit code, and the remark names the failed tests and the first
 error. A direct question in the chat is always answered.

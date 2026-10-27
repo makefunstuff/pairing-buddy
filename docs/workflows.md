@@ -8,7 +8,7 @@ You read, search and try things; Pair follows along and speaks only when it can 
 
 - **The wrong turn.** While a test is red and you edit a file the failure does not name, Pair traces the test and,
   only if the cause is elsewhere, says so under your edit ([the wrong turn](neovim.md#the-wrong-turn)).
-- **The search trail.** Three Telescope or snacks.picker searches in circles, and Pair says where the thing is, in
+- **The search trail.** Three Telescope, snacks.picker or fzf-lua searches in circles, and Pair says where the thing is, in
   the code's own word. `:Pair trail` shows the searches it saw ([the search trail](neovim.md#the-search-trail)).
 - **The exploration loop.** Build, run, change one thing, run again: each run gets a number and is read next to the
   one before. When a change did nothing, Pair says why. `:Pair runs` keeps the runs ([exploration.md](exploration.md)).
@@ -77,7 +77,8 @@ Without herdr, all of Pair works inside Neovim and tmux:
 - `:Pair chat` opens the chat in a terminal buffer on the right (or run `pair chat` in any terminal);
 - Scout's pane and the tests on save run in a `:terminal` along the bottom of Neovim;
 - Pair reads your own `:terminal` buffers and the panes of the tmux session you work in: which one you are in, the
-  commands you run and their output, and with the [shell hook](cli.md#pair-shell-hook) their exit codes;
+  commands you run and their output, and with the [shell hook](cli.md#pair-shell-hook) their exit codes (and in zsh
+  your typing at the prompt);
 - the Driver's `type` goes to one of those terminals, after your yes.
 
 Only a terminal that is neither (a plain window of your terminal emulator) sends just its exit codes, without output,

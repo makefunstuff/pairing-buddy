@@ -41,7 +41,7 @@ local config = {
   listen_mode = 'hold', -- or 'toggle': press to start, press again to ask (see listen.lua)
   listen_hold_ms = 650, listen_release_ms = 220, listen_silence_ms = false,
   sounds = false, sound_volume = 0.5,
-  searches = true, -- your Telescope and snacks.picker searches go to the daemon, for the search trail
+  searches = true, -- your Telescope, snacks.picker and fzf-lua searches go to the daemon, for the search trail
   decide_key = '<M-d>', link_key = '<M-l>',
   teach_key = '<M-?>',
   agents_key = '<M-a>',
