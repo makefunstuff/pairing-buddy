@@ -600,8 +600,8 @@ the count starts again. `level quiet` turns them off.
 
 ## Without herdr
 
-All of Pair works inside Neovim too; herdr only adds the view of your other terminals
-([herdr.md](herdr.md)).
+All of Pair works inside Neovim too, and in tmux; herdr adds its board of your other agents ([agents.md](agents.md))
+and, for terminals that are neither Neovim's nor tmux's, their output ([herdr.md](herdr.md)).
 
 - **The chat.** `:Pair chat` opens `pair chat` in a terminal buffer on the right, in Insert mode, connected to the
   daemon; again, it goes back to it. `pair chat` in any other terminal works the same.
@@ -614,6 +614,19 @@ All of Pair works inside Neovim too; herdr only adds the view of your other term
   are not yours). The question in the chat names it, `nvim:<buffer>`, and lists your other terminals: answer `y`,
   or the name of another one to type there instead. With two Neovims in the project, a buffer number both have is
   named with the Neovim's process id too, `nvim:<pid>:<buffer>` ([driver.md](driver.md#typing-into-your-terminal)).
+- **Your terminals.** Pair reads your `:terminal` buffers as it reads herdr's panes: which one you are in (going in,
+  out, or to another buffer says so; in herdr or tmux, their focus on another pane; elsewhere, Neovim losing the
+  focus of your terminal emulator, where the emulator reports that), a command seen running (your shell's
+  foreground process) and one too short for that (the prompt line), each with its output from the buffer, and
+  typing at the prompt, which takes the wheel back from the Driver. With the
+  [shell hook](install.md), its exit codes too: the hook names its shell's process id, which tells the buffer. Neovim
+  wraps long lines in a terminal buffer where the window ends, so a long line reads as two.
+- **tmux.** When Neovim (or the chat) runs in tmux, Pair also reads the panes of that tmux session, the same way:
+  the active pane of the window shown has the focus. When that pane is Neovim's and you are in one of its `:terminal`
+  buffers, that buffer has it; in another pane, that pane does, also with tmux's `focus-events` off (its default),
+  where Neovim never hears that you left. A pane that runs Neovim in place of a shell (`tmux new nvim`) is an
+  editor, never a terminal to type into. tmux pushes nothing to Pair, so it lists the panes once a second. The
+  Driver's `type` can go to them (`tmux:%<n>`).
 
 ## Setup
 
