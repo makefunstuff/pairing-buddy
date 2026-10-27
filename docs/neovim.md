@@ -182,8 +182,8 @@ unsaved buffer; only the models' words are scripted.*
    editor would put it. A line enters the buffer only when it is whole, so your buffer and your language server
    never see half a line, and nothing goes red while it types. Each line it entered gets `▎` in the sign column.
    Text it replaces is struck through for a moment first; within a line, only the part that changes is.
-3. It runs your project's test command on the **unsaved** buffer: `⠹ go test ./... (unsaved)` (see
-   [docs/driver.md](driver.md#tests-on-the-unsaved-buffer)).
+3. It checks the change on the **unsaved** buffer, with your project's test command or your last build and run: `⠹ go test ./... (unsaved)` (see
+   [docs/driver.md](driver.md#the-check-on-the-unsaved-buffer)).
 4. It hands back: its words under the last line it changed, `✓` (or `✗`) in the sign column there and in the
    statusline, the `▎` still on the lines it changed, and `u undoes it`. Like any of its words, they go with your
    next edit.

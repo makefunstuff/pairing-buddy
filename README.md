@@ -112,8 +112,8 @@ Pair has one role at a time. It shows in the chat pane's prompt and in Neovim's 
 What Scout may run is decided in code, not by the model: read-only commands, tests and builds run; writes and
 installs ask you first; commits, pushes, the network and `sudo` are refused ([docs/scout.md](docs/scout.md)). Where
 bubblewrap works, Scout's pane is also a [sandbox](docs/scout.md#the-sandbox): only the project is writable. The
-Driver's edit is typed as ghost text, one undo step, never saved; with a test command for the project, Pair tests your
-unsaved buffer before it hands back ([docs/driver.md](docs/driver.md)).
+Driver's edit is typed as ghost text, one undo step, never saved; Pair checks your unsaved buffer before it hands
+back, with the project's test command or the build and run you last ran ([docs/driver.md](docs/driver.md)).
 
 ## What it does
 
@@ -150,6 +150,15 @@ When a change did nothing, Pair says why. `:Pair runs` keeps the runs with the c
 over, the `printf` lines you added for it are counted and one key removes them. [docs/exploration.md](docs/exploration.md)
 
 ![Four runs of make in the terminal on the right; the third prints the same numbers and Pair says why under the hash line](docs/images/loop-same.png)
+
+**Hands over without a test.** Say what you want and what you expect to see: `you take it: make the ids spread over
+the table, avg probe stays under 2`. Pair types the edit, builds and runs your unsaved buffer in a scratch copy with
+your own command (your last `make -s run`, `odin run .`, `zig build run`; one Scout would ask about asks you
+first), and hands back with the line the run
+printed next to your target: `✓ avg probe 1.1`. A bound is checked in code; anything else ("the window shows both
+counters") Pair compares with the output. [docs/driver.md](docs/driver.md#the-hand-over-without-a-test)
+
+![You hand over with an intent and a number; Pair types the new hash, runs make -s run on the unsaved buffer, and hands back with ✓ avg probe 1.1](docs/images/hand-over-run.gif)
 
 **Holds a thought.** A remark that can wait waits for your next save or pause, with a `•` in the margin meanwhile.
 [docs/neovim.md](docs/neovim.md#the-held-thought)
@@ -212,7 +221,7 @@ Off until you set `"voice"` in the config. [docs/voice.md](docs/voice.md)
 - [Neovim](docs/neovim.md): the visual language, the three moments, options, commands, statusline
 - [Scout](docs/scout.md): Pair's pane, the command policy, test output parsing
 - [The blank page](docs/blank-page.md): `:Pair new`, three questions, a first slice of two files
-- [Driver and suggestions](docs/driver.md): handing over, tests on the unsaved buffer, taking the wheel back
+- [Driver and suggestions](docs/driver.md): handing over, the check on the unsaved buffer, the hand-over without a test, taking the wheel back
 - [Tests on save](docs/tests-on-save.md)
 - [Builds and crashes](docs/builds.md): crashes, compiler errors and new warnings, read from your runs
 - [Notes in the margin](docs/notes.md): marks in a Markdown note, the decision log, tasks when asked

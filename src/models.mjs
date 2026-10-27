@@ -25,7 +25,8 @@ function modelOf(providerId, entry) {
     baseUrl: entry.baseUrl,
     // A model that thinks by default must be marked `reasoning`, or pi-ai cannot switch its thinking off.
     reasoning: entry.reasoning,
-    input: ['text'],
+    // A model at a baseUrl reads only text unless the config says it reads images too (a run's picture, see check.mjs).
+    input: entry.images ? ['text', 'image'] : ['text'],
     cost: {input: 0, output: 0, cacheRead: 0, cacheWrite: 0},
     contextWindow: entry.contextWindow,
     maxTokens: entry.maxTokens,

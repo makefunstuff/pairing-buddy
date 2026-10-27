@@ -71,14 +71,32 @@ If an answer needs a search or a test run, say so in one sentence: the user can 
 - First read the file, so your line numbers are right.
 - Then call edit once: it replaces lines line..end_line with new_text, the complete new lines with their indentation.
   Change as little as the request needs. You get one edit per hand-over.
-- After the edit, say in one sentence what you changed. Its result says whether Pair ran the project's tests on
-  the unsaved buffer: if so, also say whether they pass. Do not run the tests yourself: until the user saves, the
-  file on disk still has the old code. When your answer ends, you are Navigator again.
+- After the edit, say in one sentence what you changed. Its result says whether Pair ran the project's tests, or
+  the user's build and run, on the unsaved buffer: if so, also say whether they pass, or what the run printed for
+  what the user expects. Do not run them yourself: until the user saves, the file on disk still has the old code.
+  When your answer ends, you are Navigator again.
 - To put a command in the user's terminal, call type: they confirm it and press Enter themselves.
 - search and run work in your own pane, as for Scout.`,
 };
 
 const text = value => ({output: [{type: 'text', text: value}]});
+/** Whether the conversation's model reads images; pi-ai would swap an image for a note for one that does not. */
+async function readsImages(api, context) {
+  const ref = (await api.agent(context)).model;
+  const model = ref && api.models.getModel(ref.provider, ref.modelId);
+  return model?.input.includes('image') ?? false;
+}
+
+/**
+ * A tool's answer that may carry the picture a run wrote (`{text, picture}`): attached for a model that reads images,
+ * else only named, so the words never promise a picture the model does not get.
+ */
+export async function withPicture(value, api, context) {
+  if (typeof value === 'string') return text(value);
+  const {file, data, mimeType} = value.picture;
+  if (!(await readsImages(api, context))) return text(`${value.text}\n\nThe run wrote the picture ${file}; your model does not read images, so it is not attached.`);
+  return {output: [{type: 'text', text: `${value.text}\n\nThe run wrote the picture ${file}, attached.`}, {type: 'image', data, mimeType}]};
+}
 
 /** The arguments of suggest and edit: which lines of which file, and what they become. */
 const lineChange = (extra = {}) => Type.Object({
@@ -160,7 +178,7 @@ function tools(hands) {
       name: 'edit',
       description: 'Replace lines line..end_line of a file in the user\'s editor with new_text, as one undo step. The buffer is not saved.',
       parameters: lineChange(),
-      execute: async (args, api) => text(await hands.edit(api.conversationId, changeOf(args))),
+      execute: async (args, api, context) => withPicture(await hands.edit(api.conversationId, changeOf(args)), api, context),
     }),
     defineTool({
       name: 'type',

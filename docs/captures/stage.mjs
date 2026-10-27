@@ -116,7 +116,11 @@ const daemon = spawn(process.execPath, ['--disable-warning=ExperimentalWarning',
 while (!existsSync(socket)) await sleep(50);
 
 const chat = connect(socket);
-readMessages(chat, message => { if (message.type === 'message') log(`chat: ${message.sender}: ${message.text}`); });
+readMessages(chat, message => {
+  if (message.type === 'message') log(`chat: ${message.sender}: ${message.text}`);
+  // A scene with `allow` answers Pair's questions in the chat with yes, as you would in the chat pane beside Neovim.
+  if (scene.allow && message.type === 'confirm') sendMessage(chat, {type: 'confirm', id: message.id, ok: true});
+});
 await new Promise(resolve => chat.on('connect', resolve));
 sendMessage(chat, {type: 'hello', role: 'chat', cwd: project, herdr: {socket: herdrSocket, workspace: 'w1', pane: 'w1:p2'}});
 if (scene.goal) sendMessage(chat, {type: 'goal', text: scene.goal}); // else the session takes the board task's, or :Pair new sets it

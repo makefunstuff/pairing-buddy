@@ -295,14 +295,14 @@ test('handing over makes Pair the Driver for one answer with one edit, which goe
   assert.match(input, /^\[drive\] The user handed you the wheel for one change\. The user said: "your turn"/);
   assert.match(input, /make it pass by changing the code, not the test/);
   assert.deepEqual(edits.map(({type, line, endLine, text}) => ({type, line, endLine, text})), [{type: 'edit', line: 2, endLine: 2, text: '  "name": "x",'}]);
-  assert.match(replies[0], /^Changed, as one undo step\. That was your one edit: say in one sentence what you changed\. The file on disk changes only when the user saves, so do not run the tests now\.$/);
+  assert.match(replies[0], /^Changed, as one undo step\. That was your one edit: say in one sentence what you changed\. Nothing ran on the unsaved buffer: no command on save, and no build or run in the user's terminal yet\. The file on disk changes only when the user saves, so do not run anything now\.$/);
   assert.match(replies[1], /^You already made your one change/, 'one edit per hand-over');
   assert.equal(roleAfterEdit, 'driver', 'the wheel stays until the answer ends, so tools do not vanish mid-answer');
   assert.deepEqual(roleChanges(), ['driver', 'navigator']);
   assert.equal(pair.role, 'navigator');
   assert.deepEqual(roles, ['navigator', 'navigator'], 'a drive is stored as Navigator, where it ends, so a restart during one does too');
   const handback = sent.find(message => message.type === 'handback');
-  assert.deepEqual(handback, {to: 'editor', type: 'handback', file: join(process.cwd(), 'package.json'), line: 2, endLine: 2, tests: null, text: 'Renamed the package.'},
+  assert.deepEqual(handback, {to: 'editor', type: 'handback', file: join(process.cwd(), 'package.json'), line: 2, endLine: 2, tests: null, check: null, text: 'Renamed the package.'},
     'the hand-back line: Pair\'s words under the lines it changed; no tests without a command for the project');
   assert.ok(sent.indexOf(handback) > sent.findLastIndex(message => message.type === 'role'), 'after the wheel is back');
 });
@@ -710,7 +710,7 @@ test('when the tests cannot run on the buffer, the Partner is told why, and the 
   writeFileSync(join(root, 'notes.txt'), 'old\n');
   pair.testRuns.command = 'npm test'; // not go test: it runs in a copy of the project, which needs git
   await pair.drive('your turn');
-  assert.match(reply, /The tests could not run on the unsaved buffer: the project is not a git repository/);
+  assert.match(reply, /`go test \.\/\.\.\.` could not run on the unsaved buffer: the project is not a git repository/);
   assert.deepEqual(tests().map(message => message.state), ['run', 'idle']);
   assert.equal(sent.find(message => message.type === 'handback').tests, null);
 });
