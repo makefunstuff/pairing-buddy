@@ -1,4 +1,4 @@
-// The link-preview image: screenshots card.html at 1200x630 into site/public/og.png with a headless Chrome or
+// The link-preview image: screenshots card.html at 1200x630 into site/public/og-v2.png with a headless Chrome or
 // Chromium (CHROME names one; otherwise the first of chromium, google-chrome, chrome on the PATH). Run it after
 // changing card.html, the sprites or the fonts, and commit the PNG: the site build does not draw it.
 // Usage, in site/: npm run og
@@ -7,7 +7,7 @@ import {statSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 
 const site = fileURLToPath(new URL('..', import.meta.url));
-const out = `${site}public/og.png`;
+const out = `${site}public/og-v2.png`;
 
 function chrome() {
   if (process.env.CHROME) return process.env.CHROME;
@@ -21,4 +21,4 @@ execFileSync(chrome(), [
   '--headless', '--disable-gpu', '--hide-scrollbars', '--force-device-scale-factor=1', '--allow-file-access-from-files',
   '--window-size=1200,630', '--virtual-time-budget=3000', `--screenshot=${out}`, `file://${site}og/card.html`,
 ], {stdio: ['ignore', 'ignore', 'pipe']});
-console.log(`og.png, ${Math.round(statSync(out).size / 1024)} KiB`);
+console.log(`og-v2.png, ${Math.round(statSync(out).size / 1024)} KiB`);

@@ -88,8 +88,10 @@ the palette (PICO-8's 16 colours) and the fonts (Pixelify Sans for headings and 
 
 A shared link shows the page's own title and description: a docs page's `description` from its frontmatter, or else its
 first paragraph, cut to 155 characters ([`site/.vitepress/meta.mjs`](site/.vitepress/meta.mjs)). Give a page a
-`description` when it opens with a list, a heading or a code block. The preview image, `site/public/og.png`
+`description` when it opens with a list, a heading or a code block. The preview image, `site/public/og-v2.png`
 (1200x630), is [`site/og/card.html`](site/og/card.html): `npm run og` redraws it with a headless Chrome or Chromium,
-and the PNG is committed. After `npm run build`, `npm run check` checks every built page has the full set of tags with
-absolute URLs (the Pages workflow runs it before it deploys), and `node og/previews.mjs OUT` renders mock X, Slack
-and Discord previews of the built pages into `OUT/previews.png`.
+and the PNG is committed. X caches card images by URL, so a changed design goes out under a new file name (change it
+in `site/og/build.mjs` and `meta.mjs`); otherwise X keeps showing the old image.
+After `npm run build`, `npm run check` checks every built page has the full set of tags with absolute URLs (the Pages
+workflow runs it before it deploys), and `node og/previews.mjs OUT` renders mock X, Slack and Discord previews of the
+built pages into `OUT/previews.png`.
