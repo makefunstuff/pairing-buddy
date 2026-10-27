@@ -173,7 +173,7 @@ export const scenes = {
   // The exploration loop, in C (loop/, the research's hash table): you build and run it in your own terminal on the
   // right, four times. A printf for the hunt; a multiply that keeps the numbers where they were, and Pair says why;
   // a shift that moves them, which the statusline says (a second remark this soon would break the talk budget), with
-  // the printf left from the hunt. The Partner's words are DeepSeek's from the live test (test/live/loop.test.mjs), shortened.
+  // the printf left from the hunt. The Partner's words are a real model's from the live test (test/live/loop.test.mjs), shortened.
   'loop': {
     project: 'loop',
     goal: 'see how well the entity table spreads its keys',

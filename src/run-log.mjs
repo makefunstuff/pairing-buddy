@@ -5,7 +5,6 @@
 import {numbersOf} from './delight.mjs';
 import {isDebugLine} from './debug-lines.mjs';
 import {crashText} from './run-output.mjs';
-import {isSourceFile} from './test-output.mjs';
 
 const KEEP_RUNS = 30;
 const OUTPUT_CHARS = 4000; // of each run's output, kept for `:Pair runs`
@@ -13,19 +12,28 @@ const NUMBERS = 12; // numbers of a run kept
 const TIME_FACTOR = 2; // a time moves when it halves or doubles: one run of a small program is noisy
 const SAME = 1e-9;
 
-// The first word of a build or a run: a compiler, a build tool, an interpreter, a program by its path.
-const BUILDERS = /^(?:make|gmake|cmake|ninja|meson|just|nob|cc|gcc|g\+\+|clang|clang\+\+|tcc|zig|odin|c3c|jai|rustc|cargo|go|dotnet|python3?|node|bun|deno|lua|luajit|ruby|perl|hyperfine|valgrind|perf|gdb|lldb|npm|pnpm|yarn|pytest)$/;
-const SCRIPTS = /^(?:bash|sh|zsh)$/;
+// The first word of a build or a run: a compiler, a build tool, a program by its path. An interpreter, a script's
+// shell or a package manager builds or runs something only with a file or a script to run.
+const BUILDERS = /^(?:make|gmake|cmake|ninja|meson|just|nob|cc|gcc|g\+\+|clang|clang\+\+|tcc|zig|odin|c3c|jai|rustc|cargo|go|dotnet|hyperfine|valgrind|perf|gdb|lldb|pytest)$/;
+const INTERPRETERS = /^(?:python3?|node|bun|deno|lua|luajit|ruby|perl|bash|sh|zsh)$/;
+const PACKAGE_MANAGERS = /^(?:npm|pnpm|yarn)$/;
 
-/** Whether the shell command `cmd` builds or runs a program, unlike `git status` or `ls`. */
-export function isRun(cmd = '') {
-  const words = cmd.trim().replace(/^(?:\w+=\S*\s+)+/, '').replace(/^(?:time|nice|env|command)\s+/, '').split(/\s+/);
-  const [first, second] = words;
+/** Whether one simple command builds or runs a program. */
+function runs(command) {
+  const words = command.trim().replace(/^(?:\w+=\S*\s+)+/, '').replace(/^(?:time|nice|env|command|sudo)\s+/, '').split(/\s+/);
+  const [first, second = ''] = words;
   if (!first) return false;
   if (first.includes('/')) return true; // ./probe, build/probe, ./build.sh
-  if (SCRIPTS.test(first)) return /\.sh$/.test(second ?? '');
+  if (INTERPRETERS.test(first)) return /^[^-].*\.\w+$/.test(second); // python3 probe.py, not node --version
+  if (PACKAGE_MANAGERS.test(first)) return /^(?:run|test|start|exec)$/.test(second); // npm run bench, not npm install
   return BUILDERS.test(first);
 }
+
+/**
+ * Whether the shell command `cmd` builds or runs a program, unlike `git status` or `ls`: any of its commands does,
+ * so `cd build && make` and `clear; make run` are runs.
+ */
+export const isRun = (cmd = '') => cmd.split(/&&|\|\||[;|]/).some(runs);
 
 // A place in a file (a compiler's "probe.c:21:7:", odin's "main.odin(7:5)", a stack frame): no measurement.
 const PLACE = /\w\.\w+(?::\d+|\(\d+)/;
@@ -88,10 +96,19 @@ function sameNumbers(before, now) {
 /** The output as text to compare: times and addresses blanked, so a rerun that prints the same reads the same. */
 const plain = output => output.replace(/\x1b\[[0-9;]*m/g, '').replace(/0x[0-9a-f]+/gi, '').replace(/\d+(?:\.\d+)?\s*(?:ns|µs|us|ms|s)\b/g, '#').trim();
 
+// The source files of each language, and how a line of comment starts in it. In C a line may start with `#define`,
+// `*slot = key;` or `--n;`: only `//`, `/*` and a block comment's ` * ` (a star and a space, or the end) are comments.
+const C_COMMENT = /^\s*(?:\/\/|\/\*|\*(?:\s|\/|$))/;
+const CODE = [
+  {files: /\.(?:c|h|cc|cpp|cxx|hpp|hh|m|zig|odin|c3|c3i|go|rs|java|kt|swift|cs|[cm]?js|jsx|tsx?|php)$/, comment: C_COMMENT},
+  {files: /\.(?:py|rb|exs?|sh|pl)$|(?:^|\/)(?:Makefile|makefile|GNUmakefile)$|\.mk$/, comment: /^\s*#/},
+  {files: /\.lua$/, comment: /^\s*--/},
+];
+
 /** Whether an edit changed code: not a note, and more than debug prints, blank lines and comments. */
 function changesCode(edit) {
-  if (!isSourceFile(edit.file)) return false;
-  return edit.text.split('\n').some(line => line.trim() && !/^\s*(\/\/|#|--|\/?\*)/.test(line) && !isDebugLine(edit.file, line));
+  const language = CODE.find(({files}) => files.test(edit.file));
+  return !!language && edit.text.split('\n').some(line => line.trim() && !language.comment.test(line) && !isDebugLine(edit.file, line));
 }
 
 /**

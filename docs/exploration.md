@@ -10,14 +10,16 @@ hunt is over, it counts the `printf` lines you added for it.
 *The hash table of the research behind this feature ([captures/loop](captures/loop/probe.c)), built and run with
 `make -s run` in your own terminal on the right. Run 2 adds a `printf` for the hunt. Run 3 multiplies the key by 31
 and prints the same numbers, and Pair says why: the ids come 64 apart and `* 31` keeps them so. Run 4 takes the high
-bits and the numbers move. The builds, runs and numbers are real; only the Partner's words are scripted (DeepSeek's
-words from the live test, shortened). Recorded from [captures/tapes/loop.tape](captures/tapes/loop.tape).*
+bits and the numbers move. The builds, runs and numbers are real; only the Partner's words are scripted (a real
+model's words from the live test, shortened). Recorded from [captures/tapes/loop.tape](captures/tapes/loop.tape).*
 
 ## Every run read
 
 Each build and run of the session gets a number. That covers your terminal (through the shell hook or herdr) and
 Pair's run on save. A run is a command that builds or runs a program: `make`, `cc`, `zig`, `odin`, `c3c`, `cargo`,
-`go`, a script, or a program by its path (`./probe`, `build/probe`). `git status`, `ls` and test runs are not. Test
+`go`, a script, or a program by its path (`./probe`, `build/probe`), also in a list (`cd build && make`,
+`clear; make run`). An interpreter or a package manager counts with something to run (`python3 probe.py`,
+`npm run bench`, not `node --version` or `npm install`). `git status`, `ls` and test runs are not. Test
 runs have their own reading ([tests on save](tests-on-save.md)).
 
 Pair reads the numbers a run prints ([src/run-log.mjs](../src/run-log.mjs)). It takes each number with the words
@@ -36,7 +38,9 @@ Next to the last run of the same command, the statusline says what the run showe
 | A crash, a broken build, a new warning | `run 5 · exit 139 · Segmentation fault`, `· does not build`, `· 1 new warning` |
 
 A time counts as moved only when it halves or doubles. One run of a small program is noisy, and 35 → 52 ms is
-noise. A printf, a comment or a note is no change of the code. Adding a print and seeing the same numbers is no news.
+noise. A printf, a comment or a note is no change of the code. A comment is
+each language's own: in C, Zig, Odin and C3 `//`, `/*` and a block comment's ` * `, so `#define CAP 128`, `*slot = key;`
+and `--n;` are code; `#` in Python, shell and Makefiles; `--` in Lua. Adding a print and seeing the same numbers is no news.
 After a crash or a broken build, the next good run compares with the last good one. `exit` shows only when the shell
 hook or the run on save knows the exit code.
 

@@ -76,8 +76,10 @@ test('a run\'s new warnings are said with it', () => {
 
 test('builds and runs are logged, other commands and test runs are not', () => {
   assert.deepEqual(['./probe', 'make run', 'cc -O2 -o probe probe.c && ./probe', 'zig build run', 'odin run .', 'c3c compile-run main.c3', 'CFLAGS=-O2 make',
-    'time ./probe', 'bash build.sh', 'build/probe --n 100'].filter(command => !isRun(command)), []);
-  assert.deepEqual(['git status', 'ls -la', 'nvim probe.c', 'cd src', 'rg hash', 'bash', 'cat run.out'].filter(isRun), []);
+    'time ./probe', 'bash build.sh', 'build/probe --n 100', 'cd build && make', 'clear; make run', 'sudo make install', 'python3 probe.py',
+    'npm run bench', './probe | head'].filter(command => !isRun(command)), []);
+  assert.deepEqual(['git status', 'ls -la', 'nvim probe.c', 'cd src', 'rg hash', 'bash', 'cat run.out', 'npm install', 'node --version',
+    'cd src && git log'].filter(isRun), []);
   const state = [
     {kind: 'command_end', cmd: 'git status', exit: 0, output: 'clean', at: 1},
     {kind: 'command_end', cmd: 'go test ./...', exit: 0, output: 'ok  \texample.com/a\t0.01s\n', at: 2},
@@ -154,4 +156,39 @@ test('debug lines are the prints the user added in the session that are still in
   assert.deepEqual(await lines.left(), [], 'deleted');
   writeFileSync(path, 'int main(void) {\n  printf("%d keys\\n", n);\n  printf("bucket %u\\n", b);\n}\n');
   assert.deepEqual(await lines.left(), [], 'deleted is gone for good: typed again, it is an edit of a later run');
+});
+
+test('a change of the code in each language counts, and its comments do not: Odin, C3, a #define, *slot and --n', () => {
+  const kind = (file, text) => {
+    const run = (runs, at, edits) => logRun(runs, {cmd: 'make run', by: 'you', at, exit: 0, output: report(23.7, 47, 35), reading: readRun(''), edits});
+    return run(run([], 1), 3, [edit(2, 3, text, file)]).at(-1).verdict.kind;
+  };
+  const code = [
+    ['main.odin', '\treturn key * 31'], ['main.c3', '  return key * 31;'], ['probe.c', '#define CAP 128'], ['probe.h', '#define CAP 128'],
+    ['probe.c', '    *slot = key;'], ['probe.c', '    --n;'], ['main.zig', '    return key *% 31;'], ['Makefile', 'CFLAGS = -O3'],
+    ['probe.lua', 'local cap = 128'], ['probe.py', 'cap = 128'],
+  ];
+  assert.deepEqual(code.filter(([file, text]) => kind(file, text) !== 'same'), [], 'each is a change: the same numbers are news');
+  const comments = [
+    ['main.odin', '\t// try a bigger table'], ['main.c3', '/* later */'], ['probe.c', ' * the stride is 64'], ['probe.c', '// #define CAP 128'],
+    ['probe.lua', '-- later'], ['probe.py', '# later'], ['notes.md', 'cap = 128'], ['main.odin', '\tfmt.println("probe", p)'],
+  ];
+  assert.deepEqual(comments.filter(([file, text]) => kind(file, text) !== 'again'), [], 'comments, notes and prints are no change');
+});
+
+test('in Odin and C3 the loop raises its remarks like in C', () => {
+  for (const file of ['main.odin', 'main.c3']) {
+    const at = 100_000;
+    const same = [
+      {kind: 'command_end', pane: 'w1:p2', cmd: 'odin run .', exit: 0, output: report(23.7, 47, 35), at},
+      {kind: 'edit', file, from: 4, to: 4, text: '\treturn key * 31', at: at + 1000},
+      {kind: 'command_end', pane: 'w1:p2', cmd: 'odin run .', exit: 0, output: report(23.7, 47, 36), at: at + 2000},
+    ].reduce(fold, initialState({root: '/p'}));
+    assert.deepEqual(detectTriggers(same, at + 3000).map(trigger => trigger.kind), ['same_result'], file);
+    const moved = [
+      {kind: 'edit', file, from: 4, to: 4, text: '\treturn (key * 2654435769) >> 14', at: at + 4000},
+      {kind: 'command_end', pane: 'w1:p2', cmd: 'odin run .', exit: 0, output: report(1.1, 3, 5), at: at + 5000},
+    ].reduce(fold, same);
+    assert.deepEqual(detectTriggers(moved, at + 6000).map(trigger => trigger.kind), ['number_moved'], file);
+  }
 });
