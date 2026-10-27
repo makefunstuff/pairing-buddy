@@ -139,13 +139,13 @@ As Driver Pair also has `search` and `run` in its own pane (the same command pol
 
 ## Typing into your terminal
 
-`type(text)` puts one line into your terminal pane, the one you last looked at or ran a command in. It is only for the Driver:
+`type(text)` puts one line into your terminal: the herdr pane you last looked at or ran a command in, or the `:terminal` buffer in Neovim you were in last ([without herdr](neovim.md#without-herdr)). It is only for the Driver:
 
-- It asks first in the chat: ``Pair wants to type `npm test` into your terminal (pane …), without pressing Enter. Allow?`` `y` or `yes` allows it; anything else, or no answer within a minute, declines.
+- It asks first in the chat: ``Pair wants to type `npm test` into your terminal (pane …), without pressing Enter. Allow? (y, or another terminal: …)`` `y` or `yes` allows it; the name of another of your terminals the question lists types it there instead; anything else, or no answer within a minute, declines.
 - It never presses Enter: running the line is up to you.
-- It takes one line of plain text. Enter, Ctrl-C and any other control character or escape sequence are refused, in the session and again at the herdr call.
+- It takes one line of plain text. Enter, Ctrl-C and any other control character or escape sequence are refused, in the session and again where it is sent (herdr or Neovim).
 - What [Scout's command policy](scout.md#the-command-policy) refuses is refused here too (`git commit`, `git push`, `curl`, `sudo`, ...).
-- It goes only to one of your terminal panes, never to the chat, Scout's pane or an editor pane.
+- It goes only to one of your terminals, never to the chat, Scout's pane or an editor pane.
 - If you take the wheel back while the question is open, a yes types nothing.
 
 ## The policy in code

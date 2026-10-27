@@ -17,11 +17,10 @@ and read back is in [scout.md](scout.md#tests-on-save).
 
 ## How it runs
 
-- The command runs in Pair's own herdr pane, like Scout's, in the project root. Its output goes to a file in the data
+- The command runs in Pair's own pane, like Scout's (herdr's, or a `:terminal` in Neovim without it), in the project root. Its output goes to a file in the data
   directory (`runs/`), so a long run is read back whole and the pane stays readable. The pane stays open while the
   project has a command.
 - One run at a time: a save during a run starts one more after it. A run that takes over two minutes is stopped.
-- Without Pair's pane (no `pair` running in herdr) nothing runs, and the statusline says so.
 
 ## What you see
 
