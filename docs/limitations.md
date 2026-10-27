@@ -20,7 +20,9 @@ terminals that have it: commands, their start, end and exit code, and in zsh you
   With the hook, a zsh pane is not polled at its prompt, and a running command is looked at only for an editor
   opening in it. [#25](https://github.com/makefunstuff/pairing-buddy/issues/25)
 - **Typing at a bash or fish prompt is guessed** from the focused pane's screen, as those shells have no hook for
-  keys; zsh's hook reports them ([herdr.md](herdr.md#what-is-missing)).
+  keys and herdr reports none; a prompt that changes by itself looks like typing, and typing in a pane without focus
+  is not seen. zsh's hook reports keys from any terminal.
+  [#24](https://github.com/makefunstuff/pairing-buddy/issues/24), [herdr.md](herdr.md#what-is-missing)
 
 ## Without herdr
 
