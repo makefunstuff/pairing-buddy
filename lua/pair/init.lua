@@ -108,6 +108,15 @@ local function flush(buf)
   event({kind = 'cursor', file = file, line = cursor[1], col = cursor[2]})
 end
 
+--- Sends every edit still waiting for its debounce now, so it goes to the session it was made in; with `drop`,
+--- forgets them instead, once that session has ended without them.
+local function flush_all(drop)
+  for buf, pending in pairs(state.pending) do
+    if pending.timer and not pending.timer:is_closing() then pending.timer:close() end
+    if drop then state.pending[buf] = nil else flush(buf) end
+  end
+end
+
 local function redraw_status()
   pcall(vim.cmd, 'redrawstatus!')
 end
@@ -451,6 +460,7 @@ local function on_lines(_, buf, _, first, last, new_last)
   pending.timer = pending.timer or vim.uv.new_timer()
   state.pending[buf] = pending
   pending.timer:start(config.debounce_ms, 0, vim.schedule_wrap(function()
+    if state.pending[buf] ~= pending then return end -- flushed already (see flush_all)
     pending.timer:close()
     flush(buf)
   end))
@@ -897,7 +907,11 @@ local handlers = {
   message = function(message)
     if message.sender == 'system' then vim.notify('Pair: ' .. message.text) end
   end,
-  ended = hello,
+  -- The session ended (/end in the chat, or by itself): edits still waiting were made in it, not in the next one.
+  ended = function()
+    flush_all(true)
+    hello()
+  end,
   listening = function(message) listen.level(message.level) end,
   heard = listen.heard,
   -- The answer to what you said: Pair's words under the line you asked on, in place of yours.
@@ -1090,7 +1104,11 @@ local commands = {
   noise = function() feedback(false, state.remark) end,
   why = function() M.teach() end,
   agents = agents.request,
-  ['end'] = function() send({type = 'end'}) end,
+  -- Your last edits belong to the session that ends: its debrief counts them, and the next one starts empty.
+  ['end'] = function()
+    flush_all()
+    send({type = 'end'})
+  end,
   first = function(arg) send({type = 'first', text = arg}) end,
   context = function()
     if not state.channel then return vim.notify('Pair: not connected, so there is no card; :Pair start connects', vim.log.levels.WARN) end

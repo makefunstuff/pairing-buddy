@@ -9,7 +9,11 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {test} from 'node:test';
+import {createModels, fauxAssistantMessage, fauxProvider, fauxText} from '@earendil-works/pi-ai';
+import {parseConfig} from '../src/config.mjs';
+import {startDaemon} from '../src/daemon.mjs';
 import {readMessages, sendMessage} from '../src/protocol.mjs';
+import {openStore} from '../src/store.mjs';
 
 const REPO = fileURLToPath(new URL('..', import.meta.url));
 const hasNvim = (() => { try { execFileSync('nvim', ['--version']); return true; } catch { return false; } })();
@@ -43,6 +47,7 @@ async function nvimWith(project, args) {
   sendMessage(editor, {type: 'welcome', root: project, level: 'normal', role: 'navigator', models: {}});
   return {
     send: message => sendMessage(editor, message),
+    received,
     remote,
     status: () => remote('luaeval("require(\'pair\').status()")'),
     /** The words under the lines of the current buffer: [row, text]. */
@@ -108,6 +113,87 @@ test('a Neovim opened on another file stays there; the line goes under yours, an
     nvim.remote('execute("Pair jump")');
     await until(() => nvim.remote('expand("%:t")') === 'queue.go', 'Alt-j to the place');
     assert.equal(nvim.remote('line(".")'), '4');
+  } finally {
+    nvim.stop();
+  }
+});
+
+test(':Pair end sends the edit still waiting for its debounce first, so it is the ending session\'s, not the next one\'s', {skip: hasNvim ? false : 'nvim not installed', timeout: 20_000}, async () => {
+  const root = project();
+  const nvim = await nvimWith(root, ['-c', 'edit queue.go']); // the default 2 s debounce
+  try {
+    nvim.remote('execute("normal! Goint tail = 0;")');
+    nvim.remote('execute("Pair end")');
+    await until(() => nvim.received.some(message => message.type === 'end'), 'the end');
+    const kinds = nvim.received.map(message => message.event?.kind ?? message.type);
+    const end = kinds.indexOf('end');
+    assert.ok(kinds.indexOf('edit') !== -1 && kinds.indexOf('edit') < end, `the edit before the end: ${kinds.join(', ')}`);
+    await sleep(2500); // past the debounce: nothing more of that edit comes
+    assert.deepEqual(nvim.received.slice(end + 1).filter(message => message.event?.kind === 'edit'), []);
+  } finally {
+    nvim.stop();
+  }
+});
+
+test('end to end: edit, save and :Pair end at once, close the panel, move, quit: the day\'s debrief stays, with that edit', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
+  const root = project();
+  execFileSync('git', ['init', '-q'], {cwd: root});
+  const dataDir = mkdtempSync(join(tmpdir(), 'pair-data-'));
+  const config = parseConfig({
+    dataDir, socket: join(mkdtempSync('/tmp/pair-'), 'pair.sock'), agents: false, board: null,
+    models: {watcher: {api: 'openai', baseUrl: 'http://unused', model: 'w'}, partner: {api: 'openai', baseUrl: 'http://unused', model: 'p'}},
+  });
+  const watcher = fauxProvider({provider: 'faux-watcher'});
+  const partner = fauxProvider({provider: 'faux-partner'});
+  const models = createModels();
+  models.setProvider(watcher.provider);
+  models.setProvider(partner.provider);
+  watcher.setResponses(Array.from({length: 20}, () => fauxAssistantMessage([fauxText('0')])));
+  const asked = [];
+  const answer = text => context => { asked.push(context.messages.at(-1)); return fauxAssistantMessage([fauxText(text)]); };
+  partner.setResponses([answer('✓ the queue builds\nTomorrow, first: make the lease outlive the last attempt, in queue.go:4.'), answer('Tomorrow, first: look around, in queue.go:1.')]);
+  const daemon = await startDaemon(config, {pairModels: {models, watcher: watcher.getModel(), partner: partner.getModel()}, probe: async () => ({ok: true}), log: () => {}, aloneEndMs: 200});
+  const nvimSocket = join(mkdtempSync('/tmp/pair-'), 'nvim.sock');
+  const nvim = spawn('nvim', ['--headless', '--clean', '--listen', nvimSocket, '--cmd', `set rtp+=${REPO}`, '--cmd', `cd ${root}`,
+    '-c', `lua require('pair').setup({socket = '${config.socket}'})`, '-c', 'edit queue.go', '-c', 'Pair start'], {stdio: 'ignore'});
+  const remote = expr => execFileSync('nvim', ['--server', nvimSocket, '--remote-expr', expr], {encoding: 'utf8'}).trim();
+  const store = openStore(join(dataDir, 'sessions.sqlite'));
+  try {
+    await until(() => { try { return store.activeSession(root); } catch { return false; } }, 'the session');
+    const day = store.activeSession(root).id;
+    remote('execute("normal! Goint tail = 0;")');
+    remote('execute("write")');
+    remote('execute("Pair end")'); // at once, inside the 2 s debounce
+    await until(() => remote('win_gettype()') === 'popup', 'the debrief panel');
+    remote('feedkeys("q", "x")'); // closing it enters the file again
+    await until(() => store.activeSession(root), 'the next session');
+    remote('execute("normal! gg")');
+    remote('execute("doautocmd CursorHold")');
+    await sleep(2500); // past the debounce
+    nvim.kill();
+    await until(() => !store.activeSession(root), 'the next session to end with its Neovim');
+    const last = store.lastSession(root, Infinity);
+    assert.equal(last.id, day, 'the day\'s debrief is the one to pick up from');
+    assert.equal(last.pickup.first.line, 4);
+    assert.equal(asked.length, 1, 'the empty session asked for no debrief');
+    assert.match(JSON.stringify(asked[0]), /Where the user stopped: queue\.go:\d+: int tail = 0;/, 'the day\'s debrief knows the last edit');
+  } finally {
+    nvim.kill();
+    store.close();
+    await daemon.close();
+  }
+});
+
+test('a session that ends elsewhere (/end in the chat) takes the edit still waiting with it: the next session never gets it', {skip: hasNvim ? false : 'nvim not installed', timeout: 20_000}, async () => {
+  const root = project();
+  const nvim = await nvimWith(root, ['-c', 'edit queue.go']); // the default 2 s debounce
+  try {
+    nvim.remote('execute("normal! Goint tail = 0;")');
+    await until(() => nvim.received.some(message => message.event?.kind === 'typing'), 'the edit to start');
+    nvim.send({type: 'ended', why: null});
+    await until(() => nvim.received.filter(message => message.type === 'hello').length === 2, 'the hello for the next session');
+    await sleep(2500); // past the debounce
+    assert.deepEqual(nvim.received.filter(message => message.event?.kind === 'edit'), []);
   } finally {
     nvim.stop();
   }
