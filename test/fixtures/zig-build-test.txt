@@ -1,0 +1,18 @@
+test
++- run test 1/2 passed, 1 failed
+error: 'main.test.add wrong' failed: expected 5, found 4
+/usr/lib/zig/lib/std/testing.zig:110:17: 0x102c034 in expectEqualInner__anon_455 (std.zig)
+                return error.TestExpectedEqual;
+                ^
+/home/you/zz/main.zig:12:5: 0x11283c7 in test.add wrong (main.zig)
+    try std.testing.expectEqual(5, add(2, 2));
+    ^
+error: while executing test 'main.test.add wrong', the following test command failed:
+./.zig-cache/o/47ee66e743d026372507b942f64180d0/test --cache-dir=./.zig-cache --seed=0xb9f8a837 --listen=-
+
+Build Summary: 1/3 steps succeeded; 1 failed; 1/2 tests passed; 1 failed
+test transitive failure
++- run test 1/2 passed, 1 failed
+
+error: the following build command failed with exit code 1:
+.zig-cache/o/5cf62cd38c0d47c813736ab6f4ad37db/build /usr/lib/zig/zig /usr/lib/zig/lib /home/you/zz .zig-cache /home/you/.cache/zig --seed 0xb9f8a837 -Z1e5d134ba89490be test

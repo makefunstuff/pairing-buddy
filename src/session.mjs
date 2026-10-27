@@ -1,6 +1,6 @@
 // One pairing session: folds its events, decides when Pair speaks and carries out the Partner's tools.
-import {readFile} from 'node:fs/promises';
-import {basename, isAbsolute, join, relative} from 'node:path';
+import {readFile, rm} from 'node:fs/promises';
+import {basename, dirname, isAbsolute, join, relative} from 'node:path';
 import {BlankPage} from './blank-page.mjs';
 import {Breaks} from './breaks.mjs';
 import {Budget} from './budget.mjs';
@@ -28,11 +28,12 @@ import {RUN_TIMEOUT_MS, shellQuote} from './scout-pane.mjs';
 import {tmpdir} from 'node:os';
 import {asksBack, oneQuestion, PROSE_CHECKS} from './prose-triggers.mjs';
 import {parseTestOutput, testSummary} from './test-output.mjs';
-import {TestRuns} from './test-runs.mjs';
+import {TestRuns, treeOf} from './test-runs.mjs';
 import {named} from './terminals.mjs';
 import {currentTrail, trailMatches, trailSummary} from './trail.mjs';
 import {detectTriggers} from './triggers.mjs';
 import {outcome, tuning, WINDOW_MS} from './tuning.mjs';
+import {prepareUnsaved, withTree} from './unsaved.mjs';
 import {KEEP, splitTeaching, teachInput} from './tone.mjs';
 
 const SILENT = /^\W*silent\W*$/i;
@@ -133,7 +134,7 @@ const tail = (text, max) => (text.length > max ? `(earlier output cut)\n${text.s
 
 /** What the Partner is told about a command Scout ran in the project at `root`. */
 export function runReport(result, root = null) {
-  const lines = [result.timedOut ? `Still running after ${RUN_TIMEOUT_MS / 1000} s, so it was stopped with Ctrl-C.` : `exit ${result.exit}`];
+  const lines = [result.timedOut ? `Still running after ${(result.timeoutMs ?? RUN_TIMEOUT_MS) / 1000} s, so it was stopped with Ctrl-C.` : `exit ${result.exit}`];
   const tests = parseTestOutput(result.output);
   if (tests) lines.push(`Tests (${tests.runner}): ${testSummary(tests)}`);
   const reading = readRun(result.output, {exit: result.exit, root});
@@ -164,8 +165,8 @@ const fileLine = place => `${place.file.split('/').at(-1)}:${place.line}`;
  * One short line for the statusline about a finished run: "4 tests, 3 packages", "1 failing · TestX",
  * "Segmentation fault · probe.c:10" or "does not build · bad.c:3 +1".
  */
-export function runText({exit, timedOut, tests, reading}) {
-  if (timedOut) return 'stopped after 2 min';
+export function runText({exit, timedOut, timeoutMs = RUN_TIMEOUT_MS, tests, reading}) {
+  if (timedOut) return `stopped after ${timeoutMs < 60_000 ? `${Math.round(timeoutMs / 1000)} s` : `${Math.round(timeoutMs / 60_000)} min`}`;
   if (!tests?.failedCount) {
     const {crash, errors = []} = reading ?? {};
     if (crash) return `${crashText(crash)}${crash.at ? ` · ${fileLine(crash.at)}` : ''}`;
@@ -252,7 +253,7 @@ export class PairSession {
    */
   constructor({record, store, partner, score, typingPauseMs, notify, requestEditor, previousNote = null, lastSession = null, autoTune = false, health = {ok: () => true}, testOnSave = null, checkOutput = null, log = () => {}, now = Date.now}) {
     Object.assign(this, {record, store, partner, score, typingPauseMs, notify, requestEditor, previousNote, lastSession, autoTune, health, log, now});
-    this.checkOutput = checkOutput ?? join(tmpdir(), `pair-check-${process.pid}-${record.id}.out`);
+    this.checkOutput = checkOutput ?? join(tmpdir(), `pair-check-${process.pid}-${record.id}`, 'check.out'); // its copy of the project goes next to it
     this.state = initialState({root: record.root, goal: record.goal});
     this.budget = new Budget(record.level);
     this.role = record.role ?? 'navigator';
@@ -297,6 +298,7 @@ export class PairSession {
     this.testRuns = null;
     this.setTestOnSave(testOnSave);
     this.testsShown = null;
+    this.savedResults = null; // each test's last result on save, also from before a run that ran only some
     this.runShown = null; // the places of the last build or run that the editors show (see showRun)
     this.lateForEditors = null; // a late answer no editor was there for, shown to the next one that connects
     this.runError = null; // the last run that could not run, said once in the chat
@@ -319,9 +321,13 @@ export class PairSession {
     this.blankPage = null; // the questions of :Pair new and their slice (see blank-page.mjs)
   }
 
-  /** Runs the tests on each save with `testOnSave` ({command, outputFile}) from now on, or none when it is null. */
+  /**
+   * Runs the tests on each save with `testOnSave` ({command, timeoutMs, affected, outputFile}) from now on, or none
+   * when it is null; a new timeout or `affected` for the same command applies from its next run.
+   */
   setTestOnSave(testOnSave) {
-    if (testOnSave?.command === this.testRuns?.command) return;
+    if (testOnSave && testOnSave.command === this.testRuns?.command) return Object.assign(this.testRuns, {timeoutMs: testOnSave.timeoutMs ?? RUN_TIMEOUT_MS, affected: testOnSave.affected ?? true});
+    if (!testOnSave && !this.testRuns) return;
     this.testRuns = testOnSave && new TestRuns({...testOnSave, root: this.record.root, pane: () => this.scout, report: run => this.testRun(run)});
   }
 
@@ -446,18 +452,27 @@ export class PairSession {
     }
     this.runError = null;
     if (run.state === 'run') return this.showTests({type: 'tests', state: 'run', label: run.label});
-    const red = isRed(run);
     const failing = run.placed.filter(test => !test.ok);
     const files = [...new Set(failing.map(test => relative(this.root, test.failure?.file ?? test.file)))];
     const last = this.state.run;
     if (run.tests) this.wins.tests(run.tests.failed);
-    this.receive({kind: 'test_run', cmd: run.label, tests: run.tests, files, saved: run.saved, reading: run.reading, exit: run.exit, output: run.output});
+    this.receive({kind: 'test_run', cmd: run.label, tests: run.tests, files, saved: run.saved, reading: run.reading, exit: run.exit, output: run.output, narrowed: run.narrowed});
+    // A run of only the tests a save affects says nothing of the others: the ones that failed before still do, and
+    // keep their signs in the files this run did not report on. When it passes, a whole run says which of them still
+    // fail at all: one may have been renamed or deleted since.
+    const elsewhere = run.narrowed ? (this.state.savedRunFailed ?? []).filter(name => !run.tests?.failed.includes(name)) : [];
+    const reported = new Set(run.placed.map(test => test.file));
+    const results = run.narrowed ? [...(this.savedResults ?? []).filter(old => !reported.has(old.file)), ...run.placed] : run.placed;
+    if (elsewhere.length && !isRed(run)) this.testRuns?.runWhole();
+    this.savedResults = results;
+    const red = isRed(run) || elsewhere.length > 0;
     const fresh = this.state.run !== last ? this.state.run.newWarnings.length : 0; // this run's
-    const text = !red && fresh ? `${fresh} new warning${fresh === 1 ? '' : 's'}` : runText(run);
+    const text = !isRed(run) && elsewhere.length ? `${elsewhere.length} still failing · ${elsewhere[0]}`
+      : !red && fresh ? `${fresh} new warning${fresh === 1 ? '' : 's'}` : runText(run);
     const moment = this.delight.testRun({red, failed: run.tests?.failed, newly: run.tests ? this.state.tests.newly : []}, this.now())
       ?? (red || run.tests ? null : this.delight.numbers(run.label, run.output));
     this.ledger.add('ran', run.label, {data: {note: text, result: red ? 'fail' : 'pass'}, detail: {output: keptOutput(run.output)}});
-    this.showTests({type: 'tests', state: red ? 'fail' : 'pass', label: run.label, text, results: run.placed, ...(red ? {redSince: this.delight.redSince} : {})});
+    this.showTests({type: 'tests', state: red ? 'fail' : 'pass', label: run.label, text, results, ...(red ? {redSince: this.delight.redSince} : {})});
     // The chat hears of a run when it turns red or green, or finds new failures; a run like the last one is no news.
     if (red && (!this.wasRed || (run.tests && this.state.tests.newly.length))) this.message('system', `\`${run.label}\` after you saved ${run.saved}: ${summaryOf(run, text)}`);
     else if (!red && this.wasRed) this.message('system', `\`${run.label}\` passes again${moment?.lasted >= LONG_RED_MS ? `, after ${Math.round(moment.lasted / 60_000)} min of red` : ''}: ${text}.`);
@@ -1305,6 +1320,13 @@ export class PairSession {
     return this.score({...trigger, gist: about}, state);
   }
 
+  /** The project's buffers with unsaved changes, in all the editors: absolute file -> text. */
+  async unsavedBuffers() {
+    const reply = await this.requestEditor({type: 'buffers', root: this.root}).catch(() => null);
+    const valid = (Array.isArray(reply?.buffers) ? reply.buffers : []).filter(buffer => typeof buffer?.file === 'string' && typeof buffer.text === 'string');
+    return new Map(valid.filter(buffer => buffer.file.startsWith(`${this.root}/`)).map(buffer => [buffer.file, buffer.text]));
+  }
+
   /** The text of the file at `path` as the user sees it: the editor's buffer wins over the disk, unsaved changes included. */
   async bufferText(path, onDisk) {
     const buffer = await this.requestEditor({type: 'read', file: path}).catch(() => null);
@@ -1336,7 +1358,7 @@ export class PairSession {
     return `${result.exit === 0 ? '' : `exit ${result.exit}\n`}${lines.slice(0, SEARCH_LINES).join('\n')}${more}\n\nName these places (file:line) in your answer.`;
   }
 
-  async run({command}) {
+  async run({command, unsaved = false}) {
     // A remark nobody asked for may read and search, but not start commands.
     if (this.unasked) return 'Not now: run commands only when the user asks. Read and search instead.';
     const policy = commandPolicy(command, await this.scout?.rcNames?.());
@@ -1348,11 +1370,29 @@ export class PairSession {
     if (policy.verdict === 'ask' && !(await this.allowed(command, `Pair wants to run \`${command}\` in its pane (${policy.reason}). Allow?`))) {
       return 'The user did not allow it. Do not run it another way.';
     }
-    const result = await this.inPane(command);
+    const buffers = await this.unsavedBuffers();
+    const result = unsaved && buffers.size ? await this.onBuffers(command, buffers) : await this.inPane(command);
+    if (typeof result === 'string') return result;
     const tests = parseTestOutput(result.output);
-    const note = result.timedOut ? 'stopped after 2 min' : tests ? runText({...result, tests}) : result.exit ? `exit ${result.exit}` : undefined;
-    this.ledger.add('ran', command, {data: {note, result: result.exit === 0 && !result.timedOut ? 'pass' : 'fail'}, detail: {output: keptOutput(result.output)}});
-    return runReport(result, this.root);
+    const note = result.timedOut ? runText(result) : tests ? runText({...result, tests}) : result.exit ? `exit ${result.exit}` : undefined;
+    this.ledger.add('ran', command, {data: {note: [note, unsaved && buffers.size ? 'unsaved' : null].filter(Boolean).join(' · ') || undefined, result: result.exit === 0 && !result.timedOut ? 'pass' : 'fail'}, detail: {output: keptOutput(result.output)}});
+    const names = [...buffers.keys()].map(file => relative(this.root, file));
+    const which = names.length > 3 ? `${names.slice(0, 3).join(', ')} and ${names.length - 3} more` : names.join(', ');
+    const said = !buffers.size ? '' : unsaved ? `\n\nThis ran on the unsaved buffers (${which}), in a scratch copy of the project.`
+      : `\n\nUnsaved in the editor: ${which}. This ran on the saved files; with unsaved: true it runs on the buffers.`;
+    return `${runReport(result, this.root)}${said}`;
+  }
+
+  /** Runs `command` in Pair's pane on `buffers` (absolute file -> text), in the scratch copy of the project. */
+  async onBuffers(command, buffers) {
+    const tree = treeOf(dirname(this.checkOutput), this.root);
+    const dir = `${this.checkOutput}.scout`;
+    return withTree(tree, async () => {
+      const run = await prepareUnsaved({root: this.root, command, texts: buffers, dir, tree}).catch(error => error);
+      if (run instanceof Error) return `Could not run it on the unsaved buffers: ${run.message}.`;
+      // In a subshell: the pane's own directory stays the project for the commands after it.
+      return this.inPane(`(cd ${shellQuote(run.root)} && ${run.command})`);
+    }).finally(() => rm(dir, {recursive: true, force: true}));
   }
 
   // The Driver's tools: they work only while the user hands Pair the wheel, and only in plain sight.
@@ -1432,10 +1472,12 @@ export class PairSession {
     const runs = check.command === this.testRuns?.command ? this.testRuns : new TestRuns({
       root: this.root, command: check.command, outputFile: this.checkOutput, pane: () => this.scout, report: run => this.testRun(run),
     });
-    // Every file this hand-over changed, as its buffer has it: the check sees the whole change.
-    const texts = new Map();
-    for (const {file: changedFile} of this.handback.changes) texts.set(changedFile, await this.bufferText(changedFile));
-    const run = await runs.unsaved(texts);
+    // Every unsaved buffer of the project, and every file this hand-over changed as its buffer has it: the check sees
+    // the whole change, and what the user has not saved besides.
+    const texts = await this.unsavedBuffers();
+    const edited = [...new Set(this.handback.changes.map(change => change.file))];
+    for (const file of edited) if (!texts.has(file)) texts.set(file, await this.bufferText(file));
+    const run = await runs.unsaved(texts, edited);
     if (run.state === 'error') return `${DONE}. \`${run.label}\` could not run on the unsaved buffer: ${run.error}.`;
     const verdict = this.checked(run);
     // The line printed for what the user expects, when the code judged it; else the Partner's ✓ or ✗ says it.

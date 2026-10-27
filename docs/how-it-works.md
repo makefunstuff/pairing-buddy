@@ -26,9 +26,9 @@ its role's tools.
 - **The shell hook** (optional, bash, zsh or fish) adds exit codes, and catches every command however short.
 - **Builds and runs** are read for a crash and where in your code it happened, and for the compiler's errors and
   warnings with their file and line ([builds.md](builds.md)). A segfault counts as a failure also without an exit code.
-- **Test output** is parsed (cargo, go test, jest, vitest, pytest, `node --test`): which tests failed and the first
-  error line ([scout.md](scout.md#test-results)). With [tests on save](tests-on-save.md), the runner's JSON report
-  also says where each test is.
+- **Test output** is parsed (cargo, go test, jest, vitest, pytest, `node --test`, zig, ctest, TAP, JUnit XML): which
+  tests failed and the first error line ([scout.md](scout.md#test-results)). With [tests on save](tests-on-save.md),
+  it also says where each test is.
 
 ## When it speaks
 

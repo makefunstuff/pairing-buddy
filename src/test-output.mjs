@@ -1,6 +1,7 @@
 // Reads test-runner output: which runner, which tests failed and the first error line.
 // Covers cargo test, go test, jest, vitest, pytest and node --test (the spec reporter), and the JSON reports of
-// go test, jest and vitest; anything else is null.
+// go test, jest and vitest; zig test, ctest, TAP and JUnit XML are test-reports.mjs. Anything else is null.
+import {ctest, junit, tap, zig} from './test-reports.mjs';
 
 const MAX_NAMES = 20;
 
@@ -14,9 +15,39 @@ const indexFrom = (lines, from, test = line => line.trim()) => {
 };
 const lineFrom = (lines, from, test) => lines[indexFrom(lines, from, test)]?.trim() ?? null;
 
+/**
+ * Each test cargo ran, `test tests::adds ... ok`: found by its fn (see test-places.mjs), in the file that ran it
+ * (`Running tests/api.rs`) when cargo says, and the place it panicked at.
+ */
+function cargoTests(lines) {
+  let running = null;
+  const tests = [];
+  for (const line of lines) {
+    running = /^\s*Running (?:unittests )?(\S+\.rs) /.exec(line)?.[1] ?? running;
+    const match = /^test (\S+) \.\.\. (ok|FAILED|ignored)$/.exec(line);
+    if (!match) continue;
+    const [, name, result] = match;
+    const status = result === 'ok' ? 'passed' : result === 'FAILED' ? 'failed' : 'skipped';
+    // The unit tests of src/lib.rs may be in any file of src/; an integration test is in its own file.
+    const files = running && !running.startsWith('src/') ? [running] : [];
+    const path = name.split('::');
+    tests.push({name, status, find: {kind: 'rust', name: path.at(-1), module: path.at(-2), files}, failure: status === 'failed' ? cargoFailure(lines, name) : null});
+  }
+  return tests;
+}
+
+/** Where test `name` panicked, `thread 'tests::x' (41) panicked at src/lib.rs:7:26:`, and the line after it. */
+function cargoFailure(lines, name) {
+  const index = lines.findIndex(line => line.startsWith(`thread '${name}'`) && / panicked at /.test(line));
+  if (index === -1) return {file: null, line: null, text: 'failed'};
+  const at = / panicked at (\S+?):(\d+):\d+:?$/.exec(lines[index]);
+  return {file: at?.[1] ?? null, line: at ? Number(at[2]) : null, text: lines[index + 1]?.trim() || 'panicked'};
+}
+
 function cargo(text) {
   if (!/^test result: /m.test(text)) return null;
   const lines = linesOf(text);
+  const tests = cargoTests(lines);
   const panic = lines.findIndex(line => / panicked at /.test(line));
   let firstError = null;
   if (panic !== -1) {
@@ -30,6 +61,7 @@ function cargo(text) {
     passed: count(text, /^test result: \w+\. (\d+) passed/gm),
     failedCount: count(text, /^test result: \w+\. \d+ passed; (\d+) failed/gm),
     firstError,
+    ...(tests.length ? {tests} : {}),
   };
 }
 
@@ -90,11 +122,42 @@ function vitest(text) {
   };
 }
 
+/**
+ * Each test pytest names: `tests/test_calc.py::test_adds PASSED` with -v, `PASSED tests/test_calc.py::test_adds`
+ * with -rA, and the failures in any case. A failure's place is the last `file.py:12: Error` line of its section.
+ */
+function pytestTests(text) {
+  const statuses = new Map();
+  const STATUS = {PASSED: 'passed', FAILED: 'failed', ERROR: 'failed', SKIPPED: 'skipped', XFAIL: 'skipped', XPASS: 'passed'};
+  for (const [, id, word] of text.matchAll(/^(\S+\.py::\S+) (PASSED|FAILED|ERROR|SKIPPED|XFAIL|XPASS)\b/gm)) statuses.set(id, STATUS[word]);
+  for (const [, word, id] of text.matchAll(/^(PASSED|FAILED|ERROR|SKIPPED|XFAIL|XPASS) (\S+\.py::\S+)/gm)) statuses.set(id, STATUS[word]);
+  const lines = linesOf(text);
+  return [...statuses].map(([id, status]) => {
+    const [file, ...path] = id.split('::');
+    const name = path.at(-1);
+    let failure = null;
+    if (status === 'failed') {
+      const said = new RegExp(`^(?:FAILED|ERROR) ${escapeRegExp(id)} - (.*)$`, 'm').exec(text)?.[1];
+      const header = lines.findIndex(line => new RegExp(`^_+ ${escapeRegExp(path.join('.'))} _+$`).test(line));
+      const end = header === -1 ? -1 : indexFrom(lines, header + 1, line => /^(_+ .* _+|=+ .* =+)$/.test(line));
+      const section = header === -1 ? [] : lines.slice(header + 1, end === -1 ? undefined : end);
+      const at = section.map(line => /^(\S+\.py):(\d+): \w+/.exec(line)).filter(Boolean).at(-1);
+      failure = {file: at?.[1] ?? null, line: at ? Number(at[2]) : null, text: said ?? section.find(line => line.startsWith('E '))?.slice(1).trim() ?? 'failed'};
+    }
+    // A parametrized test, test_param[2-3-6], is its def test_param.
+    return {name: id, status, find: {kind: 'python', name: name.replace(/\[.*\]$/, ''), files: [file]}, failure};
+  });
+}
+
+const escapeRegExp = text => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 function pytest(text) {
   const summary = /^=+ (.*\b(passed|failed|errors?)\b.* in [\d.]+s.*?) =+$/m.exec(text);
   if (!summary) return null;
   const failures = [...text.matchAll(/^(?:FAILED|ERROR) (\S+)(?: - (.*))?$/gm)];
+  const tests = pytestTests(text);
   return {
+    ...(tests.length ? {tests} : {}),
     runner: 'pytest',
     failed: unique(failures.map(match => match[1])),
     passed: Number(/(\d+) passed/.exec(summary[1])?.[1] ?? 0),
@@ -239,21 +302,29 @@ function jsJson(text) {
   };
 }
 
-const RUNNERS = [goJson, jsJson, cargo, jest, vitest, pytest, nodeTest, go];
+const RUNNERS = [goJson, jsJson, junit, tap, cargo, jest, vitest, pytest, nodeTest, zig, ctest, go];
 
 /**
  * `{runner, failed, passed, failedCount, firstError}` when `text` is the output of a test run, else null.
  * `failed` names the failed tests (at most 20); `passed` is null when the runner does not count them.
- * A JSON report also has `tests`, each test with its status and failure, and how many `packages` (go) or
- * test `files` (jest, vitest) it ran.
+ * Most runners also give `tests`, each test with its status, failure and where to find it (see test-reports.mjs);
+ * a JSON report also says how many `packages` (go) or test `files` (jest, vitest) it ran.
+ * `report` is the JUnit XML the command wrote to a file, if any: its tests count where it names more than the output.
  */
-export function parseTestOutput(text = '') {
+export function parseTestOutput(text = '', report = null) {
+  const fromReport = report && junit(report);
   for (const runner of RUNNERS) {
     const result = runner(text);
-    if (result) return {...result, failedCount: Math.max(result.failedCount, result.failed.length)};
+    if (!result) continue;
+    // The report wins where it names more tests (plain pytest lists only its failures); else the output's own list
+    // does, which says as much or more of where each test is (ctest's report names no file).
+    const better = fromReport && fromReport.tests.length > (result.tests?.length ?? 0);
+    return finished(better ? {...fromReport, runner: result.runner} : result);
   }
-  return null;
+  return fromReport && finished(fromReport);
 }
+
+const finished = result => ({...result, failedCount: Math.max(result.failedCount, result.failed.length)});
 
 const SOURCE_EXTENSION = String.raw`\.(?:go|[cm]?js|jsx|tsx?|py|rs|rb|java|kt|swift|cs|c|cc|cpp|h|hpp|php|exs?|lua|zig)`;
 // Source files as test runners print them: `worker_test.go:35`, `at test/ws.test.ts:14:28`, `File "test_ws.py"`.

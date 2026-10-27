@@ -11,6 +11,11 @@ Switching to Scout opens a pane below the chat pane, labelled `pair scout`. It r
 - One command runs at a time; Pair waits for it to end, then reads its whole output back, also when it printed more than the pane holds. The shell's output goes through `tee`, so a command writes to a pipe, not a terminal: no colours, no pager, no progress bars. A job you start in the background (`cmd &`) keeps running and does not block the pane.
 - A command still running after two minutes is stopped with Ctrl-C, and the model is told so.
 - Each question gets at most four searches or commands. After that the model is told to answer with what it found.
+- Commands read the files as saved. When a buffer of the project has changes you have not saved, the model is told
+  which, and can run a command on the buffers instead (`run` with `unsaved: true`, for tests or a build): it runs as
+  `(cd <copy> && <command>)` in the scratch copy of the project that the [Driver's check](driver.md#the-check-on-the-unsaved-buffer)
+  uses, with your unsaved text in it, and what it writes stays in the copy. `search` reads the saved files; the
+  model reads a buffer with `read`.
 - For a remark nobody asked for, Scout may read and search, but `run` answers "not now".
 - Switching back to Navigator, or ending the session, closes the pane. A daemon that restarts finds its pane again by the label, so a change to `scoutPane` in the config shows once the pane opens anew.
 
@@ -125,10 +130,15 @@ pane each time you save a source file there (not notes or docs, and not files ou
 did to the pane's shell; in parentheses, so all of `cc -o probe probe.c && ./probe` goes to the file): the pane shows the command line and its exit code in the prompt, and
 the daemon reads the output back from the file, whole, however long it is. Then:
 
-- A JSON report also gives each test (`src/test-places.mjs`): a Go test's function is found as `func Name(` in the
-  `_test.go` files of its package (the package's directory from `go.mod`), a jest or vitest test by its title in
-  quotes in its file, or the location the runner gives; a test file that fails to load (a broken import) is marked on
-  its first line. Tests outside the project, skipped ones and ones not found (a `test.each` row) are left out. Neovim shows them in the sign column (see [docs/neovim.md](neovim.md#it-runs-what-youd-skip)).
+- Most runners also name each test (`src/test-output.mjs`, `src/test-reports.mjs`), and `src/test-places.mjs` finds
+  it: a Go test's function as `func Name(` in the `_test.go` files of its package (the package's directory from
+  `go.mod`); a Python test's `def`, a Rust test's `fn`, a Zig `test "name"` block and a CMake `add_test(name` in the
+  project's files of that kind, in the file the runner names first; a jest, vitest or TAP test by the location the
+  runner gives, else by its title in quotes in its file, or by a title written with `%s`, `$name` or `${...}` that
+  makes it (`test.each`, template strings). A test file that fails to load (a broken import) is marked on its first
+  line. Tests outside the project, skipped ones and ones not found are left out. A JUnit report the command writes
+  to a file (`--junitxml`, `--output-junit`, `--test-reporter-destination`) is read after the run, when the run
+  wrote it. Neovim shows them in the sign column (see [docs/neovim.md](neovim.md#it-runs-what-youd-skip)).
 - The run becomes the session's last test run, by Pair, with the file you saved and the tests that fail now and did
   not in Pair's run on save before it. Those raise the `regression` trigger
   ([docs/watcher.md](watcher.md#regressions)).
@@ -139,8 +149,12 @@ the daemon reads the output back from the file, whole, however long it is. Then:
   are read for its report to the model: `Crashed: Segmentation fault` or `Build: 2 errors: probe.c:11: ...`.
 - The command is yours, from your config: it does not go through the command policy, and the model can neither
   start nor change it. It runs in [the sandbox](#the-sandbox) when the pane has one, like Scout's commands.
-- One run at a time, sharing the pane's queue with Scout; a save during a run starts one more run after it, for the
-  last file saved. After two minutes a run is stopped with Ctrl-C.
+- One run at a time, sharing the pane's queue with Scout. A save during a run stops it with Ctrl-C (or takes it out
+  of the queue before it starts) and starts one for every file saved since the last run that ended; the stopped run
+  reports nothing. After the baseline, a run covers only the tests the saved files affect where the runner can be
+  told (`src/affected.mjs`, see [tests-on-save.md](tests-on-save.md#how-it-runs)); one that passes while earlier
+  failures are still counted is followed by a whole run. A run is stopped with Ctrl-C after
+  the project's `timeoutSeconds`, two minutes by default.
 - Switching back to Navigator keeps the pane open while the project has a command; ending the session closes it.
   The session's first run (also after a daemon restart) is the baseline: what fails in it failed already, so it
   raises no regression. A run of your own is no baseline: it may have run other tests.

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {execFileSync, spawnSync} from 'node:child_process';
-import {mkdirSync, readFileSync, realpathSync, writeFileSync} from 'node:fs';
+import {mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {createModels, fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall} from '@earendil-works/pi-ai';
@@ -148,7 +148,7 @@ int main(void) {
  * `sandbox`, in bubblewrap as Pair's pane does, the project and the runs folder writable. The chat answers each
  * question with `answer`.
  */
-function realProject(files, {partner, buffer, sandbox = false, answer = true}) {
+function realProject(files, {partner, buffer, buffers = () => [], sandbox = false, answer = true}) {
   const root = realpathSync(scratch('pair-check-'));
   for (const [path, text] of Object.entries(files)) {
     mkdirSync(join(root, path, '..'), {recursive: true});
@@ -180,11 +180,11 @@ function realProject(files, {partner, buffer, sandbox = false, answer = true}) {
       if (message.type === 'confirm') setImmediate(() => pair.answer(message.id, answer));
       return 1;
     },
-    requestEditor: async message => (message.type === 'read' ? {text: buffer} : {ok: true, from: 4, to: 4}),
+    requestEditor: async message => (message.type === 'read' ? {text: buffer} : message.type === 'buffers' ? {buffers: buffers(root)} : {ok: true, from: 4, to: 4}),
     now: () => 100_000,
   });
   pair.scout = pane;
-  return {pair, root, sent, ran};
+  return {pair, root, runs, sent, ran};
 }
 
 const driver = (edit, words) => {
@@ -212,7 +212,7 @@ test('without a test: the hand-over builds and runs the unsaved buffer with the 
   assert.deepEqual(sent.filter(message => message.type === 'confirm').map(message => message.text),
     ['Pair wants to run `make -s run` on the unsaved buffer, in a scratch copy, to check its edit (make run runs a target that is not a test or build). Allow?']);
   assert.equal(ran.length, 1);
-  assert.match(ran[0], /\.unsaved\/tree' && \(make -s run\) > /, 'in the scratch copy');
+  assert.match(ran[0], /\/trees\/[\da-f]{16}' && \(make -s run\) > /, 'in the scratch copy');
   assert.match(seen.reply, /It printed avg probe 1\.\d+, which meets it\./);
   assert.match(seen.reply, /exit 0\navg probe 1\.\d+ worst \d+/, 'with the output');
   const handback = sent.find(message => message.type === 'handback');
@@ -223,6 +223,35 @@ test('without a test: the hand-over builds and runs the unsaved buffer with the 
   assert.match(end.text, /^avg probe 1\.\d+$/, 'the statusline shows the line the run printed for the target');
   assert.equal(readFileSync(join(root, 'probe.c'), 'utf8'), PROBE_C, 'the project is untouched: the buffer is not saved');
   assert.equal(execFileSync('./probe', {cwd: root, encoding: 'utf8'}), before, 'nor its program');
+});
+
+test('the check sees every unsaved buffer, and the copy it builds in stays: the next build builds only what changed', {skip: has('cc') && has('make') ? false : 'needs cc and make', timeout: 60_000}, async () => {
+  const main = '#include <stdio.h>\n#include "size.h"\nint main(void) {\n  printf("size %d\\n", SIZE);\n  return 0;\n}\n';
+  const edited = main.replace('size %d', 'table size %d');
+  const {partner, seen} = driver({file: 'main.c', line: 4, endLine: 4, text: '  printf("table size %d\\n", SIZE);'});
+  seen.words = 'Named the size.';
+  // size.h has an unsaved change the Driver did not make: the build has to see it too.
+  const files = {'main.c': main, 'size.h': '#define SIZE 16\n', 'util.c': 'int util;\n', 'Makefile': 'run: probe\n\t./probe\nprobe: main.o util.o\n\tcc -o probe main.o util.o\nmain.o: main.c size.h\n\tcc -c main.c\nutil.o: util.c\n\tcc -c util.c\n'};
+  const {pair, root, runs, sent} = realProject(files, {partner, buffer: edited, buffers: dir => [{file: join(dir, 'size.h'), text: '#define SIZE 64\n'}]});
+  seen.pair = pair;
+  const check = 'run `make -s run`';
+  await pair.drive(`you take it: name the size, ${check}`);
+  assert.match(seen.reply, /exit 0\ntable size 64/, 'the edit and the other unsaved buffer');
+  assert.equal(readFileSync(join(root, 'size.h'), 'utf8'), '#define SIZE 16\n', 'nothing was saved');
+  const [tree] = readdirSync(join(runs, 'trees')).filter(name => !name.endsWith('.json'));
+  const built = name => statSync(join(runs, 'trees', tree, name)).mtimeMs;
+  const util = built('util.o');
+
+  await pair.setRole('navigator');
+  const again = driver({file: 'main.c', line: 4, endLine: 4, text: '  printf("slots %d\\n", SIZE);'});
+  again.seen.words = 'Renamed it.';
+  again.seen.pair = pair;
+  pair.partner = again.partner;
+  pair.requestEditor = async message => (message.type === 'read' ? {text: main.replace('size %d', 'slots %d')} : message.type === 'buffers' ? {buffers: []} : {ok: true, from: 4, to: 4});
+  await pair.drive(`you take it: rename it, ${check}`);
+  assert.match(again.seen.reply, /exit 0\nslots 16/, 'size.h is the saved one again');
+  assert.equal(built('util.o'), util, 'util.c did not change: not built again');
+  assert.ok(sent.filter(message => message.type === 'handback').length === 2);
 });
 
 test('a bound the run misses comes back ✗ with the number; a crash comes back ✗ with the signal, core dumps off', {skip: has('cc') && has('make') ? false : 'needs cc and make', timeout: 60_000}, async () => {
@@ -297,7 +326,7 @@ test('in the sandbox of Pair\'s pane, the check builds and runs in the writable 
   seen.pair = pair;
   pair.receive({kind: 'command_end', cmd: 'make -s run', exit: 0, output: 'avg probe 200.50 worst 400\n', cwd: root});
   await pair.drive('you take it: spread the keys, avg probe stays under 2');
-  assert.match(ran[0], /pair-check-runs-[^/]+\/3\.check\.out\.unsaved\/tree' && \(make -s run\)/);
+  assert.match(ran[0], /pair-check-runs-[^/]+\/trees\/[\da-f]{16}' && \(make -s run\)/);
   assert.match(seen.reply, /It printed avg probe 1\.\d+, which meets it\./);
   assert.equal(sent.find(message => message.type === 'handback').tests, 'pass');
 });

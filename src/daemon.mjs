@@ -295,10 +295,17 @@ export async function startDaemon(config, {
     });
   }
 
-  /** Asks the editor the user is in; a read asks the others too until one has the file loaded. */
+  /**
+   * Asks the editor the user is in; a read asks the others too until one has the file loaded, and the unsaved
+   * `buffers` come from all of them.
+   */
   async function requestEditor(session, message) {
     const editors = editorsOf(session);
     if (!editors.length) throw new Error('No editor attached');
+    if (message.type === 'buffers') {
+      const replies = await Promise.all(editors.filter(editor => editor.buffers).map(editor => askEditor(editor, message).catch(() => null)));
+      return {buffers: replies.flatMap(reply => (Array.isArray(reply?.buffers) ? reply.buffers : []))};
+    }
     if (message.type !== 'read') return askEditor(editors[0], message);
     for (const editor of editors) {
       const reply = await askEditor(editor, message).catch(() => null);
@@ -331,9 +338,9 @@ export async function startDaemon(config, {
     return sessionRootOf(dir, config.sessionRoots) ?? (await gitRoot(dir)) ?? openRootOf(dir, sessions.keys()) ?? dir;
   }
 
-  /** The tests on save of the project at `root`, for its session `id`: `{command, outputFile}`, or null. */
+  /** The tests on save of the project at `root`, for its session `id`: `{command, timeoutMs, affected, outputFile}`, or null. */
   function testOnSaveOf(root, id) {
-    return config.testOnSave[root] ? {command: config.testOnSave[root], outputFile: join(config.dataDir, 'runs', `${id}.out`)} : null;
+    return config.testOnSave[root] ? {...config.testOnSave[root], outputFile: join(config.dataDir, 'runs', `${id}.out`)} : null;
   }
 
   function loadSession(root) {
@@ -473,6 +480,7 @@ export async function startDaemon(config, {
     client.activeAt = Date.now();
     client.pane = message.pane ?? null; // the herdr pane a Neovim runs in
     client.pid = message.pid ?? null; // a Neovim's, which names its terminals (terminals.mjs)
+    client.buffers = message.buffers === true; // a plugin that lists its unsaved buffers; an older one never answers
     client.session = await loadSession(await rootOf(message.cwd));
     const {session} = client;
     sendMessage(client.socket, {

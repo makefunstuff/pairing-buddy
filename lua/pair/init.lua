@@ -6,6 +6,7 @@
 -- one undo step, and refused or undone as soon as you press any key. Once connected, it stays connected: when the
 -- daemon restarts, it reconnects by itself.
 local agents = require('pair.agents')
+local buffers = require('pair.buffers')
 local card = require('pair.card')
 local debrief = require('pair.debrief')
 local draw = require('pair.draw')
@@ -827,7 +828,7 @@ local function hello()
   -- runs in, if any, lets Pair show things in the Neovim whose pane has focus.
   local herdr = vim.env.HERDR_SOCKET_PATH and {socket = vim.env.HERDR_SOCKET_PATH} or nil
   -- Its pid names its own terminals, where the Driver's `type` may go (pane.lua).
-  send({type = 'hello', role = 'editor', cwd = vim.fn.getcwd(), herdr = herdr, pane = vim.env.HERDR_PANE_ID, pid = vim.fn.getpid()})
+  send({type = 'hello', role = 'editor', cwd = vim.fn.getcwd(), herdr = herdr, pane = vim.env.HERDR_PANE_ID, pid = vim.fn.getpid(), buffers = true})
   send_accent()
 end
 
@@ -938,6 +939,7 @@ local handlers = {
   point = point,
   open = open,
   read = read,
+  buffers = function(message) send({type = 'reply', id = message.id, result = {buffers = buffers.unsaved(message.root)}}) end,
   suggest = suggest,
   edit = edit,
   handback = handback,

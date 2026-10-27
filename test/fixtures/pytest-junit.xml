@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="5" time="0.014" timestamp="2026-10-27T04:22:21.685028+02:00" hostname="host"><testcase classname="tests.test_calc" name="test_adds" time="0.000" /><testcase classname="tests.test_calc" name="test_wrong" time="0.000"><failure message="assert 4 == 5&#10; +  where 4 = add(2, 2)">def test_wrong():
+&gt;       assert add(2, 2) == 5
+E       assert 4 == 5
+E        +  where 4 = add(2, 2)
+
+tests/test_calc.py:10: AssertionError</failure></testcase><testcase classname="tests.test_calc" name="test_param[1-1-2]" time="0.000" /><testcase classname="tests.test_calc" name="test_param[2-3-6]" time="0.000"><failure message="assert 5 == 6&#10; +  where 5 = add(2, 3)">a = 2, b = 3, s = 6
+
+    @pytest.mark.parametrize("a,b,s", [(1, 1, 2), (2, 3, 6)])
+    def test_param(a, b, s):
+&gt;       assert add(a, b) == s
+E       assert 5 == 6
+E        +  where 5 = add(2, 3)
+
+tests/test_calc.py:15: AssertionError</failure></testcase><testcase classname="tests.test_calc.TestCalc" name="test_method" time="0.000" /></testsuite></testsuites>

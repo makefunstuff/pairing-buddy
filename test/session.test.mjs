@@ -765,7 +765,8 @@ test('a regression found on save: Pair checks it as a remark, suggests the fix, 
   await until(() => tests().length === 4, 'the second run to end');
   advance(3000);
   await pair.tick();
-  assert.match(input, /^\[watch\] regression: Pair ran `go test \.\/\.\.\.` when the user saved cart\/cart\.go\. Now failing, and not in Pair's run before: TestRate, TestTotal\/two_items/);
+  // After the baseline, a save runs only the package it is in, and the packages that import it.
+  assert.match(input, /^\[watch\] regression: Pair ran `go test \.\/cart` when the user saved cart\/cart\.go\. Now failing, and not in Pair's run before: TestRate, TestTotal\/two_items/);
   assert.match(input, /If a small change fixes it, call suggest/);
   assert.deepEqual(options, {kind: 'remark'});
   const remark = sent.find(message => message.type === 'remark' && message.to === 'editor');
@@ -798,7 +799,7 @@ test('green after a long red: the editor glows and says what passes again, the c
   assert.equal(tests()[3].redSince, undefined);
   assert.deepEqual(to('delight'), [['editor', {text: '`TestRate` and `TestTotal/two_items` pass again, after 23 min of red.'}]]);
   assert.deepEqual(to('earcon'), [['editor', {sound: 'green'}]]);
-  assert.equal(sent.filter(message => message.to === 'chat').at(-1).text, '`go test ./...` passes again, after 23 min of red: 4 tests, 2 packages.');
+  assert.equal(sent.filter(message => message.to === 'chat').at(-1).text, '`go test ./cart` passes again, after 23 min of red: 4 tests, 2 packages.');
 
   setReport('go-test');
   pair.receive({kind: 'save', file: join(root, 'cart/cart.go')});
@@ -883,11 +884,11 @@ test('a change in several edits is checked once, after the last, on every buffer
 test('when the tests cannot run on the buffer, the Partner is told why, and the statusline keeps the last run on save', async () => {
   let reply;
   const partner = {thinkingOf: () => 'off', setRole: async () => {}, ask: async () => { reply = await pair.edit({file: 'notes.txt', line: 1, endLine: 1, text: 'x'}); return 'Done.'; }};
-  const {pair, root, sent, tests} = saveSession({partner, requestEditor: async message => (message.type === 'read' ? {text: 'x\n'} : {ok: true})});
+  const {pair, pane, root, sent, tests} = saveSession({partner, requestEditor: async message => (message.type === 'read' ? {text: 'x\n'} : {ok: true})});
   writeFileSync(join(root, 'notes.txt'), 'old\n');
-  pair.testRuns.command = 'npm test'; // not go test: it runs in a copy of the project, which needs git
+  pane.run = async () => { throw new Error('Pair\'s pane is busy: its shell is not at the prompt'); };
   await pair.drive('your turn');
-  assert.match(reply, /`go test \.\/\.\.\.` could not run on the unsaved buffer: the project is not a git repository/);
+  assert.match(reply, /`go test \.\/\.\.\.` could not run on the unsaved buffer: Pair's pane is busy: its shell is not at the prompt/);
   assert.deepEqual(tests().map(message => message.state), ['run', 'idle']);
   assert.equal(sent.find(message => message.type === 'handback').tests, null);
 });

@@ -112,11 +112,15 @@ Runs every test that needs no model, in under a minute, with scripted models and
   prints and the lines one printed; debug lines added in the session and still in the code. In Neovim, four runs on
   save end to end: the statusline for each, the remark on the same numbers, the debug line counted and `Alt-j` to
   it, `:Pair runs` with `⏎` and `x` removing the print unsaved.
-- **Tests on save.** The JSON reports of go test (subtests, panics, build failures), jest and vitest, each test placed
-  at its line; runs in Pair's pane one at a time; the regression trigger raised once per run with new failures.
-- **Tests on unsaved text.** A real `go test -overlay` passing on the buffer's fix while the file on disk fails; a copy
-  of the project for other runners (git's files and ignored files copied, dependency folders linked at any depth
-  without their caches, builds into ignored folders staying in the copy, a file in a dependency folder refused); the
+- **Tests on save.** The JSON reports of go test (subtests, panics, build failures), jest and vitest, and the real
+  output of cargo test, pytest (`-v`, `-rA`, JUnit), zig test, zig build test, ctest, and node's TAP and JUnit
+  reporters, each test placed at its line in the project that printed it (`test.each` and template titles too); runs
+  in Pair's pane one at a time, a later save stopping a stale run, narrowed to the affected Go packages, jest, vitest
+  and pytest files after the baseline; the regression trigger raised once per run with new failures.
+- **Tests on unsaved text.** A real `go test -overlay` passing on the buffer's fix while the file on disk fails, with
+  every unsaved buffer in the overlay; a copy of the project for other runners (git's files and ignored files copied,
+  or every file without git, dependency folders linked at any depth without their caches, builds into ignored folders
+  staying in the copy, a file in a dependency folder left out), kept between runs and copying only what changed; the
   Driver hearing the result.
 - **The blank page.** The stack from your words ("go" and "node" in plain English name none), the question and slice
   rules with one more try, a slice that breaks them not shown, a long line asked about but never refused, remarks

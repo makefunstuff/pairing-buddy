@@ -874,7 +874,7 @@ test('the ledger: :Pair today lists what Pair did; u undoes its edit after your 
     // <CR> on a run shows its output in the ledger's window; q goes back to the list, and q again closes it.
     keys(`${ran}G<CR>`);
     await until(() => remote('bufname()').startsWith('pair://today/'), 'the output');
-    assert.deepEqual(JSON.parse(remote('json_encode(getline(1, "$"))')), ['const x = 100', 'const w = 5', 'const y = 2', 'const z = 3'], 'what cat printed on the unsaved buffer');
+    assert.deepEqual(JSON.parse(remote('json_encode(getline(1, "$"))')), ['const x = 100', 'const w = 5', 'const y = 2', 'const z = 3', ''], 'what cat printed on the unsaved buffer, which ends in a newline as the file would');
     keys('q');
     await until(() => remote('bufname()') === 'pair://today', 'back to the list');
     keys(`${read}G<CR>`);

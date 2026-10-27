@@ -1,0 +1,56 @@
+TAP version 13
+# Subtest: group
+    # Subtest: breaks
+    not ok 1 - breaks
+      ---
+      duration_ms: 0.553178
+      type: 'test'
+      location: '/home/you/nt/group.test.mjs:5:3'
+      failureType: 'testCodeFailure'
+      error: |-
+        Expected values to be strictly equal:
+        
+        1 !== 2
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: 2
+      actual: 1
+      operator: 'strictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///home/you/nt/group.test.mjs:6:12)
+        Test.runInAsyncScope (node:async_hooks:213:14)
+        Test.run (node:internal/test_runner/test:1106:25)
+        Test.start (node:internal/test_runner/test:1003:17)
+        node:internal/test_runner/test:1516:71
+        node:internal/per_context/primordials:466:82
+        new Promise (<anonymous>)
+        new SafePromise (node:internal/per_context/primordials:435:3)
+        node:internal/per_context/primordials:466:9
+        Array.map (<anonymous>)
+      ...
+    # Subtest: holds
+    ok 2 - holds
+      ---
+      duration_ms: 0.0602
+      type: 'test'
+      ...
+    1..2
+not ok 1 - group
+  ---
+  duration_ms: 0.992976
+  type: 'suite'
+  location: '/home/you/nt/group.test.mjs:4:1'
+  failureType: 'subtestsFailed'
+  error: '1 subtest failed'
+  code: 'ERR_TEST_FAILURE'
+  ...
+1..1
+# tests 2
+# suites 1
+# pass 1
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 29.26684
