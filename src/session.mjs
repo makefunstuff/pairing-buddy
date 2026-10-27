@@ -905,6 +905,7 @@ export class PairSession {
       const tests = this.handback.tests ?? (parts.expect ? markOf(said) : null);
       this.notify('editor', {type: 'handback', ...this.handback, tests, text: said});
     }
+    this.handOver = null; // its expectation is for this hand-over only
     this.earcon('handback');
     // Only now does the conversation lose the Driver's tools. After a take-back during the answer, the policy
     // hook refused edit and type with a reason; a tool that vanished mid-answer leaves small models writing
@@ -1346,7 +1347,8 @@ export class PairSession {
     const typed = count ? `${changed === 1 ? 'a line' : `${changed} lines`} in ${name}` : `lines ${line}-${endLine} of ${name} deleted`;
     this.ledger.add('typed', typed, {data: {place: {file: path, line: this.handback.line}, note: 'one undo step', undo: !!patch}, detail: patch && {patch}});
     // A run of its own would read the saved file, see the old code and send small models in circles.
-    const {check, expect} = this.handOver;
+    // An edit outside a hand-over (the blank page's slice) is checked like a bare one: no expectation.
+    const {check, expect} = this.handOver ?? {check: checkCommand({testCommand: this.testRuns?.command, runs: this.state.runs, root: this.root}), expect: null};
     if (!check.command) return `${DONE}. Nothing ran on the unsaved buffer: ${check.none}. The file on disk changes only when the user saves, so do not run anything now.`;
     if (!(await this.checkAllowed(check))) return `${DONE}. The user did not allow \`${check.command}\` on the unsaved buffer, so nothing ran. Do not run it another way.`;
     const runs = check.command === this.testRuns?.command ? this.testRuns : new TestRuns({
