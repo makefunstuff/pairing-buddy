@@ -2,7 +2,7 @@
 // named. Also that no test makes a temp dir of its own, past test/temp.mjs.
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
-import {existsSync, readdirSync, readFileSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {join, relative} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {test} from 'node:test';
@@ -72,7 +72,7 @@ test('a file that cleans up passes, its scratch dirs in its own folder of the ru
 });
 
 test('npm test\'s runner keeps the run under one root in $TMPDIR, removes it, and fails the run on a leak', () => {
-  const outer = scratch('pair-tmpdir-');
+  const outer = scratch('pair-tmpdir-', '/tmp'); // short enough for the runner's sockets
   const run = (...files) => spawnSync(process.execPath, [RUN, ...files], {encoding: 'utf8', env: {...ENV, TMPDIR: outer, PAIR_TEST_ROOT: ''}});
   const tidy = run(testFile('tidy.test.mjs', `scratch('pair-tidy-');`));
   assert.equal(tidy.status, 0, tidy.stdout + tidy.stderr);
@@ -83,4 +83,13 @@ test('npm test\'s runner keeps the run under one root in $TMPDIR, removes it, an
   assert.match(result.stdout + result.stderr, new RegExp(`temp dir leak: ${leaky} left pair-leak-y in ${outer}/pair-test-\\w+/leaky-`));
   assert.deepEqual(readdirSync(outer), []);
   assert.equal(existsSync(join(outer, 'pair-leak-y')), false);
+});
+
+test('a TMPDIR too long for the tests\' sockets stops the run at once, with what to do, instead of hanging it', () => {
+  const outer = join(scratch('pair-tmpdir-', '/tmp'), 'a-folder-name-long-enough-for-sockets-to-fail');
+  mkdirSync(outer);
+  const result = spawnSync(process.execPath, [RUN, testFile('tidy.test.mjs', '')], {encoding: 'utf8', env: {...ENV, TMPDIR: outer, PAIR_TEST_ROOT: ''}});
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /TMPDIR is too long .* at most 26 characters/);
+  assert.deepEqual(readdirSync(outer), []);
 });

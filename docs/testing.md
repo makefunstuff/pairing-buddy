@@ -139,8 +139,9 @@ Runs every test that needs no model, in under a minute, with scripted models and
 
 **Temp dirs.** `npm test` runs through [test/run.mjs](../test/run.mjs), which puts the whole run under one folder,
 `pair-test-XXXXXX` in `$TMPDIR` (`/tmp` when it is not set), and removes it when the run ends, also on Ctrl-C. To
-run the tests somewhere else, for example when `/tmp` is a small tmpfs, set `TMPDIR` to a short path (under 30
-characters: the tests make Unix sockets a few folders down, and a socket's path maxes out near 104 bytes):
+run the tests somewhere else, for example when `/tmp` is a small tmpfs, set `TMPDIR` to a short path (at most
+26 characters: the tests make Unix sockets a few folders down, and a socket's path maxes out near 104 bytes; the
+runner stops at once with a longer one):
 
 ```sh
 TMPDIR=~/.cache/pair-tests npm test
@@ -152,7 +153,8 @@ file ends, the processes it left running are stopped, the dirs it made with `scr
 socket's short path) are removed, and anything else left in its folder fails the file with a line naming the file
 and what it left. A test makes its temp dirs with those two, never `mkdtemp` or `tmpdir()` itself
 ([test/temp.test.mjs](../test/temp.test.mjs) checks the sources). A single file run with `node --test` gets the
-same, with a root of its own. The live tests run the same way.
+same, with a root of its own. The live tests run the same way. A test without a timeout of its own gets five
+minutes, so one that hangs fails the run instead of holding it.
 
 **No core dumps.** Tests that crash a program on purpose (and the captures' crash scene) run it through
 [test/no-core.mjs](../test/no-core.mjs), which sets the core limit to 1 byte. With systemd-coredump in
