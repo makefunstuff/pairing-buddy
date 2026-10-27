@@ -51,7 +51,7 @@ export default defineConfig({
     config: repoLinks,
     image: {lazyLoading: true},
     anchor: {slugify: githubSlug},
-    theme: {light: 'ayu-dark', dark: 'ayu-dark'}, // code is dark in both, like the terminal it comes from
+    theme: {light: 'tokyo-night', dark: 'tokyo-night'}, // code is dark in both, in the colours of the editor the loops show
   },
   vite: {
     // The site's own files (the videos, fonts, favicon) live next to the config, not among the docs.
