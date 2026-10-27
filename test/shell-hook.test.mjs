@@ -39,7 +39,7 @@ function runBash(t, promptCommand, commands) {
 
 /**
  * Types `commands` into `shell` on a terminal (zsh and fish run their hooks only there), a line at a time; a
- * command `{keys, wait}` types keys without Enter, then waits `wait` ms.
+ * command `{keys, wait}` types keys without Enter, waiting `wait` ms after each (no keys: waits once).
  */
 async function runOnTerminal(t, shell, args, commands, dir = hookDir(t, shell)) {
   const child = spawn('script', ['-qec', [shell, ...args].join(' '), '/dev/null'], {cwd: dir, env: {...process.env, HOME: dir, XDG_CONFIG_HOME: dir, HERDR_PANE_ID: 'w1:p1'}});
@@ -48,6 +48,7 @@ async function runOnTerminal(t, shell, args, commands, dir = hookDir(t, shell)) 
   for (const line of [`source ${join(dir, 'hook')}`, ...commands, '\x15exit']) { // Ctrl-U: whatever keys left on the line
     await new Promise(resolve => setTimeout(resolve, 300));
     if (typeof line === 'string') child.stdin.write(`${line}\r`);
+    else if (!line.keys.length) await new Promise(resolve => setTimeout(resolve, line.wait));
     else for (const key of line.keys) { child.stdin.write(key); await new Promise(resolve => setTimeout(resolve, line.wait)); }
   }
   await new Promise(resolve => child.on('exit', resolve));
@@ -99,20 +100,25 @@ async function zshHeard(t, commands, {prelude = ''} = {}) {
 
 const zsh = onTerminal || (has('zsh') ? false : 'zsh not installed');
 
+// Each line is typed 300 ms after the last step: the source line at 300 ms, then the prompt waits until 2100 ms.
+const SETTLE = {keys: [], wait: 1500};
+const within = (typed, from, to) => typed.filter(([at]) => at >= from && at < to);
+
 test('the zsh hook says keys at the prompt to the daemon\'s socket, at most twice a second, and not for a prompt alone', {skip: zsh}, async t => {
-  // The source line's keys count too, so the prompt first settles; then 'gits' over 600 ms, Ctrl-U later, 'x' later.
-  const {typed} = await zshHeard(t, [{keys: [], wait: 1500}, {keys: [...'gits'], wait: 150}, {keys: ['\x15'], wait: 800}, {keys: ['x'], wait: 300}]);
+  // 'gits' a key every 200 ms from 2400 ms: two reports (2400, 3000); then Ctrl-U at 3500.
+  const {typed} = await zshHeard(t, [SETTLE, {keys: [...'gits'], wait: 200}, {keys: ['\x15'], wait: 800}]);
   assert.ok(typed.every(([, message]) => message.pane === 'w1:p1'), JSON.stringify(typed));
-  const late = typed.filter(([at]) => at > 2100);
-  assert.ok(late.length >= 3 && late.length <= 4, JSON.stringify(typed));
+  assert.deepEqual(within(typed, 700, 2300), [], `nothing while the prompt waits: ${JSON.stringify(typed)}`);
+  assert.equal(within(typed, 2300, 3300).length, 2, `the burst over 800 ms: ${JSON.stringify(typed)}`);
+  assert.equal(within(typed, 3300, 3700).length, 1, `Ctrl-U: ${JSON.stringify(typed)}`);
   for (let i = 1; i < typed.length; i++) assert.ok(typed[i][0] - typed[i - 1][0] >= 450, `twice a second: ${JSON.stringify(typed)}`);
 });
 
 test('the zsh hook says the first key at a new prompt, however soon after the last report', {skip: zsh}, async t => {
-  const {typed} = await zshHeard(t, [{keys: [], wait: 1500}, 'ls', {keys: ['x'], wait: 400}]);
-  // 'ls' typed and entered, then 'x' at the next prompt within half a second of the report for 'ls'.
-  const last = typed.at(-1);
-  assert.ok(typed.length >= 2 && last[0] > 2300, JSON.stringify(typed));
+  // 'ls' and Enter at 2400 ms (reported), then 'x' at 2700 ms, within half a second, at the new prompt.
+  const {typed} = await zshHeard(t, [SETTLE, 'ls', {keys: ['x'], wait: 400}]);
+  assert.equal(within(typed, 2300, 2600).length, 1, JSON.stringify(typed));
+  assert.equal(within(typed, 2650, 2950).length, 1, `the key after Enter: ${JSON.stringify(typed)}`);
 });
 
 test('the zsh hook claims keys only where zle\'s hooks are there, and the hook only once it is in', {skip: zsh}, async t => {
