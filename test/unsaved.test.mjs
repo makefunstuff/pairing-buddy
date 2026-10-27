@@ -44,7 +44,7 @@ test('go test on the unsaved buffer: the buffer\'s fix passes while the file on 
   const file = join(root, 'cart/cart.go');
   const goTest = command => { try { return execFileSync('bash', ['-c', command], {cwd: root, encoding: 'utf8'}); } catch (error) { return error.stdout; } };
   assert.equal(parseTestOutput(goTest('go test -json ./...')).failedCount, 1, 'the file on disk fails');
-  const run = await prepareUnsaved({root, command: 'go test -json ./...', file, text: broken.replace('i := 1', 'i := 0'), dir: tempDir('pair-overlay-')});
+  const run = await prepareUnsaved({root, command: 'go test -json ./...', texts: new Map([[file, broken.replace('i := 1', 'i := 0')]]), dir: tempDir('pair-overlay-')});
   assert.equal(run.root, root);
   const output = goTest(run.command);
   const tests = parseTestOutput(output);
@@ -68,7 +68,7 @@ test('other runners run in a copy of the project: git\'s files and ignored files
   });
   git(root);
   const file = join(root, 'src/total.js');
-  const run = await prepareUnsaved({root, command: 'npx vitest run --reporter=json', file, text: 'fixed\n', dir: scratch()});
+  const run = await prepareUnsaved({root, command: 'npx vitest run --reporter=json', texts: new Map([[file, 'fixed\n']]), dir: scratch()});
   assert.equal(run.command, 'npx vitest run --reporter=json');
   assert.equal(readFileSync(join(run.root, 'src/total.js'), 'utf8'), 'fixed\n');
   assert.equal(readFileSync(file, 'utf8'), 'export const total = xs => xs.slice(1).reduce((a, b) => a + b, 0)\n', 'the project is untouched');
@@ -77,6 +77,21 @@ test('other runners run in a copy of the project: git\'s files and ignored files
   assert.throws(() => lstatSync(join(run.root, '.git')));
   assert.equal(run.toProject(join(run.root, 'test/total.test.js')), join(root, 'test/total.test.js'));
   assert.equal(run.toProject(null), null);
+});
+
+test('a change in several files: each buffer\'s text goes to the run, in the copy and through the overlay', async t => {
+  if (!has('git')) return t.skip('git not installed');
+  const root = project({'a/util.go': 'saved a\n', 'b/util.go': 'saved b\n', 'c.txt': 'untouched\n'});
+  git(root);
+  const texts = new Map([[join(root, 'a/util.go'), 'buffer a\n'], [join(root, 'b/util.go'), 'buffer b\n']]);
+  const copy = await prepareUnsaved({root, command: 'make test', texts, dir: scratch()});
+  assert.deepEqual(['a/util.go', 'b/util.go', 'c.txt'].map(file => readFileSync(join(copy.root, file), 'utf8')), ['buffer a\n', 'buffer b\n', 'untouched\n']);
+  const dir = scratch();
+  const go = await prepareUnsaved({root, command: 'go test -json ./...', texts, dir});
+  const {Replace} = JSON.parse(readFileSync(join(dir, 'overlay.json'), 'utf8'));
+  assert.deepEqual(Object.keys(Replace), [...texts.keys()]);
+  assert.deepEqual(Object.values(Replace).map(path => readFileSync(path, 'utf8')), ['buffer a\n', 'buffer b\n'], 'two files of one name, each its own copy');
+  assert.equal(go.texts, texts);
 });
 
 test('in the copy, dependency folders at any depth are linked, without their caches; what a run builds stays in the copy', async t => {
@@ -92,7 +107,7 @@ test('in the copy, dependency folders at any depth are linked, without their cac
     'dist/a.js': 'built from the saved file\n',
   });
   git(root);
-  const run = await prepareUnsaved({root, command: 'npm test', file: join(root, 'src/a.js'), text: 'UNSAVED BUFFER TEXT\n', dir: scratch()});
+  const run = await prepareUnsaved({root, command: 'npm test', texts: new Map([[join(root, 'src/a.js'), 'UNSAVED BUFFER TEXT\n']]), dir: scratch()});
   // A workspace package's own dependencies are there, as in the project.
   assert.equal(readFileSync(join(run.root, 'packages/a/node_modules/inner/index.js'), 'utf8'), 'module.exports = 2\n');
   assert.equal(readFileSync(join(run.root, 'node_modules/dep/index.js'), 'utf8'), 'module.exports = 1\n');
@@ -109,6 +124,6 @@ test('in the copy, dependency folders at any depth are linked, without their cac
   assert.equal(readFileSync(join(root, 'src/a.js'), 'utf8'), 'saved\n');
 
   // A file in a linked dependency folder would be written through the link, into the project: refused.
-  await assert.rejects(prepareUnsaved({root, command: 'npm test', file: join(root, 'packages/a/node_modules/inner/index.js'), text: 'x', dir: scratch()}), /packages\/a\/node_modules\/inner\/index\.js is in a dependency folder/);
+  await assert.rejects(prepareUnsaved({root, command: 'npm test', texts: new Map([[join(root, 'packages/a/node_modules/inner/index.js'), 'x']]), dir: scratch()}), /packages\/a\/node_modules\/inner\/index\.js is in a dependency folder/);
   assert.equal(readFileSync(join(root, 'packages/a/node_modules/inner/index.js'), 'utf8'), 'module.exports = 2\n');
 });

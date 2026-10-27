@@ -64,18 +64,19 @@ export class TestRuns {
   }
 
   /**
-   * Runs the command once on `text` as the content of `file` (absolute), without saving it, and resolves with
-   * what it reports at the end, and the `picture` the run wrote in the scratch copy, if any (see pictureSince).
-   * Pair's pane runs one command at a time, so it waits for a run on save.
+   * Runs the command once on `texts` (a Map from files, absolute, to their content), without saving them, and
+   * resolves with what it reports at the end, and the `picture` the run wrote in the scratch copy, if any (see
+   * pictureSince). Pair's pane runs one command at a time, so it waits for a run on save.
    */
-  async unsaved(file, text) {
+  async unsaved(texts) {
+    const file = [...texts.keys()].at(-1);
     const report = run => { this.report({...run, label: this.label, saved: file, unsaved: true}); return {...run, label: this.label}; };
     const pane = this.pane();
     if (!pane) return report({state: 'error', error: 'the tests need Pair\'s own pane, in herdr or Neovim', short: 'needs herdr or Neovim'});
     report({state: 'run'});
     const dir = `${this.outputFile}.unsaved`;
     try {
-      const run = await prepareUnsaved({root: this.root, command: this.command, file, text, dir});
+      const run = await prepareUnsaved({root: this.root, command: this.command, texts, dir});
       const outputFile = join(dir, 'run.out');
       const started = Date.now();
       const {exit, timedOut} = await pane.run(runLine(run.command, run.root, outputFile));

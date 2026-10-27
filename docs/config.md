@@ -189,7 +189,7 @@ pair auth logout anthropic  # also `pair logout anthropic`
   yes-or-no calls (speak or stay silent) get much steadier. The Watcher always runs at temperature 0.
 - The prompts and tools are deliberately simple (five tools as Navigator, seven as Scout, nine as Driver, flat
   arguments, one instruction per message), so mid-sized local models handle them. The command policy, the limit of
-  four commands per question and the one edit per hand-over are in code, so a model that loops or asks for too much
+  four commands per question and the five edits per hand-over are in code, so a model that loops or asks for too much
   cannot do harm.
 - A model that has a thinking switch in its chat template needs it in `compat` on an OpenAI-compatible server, or
   Pair cannot set it. That switch is only on or off, unless the server also takes a level (`reasoning_effort`, or a

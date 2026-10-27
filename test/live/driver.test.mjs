@@ -1,5 +1,5 @@
-// The Driver against real models, through a real PairSession: handed the wheel, it makes one edit that
-// does what was asked (ping-pong TDD included, with the tests run on the unsaved buffer after the edit), types a
+// The Driver against real models, through a real PairSession: handed the wheel, it makes the edits that
+// do what was asked (a change in two files too) (ping-pong TDD included, with the tests run on the unsaved buffer after the edit), types a
 // command for the user without Enter, and as
 // Navigator suggests a change instead of making it. The editor is played by in-memory buffers, so the
 // files on disk must stay as they were.
@@ -80,7 +80,7 @@ describe('Driver on live models', {skip: stacks.length ? false : SKIP_REASON}, (
       const conversation = await partner.createConversation();
       session = new PairSession({
         record: {id: 1, root, conversation_id: conversation, goal: 'reconnect drops after the phone sleeps', level: 'normal', role: 'navigator'},
-        store: {addMessage() {}, addAction: () => 1, updateAction() {}, setRole() {}, setGoal() {}},
+        store: {addMessage() {}, addAction: () => 1, updateAction() {}, lastRemark: () => null, setRole() {}, setGoal() {}},
         partner, score: async () => ({value: 0, reason: ''}), typingPauseMs: 2000,
         notify: (to, message) => {
           if (to === 'chat' && message.type === 'message' && message.sender === 'pair') shown.push(message.text);
@@ -106,14 +106,15 @@ describe('Driver on live models', {skip: stacks.length ? false : SKIP_REASON}, (
       t.diagnostic(`shown: ${result.shown}`);
     };
     const edits = result => result.tools.filter(call => call.name === 'edit');
+    const few = result => edits(result).length >= 1 && edits(result).length <= 5;
 
-    test(`${stack.name}: "your turn" after a failing test makes it pass with one edit to the code`, {timeout: 300_000}, async t => {
+    test(`${stack.name}: "your turn" after a failing test makes it pass with a few edits to the code`, {timeout: 300_000}, async t => {
       // The user just wrote the test that wants 30 s; the code still says 5 s.
       const result = await turn(session => session.drive('your turn'), {
         edited: {file: 'test/ws.test.mjs', from: 5, to: 7, text: FILES['test/ws.test.mjs'].split('\n').slice(4, 7).join('\n'), at: Date.now() - 20_000},
       });
       report(t, result);
-      assert.equal(edits(result).length, 1, 'one edit');
+      assert.ok(few(result), 'one edit, or a few');
       assert.equal(result.editor.text('test/ws.test.mjs'), FILES['test/ws.test.mjs'], 'the test was left alone');
       assert.ok(testsPass(result.root, result.editor), 'the tests pass with the edited buffer');
       assert.equal(result.role, 'navigator', 'Pair handed back');
@@ -127,7 +128,7 @@ describe('Driver on live models', {skip: stacks.length ? false : SKIP_REASON}, (
       });
       report(t, result);
       t.diagnostic(`hand-back: ${JSON.stringify(result.handback)}`);
-      assert.equal(edits(result).length, 1, 'one edit');
+      assert.ok(few(result), 'one edit, or a few');
       assert.equal(result.handback?.tests, 'pass', 'the run on the buffer passed');
       assert.match(result.handback.text, /pass/i, 'and Pair says so');
       assert.ok(result.unchanged, 'nothing was written to disk');
@@ -136,10 +137,31 @@ describe('Driver on live models', {skip: stacks.length ? false : SKIP_REASON}, (
     test(`${stack.name}: "you take it" with a request makes exactly that change`, {timeout: 300_000}, async t => {
       const result = await turn(session => session.drive('you take it: set the reconnect timeout to 30 seconds'));
       report(t, result);
-      assert.equal(edits(result).length, 1, 'one edit');
+      assert.ok(few(result), 'one edit, or a few');
       assert.match(result.editor.text('src/ws.mjs').split('\n')[0], /RECONNECT_TIMEOUT_MS = (30000|30_000|30 \* 1000)\b/);
       assert.equal(result.editor.text('src/ws.mjs').split('\n').slice(1).join('\n'), FILES['src/ws.mjs'].split('\n').slice(1).join('\n'), 'the rest is as it was');
       assert.equal(result.role, 'navigator');
+      assert.ok(result.unchanged);
+    });
+
+    test(`${stack.name}: a change in two files: an edit in each, checked once on both buffers, and one hand-back`, {timeout: 300_000}, async t => {
+      const result = await turn(session => session.drive('you take it: set retries to 3 in src/config.mjs, and the reconnect timeout to 30 seconds in src/ws.mjs'), {testOnSave: 'node --test'});
+      report(t, result);
+      t.diagnostic(`hand-back: ${JSON.stringify(result.handback)}`);
+      assert.ok(edits(result).length >= 2 && edits(result).length <= 5, 'an edit in each file');
+      assert.match(result.editor.text('src/config.mjs'), /retries: 3\b/);
+      assert.match(result.editor.text('src/ws.mjs').split('\n')[0], /RECONNECT_TIMEOUT_MS = (30000|30_000|30 \* 1000)\b/);
+      assert.deepEqual(new Set(result.handback.changes.map(change => change.file.slice(result.root.length + 1))), new Set(['src/config.mjs', 'src/ws.mjs']), 'the hand-back marks both');
+      assert.equal(result.handback.tests, 'pass', 'the check saw both buffers');
+      assert.equal(result.role, 'navigator');
+      assert.ok(result.unchanged, 'nothing was written to disk');
+    });
+
+    test(`${stack.name}: a change to part of a line: old_text names it, and the rest of the line stays`, {timeout: 300_000}, async t => {
+      const result = await turn(session => session.drive('you take it: in src/config.mjs change only the retries value to 7, as a change to part of the line'));
+      report(t, result);
+      assert.ok(edits(result).some(({args}) => args.old), 'an edit with old_text');
+      assert.equal(result.editor.text('src/config.mjs'), FILES['src/config.mjs'].replace('retries: 5', 'retries: 7'));
       assert.ok(result.unchanged);
     });
 

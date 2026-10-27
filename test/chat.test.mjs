@@ -28,6 +28,7 @@ test('/scout and /navigate switch the role, /today lists what Pair did; other li
 test('/drive, "you take it" and "your turn" hand Pair the wheel; the words go along', () => {
   assert.deepEqual(parseInput('/drive'), {type: 'drive', text: ''});
   assert.deepEqual(parseInput('/drive set the timeout to 30 s'), {type: 'drive', text: 'set the timeout to 30 s'});
+  assert.deepEqual(parseInput('/drive! set the timeout to 30 s'), {type: 'drive', text: 'set the timeout to 30 s', keep: true}, 'and keep the wheel');
   assert.deepEqual(parseInput('You take it'), {type: 'drive', text: 'You take it'});
   assert.deepEqual(parseInput('you take it: set the timeout to 30 s'), {type: 'drive', text: 'you take it: set the timeout to 30 s'});
   assert.deepEqual(parseInput('your turn'), {type: 'drive', text: 'your turn'});

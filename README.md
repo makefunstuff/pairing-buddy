@@ -109,7 +109,7 @@ Pair has one role at a time. It shows in the chat pane's prompt and in Neovim's 
 | --- | --- | --- |
 | Navigator (default) | Watches, comments, answers, points at lines and suggests changes | `/navigate` in the chat, `:Pair navigate` |
 | Scout | Also searches and runs commands (tests, builds, `git log`) in its own pane (herdr's, or a `:terminal` in Neovim), where you see everything | `/scout`, `:Pair scout` |
-| Driver | Makes one change in your buffer while you watch, then hands back by itself | `:Pair drive`, `/drive`, or "you take it" / "your turn" in the chat |
+| Driver | Makes one change in your buffers while you watch (up to five edits), then hands back by itself; `:Pair drive!` or `/drive!` lets it keep the wheel until you take it back | `:Pair drive`, `/drive`, or "you take it" / "your turn" in the chat |
 
 What Scout may run is decided in code, not by the model: read-only commands, tests and builds run; writes and
 installs ask you first; commits, pushes, the network and `sudo` are refused ([docs/scout.md](docs/scout.md)). Where
