@@ -1,7 +1,8 @@
 #!/bin/bash
 # Records the captures of the shipped plugin: run.sh <tape> ...  (default: every tape in tapes/)
 # Each tape gets a fresh scratch dir under /tmp: a git copy of hookd/, scratch XDG dirs and the harness's daemon
-# on its own socket there (never the running pairing-buddy service). Needs VHS 0.11, ttyd, Go and Neovim 0.11+.
+# on its own socket there (never the running pairing-buddy service). It goes once the tape is recorded
+# (CAP_KEEP=1 keeps it, with the harness's log). Needs VHS 0.11, ttyd, Go and Neovim 0.11+.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 tapes=("$@"); [ ${#tapes[@]} -gt 0 ] || tapes=("$here"/tapes/*.tape)
@@ -40,5 +41,5 @@ ENV
   else
     kill "$harness" 2>/dev/null || true
   fi
-  echo "$name: $dir/$name.mp4 (log: $dir/harness.log)"
+  if [ -n "${CAP_KEEP:-}" ]; then echo "$name: clips/$name.mp4 (log: $dir/harness.log)"; else rm -rf "$dir"; echo "$name: clips/$name.mp4"; fi
 done

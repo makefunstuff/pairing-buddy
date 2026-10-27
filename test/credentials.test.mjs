@@ -1,14 +1,14 @@
 // The credential store `pair auth` writes and the daemon reads: owner-only, and a token refreshed once however many
 // processes need it at the same time.
 import assert from 'node:assert/strict';
-import {mkdtempSync, readFileSync, statSync, utimesSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {readFileSync, statSync, utimesSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {createModels, fauxProvider} from '@earendil-works/pi-ai';
 import {fileCredentialStore, readableByOthers, readCredentials, storedKey} from '../src/credentials.mjs';
+import {scratch as tempDir} from './temp.mjs';
 
-const scratch = () => mkdtempSync(join(tmpdir(), 'pair-auth-'));
+const scratch = () => tempDir('pair-auth-');
 
 test('credentials are written owner-only, read back, listed without secrets and deleted', async () => {
   const path = join(scratch(), 'pairing-buddy', 'auth.json');

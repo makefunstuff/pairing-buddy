@@ -1,9 +1,9 @@
 // The scratch project the live Scout and Driver tests work in, and a local bash standing in for Pair's pane.
 import {execFileSync} from 'node:child_process';
-import {mkdirSync, mkdtempSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {mkdirSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {bashWithoutCores} from '../no-core.mjs';
+import {scratch} from '../temp.mjs';
 
 export const FILES = {
   'package.json': '{"type": "module", "scripts": {"test": "node --test"}}\n',
@@ -25,7 +25,7 @@ test('backoff doubles', () => {
 
 /** A git repository with a failing test: the code waits 5 s, the test wants 30 s. */
 export function project() {
-  const root = mkdtempSync(join(tmpdir(), 'pair-scout-'));
+  const root = scratch('pair-scout-');
   for (const [file, text] of Object.entries(FILES)) {
     mkdirSync(join(root, file, '..'), {recursive: true});
     writeFileSync(join(root, file), text);

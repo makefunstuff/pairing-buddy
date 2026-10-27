@@ -3,8 +3,6 @@
 // written, and while the Partner answers in one project the Watcher of another waits instead of queueing behind it.
 // It prints when each request queued and ran, and what the Watcher waited.
 import assert from 'node:assert/strict';
-import {mkdtempSync} from 'node:fs';
-import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {describe, test} from 'node:test';
 import {parseConfig, sameModel} from '../../src/config.mjs';
@@ -15,6 +13,7 @@ import {client} from '../daemon-client.mjs';
 import {oneSlot} from './one-slot.mjs';
 import {project} from './project.mjs';
 import {liveStacks, SKIP_REASON} from './stacks.mjs';
+import {scratch} from '../temp.mjs';
 
 // A provider brings its own endpoint, which the proxy cannot stand in front of.
 const stacks = liveStacks().filter(({config: {models}}) => sameModel(models.watcher, models.partner) && !models.partner.provider);
@@ -51,7 +50,7 @@ describe('one model for both roles on a one-request-at-a-time server', {skip: st
     test(`${stack.name}: questions go first, and the Watcher waits instead of queueing`, {timeout: 600_000}, async t => {
       const entry = stack.raw.model ?? stack.raw.models.partner;
       const slot = await oneSlot(entry.baseUrl);
-      const dataDir = mkdtempSync(join(tmpdir(), 'pair-live-one-'));
+      const dataDir = scratch('pair-live-one-');
       const config = parseConfig({dataDir, socket: join(dataDir, 'pair.sock'), typingPauseMs: 50, keepWarm: false, model: {...entry, baseUrl: slot.url}});
       const daemon = await startDaemon(config, {log: line => t.diagnostic(`daemon: ${line}`)});
       const [blog, shop, docs] = [project().root, project().root, project().root];

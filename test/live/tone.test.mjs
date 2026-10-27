@@ -4,8 +4,7 @@
 // integer division, so the average probe count fails its check (with exit 1, no crash).
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
-import {cpSync, mkdtempSync, readFileSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {cpSync, readFileSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {describe, test} from 'node:test';
@@ -17,6 +16,7 @@ import {detectTriggers} from '../../src/triggers.mjs';
 import {toneProblems, WORDS} from '../../src/tone.mjs';
 import {bashWithoutCores} from '../no-core.mjs';
 import {liveStacks, SKIP_REASON} from './stacks.mjs';
+import {scratch} from '../temp.mjs';
 
 const PROBE = fileURLToPath(new URL('./probe', import.meta.url));
 const hasCc = spawnSync('cc', ['--version']).status === 0;
@@ -24,7 +24,7 @@ const PLACE = /\b[\w/-]+\.[ch]:\d+/; // table.c:35
 
 /** The probe project in a scratch directory, fixed or not, and what `make run` printed there, for real. */
 function probe({fixed = false} = {}) {
-  const root = mkdtempSync(join(tmpdir(), 'pair-tone-'));
+  const root = scratch('pair-tone-');
   cpSync(PROBE, root, {recursive: true});
   if (fixed) {
     const table = join(root, 'table.c');

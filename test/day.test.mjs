@@ -3,8 +3,7 @@
 // break hint at a natural end.
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {mkdirSync, mkdtempSync, utimesSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {mkdirSync, utimesSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {connect} from 'node:net';
 import {test} from 'node:test';
@@ -14,13 +13,14 @@ import {startDaemon} from '../src/daemon.mjs';
 import {readMessages, sendMessage} from '../src/protocol.mjs';
 import {PairSession} from '../src/session.mjs';
 import {openStore} from '../src/store.mjs';
+import {scratch} from './temp.mjs';
 
 const MIN = 60_000;
 const EVENING = new Date(2026, 9, 26, 17, 40).getTime();
 
 /** A Go-ish project in git: worker.go with send() on line 4. */
 function project() {
-  const root = mkdtempSync(join(tmpdir(), 'pair-day-'));
+  const root = scratch('pair-day-');
   mkdirSync(join(root, 'internal/delivery'), {recursive: true});
   writeFileSync(join(root, 'internal/delivery/worker.go'), 'package delivery\n\nfunc Deliver() {\n\terr := send()\n\treturn err\n}\n');
   writeFileSync(join(root, 'internal/delivery/worker_test.go'), 'package delivery\n\nfunc TestNoDoubleDelivery(t *testing.T) {\n\tt.Fatal("twice")\n}\n');
@@ -221,7 +221,7 @@ test('the empty session that follows a debrief ends without one, and /first in i
 
 test('end to end with Neovim alone: :Pair end, the panel, CursorHold and quitting keep the day\'s debrief', {timeout: 20_000}, async () => {
   const root = project();
-  const dataDir = mkdtempSync(join(tmpdir(), 'pair-data-'));
+  const dataDir = scratch('pair-data-');
   const config = parseConfig({
     dataDir, socket: join(dataDir, 'pair.sock'), agents: false, board: null,
     models: {watcher: {api: 'openai', baseUrl: 'http://unused', model: 'w'}, partner: {api: 'openai', baseUrl: 'http://unused', model: 'p'}},

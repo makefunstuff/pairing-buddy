@@ -1,11 +1,10 @@
 // Push-to-talk without a microphone: a recorder that plays a tone, and whisper replaced by a script or a function.
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {chmodSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import {chmodSync, existsSync, readdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {connect} from 'node:net';
-import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {after, test} from 'node:test';
+import {test} from 'node:test';
 import {createModels, fauxProvider} from '@earendil-works/pi-ai';
 import {parseConfig} from '../src/config.mjs';
 import {startDaemon} from '../src/daemon.mjs';
@@ -14,11 +13,8 @@ import {initialState} from '../src/fold.mjs';
 import {voiceCheck} from '../src/doctor.mjs';
 import {Listener} from '../src/listen.mjs';
 import {cleanTranscript, loudness, meterLevel, RATE, recorderOf, Recording, speak, speakable, transcribe, voiceConfig, wav, whisperPrompt} from '../src/voice.mjs';
+import {scratch} from './temp.mjs';
 
-// Every scratch directory a test makes goes when the tests end.
-const dirs = [];
-const scratch = prefix => { const dir = mkdtempSync(join(tmpdir(), prefix)); dirs.push(dir); return dir; };
-after(() => { for (const dir of dirs) rmSync(dir, {recursive: true, force: true}); });
 /** Whether a process whose command line has `marker` runs. */
 const running = marker => { try { execFileSync('pgrep', ['-f', marker]); return true; } catch { return false; } };
 

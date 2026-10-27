@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {mkdirSync, mkdtempSync, realpathSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {mkdirSync, realpathSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {test} from 'node:test';
 import {statsReport} from '../src/stats.mjs';
 import {openStore} from '../src/store.mjs';
+import {scratch} from './temp.mjs';
 
 const BIN = fileURLToPath(new URL('../bin/pair.mjs', import.meta.url));
 const MIN = 60_000;
@@ -52,7 +52,7 @@ test('remarks that waited for the model while the Partner was at work say how lo
 });
 
 test('`pair stats` reads the data directory, also while no daemon runs, and counts active time when it happened', () => {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'pair-stats-')));
+  const dir = realpathSync(scratch('pair-stats-'));
   const config = join(dir, 'config.json');
   writeFileSync(config, JSON.stringify({dataDir: dir, models: {watcher: {api: 'openai', baseUrl: 'http://x/v1', model: 'w'}, partner: {api: 'openai', baseUrl: 'http://x/v1', model: 'p'}}}));
   const run = (args, cwd = dir) => execFileSync(process.execPath, ['--disable-warning=ExperimentalWarning', BIN, 'stats', ...args], {encoding: 'utf8', cwd, env: {...process.env, PAIR_CONFIG: config}});

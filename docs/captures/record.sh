@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Records the scenes with VHS into out/: ./record.sh [scene ...] (default: all of them).
 # Each scene gets its own scratch directory under /tmp/paircap.*: the project, the daemon's socket and data, and
-# Neovim's XDG directories. Nothing of your own Neovim, pair config, history or daemon is read or touched. The clock
-# is UTC, so the times the ledger shows are not your time zone.
+# Neovim's XDG directories. It goes once the scene is recorded (CAP_KEEP=1 keeps it); a failed scene keeps its logs.
+# Nothing of your own Neovim, pair config, history or daemon is read or touched. The clock is UTC, so the times the
+# ledger shows are not your time zone.
 set -euo pipefail
 # The crash scene crashes a program on purpose: no core dumps, and none handed to the crash reporter (see test/no-core.mjs).
 prlimit --pid $$ --core=1 2>/dev/null || ulimit -c 0
@@ -37,5 +38,5 @@ for scene in "${SCENES[@]}"; do
   [ -e "$CAP/ready" ] || { cat "$CAP/stage.log"; exit 1; }
   (cd "$HERE" && vhs "tapes/$scene.tape") > "$CAP/vhs.log" 2>&1 || { tail "$CAP/vhs.log"; kill $stage; exit 1; }
   kill $stage; wait $stage || true
-  echo "$scene: out/$scene.mp4 (logs in $CAP)"
+  if [ -n "${CAP_KEEP:-}" ]; then echo "$scene: out/$scene.mp4 (logs in $CAP)"; else rm -rf "$CAP"; echo "$scene: out/$scene.mp4"; fi
 done

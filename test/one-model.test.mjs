@@ -1,8 +1,7 @@
 // One model for both roles: each role asks it its own way, the Watcher waits while the Partner works, and the
 // user's question goes before a remark nobody asked for. The daemon runs end to end with one scripted model.
 import assert from 'node:assert/strict';
-import {mkdtempSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {createModels, fauxAssistantMessage, fauxProvider, fauxText} from '@earendil-works/pi-ai';
@@ -16,6 +15,7 @@ import {requestDaemon} from '../src/protocol.mjs';
 import {openStore} from '../src/store.mjs';
 import {createWatcher} from '../src/watcher.mjs';
 import {client} from './daemon-client.mjs';
+import {scratch} from './temp.mjs';
 
 const LONG = Array(60).fill('word').join(' '); // streams for about three seconds
 
@@ -76,7 +76,7 @@ function oneModel(partnerAnswers) {
 }
 
 function oneModelConfig() {
-  const dataDir = mkdtempSync(join(tmpdir(), 'pair-data-'));
+  const dataDir = scratch('pair-data-');
   return parseConfig({dataDir, socket: join(dataDir, 'pair.sock'), typingPauseMs: 50, agents: false /* never the real board of the machine running the tests */, model: {api: 'openai', baseUrl: 'http://unused', model: 'm'}});
 }
 
@@ -92,7 +92,7 @@ async function until(check) {
 }
 
 test('the user\'s question goes first: the remark the model is still writing is cancelled, dropped, and no failure', {timeout: 20_000}, async () => {
-  const project = mkdtempSync(join(tmpdir(), 'pair-project-'));
+  const project = scratch('pair-project-');
   const config = oneModelConfig();
   const {calls, pairModels} = oneModel([LONG, 'Line 2 sets 5 s.']);
   const daemon = await startDaemon(config, {pairModels, probe: async () => ({ok: true}), log: () => {}});
@@ -124,8 +124,8 @@ test('the user\'s question goes first: the remark the model is still writing is 
 });
 
 test('while the Partner answers in one project, the Watcher of another waits, then scores; its remark says how long it waited', {timeout: 20_000}, async () => {
-  const shop = mkdtempSync(join(tmpdir(), 'pair-shop-'));
-  const blog = mkdtempSync(join(tmpdir(), 'pair-blog-'));
+  const shop = scratch('pair-shop-');
+  const blog = scratch('pair-blog-');
   writeFileSync(join(blog, 'post.md'), '# Draft\n');
   const config = oneModelConfig();
   const {calls, pairModels} = oneModel([LONG, 'The build fails on the front matter.']);
@@ -157,8 +157,8 @@ test('while the Partner answers in one project, the Watcher of another waits, th
 });
 
 test('a remembered score waits for the Partner too: the same moment in another project is not let through mid-answer', {timeout: 20_000}, async () => {
-  const shop = mkdtempSync(join(tmpdir(), 'pair-shop-'));
-  const blog = mkdtempSync(join(tmpdir(), 'pair-blog-'));
+  const shop = scratch('pair-shop-');
+  const blog = scratch('pair-blog-');
   const config = oneModelConfig();
   const {calls, pairModels} = oneModel(['The test expects 30 s.', LONG, 'Same failure here.']);
   const daemon = await startDaemon(config, {pairModels, probe: async () => ({ok: true}), log: () => {}});

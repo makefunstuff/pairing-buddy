@@ -1,9 +1,8 @@
 // `pair doctor` against a test daemon and a fake OpenAI-compatible server: what it says, in plain words.
 import assert from 'node:assert/strict';
-import {mkdtempSync, writeFileSync} from 'node:fs';
+import {writeFileSync} from 'node:fs';
 import {createServer} from 'node:http';
 import {connect} from 'node:net';
-import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {createModels, fauxProvider, InMemoryCredentialStore, ModelsError} from '@earendil-works/pi-ai';
@@ -15,6 +14,7 @@ import {sendMessage} from '../src/protocol.mjs';
 import {launchd} from '../src/launchd.mjs';
 import {systemd} from '../src/systemd.mjs';
 import {VERSION} from '../src/version.mjs';
+import {scratch} from './temp.mjs';
 
 /**
  * An OpenAI-compatible server that serves `model` and answers each completion after `delayMs`, thinking first if it
@@ -38,7 +38,7 @@ async function fakeServer({model, delayMs = 0, thinks = false, key}) {
 /** Every check by name; logins and keys from a file of the test's own (none unless it says), never the user's. */
 async function run(options) {
   const checks = [];
-  const auth = join(mkdtempSync(join(tmpdir(), 'pair-doctor-')), 'auth.json');
+  const auth = join(scratch('pair-doctor-'), 'auth.json');
   for await (const check of doctor({auth, ...options})) checks.push(check);
   // The last check of each name, and every line of the thinking check, which can say more than one thing.
   return {...Object.fromEntries(checks.map(check => [check.name, check])), thinking: checks.filter(check => check.name === 'thinking')};
@@ -49,7 +49,7 @@ const installed = async () => ({installed: true, enabled: true, active: true, no
 test('all well: each check says ok, and a slow Watcher gets advice', {timeout: 20_000}, async () => {
   const fast = await fakeServer({model: 'small', thinks: true});
   const slow = await fakeServer({model: 'big', delayMs: 1700});
-  const dir = mkdtempSync(join(tmpdir(), 'pair-doctor-'));
+  const dir = scratch('pair-doctor-');
   const path = join(dir, 'config.json');
   const entry = (url, model) => ({api: 'openai', baseUrl: url, model});
   const partner = {...entry(fast.url, 'small'), compat: {supportsReasoningEffort: true}}; // each level reaches it
@@ -89,7 +89,7 @@ test('broken: no daemon, a dead endpoint and a model the server does not serve, 
   const server = await fakeServer({model: 'small'});
   const dead = await fakeServer({model: 'big'});
   dead.close(); // nothing listens on its port any more
-  const dir = mkdtempSync(join(tmpdir(), 'pair-doctor-'));
+  const dir = scratch('pair-doctor-');
   const path = join(dir, 'config.json');
   writeFileSync(path, JSON.stringify({
     socket: join(dir, 'pair.sock'),
@@ -112,7 +112,7 @@ test('broken: no daemon, a dead endpoint and a model the server does not serve, 
 test('thinking: a model that thinks anyway, one that does not, and levels the server cannot tell apart each get the fix', {timeout: 30_000}, async () => {
   const thinker = await fakeServer({model: 'thinker', thinks: true});
   const plain = await fakeServer({model: 'plain'});
-  const dir = mkdtempSync(join(tmpdir(), 'pair-doctor-'));
+  const dir = scratch('pair-doctor-');
   const path = join(dir, 'config.json');
   /** The thinking lines for a Partner `entry` (the Watcher thinks anyway), and the Watcher's last line. */
   const doctorFor = async entry => {
@@ -145,7 +145,7 @@ test('thinking: a model that thinks anyway, one that does not, and levels the se
 
 test('one model: one line checks it, the roles line explains how it serves both, and its thinking is checked', {timeout: 20_000}, async () => {
   const server = await fakeServer({model: 'one', thinks: true});
-  const dir = mkdtempSync(join(tmpdir(), 'pair-doctor-'));
+  const dir = scratch('pair-doctor-');
   const path = join(dir, 'config.json');
   writeFileSync(path, JSON.stringify({socket: join(dir, 'pair.sock'), model: {api: 'openai', baseUrl: server.url, model: 'one', reasoning: true, compat: {supportsReasoningEffort: true}}}));
   try {
@@ -191,7 +191,7 @@ test('the service and daemon checks name the fix', () => {
 
 test('a model entry with "auth" uses the stored key; without one, doctor says how to store it', {timeout: 20_000}, async () => {
   const server = await fakeServer({model: 'small', key: 'sk-stored'});
-  const dir = mkdtempSync(join(tmpdir(), 'pair-doctor-'));
+  const dir = scratch('pair-doctor-');
   const path = join(dir, 'config.json');
   const auth = join(dir, 'auth.json');
   const entry = {api: 'openai', baseUrl: server.url, model: 'small', auth: 'my-server'};
@@ -238,14 +238,14 @@ test('a Watcher on a subscription gets a warning that names the cost and the ter
 });
 
 test('a logins file others can read fails, with the chmod', () => {
-  const path = join(mkdtempSync(join(tmpdir(), 'pair-doctor-')), 'auth.json');
+  const path = join(scratch('pair-doctor-'), 'auth.json');
   writeFileSync(path, '{}', {mode: 0o644});
   assert.equal(loginsCheck(path).level, 'fail');
   assert.match(loginsCheck(path).text, /others can read it: chmod 600 /);
 });
 
 test('the pane check says whether Pair\'s commands run in the sandbox and with which rc file', () => {
-  const rc = join(mkdtempSync(join(tmpdir(), 'pair-doctor-')), 'bashrc');
+  const rc = join(scratch('pair-doctor-'), 'bashrc');
   const setup = (fields = {}) => ({rc: null, sandbox: 'auto', network: false, writable: [], ...fields});
   assert.deepEqual(paneCheck(setup(), () => true), {level: 'ok', name: 'pane', text: 'commands run in a bubblewrap sandbox, network off'});
   assert.equal(paneCheck(setup(), () => false).level, 'warn');

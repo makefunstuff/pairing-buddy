@@ -1,17 +1,17 @@
 import assert from 'node:assert/strict';
 import {spawn, spawnSync} from 'node:child_process';
-import {mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {shellHook} from '../src/shell-hook.mjs';
+import {scratch} from './temp.mjs';
 
 const has = command => spawnSync(command, ['--version']).status === 0;
 const hasBash = has('bash');
 
 /** A directory with `shell`'s hook in it, whose reporter logs what it would send; removed when test `t` ends. */
 function hookDir(t, shell) {
-  const dir = mkdtempSync(join(tmpdir(), 'pair-hook-'));
+  const dir = scratch('pair-hook-');
   t.after(() => rmSync(dir, {recursive: true, force: true}));
   const reporter = join(dir, 'reporter.mjs');
   writeFileSync(reporter, `import {appendFileSync} from 'node:fs';\nappendFileSync(${JSON.stringify(join(dir, 'log'))}, process.argv.slice(2).join(' ') + '\\n');\n`);

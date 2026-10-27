@@ -1,17 +1,17 @@
 // Where each test of a JSON report is, from the project's files.
 import assert from 'node:assert/strict';
-import {mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {mkdirSync, readFileSync, realpathSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {parseTestOutput} from '../src/test-output.mjs';
 import {placeTests} from '../src/test-places.mjs';
+import {scratch} from './temp.mjs';
 
 const fixture = name => readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), 'utf8');
 
 /** A project with `files` ({path: text}), and its root as the daemon names it. */
 function project(files) {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'pair-places-')));
+  const root = realpathSync(scratch('pair-places-'));
   for (const [path, text] of Object.entries(files)) {
     mkdirSync(join(root, path, '..'), {recursive: true});
     writeFileSync(join(root, path), text);

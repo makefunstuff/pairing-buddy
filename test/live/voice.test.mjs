@@ -4,14 +4,14 @@
 // how long each step took, and the answer.
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {mkdtempSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {describe, test} from 'node:test';
 import {parseConfig} from '../../src/config.mjs';
 import {startDaemon} from '../../src/daemon.mjs';
 import {client} from '../daemon-client.mjs';
 import {liveStacks, SKIP_REASON} from './stacks.mjs';
+import {scratch} from '../temp.mjs';
 
 const has = command => { try { execFileSync('sh', ['-c', `command -v ${command}`]); return true; } catch { return false; } };
 const model = process.env.PAIR_LIVE_WHISPER_MODEL;
@@ -38,9 +38,9 @@ const QUESTION = 'Why does the fourth attempt give up, when the budget is fiftee
 describe('push-to-talk with whisper.cpp and a real model', {skip}, () => {
   for (const stack of liveStacks()) {
     test(`${stack.name}: a spoken question is heard and answered under the line`, {timeout: 300_000}, async t => {
-      const root = mkdtempSync(join(tmpdir(), 'pair-live-voice-'));
+      const root = scratch('pair-live-voice-');
       writeFileSync(join(root, 'retry.c'), RETRY_C);
-      const dataDir = mkdtempSync(join(tmpdir(), 'pair-live-voice-data-'));
+      const dataDir = scratch('pair-live-voice-data-');
       // The question as a microphone would give it: raw 16 kHz mono, in real time.
       const record = `espeak-ng -v en-us -s 140 --stdout "${QUESTION}" | ffmpeg -loglevel error -re -i - -f s16le -ar 16000 -ac 1 -`;
       const config = parseConfig({

@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
-import {chmodSync, mkdirSync, mkdtempSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {chmodSync, mkdirSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {AgentRelay, agentListLines, newsLine, SETTLED_LINE_MS} from '../src/agent-relay.mjs';
 import {AgentBoard, agentItems, agentNews, agentStatus, boardDir, taskStatus} from '../src/agents.mjs';
 import {parseConfig} from '../src/config.mjs';
 import {fakeHerdr} from './fake-herdr.mjs';
+import {scratch} from './temp.mjs';
 
 const task = (n, state, stage, more = {}) => ({id: `shop/${n}`, title: `Task ${n}`, state, stage, msg: '', ...more});
 
@@ -111,7 +111,7 @@ test('agents in the config: on by default, false turns it off; the board is the 
 });
 
 test('the board is read through its command and task files, herdr through agent.list; focus goes to the pane', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'pair-board-'));
+  const dir = scratch('pair-board-');
   const tasks = join(dir, 'list.json');
   const board = join(dir, 'board');
   writeFileSync(board, `#!/bin/sh\n[ "$1 $2" = "list --json" ] && cat '${tasks}'\n`);
@@ -150,7 +150,7 @@ test('the board is read through its command and task files, herdr through agent.
 });
 
 test('without a board, herdr\'s agents are still read and relayed; a board that comes and goes keeps its last list', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'pair-board-'));
+  const dir = scratch('pair-board-');
   const herdr = await fakeHerdr(join(dir, 'herdr.sock'), {agents: [{pane_id: 'w2:p1', cwd: '/home/me/notes', agent: 'pi', agent_status: 'working'}]});
   const changes = [];
   const logged = [];
@@ -169,7 +169,7 @@ test('without a board, herdr\'s agents are still read and relayed; a board that 
 });
 
 test('while no session listens there is no baseline: what changed meanwhile is no news for the next session', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'pair-board-'));
+  const dir = scratch('pair-board-');
   const herdr = await fakeHerdr(join(dir, 'herdr.sock'), {agents: [{pane_id: 'w2:p1', cwd: '/n', agent: 'pi', agent_status: 'working'}]});
   let wanted = true;
   const changes = [];
