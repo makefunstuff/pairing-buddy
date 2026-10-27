@@ -50,18 +50,17 @@ function wrap(text, width) {
 /**
  * One message as the pane prints it: the sender's name, then the text, wrapped to `width` columns (0: no wrap).
  * `accent` is the editor's accent (#rrggbb), or null; `color` false prints plain text. What you typed is printed
- * as you typed it.
+ * as you typed it, wrapped at its words like the rest.
  */
 export function formatMessage(sender, text, {accent = null, width = 0, color = true} = {}) {
   const paint = (ink, words) => (color ? `${ink}${words}${RESET}` : words);
   const ink = accent ? trueColor(accent) : CYAN;
   const name = NAMES[sender] ?? sender;
   const head = paint(sender === 'pair' ? ink : DIM, name);
-  if (sender === 'user') return `${head} ${text}`;
   const indent = ' '.repeat(name.length + 1);
   const lines = wrap(text, width > indent.length + 20 ? width - indent.length : Infinity);
   // Code shows in the accent, without its backticks; without colours the backticks stay, to mark it.
-  const code = word => (color ? paint(ink, word) : `\`${word}\``);
+  const code = word => (color && sender !== 'user' ? paint(ink, word) : `\`${word}\``);
   const body = lines.map(line => line.map(token => token.space + (token.code ? code(token.text) : token.text)).join(''));
   return `${head} ${body.join(`\n${indent}`)}`;
 }

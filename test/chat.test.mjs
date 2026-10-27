@@ -93,6 +93,14 @@ test('a long message wraps under its words, not under the name; an indented line
   ].join('\n'));
 });
 
+test('what you asked from Neovim wraps at its words too, its backticks kept', () => {
+  assert.equal(formatMessage('user', 'in windowed, raise ValueError when step is 0, with a test in `tests/test_more.py`', {color: false, width: 40}), [
+    'you in windowed, raise ValueError when',
+    '    step is 0, with a test in',
+    '    `tests/test_more.py`',
+  ].join('\n'));
+});
+
 test('the chat pane waits through a daemon restart and carries on, without showing the history twice', {timeout: 20_000}, async () => {
   const dir = scratch('pair-chat-');
   const path = join(dir, 'config.json');
