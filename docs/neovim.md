@@ -364,7 +364,7 @@ scripted.*
 | `typed` | the Driver's edit (`6 lines in backoff_test.go · one undo step`), or one line it typed into your terminal | `u undo`, for the edit |
 | `ran`, `searched` | a command in its pane, or the tests it ran on save or on the unsaved buffer, with `✓` or `✗`; the same run in a row is one line (`· 3 times`) | `⏎ output` |
 | `asked`, `refused` | what it asked before running or typing, and what its policy refused, with the reason | `you said no` |
-| `stayed quiet` | the moments it let pass: `3 moments under the bar`, or held back by the budget | `⏎ why` |
+| `stayed quiet` | the moments it let pass: `3 moments under the bar`, held back by the budget, or `not asked, the server is slow` ([watcher.md](watcher.md#when-the-server-is-slow)) | `⏎ why` |
 
 The last one shows that the gate works: Pair noticed, judged, and chose not to talk.
 

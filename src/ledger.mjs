@@ -56,8 +56,8 @@ export class Ledger {
   }
 
   /** A moment Pair let pass: the gate's `reason`, and whether it was the budget (not the bar) that held it back. */
-  quiet(trigger, reason, {budget = false} = {}) {
-    return this.add('quiet', trigger, {data: {budget}, detail: {why: reason}});
+  quiet(trigger, reason, {budget = false, slow = false} = {}) {
+    return this.add('quiet', trigger, {data: slow ? {budget, slow} : {budget}, detail: {why: reason}});
   }
 
   /** Changes entry `id`: its `data` is merged into what it has, the rest replaced. */
@@ -71,7 +71,8 @@ export class Ledger {
 /** The text of a run of quiet entries: how many, and what held them back. */
 function quietText(entries) {
   const budget = entries.filter(entry => entry.data.budget).length;
-  const parts = [[entries.length - budget, 'under the bar'], [budget, 'over the budget']].filter(([count]) => count);
+  const slow = entries.filter(entry => entry.data.slow).length; // not asked: the server is too slow (see pace.mjs)
+  const parts = [[entries.length - budget - slow, 'under the bar'], [budget, 'over the budget'], [slow, 'not asked, the server is slow']].filter(([count]) => count);
   const moments = plural(entries.length, 'moment');
   if (parts.length === 1) return `${moments} ${parts[0][1]}`;
   return `${moments}: ${parts.map(([count, what]) => `${count} ${what}`).join(', ')}`;

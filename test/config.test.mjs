@@ -28,6 +28,13 @@ test('the first run writes the commented example, which loads; later runs keep t
   assert.equal(loadConfig(path).keepWarm, false, 'off for a cloud Watcher: nothing to keep loaded, and each ping is paid');
 });
 
+test('watcherPace is on unless turned off, and takes only true or false', () => {
+  const model = {model: {api: 'openai', baseUrl: 'http://x/v1', model: 'm'}};
+  assert.equal(parseConfig(model).watcherPace, true);
+  assert.equal(parseConfig({...model, watcherPace: false}).watcherPace, false);
+  assert.throws(() => parseConfig({...model, watcherPace: 'off'}), /watcherPace must be true or false/);
+});
+
 test('a broken config says which file and why', () => {
   const path = join(scratch('pair-config-'), 'config.json');
   writeFileSync(path, '{"level": "normal",, }');

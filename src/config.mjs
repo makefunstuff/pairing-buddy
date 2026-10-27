@@ -257,10 +257,14 @@ export function parseConfig(raw, {windows = {}} = {}) {
   if (!LEVELS.includes(level)) throw new Error(`config: level must be one of ${LEVELS.join(', ')}`);
   const models = parseModels(raw, windows);
   if (raw.agents !== undefined && typeof raw.agents !== 'boolean') throw new Error('config: agents must be true or false');
+  if (raw.watcherPace !== undefined && typeof raw.watcherPace !== 'boolean') throw new Error('config: watcherPace must be true or false');
   return {
     level,
     typingPauseMs: raw.typingPauseMs ?? 2000,
     autoTune: raw.autoTune ?? true,
+    // A slow server is the floor under every new moment: while the Watcher's calls take long, Pair asks about fewer
+    // kinds of moment (see pace.mjs). false asks about every kind whatever the server costs.
+    watcherPace: raw.watcherPace ?? true,
     // A cloud model is never unloaded, and each ping would be a paid request.
     keepWarm: raw.keepWarm ?? models.watcher.api === 'openai',
     socket: raw.socket ?? defaultSocketPath(),

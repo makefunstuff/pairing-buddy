@@ -13,8 +13,8 @@ The daemon takes a change as you save the file (also through a symlink), without
 and Neovim what it reloaded. It checks the new config as at start: one with an error is not taken, and the chat says
 why while the daemon keeps the config it runs. Run `pair doctor` after a change to check the models.
 
-- **At once**: the typing pause, `autoTune`, `keepWarm`, `testOnSave`, `voice`, `taskCommand` and `board`, in open
-  sessions too.
+- **At once**: the typing pause, `autoTune`, `keepWarm`, `watcherPace`, `testOnSave`, `voice`, `taskCommand` and
+  `board`, in open sessions too.
 - **Between turns**: new `model` or `models` entries (and their thinking levels). An answer under way finishes on
   the old model; the next one is the new model's, in the same conversation.
 - **For new sessions**: `level` and `sessionRoots`. An open session keeps its own level; `/level` changes it.
@@ -29,6 +29,7 @@ why while the daemon keeps the config it runs. Run `pair doctor` after a change 
 | `level` | `"normal"` | How often Pair speaks unasked: `quiet`, `normal` or `chatty` ([talk levels](#talk-levels)) |
 | `autoTune` | `true` | Your feedback tunes the bars and budget ([memory.md](memory.md#learning-when-to-talk)) |
 | `keepWarm` | `true` for a Watcher with `"api": "openai"`, else `false` | While you work, ask the Watcher's model for one token every 4 minutes, so a server that unloads idle models keeps it loaded ([watcher.md](watcher.md#keep-warm)) |
+| `watcherPace` | `true` | While the Watcher's calls take 1.5 s or more (the median of its last calls), ask about fewer kinds of moment: the ones you can see for yourself go first and, with `autoTune` on, those whose remarks you dismiss before those you keep. Every kind comes back once calls take 1 s or less. `false` asks about every kind however slow the server is ([watcher.md](watcher.md#when-the-server-is-slow)) |
 | `typingPauseMs` | `2000` | How long after a keystroke you count as typing |
 | `testOnSave` | none | A test command per project folder, run when you save ([below](#testonsave), [tests-on-save.md](tests-on-save.md)) |
 | `sessionRoots` | `[]` | Folders that are projects of their own, for a monorepo ([session roots](#session-roots)) |
