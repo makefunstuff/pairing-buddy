@@ -76,4 +76,7 @@ your keys and logins).
 - [Data and privacy](docs/data.md), [tests](docs/testing.md)
 
 The site is [VitePress](https://vitepress.dev): `cd site && npm ci && npm run dev` previews it, and the
-[Pages workflow](.github/workflows/pages.yml) builds and deploys it on every push to main.
+[Pages workflow](.github/workflows/pages.yml) builds and deploys it on every push to main. Its look is pixel art:
+the palette (PICO-8's 16 colours) and the fonts (Pixelify Sans for headings and labels, Inter for text) are in
+[`site/.vitepress/theme/tokens.css`](site/.vitepress/theme/tokens.css), and the sprites and favicon are drawn as pixel
+grids in [`site/sprites/build.mjs`](site/sprites/build.mjs) (`npm run sprites` redraws them).
