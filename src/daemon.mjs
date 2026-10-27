@@ -567,7 +567,11 @@ export async function startDaemon(config, {
     if (message.type === 'answer') return session.blankPage?.open ? session.blankPage.answer(message.text ?? '') : session.message('system', 'No questions of :Pair new are running here (the daemon may have restarted). :Pair new starts again.');
     if (message.type === 'new_stop') return session.blankPage?.stop();
     if (message.type === 'confirm') return session.answer(message.id, message.ok === true);
-    if (message.type === 'feedback') return session.feedback({useful: message.useful === true, id: message.remark ?? undefined, implicit: message.implicit === true});
+    if (message.type === 'feedback') {
+      const number = Number.isInteger(message.number) && message.number > 0 ? message.number : undefined;
+      return session.feedback({useful: message.useful === true, id: message.remark ?? undefined, number, implicit: message.implicit === true});
+    }
+    if (message.type === 'remarks') return sendMessage(client.socket, session.remarkList());
     if (message.type === 'seen') return session.seen(message.remark);
     if (message.type === 'today') return sendMessage(client.socket, {type: 'ledger', ...session.today()});
     if (message.type === 'ledger_detail') return sendMessage(client.socket, {type: 'ledger_detail', ids: message.ids, detail: session.ledgerDetail(message.ids ?? [])});

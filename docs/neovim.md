@@ -348,6 +348,7 @@ scripted.*
 | --- | --- | --- |
 | `read` | it read a file; reads in a row are one line (`queue_test.go 24-37, queue.go 1-29`) | `⏎ go` |
 | `said` | its words, unasked or answering you | your verdict on a remark (`+ useful`, `- noise`), or `⏎ all` |
+| `recalled` | what it looked up in the project's [earlier sessions](memory.md#earlier-sessions) | |
 | `pointed`, `showed` | it pointed at a line, or opened one in a split | `⏎ go` |
 | `suggested` | it suggested a change | `⏎ go`; once you accept it, `accepted · u undo` |
 | `typed` | the Driver's edit (`6 lines in backoff_test.go · one undo step`), or one line it typed into your terminal | `u undo`, for the edit |
@@ -372,7 +373,7 @@ edit was: the disk changes when you `:w`.
 ![The six cases undone: your comment above them stays, and the ledger line is struck through](images/ledger-undone.png)
 
 The list is today's, from local midnight, across the sessions of this project; the line at the bottom sums it up:
-`11 things · 1 remark, 1 useful · 2 h 10 min` (the active pairing time today). The entries are kept in
+`11 things · 1 remark, 1 useful · 2 h 10 min` (the active pairing time in this project today). The entries are kept in
 `sessions.sqlite`; what they open to (the output of each command, its last 20 000 characters, and the text before
 and after each edit) for a week.
 

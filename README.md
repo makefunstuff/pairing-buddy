@@ -196,8 +196,9 @@ said, with a link to the docs when it is sure of one. [docs/tone.md](docs/tone.m
 `main.go`, ...), what to poke at, when the first test is worth writing, and what to leave out. No scaffolding, no
 library you did not name, nothing on disk until you save. [docs/blank-page.md](docs/blank-page.md)
 
-**Remembers and learns.** Each session ends with a short note the next one starts from, and your useful/noise verdicts
-tune when Pair talks. `pair stats` shows the numbers. [docs/memory.md](docs/memory.md)
+**Remembers and learns.** Each session ends with a short note the next one starts from, and earlier sessions stay
+searchable ("what did we try last week?"). Your useful/noise verdicts tune when Pair talks, per project. `pair stats`
+shows the numbers. [docs/memory.md](docs/memory.md)
 
 **Listens.** Hold `Alt-t` in Neovim, ask aloud, let go. whisper.cpp writes it down on your CPU, in about half a
 second, and Pair answers under your line. An answer is read aloud only if you are away from the editor when it comes.

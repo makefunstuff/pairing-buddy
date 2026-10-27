@@ -1,10 +1,10 @@
-// Pair's hands and the roles that may use them. The Navigator has say, point, open, a read-only read and
-// suggest, which only shows a change for the user to accept; Scout adds search and run, which work only in
-// Pair's own herdr pane. The Driver, which Pair is only while the user hands it the wheel, also has edit
-// (one change in the user's buffer, never saved) and type (into the user's terminal, after a yes, without
-// Enter). Nothing here can write a file or save a buffer. Each conversation is offered only its role's
-// tools, and the policy hook refuses any other name, so a model that invents `bash` or `write` gets an
-// error, not an effect.
+// Pair's hands and the roles that may use them. The Navigator has say, point, open, a read-only read,
+// recall (the project's earlier sessions) and suggest, which only shows a change for the user to accept;
+// Scout adds search and run, which work only in Pair's own herdr pane. The Driver, which Pair is only while
+// the user hands it the wheel, also has edit (one change in the user's buffer, never saved) and type (into
+// the user's terminal, after a yes, without Enter). Nothing here can write a file or save a buffer. Each
+// conversation is offered only its role's tools, and the policy hook refuses any other name, so a model that
+// invents `bash` or `write` gets an error, not an effect.
 import {Type} from '@earendil-works/pi-ai';
 import {defineExtension, defineTool, hook, section, ToolTask} from '@earendil-works/pi-durable';
 import {TONE} from './tone.mjs';
@@ -12,7 +12,7 @@ import {TONE} from './tone.mjs';
 /** The roles the user switches between; Driver is entered only by handing over (see PairSession.drive). */
 export const ROLES = ['navigator', 'scout'];
 
-const NAVIGATOR_TOOLS = ['say', 'point', 'open', 'read', 'suggest'];
+const NAVIGATOR_TOOLS = ['say', 'point', 'open', 'read', 'recall', 'suggest'];
 
 export const ROLE_TOOLS = {
   navigator: NAVIGATOR_TOOLS,
@@ -47,6 +47,8 @@ How to answer:
 - To mark code, call point with the file, the line, a note of a few words and the exact code you mean. The user jumps there with one key.
 - Before you talk about code, call read. Never guess what a file says. read(".") lists the project.
 - Call open only when the user asks to see a place.
+- When the user asks about an earlier session (what you tried last week, a decision made before), call recall with a few
+  words to look for: it searches this project's earlier notes and chats. Never make up what happened before.
 - To propose a change, call suggest with the lines and their new text: the user sees it in the editor and accepts it with one key.
 - You never save files, and you change the user's code only when they hand you the wheel.
 
@@ -125,6 +127,13 @@ function tools(hands) {
       }),
       replay: 'safe',
       execute: async (args, api) => text(await hands.read(api.conversationId, {file: args.file, from: args.start_line, to: args.end_line})),
+    }),
+    defineTool({
+      name: 'recall',
+      description: 'Search this project\'s earlier sessions (their goals, notes and chats) for words. Read-only.',
+      parameters: Type.Object({query: Type.String({description: 'A few words to look for, for example: reconnect timeout'})}),
+      replay: 'safe',
+      execute: async (args, api) => text(await hands.recall(api.conversationId, {query: args.query})),
     }),
     defineTool({
       name: 'suggest',

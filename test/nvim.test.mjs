@@ -858,6 +858,44 @@ test('another remark leaves a held thought\'s dot and Alt-j alone; its own remar
   }
 });
 
+test('scrolling the window you read in is reported, at most every ten seconds; a split Pair opens is not', {skip: hasNvim ? false : 'nvim not installed', timeout: 20_000}, async () => {
+  // A stand-in daemon that records what Neovim sends.
+  const dir = mkdtempSync('/tmp/pair-');
+  let editor;
+  const received = [];
+  const server = createServer(socket => {
+    editor = socket;
+    readMessages(socket, message => received.push(message));
+  });
+  await new Promise(resolve => server.listen(join(dir, 'pair.sock'), resolve));
+  const project = realpathSync(mkdtempSync(join(tmpdir(), 'pair-nvim-')));
+  writeFileSync(join(project, 'a.c'), Array.from({length: 300}, (_, i) => `int v${i};`).join('\n'));
+  const nvimSocket = join(dir, 'nvim.sock');
+  const nvim = spawn('nvim', ['--headless', '--clean', '--listen', nvimSocket, '--cmd', `set rtp+=${REPO}`,
+    '-c', `lua require('pair').setup({socket = '${join(dir, 'pair.sock')}'})`, '-c', `cd ${project}`, '-c', 'edit a.c', '-c', 'Pair start'], {stdio: 'ignore'});
+  const remote = expr => execFileSync('nvim', ['--server', nvimSocket, '--remote-expr', expr], {encoding: 'utf8'}).trim();
+  const keys = text => execFileSync('nvim', ['--server', nvimSocket, '--remote-send', text]);
+  const scrolls = () => received.filter(message => message.type === 'event' && message.event.kind === 'scroll');
+  try {
+    await until(() => editor && received.some(message => message.type === 'hello'), 'the plugin to connect');
+    sendMessage(editor, {type: 'welcome', root: project, level: 'normal', role: 'navigator', models: {}});
+    sendMessage(editor, {type: 'open', file: join(project, 'a.c'), line: 200}); // Pair's split, scrolled to line 200
+    await until(() => remote('winnr("$")') === '2', 'Pair\'s split');
+    await sleep(300);
+    assert.deepEqual(scrolls(), [], 'Pair\'s split scrolled, not your window');
+    keys('<C-e>');
+    await until(() => scrolls().length, 'the scroll');
+    assert.deepEqual(scrolls()[0].event, {kind: 'scroll', file: join(project, 'a.c')});
+    keys('<C-f>');
+    await sleep(500);
+    assert.equal(scrolls().length, 1, 'more scrolling within ten seconds says nothing new');
+    assert.equal(remote('line("w0") > 1'), '1');
+  } finally {
+    nvim.kill();
+    server.close();
+  }
+});
+
 test('push-to-talk: hold Alt-t, a meter under your line; let go, your words, then Pair\'s answer in their place; a tap listens until the next one', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
   // The microphone is a loud tone, and whisper a script that hears one question.
   const bin = mkdtempSync(join(tmpdir(), 'pair-whisper-'));

@@ -72,6 +72,7 @@ local PULSE_MS = 700 -- the statusline lights up once for a green, and settles
 local DELIGHT_MS = 5000 -- how long the line about a green stays, from when you are at the editor
 local RUN_LINE_MS = 15 * 60 * 1000 -- how long the statusline says what the last run showed
 local LONG_RED_MIN = 10 -- a failing run says how long it has been red after this many minutes (delight.mjs's LONG_RED_MS)
+local SCROLL_EVERY_MS = 10000 -- scrolling while you read is sent at most this often: it only says you are there
 
 local function default_socket()
   if vim.env.PAIR_SOCKET then return vim.env.PAIR_SOCKET end
@@ -1238,6 +1239,16 @@ function M.setup(opts)
     if file then event({kind = 'enter', file = file}) end
   end})
   vim.api.nvim_create_autocmd('CursorHold', {group = group, callback = send_cursor})
+  -- Scrolling the window you are in is reading, which counts as active time like the cursor moving.
+  local scrolled_at = 0
+  vim.api.nvim_create_autocmd('WinScrolled', {group = group, callback = function()
+    local delta = vim.v.event[tostring(vim.api.nvim_get_current_win())]
+    if not state.channel or not delta or (delta.topline == 0 and delta.leftcol == 0) then return end
+    local file = project_path(0)
+    if not file or now_ms() - scrolled_at < SCROLL_EVERY_MS then return end
+    scrolled_at = now_ms()
+    event({kind = 'scroll', file = file})
+  end})
   -- Whether you are at the editor: an answer to what you said is read aloud only while you are away.
   -- And whether Pair's sounds may play (earcons.lua).
   vim.api.nvim_create_autocmd({'FocusGained', 'FocusLost'}, {group = group, callback = function(args)

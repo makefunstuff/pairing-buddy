@@ -151,7 +151,7 @@ test('"later" to the goal question means no goal, and the next question is a que
   const asked = [];
   const pair = new PairSession({
     record: {id: 1, root: '/project', conversation_id: 7, goal: null, level: 'normal'},
-    store: {addMessage() {}, setGoal() {}},
+    store: {addMessage() {}, setGoal() {}, lastRemark: () => null},
     partner: {thinkingOf: () => 'off', ask: async (_id, input) => { asked.push(input); return 'Line 3.'; }},
     score: async () => ({value: 0}), typingPauseMs: 2000,
     notify: (_role, message) => sent.push(message), requestEditor: async () => null, now: () => 100_000,

@@ -108,7 +108,7 @@ function session(root, answers) {
   const inputs = [];
   const pair = new PairSession({
     record: {id: 1, root, conversation_id: 7, goal: null, level: 'normal'},
-    store: {addMessage() {}, addAction: () => 1, updateAction() {}, setGoal() {}},
+    store: {addMessage() {}, addAction: () => 1, updateAction() {}, lastRemark: () => null, setGoal() {}},
     partner: {thinkingOf: () => 'off', ask: async (_id, input) => {
       inputs.push(input);
       const answer = answers.shift();
@@ -185,7 +185,7 @@ test('the Driver can create a file not written yet as a new buffer, and read it 
   const requests = [];
   const pair = new PairSession({
     record: {id: 1, root, conversation_id: 7, goal: null, level: 'normal', role: 'driver'},
-    store: {addMessage() {}, addAction: () => 1, updateAction() {}}, partner: {}, score: async () => ({}), typingPauseMs: 2000, notify: () => 1,
+    store: {addMessage() {}, addAction: () => 1, updateAction() {}, lastRemark: () => null}, partner: {}, score: async () => ({}), typingPauseMs: 2000, notify: () => 1,
     requestEditor: async message => { requests.push(message); return message.type === 'edit' ? {ok: true, from: 1, to: 2} : {text: null}; },
   });
   pair.role = 'driver';
@@ -201,6 +201,7 @@ test('a question left unanswered does not silence Pair: only remarks about the n
   const {pair, sent, inputs} = session(root, ['What should it show first?', 'Line 2 is off.']);
   pair.store.addRemark = () => 1;
   pair.store.dropRemark = () => {};
+  pair.store.showRemark = () => {};
   pair.store.remarks = () => [];
   pair.now = () => 100_000;
   await pair.startNew('a raylib toy in C', join(root, 'NOTES.md'));

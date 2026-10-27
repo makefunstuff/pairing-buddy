@@ -49,8 +49,11 @@ Runs every test that needs no model, in under a minute, with scripted models and
   model server (fast, slow, dead, a wrong model name, a stored key it needs, a login that no longer renews); model
   health (one notice, no remarks while down, back after a probe).
 - **Memory and feedback.** The note the next session starts from (in the chat and the Partner's instructions, per
-  project, never a failed note); remarks stored with their verdicts (`+`, `Alt-n`, an accepted suggestion); ignored
-  remarks counting as noise and seen ones as neither; the tuning and its bounds; active time; `pair stats`.
+  project, never a failed note); earlier sessions searched by `recall`, and a question about the past that comes with
+  them; remarks stored with their verdicts (`+`, `Alt-n`, an accepted suggestion, `+2` from `/remarks`, `+` after a
+  daemon restart, end to end in the chat pane); ignored remarks counting as noise and seen ones as neither; the tuning
+  and its bounds, per project with the fallback to all; active time, reading included (scrolling reported from a
+  headless Neovim); `pair stats` and `pair stats --project`.
 - **The tone.** The checker the live tests use (praise, apology, filler, emoji, `!` outside code, headings and lists,
   words over the limit), the tone in the Partner's instructions, and teaching: the Partner asked about the words
   shown, the idea and its link apart for the editor, `?` in the chat about Pair's last words.

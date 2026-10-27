@@ -17,7 +17,7 @@ its role's tools.
 ## What it sees
 
 - **Neovim.** The plugin sends edits (about 2 s after you stop typing), the current file, cursor, selection, LSP
-  diagnostics, and your Telescope and snacks.picker searches.
+  diagnostics, your Telescope and snacks.picker searches, and that you scroll (at most every 10 s: only that you read).
 - **herdr.** The daemon watches your herdr panes for focus, commands and their output
   ([herdr.md](herdr.md) says how, and what herdr lacks).
 - **Where you have been.** Your buffers and jumplist, the herdr work board's task for your branch, and git (branch,
@@ -79,6 +79,7 @@ Each role has a fixed set of tools:
 | `point` | Mark lines in Neovim with a short note and the code it means; `Alt-j` goes there | yes | yes | yes |
 | `open` | Show a file in a split, asking first while you type | yes | yes | yes |
 | `read` | Read a file as the editor has it, or list a directory; Neovim shows where it reads | yes | yes | yes |
+| `recall` | Search the project's earlier sessions: their goals, notes and chats ([memory.md](memory.md#earlier-sessions)) | yes | yes | yes |
 | `suggest` | Show a change in place that you accept with one key or ignore | yes | yes | yes |
 | `search` | ripgrep, typed in Pair's own herdr pane | no | yes | yes |
 | `run` | One command line in Pair's own pane, under the [command policy](scout.md#the-command-policy) | no | yes | yes |
@@ -99,8 +100,8 @@ Asked why, it gives the one idea worth keeping behind what it said. Both are in 
 
 Each project gets one long-lived Partner conversation, stored in SQLite by pi-durable, so a restart of the daemon
 keeps the session, its chat and its context. When a session ends, Pair writes a short note (goal, what changed, loose
-ends), and the next session in that project starts from it. Every unasked remark can get your verdict, and the
-verdicts tune when Pair talks. Both are in [memory.md](memory.md).
+ends), and the next session in that project starts from it; earlier sessions stay searchable. Every unasked remark
+can get your verdict, also an older one, and the verdicts tune when Pair talks, per project. Both are in [memory.md](memory.md).
 
 Everything Pair does is also booked as it happens, in a ledger: what it read, said, pointed at, suggested, searched,
 ran, typed and asked, what its policy refused, and the moments it chose to stay quiet, with why. `:Pair today` lists

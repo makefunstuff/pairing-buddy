@@ -1,5 +1,6 @@
 // Session memory against real models, through a real PairSession: the note written at the end names the goal,
-// the change and the loose end, and the next session answers from it without bringing it up unasked.
+// the change and the loose end, and the next session answers from it without bringing it up unasked. Older sessions
+// are recalled: a question about last week is answered from them, and asked to look, the Partner calls recall.
 import assert from 'node:assert/strict';
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
@@ -74,6 +75,37 @@ describe('Session memory on live models', {skip: stacks.length ? false : SKIP_RE
       await partner.close();
       t.diagnostic(`shown: ${shown.join(' | ')}`);
       assert.match(shown.join(' '), /backoff|attempt 5/i);
+    });
+
+    /** A store whose session a week ago tried a backoff cap of 8 s, dropped it, and ended with an unrelated note. */
+    function storeWithHistory(root) {
+      const store = openStore(':memory:');
+      const weekAgo = Date.now() - 7 * 24 * 60 * 60_000;
+      const old = store.createSession({root, conversationId: 'old', goal: 'flaky backoff test', level: 'normal', at: weekAgo});
+      store.addMessage(old.id, 'user', 'What if we cap backoff() at 8000 ms instead of RECONNECT_TIMEOUT_MS?', weekAgo + 60_000);
+      store.addMessage(old.id, 'pair', 'Capping at 8000 broke the 30 s reconnect test, so we went back to the timeout as the cap.', weekAgo + 120_000);
+      store.endSession(old.id, 'Goal: flaky backoff test.\nLoose end: the CI runner is slow on Mondays.', weekAgo + 180_000);
+      return store;
+    }
+
+    test(`${stack.name}: a question about last week is answered from that session`, {timeout: 300_000}, async t => {
+      const {root} = project();
+      const {session, partner, shown} = await pairSession({root, store: storeWithHistory(root)});
+      await session.ask('What did we try last week for the backoff cap, and why did we drop it?');
+      await partner.close();
+      t.diagnostic(`shown: ${shown.join(' | ')}`);
+      assert.match(shown.join(' '), /8000|8 ?s/i, 'the cap tried');
+      assert.match(shown.join(' '), /30|reconnect/i, 'why it was dropped');
+    });
+
+    test(`${stack.name}: asked to look in old sessions, the Partner calls recall`, {timeout: 300_000}, async t => {
+      const {root} = project();
+      const {session, partner, shown, tools} = await pairSession({root, store: storeWithHistory(root)});
+      await session.ask('Look it up in our old sessions: which cap for backoff() was ruled out?');
+      await partner.close();
+      t.diagnostic(`shown: ${shown.join(' | ')} · tools: ${tools.join(', ') || 'none'}`);
+      assert.ok(tools.includes('recall'), 'it searched');
+      assert.match(shown.join(' '), /8000|8 ?s/i);
     });
 
     test(`${stack.name}: the last note does not make a noise moment worth a remark`, {timeout: 300_000}, async t => {

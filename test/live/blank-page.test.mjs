@@ -104,7 +104,7 @@ describe('The blank page on live models', {skip: stacks.length ? false : SKIP_RE
       });
       session = new PairSession({
         record: {id: 1, root, conversation_id: await partner.createConversation(), goal: null, level: 'normal', role: 'navigator'},
-        store: {addMessage() {}, addAction: () => 1, updateAction() {}, setRole() {}, setGoal() {}},
+        store: {addMessage() {}, addAction: () => 1, updateAction() {}, lastRemark: () => null, setRole() {}, setGoal() {}},
         partner, score: async () => ({value: 0, reason: ''}), typingPauseMs: 2000,
         notify: (to, message) => {
           if (message.type === 'message') shown.push(`${message.sender}: ${message.text}`);

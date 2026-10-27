@@ -50,7 +50,7 @@ function session(answers) {
   const seen = [];
   const pair = new PairSession({
     record: {id: 1, root: '/project', conversation_id: 7, goal: 'grow the table', level: 'normal'},
-    store: {addMessage() {}, addAction: () => 1, updateAction() {}, addRemark: () => 1, dropRemark() {}, seeRemark: id => seen.push(id)},
+    store: {addMessage() {}, addAction: () => 1, updateAction() {}, lastRemark: () => null, showRemark() {}, addRemark: () => 1, dropRemark() {}, seeRemark: id => seen.push(id)},
     partner: {thinkingOf: () => 'off', ask: async (_id, input) => { asked.push(input); return answers.shift(); }},
     score: async () => ({value: 9, reason: 'worth it'}),
     typingPauseMs: 2000,
