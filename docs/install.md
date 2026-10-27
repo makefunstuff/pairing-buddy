@@ -16,6 +16,11 @@
 
 ## Install
 
+**Or let your AI agent do it:** tell your coding agent "follow
+https://github.com/makefunstuff/pairing-buddy/blob/main/INSTALL.md". [That guide](https://github.com/makefunstuff/pairing-buddy/blob/main/INSTALL.md)
+takes it from a fresh machine to a passing `pair doctor`: the prerequisites, the service, your model, the plugin in
+your plugin manager, upgrade and uninstall, and it asks you where only you can answer.
+
 Once, in two parts: the daemon as an npm package, and the Neovim plugin with lazy.nvim. Both come from this GitHub
 repository.
 
