@@ -6,11 +6,11 @@ Pair watches your editor (Neovim) and terminal ([herdr](https://herdr.dev)), tal
 only through the tools you use. It never writes your files: its edits land unsaved in your buffer as one undo step,
 and the disk changes only when you save.
 
-https://github.com/user-attachments/assets/1a189e13-ff42-4710-a731-d5c493238cf9
+https://github.com/user-attachments/assets/b4e38d1e-9e9d-4c28-a3fd-4dce40bd11a8
 
 *The six-minute tour of everything it does, with captions. Chapters: 0:00 why · 0:38 getting started (install,
-`pair auth`, one model, `pair doctor`) · 1:32 exploring code · 3:01 tests · 3:33 notes and the blank page · 4:15
-handing over · 4:48 the day around it · 5:20 and the rest · 5:41 the keys. Its script and how to render it again
+`pair auth`, one model, `pair doctor`) · 1:34 exploring code · 3:04 tests · 3:37 notes and the blank page · 4:20
+handing over · 4:53 the day around it · 5:25 and the rest · 5:47 the keys. Its script and how to render it again
 are in [docs/video](docs/video/). The website, where each chapter is a button, is at
 [makefunstuff.github.io/pairing-buddy](https://makefunstuff.github.io/pairing-buddy/) (source in [`site/`](site/)).*
 

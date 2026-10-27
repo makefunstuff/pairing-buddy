@@ -55,8 +55,8 @@ const TOUR = [
       {at: 'pair', until: 7.6, text: 'pair setup'},
     ],
     marks: [
-      {at: 8.3, until: 9.7, box: I(0, 4, 112, 2), label: 'the config, written from the example', below: true},
-      {at: 9.7, box: I(0, 8, 92, 1), label: 'the daemon: Pair in the background, as a service', below: true},
+      {at: 8.3, until: 9.7, box: I(0, 5, 112, 2), label: 'the config, written from the example', below: true},
+      {at: 9.7, box: I(0, 9, 92, 1), label: 'the daemon: Pair in the background, as a service', below: true},
     ],
   },
   {
@@ -78,8 +78,9 @@ const TOUR = [
   {
     id: 'doctor', ch: 1, title: 'pair doctor checks every part', pad: 0.9,
     shots: [{clip: 'start', from: 20.4, to: 31.4, rate: 1.4}],
-    zooms: [{at: 0, box: I(0, 6, 112, 16)}],
+    zooms: [{at: 0, box: I(0, 6, 90, 9)}, {at: 'thinks,', box: I(0, 12, 112, 10)}],
     marks: [
+      {at: 1.2, until: 'thinks,', box: I(0, 12, 85, 1), label: 'herdr, a terminal workspace, is optional', below: true},
       {at: 'thinks,', until: 'sandbox', box: I(0, 17, 75, 3), label: 'the Partner thinks; one model serves both roles', above: true},
       {at: 'sandbox', box: I(0, 14, 64, 1), label: 'Pair’s commands run in a bubblewrap sandbox', above: true},
     ],
@@ -90,7 +91,7 @@ const TOUR = [
   {
     id: 'red', ch: 2, title: 'A test is red', pad: 0.6,
     shots: [{clip: 'wrong-turn', from: 0, to: 8.4, rate: 1.15}],
-    zooms: [{at: 0, box: P(0, 600, 900, 160)}, {at: 'you', box: P(0, 250, 1000, 340)}],
+    zooms: [{at: 0, box: P(0, 600, 900, 160)}, {at: 'you', box: P(0, 250, 1400, 340)}],
     marks: [
       {at: 'red,', until: 'you', box: P(3, 633, 860, 42), label: '✗ 4 attempts, where the test wants 5', above: true},
       {at: 'backoff', box: P(2, 443, 400, 24), label: 'you change the shift in backoff.go', below: true},
@@ -99,7 +100,7 @@ const TOUR = [
   {
     id: 'reads', ch: 2, title: 'Pair reads the code first', pad: 0.6,
     shots: [{clip: 'wrong-turn', from: 8.4, to: 12.6, rate: 0.62}],
-    zooms: [{at: 0, box: null}],
+    zooms: [{at: 0, box: P(0, 420, 1400, 420)}],
     roles: [{at: 'Navigator,', glyph: '●', name: 'Navigator', text: 'Pair’s default role: it watches and points'}],
     marks: [
       {at: 'name', until: 'Navigator,', box: P(3, 633, 860, 42), label: 'the failure names worker_test.go, not backoff.go', above: true},
@@ -108,17 +109,17 @@ const TOUR = [
   },
   {
     id: 'words', ch: 2, title: 'Then it speaks, under your line', pad: 1,
-    shots: [{clip: 'wrong-turn', from: 12.6, to: 16.8, rate: 0.6}],
+    shots: [{clip: 'wrong-turn', from: 12.6, to: 16.2, rate: 0.5}],
     zooms: [{at: 0, box: P(0, 400, 1200, 160)}],
-    quote: {at: 'speaks,', text: 'the shift is fine: 1s 2s 4s 8s, as the test wants. attempt 5 lands at exactly 15s, and worker.go:35 gives up on >='},
+    quote: {at: 'speaks,', text: 'the shift is fine: 1s 2s 4s 8s, as the test wants. attempt 5 lands at exactly 15s, and worker.go:35 gives up on >=, one attempt early'},
     marks: [{at: 'speaks,', box: P(105, 466, 1040, 50), label: 'here, under the line you changed', below: true}],
   },
   {
     id: 'jump', ch: 2, title: 'Alt-J jumps to the cause', pad: 1.4,
-    shots: [{clip: 'wrong-turn', from: 17.3, to: 20.6, rate: 0.75}],
+    shots: [{clip: 'wrong-turn', from: 17.3, to: 20.2, rate: 0.66}],
     zooms: [{at: 0, box: P(0, 150, 1000, 260)}],
-    keys: [{at: 0.4, keys: ['Alt', 'J'], note: 'Pair writes it M-j'}],
-    marks: [{at: 'exact', box: P(2, 280, 991, 23), label: 'attempt 5 at 7s + 8s = 15s: inside the budget, but >= gives up', below: true}],
+    keys: [{at: 0.4, keys: ['Alt', 'J'], note: 'M- is Alt: Pair writes it M-j'}],
+    marks: [{at: 'exact', box: P(2, 280, 991, 23), label: '7s + 8s = 15s is inside the budget, but >= gives up', above: true}],
   },
   {
     id: 'trail', ch: 2, title: 'Searching in circles? The search trail', pad: 0.8,
@@ -135,18 +136,17 @@ const TOUR = [
     zooms: [{at: 0, box: null}, {at: 2.4, box: P(140, 30, 1130, 600)}],
     chips: [{at: 0, until: 2.3, text: ':Pair context'}],
     marks: [
-      {at: 'goal', until: 'git,', box: P(140, 114, 700, 26), label: 'the goal, from the board task of your branch', below: true},
-      {at: 'git,', until: 'commands', box: P(140, 280, 520, 90), label: 'git', below: true},
+      {at: 'goal', until: 'commands', box: P(140, 114, 830, 26), label: 'the goal, from your branch’s task on the herdr board, your task tracker', below: true},
       {at: 'commands', box: P(140, 396, 1110, 210), label: 'your commands, buffers, jumps and searches', above: true},
     ],
   },
   {
     id: 'crash', ch: 2, title: 'A crash and a compiler error', pad: 0.8,
-    shots: [{clip: 'crash', from: 1.6, to: 6.4, rate: 1.4}, {clip: 'crash', from: 8.6, to: 16.6, rate: 1.4}],
-    zooms: [{at: 0, box: P(0, 150, 1100, 340)}],
+    shots: [{clip: 'crash', from: 1.6, to: 6.4, rate: 0.9}, {clip: 'crash', from: 8.6, to: 16.6, rate: 1.6}],
+    zooms: [{at: 0, box: P(0, 150, 1240, 340)}],
     marks: [
-      {at: 1.4, until: 3.5, box: P(2, 233, 645, 24), label: 'a compiler error, on its line', below: true},
-      {at: 'crash', box: P(2, 373, 1200, 50), label: 'AddressSanitizer: SEGV, on the line of its frame', below: true},
+      {at: 'compiler', until: 'so', box: P(2, 233, 645, 24), label: 'a compiler error, on its line', below: true},
+      {at: 'crash.', box: P(2, 373, 1200, 50), label: 'a crash found by AddressSanitizer, the compiler’s memory check, on its line', below: true},
     ],
   },
   {
@@ -154,7 +154,7 @@ const TOUR = [
     shots: [{clip: 'loop', from: 0, to: 16.5, rate: 4, badge: 'three runs of make · 4× speed'}, {clip: 'loop', from: 16.5, to: 23}],
     zooms: [{at: 0, box: null}],
     marks: [
-      {at: 'number,', until: 'If', box: STATUS_RIGHT, label: 'run 3 · same numbers as run 2', above: true},
+      {at: 'number,', until: 'If', box: STATUS_RIGHT, label: 'run 3: same avg probe (slots tried per lookup) as run 2', above: true},
       {at: 'If', box: P(110, 186, 760, 72), label: 'why nothing moved: the ids come 64 apart', below: true},
     ],
   },
@@ -173,14 +173,14 @@ const TOUR = [
     shots: [{clip: 'teach', from: 5.4, to: 15.6, rate: 1.6}],
     zooms: [{at: 0, box: P(0, 250, 1200, 180)}],
     keys: [{at: 3.1, keys: ['Alt', '?']}],
-    marks: [{at: 'one', box: P(108, 349, 1100, 50), label: 'the one idea worth keeping, and a link to the docs', below: true}],
+    marks: [{at: 4.3, box: P(108, 349, 1100, 50), label: 'the one idea worth keeping, and a link to the docs', below: true}],
   },
   {
     id: 'held', ch: 2, title: 'A held thought waits for your save', pad: 0.9,
     shots: [{clip: 'held-thought', from: 14.5, to: 23.4, rate: 1.4}],
     zooms: [{at: 0, box: P(0, 450, 1000, 380)}],
     marks: [
-      {at: 'dot', until: 'save.', box: P(0, 583, 30, 24), label: '• a thought, held', below: true},
+      {at: 'dot', until: 'save.', box: P(0, 583, 30, 24), label: 'a thought, held', below: true},
       {at: 'save.', box: P(60, 600, 480, 200), label: 'shown at your save', above: true},
     ],
   },
@@ -220,7 +220,7 @@ const TOUR = [
   {chapter: 4},
   {
     id: 'notes', ch: 4, title: 'Notes in the margin', pad: 0.8,
-    shots: [{clip: 'notes', from: 0, to: 15.4, rate: 1.25}],
+    shots: [{clip: 'notes', from: 0, to: 14.2, rate: 3.2, badge: 'Pair reads the note · 3× speed'}, {clip: 'notes', from: 14.2, to: 15.4, rate: 0.16}],
     zooms: [{at: 0, box: null}],
     marks: [
       {at: 'question,', until: 'two', box: P(0, 443, 1350, 50), label: '? a question the note leaves open', above: true},
@@ -239,20 +239,22 @@ const TOUR = [
     ],
   },
   {
-    id: 'blank', ch: 4, title: 'The blank page: :Pair new', pad: 0.8,
+    id: 'blank', ch: 4, title: 'The blank page: :Pair new', pad: 2.2,
     shots: [
       {clip: 'blank-page', from: 2.2, to: 10.6, rate: 2},
       {clip: 'blank-page', from: 10.6, to: 29, rate: 6, badge: 'three questions · 6× speed'},
       {clip: 'blank-page', from: 29, to: 38.6, rate: 2.2},
     ],
     zooms: [{at: 0, box: null}],
-    marks: [{at: 'slice', box: P(60, 160, 1130, 500), label: 'a first slice: two files, what to poke at, what to leave out', above: true}],
+    marks: [{at: 10.6, box: P(60, 160, 1130, 500), label: 'a first slice: two files, what to poke at, what to leave out', above: true}],
   },
   {
     id: 'firstrun', ch: 4, title: 'Hand it over: two files, typed', pad: 0.8,
-    shots: [{clip: 'first-run', from: 0.8, to: 28, rate: 5, badge: 'the Driver types · 5× speed'}, {clip: 'first-run', from: 28, to: 35.4, rate: 1.4}],
+    shots: [{clip: 'first-run', from: 0.8, to: 28, rate: 5, badge: 'Pair types · 5× speed'}, {clip: 'first-run', from: 28, to: 35.4, rate: 1.4}],
     zooms: [{at: 0, box: null}],
-    marks: [{at: 'save.', box: P(700, 0, 700, 790), label: 'make run, after :wa', below: false}],
+    chips: [{at: 0, until: 2.6, text: ':Pair drive the Makefile from the slice'}],
+    keys: [{at: 5.5, keys: [':wa'], note: 'you save both files'}],
+    marks: [{at: 8.4, box: P(702, 2, 696, 785), label: 'then make run: frame 20 takes 25 steps', below: false, inside: true}],
   },
 
   {chapter: 5},
@@ -269,7 +271,7 @@ const TOUR = [
     zooms: [{at: 0, box: P(400, 640, 1000, 200)}, {at: 'hands', box: P(0, 300, 1150, 260)}],
     marks: [
       {at: 'tests', until: 'hands', box: STATUS_RIGHT, label: '✓ go test on the unsaved buffer', above: true},
-      {at: 'One', box: P(150, 488, 950, 52), label: 'a short note, and “u undoes it”', above: true},
+      {at: 'hands', until: 5.7, box: P(150, 488, 950, 52), label: 'a short note, and “u undoes it”', above: true},
     ],
     keys: [{at: 'undo', keys: ['u']}],
   },
@@ -300,12 +302,12 @@ const TOUR = [
     keys: [{at: 'U', keys: ['u']}],
   },
   {
-    id: 'agents', ch: 6, title: 'Your other agents, at your breaks', pad: 0.8,
+    id: 'agents', ch: 6, title: 'Your other agents, at your breaks', pad: 1.6,
     shots: [{clip: 'agents', from: 4, to: 20.6, rate: 2.6}],
     zooms: [{at: 0, box: null}, {at: 'next', box: P(0, 560, 1400, 280)}],
     marks: [
-      {at: 'next', until: 'Alt', box: STATUS_RIGHT, label: '#21 needs you · M-a goes there', above: true},
-      {at: 'Alt', box: P(0, 670, 1290, 120), label: ':Pair agents, the ones that need you first', above: true},
+      {at: 'next', until: 5, box: STATUS_RIGHT, label: '#21 needs you · M-a (Alt-A) goes there', above: true},
+      {at: 5.1, box: P(0, 670, 1290, 120), label: ':Pair agents lists them, the ones that need you first', above: true},
     ],
   },
   {
@@ -331,11 +333,11 @@ const TOUR = [
       {clip: 'no-herdr', from: 0, to: 1, rate: 0.38},
       {clip: 'no-herdr', from: 2, to: 24, rate: 3.3},
     ],
-    zooms: [{at: 0, box: null}, {at: 6.45, box: I(0, 12, 70, 4)}, {at: 10.1, box: null}],
+    zooms: [{at: 0, box: null}, {at: 6.45, box: I(0, 12, 112, 4)}, {at: 10.1, box: null}],
     cards: [
       {at: 0.35, until: 4.1, title: 'Push-to-talk', text: 'hold Alt-T, ask aloud, let go: whisper.cpp on your CPU'},
       {at: 4.3, until: 6.3, title: 'Earcons', text: 'short sounds for a green, only while you are away from Neovim (off by default)'},
-      {at: 6.6, until: 9.9, title: 'Scout’s pane: your rc file, in a sandbox', text: 'your aliases and functions; only the project is writable, no network'},
+      {at: 6.6, until: 9.9, title: 'Pair’s pane: your rc file, in a sandbox', text: 'where Scout, the role that runs commands, works: your aliases; only the project writable, no network'},
       {at: 10.1, until: 12.6, title: 'Several Neovims, one session', text: 'Pair shows its words in the one you are in; each git worktree is a session of its own'},
       {at: 12.8, until: 15.5, title: 'Pair without herdr', text: ':Pair chat opens the chat inside Neovim; Scout’s pane is a :terminal'},
     ],
@@ -345,26 +347,31 @@ const TOUR = [
 
 // The cut for X: the three moments that matter most each day, then the rest in a breath.
 const SHORT = [
-  {id: 'chair', kind: 'chair', pad: 0.5},
   {
-    id: 'x-wrong', title: 'It stops the wrong turn', pad: 1,
-    shots: [{clip: 'wrong-turn', from: 6, to: 8.4, rate: 1.2}, {clip: 'wrong-turn', from: 8.4, to: 16.4, rate: 1.3}, {clip: 'wrong-turn', from: 17.3, to: 20.4, rate: 1}],
-    zooms: [{at: 0, box: P(0, 250, 1100, 340)}],
-    marks: [
-      {at: 'line:', until: 'Alt', box: P(105, 466, 1040, 50), label: 'under your line: the cause is elsewhere', below: true},
-      {at: 'there.', box: P(2, 280, 991, 23), label: 'worker.go:35 gives up on >=', below: true},
-    ],
-    keys: [{at: 'Alt', keys: ['Alt', 'J']}],
+    id: 'x-open', title: 'pairing-buddy: an AI pair in Neovim', pad: 0.4,
+    shots: [{clip: 'wrong-turn', from: 12.8, to: 16.2, rate: 0.62}],
+    zooms: [{at: 0, box: P(0, 400, 1200, 160)}],
+    marks: [{at: 'speaks', box: P(105, 466, 1040, 50), label: 'it speaks under your line, only when it matters', below: true}],
   },
   {
-    id: 'x-tests', title: 'It runs what you’d skip', pad: 0.5,
+    id: 'x-wrong', title: 'It stops the wrong turn', pad: 1,
+    shots: [{clip: 'wrong-turn', from: 4, to: 8.4, rate: 1.4}, {clip: 'wrong-turn', from: 8.4, to: 16}, {clip: 'wrong-turn', from: 17.3, to: 20.2, rate: 0.8}],
+    zooms: [{at: 0, box: P(0, 250, 1400, 340)}],
+    marks: [
+      {at: 'line:', until: 10.5, box: P(105, 466, 1040, 50), label: 'under your line: the cause is elsewhere', below: true},
+      {at: 11.8, box: P(2, 280, 991, 23), label: 'worker.go:35 gives up on >=', above: true},
+    ],
+    keys: [{at: 11, keys: ['Alt', 'J']}],
+  },
+  {
+    id: 'x-tests', title: 'It runs what you’d skip', pad: 1.4,
     shots: [{clip: 'tests-on-save', from: 5.6, to: 12, rate: 1.6}, {clip: 'tests-on-save', from: 14.6, to: 23, rate: 1.6}],
     zooms: [{at: 0, box: null}],
     marks: [{at: 'queue', until: 'Alt', box: STATUS_RIGHT, label: 'a test that passed now fails', above: true}],
     keys: [{at: 'Alt', keys: ['Alt', 'Y']}],
   },
   {
-    id: 'x-drive', title: 'The visible hand-over', pad: 0.5,
+    id: 'x-drive', title: 'The visible hand-over', pad: 1.4,
     shots: [{clip: 'hand-over', from: 0.6, to: 17.8, rate: 2.1}],
     zooms: [{at: 0, box: null}],
     chips: [{at: 0.2, until: 'watch', text: ':Pair drive the edge cases'}],
@@ -373,14 +380,20 @@ const SHORT = [
   {
     id: 'x-more', title: 'And the day around it', pad: 1.2,
     shots: [
-      {clip: 'notes', from: 10, to: 15.4, rate: 2.7},
-      {clip: 'blank-page', from: 33, to: 38.6, rate: 2.8},
-      {clip: 'ledger', from: 2, to: 8, rate: 3},
+      {clip: 'notes', from: 10, to: 15.4, rate: 2.2},
+      {clip: 'blank-page', from: 33, to: 38.6, rate: 2.2},
+      {clip: 'ledger', from: 2, to: 8, rate: 2.4},
       {clip: 'pickup', from: 2, to: 9.3, rate: 2.9},
     ],
     zooms: [{at: 0, box: null}],
+    chips: [
+      {at: 0, until: 2.4, text: 'notes in the margin', plain: true},
+      {at: 2.5, until: 4.9, text: ':Pair new: a first slice'},
+      {at: 5.0, until: 7.4, text: ':Pair today: the ledger'},
+      {at: 7.5, until: 9.9, text: 'the morning pick-up', plain: true},
+    ],
   },
-  {id: 'x-end', kind: 'outro', pad: 3.5},
+  {id: 'x-end', kind: 'outro', pad: 4.5},
 ];
 const SCENES = CUT === 'short' ? SHORT : TOUR;
 
@@ -461,7 +474,7 @@ const total = r(clock);
 
 // The music bed: from the scene MUSIC.from to the end, faded in and out.
 // A bed shorter than that starts later instead, so it still ends with the film.
-const musicStart = r(Math.max(timeline.find(scene => scene.id === MUSIC.from).start, total - seconds('audio/music.mp3')));
+const musicStart = r(Math.max((timeline.find(scene => scene.id === MUSIC.from) ?? timeline[0]).start, total - seconds('audio/music.mp3')));
 const musicLength = total - musicStart;
 media.push(`<audio id="music" class="clip" src="audio/music.mp3" data-start="${musicStart}" data-duration="${r(musicLength)}" data-track-index="11" data-volume="${MUSIC.volume}" data-fade-in="1.5" data-fade-out="3"></audio>`);
 
@@ -483,7 +496,7 @@ for (const scene of timeline) {
     continue;
   }
   if (scene.kind !== 'shots') {
-    tw(`#p-${scene.id}`, t0, end, {kind: 'panel'});
+    tw(`#p-${scene.kind === 'outro' ? 'outro' : scene.id}`, t0, end, {kind: 'panel'});
     if (scene.kind === 'problem') {
       tw('#problem-0', t0, end, {kind: 'line', still: true});
       for (const [i, word] of ['wrong', 'skip', 'wait', 'rewrite'].entries()) tw(`#problem-${i + 1}`, at(word) - 0.1, end, {kind: 'line'});
@@ -521,7 +534,7 @@ for (const scene of timeline) {
     const size = Math.round(30 / zoomScaleAt(scene, cue(scene, mark.at)));
     const place = mark.above ? 'above' : mark.below === false ? 'right' : mark.below ? 'below' : 'above';
     if (mark.until !== undefined && cue(scene, mark.until) < cue(scene, mark.at) + 0.7) shortMarks.push(`${scene.id}: ${mark.at} → ${mark.until} (${r(cue(scene, mark.until) - cue(scene, mark.at))} s)`);
-    const side = x + w / 2 > 1150 && place !== 'right' ? ' mark-end' : ''; // a label on the right half grows leftwards, inside the frame
+    const side = mark.inside ? ' mark-inside' : x + w / 2 > 1150 && place !== 'right' ? ' mark-end' : ''; // a label on the right half grows leftwards, inside the frame
     html.push(`<div class="mark mark-${place}${side}" id="${id}" style="left:${x}px;top:${y}px;width:${w}px;height:${h}px;--label:${size}px"><span class="mark-l"><b>●</b> ${esc(mark.label)}</span></div>`);
     tw(`#${id}`, at(mark.at), mark.until === undefined ? end - 0.1 : at(mark.until), {kind: 'mark'});
   });
@@ -533,7 +546,7 @@ for (const scene of timeline) {
   });
   (scene.chips ?? []).forEach((chip, i) => {
     const id = `chip-${scene.id}-${i}`;
-    html.push(`<div class="chip" id="${id}"><span class="chip-p">${chip.text.startsWith(':') ? '' : '$ '}</span>${esc(chip.text)}${chip.note ? `<span class="chip-n">${esc(chip.note)}</span>` : ''}</div>`);
+    html.push(`<div class="chip" id="${id}"><span class="chip-p">${chip.text.startsWith(':') || chip.plain ? '' : '$ '}</span>${esc(chip.text)}${chip.note ? `<span class="chip-n">${esc(chip.note)}</span>` : ''}</div>`);
     tw(`#${id}`, at(chip.at), at(chip.until) - 0.05, {kind: 'chip'});
   });
   (scene.roles ?? []).forEach((role, i) => {
@@ -631,7 +644,7 @@ const panels = `
         <div class="models-title" id="models-title">Two models share the work</div>
         <div class="flow">
           <div class="node" id="models-0"><div class="node-n">You work</div><div class="node-t">edits · saves · test runs</div></div>
-          <div class="node node-accent" id="models-1"><div class="node-n">Watcher</div><div class="node-k">a small, fast model</div><div class="node-t">scores each moment: an edit, a save, a test run</div></div>
+          <div class="node node-accent" id="models-1"><div class="node-n">Watcher</div><div class="node-k">a small, fast model</div><div class="node-t">scores each moment from 0 to 10: an edit, a save, a test run</div></div>
           <div class="node gate" id="models-2"><div class="node-n">worth a word?</div><div class="node-t">only high scores pass</div></div>
           <div class="node node-accent" id="models-3"><div class="node-n">Partner</div><div class="node-k">a larger model</div><div class="node-t">thinks first, reads your code, writes the remark</div></div>
           <div class="node node-out" id="models-4"><div class="node-n"><b>●</b> words</div><div class="node-t">under your line, in Neovim</div></div>
@@ -648,7 +661,7 @@ const panels = `
       </div>
       <div class="panel" id="p-outro">
         <div class="chair-title" id="outro-title">pairing-buddy</div>
-        <div class="chair-sub" id="outro-0">any model, local or cloud · Neovim, with or without herdr</div>
+        <div class="chair-sub" id="outro-0">an AI pair in Neovim · any model, local or cloud</div>
         <div class="keys-end outro-end" id="outro-1"><span><b>●</b> the person in the second chair</span><span class="url">github.com/makefunstuff/pairing-buddy</span></div>
       </div>
       <div class="panel" id="p-keys">
@@ -697,6 +710,7 @@ const page = `<!doctype html>
       .mark-below .mark-l { top: calc(100% + 0.5em); }
       .mark-right .mark-l { left: calc(100% + 0.6em); top: 0; }
       .mark-end .mark-l { left: auto; right: -3px; }
+      .mark-inside .mark-l { top: auto; bottom: 0.6em; left: 0.6em; right: auto; }
       .keys { position: absolute; right: ${1920 - FRAME.x - FRAME.w + 28}px; top: ${FRAME.y + 28}px; display: flex; align-items: center; gap: 10px; opacity: 0; }
       .key { display: inline-block; min-width: 54px; text-align: center; font-family: "JetBrains Mono", monospace; font-weight: 700; font-size: 34px;
         color: #f3f0e6; padding: 12px 20px; border-radius: 12px; background: var(--key);
@@ -720,7 +734,7 @@ const page = `<!doctype html>
       .quote-t { margin-top: 10px; font-family: "JetBrains Mono", monospace; font-size: 36px; line-height: 1.4; color: #f3f0e6; }
       .tag { right: ${1920 - FRAME.x - FRAME.w + 28}px; top: ${FRAME.y + 28}px; font-weight: 800; font-size: 34px; color: var(--term);
         background: var(--red); padding: 12px 26px; border-radius: 999px; }
-      .badge { right: ${1920 - FRAME.x - FRAME.w + 28}px; top: ${FRAME.y + 28}px; font-family: "JetBrains Mono", monospace; font-size: 28px; color: var(--text);
+      .badge { left: ${FRAME.x + 28}px; bottom: ${1080 - FRAME.y - FRAME.h + 28}px; font-family: "JetBrains Mono", monospace; font-size: 28px; color: var(--text);
         background: rgba(10,13,18,0.92); padding: 10px 18px; border-radius: 10px; box-shadow: 0 0 0 1px var(--line); }
       .cmp { position: absolute; left: ${FRAME.x}px; top: ${FRAME.y}px; width: ${FRAME.w}px; height: ${FRAME.h}px; border-radius: 14px; opacity: 0;
         background: var(--term); display: flex; flex-direction: column; justify-content: center; gap: 44px; padding: 0 64px; box-sizing: border-box; }

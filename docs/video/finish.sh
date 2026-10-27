@@ -15,9 +15,9 @@ trap 'rm -f "$mix"' EXIT
 loud() { ffmpeg -v error -y -i "$1" -vn -af "loudnorm=I=-16:TP=-3:LRA=11,alimiter=limit=0.66:level=false" -ar 48000 "$mix"; }
 loud "$in"
 ffmpeg -v error -y -i "$in" -i "$mix" -map 0:v -map 1:a -map_metadata -1 -metadata title="pairing-buddy: a person in the second chair" \
-  -c:v libx264 -preset veryslow -crf 32 -tune animation -pix_fmt yuv420p -c:a aac -b:a 80k -movflags +faststart "$out"
+  -c:v libx264 -preset veryslow -crf 38 -tune animation -x264-params aq-mode=3 -pix_fmt yuv420p -c:a aac -ac 1 -b:a 64k -movflags +faststart "$out"
 ffmpeg -v error -y -i "$in" -i "$mix" -map 0:v -map 1:a -map_metadata -1 -vf scale=1280:720:flags=lanczos \
-  -c:v libx264 -preset veryslow -crf 28 -tune animation -pix_fmt yuv420p -c:a aac -b:a 96k -movflags +faststart "$site/hero.mp4"
+  -c:v libx264 -preset veryslow -crf 30 -tune animation -pix_fmt yuv420p -c:a aac -b:a 96k -movflags +faststart "$site/hero.mp4"
 ffmpeg -v error -y -i "$in" -i "$mix" -map 0:v -map 1:a -map_metadata -1 -vf scale=1280:720:flags=lanczos \
   -c:v libvpx-vp9 -b:v 0 -crf 48 -row-mt 1 -cpu-used 2 -c:a libopus -b:a 80k "$site/hero.webm"
 # The poster: Pair's words under your line, in "Then it speaks" (chapters.json has the times).
