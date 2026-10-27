@@ -40,7 +40,7 @@ recording comes out the same each time.
 - **Your other agents** (the agents scene only): a stand-in board, a script that prints the board's list, with its
   task files in the scratch directory, and the herdr stand-in's `agent.list`. They move on once you start typing.
   The other scenes read no board.
-- **Neovim** is clean: [init.lua](init.lua), the ayu colorscheme (fetched at a pinned commit), and scratch XDG
+- **Neovim** is clean: [init.lua](init.lua), the ayu colorscheme (tokyonight for the site's loops; each fetched at a pinned commit), and scratch XDG
   directories. The search-trail scene also fetches Telescope and plenary at pinned commits; Telescope's history goes
   to the scratch directories too.
   directories. The held thought uses mini.base16 (also fetched at a pinned commit) on a grey palette with one
@@ -78,8 +78,19 @@ AddressSanitizer, make, Node.js, curl, FFmpeg, util-linux's `prlimit` and the Je
 ```sh
 npm ci                                  # in the repo root
 docs/captures/record.sh                 # all the scenes into docs/captures/out/, or name some
-docs/captures/encode.sh                 # out/ -> site/public/media/ and docs/images/
+docs/captures/encode.sh                 # out/ -> docs/images/ (and out/site/, if recorded, -> site/public/media/)
 ```
+
+The front page's three loops are the first three scenes again, in tokyonight with a larger font, at the size the site
+shows them ([tapes/head-site.tape](tapes/head-site.tape)). They go to `out/site/`, and `encode.sh` fast-forwards
+each one's lead-in so that what Pair does shows within about 2.5 seconds:
+
+```sh
+CAP_LOOK=site docs/captures/record.sh wrong-turn tests-on-save hand-over
+docs/captures/encode.sh site            # out/site/ -> site/public/media/m1..m3 and their posters
+```
+
+The callouts on the front page are timed on those clips (`moments` in `site/.vitepress/theme/Landing.vue`).
 
 The push-to-talk scene is not among the default scenes: it also needs [whisper.cpp](../voice.md#1-build-whispercpp-cpu-only),
 espeak-ng and FFmpeg. espeak-ng says the scene's question into the recorder, and whisper.cpp hears it for real:
