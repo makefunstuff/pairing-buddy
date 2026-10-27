@@ -73,6 +73,13 @@ Runs every test that needs no model, in under a minute, with scripted models and
   "later" skipping the question, `:Pair context` in a headless Neovim (buffers and jumps on the card, `x` hiding git
   and bringing it back, and a word when not connected), and sessions ending by themselves: after the idle time, and
   once the last Neovim closed, with a note only for a session that was used.
+- **The day's end and the morning pick-up.** The wins (tests and commands green again, numbers that moved, kept
+  changes), the debrief's first step and the file its short name resolves to, the lesson line from the verdicts
+  (ignored remarks counting as noise), the debrief kept as the note and a place; the next morning landing on that
+  place after the code moved, the gaze reading it, the line and the failing run "since yesterday" with signs only for
+  files unchanged since; no pick-up right after an end or once you work; the first step without a model; `/first`;
+  break hints only at a natural end after 50 minutes of focus. In a headless Neovim: an empty Neovim landing, the
+  line under the place, `Alt-j` to the failing test, a Neovim on another file staying there, and the debrief panel.
 - **Builds and crashes.** The crash and diagnostic readers on real output of gcc, clang, zig, lld, glibc, the
   sanitizers, bash and make, recursive make included (and Odin's and C3's formats); signals from exit codes, never a
   program's own words in a run that ended with exit 0; the frame in the project; paths from where a command ran; new
@@ -137,6 +144,8 @@ Stacks can name a `provider` too, with its login or key from `pair auth`. Withou
   the Navigator suggesting instead of editing.
 - **Memory:** a session note that names the goal, the change and the loose end; the next session answering "what did
   we leave open?" from it; the note not turning a noise moment into a remark.
+- **The day's end and the pick-up** (`test/live/day.test.mjs`): the debrief keeping its form (a `✓` line and a
+  first step whose place is a file in the project), and the next morning's line being one short line of the model's.
 - **Builds and runs** (`test/live/runs.test.mjs`): a C program built and run for real with `cc`. A segfault gets a
   point at its cause, a `-Wformat` warning a point at the `printf`, and an unused variable silence.
 - **Notes in the margin:** at most five specific marks on a design note, with its contradiction and a mark on what

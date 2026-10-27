@@ -12,7 +12,9 @@ CREATE TABLE IF NOT EXISTS sessions (
   role TEXT NOT NULL DEFAULT 'navigator',
   started_at INTEGER NOT NULL,
   ended_at INTEGER,
-  note TEXT
+  note TEXT,
+  pickup TEXT, -- JSON: where the next session picks up, {first: {step, file, line, text}, tests} (see debrief.mjs)
+  active_ms INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS messages (
   session_id INTEGER NOT NULL REFERENCES sessions(id),
@@ -53,7 +55,7 @@ const ACTION_COLUMNS = new Set(['text', 'data', 'detail', 'state']);
 
 /** Columns added since v0.1, by table, with their definitions. */
 const ADDED_COLUMNS = {
-  sessions: {role: 'TEXT NOT NULL DEFAULT \'navigator\''},
+  sessions: {role: 'TEXT NOT NULL DEFAULT \'navigator\'', pickup: 'TEXT', active_ms: 'INTEGER NOT NULL DEFAULT 0'},
   remarks: {waited_ms: 'INTEGER'},
 };
 
@@ -89,7 +91,14 @@ export function openStore(path) {
     setGoal: (id, goal) => db.prepare('UPDATE sessions SET goal = ? WHERE id = ?').run(goal, id),
     setLevel: (id, level) => db.prepare('UPDATE sessions SET level = ? WHERE id = ?').run(level, id),
     setRole: (id, role) => db.prepare('UPDATE sessions SET role = ? WHERE id = ?').run(role, id),
-    endSession: (id, note, at) => db.prepare('UPDATE sessions SET ended_at = ?, note = ? WHERE id = ?').run(at, note, id),
+    endSession: (id, note, at, pickup = null) => db.prepare('UPDATE sessions SET ended_at = ?, note = ?, pickup = ? WHERE id = ?')
+      .run(at, note, pickup && JSON.stringify(pickup), id),
+    updateDebrief: (id, note, pickup) => db.prepare('UPDATE sessions SET note = ?, pickup = ? WHERE id = ?').run(note, JSON.stringify(pickup), id),
+    /** The last ended session of `root` before session `id` that left a note: {id, note, pickup, endedAt}, or null. */
+    lastSession(root, id) {
+      const row = db.prepare('SELECT id, note, pickup, ended_at FROM sessions WHERE root = ? AND id < ? AND note IS NOT NULL ORDER BY id DESC LIMIT 1').get(root, id);
+      return row ? {id: row.id, note: row.note, pickup: row.pickup && JSON.parse(row.pickup), endedAt: row.ended_at} : null;
+    },
 
     /** The note of the last ended session of `root` before session `id`: where the next session starts from. */
     previousNote: (root, id) => db.prepare('SELECT note FROM sessions WHERE root = ? AND id < ? AND note IS NOT NULL ORDER BY id DESC LIMIT 1').get(root, id)?.note ?? null,
@@ -104,11 +113,16 @@ export function openStore(path) {
     rateRemark: (id, verdict) => db.prepare('UPDATE remarks SET verdict = ? WHERE id = ?').run(verdict, id).changes > 0,
     /** Records that the user saw remark `id` (they edited after it showed), unless it has a verdict already. */
     seeRemark: id => db.prepare('UPDATE remarks SET verdict = \'seen\' WHERE id = ? AND verdict IS NULL').run(id),
+    /** The remarks of session `id`, oldest first. */
+    sessionRemarks: id => db.prepare('SELECT id, trigger, score, at, verdict FROM remarks WHERE session_id = ? ORDER BY id').all(id),
     /** Every remark since `since`, newest first. */
     remarks: since => db.prepare('SELECT id, trigger, score, at, verdict, waited_ms AS waitedMs FROM remarks WHERE at >= ? ORDER BY id DESC').all(since),
     /** Adds `ms` of active pairing, just before `at`, to its hour. */
     addActive: (at, ms) => db.prepare('INSERT INTO activity (hour, ms) VALUES (?, ?) ON CONFLICT (hour) DO UPDATE SET ms = ms + excluded.ms')
       .run(Math.floor(at / HOUR), ms),
+    /** Adds `ms` of active pairing to session `id`; `sessionActiveMs` is its total. */
+    addSessionActive: (id, ms) => db.prepare('UPDATE sessions SET active_ms = active_ms + ? WHERE id = ?').run(ms, id),
+    sessionActiveMs: id => db.prepare('SELECT active_ms FROM sessions WHERE id = ?').get(id)?.active_ms ?? 0,
     /** How long the user was active since `since`, in ms, in any session: whole hours, from the one `since` falls in. */
     activeMs: since => db.prepare('SELECT coalesce(sum(ms), 0) AS ms FROM activity WHERE hour >= ?').get(Math.floor(since / HOUR)).ms,
 

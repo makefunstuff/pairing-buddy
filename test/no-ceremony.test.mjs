@@ -139,7 +139,7 @@ test('a session nobody used for the idle time ends by itself and says so', {time
     chat.send({type: 'event', event: {kind: 'typing'}});
     const ended = await chat.next(message => message.type === 'ended', 8000);
     assert.match(ended.why, /^nothing happened for/);
-    await chat.next(message => message.text === 'Session note:\nGoal: faster hash.');
+    await chat.next(message => /^(Day|Session)'s end: .+\nGoal: faster hash\.$/.test(message.text ?? ''));
   } finally {
     chat.close();
     await daemon.close();
