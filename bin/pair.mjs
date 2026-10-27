@@ -189,7 +189,7 @@ Models: ${rolesText(config.models)}. ${sameModel(config.models.watcher, config.m
 Next:
   1. Add the Neovim plugin with lazy.nvim:
 ${LAZY_SPEC}
-  2. Optional, for exit codes: eval "$(pair shell-hook bash)" in your shell's rc file (or zsh; fish: pair shell-hook fish | source)
+  2. Optional, for exact commands and exit codes in your panes: eval "$(pair shell-hook bash)" in your shell's rc file (or zsh; fish: pair shell-hook fish | source)
   3. Run \`pair doctor\` to check everything, then \`pair\` in a herdr pane next to Neovim.`);
 }
 

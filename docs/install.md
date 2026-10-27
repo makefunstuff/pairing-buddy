@@ -126,14 +126,18 @@ session goes on). A line that starts with "you take it" or "your turn" hands Pai
 question for Pair. When Pair asks before running or typing a command, your next line is the answer: `y` or `yes`
 allows it, anything else declines.
 
-**The shell hook.** Optional, for exit codes and the shortest commands; add it to your shell's rc file:
+**The shell hook.** Optional, for exact command boundaries and exit codes in your own panes: add it to your shell's rc file.
+Pair then catches every command however short, stops polling herdr for the pane, and in zsh also counts your keys at
+the prompt as typing ([herdr.md](herdr.md#the-users-panes-the-shell-hook-else-heuristics)):
 
 ```sh
 eval "$(pair shell-hook bash)"   # or zsh
 pair shell-hook fish | source    # fish, in config.fish
 ```
 
-It also emits OSC 133 marks (prompt, output, end with the exit code) for a terminal that reads them.
+It runs `pair report` in the background before and after each command, so the prompt never waits; zsh's keys go
+straight to the daemon's socket, at most once a second, and never the keys themselves. It also emits OSC 133 marks
+(prompt, output, end with the exit code) for a terminal that reads them.
 
 **Without herdr**, run `:Pair chat` in Neovim (or `pair chat` in any terminal). Scout's pane and the tests on save
 run in a `:terminal` along the bottom of Neovim, and the Driver's `type` goes to your own `:terminal` buffers

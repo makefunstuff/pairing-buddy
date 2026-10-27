@@ -241,4 +241,7 @@ Off until you set `"voice"` in the config. [docs/voice.md](docs/voice.md)
 
 ## Limitations
 
-Known limitations are tracked as [GitHub issues](https://github.com/makefunstuff/pairing-buddy/issues/51).
+Known limitations are tracked as [GitHub issues](https://github.com/makefunstuff/pairing-buddy/issues/51). The ones
+herdr causes (no command boundaries, exit codes, keystrokes or output events) mostly go away with the
+[shell hook](docs/install.md) in your shell: what remains is that a command's output is cut from at most 1000 lines of
+the pane's screen text, and that bash and fish have no hook for keys ([docs/herdr.md](docs/herdr.md#what-is-missing)).
