@@ -114,6 +114,8 @@ land in the frame after the stall:
 
 - Three questions, always, unless Pair asks none it can use or you stop them with `:Pair clear`.
 - A daemon restart ends the questions: Neovim says so, and `:Pair new` starts again.
+- A repeated question is found by its words. One that asks the same thing in other words ("falls behind and must
+  catch up", then "stalls, so one frame owes several steps") still comes.
 - `NOTES.md` is in Neovim's current folder, and must be inside the project (the git root, or the folder itself
   when there is no git yet).
 - An answer that has gone cannot be taken back: once it has settled after `Esc`, the next question comes.
