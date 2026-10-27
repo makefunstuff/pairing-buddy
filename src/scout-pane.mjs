@@ -82,16 +82,17 @@ export class ScoutPane {
   }
 
   /**
-   * Types `command` in the pane and resolves with `{exit, output, timedOut}` once it ends. A command still
-   * running after `timeoutMs` is stopped with Ctrl-C. Commands run one at a time.
+   * Types `command` in the pane and resolves with `{exit, output, timedOut, cancelled}` once it ends. A command
+   * still running after `timeoutMs`, or when `signal` aborts, is stopped with Ctrl-C; one aborted before its turn
+   * is never typed. Commands run one at a time.
    */
-  run(command, {timeoutMs = RUN_TIMEOUT_MS} = {}) {
-    const result = this.queue.then(() => this.runNow(command, timeoutMs));
+  run(command, {timeoutMs = RUN_TIMEOUT_MS, signal} = {}) {
+    const result = this.queue.then(() => (signal?.aborted ? {exit: null, output: '', timedOut: false, cancelled: true} : this.runNow(command, timeoutMs, signal)));
     this.queue = result.catch(() => {});
     return result;
   }
 
-  async runNow(command, timeoutMs) {
+  async runNow(command, timeoutMs, signal) {
     await this.open();
     const {runs} = this;
     const number = await runs.next();
@@ -100,11 +101,17 @@ export class ScoutPane {
     // Ctrl-U first clears anything typed at the prompt by hand.
     await this.request('pane.send_text', {pane_id: this.paneId, text: `\x15${command}\r`});
     let timedOut = false;
+    let cancelled = false;
+    const cancel = () => {
+      cancelled = true;
+      this.request('pane.send_text', {pane_id: this.paneId, text: '\x03'}).catch(() => {});
+    };
+    signal?.addEventListener('abort', cancel, {once: true});
     await runs.ended(number, timeoutMs).catch(async () => {
       timedOut = true;
       await this.request('pane.send_text', {pane_id: this.paneId, text: '\x03'});
       await runs.ended(number, READY_MS).catch(() => { throw new Error('The command did not end in Pair\'s pane, not even after Ctrl-C'); });
-    });
-    return {...(await runs.result(number)), timedOut};
+    }).finally(() => signal?.removeEventListener('abort', cancel));
+    return {...(await runs.result(number)), timedOut, cancelled};
   }
 }

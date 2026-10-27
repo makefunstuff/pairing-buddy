@@ -6,6 +6,7 @@
 -- undo step, and refused or undone as soon as you press any key. Once connected, it stays connected: when the
 -- daemon restarts, it reconnects by itself.
 local agents = require('pair.agents')
+local buffers = require('pair.buffers')
 local card = require('pair.card')
 local debrief = require('pair.debrief')
 local draw = require('pair.draw')
@@ -889,6 +890,7 @@ local handlers = {
   point = point,
   open = open,
   read = read,
+  buffers = function(message) send({type = 'reply', id = message.id, result = {buffers = buffers.unsaved(message.root)}}) end,
   suggest = suggest,
   edit = edit,
   handback = handback,

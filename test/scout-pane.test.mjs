@@ -96,8 +96,8 @@ test('the pane opens beside the chat, runs commands one at a time and types only
   const pane = new ScoutPane({socketPath, workspaceId: 'w1', besidePane: 'w1:p2', cwd: '/project', runsDir: join(dir, 'panes')});
   try {
     const [first, second] = await Promise.all([pane.run('npm test'), pane.run('echo two')]);
-    assert.deepEqual(first, {exit: 1, output: 'Tests: 1 failed, 1 total', timedOut: false});
-    assert.deepEqual(second, {exit: 0, output: 'two', timedOut: false});
+    assert.deepEqual(first, {exit: 1, output: 'Tests: 1 failed, 1 total', timedOut: false, cancelled: false});
+    assert.deepEqual(second, {exit: 0, output: 'two', timedOut: false, cancelled: false});
     assert.equal(herdr.panes.get(pane.paneId).label, 'pair scout');
     assert.ok(herdr.sent.every(([target]) => target === pane.paneId), 'nothing is typed into the user\'s or the chat pane');
 
@@ -110,6 +110,30 @@ test('the pane opens beside the chat, runs commands one at a time and types only
     await pane.close();
     assert.equal(herdr.panes.has(again.paneId), false);
     assert.equal(existsSync(pane.runs.dir), false, 'its files go with it');
+  } finally {
+    await herdr.close();
+  }
+});
+
+test('a command whose signal aborts is stopped with Ctrl-C, and one aborted before its turn is never typed', async t => {
+  const dir = tempDir(t, 'pair-herdr-');
+  const socketPath = join(dir, 'herdr.sock');
+  let stop;
+  const herdr = await fakeHerdr(socketPath, {commands: command => (command === 'slow' ? new Promise(resolve => { stop = () => resolve({exit: 130}); }) : {})});
+  const pane = new ScoutPane({socketPath, workspaceId: 'w1', besidePane: 'w1:p2', cwd: '/project', runsDir: join(dir, 'panes')});
+  try {
+    const controller = new AbortController();
+    const slow = pane.run('slow', {signal: controller.signal});
+    const later = new AbortController();
+    const queued = pane.run('never', {signal: later.signal});
+    while (!stop) await new Promise(resolve => setTimeout(resolve, 5));
+    later.abort();
+    controller.abort();
+    while (!herdr.sent.some(([, text]) => text === '\x03')) await new Promise(resolve => setTimeout(resolve, 5));
+    stop(); // the fake shell's Ctrl-C
+    assert.deepEqual(await slow, {exit: 130, output: '', timedOut: false, cancelled: true});
+    assert.deepEqual(await queued, {exit: null, output: '', timedOut: false, cancelled: true});
+    assert.equal(herdr.sent.some(([, text]) => text.includes('never')), false);
   } finally {
     await herdr.close();
   }

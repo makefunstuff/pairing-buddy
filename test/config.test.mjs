@@ -44,7 +44,10 @@ test('scoutPane sets Pair\'s pane: no rc file and the sandbox where it works, un
 test('testOnSave maps project folders, ~ included, to the command run on save', () => {
   const dir = mkdtempSync(join(tmpdir(), 'pair-config-'));
   const config = (testOnSave) => parseConfig({testOnSave, models: {watcher: {api: 'anthropic', model: 'w'}, partner: {api: 'anthropic', model: 'p'}}});
-  assert.deepEqual(config({[dir]: ' go test -json ./... '}).testOnSave, {[dir]: 'go test -json ./...'});
+  assert.deepEqual(config({[dir]: ' go test -json ./... '}).testOnSave, {[dir]: {command: 'go test -json ./...', timeoutMs: 120_000, affected: true}});
+  assert.deepEqual(config({[dir]: {command: 'cargo test', timeoutSeconds: 600, affected: false}}).testOnSave, {[dir]: {command: 'cargo test', timeoutMs: 600_000, affected: false}});
+  assert.throws(() => config({[dir]: {command: 'cargo test', timeoutSeconds: 0}}), /timeoutSeconds must be a number of seconds/);
+  assert.throws(() => config({[dir]: {command: 'cargo test', timeout: 600}}), /testOnSave\[".*"\] has no timeout/);
   assert.deepEqual(Object.keys(config({'~/src/shop': 'npm test'}).testOnSave), [join(homedir(), 'src/shop')]);
   assert.deepEqual(config(undefined).testOnSave, {});
   assert.throws(() => config({[dir]: ''}), /testOnSave\[".*"\] must be a command/);

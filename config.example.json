@@ -13,7 +13,8 @@
   "keepWarm": true,
 
   // Tests Pair runs in its own herdr pane when you save a source file in a project: the project's folder and the
-  // command. JSON reports (go test -json, jest --json, vitest --reporter=json) also put each test's result on its line.
+  // command, or {"command": ..., "timeoutSeconds": 600, "affected": false} for a longer cap, or the whole command on
+  // every save. Most runners also put each test's result on its line (go test -json, jest --json, cargo test, pytest -v).
   // "testOnSave": {"~/src/shop": "go test -json ./..."},
 
   // The herdr work board's command: a session takes its goal from the board task of its branch (matched by repo and

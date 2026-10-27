@@ -87,7 +87,7 @@ the Watcher does not. Details in [watcher.md](watcher.md#thinking-the-partner-no
 | `autoTune` | Your feedback tunes the bars and budget, default `true` ([memory.md](memory.md#learning-when-to-talk)) |
 | `keepWarm` | While you work, ask the Watcher's model for one token every 4 minutes, so a server that unloads idle models keeps it loaded. Default `true` for an `openai` Watcher, `false` for an `anthropic` one ([watcher.md](watcher.md#keep-warm)) |
 | `typingPauseMs` | How long after a keystroke you count as typing, default 2000 |
-| `testOnSave` | A test command per project, run when you save ([tests-on-save.md](tests-on-save.md)) |
+| `testOnSave` | A test command per project, run when you save; or `{command, timeoutSeconds, affected}` for a longer run, or the whole command on every save ([tests-on-save.md](tests-on-save.md)) |
 | `sessionRoots` | Folders that are projects of their own, for a monorepo ([session roots](#session-roots)) |
 | `agents` | The relay of your other agents' news, from herdr and the `board`: `false` turns it off ([agents.md](agents.md#configure)) |
 | `voice` | Push-to-talk with whisper.cpp; off until set ([voice.md](voice.md)) |

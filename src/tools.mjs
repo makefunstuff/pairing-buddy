@@ -171,8 +171,11 @@ function tools(hands) {
     defineTool({
       name: 'run',
       description: 'Run one shell command line in your pane, in the project root, and get its exit code and output.',
-      parameters: Type.Object({command: Type.String({description: 'For example: npm test, cargo test, git log --oneline -5'})}),
-      execute: async (args, api) => text(await hands.run(api.conversationId, {command: args.command})),
+      parameters: Type.Object({
+        command: Type.String({description: 'For example: npm test, cargo test, git log --oneline -5'}),
+        unsaved: Type.Optional(Type.Boolean({description: 'true runs it on the user\'s unsaved buffers, in a scratch copy of the project: for tests or a build. What it writes stays in the copy.'})),
+      }),
+      execute: async (args, api) => text(await hands.run(api.conversationId, {command: args.command, unsaved: args.unsaved === true})),
     }),
     defineTool({
       name: 'edit',

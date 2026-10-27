@@ -117,9 +117,10 @@ can. Details in [docs/watcher.md](watcher.md#regressions).
   run, or `✓ go test ./... · 4 tests, 3 packages` for six seconds before it rests at `● pair` again. Pair reading,
   driving, or away comes first. Without Pair's pane (no `pair` in herdr) it says `◌ go test ./... · needs \`pair\` in
   herdr` instead, until a run can start.
-- **Signs.** With a JSON report (`go test -json`, `jest --json`, `vitest --reporter=json`), each test that ran gets
-  `✓` or `✗` in the sign column of its function (Go) or its `test(...)` line (jest, vitest), in every buffer you have
-  open and in test files you open later. Passing signs are quiet; failing ones are your colorscheme's error colour.
+- **Signs.** Each test that ran gets `✓` or `✗` in the sign column of its function (Go, Python, Rust), its
+  `test(...)` line (jest, vitest, `node --test`), its `test "name"` block (Zig) or its `add_test` (CMake), in every
+  buffer you have open and in test files you open later; which runners say enough for that is in
+  [tests-on-save.md](tests-on-save.md#what-you-see). Passing signs are quiet; failing ones are your colorscheme's error colour.
   A sign whose result changed since the last run fades in; while the next run is on, the last results show half
   faded.
 - **Failures.** The failed test's message (`t.Errorf`, a panic, `expect(...)`) shows after the line it failed on,

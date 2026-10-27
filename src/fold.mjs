@@ -194,13 +194,18 @@ const handlers = {
     const logged = event.output !== undefined && !event.tests;
     const state = !event.reading ? previous : logged ? afterLoggedRun(previous, ran) : afterRun(previous, ran);
     if (!event.tests) return state;
-    const {tests: _list, ...tests} = event.tests;
+    const {tests: list, ...tests} = event.tests;
     const before = state.savedRunFailed && new Set(state.savedRunFailed);
     const newly = before ? tests.failed.filter(name => !before.has(name)) : [];
+    // A `narrowed` run ran only the tests a save affects: the others that failed before, and did not run now, still fail.
+    // A Go subtest ran with its test.
+    const listed = (list ?? []).map(test => test.name);
+    const didRun = name => listed.some(test => name === test || name.startsWith(`${test}/`));
+    const still = event.narrowed && before ? [...before].filter(name => !didRun(name) && !tests.failed.includes(name)) : [];
     return {
       ...state,
       tests: {...tests, cmd: event.cmd, by: 'pair', at: event.at, files: event.files ?? [], saved: event.saved, newly},
-      savedRunFailed: tests.failed,
+      savedRunFailed: [...tests.failed, ...still],
     };
   },
 

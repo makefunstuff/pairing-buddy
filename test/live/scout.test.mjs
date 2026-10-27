@@ -31,7 +31,7 @@ describe('Scout on live models', {skip: stacks.length ? false : SKIP_REASON}, ()
       const conversation = await partner.createConversation();
       session = new PairSession({
         record: {id: 1, root, conversation_id: conversation, goal: 'reconnect drops after the phone sleeps', level: 'normal', role},
-        store: {addMessage() {}, addAction: () => 1, updateAction() {}, setRole() {}, setGoal() {}},
+        store: {addMessage() {}, addAction: () => 1, updateAction() {}, setRole() {}, setGoal() {}, lastRemark: () => null},
         partner, score: async () => ({value: 0, reason: ''}), typingPauseMs: 2000,
         notify: (to, message) => { if (to === 'chat' && message.type === 'message' && message.sender === 'pair') shown.push(message.text); return 0; },
         requestEditor: async () => { throw new Error('no editor'); },

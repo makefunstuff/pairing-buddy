@@ -7,6 +7,7 @@ import {fileURLToPath} from 'node:url';
 import {thinkingBudgetForLevel} from '@earendil-works/pi-ai/api/simple-options';
 import {MIN_CONTEXT, replyRoom} from './context.mjs';
 import {storedKey} from './credentials.mjs';
+import {RUN_TIMEOUT_MS} from './scout-pane.mjs';
 import {scoutPaneConfig} from './scout-shell.mjs';
 import {readServiceEnv} from './service-env.mjs';
 import {voiceConfig} from './voice.mjs';
@@ -202,12 +203,21 @@ function projectPath(path) {
   try { return realpathSync(full); } catch { return full; }
 }
 
-/** `testOnSave` maps a project's folder to the command Pair runs in its pane when you save a source file there. */
+/**
+ * `testOnSave` maps a project's folder to the command Pair runs in its pane when you save a source file there: the
+ * command, or `{command, timeoutSeconds, affected}` to give it more (or less) than two minutes, or to run it whole on
+ * every save (`affected: false`) where Pair would run only the tests the save affects. Each becomes
+ * `{command, timeoutMs, affected}`.
+ */
 function testCommands(raw = {}) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('config: testOnSave must map project folders to commands');
-  return Object.fromEntries(Object.entries(raw).map(([path, command]) => {
+  return Object.fromEntries(Object.entries(raw).map(([path, entry]) => {
+    const {command, timeoutSeconds = RUN_TIMEOUT_MS / 1000, affected = true, ...rest} = typeof entry === 'string' ? {command: entry} : entry ?? {};
     if (typeof command !== 'string' || !command.trim()) throw new Error(`config: testOnSave["${path}"] must be a command`);
-    return [projectPath(path), command.trim()];
+    if (typeof timeoutSeconds !== 'number' || !(timeoutSeconds > 0)) throw new Error(`config: testOnSave["${path}"].timeoutSeconds must be a number of seconds`);
+    if (typeof affected !== 'boolean') throw new Error(`config: testOnSave["${path}"].affected must be true or false`);
+    if (Object.keys(rest).length) throw new Error(`config: testOnSave["${path}"] has no ${Object.keys(rest).join(', ')}`);
+    return [projectPath(path), {command: command.trim(), timeoutMs: timeoutSeconds * 1000, affected}];
   }));
 }
 
