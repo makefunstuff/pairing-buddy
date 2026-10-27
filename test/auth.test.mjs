@@ -1,8 +1,6 @@
 // `pair auth` with fake providers: logging in by subscription or key, a key for a server of your own, logging out,
 // and the list that never shows a secret. And the terminal it asks in: a typed key is not echoed.
 import assert from 'node:assert/strict';
-import {mkdtempSync} from 'node:fs';
-import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {PassThrough} from 'node:stream';
 import {test} from 'node:test';
@@ -10,8 +8,9 @@ import {fauxProvider} from '@earendil-works/pi-ai';
 import {authStates, credentialState, login, loginMethods, logout} from '../src/auth.mjs';
 import {fileCredentialStore} from '../src/credentials.mjs';
 import {terminalInteraction} from '../src/prompt.mjs';
+import {scratch} from './temp.mjs';
 
-const store = () => fileCredentialStore(join(mkdtempSync(join(tmpdir(), 'pair-auth-')), 'auth.json'));
+const store = () => fileCredentialStore(join(scratch('pair-auth-'), 'auth.json'));
 
 /** A provider with a subscription login and an API key, as pi-ai's Anthropic has. */
 function fakeProvider(id = 'fake') {

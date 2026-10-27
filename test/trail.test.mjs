@@ -2,8 +2,7 @@
 // Partner are told about them (with what fails now, and what the project has for your words), and :Pair trail.
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {mkdirSync, mkdtempSync, realpathSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {mkdirSync, realpathSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {fold, initialState} from '../src/fold.mjs';
@@ -13,6 +12,7 @@ import {stillTrue} from '../src/held.mjs';
 import {currentTrail, lost, TRAIL, trailMatches, trailSummary} from '../src/trail.mjs';
 import {detectTriggers} from '../src/triggers.mjs';
 import {createWatcher} from '../src/watcher.mjs';
+import {scratch} from './temp.mjs';
 
 const hasRg = (() => { try { execFileSync('rg', ['--version']); return true; } catch { return false; } })();
 const foldAll = (events, state = initialState()) => events.reduce(fold, state);
@@ -79,7 +79,7 @@ test('the Watcher is asked whether the user goes in circles, with the trail and 
 });
 
 test('what the project has for each query: the words the code lacks are news too', {skip: hasRg ? false : 'rg not installed'}, async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'pair-trail-')));
+  const root = realpathSync(scratch('pair-trail-'));
   mkdirSync(join(root, 'retry'));
   writeFileSync(join(root, 'retry', 'backoff.go'), 'package backoff\n');
   writeFileSync(join(root, 'worker.go'), '// Deliver gives up after the budget: a dead letter.\nvar ErrBudget = 1\n');
@@ -94,7 +94,7 @@ test('what the project has for each query: the words the code lacks are news too
 });
 
 test('a trail remark gets the trail, what fails and the matches; :Pair trail shows the same searches and the Watcher\'s score', async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'pair-trail-')));
+  const root = realpathSync(scratch('pair-trail-'));
   writeFileSync(join(root, 'worker.go'), 'package delivery\n');
   const store = openStore(':memory:');
   const clock = {now: 30_000};

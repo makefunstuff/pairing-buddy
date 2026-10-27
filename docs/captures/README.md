@@ -92,5 +92,8 @@ Each scene runs in its own scratch directory under `/tmp/paircap.*`, which holds
 - the stage's log (`stage.log`, which has each model request and the chat);
 - Neovim's state.
 
+It is removed when the scene ends, recorded, failed or interrupted (Ctrl-C, SIGTERM), with the stage stopped first;
+`CAP_KEEP=1` keeps it and its logs. It is in `/tmp` and not `$TMPDIR` on purpose: its paths show in the videos.
+
 Your own daemon, config, Neovim and shell history are not used. Before committing new captures, check every frame
 for personal details, for example with `tesseract` on frames that `ffmpeg -vf fps=4` extracts.

@@ -1,8 +1,7 @@
 // The daemon end to end over its socket, with scripted models in place of real ones.
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {mkdirSync, mkdtempSync, realpathSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {mkdirSync, realpathSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {createModels, fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall} from '@earendil-works/pi-ai';
@@ -12,6 +11,7 @@ import {requestDaemon} from '../src/protocol.mjs';
 import {openStore} from '../src/store.mjs';
 import {client} from './daemon-client.mjs';
 import {fakeHerdr} from './fake-herdr.mjs';
+import {scratch} from './temp.mjs';
 
 const answers = async () => ({ok: true}); // the scripted models are not probed
 
@@ -37,9 +37,9 @@ function testConfig(dataDir, settings = {}) {
 }
 
 test('a repeated failure becomes a pointed remark; a question is answered; :Pair end writes a note', {timeout: 20_000}, async () => {
-  const project = mkdtempSync(join(tmpdir(), 'pair-project-'));
+  const project = scratch('pair-project-');
   writeFileSync(join(project, 'ws.test.js'), 'test("reconnect", () => {\n  expect(timeout).toBe(30)\n})\n');
-  const config = testConfig(mkdtempSync(join(tmpdir(), 'pair-data-')));
+  const config = testConfig(scratch('pair-data-'));
   const {watcher, partner, pairModels} = scriptedModels();
   const daemon = await startDaemon(config, {pairModels, probe: answers, log: () => {}});
 
@@ -81,8 +81,8 @@ test('a repeated failure becomes a pointed remark; a question is answered; :Pair
 });
 
 test('the session, its chat and its conversation survive a daemon restart', {timeout: 20_000}, async () => {
-  const project = mkdtempSync(join(tmpdir(), 'pair-project-'));
-  const config = testConfig(mkdtempSync(join(tmpdir(), 'pair-data-')));
+  const project = scratch('pair-project-');
+  const config = testConfig(scratch('pair-data-'));
 
   const first = scriptedModels();
   let daemon = await startDaemon(config, {pairModels: first.pairModels, probe: answers, log: () => {}});
@@ -118,9 +118,9 @@ test('the session, its chat and its conversation survive a daemon restart', {tim
 });
 
 test('in Scout, Pair runs tests in its own pane, asks before deleting and is refused git history', {timeout: 20_000}, async () => {
-  const project = mkdtempSync(join(tmpdir(), 'pair-project-'));
-  const config = testConfig(mkdtempSync(join(tmpdir(), 'pair-data-')));
-  const herdrSocket = join(mkdtempSync(join(tmpdir(), 'pair-herdr-')), 'herdr.sock');
+  const project = scratch('pair-project-');
+  const config = testConfig(scratch('pair-data-'));
+  const herdrSocket = join(scratch('pair-herdr-'), 'herdr.sock');
   const tests = 'FAIL ws.test.js\n  ● reconnect › waits\n\n    Expected: 30000\n\nTests:       1 failed, 1 passed, 2 total';
   const herdr = await fakeHerdr(herdrSocket, {commands: {'npm test': {output: tests, exit: 1}}});
   const {partner, pairModels} = scriptedModels();
@@ -173,9 +173,9 @@ test('in Scout, Pair runs tests in its own pane, asks before deleting and is ref
 });
 
 test('handed the wheel from the chat, Pair types into the user\'s pane after a yes, without Enter, and hands back', {timeout: 20_000}, async () => {
-  const project = mkdtempSync(join(tmpdir(), 'pair-project-'));
-  const config = testConfig(mkdtempSync(join(tmpdir(), 'pair-data-')));
-  const herdrSocket = join(mkdtempSync(join(tmpdir(), 'pair-herdr-')), 'herdr.sock');
+  const project = scratch('pair-project-');
+  const config = testConfig(scratch('pair-data-'));
+  const herdrSocket = join(scratch('pair-herdr-'), 'herdr.sock');
   const herdr = await fakeHerdr(herdrSocket);
   const {partner, pairModels} = scriptedModels();
   const daemon = await startDaemon(config, {pairModels, probe: answers, log: () => {}});
@@ -214,8 +214,8 @@ test('handed the wheel from the chat, Pair types into the user\'s pane after a y
 });
 
 test('a dead Partner is said once, to the chat and the statusline; Pair then stays quiet instead of failing on every remark', {timeout: 30_000}, async () => {
-  const project = mkdtempSync(join(tmpdir(), 'pair-project-'));
-  const config = testConfig(mkdtempSync(join(tmpdir(), 'pair-data-')));
+  const project = scratch('pair-project-');
+  const config = testConfig(scratch('pair-data-'));
   const {watcher, partner, pairModels} = scriptedModels();
   const daemon = await startDaemon(config, {pairModels, probe: answers, log: () => {}});
   const editor = client(config.socket, {type: 'hello', role: 'editor', cwd: project});
@@ -249,10 +249,10 @@ test('a dead Partner is said once, to the chat and the statusline; Pair then sta
 });
 
 test('several Neovims and projects at once: each project has its own session, and Pair shows things in the Neovim you used last', {timeout: 20_000}, async () => {
-  const shop = mkdtempSync(join(tmpdir(), 'pair-shop-'));
-  const blog = mkdtempSync(join(tmpdir(), 'pair-blog-'));
+  const shop = scratch('pair-shop-');
+  const blog = scratch('pair-blog-');
   writeFileSync(join(shop, 'cart.js'), 'const total = 0\n');
-  const config = testConfig(mkdtempSync(join(tmpdir(), 'pair-data-')));
+  const config = testConfig(scratch('pair-data-'));
   const {partner, pairModels} = scriptedModels();
   const daemon = await startDaemon(config, {pairModels, probe: answers, log: () => {}});
   const shopVim = client(config.socket, {type: 'hello', role: 'editor', cwd: shop});
@@ -300,8 +300,8 @@ test('several Neovims and projects at once: each project has its own session, an
 });
 
 test('after the Partner model is changed in the config, an open session answers with the new model', {timeout: 20_000}, async () => {
-  const project = mkdtempSync(join(tmpdir(), 'pair-project-'));
-  const config = testConfig(mkdtempSync(join(tmpdir(), 'pair-data-')));
+  const project = scratch('pair-project-');
+  const config = testConfig(scratch('pair-data-'));
   const health = [];
   const first = scriptedModels('your-larger-model');
   let daemon = await startDaemon(config, {pairModels: first.pairModels, probe: answers, log: () => {}});
@@ -331,8 +331,8 @@ test('after the Partner model is changed in the config, an open session answers 
 });
 
 test('the next session in a repo starts from the last note; a remark is rated with + in the chat', {timeout: 20_000}, async () => {
-  const project = mkdtempSync(join(tmpdir(), 'pair-project-'));
-  const config = testConfig(mkdtempSync(join(tmpdir(), 'pair-data-')));
+  const project = scratch('pair-project-');
+  const config = testConfig(scratch('pair-data-'));
   const {watcher, partner, pairModels} = scriptedModels();
   const daemon = await startDaemon(config, {pairModels, probe: answers, log: () => {}});
   const chat = client(config.socket, {type: 'hello', role: 'chat', cwd: project});
@@ -378,8 +378,8 @@ test('the next session in a repo starts from the last note; a remark is rated wi
 });
 
 test('keep-warm asks the Watcher\'s model for one token while someone works, and not while nobody does', {timeout: 20_000}, async () => {
-  const project = mkdtempSync(join(tmpdir(), 'pair-project-'));
-  const config = testConfig(mkdtempSync(join(tmpdir(), 'pair-data-')));
+  const project = scratch('pair-project-');
+  const config = testConfig(scratch('pair-data-'));
   const {watcher, pairModels} = scriptedModels();
   const pings = [];
   watcher.setResponses(Array(5).fill(null).map(() => (context, options) => {
@@ -402,10 +402,10 @@ test('keep-warm asks the Watcher\'s model for one token while someone works, and
 });
 
 test('two Neovims in one project: Pair shows things in the one with focus, from the terminal\'s focus reports or herdr\'s focused pane', {timeout: 20_000}, async () => {
-  const project = mkdtempSync(join(tmpdir(), 'pair-project-'));
+  const project = scratch('pair-project-');
   writeFileSync(join(project, 'cart.js'), 'const total = 0\n');
-  const config = testConfig(mkdtempSync(join(tmpdir(), 'pair-data-')));
-  const herdrSocket = join(mkdtempSync(join(tmpdir(), 'pair-herdr-')), 'herdr.sock');
+  const config = testConfig(scratch('pair-data-'));
+  const herdrSocket = join(scratch('pair-herdr-'), 'herdr.sock');
   const herdr = await fakeHerdr(herdrSocket, {nvims: ['w1:n1', 'w1:n2']});
   const {partner, pairModels} = scriptedModels();
   const daemon = await startDaemon(config, {pairModels, probe: answers, log: () => {}});
@@ -447,18 +447,18 @@ test('two Neovims in one project: Pair shows things in the one with focus, from 
 });
 
 test('session roots: in a monorepo each configured folder has its own session; each git worktree has its own too, also one inside the checkout', {timeout: 20_000}, async () => {
-  const mono = realpathSync(mkdtempSync(join(tmpdir(), 'pair-mono-')));
+  const mono = realpathSync(scratch('pair-mono-'));
   for (const dir of ['packages/api/src', 'packages/web', 'tools']) mkdirSync(join(mono, dir), {recursive: true});
   const git = (...args) => execFileSync('git', ['-C', mono, '-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], {stdio: 'ignore'});
   git('init', '-q');
   writeFileSync(join(mono, 'README'), 'mono\n');
   git('add', '.');
   git('commit', '-qm', 'start');
-  const worktree = `${mono}-feature`;
+  const worktree = join(realpathSync(scratch('pair-mono-feature-')), 'feature');
   git('worktree', 'add', '-q', worktree);
   const inner = join(mono, '.worktrees', 'fix');
   git('worktree', 'add', '-q', inner);
-  const config = testConfig(mkdtempSync(join(tmpdir(), 'pair-data-')), {sessionRoots: [`${mono}/packages/*`]});
+  const config = testConfig(scratch('pair-data-'), {sessionRoots: [`${mono}/packages/*`]});
   const {pairModels} = scriptedModels();
   const daemon = await startDaemon(config, {pairModels, probe: answers, log: () => {}});
   const cwds = [join(mono, 'packages/api/src'), join(mono, 'packages/api'), join(mono, 'packages/web'), join(mono, 'tools'), mono, worktree];

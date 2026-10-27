@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict';
-import {mkdtempSync, rmSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {rmSync} from 'node:fs';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {foregroundCommand, PaneWatch, plainLine} from '../src/herdr.mjs';
 import {fakeHerdr} from './fake-herdr.mjs';
+import {scratch} from './temp.mjs';
 
-/** A new folder in the system's temp folder, removed when test `t` ends, passed or failed. */
+/** A new folder in the test file's temp folder, removed when test `t` ends, passed or failed. */
 function tempDir(t, prefix) {
-  const dir = mkdtempSync(join(tmpdir(), prefix));
+  const dir = scratch(prefix);
   t.after(() => rmSync(dir, {recursive: true, force: true}));
   return dir;
 }

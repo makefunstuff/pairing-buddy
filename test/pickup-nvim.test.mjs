@@ -3,9 +3,8 @@
 // opened on another file stays there. Skips without nvim.
 import assert from 'node:assert/strict';
 import {execFileSync, spawn} from 'node:child_process';
-import {mkdtempSync, realpathSync, writeFileSync} from 'node:fs';
+import {realpathSync, writeFileSync} from 'node:fs';
 import {createServer} from 'node:net';
-import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {test} from 'node:test';
@@ -14,6 +13,7 @@ import {parseConfig} from '../src/config.mjs';
 import {startDaemon} from '../src/daemon.mjs';
 import {readMessages, sendMessage} from '../src/protocol.mjs';
 import {openStore} from '../src/store.mjs';
+import {scratch, socketDir} from './temp.mjs';
 
 const REPO = fileURLToPath(new URL('..', import.meta.url));
 const hasNvim = (() => { try { execFileSync('nvim', ['--version']); return true; } catch { return false; } })();
@@ -31,7 +31,7 @@ async function until(check, what, timeoutMs = 8000) {
 
 /** A Neovim with the plugin, opened with `args`, connected to a stand-in daemon that greets it. */
 async function nvimWith(project, args) {
-  const dir = mkdtempSync('/tmp/pair-');
+  const dir = socketDir();
   let editor;
   const received = [];
   const server = createServer(socket => {
@@ -62,7 +62,7 @@ async function nvimWith(project, args) {
 }
 
 function project() {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'pair-nvim-')));
+  const root = realpathSync(scratch('pair-nvim-'));
   writeFileSync(join(root, 'queue.go'), 'package queue\n\nfunc New() *Queue {\n\treturn &Queue{ttl: cfg.Budget}\n}\n');
   writeFileSync(join(root, 'queue_test.go'), 'package queue\n\nfunc TestNoDoubleDelivery(t *testing.T) {\n\tt.Fatal("twice")\n}\n');
   writeFileSync(join(root, 'notes.md'), '# notes\n');
@@ -138,9 +138,9 @@ test(':Pair end sends the edit still waiting for its debounce first, so it is th
 test('end to end: edit, save and :Pair end at once, close the panel, move, quit: the day\'s debrief stays, with that edit', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
   const root = project();
   execFileSync('git', ['init', '-q'], {cwd: root});
-  const dataDir = mkdtempSync(join(tmpdir(), 'pair-data-'));
+  const dataDir = scratch('pair-data-');
   const config = parseConfig({
-    dataDir, socket: join(mkdtempSync('/tmp/pair-'), 'pair.sock'), agents: false, board: null,
+    dataDir, socket: join(socketDir(), 'pair.sock'), agents: false, board: null,
     models: {watcher: {api: 'openai', baseUrl: 'http://unused', model: 'w'}, partner: {api: 'openai', baseUrl: 'http://unused', model: 'p'}},
   });
   const watcher = fauxProvider({provider: 'faux-watcher'});
@@ -153,7 +153,7 @@ test('end to end: edit, save and :Pair end at once, close the panel, move, quit:
   const answer = text => context => { asked.push(context.messages.at(-1)); return fauxAssistantMessage([fauxText(text)]); };
   partner.setResponses([answer('✓ the queue builds\nTomorrow, first: make the lease outlive the last attempt, in queue.go:4.'), answer('Tomorrow, first: look around, in queue.go:1.')]);
   const daemon = await startDaemon(config, {pairModels: {models, watcher: watcher.getModel(), partner: partner.getModel()}, probe: async () => ({ok: true}), log: () => {}, aloneEndMs: 200});
-  const nvimSocket = join(mkdtempSync('/tmp/pair-'), 'nvim.sock');
+  const nvimSocket = join(socketDir(), 'nvim.sock');
   const nvim = spawn('nvim', ['--headless', '--clean', '--listen', nvimSocket, '--cmd', `set rtp+=${REPO}`, '--cmd', `cd ${root}`,
     '-c', `lua require('pair').setup({socket = '${config.socket}'})`, '-c', 'edit queue.go', '-c', 'Pair start'], {stdio: 'ignore'});
   const remote = expr => execFileSync('nvim', ['--server', nvimSocket, '--remote-expr', expr], {encoding: 'utf8'}).trim();

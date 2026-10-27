@@ -2,14 +2,14 @@
 // tuning they lead to, and the active time `pair stats` divides by. With a real store in memory.
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {mkdtempSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 import {test} from 'node:test';
 import {BUDGETS} from '../src/budget.mjs';
 import {cleanNote, PairSession} from '../src/session.mjs';
 import {openStore} from '../src/store.mjs';
+import {scratch} from './temp.mjs';
 
 const MIN = 60_000;
 
@@ -78,7 +78,7 @@ test('feedback rates the last remark, or the one named; implicit feedback is not
 });
 
 test('a suggestion in a remark carries the remark\'s id; one in an answer to the user carries none', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'pair-memory-'));
+  const root = scratch('pair-memory-');
   writeFileSync(join(root, 'a.js'), 'const x = 1\n');
   let pair;
   const suggestAndSay = async () => { await pair.suggest({file: 'a.js', line: 1, endLine: 1, text: 'const x = 2', note: 'two'}); return 'Make it two.'; };
@@ -92,7 +92,7 @@ test('a suggestion in a remark carries the remark\'s id; one in an answer to the
 });
 
 test('a suggestion held while the user types keeps its remark\'s id', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'pair-memory-'));
+  const root = scratch('pair-memory-');
   writeFileSync(join(root, 'a.js'), 'const x = 1\n');
   let made;
   const typeThenSuggest = async () => {
@@ -128,7 +128,7 @@ test('with autoTune, dismissed remarks of a trigger raise its bar before the nex
 });
 
 test('the session note is written from the goal and the uncommitted changes, and the next session in the repo starts from it', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'pair-memory-'));
+  const root = scratch('pair-memory-');
   execFileSync('git', ['init', '-q', root]);
   writeFileSync(join(root, 'ws.ts'), 'export const TIMEOUT = 30;\n');
   const store = openStore(':memory:');
@@ -289,7 +289,7 @@ test('reading counts as active time: moving the cursor and scrolling, not a curs
 });
 
 test('a store from before reading counted: a session with active time had work, so it keeps its debrief after the upgrade', () => {
-  const path = join(mkdtempSync(join(tmpdir(), 'pair-store-')), 'sessions.sqlite');
+  const path = join(scratch('pair-store-'), 'sessions.sqlite');
   const old = new DatabaseSync(path);
   old.exec(`CREATE TABLE sessions (id INTEGER PRIMARY KEY, root TEXT NOT NULL, conversation_id TEXT NOT NULL, goal TEXT,
     level TEXT NOT NULL, started_at INTEGER NOT NULL, ended_at INTEGER, note TEXT, active_ms INTEGER NOT NULL DEFAULT 0)`);
@@ -302,7 +302,7 @@ test('a store from before reading counted: a session with active time had work, 
 });
 
 test('remarks stored before the shown mark count as shown when Pair said something in them', () => {
-  const path = join(mkdtempSync(join(tmpdir(), 'pair-store-')), 'sessions.sqlite');
+  const path = join(scratch('pair-store-'), 'sessions.sqlite');
   const old = new DatabaseSync(path);
   old.exec(`CREATE TABLE sessions (id INTEGER PRIMARY KEY, root TEXT NOT NULL, conversation_id TEXT NOT NULL, goal TEXT,
     level TEXT NOT NULL, started_at INTEGER NOT NULL, ended_at INTEGER, note TEXT);

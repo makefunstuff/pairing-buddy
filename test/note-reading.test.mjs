@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {mkdirSync, mkdtempSync, readFileSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {codeFor, codeNames, jsonList, noteInput, parseMarks, parseTasks} from '../src/note-reading.mjs';
+import {scratch} from './temp.mjs';
 
 const NOTE = readFileSync(new URL('../docs/captures/notes/dead-letters.md', import.meta.url), 'utf8');
 const exists = async file => file === 'internal/delivery/worker.go';
@@ -16,7 +16,7 @@ test('the names a note gives code: in backticks, and camel or snake words outsid
 });
 
 test('the code a note names is found where it is defined, in C as in Go, and shown with line numbers', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'pair-note-'));
+  const root = scratch('pair-note-');
   mkdirSync(join(root, 'src'));
   writeFileSync(join(root, 'src', 'ring.c'), '#include "ring.h"\n\nstatic int used;\n\nint ring_push(struct ring *r, int v) {\n  return used++;\n}\n');
   writeFileSync(join(root, 'src', 'main.c'), 'int main(void) { return ring_push(0, 1); }\n');
@@ -28,7 +28,7 @@ test('the code a note names is found where it is defined, in C as in Go, and sho
   assert.equal(ring.line, 5);
   assert.match(ring.text, /^src\/ring\.c:3: static int used;\n/);
   assert.equal(main.file, 'src/main.c');
-  assert.deepEqual(await codeFor(mkdtempSync(join(tmpdir(), 'pair-nogit-')), 'about `x_y`'), []);
+  assert.deepEqual(await codeFor(scratch('pair-nogit-'), 'about `x_y`'), []);
 });
 
 test('the model reads the note numbered, with the code it names', () => {

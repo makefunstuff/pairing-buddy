@@ -1,8 +1,7 @@
 // The chat pane: what a typed line means, and the pane itself across a daemon restart.
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
-import {mkdtempSync, realpathSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {realpathSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {test} from 'node:test';
@@ -12,6 +11,7 @@ import {formatMessage, trueColor} from '../src/chat-style.mjs';
 import {loadConfig} from '../src/config.mjs';
 import {openStore} from '../src/store.mjs';
 import {startDaemon} from '../src/daemon.mjs';
+import {scratch} from './temp.mjs';
 
 const BIN = fileURLToPath(new URL('../bin/pair.mjs', import.meta.url));
 
@@ -93,7 +93,7 @@ test('a long message wraps under its words, not under the name; an indented line
 });
 
 test('the chat pane waits through a daemon restart and carries on, without showing the history twice', {timeout: 20_000}, async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'pair-chat-'));
+  const dir = scratch('pair-chat-');
   const path = join(dir, 'config.json');
   const entry = {api: 'openai', baseUrl: 'http://unused', model: 'm'};
   writeFileSync(path, JSON.stringify({dataDir: dir, socket: join(dir, 'pair.sock'), agents: false, models: {watcher: entry, partner: entry}}));
@@ -133,7 +133,7 @@ test('the chat pane waits through a daemon restart and carries on, without showi
 });
 
 test('from the chat pane, an older remark is rated from /remarks, and + still rates the last one after a daemon restart', {timeout: 20_000}, async () => {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'pair-chat-')));
+  const dir = realpathSync(scratch('pair-chat-'));
   const path = join(dir, 'config.json');
   const entry = {api: 'openai', baseUrl: 'http://unused', model: 'm'};
   writeFileSync(path, JSON.stringify({dataDir: dir, socket: join(dir, 'pair.sock'), agents: false, models: {watcher: entry, partner: entry}}));

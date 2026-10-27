@@ -1,14 +1,13 @@
 // Two models on a server that holds one at a time and does not say which: the daemon sees the reloads in the
 // Watcher's timing and moves the Watcher to the Partner's model. End to end, with a fake server that swaps.
 import assert from 'node:assert/strict';
-import {mkdtempSync} from 'node:fs';
 import {createServer} from 'node:http';
-import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {parseConfig} from '../src/config.mjs';
 import {startDaemon} from '../src/daemon.mjs';
 import {client} from './daemon-client.mjs';
+import {scratch} from './temp.mjs';
 
 const SWAP_MS = 2100; // just over what the daemon takes for a reload
 
@@ -43,8 +42,8 @@ async function until(check) {
 
 test('after two reload-slow Watcher calls that follow Partner turns, the Watcher scores with the Partner\'s model', {timeout: 60_000}, async () => {
   const server = await swappingServer();
-  const project = mkdtempSync(join(tmpdir(), 'pair-project-'));
-  const dataDir = mkdtempSync(join(tmpdir(), 'pair-data-'));
+  const project = scratch('pair-project-');
+  const dataDir = scratch('pair-data-');
   const entry = model => ({api: 'openai', baseUrl: server.url, model, contextWindow: 32768});
   const config = parseConfig({dataDir, socket: join(dataDir, 'pair.sock'), typingPauseMs: 50, keepWarm: false,
     models: {watcher: entry('small'), partner: {...entry('large'), reasoning: false}}});

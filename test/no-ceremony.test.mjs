@@ -1,9 +1,8 @@
 // No ceremony: the goal comes from the board task or the branch, and sessions end by themselves.
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {chmodSync, mkdtempSync, realpathSync, writeFileSync} from 'node:fs';
+import {chmodSync, realpathSync, writeFileSync} from 'node:fs';
 import {connect} from 'node:net';
-import {tmpdir} from 'node:os';
 import {basename, join} from 'node:path';
 import {test} from 'node:test';
 import {createModels, fauxAssistantMessage, fauxProvider, fauxText} from '@earendil-works/pi-ai';
@@ -12,6 +11,7 @@ import {startDaemon} from '../src/daemon.mjs';
 import {readMessages, sendMessage} from '../src/protocol.mjs';
 import {PairSession} from '../src/session.mjs';
 import {openStore} from '../src/store.mjs';
+import {scratch} from './temp.mjs';
 
 const answers = async () => ({ok: true});
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -39,7 +39,7 @@ function client(socketPath, hello) {
 
 /** A git repo on branch `work/7-faster-hash`, and a board command that knows its task 7 and another repo's. */
 function project() {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'probe-')));
+  const root = realpathSync(scratch('probe-'));
   const git = (...args) => execFileSync('git', ['-c', 'user.name=dev', '-c', 'user.email=dev@example.com', ...args], {cwd: root});
   git('init', '-q', '-b', 'work/7-faster-hash');
   writeFileSync(join(root, 'probe.c'), 'int probe(int n) { return n * 31; }\n');
@@ -49,14 +49,14 @@ function project() {
     {id: 'elsewhere/7', state: 'working', title: 'Not this one', msg: ''},
     {id: `${basename(root)}/7`, state: 'working', title: 'Faster hash', msg: 'trying fibonacci'},
   ];
-  const board = join(mkdtempSync(join(tmpdir(), 'board-')), 'board');
+  const board = join(scratch('board-'), 'board');
   writeFileSync(board, `#!/bin/sh\necho '${JSON.stringify(tasks)}'\n`);
   chmodSync(board, 0o755);
   return {root, board};
 }
 
 async function daemonFor(board, options = {}) {
-  const dataDir = mkdtempSync(join(tmpdir(), 'pair-data-'));
+  const dataDir = scratch('pair-data-');
   const config = parseConfig({
     dataDir, socket: join(dataDir, 'pair.sock'), board, agents: false,
     models: {watcher: {api: 'openai', baseUrl: 'http://unused', model: 'w'}, partner: {api: 'openai', baseUrl: 'http://unused', model: 'p'}},

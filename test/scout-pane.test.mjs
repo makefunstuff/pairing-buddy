@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
-import {existsSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {existsSync, rmSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {HerdrPaneHost} from '../src/pane-hosts.mjs';
@@ -11,12 +10,13 @@ import {ScoutPane, shellQuote} from '../src/scout-pane.mjs';
 import {scoutPaneConfig} from '../src/scout-shell.mjs';
 import {fakeHerdr} from './fake-herdr.mjs';
 import {runInPane} from './pane-shell.mjs';
+import {scratch} from './temp.mjs';
 
 const hasBash = spawnSync('bash', ['--version']).status === 0;
 
-/** A new folder in the system's temp folder, removed when test `t` ends, passed or failed. */
+/** A new folder in the test file's temp folder, removed when test `t` ends, passed or failed. */
 function tempDir(t, prefix) {
-  const dir = mkdtempSync(join(tmpdir(), prefix));
+  const dir = scratch(prefix);
   t.after(() => rmSync(dir, {recursive: true, force: true}));
   return dir;
 }

@@ -3,8 +3,7 @@
 // words; the failing test's message is what makes that possible, so the trail alone is run too, for the record.
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {cpSync, mkdtempSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {cpSync} from 'node:fs';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {describe, test} from 'node:test';
@@ -18,6 +17,7 @@ import {trailMatches} from '../../src/trail.mjs';
 import {detectTriggers} from '../../src/triggers.mjs';
 import {createWatcher} from '../../src/watcher.mjs';
 import {liveStacks, SKIP_REASON} from './stacks.mjs';
+import {scratch} from '../temp.mjs';
 
 const HOOKD = fileURLToPath(new URL('../../docs/captures/hookd', import.meta.url));
 const hasGo = (() => { try { execFileSync('go', ['version']); return true; } catch { return false; } })();
@@ -33,7 +33,7 @@ function goTest(root) {
 
 /** The project, the trail trigger with the project's matches for its words, and the state; `red`: the test ran. */
 async function trail({red}) {
-  const root = mkdtempSync(join(tmpdir(), 'pair-live-trail-'));
+  const root = scratch('pair-live-trail-');
   cpSync(HOOKD, root, {recursive: true});
   const now = 1_000_000;
   const events = [
