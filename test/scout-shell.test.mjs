@@ -1,13 +1,15 @@
 import assert from 'node:assert/strict';
 import {spawn, spawnSync} from 'node:child_process';
-import {existsSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
 import {createServer} from 'node:net';
 import {homedir, tmpdir} from 'node:os';
 import {basename, join} from 'node:path';
 import {test} from 'node:test';
+import {rcFileIn} from '../src/pane-runs.mjs';
 import {cacheFolders, overlayWorks, sandboxWords, sandboxWorks, userSockets} from '../src/sandbox.mjs';
-import {commandResult, promptNumber} from '../src/scout-pane.mjs';
 import {rcNames, scoutPaneConfig, shellLine, shellQuote} from '../src/scout-shell.mjs';
+
+import {runInPane} from './pane-shell.mjs';
 
 const scratch = () => realpathSync(mkdtempSync(join(tmpdir(), 'pair-shell-')));
 const plain = scoutPaneConfig({sandbox: false});
@@ -24,32 +26,14 @@ set -euo pipefail
 echo "rc loaded"
 `;
 
-/**
- * Starts `line` as herdr's pane would, with stdin and the output on pipes instead of a terminal, and types
- * `commands` one at a time: resolves with each command's `{exit, output}`, read back as ScoutPane reads them.
- */
-function runInShell(line, cwd, commands) {
-  return new Promise((resolve, reject) => {
-    const shell = spawn('sh', ['-c', `${line} 2>&1`], {cwd});
-    let text = '';
-    const results = [];
-    let next = 1; // the prompt the next command is typed at
-    const timer = setTimeout(() => { shell.kill(); reject(new Error(`no prompt in time:\n${text}`)); }, 15_000);
-    shell.stdout.on('data', chunk => {
-      text += chunk;
-      const number = promptNumber(text);
-      // A prompt seen before, with the typed command echoed after it (bash on a pipe echoes it).
-      if (number !== next) return;
-      next++;
-      if (number > 1) results.push(commandResult(text, number - 1));
-      if (results.length === commands.length) {
-        clearTimeout(timer);
-        shell.stdin.end('exit\n');
-        return resolve(results);
-      }
-      shell.stdin.write(`${commands[number - 1]}\n`);
-    });
-  });
+/** Types `commands` into the pane's shell for `setup` in `cwd`: each command's `{exit, output}`. Its files go after. */
+async function runInShell(setup, cwd, commands) {
+  const dir = scratch();
+  try {
+    return (await runInPane({setup, cwd, dir: join(dir, 'pane'), commands})).results;
+  } finally {
+    rmSync(dir, {recursive: true, force: true});
+  }
 }
 
 test('scoutPane in the config: an rc file, the sandbox, its network and the folders it may write', () => {
@@ -64,17 +48,17 @@ test('scoutPane in the config: an rc file, the sandbox, its network and the fold
 });
 
 test('the pane\'s shell line: a plain bash, or one that loads the rc file, and the sandbox only where it works', () => {
-  const cwd = '/project';
-  assert.equal(shellLine({setup: plain, cwd}).line, "exec env HISTFILE= 'PS1=scout[\\#] exit $? $ ' bash --noprofile --norc -i");
-  const rc = shellLine({setup: scoutPaneConfig({rc: '/home/me/.bashrc', sandbox: false}), cwd}).line;
-  assert.match(rc, /PAIR_SCOUT_RC=\/home\/me\/.bashrc bash --noprofile --rcfile \S+\/scout-pane.bash -i$/);
+  const [cwd, runs] = ['/project', '/data/panes/1'];
+  assert.equal(shellLine({setup: plain, cwd, runs}).line, 'exec env HISTFILE= PAIR_RUNS=/data/panes/1 bash --noprofile --rcfile /data/panes/1/pane.bash -i');
+  const rc = shellLine({setup: scoutPaneConfig({rc: '/home/me/.bashrc', sandbox: false}), cwd, runs}).line;
+  assert.match(rc, /PAIR_RUNS=\/data\/panes\/1 PAIR_SCOUT_RC=\/home\/me\/.bashrc bash --noprofile --rcfile \S+\/scout-pane.bash -i$/);
 
   const auto = scoutPaneConfig();
-  assert.deepEqual(shellLine({setup: auto, cwd, works: () => false}), {line: shellLine({setup: plain, cwd}).line, sandboxed: false});
-  const inside = shellLine({setup: auto, cwd, works: () => true});
+  assert.deepEqual(shellLine({setup: auto, cwd, runs, works: () => false}), {line: shellLine({setup: plain, cwd, runs}).line, sandboxed: false});
+  const inside = shellLine({setup: auto, cwd, runs, works: () => true});
   assert.equal(inside.sandboxed, true);
   assert.match(inside.line, / bwrap --ro-bind \/ \/ .* --unshare-all --chdir \/project bash /);
-  assert.throws(() => shellLine({setup: scoutPaneConfig({sandbox: true}), cwd, works: () => false}), /bubblewrap/);
+  assert.throws(() => shellLine({setup: scoutPaneConfig({sandbox: true}), cwd, runs, works: () => false}), /bubblewrap/);
 });
 
 test('the sandbox: the disk read-only, the project and named folders writable, sockets hidden, network off unless allowed', () => {
@@ -130,9 +114,12 @@ test('in the sandbox a cache keeps what is there and takes new entries, which ne
   mkdirSync(cache);
   mkdirSync(project);
   writeFileSync(join(cache, 'old'), 'built before\n');
-  const words = sandboxWords({cwd: project, caches: [cache], sockets: [], runtimeDir: null});
-  const line = `exec env ${shellQuote('PS1=scout[\\#] exit $? $ ')} ${words.map(shellQuote).join(' ')} bash --norc -i`;
-  const results = await runInShell(line, project, [`cat ${cache}/old`, `echo entry > ${cache}/new && cat ${cache}/new`]);
+  const pane = join(dir, 'pane');
+  const line = () => {
+    const words = sandboxWords({cwd: project, writable: [pane], caches: [cache], sockets: [], runtimeDir: null});
+    return `exec env PAIR_RUNS=${pane} ${words.map(shellQuote).join(' ')} bash --noprofile --rcfile ${rcFileIn(pane)} -i`;
+  };
+  const results = (await runInPane({cwd: project, dir: pane, line, commands: [`cat ${cache}/old`, `echo entry > ${cache}/new && cat ${cache}/new`]})).results;
   assert.deepEqual(results, [{exit: 0, output: 'built before'}, {exit: 0, output: 'entry'}]);
   assert.equal(existsSync(join(cache, 'new')), false);
 });
@@ -141,8 +128,7 @@ test('with the rc file the pane has its aliases, functions and environment, and 
   const dir = scratch();
   const rc = join(dir, 'bashrc');
   writeFileSync(rc, RC);
-  const {line} = shellLine({setup: scoutPaneConfig({rc, sandbox: false}), cwd: dir});
-  const results = await runInShell(line, dir, ['ll -d .', 'greet you', 'echo $FROM_RC', 'false', 'sh -c "exit 7"', 'echo $HISTFILE.', 'false | true', 'echo $UNSET.']);
+  const results = await runInShell(scoutPaneConfig({rc, sandbox: false}), dir, ['ll -d .', 'greet you', 'echo $FROM_RC', 'false', 'sh -c "exit 7"', 'echo $HISTFILE.', 'false | true', 'echo $UNSET.']);
   assert.deepEqual(results.map(result => result.exit), [0, 0, 0, 1, 7, 0, 0, 0], 'a pipeline ends as its last command, as without the rc file');
   assert.deepEqual(results.map(result => result.output), ['.', 'hi you', 'yes', '', '', '.', '', '.'], 'no DEBUG trap output, and no history file');
 });
@@ -172,10 +158,9 @@ test('in the sandbox, commands write only the project, reach no network and no h
     const rc = join(dir, 'bashrc');
     writeFileSync(rc, RC);
     // Not named as hidden: it is hidden as a socket of yours.
-    const {line, sandboxed} = shellLine({setup: scoutPaneConfig({rc, sandbox: true}), cwd: project});
-    assert.equal(sandboxed, true);
+    assert.equal(shellLine({setup: scoutPaneConfig({rc, sandbox: true}), cwd: project, runs: join(dir, 'pane')}).sandboxed, true);
     const marker = mkdtempSync('/tmp/pair-marker-');
-    const results = await runInShell(line, project, [
+    const results = await runInShell(scoutPaneConfig({rc, sandbox: true}), project, [
       'touch made && ll',
       `touch ${join(homedir(), '.pair-sandbox-probe')}`,
       `touch ${join(dir, 'outside')}`,
@@ -206,8 +191,7 @@ test('go test runs in the default sandbox on a module it never built, with its c
   const unique = `${process.pid}${Date.now()}`;
   writeFileSync(join(project, 'go.mod'), `module example.com/m${unique}\n\ngo 1.21\n`);
   writeFileSync(join(project, 'm_test.go'), `package m\n\nimport "testing"\n\nfunc TestUnique(t *testing.T) { if ${unique} == 0 { t.Fatal() } }\n`);
-  const {line} = shellLine({setup: scoutPaneConfig(), cwd: project});
-  const [result] = await runInShell(line, project, ['go test -count=1 ./...']);
+  const [result] = await runInShell(scoutPaneConfig(), project, ['go test -count=1 ./...']);
   assert.equal(result.exit, 0, result.output);
   assert.match(result.output, /^ok\s+example\.com\/m/);
 });

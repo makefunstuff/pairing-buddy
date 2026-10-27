@@ -354,6 +354,20 @@ test('a key from the user takes the wheel back at once: an edit still on its way
   assert.deepEqual(toolsOf, ['driver', 'navigator']);
 });
 
+test('typing at a shell prompt takes the wheel back too; typing in the chat does not', async () => {
+  let roles;
+  const {pair, sent} = driverSession({turn: async pair => {
+    pair.receive({kind: 'typing'}); // the chat pane
+    const during = pair.role;
+    pair.receive({kind: 'typing', source: 'terminal', pane: 'w1:p1'});
+    roles = [during, pair.role];
+    return 'ok';
+  }});
+  await pair.drive('you take it');
+  assert.deepEqual(roles, ['driver', 'navigator']);
+  assert.ok(sent.some(message => message.text === 'You have the wheel back.'));
+});
+
 test('without Neovim there is no wheel to hand over', async () => {
   let asked = false;
   const {pair, sent} = driverSession({editor: false, turn: async () => { asked = true; return 'ok'; }});

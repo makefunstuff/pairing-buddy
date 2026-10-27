@@ -1,13 +1,14 @@
 // The shell of Pair's pane: a plain bash, or one that loads your rc file first (scout-pane.bash), and either one in
-// the sandbox when there is one (sandbox.mjs). Set by `scoutPane` in the config.
+// the sandbox when there is one (sandbox.mjs). Set by `scoutPane` in the config. Either way it reads Pair's rc file
+// last, which writes each command's output and exit code to the pane's folder (pane-runs.mjs).
 import {execFile} from 'node:child_process';
 import {homedir} from 'node:os';
 import {join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {rcFileIn} from './pane-runs.mjs';
 import {sandboxWords, sandboxWorks} from './sandbox.mjs';
 
 const RC_WRAPPER = fileURLToPath(new URL('./scout-pane.bash', import.meta.url));
-const PROMPT = 'scout[\\#] exit $? $ ';
 const SANDBOX = ['auto', true, false];
 const NAMES_MS = 10_000;
 
@@ -43,16 +44,17 @@ export function sandboxed(setup, works = sandboxWorks) {
 }
 
 /**
- * The line typed into a new pane to start its shell in `cwd`, and whether that shell is sandboxed. `writable` and
- * `hidden` are the daemon's additions to the sandbox: where the tests on save write, and its and herdr's sockets.
+ * The line typed into a new pane to start its shell in `cwd`, and whether that shell is sandboxed. `runs` is the
+ * pane's folder, which holds Pair's rc file and takes its shell's files. `writable` and `hidden` are the daemon's
+ * additions to the sandbox: where the tests on save write, and its and herdr's sockets.
  */
-export function shellLine({setup, cwd, writable = [], hidden = [], works = sandboxWorks}) {
+export function shellLine({setup, cwd, runs, writable = [], hidden = [], works = sandboxWorks}) {
   const inSandbox = sandboxed(setup, works);
   // No history file: Pair's commands stay out of yours.
-  const env = ['env', 'HISTFILE=', `PS1=${PROMPT}`, ...(setup.rc ? [`PAIR_SCOUT_RC=${setup.rc}`] : [])];
+  const env = ['env', 'HISTFILE=', `PAIR_RUNS=${runs}`, ...(setup.rc ? [`PAIR_SCOUT_RC=${setup.rc}`] : [])];
   const readable = setup.rc ? [setup.rc, RC_WRAPPER] : [];
-  const sandbox = inSandbox ? sandboxWords({cwd, writable: [...setup.writable, ...writable], readable, hidden, network: setup.network}) : [];
-  const bash = ['bash', '--noprofile', ...(setup.rc ? ['--rcfile', RC_WRAPPER] : ['--norc']), '-i'];
+  const sandbox = inSandbox ? sandboxWords({cwd, writable: [...setup.writable, runs, ...writable], readable, hidden, network: setup.network}) : [];
+  const bash = ['bash', '--noprofile', '--rcfile', setup.rc ? RC_WRAPPER : rcFileIn(runs), '-i'];
   return {line: `exec ${[...env, ...sandbox, ...bash].map(word).join(' ')}`, sandboxed: inSandbox};
 }
 

@@ -1,9 +1,12 @@
 // A stand-in for herdr's socket API, for the captures, which show Neovim alone. The workspace has the Neovim
 // pane `w1:p1`, the chat pane `w1:p2` and the user's shell `w1:p3`, which is the :terminal inside that Neovim:
 // reading it reads the terminal's lines from Neovim. Pair's own pane (Scout's) runs each command for real, with
-// bash in the project, and shows the prompt Scout's bash would show.
+// bash in the project, shows the prompt Scout's bash would show and writes the files its rc file would (see
+// src/pane-runs.mjs). Nothing changes focus in a capture, so the event stream only says it started.
 import {execFile} from 'node:child_process';
+import {appendFileSync, mkdirSync, writeFileSync} from 'node:fs';
 import {createServer} from 'node:net';
+import {join} from 'node:path';
 import {readMessages, sendMessage} from '../../src/protocol.mjs';
 import {bashWithoutCores} from '../../test/no-core.mjs';
 
@@ -27,8 +30,11 @@ export async function standInHerdr(socketPath, {cwd, nvim, agents = [], log = ()
 
   async function type(pane, text) {
     const shell = panes.get(pane);
-    if (text.startsWith('exec env HISTFILE=')) {
-      shell.count = 1;
+    const runs = /^exec env .*?PAIR_RUNS=('[^']+'|\S+)/.exec(text)?.[1].replace(/^'|'$/g, '');
+    if (runs) {
+      Object.assign(shell, {count: 1, runs});
+      mkdirSync(runs, {recursive: true});
+      writeFileSync(join(runs, 'next'), '1\n');
       shell.lines.push('scout[1] exit 0 $ ');
       return;
     }
@@ -36,9 +42,15 @@ export async function standInHerdr(socketPath, {cwd, nvim, agents = [], log = ()
     const command = text.replace(/^\x15/, '').replace(/\r$/, '');
     shell.lines[shell.lines.length - 1] += command;
     log(`pair's pane runs: ${command}`);
+    writeFileSync(join(shell.runs, 'next'), `running ${shell.count}\n`);
     const {output, exit} = await run(command, cwd);
     if (output) shell.lines.push(...output.split('\n'));
-    shell.lines.push(`scout[${++shell.count}] exit ${exit} $ `);
+    const marked = `\x1b]133;C;aid=pair${shell.count}\x07${output ? `${output}\n` : ''}\x1b]133;D;${exit};aid=pair${shell.count}\x07`;
+    appendFileSync(join(shell.runs, 'pane.log'), marked);
+    // As the real shell does: `next` first, the exit code last.
+    writeFileSync(join(shell.runs, 'next'), `${shell.count + 1}\n`);
+    writeFileSync(join(shell.runs, `${shell.count++}.exit`), `${exit}\n`);
+    shell.lines.push(`scout[${shell.count}] exit ${exit} $ `);
   }
 
   const lastLines = async (pane, lines = 1000) => (pane === 'w1:p3' ? terminalText(nvim) : panes.get(pane).lines.slice(-lines).join('\n'));
@@ -71,6 +83,7 @@ export async function standInHerdr(socketPath, {cwd, nvim, agents = [], log = ()
   };
 
   const server = createServer(socket => readMessages(socket, async ({id, method, params}) => {
+    if (method === 'events.subscribe') return sendMessage(socket, {id, result: {type: 'subscription_started'}});
     try {
       sendMessage(socket, {id, result: await methods[method](params)});
     } catch (error) {
