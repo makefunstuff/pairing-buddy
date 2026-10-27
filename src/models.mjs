@@ -29,7 +29,8 @@ function modelOf(providerId, entry) {
     cost: {input: 0, output: 0, cacheRead: 0, cacheWrite: 0},
     contextWindow: entry.contextWindow,
     maxTokens: entry.maxTokens,
-    ...(anthropic ? {} : {compat: {...LOCAL_COMPAT, ...entry.compat}, samplingParams: entry.samplingParams}),
+    // `thinkingLevelMap` sends a level as the server's own name for it (see `pair doctor --thinking`).
+    ...(anthropic ? {} : {compat: {...LOCAL_COMPAT, ...entry.compat}, samplingParams: entry.samplingParams, thinkingLevelMap: entry.thinkingLevelMap}),
   };
 }
 

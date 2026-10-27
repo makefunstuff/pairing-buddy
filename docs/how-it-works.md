@@ -45,6 +45,8 @@ A remark can come from one of these moments (its **trigger**):
 | `regression` | The tests Pair ran when you saved fail where its run before did not |
 | `crash` | A build or run died of a signal or reported a fault (a sanitizer, a failed assert, a panic), also while you look at it: the terminal says that it crashed, not why ([builds.md](builds.md)) |
 | `new_warning` | A build printed a warning in a file you edited that no build before it printed; Pair speaks only for a bug ([builds.md](builds.md)) |
+| `same_result` | You changed the code and ran it again, and it printed the same numbers: Pair says why the change did nothing ([exploration.md](exploration.md)) |
+| `number_moved` | A change of the code moved a number the run prints, most worth a word at the end of a hunt ([exploration.md](exploration.md)) |
 | `note_stall` | In a Markdown note, you wrote a question and then nothing for 90 s: one question back, never the answer ([notes.md](notes.md#what-the-triggers-mean-in-prose)) |
 | `note_drift` | In a Markdown note, a new section shares no word with the note's title or the goal: one question, "is this still the … note?" |
 | `search_trail` | Three or more Telescope or snacks.picker searches since your last edit, one of them closed with nothing opened, or repeated. The remark gets what fails now, so it can say where the thing is in the code's own word ([neovim.md](neovim.md#the-search-trail)) |
@@ -56,9 +58,9 @@ error. A direct question in the chat is always answered.
 
 For anything unasked:
 
-1. Cheap rules drop what is plainly noise: a `grep` that finds nothing, a command you stopped, editing a file whose
-   path shares a word with the goal.
-2. The Watcher scores the moment from 0 to 10 with a single number. Only scores at or above the talk level's bar reach
+1. Cheap rules drop what is plainly noise: a `grep` that finds nothing, a command you stopped. A moment scored in
+   the last half hour keeps its score.
+2. The Watcher scores the moment from 0 to 10 with a single number; for drift it is told what the file is about. Only scores at or above the talk level's bar reach
    the Partner.
 3. The budget limits how often Pair speaks ([talk levels](config.md#talk-levels)).
 

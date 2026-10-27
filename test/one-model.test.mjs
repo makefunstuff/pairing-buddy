@@ -155,3 +155,32 @@ test('while the Partner answers in one project, the Watcher of another waits, th
     await daemon.close();
   }
 });
+
+test('a remembered score waits for the Partner too: the same moment in another project is not let through mid-answer', {timeout: 20_000}, async () => {
+  const shop = mkdtempSync(join(tmpdir(), 'pair-shop-'));
+  const blog = mkdtempSync(join(tmpdir(), 'pair-blog-'));
+  const config = oneModelConfig();
+  const {calls, pairModels} = oneModel(['The test expects 30 s.', LONG, 'Same failure here.']);
+  const daemon = await startDaemon(config, {pairModels, probe: async () => ({ok: true}), log: () => {}});
+  const shopChat = client(config.socket, {type: 'hello', role: 'chat', cwd: shop});
+  const blogChat = client(config.socket, {type: 'hello', role: 'chat', cwd: blog});
+  try {
+    for (const each of [shopChat, blogChat]) await each.next(message => message.type === 'welcome');
+    for (const each of [shopChat, blogChat]) each.send({type: 'goal', text: 'fix reconnect'});
+    await blogChat.next(message => message.text === 'Goal: fix reconnect');
+    failTwice(shopChat, shop);
+    await shopChat.next(message => message.sender === 'pair' && message.text === 'The test expects 30 s.'); // scored once, remembered
+    shopChat.send({type: 'ask', text: 'and why?'});
+    await until(() => calls.length === 3);
+    failTwice(blogChat, blog); // the same moment: its score is remembered
+    await blogChat.next(message => message.sender === 'pair' && message.text === 'Same failure here.');
+    assert.deepEqual(calls, ['watcher', 'partner', 'partner', 'partner'], 'no second Watcher call, and the remark came after the answer');
+    const store = openStore(join(config.dataDir, 'sessions.sqlite'));
+    const waited = store.remarks(0).map(remark => remark.waitedMs ?? 0);
+    store.close();
+    assert.ok(waited.some(ms => ms > 1000), `the blog's remark waited for the answer in the shop (${waited.join(', ')} ms)`);
+  } finally {
+    for (const each of [shopChat, blogChat]) each.close();
+    await daemon.close();
+  }
+});

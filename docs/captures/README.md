@@ -11,6 +11,9 @@ recording comes out the same each time.
   code they point at, and type the edit.
 - **The board:** [board.mjs](board.mjs) stands in for herdr's work board in the context-card scene, which also
   fetches Telescope and plenary at pinned commits for its searches.
+- **The day so far:** the pick-up scene starts from yesterday's session (its debrief and where to pick up), and the
+  debrief scene from three hours of active time and five verdicts, which [stage.mjs](stage.mjs) writes into the
+  daemon's scratch store; the daemon's clock shows the scene's hour.
 - **herdr:** [herdr.mjs](herdr.mjs) stands in for herdr's socket, because the captures show Neovim alone.
   - Pair's own pane runs its commands for real, with bash in the project: the tests on save, and
     `go test -overlay` on the unsaved buffer.
@@ -21,7 +24,8 @@ recording comes out the same each time.
   and AddressSanitizer. Delight is in C too: [intern/](intern/), a string-interning table and its benchmark; and the
   agents scene: [hashtab/](hashtab/), another C hash table, timed with `make`. Teach on request is in the C
   program the live tone tests use ([test/live/probe](../../test/live/probe/)), whose `make run` fails its check with exit 1. The notes scene adds its
-  design note, [notes/dead-letters.md](notes/dead-letters.md), which the tests read too.
+  design note, [notes/dead-letters.md](notes/dead-letters.md), which the tests read too. The exploration loop:
+  [loop/](loop/), the research's entity table, built and run with `make -s run` in the `:terminal` on the right.
 - **No core dumps.** The crash scene crashes a program on purpose. `record.sh` sets the core limit to 1 byte for
   everything it starts, so nothing reaches the machine's crash reporter (see [test/no-core.mjs](../../test/no-core.mjs)).
 - **Your other agents** (the agents scene only): a stand-in board, a script that prints the board's list, with its
@@ -45,7 +49,10 @@ recording comes out the same each time.
 | [delight](tapes/delight.tape) | a number finally moves: the statusline lights up and one line says what moved |
 | [push-to-talk](tapes/push-to-talk.tape) | hold `Alt-t`, ask aloud, and Pair answers under your line |
 | [context-card](tapes/context-card.tape) | `:Pair context`, with the goal from the board task, and `x` on a source |
+| [pickup](tapes/pickup.tape) | the morning pick-up: an empty Neovim lands where yesterday's debrief said, one line, `Alt-j` to the failing test |
+| [debrief](tapes/debrief.tape) | the day's end: the lease fix goes green, `/end` in the chat pane, and `e` on tomorrow's first step |
 | [crash](tapes/crash.tape) | a compiler error, a crash and its frame, and a new warning, from `make run` on save |
+| [loop](tapes/loop.tape) | the exploration loop: four runs of `make` in your terminal, the same numbers and why, `:Pair runs` |
 | [agents](tapes/agents.tape) | your other agents' news, one line at your next breakpoint, and `:Pair agents` |
 | [notes](tapes/notes.tape) | notes in the margin: the marks, a fixed line, a decision logged, the tasks panel |
 | [teach](tapes/teach.tape) | Alt-? on a remark: the idea worth keeping behind it, and its link |

@@ -55,8 +55,13 @@ Runs every test that needs no model, in under a minute, with scripted models and
 - **The tone.** The checker the live tests use (praise, apology, filler, emoji, `!` outside code, headings and lists,
   words over the limit), the tone in the Partner's instructions, and teaching: the Partner asked about the words
   shown, the idea and its link apart for the editor, `?` in the chat about Pair's last words.
-- **The Watcher's speed.** The prefilter's rules, the one-number answer, drift checked once per file, keep-warm, and
-  the Watcher following the model a one-model server has loaded.
+- **The Watcher's speed.** The prefilter's rules, the one-number answer, scores remembered, drift checked once per
+  file with the file's gist, keep-warm, the Watcher following the model a one-model server has loaded, and, end to
+  end against a fake server that swaps and does not say so, the Watcher moving to the Partner's model after two
+  reloads.
+- **Context windows and thinking settings.** The window from vLLM's, llama.cpp's and LM Studio's metadata or pi-ai's
+  catalog, the config's own winning; `pair doctor --thinking` against fake servers that take a chat-template switch
+  with a budget field, or `reasoning_effort` with three levels.
 - **The wrong turn's trigger.** Raised once per red run and file, never for the code the failure names, its test,
   notes, or a run that passed since.
 - **The search trail.** Three searches with one closed empty make a trail, an edit or the time window ends it; the
@@ -69,11 +74,25 @@ Runs every test that needs no model, in under a minute, with scripted models and
   "later" skipping the question, `:Pair context` in a headless Neovim (buffers and jumps on the card, `x` hiding git
   and bringing it back, and a word when not connected), and sessions ending by themselves: after the idle time, and
   once the last Neovim closed, with a note only for a session that was used.
+- **The day's end and the morning pick-up.** The wins (tests and commands green again, numbers that moved, kept
+  changes), the debrief's first step and the file its short name resolves to, the lesson line from the verdicts
+  (ignored remarks counting as noise), the debrief kept as the note and a place; the next morning landing on that
+  place after the code moved, the gaze reading it, the line and the failing run "since yesterday" with signs only for
+  files unchanged since; no pick-up right after an end or once you work; the first step without a model; `/first`;
+  break hints only at a natural end after 50 minutes of focus. In a headless Neovim: an empty Neovim landing, the
+  line under the place, `Alt-j` to the failing test, a Neovim on another file staying there, and the debrief panel.
 - **Builds and crashes.** The crash and diagnostic readers on real output of gcc, clang, zig, lld, glibc, the
   sanitizers, bash and make, recursive make included (and Odin's and C3's formats); signals from exit codes, never a
   program's own words in a run that ended with exit 0; the frame in the project; paths from where a command ran; new
   warnings only in files you edited; the crash and new-warning triggers; and in Neovim the `✗` and `△` on their lines,
   `Alt-j` to the crash or first error at its column, and a clean run clearing them.
+- **The exploration loop.** The run log on the research's four runs (the same numbers after a print and after a
+  change of the code, a number that moved, a time that only moves at half or double, a number that got worse, the
+  output compared without numbers, a crash and a broken build); which commands are runs; the numbers of a run (no
+  listing, place or address); the triggers once per run, and none from a hidden terminal; each language's debug
+  prints and the lines one printed; debug lines added in the session and still in the code. In Neovim, four runs on
+  save end to end: the statusline for each, the remark on the same numbers, the debug line counted and `Alt-j` to
+  it, `:Pair runs` with `⏎` and `x` removing the print unsaved.
 - **Tests on save.** The JSON reports of go test (subtests, panics, build failures), jest and vitest, each test placed
   at its line; runs in Pair's pane one at a time; the regression trigger raised once per run with new failures.
 - **Tests on unsaved text.** A real `go test -overlay` passing on the buffer's fix while the file on disk fails; a copy
@@ -99,7 +118,8 @@ Runs every test that needs no model, in under a minute, with scripted models and
 [test/no-core.mjs](../test/no-core.mjs), which sets the core limit to 1 byte. With systemd-coredump in
 `/proc/sys/kernel/core_pattern`, `ulimit -c 0` is not enough: the kernel still hands the crash to it, and it logs the
 crash and shows a notification. At 1 byte the kernel gives up before the pipe. A new test that crashes something on
-purpose should run it the same way (`bashWithoutCores(command)`).
+purpose should run it the same way (`bashWithoutCores(command)`); so do the live tests' builds and runs, which crash
+only when a change goes wrong.
 
 ## Live tests against real models
 
@@ -129,8 +149,14 @@ Stacks can name a `provider` too, with its login or key from `pair auth`. Withou
   the Navigator suggesting instead of editing.
 - **Memory:** a session note that names the goal, the change and the loose end; the next session answering "what did
   we leave open?" from it; the note not turning a noise moment into a remark.
+- **The day's end and the pick-up** (`test/live/day.test.mjs`): the debrief keeping its form (a `✓` line and a
+  first step whose place is a file in the project), and the next morning's line being one short line of the model's.
 - **Builds and runs** (`test/live/runs.test.mjs`): a C program built and run for real with `cc`. A segfault gets a
   point at its cause, a `-Wformat` warning a point at the `printf`, and an unused variable silence.
+- **The exploration loop** (`test/live/loop.test.mjs`): the captures' hash table built and run for real with
+  `make run`, four times. The same numbers after `* 31` score above the bar and get a point at the cause with the
+  reason, and the shift that ends the hunt scores above the bar and gets a line with the new number. Its runs go
+  through `bashWithoutCores` too, like every program a test runs.
 - **Notes in the margin:** at most five specific marks on a design note, with its contradiction and a mark on what
   the code does; tasks with its open question as one; after a stalled question, one question back about it, through
   a real session; one question about a section that left the note, and silence for one that did not.

@@ -45,9 +45,10 @@ const LABEL_END = /[(),;|[\]{}]/; // what starts a new label on a line: "avg 23.
  * The labelled numbers of a command's output, by where they stand: the line with its numbers blanked out, and
  * which number of the line. A number is labelled by the words before it, back to the last ( , ; and the like; else,
  * with only numbers between, by the line's first word ("BenchmarkLookup-8   1000000   1043 ns/op"); else by the word
- * after it ("5 passed, 2 failed"). One with no label, or none that tells which way is better, is left out.
+ * after it ("5 passed, 2 failed"). One with no label, or none that tells which way is better, is left out; with
+ * `all`, only one with no label is (its `way` is then 0 when its words do not tell).
  */
-export function numbersOf(output = '') {
+export function numbersOf(output = '', {all = false} = {}) {
   const found = new Map();
   for (const line of output.split('\n').slice(-MAX_LINES)) {
     if (line.length > MAX_LINE_CHARS || /\d:\d\d/.test(line)) continue; // times of day and timestamps move anyway
@@ -61,7 +62,7 @@ export function numbersOf(output = '') {
       const label = wordsOf(before.at(-1)).slice(-3).join(' ') || first || after;
       const unit = match[2] ?? match[3] ?? '';
       const way = label ? betterWay(label, unit, after) : 0;
-      if (way) found.set(`${shape}#${index}`, {label, value: Number(match[1]), text: match[1], unit, way});
+      if (way || (all && label)) found.set(`${shape}#${index}`, {label, value: Number(match[1]), text: match[1], unit, way});
     });
   }
   return found;
@@ -99,7 +100,7 @@ function moved(now, runs) {
 /**
  * The moments of one session. Each method returns a moment, or null when nothing changed: `sound` is 'green' when
  * something turned good (the editor glows) or 'red' when a test that passed before fails, and `text` is the one line
- * for a green that is worth words.
+ * for a green that is worth words; `moved` marks a number that moved.
  */
 export class Delight {
   constructor() {
@@ -159,7 +160,7 @@ export class Delight {
     const now = numbersOf(output);
     const text = moved(now, known.runs);
     known.runs = text ? [now] : [...known.runs.slice(1 - HISTORY), now]; // a number that moved holds from its new value
-    return text ? {sound: 'green', text} : null;
+    return text ? {sound: 'green', text, moved: true} : null;
   }
 
   known(cmd) {

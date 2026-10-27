@@ -8,6 +8,7 @@ import {AgentRelay, itemName} from './agent-relay.mjs';
 import {AgentBoard, STATUSES} from './agents.mjs';
 import {sameServer} from './config.mjs';
 import {goalFromContext, SOURCES} from './context-card.mjs';
+import {loadSizedConfig} from './context-window.mjs';
 import {byUse, herdrFocus, noteEditor} from './editors.mjs';
 import {gitRoot} from './git.mjs';
 import {MODEL_ROLES, ModelHealth} from './health.mjs';
@@ -24,6 +25,7 @@ import {probeModel} from './probe.mjs';
 import {projectContext} from './project-context.mjs';
 import {readMessages, sendMessage} from './protocol.mjs';
 import {configChanges, RESTART_FIELDS, watchConfig} from './reload.mjs';
+import {rememberScores} from './score-memory.mjs';
 import {ScoutPane} from './scout-pane.mjs';
 import {PairSession} from './session.mjs';
 import {openRootOf, sessionRootOf} from './session-root.mjs';
@@ -31,7 +33,7 @@ import {ModelSlot} from './slot.mjs';
 import {openStore} from './store.mjs';
 import {ROLE_TOOLS, ROLES} from './tools.mjs';
 import {VERSION} from './version.mjs';
-import {createWatcher} from './watcher.mjs';
+import {createWatcher, momentOf} from './watcher.mjs';
 
 const EDITOR_REPLY_MS = 2000;
 const EDIT_REPLY_MS = 30_000; // Neovim replies to the Driver's edit once it has typed it
@@ -115,6 +117,9 @@ export async function startDaemon(config, {
     return session.useTool(name, args);
   };
 
+  let partnerAsked = false; // since the Watcher's last call: its next call may find the Partner's model loaded
+  const deferred = {deferred: true, reason: 'the Partner has the model'};
+
   /** The Watcher's scoring and the Partner on `pairModels`, as the config sets them. */
   async function buildModels(pairModels) {
     // Two models on one server: the Watcher follows what the server has loaded (see loaded-model.mjs).
@@ -134,16 +139,23 @@ export async function startDaemon(config, {
       },
     });
     const scoreRemark = createWatcher({models: pairModels.models, model: pairModels.watcher, chooseModel: chooseWatcherModel});
-    return {pairModels, chooseWatcherModel, partner, scoreRemark};
+    // Scores are remembered for these models only: other models may score the same moment otherwise.
+    const remembered = rememberScores(async (trigger, state) => {
+      const afterPartner = partnerAsked;
+      const started = Date.now();
+      const result = await slot.watch(signal => scoreRemark(trigger, state, {signal}));
+      if (!result) return deferred;
+      partnerAsked = false;
+      chooseWatcherModel.timed?.(Date.now() - started, afterPartner);
+      health.report('watcher', result.error);
+      return result;
+    }, {momentOf});
+    return {pairModels, chooseWatcherModel, partner, scoreRemark, remembered};
   }
   models = await buildModels(pairModels);
 
-  const score = async (trigger, state) => {
-    const result = await slot.watch(signal => models.scoreRemark(trigger, state, {signal}));
-    if (!result) return {deferred: true, reason: 'the Partner has the model'};
-    health.report('watcher', result.error);
-    return result;
-  };
+  // A remembered score waits for the Partner too: on one server the remark it lets through would queue behind it.
+  const score = (trigger, state) => (slot.exclusive && slot.busy() ? deferred : models.remembered(trigger, state));
   // The sessions' Partner: always the one on the config's models, its turns put in order by the slot.
   const sessionPartner = {
     createConversation: () => models.partner.createConversation(),
@@ -159,7 +171,7 @@ export async function startDaemon(config, {
           asked: options?.kind !== 'remark',
           cancel: () => partner.cancel(conversationId).catch(error => log(`cancelling a remark failed: ${error.message}`)),
         },
-        () => reported('partner', partner.ask(conversationId, content, options)),
+        () => { partnerAsked = true; return reported('partner', partner.ask(conversationId, content, options)); },
       );
     },
     finish: (conversationId, submissionId) => slot.turn(
@@ -330,6 +342,7 @@ export async function startDaemon(config, {
       const session = new PairSession({
         record, store, partner: sessionPartner, score, health,
         previousNote: store.previousNote(root, record.id),
+        lastSession: store.lastSession(root, record.id),
         autoTune: config.autoTune,
         typingPauseMs: config.typingPauseMs,
         testOnSave: testOnSaveOf(root, record.id),
@@ -416,12 +429,12 @@ export async function startDaemon(config, {
 
   const ending = new Set();
 
-  /** Ends `session`; `why` says it ended by itself, in the chat, and then only a used session gets a note. */
+  /** Ends `session`; `why` says it ended by itself, in the chat. Only a session with work in it gets a debrief. */
   async function endSession(session, why = null) {
     if (ending.has(session)) return;
     ending.add(session);
     if (why) log(`[${basename(session.root)}] session ends by itself: ${why}`);
-    await session.end({withNote: !why || session.usedAt !== null}).finally(() => ending.delete(session));
+    await session.end().finally(() => ending.delete(session));
     contextReads.delete(session);
     listeners.get(session.root)?.close();
     listeners.delete(session.root);
@@ -451,6 +464,7 @@ export async function startDaemon(config, {
     // A Neovim that connects (or reconnects) after a test run shows its result too, and a late answer it missed.
     if (client.role === 'editor' && session.testsShown) sendMessage(client.socket, session.testsShown);
     if (client.role === 'editor' && session.runShown) sendMessage(client.socket, session.runShown);
+    if (client.role === 'editor' && session.runLineShown) sendMessage(client.socket, session.runLineShown);
     if (message.herdr?.socket) agents?.useHerdr(message.herdr.socket);
     const relayed = relays.get(session.root)?.last;
     if (client.role === 'editor' && relayed) sendMessage(client.socket, relayed);
@@ -458,6 +472,8 @@ export async function startDaemon(config, {
       sendMessage(client.socket, session.lateForEditors);
       session.lateForEditors = null;
     }
+    // The first Neovim after a long gap picks up where the last session stopped (see pickup.mjs).
+    if (client.role === 'editor') session.pickUp().catch(error => log(`pick-up failed: ${error.stack ?? error}`));
     if (client.role !== 'chat') return;
     watchHerdr(session, message.herdr);
     // A chat pane that reconnects after a daemon restart already shows the history, up to the restart.
@@ -539,6 +555,7 @@ export async function startDaemon(config, {
     if (message.type === 'event') return receive(session, message.event);
     if (message.type === 'ask') return session.ask(message.text, message.selection ?? null);
     if (message.type === 'goal') return session.setGoal(message.text);
+    if (message.type === 'first' && typeof message.text === 'string' && message.text.trim()) return session.setFirst(message.text.trim());
     if (message.type === 'level') return session.setLevel(message.level);
     if (message.type === 'role' && ROLES.includes(message.role)) return session.setRole(message.role);
     if (message.type === 'drive') return session.drive(message.text ?? '', message.selection ?? null);
@@ -552,6 +569,7 @@ export async function startDaemon(config, {
     if (message.type === 'applied') return session.applied(message.action, message.before, message.after);
     if (message.type === 'trail') return sendMessage(client.socket, session.trail());
     if (message.type === 'forget_trail') return session.forgetTrail();
+    if (message.type === 'runs') return session.runs().then(runs => sendMessage(client.socket, runs));
     if (message.type === 'release') return session.release();
     if (message.type === 'accent') return session.setAccent(message.color);
     if (message.type === 'decision') return margins.get(session.root).decide(message.file, message.line);
@@ -646,6 +664,8 @@ export async function startDaemon(config, {
   health.start();
   agents?.start();
   const configWatch = configFile && watchConfig(configFile, {
+    // The windows asked again as at start; one a server cannot tell now stays as the running config has it.
+    load: path => loadSizedConfig(path, {before: saved}),
     onChange: next => reload(next).catch(error => refuse(error.message)),
     onError: refuse,
   });

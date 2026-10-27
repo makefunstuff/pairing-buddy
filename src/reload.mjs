@@ -25,8 +25,9 @@ export function configChanges(running, next) {
  * Watches the config at `path` and calls `onChange(config)` with each new valid config, or `onError(message)` when the
  * file has an error. Returns `close()`. It watches the file's directory, since many editors save by renaming a new
  * file over it; for a config that is a symlink (into a dotfiles repository, say), the target's directory too.
+ * `load(path)` reads and checks the config (the daemon's also asks the servers for their windows, see context-window.mjs).
  */
-export function watchConfig(path, {onChange, onError, settleMs = SETTLE_MS}) {
+export function watchConfig(path, {onChange, onError, load = loadConfig, settleMs = SETTLE_MS}) {
   let timer = null;
   let last = null; // the text last read, so a save that changes nothing is no change
   readFile(path, 'utf8').then(text => { last ??= text; }, () => {});
@@ -38,7 +39,7 @@ export function watchConfig(path, {onChange, onError, settleMs = SETTLE_MS}) {
     if (text === null) return onError(`${path} is gone`);
     let config;
     try {
-      config = loadConfig(path);
+      config = await load(path);
     } catch (error) {
       return onError(error.message);
     }
