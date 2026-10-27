@@ -217,7 +217,7 @@ The first slice comes as a suggestion that adds lines and strikes nothing, and `
 
 ## The search trail
 
-You look for something with Telescope and it is not there under your words. A test is red; you grep for
+You look for something with Telescope or fzf-lua and it is not there under your words. A test is red; you grep for
 "give up": nothing. "dead letter": one comment. You find-file "retry" and open `backoff.go`. Those three searches say
 what you are after better than a goal you typed, and that the code calls it something else. Pair reads the trail
 and, once you pause, says where the thing is, in the code's own word.
@@ -265,9 +265,17 @@ closes it) and snacks.picker (as its input window closes, whether you confirm fr
 the result count and the selected entry, then whether that file is where you are now (in a new split too). No mapping, action or
 picker setting of yours changes, and nothing is written to the picker's own history; Telescope's history keeps
 only searches that ended in a selection, and the ones you gave up on are the telling ones. A picker closed with an
-empty prompt is no search. fzf-lua has no hook for its close, so its searches are not read
-([#56](https://github.com/makefunstuff/pairing-buddy/issues/56)). `searches = false` in
-`setup` turns all of this off.
+empty prompt is no search.
+
+fzf-lua (`FileType fzf`, then its window closing, which it does whether it ends fzf or, as it does by default, only
+hides it for a resume) is read the same way, with two differences, as fzf-lua does not hand out what you selected.
+What you opened is where the picker's action took you: the window you came from, now on another file or another
+line. Your words and the result count are read off fzf's screen while it runs: closed with Esc, fzf-lua hears your
+words from fzf only after its window has gone. The picker is its command (`live_grep` is Live Grep, `grep_cword`
+Grep Cword); for `grep`, `grep_cword`, `grep_cWORD` and `grep_visual` your words are the words grepped for, as you
+gave them and not as escaped for rg, and not the fuzzy filter typed over them. A resumed picker, closed again, is a
+search again, with the words it has then. `searches = false` in `setup` turns
+all of this off.
 
 ## The held thought
 
@@ -498,7 +506,7 @@ herdr's work board ([captures/board.mjs](captures/board.mjs)).*
 | board | the task, its state, and how many of the repo's other tasks are working or need you | the herdr work board: the task whose number is in the branch name, in this repo |
 | git | branch, last commit, how many files changed, the pull request | `git`, and `gh pr view` at most every five minutes |
 | terminal | the last three commands, how they ended and how long ago | the herdr panes and the shell hook |
-| editor | your buffers, the jumplist, and your searches with what you opened from them | Neovim, and the searches the [search trail](#the-search-trail) reads from Telescope and snacks.picker |
+| editor | your buffers, the jumplist, and your searches with what you opened from them | Neovim, and the searches the [search trail](#the-search-trail) reads from Telescope, snacks.picker and fzf-lua |
 
 - **`x` hides a source** for the rest of the session: it is struck through on the card and no longer sent. `x` on
   it again brings it back. `q` or `Esc` closes the card. A hidden terminal also means no remark about a failed
