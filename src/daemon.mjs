@@ -580,12 +580,12 @@ export async function startDaemon(config, {
     if (!session) return sendMessage(client.socket, {type: 'message', sender: 'system', text: 'No active session; send hello first', at: Date.now()});
     if (client.role === 'editor') noteEditor(client, message);
     if (message.type === 'event') return receive(session, message.event);
-    if (message.type === 'ask') return session.ask(message.text, message.selection ?? null);
+    if (message.type === 'ask') return session.askTyped(message.text, message.selection ?? null);
     if (message.type === 'goal') return session.setGoal(message.text);
     if (message.type === 'first' && typeof message.text === 'string' && message.text.trim()) return session.setFirst(message.text.trim());
     if (message.type === 'level') return session.setLevel(message.level);
     if (message.type === 'role' && ROLES.includes(message.role)) return session.setRole(message.role);
-    if (message.type === 'drive') return session.drive(message.text ?? '', message.selection ?? null);
+    if (message.type === 'drive') return session.drive(message.text ?? '', message.selection ?? null, {keep: message.keep === true});
     if (message.type === 'take_back') return session.takeBack();
     if (message.type === 'new') return session.startNew(message.idea ?? '', message.file ?? 'NOTES.md');
     if (message.type === 'answer') return session.blankPage?.open ? session.blankPage.answer(message.text ?? '') : session.message('system', 'No questions of :Pair new are running here (the daemon may have restarted). :Pair new starts again.');

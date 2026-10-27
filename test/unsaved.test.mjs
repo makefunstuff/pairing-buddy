@@ -81,6 +81,21 @@ test('other runners run in a copy of the project: git\'s files and ignored files
   assert.equal(run.toProject(null), null);
 });
 
+test('a change in several files: each buffer\'s text goes to the run, in the copy and through the overlay', async t => {
+  if (!has('git')) return t.skip('git not installed');
+  const root = project({'a/util.go': 'saved a\n', 'b/util.go': 'saved b\n', 'c.txt': 'untouched\n'});
+  git(root);
+  const texts = new Map([[join(root, 'a/util.go'), 'buffer a\n'], [join(root, 'b/util.go'), 'buffer b\n']]);
+  const copy = await prepareUnsaved({root, command: 'make test', texts, ...places()});
+  assert.deepEqual(['a/util.go', 'b/util.go', 'c.txt'].map(file => readFileSync(join(copy.root, file), 'utf8')), ['buffer a\n', 'buffer b\n', 'untouched\n']);
+  const {dir, tree} = places();
+  const go = await prepareUnsaved({root, command: 'go test -json ./...', texts, dir, tree});
+  const {Replace} = JSON.parse(readFileSync(join(dir, 'overlay.json'), 'utf8'));
+  assert.deepEqual(Object.keys(Replace), [...texts.keys()]);
+  assert.deepEqual(Object.values(Replace).map(path => readFileSync(path, 'utf8')), ['buffer a\n', 'buffer b\n'], 'two files of one name, each its own copy');
+  assert.equal(go.texts, texts);
+});
+
 test('in the copy, dependency folders at any depth are linked, without their caches; what a run builds stays in the copy', async t => {
   if (!has('git')) return t.skip('git not installed');
   const root = project({
@@ -115,13 +130,6 @@ test('in the copy, dependency folders at any depth are linked, without their cac
   const again = await prepareUnsaved({root, command: 'npm test', texts: new Map([[inner, 'x']]), ...places()});
   assert.deepEqual(again.left, [inner]);
   assert.equal(readFileSync(join(root, 'packages/a/node_modules/inner/index.js'), 'utf8'), 'module.exports = 2\n');
-});
-
-test('go test reads every unsaved buffer through the overlay', async () => {
-  const run = await prepareUnsaved({root: '/p', command: 'go test ./...', texts: new Map([['/p/a/a.go', 'package a\n'], ['/p/b/b.go', 'package b\n']]), ...places()});
-  const overlay = JSON.parse(readFileSync(/-overlay '([^']+)'/.exec(run.command)[1], 'utf8'));
-  assert.deepEqual(Object.keys(overlay.Replace), ['/p/a/a.go', '/p/b/b.go']);
-  assert.deepEqual(Object.values(overlay.Replace).map(copy => readFileSync(copy, 'utf8')), ['package a\n', 'package b\n']);
 });
 
 test('the copy has every unsaved buffer, stays between runs and copies only what changed: a build in it builds only that', async t => {

@@ -122,11 +122,12 @@ export class TestRuns {
   }
 
   /**
-   * Runs the command once on `texts` (absolute file -> text: the unsaved buffers, with the Driver's edit in `file`),
-   * without saving anything, and resolves with what it reports at the end, and the `picture` the run wrote in the
-   * scratch copy, if any (see pictureSince). Pair's pane runs one command at a time, so it waits for a run on save.
+   * Runs the command once on `texts` (absolute file -> text: the unsaved buffers, the Driver's `edited` files among
+   * them), without saving anything, and resolves with what it reports at the end, and the `picture` the run wrote in
+   * the scratch copy, if any (see pictureSince). Pair's pane runs one command at a time, so it waits for a run on save.
    */
-  async unsaved(file, texts) {
+  async unsaved(texts, edited = [...texts.keys()]) {
+    const file = edited.at(-1);
     const report = run => { this.report({...run, label: this.label, saved: file, unsaved: true}); return {...run, label: this.label}; };
     const pane = this.pane();
     if (!pane) return report({state: 'error', error: 'the tests need Pair\'s own pane, in herdr or Neovim', short: 'needs herdr or Neovim'});
@@ -135,7 +136,8 @@ export class TestRuns {
     try {
       return await withTree(this.tree, async () => {
         const run = await prepareUnsaved({root: this.root, command: this.command, texts, dir, tree: this.tree});
-        if (run.left.includes(file)) throw new Error(`${file.slice(this.root.length + 1)} is in a dependency folder`);
+        const lost = edited.find(path => run.left.includes(path));
+        if (lost) throw new Error(`${lost.slice(this.root.length + 1)} is in a dependency folder`);
         const outputFile = join(dir, 'run.out');
         const started = Date.now();
         const {exit, timedOut} = await pane.run(runLine(run.command, run.root, outputFile), {timeoutMs: this.timeoutMs});

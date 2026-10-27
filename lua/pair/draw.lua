@@ -92,11 +92,19 @@ local function width_of(chunks)
 end
 
 --- The pair's voice: `text` as virtual lines indented by `indent`, `glyph` (the voice's by default) before the first
---- line and `key` (the key that acts on it) dimmed after the last; at most `max` lines (MAX_LINES), cut with an ellipsis.
-local function voice(text, indent, width, key, glyph, max)
+--- line and `key` (the key that acts on it) dimmed after the last; at most `max` lines (MAX_LINES), cut with an
+--- ellipsis, and `more` (where the rest is) dimmed before the key when it is cut.
+local function voice(text, indent, width, key, glyph, max, more)
   max = max or MAX_LINES
-  local room = key and vim.fn.strdisplaywidth(key) + 3 or 0 -- the key goes after the last line, so no line takes its place
-  local lines = wrap(text, math.max(20, width - indent - 2 - room), 'PairNote')
+  local function wrapped(after)
+    local room = after and vim.fn.strdisplaywidth(after) + 3 or 0 -- it goes after the last line, so no line takes its place
+    return wrap(text, math.max(20, width - indent - 2 - room), 'PairNote')
+  end
+  local lines = wrapped(key)
+  if #lines > max and more then
+    key = key and more .. ' · ' .. key or more
+    lines = wrapped(key)
+  end
   if #lines > max then
     lines = vim.list_slice(lines, 1, max)
     table.insert(lines[max], {' …', 'PairNote'})
@@ -177,11 +185,12 @@ local TEACH_LINES = 4 -- of the idea behind its words
 --- ({glyph, group}). With `opts.teaching`, the idea behind them follows under them: {text, key}, or {} while it is
 --- asked, shown as a dimmed ellipsis. Only what is new rises from the background: all of it, or with `opts.still`
 --- nothing, or with `opts.teaching_rises` only the idea. `opts.glyph` goes before them instead of the voice glyph,
---- and the extmark is in namespace `opts.ns`, by default the pair's. Returns the extmark id.
+--- and the extmark is in namespace `opts.ns`, by default the pair's. `opts.max` caps the lines (MAX_LINES), and
+--- `opts.more` says where the rest is when they are cut. Returns the extmark id.
 function M.remark(buf, row, text, key, opts)
   opts = opts or {}
   local indent, width = indent_of(buf, row), text_width(window_of(buf))
-  local lines = voice(text, indent, width, key, opts.glyph)
+  local lines = voice(text, indent, width, key, opts.glyph, opts.max, opts.more)
   local said = #lines
   local teaching = opts.teaching
   if teaching and teaching.text then

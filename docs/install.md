@@ -119,7 +119,7 @@ the config ([watcher.md](watcher.md#thinking-the-partner-not-the-watcher)).
 
 The chat pane is optional: a Neovim alone is a whole session.
 
-**Chat commands.** `/goal <text>`, `/level quiet|normal|chatty`, `/scout`, `/navigate`, `/drive [what]`, `+` or
+**Chat commands.** `/goal <text>`, `/level quiet|normal|chatty`, `/scout`, `/navigate`, `/drive [what]`, `/drive! [what]`, `+` or
 `/useful` and `-` or `/noise` (your verdict on Pair's last unasked remark), `/today` (what Pair did here today, as in
 `:Pair today`, without the keys), `/agents` (your other agents and board tasks), `?` or `/why` (the idea worth keeping behind what Pair said last), `/end`, and `/quit` (closes the pane; the
 session goes on). A line that starts with "you take it" or "your turn" hands Pair the wheel too; anything else is a

@@ -279,51 +279,141 @@ function driverSession({turn = async () => 'ok', editor = true, role = 'navigato
 
 const lastConfirm = sent => sent.filter(message => message.type === 'confirm').at(-1);
 
-test('handing over makes Pair the Driver for one answer with one edit, which goes to the editor; then it hands back by itself', async () => {
+test('handing over makes Pair the Driver for one answer with a few edits, each to the editor; then it hands back by itself', async () => {
   let input;
   let replies;
   let roleAfterEdit;
   const {pair, edits, roles, sent, roleChanges} = driverSession({turn: async (pair, given) => {
     input = given;
-    const reply = await pair.edit({file: 'package.json', line: 2, endLine: 2, text: '  "name": "x",'});
+    replies = [await pair.edit({file: 'package.json', line: 2, endLine: 2, text: '  "name": "x",', more: true})];
     roleAfterEdit = pair.role;
-    const again = await pair.edit({file: 'package.json', line: 3, endLine: 3, text: 'more'});
-    replies = [reply, again];
+    replies.push(await pair.edit({file: 'README.md', line: 1, endLine: 1, text: '# x'}));
+    for (const line of [3, 4, 5]) replies.push(await pair.edit({file: 'package.json', line, endLine: line, text: 'more'}));
     return 'Renamed the package.';
   }});
   await pair.drive('your turn');
   assert.match(input, /^\[drive\] The user handed you the wheel for one change\. The user said: "your turn"/);
   assert.match(input, /make it pass by changing the code, not the test/);
-  assert.deepEqual(edits.map(({type, line, endLine, text}) => ({type, line, endLine, text})), [{type: 'edit', line: 2, endLine: 2, text: '  "name": "x",'}]);
-  assert.match(replies[0], /^Changed, as one undo step\. That was your one edit: say in one sentence what you changed\. Nothing ran on the unsaved buffer: no command on save, and no build or run in the user's terminal yet\. The file on disk changes only when the user saves, so do not run anything now\.$/);
-  assert.match(replies[1], /^You already made your one change/, 'one edit per hand-over');
+  assert.deepEqual(edits.map(({type, line, endLine, text}) => ({type, line, endLine, text})), [
+    {type: 'edit', line: 2, endLine: 2, text: '  "name": "x",'},
+    {type: 'edit', line: 1, endLine: 1, text: '# x'},
+    {type: 'edit', line: 3, endLine: 3, text: 'more'},
+    {type: 'edit', line: 4, endLine: 4, text: 'more'},
+    {type: 'edit', line: 5, endLine: 5, text: 'more'},
+  ]);
+  assert.equal(replies[0], 'Changed, as one undo step. Make your next edit (4 left); Pair checks the change after the last one, the one without more.', 'the check waits for the last edit');
+  assert.match(replies[1], /^Changed, as one undo step\. Now say in one sentence what you changed\. Nothing ran on the unsaved buffer: no command on save, and no build or run in the user's terminal yet\. The file on disk changes only when the user saves, so do not run anything now\.$/);
+  assert.match(replies[4], /^Changed/);
+  assert.equal(edits.length, 5, 'five edits per hand-over');
   assert.equal(roleAfterEdit, 'driver', 'the wheel stays until the answer ends, so tools do not vanish mid-answer');
   assert.deepEqual(roleChanges(), ['driver', 'navigator']);
   assert.equal(pair.role, 'navigator');
   assert.deepEqual(roles, ['navigator', 'navigator'], 'a drive is stored as Navigator, where it ends, so a restart during one does too');
   const handback = sent.find(message => message.type === 'handback');
-  assert.deepEqual(handback, {to: 'editor', type: 'handback', file: join(process.cwd(), 'package.json'), line: 2, endLine: 2, tests: null, check: null, text: 'Renamed the package.'},
-    'the hand-back line: Pair\'s words under the lines it changed; no tests without a command for the project');
+  const place = (file, line) => ({file: join(process.cwd(), file), line, endLine: line});
+  assert.deepEqual(handback, {
+    to: 'editor', type: 'handback', ...place('package.json', 5), tests: null, check: null, text: 'Renamed the package.',
+    changes: [place('package.json', 2), place('README.md', 1), place('package.json', 3), place('package.json', 4), place('package.json', 5)],
+  }, 'the hand-back line: Pair\'s words under its last edit, every edit\'s lines marked; no tests without a command for the project');
   assert.ok(sent.indexOf(handback) > sent.findLastIndex(message => message.type === 'role'), 'after the wheel is back');
 });
 
-test('an edit the editor refuses does not use up the one edit, and two at once cannot both pass', async () => {
+test('a sixth edit in one hand-over is refused, and edits at once cannot pass the bound together; one the editor refuses does not count', async () => {
   let replies;
   const {pair, edits} = driverSession({turn: async pair => {
     const failed = pair.requestEditor;
     pair.requestEditor = async () => ({error: 'line 99 is past the end of the buffer (3 lines)'});
     const first = await pair.edit({file: 'package.json', line: 99, endLine: 99, text: 'x'});
     pair.requestEditor = failed;
+    for (const line of [1, 2, 3]) await pair.edit({file: 'package.json', line, endLine: line, text: 'a', more: true});
     replies = [first, ...await Promise.all([
-      pair.edit({file: 'package.json', line: 1, endLine: 1, text: 'a'}),
-      pair.edit({file: 'package.json', line: 2, endLine: 2, text: 'b'}),
+      pair.edit({file: 'package.json', line: 4, endLine: 4, text: 'a'}),
+      pair.edit({file: 'package.json', line: 5, endLine: 5, text: 'b'}),
+      pair.edit({file: 'package.json', line: 6, endLine: 6, text: 'c'}),
     ])];
     return 'ok';
   }});
   await pair.drive('you take it');
   assert.match(replies[0], /^Not changed: line 99 is past the end/);
-  assert.equal(replies.filter(reply => reply.startsWith('Changed')).length, 1);
-  assert.equal(edits.length, 1);
+  assert.equal(replies.filter(reply => reply.startsWith('Changed')).length, 2);
+  assert.match(replies.at(-1), /^That was your last edit: 5 per hand-over\./);
+  assert.equal(edits.length, 5);
+});
+
+test('an edit with old_text changes only that text in its lines; text that is not there once changes nothing', async () => {
+  let replies;
+  const {pair, edits} = driverSession({turn: async pair => {
+    pair.requestEditor = async message => (message.type === 'read' ? {text: 'const a = 1\nconst b = 1 + 1\nconst c = 3\n'} : (edits.push(message), {ok: true}));
+    replies = [
+      await pair.edit({file: 'package.json', line: 1, endLine: 2, old: 'b = 1 +', text: 'b = 2 *', more: true}),
+      await pair.edit({file: 'package.json', line: 1, endLine: 2, old: 'x', text: 'y'}),
+      await pair.edit({file: 'package.json', line: 1, endLine: 2, old: '1', text: '2'}),
+    ];
+    return 'ok';
+  }});
+  await pair.drive('you take it');
+  assert.deepEqual(edits.map(({line, endLine, text}) => ({line, endLine, text})), [{line: 1, endLine: 2, text: 'const a = 1\nconst b = 2 * 1'}]);
+  assert.match(replies[1], /^Not changed: old_text is not in lines 1-2/);
+  assert.match(replies[2], /^Not changed: old_text is in lines 1-2 more than once/);
+});
+
+test('an answer that ends after an edit with more still gets its change checked, for the hand-back line', async () => {
+  const partner = {
+    thinkingOf: () => 'off',
+    setRole: async () => {},
+    ask: async () => { await pair.edit({file: 'cart/cart_test.go', line: 6, endLine: 6, text: '}', more: true}); return 'Done.'; },
+  };
+  const {pair, ran, sent, setReport} = saveSession({partner, requestEditor: async message => (message.type === 'read' ? {text: 'x\n'} : {ok: true})});
+  setReport('go-test-pass');
+  await pair.drive('your turn');
+  assert.equal(ran.length, 1, 'checked once the answer ended');
+  assert.equal(sent.find(message => message.type === 'handback').tests, 'pass');
+});
+
+test('handed over from Scout, Pair goes back to Scout, with its pane still open', async () => {
+  const {pair, sent, roles, roleChanges} = driverSession({role: 'scout', turn: async pair => {
+    await pair.edit({file: 'package.json', line: 1, endLine: 1, text: '{'});
+    return 'Done.';
+  }});
+  let closed = 0;
+  pair.scout = {open: async () => {}, close: async () => { closed++; }};
+  await pair.drive('you take it');
+  assert.deepEqual(roleChanges(), ['driver', 'scout']);
+  assert.equal(pair.role, 'scout');
+  assert.deepEqual(roles, ['navigator', 'scout'], 'stored as Scout again');
+  assert.equal(closed, 0, 'Scout\'s pane stays');
+  assert.ok(sent.some(message => message.text === 'Role: Scout. Pair can also search and run read-only, test and build commands in its own pane; anything else asks you first.'));
+  // A key takes the wheel back to Scout too.
+  pair.partner.ask = async () => { await pair.takeBack(); return 'ok'; };
+  await pair.drive('you take it');
+  assert.equal(pair.role, 'scout');
+});
+
+test('/drive! keeps the wheel: each request after it is a hand-over with its own edits, until the user takes the wheel back', async () => {
+  const inputs = [];
+  const {pair, sent, edits, roleChanges} = driverSession({turn: async (pair, input) => {
+    inputs.push(input);
+    await pair.edit({file: 'package.json', line: inputs.length, endLine: inputs.length, text: 'x'});
+    return `Changed line ${inputs.length}.`;
+  }});
+  await pair.drive('rename it', null, {keep: true});
+  assert.equal(pair.role, 'driver', 'still driving after the answer');
+  assert.ok(sent.some(message => message.text === 'Pair keeps the wheel for each request until you take it back: any key in Neovim, or /navigate.'));
+  assert.match(inputs[0], /^\[drive\] You have the wheel until the user takes it back; this request is one change\. The user said: "rename it"/);
+  assert.equal(sent.filter(message => message.type === 'handback').length, 1, 'a hand-back line after each answer');
+  assert.equal(await pair.ask('and the next line'), '', 'a question is a request to the Driver');
+  assert.match(inputs[1], /^\[drive\] You have the wheel until the user takes it back; this request is one change\. The user said: "and the next line"/);
+  assert.equal(edits.length, 2, 'each request has its own edits');
+  assert.deepEqual(roleChanges(), ['driver'], 'the role is told once');
+  await pair.takeBack();
+  assert.equal(pair.role, 'navigator');
+  assert.equal(pair.keepWheel, false);
+  await pair.ask('what now?');
+  assert.match(inputs[2], /^\[user\] what now\?/, 'a question again, as Navigator');
+  // Switching away by command ends it too.
+  await pair.drive('', null, {keep: true});
+  await pair.setRole('navigator');
+  assert.equal(pair.keepWheel, false);
 });
 
 test('a turn without an edit also ends with Pair back as Navigator', async () => {
@@ -409,6 +499,31 @@ test('a suggestion goes to the editor as an inline diff, in any role', async () 
   const count = (await readFile('package.json', 'utf8')).split('\n').length;
   assert.match(await pair.suggest({file: 'package.json', line: count + 1, endLine: count + 1, text: 'x', note: 'x'}), /past the end of package\.json/);
   assert.equal(sent.filter(message => message.type === 'suggest').length, 1, 'a line past the end is not shown');
+});
+
+test('several suggestions in one answer all go to the editor; the jump key aims at the first', async () => {
+  const {pair, sent} = driverSession({turn: async pair => {
+    await pair.suggest({file: 'package.json', line: 2, endLine: 2, text: 'a', note: 'one'});
+    await pair.suggest({file: 'README.md', line: 1, endLine: 1, text: 'b', note: 'two'});
+    return 'Two fixes.';
+  }});
+  await pair.ask('what is wrong?');
+  const shown = sent.filter(message => message.type === 'suggest');
+  assert.deepEqual(shown.map(message => [message.note, message.aim]), [['one', true], ['two', false]]);
+  assert.equal(pair.target.note, 'one');
+});
+
+test('a typed question: the answer goes to the editor too, under the selection\'s last line or the line the user was on', async () => {
+  const {pair, sent} = driverSession({turn: async () => 'Because the loop starts at 1.\nSee line 3.'});
+  const answered = () => sent.filter(message => message.type === 'answered');
+  pair.receive({kind: 'cursor', file: join(process.cwd(), 'package.json'), line: 4, col: 0});
+  await pair.askTyped('why?');
+  assert.deepEqual(answered(), [{to: 'editor', type: 'answered', file: join(process.cwd(), 'package.json'), line: 4, text: 'Because the loop starts at 1.\nSee line 3.', pointed: false}]);
+  await pair.askTyped('and this?', {file: join(process.cwd(), 'README.md'), from: 2, to: 5});
+  assert.deepEqual([answered()[1].file, answered()[1].line], [join(process.cwd(), 'README.md'), 5]);
+  pair.partner.ask = async () => 'SILENT';
+  await pair.askTyped('anything?');
+  assert.equal(answered().length, 2, 'no words, nothing under the line');
 });
 
 test('the Driver types into the user\'s terminal only after a yes, never Enter, and never what the policy refuses', async () => {
@@ -730,7 +845,7 @@ test('after the Driver\'s edit, the tests run on the unsaved buffer: the Partner
   await pair.drive('your turn');
   const overlay = `${join(root, 'run.out')}.unsaved/overlay.json`;
   assert.deepEqual(ran, [`cd '${root}' && (go test -overlay '${overlay}' -json ./...) > '${root}/run.out.unsaved/run.out' 2>&1`]);
-  assert.match(reply, /^Changed, as one undo step\. That was your one edit: say in one sentence what you changed, and whether the tests pass\. `go test \.\/\.\.\.` on the unsaved buffer: 4 passed\.$/);
+  assert.match(reply, /^Changed, as one undo step\. Now say in one sentence what you changed, and whether the tests pass\. `go test \.\/\.\.\.` on the unsaved buffer: 4 passed\.$/);
   const [start, end] = tests();
   assert.deepEqual(start, {to: 'editors', type: 'tests', state: 'run', label: 'go test ./... (unsaved)'});
   assert.deepEqual([end.state, end.label, end.text], ['pass', 'go test ./... (unsaved)', '4 tests, 2 packages']);
@@ -738,6 +853,32 @@ test('after the Driver\'s edit, the tests run on the unsaved buffer: the Partner
   const handback = sent.find(message => message.type === 'handback');
   assert.deepEqual([handback.line, handback.endLine, handback.tests, handback.text], [7, 7, 'pass', 'Added a case; the tests pass.']);
   assert.equal(pair.state.tests, null, 'a run on the buffer is no baseline for the next run on save');
+});
+
+test('a change in several edits is checked once, after the last, on every buffer it changed', async () => {
+  const replies = [];
+  const partner = {
+    thinkingOf: () => 'off',
+    setRole: async () => {},
+    ask: async () => {
+      replies.push(await pair.edit({file: 'cart/cart_test.go', line: 6, endLine: 6, text: '}', more: true}));
+      replies.push(await pair.edit({file: 'tax/tax_test.go', line: 6, endLine: 6, text: '}'}));
+      return 'Both files; the tests pass.';
+    },
+  };
+  const {pair, root, ran, setReport} = saveSession({partner, requestEditor: async message => (message.type === 'read' ? {text: `buffer of ${message.file}\n`} : {ok: true})});
+  setReport('go-test-pass');
+  let checked;
+  const unsaved = pair.testRuns.unsaved.bind(pair.testRuns);
+  pair.testRuns.unsaved = texts => { checked = texts; return unsaved(texts); };
+  await pair.drive('your turn');
+  assert.equal(ran.length, 1, 'one run, after the last edit');
+  assert.match(replies[0], /^Changed, as one undo step\. Make your next edit/);
+  assert.match(replies[1], /whether the tests pass\. `go test \.\/\.\.\.` on the unsaved buffer: 4 passed\.$/);
+  assert.deepEqual([...checked], [
+    [join(root, 'cart/cart_test.go'), `buffer of ${join(root, 'cart/cart_test.go')}\n`],
+    [join(root, 'tax/tax_test.go'), `buffer of ${join(root, 'tax/tax_test.go')}\n`],
+  ]);
 });
 
 test('when the tests cannot run on the buffer, the Partner is told why, and the statusline keeps the last run on save', async () => {

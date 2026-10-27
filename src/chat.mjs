@@ -12,6 +12,7 @@ const HELP = `/goal <text>   set the session goal
 /scout         Pair may search and run commands in its own pane
 /navigate      back to watching and pointing (the default)
 /drive [what]  hand Pair the wheel for one change (or say "you take it" or "your turn")
+/drive! [what] let Pair keep the wheel for each request until you take it back
 +  or /useful  Pair's last remark was useful
 -  or /noise   it was not (a remark you never see counts as not useful too)
 /remarks       the last remarks here, numbered: +2 or -2 rates the second last
@@ -39,6 +40,7 @@ export function parseInput(line) {
   if (command === '/scout') return {type: 'role', role: 'scout'};
   if (command === '/navigate') return {type: 'role', role: 'navigator'};
   if (command === '/drive') return {type: 'drive', text: arg};
+  if (command === '/drive!') return {type: 'drive', text: arg, keep: true};
   if (command === '/end') return {type: 'end'};
   if (command === '/today') return {type: 'today'};
   if (command === '/agents') return {type: 'agents'};
