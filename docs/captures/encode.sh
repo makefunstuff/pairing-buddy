@@ -4,7 +4,7 @@
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 OUT=$HERE/out
-SITE=$HERE/../../site/media
+SITE=$HERE/../../site/public/media
 IMAGES=$HERE/../images
 ff() { ffmpeg -v error -y "$@"; }
 

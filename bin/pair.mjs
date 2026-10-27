@@ -49,7 +49,7 @@ const USAGE = `usage:
   pair report --exit N --cmd TEXT [--shell PID]   (used by the shell hook)`;
 
 const ONE_MODEL = 'The Watcher asks it for one number without thinking, the Partner thinks; on its server the Watcher waits while the Partner works.';
-const TWO_MODELS = 'On a server that holds one model at a time, give both roles one model instead: "model" in the config (see docs/config.md, "One model").';
+const TWO_MODELS = 'On a server that holds one model at a time, give both roles one model instead: "model" in the config (see docs/models.md, "One model").';
 const LAZY_SPEC = `  {
     'makefunstuff/pairing-buddy',
     main = 'pair',
