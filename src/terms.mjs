@@ -1,5 +1,5 @@
 // What each provider's terms say about using its subscription from a tool like Pair: one line before a subscription
-// login, and the page to read. docs/config.md has the longer version; both were checked in October 2026.
+// login, and the page to read. docs/models.md has the longer version; both were checked in October 2026.
 
 const TERMS = {
   'anthropic': {

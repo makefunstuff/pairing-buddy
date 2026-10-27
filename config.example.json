@@ -59,7 +59,7 @@
     // A cloud model instead: a provider pi-ai knows, with a subscription login or an API key from
     // `pair auth login PROVIDER` (`pair auth list` lists the providers, `pair auth models PROVIDER` their models).
     // A subscription's requests count against its plan's limits, and its terms decide whether a tool like this
-    // may use it (see "Logins and keys" in docs/config.md).
+    // may use it (see "Logins and keys" in docs/models.md).
     // "provider": "anthropic", "model": "your-cloud-model"
   }
 

@@ -124,7 +124,7 @@ question 3 and an off-topic section 2, under the normal bar of 6, since nothing 
 `setup({decide_key = '<M-d>', link_key = '<M-l>'})`: both are mapped in Normal mode, only in a note that has a mark
 they act on, and only where you have no mapping of your own; `false` for none. `:Pair decide` and `:Pair tasks`
 work either way. The glyphs are `question`, `contradiction`, `code`, `decision` and `repeat` in
-[`glyphs`](neovim.md#setup).
+[`glyphs`](neovim-plugin.md#setup).
 
 ## Limits
 
