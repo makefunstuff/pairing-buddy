@@ -127,8 +127,8 @@ question for Pair. When Pair asks before running or typing a command, your next 
 allows it, anything else declines.
 
 **The shell hook.** Optional, for exact command boundaries and exit codes in your own panes: add it to your shell's rc file.
-Pair then catches every command however short, stops polling herdr for the pane, and in zsh also counts your keys at
-the prompt as typing ([herdr.md](herdr.md#the-users-panes-the-shell-hook-else-heuristics)):
+Pair then catches every command however short, polls herdr for the pane only for an editor while a command runs,
+and in zsh also counts your keys at the prompt as typing ([herdr.md](herdr.md#the-users-panes-the-shell-hook-else-heuristics)):
 
 ```sh
 eval "$(pair shell-hook bash)"   # or zsh
@@ -136,7 +136,7 @@ pair shell-hook fish | source    # fish, in config.fish
 ```
 
 It runs `pair report` in the background before and after each command, so the prompt never waits; zsh's keys go
-straight to the daemon's socket, at most once a second, and never the keys themselves. It also emits OSC 133 marks
+straight to the daemon's socket, at most twice a second, and never the keys themselves. It also emits OSC 133 marks
 (prompt, output, end with the exit code) for a terminal that reads them.
 
 **Without herdr**, run `:Pair chat` in Neovim (or `pair chat` in any terminal). Scout's pane and the tests on save

@@ -3,7 +3,7 @@
 // that it started (`--start`) and that it ended with its exit code (`--exit`). Start and end carry the shell's pid
 // and the line's number, so a start that arrives after its own end (each report runs in the background, so the
 // prompt never waits for it) is not taken for a command still running. zsh also says when keys change the line at
-// the prompt, at most once a second, straight to the daemon's socket through zsh's own zsocket: no process is
+// the prompt, at most twice a second, straight to the daemon's socket through zsh's own zsocket: no process is
 // started for it. bash and fish have no hook for keys, so Pair still tells typing from the pane's text there.
 // The hook also emits the OSC 133 marks that Pair's own pane emits (prompt, output, end with the exit code), for a
 // terminal that reads them; herdr ignores them today.
@@ -18,21 +18,22 @@ _pair_n=0
 _pair_preexec() {
   _pair_cmd=$1
   (( ++_pair_n ))
-  ${report} --keys --start --shell $$ --n $_pair_n --cmd "$1" >/dev/null 2>&1 &!
+  ${report} $_pair_keys_flag --start --shell $$ --n $_pair_n --cmd "$1" >/dev/null 2>&1 &!
   print -n '\\e]133;C\\a'
 }
 _pair_precmd() {
   local code=$?
-  [[ -n $_pair_cmd ]] && { print -n "\\e]133;D;$code\\a"; ${report} --keys --exit "$code" --shell $$ --n $_pair_n --cmd "$_pair_cmd" >/dev/null 2>&1 &! }
+  [[ -n $_pair_cmd ]] && { print -n "\\e]133;D;$code\\a"; ${report} $_pair_keys_flag --exit "$code" --shell $$ --n $_pair_n --cmd "$_pair_cmd" >/dev/null 2>&1 &! }
   _pair_cmd=
+  _pair_keys_at=0 # the first key at a new prompt is reported, however soon after the last
   print -n '\\e]133;A\\a'
 }
-# Keys at the prompt: the line or the cursor changed since the last redraw. Reported at most once a second.
+# Keys at the prompt: the line or the cursor changed since the last redraw. Reported at most twice a second.
 _pair_line_init() { _pair_line="$CURSOR:$BUFFER" }
 _pair_keys() {
   [[ "$CURSOR:$BUFFER" == "$_pair_line" ]] && return
   _pair_line="$CURSOR:$BUFFER"
-  (( \${EPOCHREALTIME:-0} - \${_pair_keys_at:-0} < 1 )) && return
+  (( \${EPOCHREALTIME:-0} - \${_pair_keys_at:-0} < 0.5 )) && return
   _pair_keys_at=\${EPOCHREALTIME:-0}
   [[ $HERDR_PANE_ID =~ '^[[:alnum:]:_.-]+$' ]] || return
   if zmodload zsh/net/socket 2>/dev/null && zsocket ${quote(socket)} 2>/dev/null; then
@@ -40,12 +41,17 @@ _pair_keys() {
     exec {REPLY}>&-
   fi
 }
+# Pair is told the pane has the hook only once its hooks are in, and that keys are reported only where they can be:
+# zle's hook widgets (zsh 5.3 and later) and the socket module. Otherwise Pair keeps looking at the pane itself.
+_pair_keys_flag=
 autoload -Uz add-zsh-hook add-zle-hook-widget
-add-zsh-hook preexec _pair_preexec
-add-zsh-hook precmd _pair_precmd
-add-zle-hook-widget line-init _pair_line_init
-add-zle-hook-widget line-pre-redraw _pair_keys
-${report} --keys --ready --shell $$ >/dev/null 2>&1 &!
+if add-zsh-hook preexec _pair_preexec 2>/dev/null && add-zsh-hook precmd _pair_precmd 2>/dev/null; then
+  if zmodload zsh/net/socket 2>/dev/null && add-zle-hook-widget line-init _pair_line_init 2>/dev/null \\
+      && add-zle-hook-widget line-pre-redraw _pair_keys 2>/dev/null; then
+    _pair_keys_flag=--keys
+  fi
+  ${report} $_pair_keys_flag --ready --shell $$ >/dev/null 2>&1 &!
+fi
 `;
 
 // bash has no preexec: the DEBUG trap sees each command before it runs. _pair_arm runs last in PROMPT_COMMAND,

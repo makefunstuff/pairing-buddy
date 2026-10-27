@@ -1,11 +1,12 @@
 // What Pair learns from herdr: which pane has focus, which commands run in the user's panes, and their output.
 // Focus, panes and scrolling come pushed from herdr's event stream. herdr says nothing about commands or keys
 // (see docs/herdr.md). In a pane with the shell hook, the hook says when a command starts and ends, with its exit
-// code, and in zsh when keys are pressed at the prompt (shell-hook.mjs), so Pair polls nothing there and reads
-// the pane only for a command's output. Elsewhere Pair looks at the focused pane twice a second and at panes
-// running a command once a second, and at nothing while the user is in another workspace with nothing running: a
-// foreground process other than the shell is a running command, and the prompt line tells typing from a command
-// too short to be seen running (pane-text.mjs).
+// code, and in zsh when keys are pressed at the prompt (shell-hook.mjs). Pair then polls nothing there at the
+// prompt, reads the pane only for a command's output, and while a command runs looks only for an editor opening in
+// it. Elsewhere Pair looks at the focused pane twice a second and at panes running a command once a second, and at
+// nothing while the user is in another workspace with nothing running: a foreground process other than the shell
+// is a running command, and the prompt line tells typing from a command too short to be seen running
+// (pane-text.mjs).
 // The one thing Pair sends to a user's pane is the Driver's `type`: plain text, never Enter.
 import {connect} from 'node:net';
 import {subscribe} from './herdr-events.mjs';
@@ -131,15 +132,17 @@ export class PaneWatch {
   }
 
   /**
-   * Whether `id` needs looking at: a pane without the hook while it has focus or runs a command; one with the hook
-   * only while it has focus at the prompt and its shell does not report keys (bash, fish), for typing.
+   * Whether `id` needs looking at: a pane while it has focus or runs a command. With the hook, a command running
+   * is looked at only for an editor that opens late (`git commit` after a pre-commit hook), and the prompt only
+   * when the shell does not report keys (bash, fish), for typing.
    */
   needsLook(id) {
     if (!this.isUsers(id)) return false;
     const focused = id === this.focused?.pane;
+    const running = !!this.panes.get(id)?.running;
     const hook = this.hooked.get(id);
-    if (hook) return focused && !hook.keys && !this.panes.get(id)?.running;
-    return focused || !!this.panes.get(id)?.running;
+    if (hook) return running || (focused && !hook.keys);
+    return focused || running;
   }
 
   /** Looks again in FOCUSED_MS or RUNNING_MS, or not before the next event when nothing needs looking at. */
@@ -157,8 +160,9 @@ export class PaneWatch {
     const panes = [...this.panes.keys()].filter(id => this.needsLook(id));
     try {
       for (const pane of panes) {
-        if (this.hooked.has(pane)) await this.atPrompt(pane, this.paneState(pane), true);
-        else await this.pollPane(pane);
+        if (!this.hooked.has(pane)) await this.pollPane(pane);
+        else if (this.paneState(pane).running) await this.lookForEditor(pane);
+        else await this.atPrompt(pane, this.paneState(pane), true);
       }
       this.answered();
     } catch (error) {
@@ -208,11 +212,18 @@ export class PaneWatch {
     Object.assign(state, {running: cmd || 'a command', anchor: null});
     this.schedule();
     const text = await this.read(pane, OUTPUT_LINES);
-    const {process_info: processes} = await herdrRequest(this.socketPath, 'pane.process_info', {pane_id: pane});
     if (hook.started !== n || hook.ended >= n) return; // ended, or another started, meanwhile
     const lines = linesOf(text);
     const at = commandLine([...lines, ''], {cmd}); // its line may still be the last: commandLine skips the last (the prompt)
     state.anchor = at === -1 ? null : lines.slice(0, at + 1).join('\n');
+    await this.lookForEditor(pane);
+  }
+
+  /** Whether the command running in hooked pane `pane` is an editor now; the focus says so when that changes. */
+  async lookForEditor(pane) {
+    const {process_info: processes} = await herdrRequest(this.socketPath, 'pane.process_info', {pane_id: pane});
+    const state = this.paneState(pane);
+    if (!state.running) return; // the command ended meanwhile
     state.editor = isEditor(foregroundCommand(processes));
     this.emitFocus();
   }

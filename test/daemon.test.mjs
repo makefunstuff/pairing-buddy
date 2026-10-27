@@ -242,9 +242,13 @@ test('the shell hook in the user\'s pane: its keys take the wheel back, and its 
     // A command's start and end: one look at its start (its line, an editor?), one read of its output at the end.
     const before = herdr.calls.length;
     hook({type: 'command_start', cwd: project, pane: 'w1:p1', shell: '42', keys: true, n: 1, cmd: 'npm test'});
+    await new Promise(resolve => setTimeout(resolve, 300));
     hook({type: 'command', cwd: project, pane: 'w1:p1', shell: '42', keys: true, n: 1, cmd: 'npm test', exit: 1});
     await new Promise(resolve => setTimeout(resolve, 600));
-    assert.deepEqual(herdr.calls.slice(before).sort(), ['pane.process_info', 'pane.read', 'pane.read']);
+    // While it runs, its processes are looked at too, for an editor; only reads give its output.
+    const calls = herdr.calls.slice(before);
+    assert.equal(calls.filter(method => method === 'pane.read').length, 2, JSON.stringify(calls));
+    assert.ok(calls.includes('pane.process_info') && calls.every(method => ['pane.read', 'pane.process_info'].includes(method)), JSON.stringify(calls));
   } finally {
     editor.close();
     chat.close();

@@ -84,21 +84,44 @@ for (const [shell, args, keys] of [['zsh', ['-f', '-i'], ' --keys'], ['fish', ['
   });
 }
 
-test('the zsh hook says keys at the prompt to the daemon\'s socket, at most once a second, and not for a prompt alone', {skip: onTerminal || (has('zsh') ? false : 'zsh not installed')}, async t => {
+/** zsh with the hook on a terminal and a daemon socket that records what it hears: [ms since the start, message]. */
+async function zshHeard(t, commands, {prelude = ''} = {}) {
   const dir = hookDir(t, 'zsh');
-  const heard = []; // [ms since the start, message]
+  if (prelude) writeFileSync(join(dir, 'hook'), prelude + readFileSync(join(dir, 'hook'), 'utf8'));
+  const heard = [];
   const start = Date.now();
   const server = createServer(socket => readMessages(socket, message => heard.push([Date.now() - start, message])));
   await new Promise(resolve => server.listen(join(dir, 'sock'), resolve));
   t.after(() => new Promise(resolve => server.close(resolve)));
-  // An empty line and a command first: their keys count too, so the test waits for the prompt to settle.
-  await runOnTerminal(t, 'zsh', ['-f', '-i'], ['', {keys: [], wait: 0}, {keys: ['\x03'], wait: 1500}, {keys: [...'gits'], wait: 150}, {keys: ['\x15'], wait: 1200}, {keys: ['x'], wait: 300}], dir);
-  const typed = heard.filter(([, message]) => message.type === 'typing');
-  assert.ok(typed.every(([, message]) => message.pane === 'w1:p1'), JSON.stringify(heard));
-  // 'gits' over 600 ms is one report; Ctrl-U a second later another; 'x' a second after that a third.
-  const late = typed.filter(([at]) => at > 2800);
-  assert.ok(late.length >= 2 && late.length <= 3, JSON.stringify(typed));
-  for (let i = 1; i < typed.length; i++) assert.ok(typed[i][0] - typed[i - 1][0] >= 900, `once a second: ${JSON.stringify(typed)}`);
+  const reports = await runOnTerminal(t, 'zsh', ['-f', '-i'], commands, dir);
+  return {reports, typed: heard.filter(([, message]) => message.type === 'typing')};
+}
+
+const zsh = onTerminal || (has('zsh') ? false : 'zsh not installed');
+
+test('the zsh hook says keys at the prompt to the daemon\'s socket, at most twice a second, and not for a prompt alone', {skip: zsh}, async t => {
+  // The source line's keys count too, so the prompt first settles; then 'gits' over 600 ms, Ctrl-U later, 'x' later.
+  const {typed} = await zshHeard(t, [{keys: [], wait: 1500}, {keys: [...'gits'], wait: 150}, {keys: ['\x15'], wait: 800}, {keys: ['x'], wait: 300}]);
+  assert.ok(typed.every(([, message]) => message.pane === 'w1:p1'), JSON.stringify(typed));
+  const late = typed.filter(([at]) => at > 2100);
+  assert.ok(late.length >= 3 && late.length <= 4, JSON.stringify(typed));
+  for (let i = 1; i < typed.length; i++) assert.ok(typed[i][0] - typed[i - 1][0] >= 450, `twice a second: ${JSON.stringify(typed)}`);
+});
+
+test('the zsh hook says the first key at a new prompt, however soon after the last report', {skip: zsh}, async t => {
+  const {typed} = await zshHeard(t, [{keys: [], wait: 1500}, 'ls', {keys: ['x'], wait: 400}]);
+  // 'ls' typed and entered, then 'x' at the next prompt within half a second of the report for 'ls'.
+  const last = typed.at(-1);
+  assert.ok(typed.length >= 2 && last[0] > 2300, JSON.stringify(typed));
+});
+
+test('the zsh hook claims keys only where zle\'s hooks are there, and the hook only once it is in', {skip: zsh}, async t => {
+  const noWidgets = await zshHeard(t, [{keys: [], wait: 1000}, {keys: [...'ab'], wait: 300}, '\x15true'], {prelude: 'add-zle-hook-widget() { return 1 }\n'});
+  assert.deepEqual(noWidgets.typed, []);
+  assert.ok(noWidgets.reports.includes('report --ready --shell PID'), JSON.stringify(noWidgets.reports));
+  assert.ok(noWidgets.reports.includes('report --exit 0 --shell PID --n 1 --cmd true'), JSON.stringify(noWidgets.reports));
+  const noHooks = await zshHeard(t, ['true'], {prelude: 'add-zsh-hook() { return 1 }\n'});
+  assert.deepEqual(noHooks.reports, [], 'no --ready: Pair keeps looking at the pane itself');
 });
 
 test('shell-hook knows bash, zsh and fish', () => {

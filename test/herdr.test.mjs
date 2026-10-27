@@ -172,6 +172,23 @@ test('a hooked pane running an editor is the editor until the command ends', asy
   assert.deepEqual(of('focus').map(event => event.target), ['terminal', 'editor', 'terminal']);
 });
 
+test('a hooked pane whose command opens an editor late (git commit after its hooks) becomes the editor, and nothing is typed into it', async t => {
+  const {herdr, watch, of} = await watching(t);
+  await until(() => of('focus').length === 1, 'the first focus');
+  watch.shellReady('w1:p1', {shell: '42', keys: true});
+  await watch.commandStarted('w1:p1', {shell: '42', n: 1, cmd: 'git commit'});
+  assert.equal(watch.targetOf('w1:p1'), 'terminal');
+  herdr.processes.set('w1:p1', [{pid: 7, name: 'git', argv: ['git', 'commit']}]);
+  await new Promise(resolve => setTimeout(resolve, 600));
+  herdr.processes.set('w1:p1', [{pid: 8, name: 'nvim', argv: ['nvim', '.git/COMMIT_EDITMSG']}]);
+  await until(() => watch.targetOf('w1:p1') === 'editor', 'the editor');
+  await assert.rejects(watch.type('w1:p1', 'dd'), /not one of the user's terminals/);
+  assert.deepEqual(herdr.sent, []);
+  herdr.processes.delete('w1:p1');
+  await watch.commandEnded('w1:p1', {shell: '42', n: 1, cmd: 'git commit'});
+  assert.deepEqual(of('focus').map(event => event.target), ['terminal', 'editor', 'terminal']);
+});
+
 test('with the bash or fish hook, the focused pane is only read at its prompt, for typing', async t => {
   const {herdr, watch, user, of} = await watching(t);
   await until(() => of('focus').length === 1, 'the first focus');
