@@ -25,7 +25,8 @@ const EXPECTED = {
 
 for (const [runner, expected] of Object.entries(EXPECTED)) {
   test(`${runner}: the failed tests and the first error line`, () => {
-    assert.deepEqual(parseTestOutput(fixture(runner)), {runner, failedCount: expected.failed.length, ...expected});
+    const {tests: _tests, ...result} = parseTestOutput(fixture(runner));
+    assert.deepEqual(result, {runner, failedCount: expected.failed.length, ...expected});
   });
 }
 

@@ -1,0 +1,12 @@
+1/2 main.test.add...OK
+2/2 main.test.add wrong...expected 5, found 4
+FAIL (TestExpectedEqual)
+/usr/lib/zig/lib/std/testing.zig:110:17: 0x102c034 in expectEqualInner__anon_455 (std.zig)
+                return error.TestExpectedEqual;
+                ^
+/home/you/zz/main.zig:12:5: 0x11283c7 in test.add wrong (main.zig)
+    try std.testing.expectEqual(5, add(2, 2));
+    ^
+1 passed; 0 skipped; 1 failed.
+error: the following test command failed with exit code 1:
+/home/you/.cache/zig/o/47ee66e743d026372507b942f64180d0/test --seed=0x66c6e457

@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.10)
+project(cm C)
+enable_testing()
+add_executable(t t.c)
+add_test(NAME passes COMMAND t 0)
+add_test(fails t 1)
