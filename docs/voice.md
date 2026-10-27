@@ -39,8 +39,11 @@ then listens until you press the key again, and the line says `M-t again to ask`
 it repeats a held key (or does not repeat it at all) turns your hold into a tap. Two settings never guess
 (see [the key](#4-the-key)):
 
-- `listen_mode = 'toggle'`: press the key to start, press it again to ask. Holding it does nothing more: its repeats
-  are not a second press. The line says `M-t again to ask` from the start.
+- `listen_mode = 'toggle'`: press the key to start, press it again to ask. Holding the key does nothing more, however
+  long your terminal waits before it repeats: a press that another follows within `listen_release_ms` is a repeat,
+  not a second press. So the press that asks counts once that much time has gone by without a repeat (0.22 s), and
+  holding it starts nothing new as long as its repeats begin within `listen_hold_ms`. The line says
+  `M-t again to ask` from the start.
 - `listen_silence_ms = 1200`: a recording you do not hold (a tap, `toggle`, `:Pair listen`) also asks once you have
   spoken and then paused that long; the line says `M-t again or pause to ask`. Pause counts from the meter: quieter
   than about -42 dB. Nothing is asked before you have said something.
@@ -135,13 +138,14 @@ require('pair').setup({
   listen_key = '<M-t>',
   listen_mode = 'hold',     -- 'toggle': press to start, press again to ask
   listen_hold_ms = 650,     -- no repeat this long after the press: it was a tap
-  listen_release_ms = 220,  -- no repeat this long: the key is up (in 'toggle': a press this soon is a repeat)
+  listen_release_ms = 220,  -- no repeat this long: the key is up (in 'toggle': a press this close to another is a repeat)
   listen_silence_ms = false, -- a number: a recording you do not hold asks after a pause this long
 })
 ```
 
 With a terminal that is slow to repeat, a longer `listen_hold_ms` (its repeat delay and a little more) keeps your
-holds holds; `listen_release_ms` must be longer than the time between two of its repeats.
+holds holds; `listen_release_ms` must be longer than the time between two of its repeats. Both modes need that;
+`toggle` needs nothing of the repeat delay but that `listen_hold_ms` is longer than it, for a held press that asks.
 
 ## Limits
 
