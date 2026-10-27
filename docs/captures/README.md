@@ -78,7 +78,7 @@ AddressSanitizer, make, Node.js, curl, FFmpeg, util-linux's `prlimit` and the Je
 ```sh
 npm ci                                  # in the repo root
 docs/captures/record.sh                 # all the scenes into docs/captures/out/, or name some
-docs/captures/encode.sh                 # out/ -> site/public/media/ and docs/images/
+docs/captures/encode.sh                 # out/ -> docs/images/ (and out/site/, if recorded, -> site/public/media/)
 ```
 
 The front page's three loops are the first three scenes again, in tokyonight with a larger font, at the size the site

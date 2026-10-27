@@ -27,7 +27,7 @@ const moments = [
     callouts: [
       {at: 2.6, top: 44, text: 'Wrong file. The real cause is worker.go:35'},
       {at: 7.25, top: 46, text: '<kbd>Alt-j</kbd> jumps straight there'},
-      {at: 12.4, top: 72, text: 'Fixed in the right place: green'},
+      {at: 13.5, top: 72, text: 'Fixed in the right place: green'},
     ],
   },
   {
@@ -371,7 +371,7 @@ a { color: var(--vp-c-brand-1); }
 p :deep(code), .note { font-family: var(--vp-font-family-mono); font-size: .86em; color: var(--vp-code-color); background: var(--vp-code-bg); padding: .12em .4em; border-radius: 5px; overflow-wrap: anywhere; }
 
 /* the three moments */
-.moment { margin-top: 72px; display: grid; gap: 22px; }
+.moment { margin-top: 72px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; }
 @media (min-width: 980px) {
   .moment { grid-template-columns: minmax(0, 320px) minmax(0, 1fr); gap: 52px; align-items: center; margin-top: 96px; }
   .moment.flip { grid-template-columns: minmax(0, 1fr) minmax(0, 320px); }
@@ -426,8 +426,8 @@ p :deep(code), .note { font-family: var(--vp-font-family-mono); font-size: .86em
 .icon.login { background: linear-gradient(135deg, #6D5BF5, #B04FE0); box-shadow: 0 8px 20px -8px rgba(110, 70, 240, .7); }
 
 /* install */
-.install { list-style: none; padding: 0; margin: 36px 0 0; display: grid; gap: 30px; }
-.install li { position: relative; padding-left: 64px; }
+.install { list-style: none; padding: 0; margin: 36px 0 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 30px; }
+.install li { position: relative; padding-left: 64px; min-width: 0; }
 .install .step-n { position: absolute; left: 0; top: -6px; margin: 0; }
 .install li:not(:last-child)::after { content: ""; position: absolute; left: 21px; top: 44px; bottom: -30px; width: 2px; background: linear-gradient(var(--vp-c-brand-1), transparent); opacity: .35; }
 .code { position: relative; background: #1A1B26; border: 1px solid var(--pair-window-edge); border-radius: 12px; margin: 12px 0 10px; color: #C0CAF5; box-shadow: var(--pair-card-shadow); }

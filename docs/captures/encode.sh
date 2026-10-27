@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Turns the recordings in out/ into the docs' GIFs and stills, and those in out/site/ (record.sh with CAP_LOOK=site)
-# into the front page's loops and posters. ./encode.sh site does only the loops. Needs FFmpeg (with libvpx-vp9,
-# libx264 and libwebp).
+# into the front page's loops and posters. ./encode.sh site does only the loops; with no argument, the loops are
+# encoded too when out/site/ is there. Needs FFmpeg (with libvpx-vp9, libx264 and libwebp).
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 OUT=$HERE/out
@@ -18,10 +18,13 @@ loop() { # loop <recording> <site name> <cut> <speed> <end>: the lead-in up to <
 }
 poster() { ff -i "$OUT/site/$1.png" -c:v libwebp -quality 85 "$SITE/$2.webp"; }
 
-loop wrong-turn m1 12.4 6 25.5; poster remark m1-poster
-loop tests-on-save m2 9.4 5 24.4; poster regression m2-poster
-loop hand-over m3 5.6 4 20.4; poster hand-back m3-poster
-ls -l "$SITE"/m?.* "$SITE"/m?-poster.webp
+# The loops, when CAP_LOOK=site recorded them: always with ./encode.sh site, and with no argument if out/site/ is there.
+if [ "${1:-}" = site ] || [ -d "$OUT/site" ]; then
+  loop wrong-turn m1 12.4 6 25.5; poster remark m1-poster
+  loop tests-on-save m2 9.4 5 24.4; poster regression m2-poster
+  loop hand-over m3 5.6 4 20.4; poster hand-back m3-poster
+  ls -l "$SITE"/m?.* "$SITE"/m?-poster.webp
+fi
 [ "${1:-}" != site ] || exit 0
 gif() { # 1000x600, 15 fps, one palette for the whole clip
   ff -i "$OUT/$1.mp4" -vf "fps=15,scale=1000:600:flags=lanczos,split[a][b];[a]palettegen=max_colors=128:stats_mode=diff[p];[b][p]paletteuse=dither=none:diff_mode=rectangle" "$IMAGES/$1.gif"
