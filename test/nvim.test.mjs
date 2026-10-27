@@ -1,7 +1,7 @@
 // The Lua plugin in a headless Neovim against the daemon, with scripted models. Skips without nvim.
 import assert from 'node:assert/strict';
 import {execFile, execFileSync, spawn} from 'node:child_process';
-import {mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync} from 'node:fs';
 import {connect, createServer} from 'node:net';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -596,6 +596,68 @@ test('saving runs the tests: the statusline spins, then names what fails; signs 
   }
 });
 
+test(':Pair new opens the note unsaved, asks one question at a time under your last line, and M-y takes the slice into it', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
+  const {project, partner, remote, keys, lines, status, stop} = await pairInNvim('anything');
+  const virtual = ns => JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('${ns}'), 0, -1, {details = true}))")`))
+    .filter(([, , , details]) => details.virt_lines)
+    .map(([, row, , details]) => [row, details.virt_lines.map(line => line.map(chunk => chunk[0]).join('').trim())]);
+  const slice = {
+    files: [{path: 'Makefile', does: 'make run builds and runs it'}, {path: 'main.c', does: 'the loop and two counters'}],
+    run: 'make run', shows: 'two counters that differ', needs: [], probes: ['sleep in the loop: steps hold', 'step at 30 Hz: watch the dot'],
+    test: 'the accumulator: given dt, the steps and leftover', later: ['the swarm', 'the mouse'],
+  };
+  try {
+    partner.setResponses([fauxAssistantMessage([fauxText('What should the first run show?')])]);
+    keys(':Pair new a small toy in C<CR>');
+    const name = project.split('/').at(-1);
+    await until(() => virtual('pair').length, 'the first question');
+    assert.equal(remote('expand("%:t")'), 'NOTES.md');
+    assert.deepEqual(lines(), [`# ${name}`, '', 'a small toy in C']);
+    assert.deepEqual(virtual('pair'), [[2, ['● What should the first run show?']]], 'under the idea');
+    assert.equal(status(), '● pair · question 1 of a few');
+
+    // An Esc to fix a typo halfway: the fixed answer goes, once it has settled.
+    let answered;
+    partner.setResponses([
+      context => { answered = context.messages.at(-1).content; return fauxAssistantMessage([fauxText('Sim steps or wall clock?')]); },
+    ]);
+    keys('o- two countres<Esc>');
+    await sleep(300);
+    keys('bciwcounters<Esc>A and a dot<Esc>');
+    await until(() => status() === '● pair · question 2 of a few', 'the second question');
+    assert.match(answered, /A1: two counters and a dot\n/, 'the answer as fixed, not the half before the first Esc');
+    assert.deepEqual(virtual('pair'), [[3, ['● Sim steps or wall clock?']]], 'under the answer, and the first one gone');
+    // You type on before the next question comes: it still goes under the answer it follows.
+    partner.setResponses([
+      () => new Promise(resolve => setTimeout(() => resolve(fauxAssistantMessage([fauxText('What do you want to learn from it?')])), 2500)),
+      fauxAssistantMessage([fauxText(JSON.stringify(slice))]),
+    ]);
+    keys('o- sim steps<Esc>');
+    await sleep(2000); // the answer has settled and gone; the question is on its way
+    keys('o- the accum');
+    await until(() => status() === '● pair · question 3 of a few', 'the third question');
+    assert.deepEqual(virtual('pair'), [[4, ['● What do you want to learn from it?']]], 'under "sim steps", above what you type now');
+    keys('ulator<Esc>');
+    await until(() => status() === '● pair · a suggestion', 'the slice');
+    assert.deepEqual(virtual('pair'), [], 'no question left');
+    const [[row, shown]] = virtual('pair_suggest');
+    assert.equal(row, 5, 'under the last answer');
+    assert.deepEqual(shown.slice(0, 4), ['', '## First run', '- `Makefile`: make run builds and runs it', '- `main.c`: the loop and two counters']);
+    const voice = shown.slice(shown.findIndex(line => line.startsWith('●'))).join(' ');
+    assert.equal(voice, '● Your three answers as a first slice. Two files, nothing written yet.   M-y takes it into the note');
+
+    keys('<M-y>');
+    await until(() => lines().length > 6, 'the slice in the note');
+    assert.deepEqual(lines().slice(3, 8), ['- two counters and a dot', '- sim steps', '- the accumulator', '', '## First run']);
+    assert.equal(lines().at(-1), '- the swarm · the mouse');
+    assert.equal(status(), '● pair');
+    assert.equal(remote('&modified'), '1', 'the note is not saved');
+    assert.ok(!existsSync(join(project, 'NOTES.md')), 'and not on disk');
+  } finally {
+    await stop();
+  }
+});
+
 test('the ledger: :Pair today lists what Pair did; u undoes its edit after your later edits, and again makes it again; a clash changes nothing; <CR> shows output', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
   const {project, partner, messages, remote, keys, send, lines, stop} = await pairInNvim('tune the numbers', {testOnSave: 'cat a.js'});
   const ledgerLines = () => JSON.parse(remote('luaeval("vim.json.encode(vim.api.nvim_buf_get_lines(vim.fn.bufnr(\'pair://today\'), 0, -1, false))")'));
@@ -1052,6 +1114,36 @@ test('notes in the margin: five marks in a note, a fixed line loses its mark, a 
       '- [ ] Park failed webhooks in dead_letters after the last attempt (lines 3-4, line 8)',
       '- [ ] Decide how long dead letters are kept (open question, line 26)',
     ]);
+  } finally {
+    await stop();
+  }
+});
+
+test('a daemon restart while a :Pair new question waits ends the questions in Neovim too: no answer goes nowhere', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
+  const {project, dataDir, partner, remote, keys, status, restartDaemon, stop} = await pairInNvim('anything');
+  const question = () => Number(remote(`luaeval("#vim.tbl_filter(function(m) return m[4].virt_lines ~= nil end, vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('pair'), 0, -1, {details = true}))")`));
+  try {
+    partner.setResponses([fauxAssistantMessage([fauxText('What should the first run show?')])]);
+    keys(':Pair new a small toy in C<CR>');
+    await until(() => status() === '● pair · question 1 of a few', 'the first question');
+    let asked = 0;
+    await restartDaemon();
+    partner.setResponses([() => { asked++; return fauxAssistantMessage([fauxText('Sim steps or wall clock?')]); }]);
+    await until(() => status() === '● pair', 'Neovim back, and the question gone from the statusline', 15_000);
+    assert.equal(question(), 0, 'and from under the idea');
+    keys('o- two counters<Esc>');
+    await sleep(2500); // past the settle time an answer would have been sent after
+    assert.equal(asked, 0, 'nothing asks the Partner about an answer to a question the new daemon never asked');
+    // An answer that reaches the new daemon anyway, from a client that missed the restart, is told why it goes nowhere.
+    const late = connect(join(dataDir, 'pair.sock'));
+    const heard = [];
+    readMessages(late, message => heard.push(message));
+    late.on('connect', () => {
+      sendMessage(late, {type: 'hello', role: 'chat', cwd: project, resume: true});
+      sendMessage(late, {type: 'answer', text: 'two counters'});
+    });
+    await until(() => heard.some(message => /No questions of :Pair new are running here/.test(message.text ?? '')), 'the reply');
+    late.destroy();
   } finally {
     await stop();
   }

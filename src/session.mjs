@@ -1,6 +1,7 @@
 // One pairing session: folds its events, decides when Pair speaks and carries out the Partner's tools.
 import {readFile} from 'node:fs/promises';
 import {basename, isAbsolute, join, relative} from 'node:path';
+import {BlankPage} from './blank-page.mjs';
 import {Breaks} from './breaks.mjs';
 import {Budget} from './budget.mjs';
 import {commandPolicy} from './command-policy.mjs';
@@ -8,7 +9,7 @@ import {contextCard} from './context-card.mjs';
 import {debriefInput, firstPlace, heading, keptChanges, lessonLine, parseDebrief, Wins} from './debrief.mjs';
 import {Delight, LONG_RED_MS} from './delight.mjs';
 import {describeState} from './describe.mjs';
-import {insideRoot, MAX_LINES, numberedLines, projectFile, readProjectPath} from './files.mjs';
+import {insideRoot, MAX_LINES, newProjectFile, numberedLines, projectFile, readProjectPath} from './files.mjs';
 import {failed, fold, initialState} from './fold.mjs';
 import {decide} from './gate.mjs';
 import {gist} from './gist.mjs';
@@ -267,6 +268,7 @@ export class PairSession {
     this.breaks = new Breaks(); // when a break is due, at the next natural end
     this.pickedUp = false; // the morning pick-up ran, or this session carries straight on from the last
     this.firstStep = null; // the user's own first step for next time (/first), for this session's debrief
+    this.blankPage = null; // the questions of :Pair new and their slice (see blank-page.mjs)
   }
 
   /** Runs the tests on each save with `testOnSave` ({command, outputFile}) from now on, or none when it is null. */
@@ -491,7 +493,8 @@ export class PairSession {
     this.showDue();
     if (this.ticking || this.role === 'driver' || !this.health.ok()) return;
     const now = this.now();
-    const triggers = detectTriggers(this.state, now, this.fired);
+    // While :Pair new asks its questions, the note they are in is no place for remarks.
+    const triggers = detectTriggers(this.state, now, this.fired).filter(trigger => !this.blankPage?.covers(trigger));
     this.waits = new Map([...this.waits].filter(([key]) => triggers.some(trigger => trigger.key === key)));
     // While the Partner is at work, what comes up waits for the model; how long goes with the remark it becomes.
     if (this.busy) return triggers.forEach(trigger => this.waitFor(trigger, now));
@@ -860,6 +863,15 @@ export class PairSession {
     await this.configurePartner(this.role);
   }
 
+  /** :Pair new: one question at a time about `idea`, then the first slice, shown in the note `file` (see blank-page.mjs). */
+  async startNew(idea, file) {
+    const note = (await projectFile(this.root, file)) ?? (await newProjectFile(this.root, file));
+    if (!note) return this.message('system', `Pair keeps its notes inside the project, not in ${file}.`);
+    if (this.blankPage?.open) this.blankPage.close();
+    this.blankPage = new BlankPage({session: this, file: note});
+    await this.blankPage.start(idea);
+  }
+
   /**
    * The user asks for the idea behind Pair's words (the teach key in Neovim, ? in the chat): `said` is what showed
    * under their line, else what Pair said last. The answer goes to the chat, and to the editor to show under those
@@ -881,7 +893,6 @@ export class PairSession {
     this.lastWords = lastWords; // asking again is about the same words, not about this answer
     this.notify('editor', {type: 'teaching', ...splitTeaching(this.words.join('\n'))});
   }
-
 
   /** Gives the Partner `role`'s tools and instructions, with the last session's note to start from. */
   configurePartner(role) {
@@ -1115,6 +1126,11 @@ export class PairSession {
   say(words) {
     const text = this.voiced(words);
     if (!text || silent(text)) return 'shown'; // some models say their SILENT instead of answering it
+    // A question or slice of :Pair new is the blank page's to show, once it has checked it.
+    if (this.blankPage?.consulting) {
+      this.words.push(text);
+      return 'noted';
+    }
     this.spoke = true;
     this.said = true;
     this.words.push(text);
@@ -1168,7 +1184,8 @@ export class PairSession {
   /** Reads a file as the editor has it; the editor shows where Pair reads (its gaze) as it does. */
   async read({file, from, to}) {
     const source = await readProjectPath(this.root, file);
-    if (source.error || source.listing !== undefined) return source.error ?? source.listing;
+    if (source.error) return this.readNew(file, from, to, source.error);
+    if (source.listing !== undefined) return source.listing;
     const path = await projectFile(this.root, file);
     const text = await this.bufferText(path, source.text);
     const first = Math.max(1, from ?? 1);
@@ -1176,6 +1193,15 @@ export class PairSession {
     this.ledger.add('read', `${relative(this.root, path)} ${first}-${last}`, {data: {place: {file: path, line: first}}});
     this.notify('editor', {type: 'look', file: path, from: first, to: last});
     return numberedLines(text, from, to);
+  }
+
+  /** Reads a file that is only a buffer so far, such as one the Driver typed and the user has not saved. */
+  async readNew(file, from, to, error) {
+    const path = await newProjectFile(this.root, file);
+    if (!path) return error;
+    const buffer = await this.requestEditor({type: 'read', file: path}).catch(() => null);
+    if (typeof buffer?.text === 'string') return numberedLines(buffer.text, from, to);
+    return `${file} does not exist yet. As Driver, an edit of line 1 creates it in the editor; the user saves it.`;
   }
 
   /** The Watcher's score; drift comes with what the file is about (see gist.mjs), read only once it is asked. */
@@ -1247,7 +1273,8 @@ export class PairSession {
 
   /** The Driver's one change in the user's buffer, as one undo step and unsaved. */
   async edit({file, line, endLine, text}) {
-    const path = await projectFile(this.root, file);
+    // A file not written yet opens as a new buffer: the disk has it once the user saves it.
+    const path = (await projectFile(this.root, file)) ?? (await newProjectFile(this.root, file));
     if (!path) return `No file ${file} in the project`;
     if (endLine < line) return `end_line ${endLine} is before line ${line}`;
     const refused = this.wheel(); // after the await: the user may have taken the wheel back meanwhile

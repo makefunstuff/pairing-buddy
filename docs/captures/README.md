@@ -25,7 +25,12 @@ recording comes out the same each time.
   agents scene: [hashtab/](hashtab/), another C hash table, timed with `make`. Teach on request is in the C
   program the live tone tests use ([test/live/probe](../../test/live/probe/)), whose `make run` fails its check with exit 1. The notes scene adds its
   design note, [notes/dead-letters.md](notes/dead-letters.md), which the tests read too. The exploration loop:
-  [loop/](loop/), the research's entity table, built and run with `make -s run` in the `:terminal` on the right.
+  [loop/](loop/), the research's entity table, built and run with `make -s run` in the `:terminal` on the right. The
+  blank page's scenes start in an empty folder, `ticks`, with no git yet.
+- **The blank page's words** are not written for the capture: [ticks.json](ticks.json) holds a real `:Pair new`
+  with a cloud model, unedited. It has the three questions (each asked after the answer before it), the slice and the
+  two files the Driver typed. Its first slice broke the 90-character rule, so the daemon asked again; the slice
+  here is the second answer, the one the note showed.
 - **No core dumps.** The crash scene crashes a program on purpose. `record.sh` sets the core limit to 1 byte for
   everything it starts, so nothing reaches the machine's crash reporter (see [test/no-core.mjs](../../test/no-core.mjs)).
 - **Your other agents** (the agents scene only): a stand-in board, a script that prints the board's list, with its
@@ -43,6 +48,8 @@ recording comes out the same each time.
 | [tests-on-save](tapes/tests-on-save.tape) | 02 · it runs what you'd skip |
 | [hand-over](tapes/hand-over.tape) | 03 · the visible hand-over |
 | [take-back](tapes/take-back.tape) | a key while Pair drives takes the wheel back |
+| [blank-page](tapes/blank-page.tape) | 04 · the blank page: `:Pair new`, three questions, the first slice |
+| [first-run](tapes/first-run.tape) | 05 · the first run: the Driver types the slice's two files, and `make run` runs them |
 | [ledger](tapes/ledger.tape) | `:Pair today` after a morning of 02 and 03; `u` undoes the six cases after your own edit |
 | [search-trail](tapes/search-trail.tape) | the search trail: three Telescope searches, the cue, `:Pair trail` |
 | [held-thought](tapes/held-thought.tape) | the held thought, and one look on a grey palette |

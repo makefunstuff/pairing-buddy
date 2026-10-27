@@ -1,6 +1,6 @@
 // Read-only access to the project's files for the `read` tool, confined to the project root.
 import {readdir, readFile, realpath, stat} from 'node:fs/promises';
-import {isAbsolute, relative, resolve} from 'node:path';
+import {basename, dirname, isAbsolute, join, relative, resolve} from 'node:path';
 
 export const MAX_LINES = 300; // of a file, read shows this many lines at most
 const MAX_ENTRIES = 200;
@@ -18,6 +18,14 @@ export async function insideRoot(root, file) {
 export async function projectFile(root, file) {
   const path = await insideRoot(root, file);
   return path && (await stat(path)).isFile() ? path : null;
+}
+
+/** The path of a file not written yet, in a folder inside `root`, else null: the editor has it as a new buffer. */
+export async function newProjectFile(root, file) {
+  const folder = await insideRoot(root, dirname(file));
+  if (!folder) return null;
+  const path = join(folder, basename(file));
+  return (await stat(path).catch(() => null)) ? null : path;
 }
 
 /** Lines `from`..`to` (1-based, inclusive) with line numbers, at most MAX_LINES of them. */

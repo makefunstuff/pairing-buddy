@@ -563,6 +563,9 @@ export async function startDaemon(config, {
     if (message.type === 'role' && ROLES.includes(message.role)) return session.setRole(message.role);
     if (message.type === 'drive') return session.drive(message.text ?? '', message.selection ?? null);
     if (message.type === 'take_back') return session.takeBack();
+    if (message.type === 'new') return session.startNew(message.idea ?? '', message.file ?? 'NOTES.md');
+    if (message.type === 'answer') return session.blankPage?.open ? session.blankPage.answer(message.text ?? '') : session.message('system', 'No questions of :Pair new are running here (the daemon may have restarted). :Pair new starts again.');
+    if (message.type === 'new_stop') return session.blankPage?.stop();
     if (message.type === 'confirm') return session.answer(message.id, message.ok === true);
     if (message.type === 'feedback') {
       const number = Number.isInteger(message.number) && message.number > 0 ? message.number : undefined;
@@ -662,7 +665,8 @@ export async function startDaemon(config, {
       }
       session.tick().catch(error => log(`tick failed: ${error.stack ?? error}`));
       refreshContext(session, CONTEXT_EVERY_MS);
-      margins.get(session.root)?.tick().catch(error => log(`margin failed: ${error.stack ?? error}`));
+      // While :Pair new asks its questions, the note is theirs: no marks in its margin until they end.
+      if (!session.blankPage?.open) margins.get(session.root)?.tick().catch(error => log(`margin failed: ${error.stack ?? error}`));
     }
     for (const relay of relays.values()) relay.tick();
     keepWarm();
