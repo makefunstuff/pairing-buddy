@@ -271,7 +271,7 @@
           if (at === 0) tl.set(selector, {opacity: 1}, 0); else wipeIn(selector, at);
           if (kind !== 'panel') {
             const parts = kind === 'card' ? [' .tcard-c', ' .tcard-s', ' .tcard-w', ' .map'] : [' .chapter-n', ' .chapter-t', ' .chapter-s'];
-            parts.forEach((part, i) => { tl.set(selector + part, {opacity: 0}, at); tl.set(selector + part, {opacity: 1}, at + 0.35 + i * 0.3); });
+            parts.filter(part => document.querySelector(selector + part)).forEach((part, i) => { tl.set(selector + part, {opacity: 0}, at); tl.set(selector + part, {opacity: 1}, at + 0.35 + i * 0.3); });
           }
           fadeOut(selector, until, 0.3);
         } else if (kind === 'reveal') {

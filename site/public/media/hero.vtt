@@ -1,331 +1,532 @@
 WEBVTT
 
-00:00:00.280 --> 00:00:03.760
-Coding alone, you lose time in small ways.
+00:00:00.610 --> 00:00:03.550
+Pairing buddy, or Pair for short,
 
-00:00:03.760 --> 00:00:06.880
-You fix the wrong file, or skip the tests.
+00:00:03.550 --> 00:00:07.460
+is a pair programmer that sits beside you in Neovim.
 
-00:00:06.880 --> 00:00:09.580
-And most AI tools wait to be asked,
+00:00:07.460 --> 00:00:12.310
+It watches while you work, and speaks only when something matters.
 
-00:00:09.580 --> 00:00:12.180
-or rewrite your code behind your back.
+00:00:12.310 --> 00:00:15.700
+Its words appear where you are already looking.
 
-00:00:13.150 --> 00:00:16.390
-Pairing buddy is the person in the second chair.
+00:00:15.700 --> 00:00:19.760
+And it changes your code only when you hand it the wheel.
 
-00:00:16.390 --> 00:00:18.430
-It sits beside you in Neovim,
+00:00:19.760 --> 00:00:23.210
+This tutorial shows each of these, one at a time.
 
-00:00:18.430 --> 00:00:21.010
-and speaks up only when it matters.
+00:00:24.460 --> 00:00:28.100
+First, the screen you will see in every scene.
 
-00:00:21.010 --> 00:00:22.910
-It never touches your files,
+00:00:28.100 --> 00:00:30.350
+Watch the four labelled areas.
 
-00:00:22.910 --> 00:00:24.650
-unless you hand it the wheel.
+00:00:32.040 --> 00:00:35.450
+On the left is Neovim, with your code.
 
-00:00:25.560 --> 00:00:27.860
+00:00:35.450 --> 00:00:39.140
+Under it is your terminal, where you run commands.
+
+00:00:39.140 --> 00:00:41.600
+On the right is Pair’s chat.
+
+00:00:41.600 --> 00:00:45.670
+It keeps a record of what Pair says, and you can type to it.
+
+00:00:45.670 --> 00:00:50.280
+And along the bottom, the statusline shows what Pair is doing right now.
+
+00:00:51.950 --> 00:00:56.270
+Your code, your terminal, the chat, and the statusline.
+
+00:00:56.270 --> 00:00:58.200
+Pair uses all four.
+
+00:01:02.470 --> 00:01:05.370
+Pair is a Neovim plugin and a small
+
+00:01:05.370 --> 00:01:08.690
+program that runs in the background, the daemon.
+
+00:01:08.690 --> 00:01:11.200
+Watch the last lines of each command.
+
+00:01:12.810 --> 00:01:16.700
+One npm command installs it, straight from GitHub.
+
+00:01:24.310 --> 00:01:29.570
+Then pair setup writes a config file from the example, offers a login,
+
+00:01:29.570 --> 00:01:33.820
+and starts the daemon as a service, so it runs from now on.
+
+00:01:33.820 --> 00:01:36.980
+Last, it says what to add to Neovim:
+
+00:01:36.980 --> 00:01:41.430
+the plugin, for lazy dot nvim, or any plugin manager.
+
+00:01:43.100 --> 00:01:44.400
+Two commands:
+
+00:01:44.400 --> 00:01:48.430
+Pair is installed, and its daemon runs as a service.
+
+00:01:50.060 --> 00:01:51.800
+Pair needs a model:
+
+00:01:51.800 --> 00:01:55.900
+a server on your machine, or a cloud provider with a key.
+
+00:01:55.900 --> 00:01:58.430
+Watch the ticks pair doctor prints.
+
+00:02:00.180 --> 00:02:03.460
+The config names one model for both jobs.
+
+00:02:03.460 --> 00:02:06.670
+This tutorial uses DeepSeek, in the cloud.
+
+00:02:08.979 --> 00:02:13.680
+Pair auth stores the key, in a file only you can read.
+
+00:02:13.680 --> 00:02:15.210
+It never prints it.
+
+00:02:17.020 --> 00:02:19.940
+Then pair doctor checks every part:
+
+00:02:19.940 --> 00:02:23.440
+the service, the daemon, the plugin in Neovim,
+
+00:02:23.440 --> 00:02:26.990
+the sandbox for commands, and the model itself.
+
+00:02:26.990 --> 00:02:32.290
+It asks the model a question, times the answer, and checks that it thinks.
+
+00:02:32.290 --> 00:02:35.840
+A cross, instead of a tick, would name the fix.
+
+00:02:37.810 --> 00:02:41.130
+A config, a key, and pair doctor:
+
+00:02:41.130 --> 00:02:43.620
+every part checked before you start.
+
+00:02:47.910 --> 00:02:50.030
 Two models share the work.
 
-00:00:27.860 --> 00:00:30.460
-The Watcher is small and fast:
+00:02:50.030 --> 00:02:52.690
+The Watcher is small and fast.
 
-00:00:30.460 --> 00:00:32.600
-is this moment worth a word?
+00:02:52.690 --> 00:02:55.730
+It scores every moment from zero to ten:
 
-00:00:32.600 --> 00:00:36.380
-The Partner thinks before it answers, and writes the remark.
+00:02:55.730 --> 00:02:57.460
+is this worth a word?
 
-00:00:41.050 --> 00:00:43.310
-Install with two commands:
+00:02:57.460 --> 00:03:00.160
+Only high scores reach the Partner.
 
-00:00:43.310 --> 00:00:47.250
-npm install, then pair setup.
+00:03:00.160 --> 00:03:04.720
+It thinks first, reads your code, and writes what Pair says.
 
-00:00:47.250 --> 00:00:50.790
-Setup writes the config, and runs Pair in the background,
+00:03:04.720 --> 00:03:07.210
+One model can play both parts.
 
-00:00:50.790 --> 00:00:51.850
-as a service.
+00:03:07.210 --> 00:03:12.860
+The Partner works in one of three roles, and the statusline always says which.
 
-00:00:53.480 --> 00:00:57.520
-Pair auth keeps your logins and keys in one file.
+00:03:12.860 --> 00:03:14.860
+Navigator is the default.
 
-00:00:57.520 --> 00:01:00.120
-Choose an API key, type it once,
+00:03:14.860 --> 00:03:17.710
+It watches, and points at code.
 
-00:01:00.120 --> 00:01:01.580
-and it's never printed.
+00:03:17.710 --> 00:03:22.880
+Scout runs commands for you, in a pane of its own, inside a sandbox.
 
-00:01:02.730 --> 00:01:05.410
-One local model can play both roles:
+00:03:22.880 --> 00:03:27.370
+And Driver types one change into your buffer, then gives the wheel back.
 
-00:01:05.410 --> 00:01:07.650
-the Watcher's score from 0 to 10,
+00:03:28.580 --> 00:03:32.720
+You want to know why a test fails, without digging yourself.
 
-00:01:07.650 --> 00:01:11.110
-without thinking, and a Partner that thinks.
+00:03:32.720 --> 00:03:35.810
+Watch the chat, and the pane that opens at the bottom.
 
-00:01:12.220 --> 00:01:17.300
-Pair doctor checks every part, down to whether the Partner really thinks,
+00:03:39.300 --> 00:03:44.320
+In the chat, slash scout switches Pair to the Scout role.
 
-00:01:17.300 --> 00:01:19.900
-and the sandbox Pair's commands run in.
+00:03:44.320 --> 00:03:48.480
+Then you ask your question, in plain words.
 
-00:01:21.110 --> 00:01:23.370
-Pair has three roles.
+00:03:48.480 --> 00:03:51.380
+Pair’s own pane opens at the bottom.
 
-00:01:23.370 --> 00:01:26.010
-The Navigator watches and points.
+00:03:51.380 --> 00:03:54.940
+Scout runs the test there, and searches the code.
 
-00:01:26.010 --> 00:01:29.690
-The Scout also runs commands, in its own pane.
+00:03:54.940 --> 00:03:58.860
+Every command is typed where you can see it, in a sandbox:
 
-00:01:29.690 --> 00:01:33.210
-The Driver makes one change, then gives the wheel back.
+00:03:58.860 --> 00:04:02.970
+only the project is writable, and there is no network.
 
-00:01:36.560 --> 00:01:39.280
-Here is a webhook service in Go.
+00:04:02.970 --> 00:04:05.010
+The answer comes back in the chat:
 
-00:01:39.280 --> 00:01:40.980
-A delivery test is red,
+00:04:05.010 --> 00:04:10.740
+the greater-or-equal on line thirty-five drops the retry that fits exactly.
 
-00:01:40.980 --> 00:01:44.190
-and you start changing the backoff code.
+00:04:12.670 --> 00:04:15.410
+You asked once; Scout ran the test in
 
-00:01:44.190 --> 00:01:47.110
-But the failure doesn't name that file.
+00:04:15.410 --> 00:04:17.860
+plain sight and answered in the chat.
 
-00:01:47.110 --> 00:01:50.970
-So Pair, the Navigator, reads the code first.
+00:04:21.990 --> 00:04:26.010
+A test fails, and you start fixing the wrong file.
 
-00:01:51.900 --> 00:01:54.420
-Then it speaks, under your line:
+00:04:26.010 --> 00:04:29.100
+Watch the margin, under the line you change.
 
-00:01:54.420 --> 00:01:55.940
-the shift is fine,
+00:04:32.770 --> 00:04:36.010
+In your terminal, the delivery test fails:
 
-00:01:55.940 --> 00:01:58.460
-the worker gives up one attempt early.
+00:04:36.010 --> 00:04:38.700
+it wants five attempts, and gets four.
 
-00:01:59.790 --> 00:02:03.250
-Alt J jumps to the exact characters it means.
+00:04:39.770 --> 00:04:44.120
+You guess the backoff is wrong, and change the shift on line twenty.
 
-00:02:05.000 --> 00:02:06.760
-Searching in circles?
+00:04:45.970 --> 00:04:47.810
+Pair saw the red test,
 
-00:02:06.760 --> 00:02:10.680
-After three searches, Pair says where the thing is,
+00:04:47.810 --> 00:04:51.170
+and an edit in a file the failure doesn’t name.
 
-00:02:10.680 --> 00:02:12.540
-in the code's own word.
+00:04:51.170 --> 00:04:55.160
+The Watcher scores that a wrong turn, worth a word.
 
-00:02:13.650 --> 00:02:17.910
-Pair context shows everything Pair knows on one card:
+00:04:55.160 --> 00:05:00.320
+So the Partner reads the code, and speaks once, under the line you changed.
 
-00:02:17.910 --> 00:02:19.790
-the goal from your board task,
+00:05:00.320 --> 00:05:04.750
+The cause is the greater-or-equal in worker dot go.
 
-00:02:19.790 --> 00:02:22.370
-git, your commands and buffers.
+00:05:04.750 --> 00:05:07.170
+Alt J goes where it points.
 
-00:02:23.640 --> 00:02:26.460
-Builds and runs are read like tests:
+00:05:07.170 --> 00:05:09.720
+Your cursor never moves by itself.
 
-00:02:26.460 --> 00:02:29.420
-a compiler error lands on its line in your code,
+00:05:13.550 --> 00:05:18.600
+Pair spoke once, where you were looking, and pointed at the real cause.
 
-00:02:29.420 --> 00:02:31.000
-and so does a crash.
+00:05:22.770 --> 00:05:26.690
+You fix one line, and a test somewhere else breaks.
 
-00:02:33.933 --> 00:02:37.393
-When you explore, each run of make gets a number,
+00:05:26.690 --> 00:05:29.840
+Watch the statusline, then the ghost text.
 
-00:02:37.393 --> 00:02:39.193
-next to the one before.
+00:05:32.510 --> 00:05:35.670
+Each time you save, Pair runs your tests,
 
-00:02:39.193 --> 00:02:42.013
-If a change did nothing, Pair says why.
+00:05:35.670 --> 00:05:37.790
+in its own pane at the bottom.
 
-00:02:44.578 --> 00:02:46.678
-Pair runs keeps the notebook,
+00:05:37.790 --> 00:05:40.340
+The delivery test is red.
 
-00:02:46.678 --> 00:02:50.098
-and one key removes the print lines you added for the hunt.
+00:05:40.340 --> 00:05:47.230
+You fix the check on line thirty-five, from greater-or-equal to greater, and save again.
 
-00:02:51.328 --> 00:02:52.588
-Want the why?
+00:05:47.230 --> 00:05:52.930
+Delivery passes now, but a queue test that passed before now fails.
 
-00:02:52.588 --> 00:02:56.008
-Alt question mark gives the one idea worth keeping,
+00:05:52.930 --> 00:05:57.100
+That is a regression, and the Watcher scores it high.
 
-00:02:56.008 --> 00:02:56.828
-with a link.
+00:05:57.100 --> 00:05:59.760
+Pair says why, under your line:
 
-00:02:57.878 --> 00:03:00.478
-A thought that can wait, waits:
+00:05:59.760 --> 00:06:04.060
+the queue’s lease runs out just as the last attempt starts.
 
-00:03:00.478 --> 00:03:03.278
-a dot in the margin until your next save.
+00:06:04.060 --> 00:06:07.460
+Alt J goes to its fix, in queue dot go.
 
-00:03:06.488 --> 00:03:08.288
-Tests are optional.
+00:06:07.460 --> 00:06:11.320
+The ghost text shows the old line struck through,
 
-00:03:08.288 --> 00:03:09.528
-Set a test command,
+00:06:11.320 --> 00:06:13.180
+and the new one under it.
 
-00:03:09.528 --> 00:03:12.408
-and every save runs it in Pair's pane.
+00:06:13.180 --> 00:06:15.310
+Nothing has changed yet.
 
-00:03:13.478 --> 00:03:16.058
-This fix breaks a queue test.
+00:06:15.310 --> 00:06:17.790
+Alt Y takes it into your buffer.
 
-00:03:16.058 --> 00:03:19.178
-A regression, and you didn't even run the tests.
+00:06:17.790 --> 00:06:21.320
+You save, the tests run again, and they pass.
 
-00:03:20.288 --> 00:03:24.408
-Pair says why, and offers its fix as ghost text:
+00:06:35.290 --> 00:06:38.950
+Pair ran the tests you might skip, caught a regression,
 
-00:03:24.408 --> 00:03:26.968
-dim, not in your file yet.
+00:06:38.950 --> 00:06:41.340
+and showed its fix before you took it.
 
-00:03:26.968 --> 00:03:28.448
-Alt Y takes it.
+00:06:45.510 --> 00:06:49.090
+You are writing a design note, not code yet.
 
-00:03:31.865 --> 00:03:34.525
-When a number finally moves the right way,
+00:06:49.090 --> 00:06:50.880
+Watch the margin of the note.
 
-00:03:34.525 --> 00:03:36.765
-the statusline lights up once.
+00:06:52.570 --> 00:06:56.740
+You finish a sentence about dead letters, and stop to think.
 
-00:03:40.310 --> 00:03:43.250
-In a Markdown note, Pair thinks with you,
+00:06:58.123 --> 00:07:03.453
+When you stop, Pair reads the whole note, and the code it names.
 
-00:03:43.250 --> 00:03:44.750
-never for you:
+00:07:03.453 --> 00:07:07.253
+Its notes land in the margin, each with a sign.
 
-00:03:44.750 --> 00:03:46.690
-a few marks in the margin.
+00:07:07.253 --> 00:07:10.763
+A question mark is a question the note leaves open.
 
-00:03:46.690 --> 00:03:49.850
-An open question, two lines that clash,
+00:07:10.763 --> 00:07:15.443
+The not-equal sign marks two lines that can’t both be true:
 
-00:03:49.850 --> 00:03:51.690
-what the code really does.
+00:07:15.443 --> 00:07:18.233
+five attempts here, six there.
 
-00:03:52.780 --> 00:03:54.920
-Alt D logs a decision,
+00:07:18.233 --> 00:07:21.653
+The arrow says what the code really does.
 
-00:03:54.920 --> 00:03:57.420
-and Pair tasks lists the work.
+00:07:21.653 --> 00:07:25.443
+Here, the note is wrong about worker dot go.
 
-00:03:58.690 --> 00:04:00.390
-From an empty folder:
+00:07:25.443 --> 00:07:27.363
+Nothing in the note changed.
 
-00:04:00.390 --> 00:04:03.230
-Pair new, and one sentence.
+00:07:27.363 --> 00:07:29.453
+The marks are only in the margin.
 
-00:04:03.230 --> 00:04:06.870
-Three short questions, then a first slice that runs.
+00:07:32.413 --> 00:07:34.053
+When you are ready to build,
 
-00:04:10.281 --> 00:04:13.421
-Hand it over, and it types two files.
+00:07:34.053 --> 00:07:37.613
+Pair tasks lists the work the note asks for.
 
-00:04:13.421 --> 00:04:15.901
-Nothing is on disk until you save.
+00:07:37.613 --> 00:07:40.183
+Nothing is added until you say so.
 
-00:04:23.127 --> 00:04:27.247
-To hand over a change, say Pair drive, or just:
+00:07:42.933 --> 00:07:45.293
+Pair read the note like a colleague:
 
-00:04:27.247 --> 00:04:27.847
-you take it.
+00:07:45.293 --> 00:07:49.423
+questions, contradictions, facts, in the margin.
 
-00:04:27.847 --> 00:04:31.507
-Pair is the Driver, and you watch it type.
+00:07:50.933 --> 00:07:54.033
+An empty folder, and an idea.
 
-00:04:32.577 --> 00:04:36.357
-It tests your unsaved buffer, then hands back.
+00:07:54.033 --> 00:07:55.333
+No code yet.
 
-00:04:36.357 --> 00:04:38.637
-One undo takes it all away.
+00:07:55.333 --> 00:07:57.823
+Watch the note, under your last line.
 
-00:04:39.835 --> 00:04:41.135
-Changed your mind?
+00:08:04.113 --> 00:08:06.873
+Pair new, and one sentence:
 
-00:04:41.135 --> 00:04:43.215
-Any key takes the wheel back.
+00:08:06.873 --> 00:08:08.263
+what you want to try.
 
-00:04:44.925 --> 00:04:46.125
-No test?
+00:08:13.113 --> 00:08:18.263
+Pair starts a note with your idea, and asks one question under it.
 
-00:04:46.125 --> 00:04:47.505
-Say what you expect to see.
+00:08:18.263 --> 00:08:21.373
+You answer on the next line, in a few words.
 
-00:04:47.505 --> 00:04:51.165
-Pair runs the unsaved buffer in a scratch copy,
+00:08:23.223 --> 00:08:27.183
+Each answer brings the next question, one at a time.
 
-00:04:51.165 --> 00:04:52.385
-and checks the number.
+00:08:27.183 --> 00:08:29.533
+Here, how the stall happens.
 
-00:04:55.675 --> 00:04:59.195
-Pair today lists everything Pair did today.
+00:08:35.222 --> 00:08:37.423
+And whether to cap the steps.
 
-00:04:59.195 --> 00:05:01.855
-The U key undoes one of its edits,
+00:08:37.423 --> 00:08:39.513
+Three short answers are enough.
 
-00:05:01.855 --> 00:05:03.155
-even after yours.
+00:08:47.676 --> 00:08:52.656
+Then Pair suggests a first slice, dimmed, under your answers:
 
-00:05:04.325 --> 00:05:07.285
-Other agents' news waits for your next break.
+00:08:52.656 --> 00:08:56.096
+two files, what they print, what to poke at,
 
-00:05:07.285 --> 00:05:09.725
-Alt A goes to the one that needs you.
+00:08:56.096 --> 00:08:58.466
+and what to leave out for now.
 
-00:05:11.615 --> 00:05:14.075
-At the day's end, a debrief:
+00:08:58.466 --> 00:09:01.246
+Alt Y takes it into the note.
 
-00:05:14.075 --> 00:05:18.375
-what's true, what's left, and tomorrow's first step.
+00:09:01.246 --> 00:09:04.096
+Nothing is written to disk until you save.
 
-00:05:19.525 --> 00:05:22.665
-Next morning, Neovim opens right there,
+00:09:05.946 --> 00:09:11.556
+Three questions, three short answers, and a first slice small enough to start.
 
-00:05:22.665 --> 00:05:24.765
-with one line on what's left.
+00:09:15.686 --> 00:09:20.306
+You want the edge cases of a table test written, and you’d rather watch.
 
-00:05:28.015 --> 00:05:29.275
-And more.
+00:09:20.306 --> 00:09:22.876
+Watch your code, and the statusline.
 
-00:05:29.275 --> 00:05:31.975
-Hold Alt T to ask aloud.
+00:09:24.466 --> 00:09:27.976
+You hand over with Pair drive, and say what you want.
 
-00:05:31.975 --> 00:05:34.195
-Soft sounds while you're away.
+00:09:28.946 --> 00:09:30.946
+Pair is the Driver now.
 
-00:05:34.195 --> 00:05:37.795
-Your shell setup in Pair's pane, sandboxed.
+00:09:30.946 --> 00:09:33.426
+The statusline says it has the wheel.
 
-00:05:37.795 --> 00:05:40.415
-Several Neovims, one session.
+00:09:33.426 --> 00:09:36.556
+It reads the test and the code first.
 
-00:05:40.415 --> 00:05:43.195
-And without herdr, the terminal workspace,
+00:09:36.556 --> 00:09:41.846
+Then it types, into your buffer, where you can see every line arrive.
 
-00:05:43.195 --> 00:05:45.995
-Pair chat runs inside Neovim.
+00:09:41.846 --> 00:09:46.626
+It runs the tests on the unsaved buffer, in its own pane at the bottom,
 
-00:05:47.362 --> 00:05:49.162
-The keys to remember:
+00:09:46.626 --> 00:09:49.116
+and hands the wheel back with a short note.
 
-00:05:49.162 --> 00:05:52.642
-Alt J, Alt Y, Alt question mark,
+00:09:51.886 --> 00:09:54.046
+Nothing is saved yet.
 
-00:05:52.642 --> 00:05:54.922
-Pair drive, and U.
+00:09:54.046 --> 00:09:57.086
+U takes the whole change away in one step,
 
-00:05:54.922 --> 00:05:57.622
-Pair stays in the second chair.
+00:09:57.086 --> 00:09:59.456
+and control R brings it back.
+
+00:10:04.946 --> 00:10:10.256
+Pair typed one change in plain sight, tested it, and gave the wheel back.
+
+00:10:11.806 --> 00:10:14.886
+Pair is typing, and you change your mind.
+
+00:10:14.886 --> 00:10:17.516
+Watch the lines it types, and the chat.
+
+00:10:19.646 --> 00:10:21.696
+Same hand-over as before.
+
+00:10:28.886 --> 00:10:31.466
+Pair starts typing the cases.
+
+00:10:31.466 --> 00:10:33.226
+You press any key.
+
+00:10:33.226 --> 00:10:38.596
+The typing stops, and what it typed is gone, as if it never started.
+
+00:10:38.596 --> 00:10:42.826
+The chat says you have the wheel back, and Pair is the Navigator again.
+
+00:10:44.776 --> 00:10:49.486
+Any key takes the wheel back, and nothing Pair typed stays behind.
+
+00:10:53.676 --> 00:10:56.776
+Your hands are on the code, and a question comes up.
+
+00:10:56.776 --> 00:10:59.486
+Watch the line under your cursor.
+
+00:11:01.576 --> 00:11:04.876
+Hold Alt T, and ask out loud.
+
+00:11:04.876 --> 00:11:07.826
+The meter shows Pair hears you.
+
+00:11:07.826 --> 00:11:12.546
+Let go, and whisper dot c p p writes down what it heard,
+
+00:11:12.546 --> 00:11:14.246
+on your own machine.
+
+00:11:14.246 --> 00:11:17.756
+That is your question, under your line.
+
+00:11:17.756 --> 00:11:22.736
+Then Pair answers in the same place, and points at line thirty-five.
+
+00:11:22.736 --> 00:11:24.606
+Alt J would go there.
+
+00:11:28.616 --> 00:11:32.596
+You asked out loud, and the answer came where you were looking.
+
+00:11:32.596 --> 00:11:35.086
+Voice is off until you set it up.
+
+00:11:39.356 --> 00:11:45.026
+Pair works with or without herdr, the terminal workspace for coding agents.
+
+00:11:45.026 --> 00:11:48.446
+Without it, one Neovim holds everything.
+
+00:11:48.446 --> 00:11:50.266
+Pair chat opens the chat,
+
+00:11:50.266 --> 00:11:53.576
+and Pair’s own pane is a terminal at the bottom.
+
+00:11:53.576 --> 00:11:56.826
+Every scene you just saw ran this way.
+
+00:11:56.826 --> 00:12:01.426
+With herdr, the chat and Pair’s pane are panes of their own.
+
+00:12:01.426 --> 00:12:07.476
+Pair also sees your other agents on herdr’s board, and terminals outside Neovim.
+
+00:12:07.476 --> 00:12:11.326
+Either way, it is the same Pair, with the same keys.
+
+00:12:12.816 --> 00:12:14.976
+Here are the keys to remember.
+
+00:12:14.976 --> 00:12:21.236
+Alt J goes where Pair points, and Alt Y takes its suggested change.
+
+00:12:21.236 --> 00:12:25.416
+Alt question mark explains the idea behind its words.
+
+00:12:25.416 --> 00:12:29.656
+Pair drive hands over one change, U undoes it,
+
+00:12:29.656 --> 00:12:32.256
+and any key takes the wheel back.
+
+00:12:32.256 --> 00:12:35.056
+Hold Alt T to ask out loud,
+
+00:12:35.056 --> 00:12:38.746
+and run pair doctor whenever something seems off.
+
+00:12:38.746 --> 00:12:40.806
+Pairing buddy is on GitHub.
+
+00:12:40.806 --> 00:12:41.836
+Happy pairing.
