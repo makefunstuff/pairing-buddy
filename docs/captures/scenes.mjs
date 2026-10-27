@@ -348,4 +348,16 @@ export const scenes = {
       ],
     },
   },
+  // Without herdr: the chat is `pair chat` in a :terminal on the right (:Pair chat), and Scout's pane is a :terminal
+  // along the bottom of the same Neovim, sandboxed; no herdr stand-in and no chat pane of the stage's.
+  'no-herdr': {
+    noHerdr: true,
+    branch: 'retries-reach-the-budget',
+    watcher: score(),
+    partner: [
+      {when: /delivery test/, wait: 900, call: ['run', {command: 'go test ./internal/delivery/'}]},
+      {wait: 900, call: ['read', {file: 'internal/delivery/worker.go', start_line: 28, end_line: 40}]},
+      {wait: 300, say: 'it stops after 4 attempts: attempt 5 would start at exactly 15s, and `worker.go:35` gives up on `>=`, so a wait that lands on the budget counts as over it.'},
+    ],
+  },
 };

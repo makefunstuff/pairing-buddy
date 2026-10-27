@@ -1,0 +1,88 @@
+{
+ "chapters": [
+  {
+   "at": 0,
+   "title": "Why",
+   "clock": "0:00"
+  },
+  {
+   "at": 38.65,
+   "title": "Getting started",
+   "clock": "0:38"
+  },
+  {
+   "at": 93.38,
+   "title": "Exploring code",
+   "clock": "1:33"
+  },
+  {
+   "at": 182.118,
+   "title": "Tests, if you have them",
+   "clock": "3:02"
+  },
+  {
+   "at": 215.9,
+   "title": "Notes and the blank page",
+   "clock": "3:35"
+  },
+  {
+   "at": 258.737,
+   "title": "Handing over",
+   "clock": "4:18"
+  },
+  {
+   "at": 291.285,
+   "title": "The day around it",
+   "clock": "4:51"
+  },
+  {
+   "at": 322.825,
+   "title": "And the rest",
+   "clock": "5:22"
+  },
+  {
+   "at": 344.252,
+   "title": "The keys to remember",
+   "clock": "5:44"
+  }
+ ],
+ "scenes": {
+  "problem": 0,
+  "chair": 12.89,
+  "models": 25.28,
+  "install": 40.75,
+  "auth": 53.2,
+  "onemodel": 62.41,
+  "doctor": 71.14,
+  "roles": 80.05,
+  "red": 95.48,
+  "reads": 103.13,
+  "words": 110.78,
+  "jump": 118.67,
+  "trail": 123.84,
+  "context": 132.57,
+  "crash": 142.52,
+  "loop": 151.663,
+  "runs": 162.288,
+  "teach": 169.038,
+  "held": 175.608,
+  "save": 184.218,
+  "regression": 191.188,
+  "accept": 197.998,
+  "green": 209.575,
+  "notes": 218,
+  "decision": 230.49,
+  "blank": 236.38,
+  "firstrun": 248.011,
+  "drive": 260.837,
+  "handback": 270.287,
+  "takeback": 277.525,
+  "intent": 282.615,
+  "ledger": 293.385,
+  "agents": 302.035,
+  "debrief": 308.525,
+  "pickup": 316.395,
+  "montage": 324.925,
+  "keys": 344.252
+ }
+}

@@ -1,4 +1,4 @@
-# Install in two commands, in a sandbox home: npm installs into it, and `pair setup` meets the systemctl stand-in.
+# Install in two commands, in a sandbox home (the login `pair setup` offers is skipped with Enter): npm installs into it, and `pair setup` meets the systemctl stand-in.
 # run.sh fills in @PBCAP@ (its scratch dir) and @HERE@ (this folder).
 Output "@HERE@/../clips/install.mp4"
 Source "@HERE@/head.tape"
@@ -17,6 +17,9 @@ Sleep 3s
 Type "pair setup"
 Sleep 800ms
 Enter
-Wait+Screen@60s /pair doctor/
+Wait+Screen@60s /Enter to skip/
+Sleep 2500ms
+Enter
+Wait+Screen@60s /check everything/
 Sleep 10s
 Hide

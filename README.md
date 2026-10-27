@@ -8,8 +8,10 @@ and the disk changes only when you save.
 
 https://github.com/user-attachments/assets/1a189e13-ff42-4710-a731-d5c493238cf9
 
-*The three-minute tour: three moments in Neovim, the roles, the install and the keys. Its script and how to render it
-again are in [docs/video](docs/video/). The website is at
+*The six-minute tour of everything it does, with captions. Chapters: 0:00 why · 0:38 getting started (install,
+`pair auth`, one model, `pair doctor`) · 1:32 exploring code · 3:01 tests · 3:33 notes and the blank page · 4:15
+handing over · 4:48 the day around it · 5:20 and the rest · 5:41 the keys. Its script and how to render it again
+are in [docs/video](docs/video/). The website, where each chapter is a button, is at
 [makefunstuff.github.io/pairing-buddy](https://makefunstuff.github.io/pairing-buddy/) (source in [`site/`](site/)).*
 
 Version 0.9.

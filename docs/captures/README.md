@@ -14,7 +14,9 @@ recording comes out the same each time.
 - **The day so far:** the pick-up scene starts from yesterday's session (its debrief and where to pick up), and the
   debrief scene from three hours of active time and five verdicts, which [stage.mjs](stage.mjs) writes into the
   daemon's scratch store; the daemon's clock shows the scene's hour.
-- **herdr:** [herdr.mjs](herdr.mjs) stands in for herdr's socket, because the captures show Neovim alone.
+- **herdr:** [herdr.mjs](herdr.mjs) stands in for herdr's socket, because the captures show Neovim alone. The no-herdr scene has
+  no herdr at all: no stand-in, no chat pane of the stage's, and Neovim knows of no herdr pane; its chat is the one
+  `:Pair chat` opens.
   - Pair's own pane runs its commands for real, with bash in the project: the tests on save, and
     `go test -overlay` on the unsaved buffer.
   - The user's shell is Neovim's `:terminal`, with Pair's shell hook.
@@ -66,6 +68,7 @@ recording comes out the same each time.
 | [agents](tapes/agents.tape) | your other agents' news, one line at your next breakpoint, and `:Pair agents` |
 | [notes](tapes/notes.tape) | notes in the margin: the marks, a fixed line, a decision logged, the tasks panel |
 | [teach](tapes/teach.tape) | Alt-? on a remark: the idea worth keeping behind it, and its link |
+| [no-herdr](tapes/no-herdr.tape) | without herdr: `:Pair chat` opens the chat in Neovim, and Scout's pane is a `:terminal` along the bottom, sandboxed |
 
 ## Recording
 
