@@ -1,6 +1,7 @@
 // The Watcher's pace, before (`watcherPace: false`, as before the pace) and after: 40 moments of a working hour
 // through the speak gate, the score memory and the pace, against a fake Watcher answering in a set time. The numbers
-// in docs/watcher.md ("When the server is slow") come from it. Not a test: run it by hand, it takes about 7 minutes.
+// in docs/watcher.md ("When the server is slow") come from it. Not a test: run it by hand. The runs are
+// independent and run at once, so it takes as long as the slowest (about 2 minutes with the default latencies).
 //   node test/pace-bench.mjs [latencies in ms, comma-separated; default 300,1000,1700,3500]
 import {Budget} from '../src/budget.mjs';
 import {initialState} from '../src/fold.mjs';
@@ -56,8 +57,9 @@ async function run(latencyMs, paceOn) {
 
 console.log('| Watcher latency | Watcher calls | Watcher busy (s) | wait for news you cannot see, median / worst (s) | pace after; kinds not asked |');
 console.log('|---|---|---|---|---|');
-for (const ms of (process.argv[2] ?? '300,1000,1700,3500').split(',').map(Number)) {
-  const before = await run(ms, false);
-  const after = await run(ms, true);
+const latencies = (process.argv[2] ?? '300,1000,1700,3500').split(',').map(Number);
+// Each run has its own Pace and its own fake Watcher, so they measure the same alone or together.
+const rows = await Promise.all(latencies.map(async ms => [ms, ...await Promise.all([run(ms, false), run(ms, true)])]));
+for (const [ms, before, after] of rows) {
   console.log(`| ${ms} ms | ${before.calls} → ${after.calls} | ${before.busy} → ${after.busy} | ${before.news} / ${before.worst} → ${after.news} / ${after.worst} | ${after.level}; ${after.skipped || '-'} |`);
 }

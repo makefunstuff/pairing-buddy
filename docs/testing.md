@@ -85,7 +85,7 @@ Runs every test that needs no model, in under a minute, with scripted models and
   end against a fake server that swaps and does not say so, the Watcher moving to the Partner's model after two
   reloads. The pace: its levels and their border, verdicts ranking what it gives up, and, end to end against a fake
   server answering in 1.7 s, drift costing no call while a failure is still scored. `node test/pace-bench.mjs` (not
-  part of `npm test`, about 7 minutes) measures calls and waits before and after the pace at set latencies.
+  part of `npm test`, about 2 minutes) measures calls and waits before and after the pace at set latencies.
 - **Context windows and thinking settings.** The window from vLLM's, llama.cpp's and LM Studio's metadata or pi-ai's
   catalog, the config's own winning; `pair doctor --thinking` against fake servers that take a chat-template switch
   with a budget field, or `reasoning_effort` with three levels.
