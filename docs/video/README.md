@@ -98,4 +98,6 @@ variable whose name holds KEY, TOKEN, SECRET or PASSWORD. The scratch folders go
 video is published, OCR its frames and check them and the file's metadata for usernames, home paths, hosts, IP
 addresses, ports and keys.
 
-Fonts: Press Start 2P, Silkscreen, Pixelify Sans and JetBrains Mono (`fonts/`, SIL Open Font License). The colorscheme of the captures is ayu (MIT).
+Fonts: Press Start 2P, Silkscreen, Pixelify Sans and JetBrains Mono (`fonts/`, SIL Open Font License). The colorscheme
+of the captures is ayu (Apache License 2.0), and `vendor/gsap.min.js` is under GSAP's own licence, not MIT: see
+[THIRD_PARTY_NOTICES.md](../../THIRD_PARTY_NOTICES.md) for these and for where the voice and the music come from.

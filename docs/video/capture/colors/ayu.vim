@@ -1,4 +1,5 @@
-" ayu, from ayu-vim (MIT licence): https://github.com/ayu-theme/ayu-vim
+" ayu, from ayu-vim (Apache License 2.0, see LICENSE-ayu-vim.txt here): https://github.com/ayu-theme/ayu-vim
+" Changed here: the line that sets 'background' takes g:ayucolor as it is.
 " Initialisation:"{{{
 " ----------------------------------------------------------------------------
 hi clear

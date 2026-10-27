@@ -1,0 +1,28 @@
+name: Feature request
+description: Something you would like Pair to do, or do differently.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: moment
+    attributes:
+      label: The moment
+      description: What were you doing when you wanted this? A concrete moment from your work helps most.
+    validations:
+      required: true
+  - type: textarea
+    id: wish
+    attributes:
+      label: What Pair would do
+      description: What you would like to see or hear from Pair, and when. If it would speak, what would it say?
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why it matters
+      description: What it saves you, or what goes wrong without it. Pair speaks rarely and never writes your files on purpose; say how the idea fits that.
+  - type: textarea
+    id: else
+    attributes:
+      label: What you do today instead
+      description: Workarounds, or other tools that do something like it.

@@ -82,6 +82,7 @@ export default defineConfig({
       {text: 'v0.9', items: [
         {text: 'Known limitations', link: '/limitations'},
         {text: 'Issues', link: `${REPO}/issues`},
+        {text: 'Contributing', link: '/contributing'},
       ]},
     ],
     sidebar: [
@@ -124,6 +125,7 @@ export default defineConfig({
         {text: 'Data and privacy', link: '/data'},
         {text: 'What Pair gets from herdr', link: '/herdr'},
         {text: 'Tests', link: '/testing'},
+        {text: 'Contributing', link: '/contributing'},
       ]},
     ],
     outline: {level: [2, 3], label: 'On this page'},
@@ -131,6 +133,6 @@ export default defineConfig({
     socialLinks: [{icon: 'github', link: REPO}],
     editLink: {pattern: `${REPO}/edit/main/docs/:path`, text: 'Edit this page on GitHub'},
     docFooter: {prev: 'Previous', next: 'Next'},
-    footer: {message: 'MIT licensed. The captures show the shipped plugin and daemon, with scripted model words.'},
+    footer: {message: `<a href="${REPO}/blob/main/LICENSE">MIT licensed</a>. The captures show the shipped plugin and daemon, with scripted model words.`},
   },
 });
