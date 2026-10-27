@@ -93,7 +93,7 @@ Runs every test that needs no model, in under a minute, with scripted models and
   fetched once into `node_modules/.cache` (skipped without `fzf` or the network): live_grep and files given up with
   `Esc` in fzf-lua's default setup, which hides the picker, a resumed picker with fewer words, grep words with
   punctuation as you gave them, grep_cWORD and grep_cword, what you opened, and fzf-lua set to end fzf, in fzf's own
-  layout.
+  bottom-up layout with a `>` pointer, where a result line starts like the prompt.
 - **The context card and no ceremony.** The board task matched by repo and number (never another repo's task of the
   same number, nor a version branch), the board's agent launches left out of your commands, each source's rows and
   budget, a hidden source left out of what the Partner gets and raising no remark (no failed command with a hidden

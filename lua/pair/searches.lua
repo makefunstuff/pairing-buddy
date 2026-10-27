@@ -70,16 +70,32 @@ local function snacks(buf, report)
   end)
 end
 
+--- Whether fzf draws its prompt at the top (`--layout=reverse`, fzf-lua's default) rather than at the bottom, from
+--- the picker's options, else from $FZF_DEFAULT_OPTS, else fzf's own default.
+local function fzf_reversed(opts)
+  local fzf_opts = opts.fzf_opts or {}
+  if fzf_opts['--reverse'] then return true end
+  local layout = fzf_opts['--layout']
+  if not layout then
+    local default = vim.env.FZF_DEFAULT_OPTS or ''
+    layout = default:match('%-%-layout[= ](%S+)') or default:find('%-%-reverse') and 'reverse'
+  end
+  return layout == 'reverse'
+end
+
 --- What fzf shows in `lines`, its screen: the query typed after `prompt`, and the match count on the prompt line
---- (`--info=inline-right`, fzf-lua's default) or on the info line next to it. Nil when the prompt line is not there.
-local function fzf_screen(lines, prompt)
+--- (`--info=inline-right`, fzf-lua's default) or on the info line just inside it. The prompt line is the one
+--- nearest the screen's top when `reversed`, else its bottom: a result under a `>` pointer starts like it too, but
+--- lies beyond the info line. Nil when the prompt line is not there.
+local function fzf_screen(lines, prompt, reversed)
   prompt = vim.trim((prompt:gsub('\27%[[%d;]*m', '')))
-  for i, line in ipairs(lines) do
-    if prompt ~= '' and vim.startswith(line, prompt) then
-      local typed = line:sub(#prompt + 1)
-      local count = typed:match('(%d+)/%d+[%s%d()]*$')
-        or (lines[i + 1] or ''):match('^[^%w]*(%d+)/%d+')
-        or (lines[i - 1] or ''):match('^[^%w]*(%d+)/%d+')
+  if prompt == '' then return end
+  local first, last, step = 1, #lines, 1
+  if not reversed then first, last, step = #lines, 1, -1 end
+  for i = first, last, step do
+    if vim.startswith(lines[i], prompt) then
+      local typed = lines[i]:sub(#prompt + 1)
+      local count = typed:match('(%d+)/%d+[%s%d()]*$') or (lines[i + step] or ''):match('^[^%w]*(%d+)/%d+')
       local query = typed:match('^(.-)%s%s+%S*%s*%d+/%d+[%s%d()]*$') or typed
       return vim.trim(query), tonumber(count)
     end
@@ -152,7 +168,7 @@ local function fzflua(buf, report)
   vim.api.nvim_create_autocmd('TextChangedT', {buffer = buf, callback = function()
     if this.buf ~= buf then return true end
     local prompt = this.opts.prompt or this.opts.fzf_opts and this.opts.fzf_opts['--prompt'] or '> '
-    local query, count = fzf_screen(vim.api.nvim_buf_get_lines(buf, 0, -1, false), prompt)
+    local query, count = fzf_screen(vim.api.nvim_buf_get_lines(buf, 0, -1, false), prompt, fzf_reversed(this.opts))
     if query then this.query, this.results = query, count or this.results end
   end})
   -- A hidden picker comes back in a window opened without autocommands, but always in Terminal mode.

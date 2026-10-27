@@ -1291,18 +1291,19 @@ test('fzf-lua searches reach the trail, given up with Esc or opened: live_grep, 
   }
 });
 
-test('fzf-lua set to end fzf rather than hide it, in fzf\'s own layout: its searches reach the trail too', {skip: fzf.skip ?? false, timeout: 60_000}, async () => {
+test('fzf-lua set to end fzf rather than hide it, in fzf\'s own layout with a > pointer: its searches reach the trail too', {skip: fzf.skip ?? false, timeout: 60_000}, async () => {
   const {project, watcher, remote, keys, stop} = await pairInNvim('retries pass', {rtp: [fzf.dir]});
   const screen = () => JSON.parse(remote('json_encode(getline(1, "$"))'));
   try {
     watcher.setResponses(Array.from({length: 10}, () => fauxAssistantMessage([fauxText('0')])));
     writeFileSync(join(project, 'backoff.js'), 'export const next = attempt => 2 ** attempt\n');
-    remote(`luaeval("require('fzf-lua').setup({defaults = {no_hide = true}, fzf_opts = {['--layout'] = 'default', ['--info'] = 'default'}}) and 0 or 0")`);
-    for (const [call, query, count, key] of [['FzfLua.live_grep()', 'retry', 0, '<Esc>'], ['FzfLua.files()', 'backoff', 1, '<CR>']]) {
+    remote(`luaeval("require('fzf-lua').setup({defaults = {no_hide = true}, fzf_opts = {['--layout'] = 'default', ['--info'] = 'default', ['--pointer'] = '>'}}) and 0 or 0")`);
+    for (const [call, query, count, key] of [['FzfLua.live_grep()', 'attempt', 1, '<Esc>'], ['FzfLua.files()', 'backoff', 1, '<CR>']]) {
       remote(`luaeval("${call} and 0 or 0")`);
       await until(() => remote('&filetype') === 'fzf' && screen().some(line => /\d+\/\d+/.test(line)), `fzf for ${call}`);
       keys(query);
       await until(() => screen().at(-1).includes(query) && new RegExp(`^\\s*${count}/\\d+`).test(screen().at(-2)), `${count} matches for "${query}"`);
+      if (key === '<Esc>') assert.ok(screen().some(line => /^> .*backoff\.js/.test(line)), 'a result under the > pointer, starting like the prompt');
       keys(key);
       await until(() => remote('&filetype') !== 'fzf', 'the picker to close');
     }
@@ -1311,7 +1312,7 @@ test('fzf-lua set to end fzf rather than hide it, in fzf\'s own layout: its sear
 
     keys(':Pair trail<CR>');
     const lines = await until(() => remote('win_gettype()') === 'popup' && screen(), 'the trail panel');
-    assert.match(lines[2], /^\+ +\d+s {2}Live Grep +"retry" +0 results {2}closed, nothing opened$/);
+    assert.match(lines[2], /^\+ +\d+s {2}Live Grep +"attempt" +1 result +closed, nothing opened$/);
     assert.match(lines[3], /^\+ +\d+s {2}Files +"backoff" +1 result +→ backoff\.js$/);
     keys('q');
   } finally {
