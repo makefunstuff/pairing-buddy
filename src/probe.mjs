@@ -3,12 +3,16 @@
 
 const thought = message => (message.content ?? []).some(block => block.type === 'thinking' && block.thinking?.trim());
 
+/** Tokens the model thought: the usage's reasoning tokens, else its output tokens, else the thinking's length. */
+const thoughtTokens = message => message.usage?.reasoning || message.usage?.output
+  || Math.round((message.content ?? []).filter(block => block.type === 'thinking').reduce((sum, block) => sum + (block.thinking?.length ?? 0), 0) / 4);
+
 async function probe(models, model, prompt, options) {
   const started = Date.now();
   const message = await models.completeSimple(model, prompt, options)
     .catch(error => ({errorMessage: String(error?.message ?? error)}));
   const ms = Date.now() - started;
-  return message.errorMessage ? {ok: false, ms, error: message.errorMessage} : {ok: true, ms, thought: thought(message)};
+  return message.errorMessage ? {ok: false, ms, error: message.errorMessage} : {ok: true, ms, thought: thought(message), tokens: thoughtTokens(message)};
 }
 
 /** `{ok, ms, error, thought}` for one short completion of `model`, with its thinking switched off where it can be. */
@@ -26,6 +30,18 @@ export function probeThinking(models, model, level, {timeoutMs = 60_000} = {}) {
     models, model,
     {systemPrompt: 'Answer with the number alone.', messages: [{role: 'user', content: 'What is 17 * 23 - 19?', timestamp: Date.now()}]},
     {reasoning: level, maxTokens: 4096, signal: AbortSignal.timeout(timeoutMs)},
+  );
+}
+
+/**
+ * How much `model` thinks at `level` (null: thinking off) on a question that rewards a longer thought, for
+ * `pair doctor --thinking`; `thinkingBudgets` overrides pi-ai's budget of a level.
+ */
+export function probeEffort(models, model, level, {thinkingBudgets, timeoutMs = 120_000} = {}) {
+  return probe(
+    models, model,
+    {systemPrompt: 'Answer with the number alone.', messages: [{role: 'user', content: 'What is the sum of the integers from 1 to 200 that are divisible by 3 or by 7, but not by both?', timestamp: Date.now()}]},
+    {...(level ? {reasoning: level, thinkingBudgets} : {temperature: 0}), maxTokens: 4096, signal: AbortSignal.timeout(timeoutMs)},
   );
 }
 
