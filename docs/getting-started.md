@@ -64,6 +64,14 @@ pair doctor
 One line per part (config, service, daemon, plugin, Neovim, herdr, models), each with the fix when something is
 wrong. See [Troubleshooting](troubleshooting.md) for what each line means.
 
+Optional: add the shell hook to your shell's rc file, so Pair gets every command you run in your terminals with its
+exit code from the shell itself, and in zsh your typing at the prompt too ([`pair shell-hook`](cli.md#pair-shell-hook)):
+
+```sh
+eval "$(pair shell-hook bash)"   # or zsh
+pair shell-hook fish | source    # fish, in config.fish
+```
+
 ## 5. Pair
 
 Open Neovim in your project. In herdr, run `pair` in the pane next to it: a narrow chat pane opens on the right.
