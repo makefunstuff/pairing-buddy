@@ -79,6 +79,7 @@ your keys and logins).
 - Reference: [configuration](docs/config.md), [Neovim plugin](docs/neovim-plugin.md), [commands](docs/cli.md)
 - [Troubleshooting](docs/troubleshooting.md) and [known limitations](docs/limitations.md)
 - [Data and privacy](docs/data.md), [tests](docs/testing.md)
+- [Contributing](CONTRIBUTING.md), also [on the site](docs/contributing.md)
 
 The site is [VitePress](https://vitepress.dev): `cd site && npm ci && npm run dev` previews it, and the
 [Pages workflow](.github/workflows/pages.yml) builds and deploys it on every push to main. Its look is pixel art:
@@ -96,3 +97,11 @@ in `site/og/build.mjs` and `meta.mjs`); otherwise X keeps showing the old image.
 After `npm run build`, `npm run check` checks every built page has the full set of tags with absolute URLs (the Pages
 workflow runs it before it deploys), and `node og/previews.mjs OUT` renders mock X, Slack and Discord previews of the
 built pages into `OUT/previews.png`.
+
+## Contributing and license
+
+Bug reports, ideas and pull requests are welcome: [CONTRIBUTING.md](CONTRIBUTING.md) says how to run Pair from a
+clone, run the tests, report a bug (with `pair doctor` output) and open a pull request.
+
+pairing-buddy is under the [MIT License](LICENSE). The fonts, a vendored animation library and a colorscheme used by
+the site and the video keep their own licences: see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

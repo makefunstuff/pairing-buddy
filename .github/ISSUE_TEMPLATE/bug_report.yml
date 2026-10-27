@@ -1,0 +1,51 @@
+name: Bug report
+description: Pair did something wrong, crashed, or would not start.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. [Troubleshooting](https://makefunstuff.github.io/pairing-buddy/troubleshooting.html) and [Known limitations](https://makefunstuff.github.io/pairing-buddy/limitations.html) may already have the fix.
+        This repository is public: before you paste anything, replace home paths, hostnames, IP addresses and anything secret. Never paste an API key or a login token.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what Pair did instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open a Go project in Neovim with Pair connected
+        2. Save a file whose test fails
+        3. ...
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `pair doctor`
+      description: Run `pair doctor` in a terminal and paste all of it. Its daemon line names the version.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: editor
+    attributes:
+      label: Editor setup
+      description: Neovim version (`nvim --version`, first line), plugin manager, the plugin's options, and where Pair runs (herdr, tmux, or Neovim alone).
+    validations:
+      required: true
+  - type: textarea
+    id: model
+    attributes:
+      label: Model setup
+      description: For the Watcher and the Partner, the provider or local server and the model name (the `models` part of your config, without keys). Say if you use a decision model.
+    validations:
+      required: true
+  - type: textarea
+    id: more
+    attributes:
+      label: Logs and anything else
+      description: Lines from `pair daemon` run in the foreground (or `journalctl --user -u pairing-buddy`), a screenshot, your OS and Node.js version.
