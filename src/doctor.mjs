@@ -11,6 +11,7 @@ import {fileCredentialStore, readableByOthers} from './credentials.mjs';
 import {herdrRequest} from './herdr.mjs';
 import {listModels, shareServer, SWAP_FACTOR, SWAP_MS} from './loaded-model.mjs';
 import {createPairModels, knownProviders} from './models.mjs';
+import {FAST_MS, SLOW_MS} from './pace.mjs';
 import {levelGroups, probeModel, probeThinking} from './probe.mjs';
 import {requestDaemon} from './protocol.mjs';
 import {sandboxWorks} from './sandbox.mjs';
@@ -19,7 +20,7 @@ import {serviceManager} from './service.mjs';
 import {VERSION} from './version.mjs';
 import {RATE, recorderOf, transcribe} from './voice.mjs';
 
-const WATCHER_MS = 1500; // the Watcher scores every candidate remark: about a second is the aim
+const WATCHER_MS = SLOW_MS; // the Watcher scores every candidate remark: about a second is the aim, and over this Pair asks about less
 const PARTNER_MS = 20_000;
 const NVIM_MS = 10_000;
 const EXAMPLE_MODELS = ['your-model', 'your-small-model', 'your-larger-model'];
@@ -266,9 +267,23 @@ async function* modelChecks(config, status, credentials) {
     }
     if (role === 'partner' || shared) yield* thinkingChecks(pairModels, partner);
   }
+  if (status?.pace) yield paceCheck(status.pace);
   if (sameServer(watcher, partner)) yield rolesCheck(config.models, status?.slot);
   if (shareServer(watcher, partner) && answered.size === 2) yield await swapCheck(pairModels);
   yield contextCheck(partner);
+}
+
+/**
+ * What the Watcher's calls cost since the daemon started, and what the daemon's pace (see pace.mjs) stopped asking
+ * about for it.
+ */
+export function paceCheck(pace) {
+  if (!pace.calls) return ok('pace', 'no Watcher call yet since the daemon started');
+  const each = `the Watcher took ${seconds(pace.medianMs)} a call (median of the last ${count(pace.calls, 'call')})`;
+  if (pace.level === 'off') return ok('pace', `${each}; "watcherPace" is false, so Pair asks about every kind of moment however slow`);
+  if (!pace.givenUp.length) return ok('pace', `${each}: Pair asks about every kind of moment`);
+  return warn('pace', `${each}, so Pair is not asking about ${pace.givenUp.join(', ')} until it is ${seconds(FAST_MS)} or less. `
+    + 'A faster Watcher model or server brings them back; "watcherPace": false asks about them anyway');
 }
 
 /**

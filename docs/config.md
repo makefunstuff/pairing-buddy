@@ -8,8 +8,8 @@ The daemon takes a change as you save the file (also through a symlink), without
 reloaded. It checks the new config as at start: one with an error is not taken, and the chat says why while the daemon
 keeps the config it runs. Run `pair doctor` after a change to check the models.
 
-- **At once**: the typing pause, `autoTune`, `keepWarm`, `testOnSave`, `voice`, `taskCommand` and `board`, in open
-  sessions too.
+- **At once**: the typing pause, `autoTune`, `keepWarm`, `watcherPace`, `testOnSave`, `voice`, `taskCommand` and
+  `board`, in open sessions too.
 - **Between turns**: new `model` or `models` entries (and their thinking levels). An answer under way finishes on
   the old model; the next one is the new model's, in the same conversation.
 - **For new sessions**: `level` and `sessionRoots`. An open session keeps its own level; `/level` changes it.
@@ -86,6 +86,7 @@ the Watcher does not. Details in [watcher.md](watcher.md#thinking-the-partner-no
 | `level` | How often Pair speaks unasked: `quiet`, `normal` (default) or `chatty` ([talk levels](#talk-levels)) |
 | `autoTune` | Your feedback tunes the bars and budget, default `true` ([memory.md](memory.md#learning-when-to-talk)) |
 | `keepWarm` | While you work, ask the Watcher's model for one token every 4 minutes, so a server that unloads idle models keeps it loaded. Default `true` for an `openai` Watcher, `false` for an `anthropic` one ([watcher.md](watcher.md#keep-warm)) |
+| `watcherPace` | While the Watcher's calls take 1.5 s or more (the median of its last calls), ask about fewer kinds of moment: the ones you can see for yourself go first, and those whose remarks you dismiss before those you keep. Every kind comes back once calls take 1 s or less. Default `true`; `false` asks about every kind however slow the server is ([watcher.md](watcher.md#when-the-server-is-slow)) |
 | `typingPauseMs` | How long after a keystroke you count as typing, default 2000 |
 | `testOnSave` | A test command per project, run when you save; or `{command, timeoutSeconds, affected}` for a longer run, or the whole command on every save ([tests-on-save.md](tests-on-save.md)) |
 | `sessionRoots` | Folders that are projects of their own, for a monorepo ([session roots](#session-roots)) |

@@ -64,7 +64,9 @@ Upgrading, installing from a clone, running without systemd or launchd, and the 
 ## Configure models
 
 Pair asks two models: the **Watcher**, which scores each moment with one number and must answer in about a second,
-and the **Partner**, which thinks and writes what Pair says. One model can do both. The config is
+and the **Partner**, which thinks and writes what Pair says. One model can do both. On a server slower than that, Pair asks the
+Watcher about fewer kinds of moment, the ones you can see for yourself first
+([docs/watcher.md](docs/watcher.md#when-the-server-is-slow)). The config is
 `~/.config/pairing-buddy/config.json`, JSON with comments:
 
 ```jsonc

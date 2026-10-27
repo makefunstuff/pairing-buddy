@@ -93,6 +93,7 @@ user service with `supervisor=supervise-daemon`. Set `PAIR_CONFIG` there if your
 | logins | `auth.json` is readable by you only (shown when there is one) |
 | watcher, partner | The login or key the model needs is there and, for a subscription, still renews (with the token's expiry); the server answers and lists the model; one short completion works, and how long it took (about 1 s is the aim for the Watcher). One line, `models`, when both use the same model. A warning when the Watcher runs on a subscription |
 | thinking | The Partner thinks when asked to, and its levels reach the server |
+| pace | When the daemon runs: the Watcher's median call since it started, and the kinds of moment Pair is not asking about while that takes 1.5 s or more ([watcher.md](watcher.md#when-the-server-is-slow)) |
 | roles | When both roles share a server: how [one model](config.md#one-model) serves both, and how the Watcher fared since the daemon started |
 | swap | When two models share a server: whether it reloads when the roles switch (the Watcher asked right after the Partner, then again) |
 | context | Where the Partner's window comes from (the config, the server or pi-ai's catalog), that the reply has the room its thinking needs, that the window is not so small that compaction comes every few turns, and not larger than the server serves |

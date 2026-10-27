@@ -4,6 +4,7 @@ import {realpathSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {Ledger, ledgerDetail, ledgerRows, ledgerText, startOfDay, today} from '../src/ledger.mjs';
+import {Pace} from '../src/pace.mjs';
 import {PairSession} from '../src/session.mjs';
 import {openStore} from '../src/store.mjs';
 import {scratch} from './temp.mjs';
@@ -65,6 +66,20 @@ test('a remark is booked as Pair works: reads in a row as one line, then where i
   assert.deepEqual(pair.ledgerDetail(said.ids), {title: 'what it said', text: 'Run returns before the last attempt.'});
   assert.ok(sent.some(message => message.via === 'editors' && message.type === 'ledger_changed'), 'an open list follows along');
   assert.ok(store.actions(pair.root, 0).every(action => action.at === NOON));
+});
+
+test('a moment the Watcher was not asked about on a slow server is booked as such', async () => {
+  const {pair, clock} = pairSession([async () => 'SILENT'], {score: 2});
+  pair.pace = new Pace();
+  for (let i = 0; i < 3; i++) pair.pace.hear(4000);
+  failTwice(pair, clock.now);
+  await pair.tick(); // a repeated error is news you cannot see: scored 2, under the bar
+  pair.receive({kind: 'edit', file: 'worker.go', from: 4, to: 4, at: clock.now - 1000}); // drift, which a slow server gives up
+  clock.now += MIN;
+  await pair.tick();
+  const [quiet] = pair.today().rows;
+  assert.deepEqual([quiet.text, quiet.ids.length], ['2 moments: 1 under the bar, 1 not asked, the server is slow', 2]);
+  assert.match(pair.ledgerDetail(quiet.ids).text, /Pair is not asking about drift while the server is this slow/);
 });
 
 test('the moments Pair stays quiet are booked with why, and quiet moments in a row are one line', async () => {

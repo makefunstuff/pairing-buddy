@@ -9,7 +9,7 @@ const SETTLE_MS = 200; // an editor's save can be several writes, or a write and
 
 /** The fields of a parsed config that a change can touch, in the order the chat names them. */
 const FIELDS = [
-  'models', 'level', 'typingPauseMs', 'autoTune', 'keepWarm', 'testOnSave', 'sessionRoots', 'voice', 'taskCommand', 'board', 'agents',
+  'models', 'level', 'typingPauseMs', 'autoTune', 'keepWarm', 'watcherPace', 'testOnSave', 'sessionRoots', 'voice', 'taskCommand', 'board', 'agents',
   'socket', 'dataDir',
 ];
 
