@@ -228,6 +228,11 @@ export class PaneWatch {
     await herdrRequest(this.socketPath, 'pane.send_text', {pane_id: pane, text});
   }
 
+  /** The user's terminal panes seen so far, as `{pane, name}`. */
+  terminals() {
+    return [...this.panes.keys()].filter(pane => this.targetOf(pane) === 'terminal').map(pane => ({pane, name: pane}));
+  }
+
   isUsers(pane) {
     return ![this.chatPane, this.scout?.paneId].includes(pane);
   }

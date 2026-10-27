@@ -16,6 +16,7 @@ local ledger = require('pair.ledger')
 local earcons = require('pair.earcons')
 local listen = require('pair.listen')
 local margin = require('pair.margin')
+local pane = require('pair.pane')
 local merge = require('pair.merge')
 local places = require('pair.places')
 local runs = require('pair.runs')
@@ -774,7 +775,8 @@ local function hello()
   -- herdr's socket lets the daemon see your other agents, also when no chat pane runs; the herdr pane this Neovim
   -- runs in, if any, lets Pair show things in the Neovim whose pane has focus.
   local herdr = vim.env.HERDR_SOCKET_PATH and {socket = vim.env.HERDR_SOCKET_PATH} or nil
-  send({type = 'hello', role = 'editor', cwd = vim.fn.getcwd(), herdr = herdr, pane = vim.env.HERDR_PANE_ID})
+  -- Its pid names its own terminals, where the Driver's `type` may go (pane.lua).
+  send({type = 'hello', role = 'editor', cwd = vim.fn.getcwd(), herdr = herdr, pane = vim.env.HERDR_PANE_ID, pid = vim.fn.getpid()})
   send_accent()
 end
 
@@ -892,6 +894,10 @@ local handlers = {
     redraw_status()
   end,
   revert = revert,
+  -- Without herdr: Pair's pane, your terminals and typing into one of them, all in this Neovim (pane.lua).
+  pane = function(message) pane.request(message, function(result) send({type = 'reply', id = message.id, result = result}) end) end,
+  terminals = function(message) send({type = 'reply', id = message.id, result = {terminals = pane.terminals()}}) end,
+  type_text = function(message) send({type = 'reply', id = message.id, result = pane.type(message.buf, message.text)}) end,
   ledger = ledger.show,
   ledger_detail = ledger.detail,
   ledger_changed = ledger.changed,
@@ -1188,6 +1194,11 @@ local commands = {
     send({type = 'tasks', file = file})
   end,
   stop = M.disconnect,
+  -- The chat in a terminal buffer on the right, for Neovim without herdr (or beside it).
+  chat = function()
+    M.connect()
+    pane.chat(config.socket or default_socket())
+  end,
   -- Like a tap of the listen key: Pair listens until the next :Pair listen. `:Pair listen cancel` drops it.
   listen = function(arg, selection)
     if arg == 'cancel' then return listen.cancel(send) end
@@ -1237,6 +1248,10 @@ function M.setup(opts)
     attach(args.buf)
     local file = project_path(args.buf)
     if file then event({kind = 'enter', file = file}) end
+  end})
+  -- Going to one of your :terminal buffers makes it the one the Driver's `type` goes to, as herdr's focus does.
+  vim.api.nvim_create_autocmd({'TermOpen', 'BufEnter', 'TermEnter'}, {group = group, callback = function(args)
+    if state.channel and pane.is_yours(args.buf) then event({kind = 'terminal', pane = pane.id(args.buf)}) end
   end})
   vim.api.nvim_create_autocmd('CursorHold', {group = group, callback = send_cursor})
   -- Scrolling the window you are in is reading, which counts as active time like the cursor moving.

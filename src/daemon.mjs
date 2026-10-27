@@ -20,6 +20,7 @@ import {DETAIL_KEPT_MS} from './ledger.mjs';
 import {Listener} from './listen.mjs';
 import {createPairModels} from './models.mjs';
 import {acquireOwner} from './owner.mjs';
+import {EditorPaneHost, HerdrPaneHost} from './pane-hosts.mjs';
 import {openPartner} from './partner.mjs';
 import {probeModel} from './probe.mjs';
 import {projectContext} from './project-context.mjs';
@@ -31,6 +32,7 @@ import {PairSession} from './session.mjs';
 import {openRootOf, sessionRootOf} from './session-root.mjs';
 import {ModelSlot} from './slot.mjs';
 import {openStore} from './store.mjs';
+import {Terminals} from './terminals.mjs';
 import {ROLE_TOOLS, ROLES} from './tools.mjs';
 import {VERSION} from './version.mjs';
 import {createWatcher, momentOf} from './watcher.mjs';
@@ -350,6 +352,7 @@ export async function startDaemon(config, {
         requestEditor: message => requestEditor(session, message),
         log: line => log(`[${basename(root)}] ${line}`),
       });
+      session.panes = new Terminals({editors: () => editorsOf(session), ask: askEditor, herdr: () => watches.get(root) ?? null});
       margins.set(root, new NoteMargin({
         root,
         state: () => session.state,
@@ -388,13 +391,24 @@ export async function startDaemon(config, {
     if (event.kind === 'focus' && event.target === 'editor') herdrFocus(clientsOf(session, 'editor'), event.pane);
   }
 
+  /** Pair's pane for `session` on `host` (pane-hosts.mjs). */
+  function scoutPane(session, host) {
+    return new ScoutPane({
+      host, cwd: session.root, runsDir: join(config.dataDir, 'panes'), setup: config.scoutPane, writable: [join(config.dataDir, 'runs')],
+      hidden: [config.socket], log: line => log(`[${basename(session.root)}] ${line}`),
+    });
+  }
+
+  /** Without herdr, Pair's pane opens in one of the session's Neovims, as a :terminal buffer. */
+  function editorPane(session) {
+    session.scout ??= scoutPane(session, new EditorPaneHost({editors: () => editorsOf(session), ask: askEditor}));
+  }
+
   function watchHerdr(session, herdr) {
     if (watches.has(session.root) || !herdr?.socket) return;
     const sessionLog = line => log(`[${basename(session.root)}] ${line}`);
-    session.scout = new ScoutPane({
-      socketPath: herdr.socket, workspaceId: herdr.workspace, besidePane: herdr.pane, cwd: session.root, runsDir: join(config.dataDir, 'panes'),
-      setup: config.scoutPane, writable: [join(config.dataDir, 'runs')], hidden: [config.socket], log: sessionLog,
-    });
+    session.scout?.close().catch(() => {}); // a pane it had in Neovim before the herdr chat pane came
+    session.scout = scoutPane(session, new HerdrPaneHost({socketPath: herdr.socket, workspaceId: herdr.workspace, besidePane: herdr.pane}));
     const watch = new PaneWatch({
       socketPath: herdr.socket,
       workspaceId: herdr.workspace,
@@ -403,7 +417,6 @@ export async function startDaemon(config, {
       emit: event => receive(session, event),
       log: sessionLog,
     });
-    session.panes = watch;
     watches.set(session.root, watch);
     watch.start();
     log(`[${basename(session.root)}] watching herdr workspace ${herdr.workspace}`);
@@ -458,6 +471,7 @@ export async function startDaemon(config, {
     client.role = message.role;
     client.activeAt = Date.now();
     client.pane = message.pane ?? null; // the herdr pane a Neovim runs in
+    client.pid = message.pid ?? null; // a Neovim's, which names its terminals (terminals.mjs)
     client.session = await loadSession(await rootOf(message.cwd));
     const {session} = client;
     sendMessage(client.socket, {
@@ -477,6 +491,7 @@ export async function startDaemon(config, {
     }
     // The first Neovim after a long gap picks up where the last session stopped (see pickup.mjs).
     if (client.role === 'editor') session.pickUp().catch(error => log(`pick-up failed: ${error.stack ?? error}`));
+    if (client.role === 'editor') editorPane(session);
     if (client.role !== 'chat') return;
     watchHerdr(session, message.herdr);
     // A chat pane that reconnects after a daemon restart already shows the history, up to the restart.
@@ -566,7 +581,7 @@ export async function startDaemon(config, {
     if (message.type === 'new') return session.startNew(message.idea ?? '', message.file ?? 'NOTES.md');
     if (message.type === 'answer') return session.blankPage?.open ? session.blankPage.answer(message.text ?? '') : session.message('system', 'No questions of :Pair new are running here (the daemon may have restarted). :Pair new starts again.');
     if (message.type === 'new_stop') return session.blankPage?.stop();
-    if (message.type === 'confirm') return session.answer(message.id, message.ok === true);
+    if (message.type === 'confirm') return session.answer(message.id, message.ok === true, undefined, typeof message.text === 'string' ? message.text : '');
     if (message.type === 'feedback') {
       const number = Number.isInteger(message.number) && message.number > 0 ? message.number : undefined;
       return session.feedback({useful: message.useful === true, id: message.remark ?? undefined, number, implicit: message.implicit === true});

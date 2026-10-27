@@ -16,6 +16,8 @@ Runs every test that needs no model, in under a minute, with scripted models and
   `type` (only after a yes, only into your terminal pane, never Enter); your panes against a fake herdr's event stream
   (focus and scroll pushed, typing, a command seen running and one too short for that, no requests while you are in
   another workspace) and the heuristics on pane text; the shell hooks: bash, and zsh and fish where installed.
+- **Without herdr**, in a headless Neovim: Scout's pane and the tests on save as a `:terminal` there, the Driver's
+  `type` into the `:terminal` you used last or another one named in the answer, and `:Pair chat`.
 - **The daemon end to end** with scripted models; several projects and Neovims at once; Neovim and the chat pane
   reconnecting after a daemon restart; a question the restart cut off answered late, a remark dropped; a saved config
   taken without a restart (a new model between turns, one with an error refused).

@@ -4,8 +4,9 @@
 
 - Node.js 22.19 or newer
 - Neovim 0.11 or newer
-- [herdr](https://herdr.dev) for the chat pane, terminal watching, Scout's pane and tests on save. Pair also works
-  without it, with the chat in any terminal, as Navigator only.
+- [herdr](https://herdr.dev), the best home for Pair: the chat pane beside Neovim, your terminals watched with their
+  output, Scout's pane below the chat. Without it all of Pair still works inside Neovim
+  ([neovim.md](neovim.md#without-herdr)).
 - For Scout: `bash` and [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg`); optionally [bubblewrap](https://github.com/containers/bubblewrap) (`bwrap`), to run Pair's commands in [a sandbox](scout.md#the-sandbox)
 - Optional, for the [context card](neovim.md#what-it-knows-the-context-card) and the goal: herdr's work board
   (`herdr-projects`) and GitHub's `gh` for the pull request
@@ -134,8 +135,10 @@ pair shell-hook fish | source    # fish, in config.fish
 
 It also emits OSC 133 marks (prompt, output, end with the exit code) for a terminal that reads them.
 
-**Without herdr**, run `pair chat` in any terminal. Pair then sees your editor and, with the shell hook, your
-commands' exit codes, but no terminal output.
+**Without herdr**, run `:Pair chat` in Neovim (or `pair chat` in any terminal). Scout's pane and the tests on save
+run in a `:terminal` along the bottom of Neovim, and the Driver's `type` goes to your own `:terminal` buffers
+([neovim.md](neovim.md#without-herdr)). What herdr adds is the view of your other terminals: without it Pair sees
+your commands' exit codes through the shell hook, but not their output.
 
 **Several projects** work at once: each project has its own session, chat pane and goal, and the daemon serves them
 all. A project is the git root of the folder Neovim and `pair` start in, so each git worktree is a project of its

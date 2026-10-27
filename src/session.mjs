@@ -213,7 +213,7 @@ export class PairSession {
     this.state = initialState({root: record.root, goal: record.goal});
     this.budget = new Budget(record.level);
     this.role = record.role ?? 'navigator';
-    this.scout = null; // Pair's own pane (a ScoutPane), once herdr is known
+    this.scout = null; // Pair's own pane (a ScoutPane), once herdr or a Neovim is known
     this.confirmations = new Map(); // id -> resolve(ok), for commands waiting for the user's yes or no
     this.lastConfirmation = 0;
     this.paneUses = 0; // searches and commands in the running turn
@@ -236,7 +236,7 @@ export class PairSession {
     this.thought = null; // the held thought, {id, trigger, since, parts}: a remark ready, waiting for that breakpoint
     this.breakpoints = new Breakpoints();
     this.accent = null; // the editor's accent (see style.lua) as #rrggbb, for the chat pane
-    this.panes = null; // the user's herdr panes (a PaneWatch), for the Driver's type
+    this.panes = null; // the user's terminals in herdr and Neovim (a Terminals), for the Driver's type
     this.edited = false; // the Driver made its one edit in this hand-over
     this.handback = null; // that edit's lines and how the tests went on them: {file, line, endLine, tests}
     this.remarkId = null; // the stored remark of the running unasked turn
@@ -800,12 +800,12 @@ export class PairSession {
   }
 
   /**
-   * Switches Pair's role; true when it did. Scout needs Pair's own herdr pane, which opens with the switch
+   * Switches Pair's role; true when it did. Scout needs Pair's own pane (in herdr or Neovim), which opens with the switch
    * and closes with the switch back to Navigator. Driver needs Neovim, where any key takes the wheel back.
    */
   async setRole(role) {
     if (role === 'scout' && !this.scout) {
-      this.message('system', 'Scout needs its own herdr pane: start Pair with `pair` inside herdr.');
+      this.message('system', 'Scout needs its own pane: run `pair` inside herdr, or :Pair start in Neovim.');
       return false;
     }
     if (role === 'scout') {
@@ -914,31 +914,35 @@ export class PairSession {
     return this.handBack('You have the wheel back.');
   }
 
-  /** Asks the user in the chat pane; resolves false without a chat pane, on no, or after a minute. */
-  confirm(text) {
+  /**
+   * Asks the user in the chat pane; resolves false without a chat pane, on no, or after a minute. An answer that is
+   * one of `choices` allows it too, there: it resolves with that choice.
+   */
+  confirm(text, choices = []) {
     const id = ++this.lastConfirmation;
     if (!this.notify('chat', {type: 'confirm', id, text})) return Promise.resolve(false);
     return new Promise(resolve => {
       const timer = setTimeout(() => this.answer(id, false, 'No answer, so no.'), CONFIRM_MS);
-      this.confirmations.set(id, ok => { clearTimeout(timer); resolve(ok); });
+      this.confirmations.set(id, {choices, resolve: ok => { clearTimeout(timer); resolve(ok); }});
     });
   }
 
   /** Asks the user whether Pair may do `what` with question `text`, and books their answer in the ledger. */
-  async allowed(what, text) {
-    const ok = await this.confirm(text);
+  async allowed(what, text, choices = []) {
+    const ok = await this.confirm(text, choices);
     this.ledger.add('asked', what, {data: {answer: ok ? 'yes' : 'no'}});
     return ok;
   }
 
-  /** The user's answer to confirmation `id`. */
-  answer(id, ok, note = ok ? 'Allowed.' : 'Not allowed.') {
-    const resolve = this.confirmations.get(id);
-    if (!resolve) return;
+  /** The user's answer to confirmation `id`: `ok`, or the `text` they typed when it names one of its choices. */
+  answer(id, ok, note = ok ? 'Allowed.' : 'Not allowed.', text = '') {
+    const waiting = this.confirmations.get(id);
+    if (!waiting) return;
     this.confirmations.delete(id);
+    const choice = !ok && waiting.choices.find(name => name.toLowerCase() === text.trim().toLowerCase());
     this.notify('chat', {type: 'confirmed', id});
-    this.message('system', note);
-    resolve(ok);
+    this.message('system', choice ? `Allowed, in ${choice}.` : note);
+    waiting.resolve(choice || ok);
   }
 
   /** What `:Pair trail` shows: the searches a trail remark would send, oldest first, and what the gate made of them. */
@@ -1223,7 +1227,7 @@ export class PairSession {
   async inPane(command) {
     // Also covers a turn that started as Scout when the user has switched back since: its pane is closed.
     if (!['scout', 'driver'].includes(this.role)) throw new Error('Searching and running need the Scout role; the user can switch with /scout.');
-    if (!this.scout) throw new Error('Pair has no pane of its own: start Pair with `pair` inside herdr');
+    if (!this.scout) throw new Error('Pair has no pane of its own: run `pair` inside herdr, or :Pair start in Neovim');
     if (++this.paneUses > PANE_USES_PER_TURN) throw new Error(`That is ${PANE_USES_PER_TURN} commands for this question. Answer with what you found.`);
     const result = await this.scout.run(command);
     this.receive({kind: 'scout_run', cmd: command, exit: result.exit, output: result.output});
@@ -1317,12 +1321,14 @@ export class PairSession {
       this.ledger.add('refused', text, {data: {note: policy.reason}});
       return `Refused: ${policy.reason}. Do not try another way; tell the user.`;
     }
-    if (!(await this.allowed(text, `Pair wants to type \`${text}\` into your terminal (pane ${pane}), without pressing Enter. Allow?`))) {
-      return 'The user did not allow it.';
-    }
+    // The question names the terminal, and the user may answer with another one's name instead of yes.
+    const others = (await this.panes.list()).filter(other => other.pane !== pane);
+    const another = others.length ? ` (y, or another terminal: ${others.map(other => other.name).join(', ')})` : '';
+    const answer = await this.allowed(text, `Pair wants to type \`${text}\` into your terminal (pane ${this.panes.name(pane)}), without pressing Enter. Allow?${another}`, others.map(other => other.name));
+    if (!answer) return 'The user did not allow it.';
     const after = this.wheel();
     if (after) return after;
-    await this.panes.type(pane, text);
+    await this.panes.type(answer === true ? pane : others.find(other => other.name === answer).pane, text);
     this.ledger.add('typed', text, {data: {note: 'in your terminal, without Enter'}});
     return 'Typed. The user decides whether to press Enter.';
   }
