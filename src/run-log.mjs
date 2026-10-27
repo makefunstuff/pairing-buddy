@@ -7,7 +7,7 @@ import {isDebugLine} from './debug-lines.mjs';
 import {crashText} from './run-output.mjs';
 import {isSourceFile} from './test-output.mjs';
 
-export const KEEP_RUNS = 30;
+const KEEP_RUNS = 30;
 const OUTPUT_CHARS = 4000; // of each run's output, kept for `:Pair runs`
 const NUMBERS = 12; // numbers of a run kept
 const TIME_FACTOR = 2; // a time moves when it halves or doubles: one run of a small program is noisy
@@ -64,7 +64,7 @@ const timeOf = numbers => Object.values(numbers).find(number => number.time) ?? 
  * The numbers that moved between `before` and `now` (both of measure()), the most first: every number that is not
  * a time and changed, and a time that halved or doubled. Each `{label, from, to, unit, way, better}`.
  */
-export function moves(before, now) {
+function moves(before, now) {
   const found = [];
   for (const [key, number] of Object.entries(now)) {
     const old = before[key];
@@ -89,7 +89,7 @@ function sameNumbers(before, now) {
 const plain = output => output.replace(/\x1b\[[0-9;]*m/g, '').replace(/0x[0-9a-f]+/gi, '').replace(/\d+(?:\.\d+)?\s*(?:ns|µs|us|ms|s)\b/g, '#').trim();
 
 /** Whether an edit changed code: not a note, and more than debug prints, blank lines and comments. */
-export function changesCode(edit) {
+function changesCode(edit) {
   if (!isSourceFile(edit.file)) return false;
   return edit.text.split('\n').some(line => line.trim() && !/^\s*(\/\/|#|--|\/?\*)/.test(line) && !isDebugLine(edit.file, line));
 }
@@ -101,7 +101,7 @@ export function changesCode(edit) {
  * runs before it printed the numbers it moved from; 'again' for a rerun that printed the same (a time is noise
  * there); 'first' for the first run of its command.
  */
-export function verdict(run, earlier) {
+function verdict(run, earlier) {
   if (run.crash) return {kind: 'crash', text: run.crash};
   if (run.errors) return {kind: 'error'};
   const before = earlier.findLast(other => other.cmd === run.cmd && !other.crash && !other.errors);
