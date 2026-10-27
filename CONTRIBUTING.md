@@ -60,8 +60,8 @@ Without a model you can still work on most things: the model-free tests below sc
 
 **Model-free suite.** `npm test` runs every test that needs no model, in a minute or two, with scripted models and
 fakes of herdr and the providers. Tests that need Neovim, tmux, zsh or fish skip themselves when those are not
-installed, and say so. `npm run check` is what the pull request check runs; today it is the same suite. Run one file
-with `node test/run.mjs test/gate.test.mjs`.
+installed, and say so. `npm run check` runs the same suite. No CI runs on pull requests yet, so run it yourself
+before you open one. Run one file with `node test/run.mjs test/gate.test.mjs`.
 
 **Live tests with your own model.** These run the same decisions against real models and are skipped unless you
 point them at a stack file:

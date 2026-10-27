@@ -7,7 +7,7 @@ description: "How to contribute to pairing-buddy: run it from a clone, run the t
 pairing-buddy is open source under the
 [MIT License](https://github.com/makefunstuff/pairing-buddy/blob/main/LICENSE), and contributions are welcome: bug
 reports, ideas, docs fixes and pull requests. Everything you contribute is under the same licence. The full guide is
-[CONTRIBUTING.md](../CONTRIBUTING.md); this page is the short version.
+[CONTRIBUTING.md](https://github.com/makefunstuff/pairing-buddy/blob/main/CONTRIBUTING.md); this page is the short version.
 
 ## Run it from a clone
 
@@ -23,7 +23,7 @@ npm test
 `npm link` then `pair setup` makes the clone your everyday Pair, and `dir = '/path/to/clone'` in the lazy.nvim spec
 loads its plugin ([install](install.md#install)). To run a dev daemon next to an installed Pair, give it a config of its
 own with its own `socket` and `dataDir`, and start it with `PAIR_CONFIG=... node bin/pair.mjs daemon`;
-[CONTRIBUTING.md](../CONTRIBUTING.md#run-the-daemon-and-the-plugin-from-a-clone) has the commands, also for a Neovim
+[CONTRIBUTING.md](https://github.com/makefunstuff/pairing-buddy/blob/main/CONTRIBUTING.md#run-the-daemon-and-the-plugin-from-a-clone) has the commands, also for a Neovim
 that loads the clone's plugin.
 
 ## Tests
@@ -52,4 +52,4 @@ keep your files yours fit best.
 Branch from `main`, keep a pull request to one change, add tests, and run `npm test`. Update the docs in the same pull
 request: these pages in `docs/`, the README and `config.example.json`, for anything you add, remove or change. The
 pull request template has the checklist. Files from elsewhere (a font, a vendored script) go in
-[THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) with their licence.
+[THIRD_PARTY_NOTICES.md](https://github.com/makefunstuff/pairing-buddy/blob/main/THIRD_PARTY_NOTICES.md) with their licence.
