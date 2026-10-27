@@ -513,6 +513,27 @@ test('several suggestions in one answer all go to the editor; the jump key aims 
   assert.equal(pair.target.note, 'one');
 });
 
+test('suggestions called at once keep the order they were called in, however long each file takes to read', async () => {
+  const {pair, sent} = driverSession({turn: async pair => {
+    // A model's parallel tool calls: the first file is read last.
+    const read = pair.bufferText.bind(pair);
+    pair.bufferText = async path => {
+      if (path.endsWith('package.json')) await new Promise(resolve => setTimeout(resolve, 30));
+      return read(path);
+    };
+    await Promise.all([
+      pair.suggest({file: 'package.json', line: 2, endLine: 2, text: 'a', note: 'one'}),
+      pair.suggest({file: 'README.md', line: 1, endLine: 1, text: 'b', note: 'two'}),
+      pair.point({file: 'README.md', line: 2, note: 'three'}),
+    ]);
+    return 'Two fixes.';
+  }});
+  await pair.ask('what is wrong?');
+  assert.deepEqual(sent.filter(message => message.type === 'suggest' || message.type === 'point').map(message => [message.note, message.aim]),
+    [['one', true], ['two', false], ['three', undefined]]);
+  assert.equal(pair.target.note, 'one');
+});
+
 test('a typed question: the answer goes to the editor too, under the selection\'s last line or the line the user was on', async () => {
   const {pair, sent} = driverSession({turn: async () => 'Because the loop starts at 1.\nSee line 3.'});
   const answered = () => sent.filter(message => message.type === 'answered');

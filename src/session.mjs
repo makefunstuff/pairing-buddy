@@ -1314,8 +1314,22 @@ export class PairSession {
     return 'shown';
   }
 
+  /**
+   * Runs `work` after the points and suggestions called before it. A model may call several at once, and their files
+   * are read in parallel: in order, the first suggestion of a turn is the model's first, not the one read first.
+   */
+  inCallOrder(work) {
+    const done = (this.placing ?? Promise.resolve()).catch(() => {}).then(work);
+    this.placing = done;
+    return done;
+  }
+
   /** Marks lines in the editor, with `code` on the first one underlined; the last point of a turn is where the jump key goes. */
-  async point({file, line, endLine, note, code}) {
+  point(args) {
+    return this.inCallOrder(() => this.pointNow(args));
+  }
+
+  async pointNow({file, line, endLine, note, code}) {
     if (this.asksBack) return 'Not in this remark: ask your one question in words.';
     const path = await projectFile(this.root, file);
     if (!path) return `No file ${file} in the project`;
@@ -1339,7 +1353,11 @@ export class PairSession {
   }
 
   /** Shows a change as an inline diff in the editor; the user accepts it with one key or ignores it. */
-  async suggest({file, line, endLine, text, note}) {
+  suggest(args) {
+    return this.inCallOrder(() => this.suggestNow(args));
+  }
+
+  async suggestNow({file, line, endLine, text, note}) {
     const path = await projectFile(this.root, file);
     if (!path) return `No file ${file} in the project`;
     if (endLine < line) return `end_line ${endLine} is before line ${line}`;

@@ -152,6 +152,12 @@ function watcherOn(partner) {
 /** Whether two model entries send their requests to the same server (or provider), which may answer one at a time. */
 export const sameServer = (a, b) => a.provider === b.provider && a.api === b.api && a.baseUrl === b.baseUrl;
 
+/**
+ * Whether two model entries' requests have to be put in order: they go to one server of your own, which may answer
+ * one request at a time. A cloud provider (`provider`) answers many at once, so its roles never wait for each other.
+ */
+export const oneAtATime = (a, b) => sameServer(a, b) && !a.provider;
+
 /** Whether two model entries name the same model on the same server. */
 export const sameModel = (a, b) => sameServer(a, b) && a.model === b.model;
 

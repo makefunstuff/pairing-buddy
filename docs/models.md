@@ -134,7 +134,9 @@ One model can serve both roles, for example the one model a local server has roo
 - **As the Partner**, with thinking at the levels of `thinking`, as with a Partner of its own.
 
 The server never switches models, so it never reloads. Many local servers answer one request at a time, so when both
-roles share a server (one model, or two models on one `baseUrl`), Pair puts the requests in order:
+roles share a server of your own (one model, or two models on one `baseUrl`), Pair puts the requests in order. A cloud
+`provider` answers many requests at once, so there the Watcher and the Partner never wait for each other, and none of
+this applies:
 
 - **The Watcher waits while the Partner works.** A score never queues behind a long answer that thinks: the moment is
   looked at again once the answer is done, and then scored at once. A remark nobody asked for can wait.

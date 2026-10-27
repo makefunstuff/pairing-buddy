@@ -6,7 +6,7 @@ import {connect} from 'node:net';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {createModels, fauxProvider, InMemoryCredentialStore, ModelsError} from '@earendil-works/pi-ai';
-import {loadConfig, parseConfig} from '../src/config.mjs';
+import {loadConfig, oneAtATime, parseConfig} from '../src/config.mjs';
 import {startDaemon} from '../src/daemon.mjs';
 import {fileCredentialStore} from '../src/credentials.mjs';
 import {contextCheck, daemonCheck, doctor, loginCheck, loginsCheck, paneCheck, rolesCheck, serviceCheck, subscriptionCheck, swapCheck} from '../src/doctor.mjs';
@@ -168,6 +168,17 @@ test('the roles line says what the daemon measured, and nudges two models on one
   assert.match(rolesCheck(one, slot).text, /\. Since the daemon started: 12 scores, 0\.6 s each \(median\); your questions cancelled 1 score and 2 remarks still at work$/);
   const two = parseConfig({models: {watcher: {api: 'openai', baseUrl: 'http://box/v1', model: 's'}, partner: {api: 'openai', baseUrl: 'http://box/v1', model: 'm'}}}).models;
   assert.match(rolesCheck(two, null).text, /^two models on one server: .*give both roles one model \("model" in the config\), so it never reloads$/);
+  const cloud = parseConfig({model: {provider: 'deepseek', model: 'deepseek-flash'}}).models;
+  assert.equal(rolesCheck(cloud, {...slot, exclusive: false}).text, 'one model serves both: the Watcher asks for one number without thinking, the Partner thinks. '
+    + 'deepseek answers both at once, so neither waits for the other. Since the daemon started: 12 scores, 0.6 s each (median)');
+});
+
+test('a cloud provider answers both roles at once: only a server of your own puts their requests in order', () => {
+  const entries = config => Object.values(parseConfig(config).models);
+  assert.equal(oneAtATime(...entries({model: {provider: 'deepseek', model: 'deepseek-flash'}})), false);
+  assert.equal(oneAtATime(...entries({models: {watcher: {provider: 'deepseek', model: 'deepseek-flash'}, partner: {provider: 'deepseek', model: 'deepseek-v4-pro'}}})), false);
+  assert.equal(oneAtATime(...entries({model: {api: 'openai', baseUrl: 'http://box/v1', model: 'm'}})), true);
+  assert.equal(oneAtATime(...entries({models: {watcher: {api: 'openai', baseUrl: 'http://a/v1', model: 's'}, partner: {api: 'openai', baseUrl: 'http://b/v1', model: 'm'}}})), false);
 });
 
 test('the context check says when the reply cannot hold the thinking, and when compaction will come often', () => {
