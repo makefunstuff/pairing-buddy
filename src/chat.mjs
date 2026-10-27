@@ -175,7 +175,7 @@ export function runChat(socketPath) {
 
   rl.on('line', line => {
     if (confirming !== null) {
-      sendMessage(socket, {type: 'confirm', id: confirming, ok: allows(line)});
+      sendMessage(socket, {type: 'confirm', id: confirming, ok: allows(line), text: line.trim()});
       confirming = null;
       return rl.prompt();
     }

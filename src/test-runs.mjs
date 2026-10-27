@@ -49,7 +49,7 @@ async function readResult({command, root, outputFile, started, exit, texts}) {
 
 export class TestRuns {
   /**
-   * `pane()` is Pair's pane (a ScoutPane), or null without herdr. `report(run)` hears of each run twice:
+   * `pane()` is Pair's pane (a ScoutPane), or null without herdr or Neovim. `report(run)` hears of each run twice:
    * `{state: 'run', label, saved}` as it starts, then `{state: 'done', label, saved, exit, timedOut, timeoutMs, output, tests, placed, reading, narrowed}`
    * (`tests` as parseTestOutput gives them, `placed` as placeTests does, `reading` as readRun does: a build's
    * errors, a crash; `narrowed` when it ran only the tests the saved files affect), or
@@ -91,7 +91,7 @@ export class TestRuns {
     const saved = this.lastSaved;
     this.pending.clear();
     const pane = this.pane();
-    if (!pane) return this.report({state: 'error', label: this.label, saved, error: 'tests on save need Pair\'s own herdr pane: start Pair with `pair` inside herdr', short: 'needs `pair` in herdr'});
+    if (!pane) return this.report({state: 'error', label: this.label, saved, error: 'tests on save need Pair\'s own pane: run `pair` inside herdr, or :Pair start in Neovim', short: 'needs herdr or Neovim'});
     const controller = new AbortController();
     this.running = {stop: () => controller.abort()};
     const whole = this.wholeNext;
@@ -129,7 +129,7 @@ export class TestRuns {
   async unsaved(file, texts) {
     const report = run => { this.report({...run, label: this.label, saved: file, unsaved: true}); return {...run, label: this.label}; };
     const pane = this.pane();
-    if (!pane) return report({state: 'error', error: 'the tests need Pair\'s own herdr pane', short: 'needs `pair` in herdr'});
+    if (!pane) return report({state: 'error', error: 'the tests need Pair\'s own pane, in herdr or Neovim', short: 'needs herdr or Neovim'});
     report({state: 'run'});
     const dir = `${this.outputFile}.unsaved`;
     try {

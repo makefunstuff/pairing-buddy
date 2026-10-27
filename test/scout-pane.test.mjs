@@ -4,6 +4,7 @@ import {existsSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {test} from 'node:test';
+import {HerdrPaneHost} from '../src/pane-hosts.mjs';
 import {shown} from '../src/pane-runs.mjs';
 import {sandboxWorks} from '../src/sandbox.mjs';
 import {ScoutPane, shellQuote} from '../src/scout-pane.mjs';
@@ -93,7 +94,7 @@ test('the pane opens beside the chat, runs commands one at a time and types only
   const dir = tempDir(t, 'pair-herdr-');
   const socketPath = join(dir, 'herdr.sock');
   const herdr = await fakeHerdr(socketPath, {commands: {'npm test': {output: 'Tests: 1 failed, 1 total', exit: 1}, 'echo two': {output: 'two'}}});
-  const pane = new ScoutPane({socketPath, workspaceId: 'w1', besidePane: 'w1:p2', cwd: '/project', runsDir: join(dir, 'panes')});
+  const pane = new ScoutPane({host: new HerdrPaneHost({socketPath, workspaceId: 'w1', besidePane: 'w1:p2'}), cwd: '/project', runsDir: join(dir, 'panes')});
   try {
     const [first, second] = await Promise.all([pane.run('npm test'), pane.run('echo two')]);
     assert.deepEqual(first, {exit: 1, output: 'Tests: 1 failed, 1 total', timedOut: false, cancelled: false});
@@ -102,7 +103,7 @@ test('the pane opens beside the chat, runs commands one at a time and types only
     assert.ok(herdr.sent.every(([target]) => target === pane.paneId), 'nothing is typed into the user\'s or the chat pane');
 
     // A later daemon finds the pane by its label instead of opening another.
-    const again = new ScoutPane({socketPath, workspaceId: 'w1', besidePane: 'w1:p2', cwd: '/project', runsDir: join(dir, 'panes')});
+    const again = new ScoutPane({host: new HerdrPaneHost({socketPath, workspaceId: 'w1', besidePane: 'w1:p2'}), cwd: '/project', runsDir: join(dir, 'panes')});
     await again.run('echo two');
     assert.equal(again.paneId, pane.paneId);
     assert.equal(herdr.panes.size, 3);
@@ -120,7 +121,7 @@ test('a command whose signal aborts is stopped with Ctrl-C, and one aborted befo
   const socketPath = join(dir, 'herdr.sock');
   let stop;
   const herdr = await fakeHerdr(socketPath, {commands: command => (command === 'slow' ? new Promise(resolve => { stop = () => resolve({exit: 130}); }) : {})});
-  const pane = new ScoutPane({socketPath, workspaceId: 'w1', besidePane: 'w1:p2', cwd: '/project', runsDir: join(dir, 'panes')});
+  const pane = new ScoutPane({host: new HerdrPaneHost({socketPath, workspaceId: 'w1', besidePane: 'w1:p2'}), cwd: '/project', runsDir: join(dir, 'panes')});
   try {
     const controller = new AbortController();
     const slow = pane.run('slow', {signal: controller.signal});
@@ -147,7 +148,7 @@ test('the pane starts its shell as the config says, hides herdr\'s socket and li
   const herdr = await fakeHerdr(socketPath);
   const daemonSocket = join(dir, 'pair.sock');
   writeFileSync(daemonSocket, '');
-  const pane = new ScoutPane({socketPath, workspaceId: 'w1', besidePane: 'w1:p2', cwd: dir, runsDir: join(dir, 'panes'), setup: scoutPaneConfig({rc, sandbox: 'auto'}), hidden: [daemonSocket]});
+  const pane = new ScoutPane({host: new HerdrPaneHost({socketPath, workspaceId: 'w1', besidePane: 'w1:p2'}), cwd: dir, runsDir: join(dir, 'panes'), setup: scoutPaneConfig({rc, sandbox: 'auto'}), hidden: [daemonSocket]});
   try {
     await pane.open();
     const [, line] = herdr.sent[0];
@@ -160,7 +161,7 @@ test('the pane starts its shell as the config says, hides herdr\'s socket and li
     const names = pane.rcNames();
     assert.equal(pane.rcNames(), names);
     assert.deepEqual((await names).aliases, {ll: 'ls -l'});
-    assert.equal(await new ScoutPane({socketPath, cwd: dir, runsDir: join(dir, 'panes')}).rcNames(), undefined, 'without an rc file there are none');
+    assert.equal(await new ScoutPane({host: new HerdrPaneHost({socketPath, workspaceId: 'w1'}), cwd: dir, runsDir: join(dir, 'panes')}).rcNames(), undefined, 'without an rc file there are none');
   } finally {
     await herdr.close();
   }

@@ -1,6 +1,6 @@
 // Pair's hands and the roles that may use them. The Navigator has say, point, open, a read-only read,
 // recall (the project's earlier sessions) and suggest, which only shows a change for the user to accept;
-// Scout adds search and run, which work only in Pair's own herdr pane. The Driver, which Pair is only while
+// Scout adds search and run, which work only in Pair's own pane (herdr's or Neovim's). The Driver, which Pair is only while
 // the user hands it the wheel, also has edit (one change in the user's buffer, never saved) and type (into
 // the user's terminal, after a yes, without Enter). Nothing here can write a file or save a buffer. Each
 // conversation is offered only its role's tools, and the policy hook refuses any other name, so a model that

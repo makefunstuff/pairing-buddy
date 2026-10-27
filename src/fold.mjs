@@ -217,6 +217,9 @@ const handlers = {
     return {...state, focus, commands, terminalPane: focus.target === 'terminal' ? focus.pane : state.terminalPane};
   },
 
+  // The user went to one of their :terminal buffers in Neovim (without herdr's focus to say so): where type goes.
+  terminal: (state, event) => ({...state, terminalPane: event.pane ?? state.terminalPane}),
+
   goal: (state, event) => ({...state, goal: event.text}),
 
   // A search in one of Neovim's pickers, as it closed: `file` is what the user opened from it, if anything.

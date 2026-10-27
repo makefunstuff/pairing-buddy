@@ -22,7 +22,7 @@ and read back is in [scout.md](scout.md#tests-on-save).
 
 ## How it runs
 
-- The command runs in Pair's own herdr pane, like Scout's, in the project root. Its output goes to a file in the data
+- The command runs in Pair's own pane, like Scout's (herdr's, or a `:terminal` in Neovim without it), in the project root. Its output goes to a file in the data
   directory (`runs/`), so a long run is read back whole and the pane stays readable. The pane stays open while the
   project has a command.
 - Only the latest save counts: a save during a run stops that run (Ctrl-C) and starts one for every file saved since
@@ -38,7 +38,6 @@ and read back is in [scout.md](scout.md#tests-on-save).
   A test that failed before and did not run now still counts as failing, and keeps its sign: the statusline says
   `✗ 2 still failing · TestRate` after a narrowed run that passed. Such a run is followed by one whole run, which
   says what still fails at all: a failing test you renamed or deleted is gone after it.
-- Without Pair's pane (no `pair` running in herdr) nothing runs, and the statusline says so.
 
 ## What you see
 
