@@ -70,16 +70,32 @@ local function snacks(buf, report)
   end)
 end
 
---- How many matches fzf shows in `lines`, its screen: the count on the prompt line (`--info=inline-right`, fzf-lua's
---- default) or on the info line next to it. `prompt` starts the prompt line.
-local function fzf_count(lines, prompt)
-  prompt = vim.trim(prompt)
+--- What fzf shows in `lines`, its screen: the query typed after `prompt`, and the match count on the prompt line
+--- (`--info=inline-right`, fzf-lua's default) or on the info line next to it. Nil when the prompt line is not there.
+local function fzf_screen(lines, prompt)
+  prompt = vim.trim((prompt:gsub('\27%[[%d;]*m', '')))
   for i, line in ipairs(lines) do
-    local count = prompt ~= '' and vim.startswith(line, prompt) and (line:match('(%d+)/%d+[%s%d()]*$')
-      or (lines[i + 1] or ''):match('^[^%w]*(%d+)/%d+')
-      or (lines[i - 1] or ''):match('^[^%w]*(%d+)/%d+'))
-    if count then return tonumber(count) end
+    if prompt ~= '' and vim.startswith(line, prompt) then
+      local typed = line:sub(#prompt + 1)
+      local count = typed:match('(%d+)/%d+[%s%d()]*$')
+        or (lines[i + 1] or ''):match('^[^%w]*(%d+)/%d+')
+        or (lines[i - 1] or ''):match('^[^%w]*(%d+)/%d+')
+      local query = typed:match('^(.-)%s%s+%S*%s*%d+/%d+[%s%d()]*$') or typed
+      return vim.trim(query), tonumber(count)
+    end
   end
+end
+
+--- The words grepped for, as you gave them: fzf-lua keeps them as called, but escapes them for rg in the picker's
+--- options, and grep_cword and grep_cWORD make them a regex of the word under the cursor.
+local function grep_words(opts, cmd)
+  local words = opts.__call_opts and opts.__call_opts.search
+  if type(words) ~= 'string' or words == '' then words = opts.search end
+  if cmd == 'grep_cword' or cmd == 'grep_cWORD' then
+    words = words:gsub('^%(%^|\\s%)', ''):gsub('%(%$|\\s%)$', ''):gsub('^\\b', ''):gsub('\\b$', '')
+    words = words:gsub('\\(.)', '%1')
+  end
+  return words
 end
 
 --- The picker's name: its command for fzf-lua's own pickers (live_grep is Live Grep), else its window title (a
@@ -98,15 +114,16 @@ end
 -- hand out what was selected, so what you opened is where its action took you: the window you came from, now on
 -- another file or line. The grep words of `grep` and `grep_cword` are what you searched for; the fuzzy filter typed
 -- over them only narrows the list. One window may run several pickers in turn (ctrl-g switches grep and
--- live_grep). The match count is read off fzf's screen while it runs.
+-- live_grep). The query and the match count are read off fzf's screen while it runs: closed with Esc, a hidden
+-- picker hands fzf-lua its query only after its window has gone.
 local fzf_windows = {}
 
 --- Reports the search `this` once its window has closed and the picker's own action is done.
 local function fzf_closed(this, report)
   local opts = this.opts
-  local query = opts.last_query
+  local query = this.query or opts.last_query -- what fzf-lua saved only when its prompt line was not seen
   if not opts.is_live and type(opts.search) == 'string' and opts.search ~= '' then
-    query = opts.search:gsub('^\\b', ''):gsub('\\b$', '') -- grep_cword's word comes as a regex
+    query = grep_words(opts, this.info.cmd)
   end
   if vim.trim(query or '') == '' then return end
   local search = {picker = fzf_name(this.info, opts.winopts and opts.winopts.title), query = query, results = this.results}
@@ -131,11 +148,12 @@ local function fzflua(buf, report)
   if not (winobj and winobj.fzf_bufnr == buf) then return end -- another fzf plugin's buffer
   local win = vim.api.nvim_get_current_win()
   local this = fzf_windows[win] or {before = place(winobj.src_winid)}
-  this.buf, this.winobj, this.opts, this.info, this.results = buf, winobj, winobj._o or {}, {cmd = info.cmd, mod = info.mod}, nil
+  this.buf, this.winobj, this.opts, this.info, this.query, this.results = buf, winobj, winobj._o or {}, {cmd = info.cmd, mod = info.mod}, nil, nil
   vim.api.nvim_create_autocmd('TextChangedT', {buffer = buf, callback = function()
     if this.buf ~= buf then return true end
     local prompt = this.opts.prompt or this.opts.fzf_opts and this.opts.fzf_opts['--prompt'] or '> '
-    this.results = fzf_count(vim.api.nvim_buf_get_lines(buf, 0, -1, false), prompt) or this.results
+    local query, count = fzf_screen(vim.api.nvim_buf_get_lines(buf, 0, -1, false), prompt)
+    if query then this.query, this.results = query, count or this.results end
   end})
   -- A hidden picker comes back in a window opened without autocommands, but always in Terminal mode.
   vim.api.nvim_create_autocmd('TermEnter', {buffer = buf, callback = function()

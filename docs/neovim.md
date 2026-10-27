@@ -270,9 +270,11 @@ empty prompt is no search.
 fzf-lua (`FileType fzf`, then its window closing, which it does whether it ends fzf or, as it does by default, only
 hides it for a resume) is read the same way, with two differences, as fzf-lua does not hand out what you selected.
 What you opened is where the picker's action took you: the window you came from, now on another file or another
-line. The result count is fzf's own, read off its screen while it runs. The picker is its command (`live_grep` is
-Live Grep, `grep_cword` Grep Cword); for `grep` and `grep_cword` your words are the words grepped for, not the
-fuzzy filter typed over them. A resumed picker, closed again, is a search again. `searches = false` in `setup` turns
+line. Your words and the result count are read off fzf's screen while it runs: closed with Esc, fzf-lua hears your
+words from fzf only after its window has gone. The picker is its command (`live_grep` is Live Grep, `grep_cword`
+Grep Cword); for `grep`, `grep_cword`, `grep_cWORD` and `grep_visual` your words are the words grepped for, as you
+gave them and not as escaped for rg, and not the fuzzy filter typed over them. A resumed picker, closed again, is a
+search again, with the words it has then. `searches = false` in `setup` turns
 all of this off.
 
 ## The held thought
