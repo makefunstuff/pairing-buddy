@@ -1,6 +1,8 @@
 # Getting started
 
-From nothing to your first session in about five minutes. Each step links to the page with the details.
+From nothing to your first session in about five minutes. Each step links to the page with the details. To have
+your AI coding agent do the setup, point it at
+[INSTALL.md](https://github.com/makefunstuff/pairing-buddy/blob/main/INSTALL.md).
 
 ## What you need
 

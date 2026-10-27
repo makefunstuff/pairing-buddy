@@ -61,6 +61,11 @@ part, then `pair` in the herdr pane next to Neovim (or `:Pair chat` in Neovim), 
 [shell hook](docs/cli.md#pair-shell-hook) (`eval "$(pair shell-hook bash)"`, or zsh, or fish) to your shell's rc file:
 Pair then gets every command you run, with its exit code, from the shell itself, and in zsh your typing too.
 
+**Let your AI agent set it up.** Tell your coding agent "follow
+https://github.com/makefunstuff/pairing-buddy/blob/main/INSTALL.md": [INSTALL.md](INSTALL.md) takes it from a fresh
+machine to a passing `pair doctor`, step by step with checks, and asks you where only you can answer (which model,
+your keys and logins).
+
 ## Documentation
 
 - [Getting started](docs/getting-started.md) and [install and daily use](docs/install.md)
