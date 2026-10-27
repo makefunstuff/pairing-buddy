@@ -1,3 +1,7 @@
+---
+description: "How Pair is tested: model-free tests with scripted models and fakes of herdr and the providers, and live tests against real models."
+---
+
 # Tests
 
 ## Model-free tests
@@ -166,6 +170,10 @@ Runs every test that needs no model, in under a minute, with scripted models and
   for the Partner); the Watcher waiting while the Partner works in another project, and its remark saying how long it
   waited; a question cancelling the remark still being written (dropped, and no failure of the model); the context
   budget: the reply's room, compaction, and the instructions, tools and longest note fitting the smallest window.
+- **The site's link previews** (`test/site-meta.test.mjs`): each docs page's description from its frontmatter or
+  first paragraph (own, not thin, at most 155 characters), the tags a page gets, and the check of the built pages
+  naming a missing, relative or wrong tag. The Pages workflow runs that check on the real build (`npm run check` in
+  `site/`).
 
 **Temp dirs.** `npm test` runs through [test/run.mjs](../test/run.mjs), which puts the whole run under one folder,
 `pair-test-XXXXXX` in `$TMPDIR` (`/tmp` when it is not set), and removes it when the run ends, also on Ctrl-C and
