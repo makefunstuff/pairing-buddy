@@ -46,6 +46,29 @@ export function initialState({root = null, goal = null} = {}) {
 
 const keepLast = (list, item, max) => [...list, item].slice(-max);
 
+// Who made an edit: the user, Pair (the Driver's typing, an accepted suggestion, an undo from the ledger), or a
+// /gen request by its number. An editor that sends no origin, or one this daemon does not know, sends the user's.
+const ORIGIN = /^(user|pair|gen:#\d+)$/;
+export const editOrigin = origin => (ORIGIN.test(origin ?? '') ? origin : 'user');
+
+/** An origin in words: "the user", "Pair", "Pair (gen #3)". */
+export const originName = origin => (origin === 'pair' ? 'Pair' : origin?.startsWith('gen:') ? `Pair (gen ${origin.slice(4)})` : 'the user');
+
+/** Whether the user made `edit` themselves, not Pair for them. */
+export const byUser = edit => (edit.origin ?? 'user') === 'user';
+
+/** The user's own edits, oldest first: what the triggers about code you wrote look at. */
+export const userEdits = state => state.edits.filter(byUser);
+
+/**
+ * Whether line `line` of `file` is Pair's: the newest kept edit that touched it (or the line next to it) was made
+ * by Pair. Editing those lines yourself makes them yours again.
+ */
+export function pairMade(state, file, line) {
+  const edit = state.edits.findLast(edit => edit.file === file && line >= edit.from - 1 && line <= edit.to + 1);
+  return !!edit && !byUser(edit);
+}
+
 /**
  * Whether a finished command failed. Without an exit code (herdr alone gives none), its parsed test results
  * decide, else a crash or a compiler error in its output, else the words in it.
@@ -150,14 +173,21 @@ function foldCommandEnd(state, event) {
 const handlers = {
   typing: (state, event) => ({...state, lastKeyAt: event.at, typed: keepLast(state.typed, event.at, KEEP.typed)}),
 
-  edit: (state, event) => ({
-    ...state,
-    file: event.file,
-    lastKeyAt: Math.max(state.lastKeyAt, event.at),
-    lastEditAt: event.at,
-    edits: keepLast(state.edits, {file: event.file, from: event.from, to: event.to, text: event.text ?? '', at: event.at}, KEEP.edits),
-    edited: state.edited.includes(event.file) ? state.edited : keepLast(state.edited, event.file, KEEP.edited),
-  }),
+  // Every edit is kept with its origin; only the user's own say where they are, and count as their keystrokes,
+  // their last edit and the files they edited.
+  edit: (state, event) => {
+    const origin = editOrigin(event.origin);
+    const edits = keepLast(state.edits, {file: event.file, from: event.from, to: event.to, text: event.text ?? '', at: event.at, origin}, KEEP.edits);
+    if (origin !== 'user') return {...state, edits};
+    return {
+      ...state,
+      file: event.file,
+      lastKeyAt: Math.max(state.lastKeyAt, event.at),
+      lastEditAt: event.at,
+      edits,
+      edited: state.edited.includes(event.file) ? state.edited : keepLast(state.edited, event.file, KEEP.edited),
+    };
+  },
 
   enter: (state, event) => ({...state, file: event.file}),
 

@@ -1,6 +1,6 @@
 // One pairing session: folds its events, decides when Pair speaks and carries out the Partner's tools.
 import {readFile, rm} from 'node:fs/promises';
-import {basename, dirname, isAbsolute, join, relative} from 'node:path';
+import {basename, dirname, isAbsolute, join, relative, sep} from 'node:path';
 import {BlankPage} from './blank-page.mjs';
 import {Breaks} from './breaks.mjs';
 import {Budget} from './budget.mjs';
@@ -12,7 +12,7 @@ import {debriefInput, firstPlace, heading, keptChanges, lessonLine, parseDebrief
 import {Delight, LONG_RED_MS} from './delight.mjs';
 import {describeState} from './describe.mjs';
 import {insideRoot, MAX_LINES, newProjectFile, numberedLines, projectFile, readProjectPath} from './files.mjs';
-import {failed, fold, initialState} from './fold.mjs';
+import {editOrigin, failed, fold, initialState} from './fold.mjs';
 import {decide} from './gate.mjs';
 import {gist} from './gist.mjs';
 import {gitCommitsSince, gitStatus} from './git.mjs';
@@ -256,6 +256,9 @@ export function cleanNote(text) {
   return cut.slice(0, cut.lastIndexOf('\n') > 0 ? cut.lastIndexOf('\n') : NOTE_CHARS).trim();
 }
 
+/** Whether `file`, relative to the project root, lies outside it. */
+const outsideRoot = file => file === '..' || file.startsWith(`..${sep}`) || isAbsolute(file);
+
 // What the user does, unlike what Pair, herdr's focus or the LSP report: a session nobody uses never ends by itself.
 const USER_EVENTS = new Set(['typing', 'edit', 'enter', 'cursor', 'scroll', 'save', 'command_end', 'search']);
 // Of those, the ones that are work, not only looking around: a session with none of them has nothing to debrief.
@@ -376,18 +379,23 @@ export class PairSession {
 
   receive(event) {
     const file = event.file && isAbsolute(event.file) ? relative(this.root, event.file) : event.file;
+    // An edit of a file outside the project (a scratch file, another repository, Pair's own data folder) is none of
+    // the session's work: it raises no drift, and never counts as a file the user edited here.
+    if (event.kind === 'edit' && file && outsideRoot(file)) return;
     const {run, runs} = this.state;
     const last = this.state.git?.last; // the last commit, until a context event reads it again
     const folded = {at: this.now(), ...event, ...(file ? {file} : {})};
     this.state = fold(this.state, folded);
-    if (event.kind === 'enter' && file && !file.startsWith('..')) this.debugLines.opened(file);
-    if (event.kind === 'edit' && file && !file.startsWith('..')) {
+    if (event.kind === 'enter' && file && !outsideRoot(file)) this.debugLines.opened(file);
+    if (event.kind === 'edit' && file) {
       this.debugLines.edited(file, event.text ?? '', (runs.at(-1)?.n ?? 0) + 1).catch(error => this.log(`debug lines: ${error.message}`));
     }
     this.breakpoints.see(folded);
-    if (USER_EVENTS.has(event.kind)) this.usedAt = this.now();
-    if (WORK_EVENTS.has(event.kind)) this.worked = true;
-    if (event.kind === 'save' && file && !file.startsWith('..')) this.testRuns?.saved(file);
+    // An edit Pair made for the user (see fold.mjs's editOrigin) is no sign that they are there.
+    const mine = event.kind !== 'edit' || editOrigin(event.origin) === 'user';
+    if (USER_EVENTS.has(event.kind) && mine) this.usedAt = this.now();
+    if (WORK_EVENTS.has(event.kind) && mine) this.worked = true;
+    if (event.kind === 'save' && file && !outsideRoot(file)) this.testRuns?.saved(file);
     // A key at a shell prompt (herdr.mjs tells it from the pane's text) takes the wheel back, as one in Neovim does.
     if (event.kind === 'typing' && event.source === 'terminal' && this.role === 'driver') this.takeBack().catch(error => this.log(`take-back: ${error.message}`));
     if (event.kind === 'command_end') {

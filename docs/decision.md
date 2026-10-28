@@ -42,7 +42,7 @@ Each question goes with a small JSON state, the same for every model:
 | --- | --- |
 | `moment` | The trigger's kind, what happened (the same text the Watcher reads), and the Watcher's score and the bar once there is a score |
 | `user` | The goal, the file you are in, seconds since your last keystroke, how many seconds of the last minute you typed, seconds since Pair last spoke unasked, the talk level |
-| `recent` | Your last 5 edits (file and age), your last 3 commands (command, exit code and age), and the last test run (passed, failed, by whom, age) |
+| `recent` | The last 5 edits (file and age, and `by` for one Pair made: [gen.md](gen.md)), your last 3 commands (command, exit code and age), and the last test run (passed, failed, by whom, age) |
 | `past_verdicts` | How your remarks of this kind ended in this project in the last 30 days (useful, dismissed, ignored), and your latest 6 judged remarks of any kind with their Watcher score and verdict, as examples |
 
 Your verdicts are the ones you already give ([feedback on remarks](memory.md#feedback-on-remarks)). Nothing new is

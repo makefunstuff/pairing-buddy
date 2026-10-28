@@ -222,3 +222,69 @@ test('a hidden terminal raises no crash or warning from the user\'s runs; Pair\'
   const onSave = fold(mine, {kind: 'test_run', cmd: 'make run', saved: 'probe.c', tests: null, reading: readRun('', {exit: 139}), at: 2000});
   assert.deepEqual(kinds(onSave, 2500), ['crash']);
 });
+
+// Edits Pair made for the user (the Driver's typing, a suggestion they took, later a /gen request's code) carry
+// their origin; the triggers about code the user wrote leave them out.
+const byPair = (event, origin = 'pair') => ({...event, origin});
+
+test('an edit keeps its origin; an unknown or missing one is the user\'s, and Pair\'s edits are no keystroke, current file or edited file of the user\'s', () => {
+  const state = foldAll([
+    {kind: 'edit', file: 'a.js', from: 1, to: 1, at: 1000},
+    byPair({kind: 'edit', file: 'b.js', from: 2, to: 3, at: 2000}),
+    byPair({kind: 'edit', file: 'c.js', from: 4, to: 4, at: 3000}, 'gen:#3'),
+    byPair({kind: 'edit', file: 'd.js', from: 5, to: 5, at: 4000}, 'someone'),
+  ]);
+  assert.deepEqual(state.edits.map(edit => [edit.file, edit.origin]), [['a.js', 'user'], ['b.js', 'pair'], ['c.js', 'gen:#3'], ['d.js', 'user']]);
+  assert.deepEqual([state.file, state.lastKeyAt, state.lastEditAt], ['d.js', 4000, 4000]);
+  assert.deepEqual(state.edited, ['a.js', 'd.js']);
+  const pairOnly = foldAll([byPair({kind: 'edit', file: 'b.js', from: 2, to: 3, at: 2000})]);
+  assert.deepEqual([pairOnly.file, pairOnly.lastKeyAt, pairOnly.lastEditAt, pairOnly.edited], [null, 0, 0, []]);
+});
+
+test('a diagnostic in code Pair wrote is no new_code_diagnostic, until the user edits those lines', () => {
+  const pair = foldAll([
+    byPair({kind: 'edit', file: 'a.js', from: 10, to: 12, at: 1000}),
+    {kind: 'cursor', file: 'a.js', line: 40, at: 1500},
+    {kind: 'diagnostics', file: 'a.js', items: [{line: 11, severity: 'error', message: 'x is undefined'}], at: 3000},
+  ]);
+  assert.deepEqual(kinds(pair, 4000), []);
+  const elsewhere = fold(pair, {kind: 'edit', file: 'a.js', from: 30, to: 30, at: 3500});
+  assert.deepEqual(kinds(elsewhere, 4000), [], 'an edit of the user\'s elsewhere does not make Pair\'s lines theirs');
+  const theirs = foldAll([
+    {kind: 'edit', file: 'a.js', from: 11, to: 11, at: 3500},
+    {kind: 'cursor', file: 'a.js', line: 40, at: 3600},
+    {kind: 'diagnostics', file: 'a.js', items: [{line: 11, severity: 'error', message: 'y is undefined'}], at: 4000},
+  ], pair);
+  assert.deepEqual(kinds(theirs, 4500), ['new_code_diagnostic'], 'the user edited the line: now it is their code');
+  const overwritten = foldAll([
+    {kind: 'edit', file: 'a.js', from: 11, to: 11, at: 500},
+    byPair({kind: 'edit', file: 'a.js', from: 10, to: 12, at: 1000}, 'gen:#2'),
+    {kind: 'cursor', file: 'a.js', line: 40, at: 1500},
+    {kind: 'diagnostics', file: 'a.js', items: [{line: 11, severity: 'error', message: 'x is undefined'}], at: 3000},
+  ]);
+  assert.deepEqual(kinds(overwritten, 4000), [], 'the newest edit of the line is Pair\'s');
+});
+
+test('Pair\'s edits are no drift and no wrong turn; the user\'s own edit after them is', () => {
+  const goal = initialState({goal: 'fix reconnect'});
+  const drifted = foldAll([edit('src/ws.ts', 1000), byPair(edit('docs/x.md', 2000))], goal);
+  const drift = detectTriggers(drifted, 3000).filter(found => found.kind === 'drift');
+  assert.deepEqual(drift.map(found => found.file), ['src/ws.ts'], 'judged on the user\'s own last file');
+  assert.doesNotMatch(drift[0].detail, /docs\/x\.md/);
+  const red = foldAll([failure(1000, RED), byPair(edit('backoff.go', 5000))]);
+  assert.ok(!kinds(red, 6000).includes('edit_while_red'), 'the Driver\'s edit is no wrong turn of the user\'s');
+  assert.ok(kinds(fold(red, edit('backoff.go', 7000)), 8000).includes('edit_while_red'));
+});
+
+test('a new warning on lines Pair edited last is no news; one on the user\'s lines in the same build is', () => {
+  const warn = line => `probe.c:${line}:14: warning: comparison of integers of different signs [-Wsign-compare]`;
+  const baseline = foldAll([{kind: 'edit', file: 'probe.c', from: 3, to: 3, at: 500}, run(1000, '', {cmd: 'make', exit: 0})]);
+  const pair = foldAll([byPair({kind: 'edit', file: 'probe.c', from: 21, to: 22, at: 1500}), run(2000, warn(21), {cmd: 'make', exit: 0})], baseline);
+  assert.deepEqual(kinds(pair, 2500), []);
+  const both = foldAll([byPair({kind: 'edit', file: 'probe.c', from: 21, to: 22, at: 1500}), run(2000, `${warn(21)}\n${warn(3)}`, {cmd: 'make', exit: 0})], baseline);
+  const [trigger] = detectTriggers(both, 2500);
+  assert.equal(trigger.kind, 'new_warning');
+  assert.deepEqual(trigger.warnings.map(warning => warning.line), [3]);
+  const onlyPair = foldAll([byPair({kind: 'edit', file: 'fresh.c', from: 1, to: 1, at: 1500}), run(2000, 'fresh.c:1:5: warning: unused variable \'n\'', {cmd: 'make', exit: 0})], baseline);
+  assert.deepEqual(kinds(onlyPair, 2500), [], 'a file only Pair edited is no file the user edited');
+});

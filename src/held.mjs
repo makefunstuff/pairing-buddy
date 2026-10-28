@@ -2,6 +2,7 @@
 // ended, a stop to look), so Pair never breaks a train of thought for news that keeps. Meanwhile the editor shows a
 // dot in the margin, and the jump key reads it early. A held thought that is no longer true by then is dropped.
 import {join} from 'node:path';
+import {userEdits} from './fold.mjs';
 
 // About what you are doing right now: these speak at the next pause in your typing, as every remark did before.
 const URGENT = new Set(['edit_while_red', 'regression', 'repeated_error', 'failed_command']);
@@ -45,7 +46,7 @@ export function stillTrue(trigger, state) {
     // By its message: lines added or removed above it move the error, and it is still the same error.
     return (state.diagnostics[trigger.file] ?? []).some(item => item.message === trigger.message);
   }
-  if (trigger.kind === 'drift') return state.edits.at(-1)?.file === trigger.file;
+  if (trigger.kind === 'drift') return userEdits(state).at(-1)?.file === trigger.file;
   if (trigger.kind === 'search_trail') return state.lastEditAt < trigger.searches[0].at; // an edit since: you found it
   return true;
 }

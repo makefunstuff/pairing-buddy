@@ -55,6 +55,9 @@ A remark can come from one of these moments (its **trigger**):
 | `note_drift` | In a Markdown note, a new section shares no word with the note's title or the goal: one question, "is this still the … note?" |
 | `search_trail` | Three or more Telescope, snacks.picker or fzf-lua searches since your last edit, one of them closed with nothing opened, or repeated. The remark gets what fails now, so it can say where the thing is in the code's own word ([neovim.md](neovim.md#the-search-trail)) |
 
+The moments about code you wrote leave out the code Pair wrote for you: the Driver's edits, a suggestion you took
+and an undo from the ledger reach the daemon tagged as Pair's ([gen.md](gen.md)).
+
 A failed test run counts as failed even without an exit code, and the remark names the failed tests and the first
 error. A direct question in the chat is always answered.
 

@@ -1,5 +1,5 @@
 // Finds the moments where a remark might help. Pure: the caller passes the clock and the keys already fired.
-import {errorSignature, failed, failureLine} from './fold.mjs';
+import {byUser, errorSignature, failed, failureLine, pairMade, userEdits} from './fold.mjs';
 import {PROSE_KINDS, proseTriggers} from './prose-triggers.mjs';
 import {moveText, runsDetail} from './run-log.mjs';
 import {readingSummary} from './run-output.mjs';
@@ -48,10 +48,12 @@ function commandTriggers(state, now) {
   return found;
 }
 
+/** Code you just wrote: the newest edit near the diagnostic's line, made just before it, is yours and not Pair's. */
 function causedByEdit(state, file, diagnostic) {
-  return state.edits.some(edit => edit.file === file
+  const edit = state.edits.findLast(edit => edit.file === file
     && diagnostic.line >= edit.from - 1 && diagnostic.line <= edit.to + 1
     && diagnostic.at >= edit.at && diagnostic.at - edit.at <= TIMING.newCodeMs);
+  return !!edit && byUser(edit);
 }
 
 function movedOn(state, file, diagnostic) {
@@ -76,10 +78,12 @@ function diagnosticTriggers(state) {
   return found;
 }
 
+// Pair's own edits (the Driver's, a suggestion you took) went where you asked: no drift, and no wrong turn.
 function driftTriggers(state, now) {
-  const latest = state.edits.at(-1);
+  const edits = userEdits(state);
+  const latest = edits.at(-1);
   if (!state.goal || !latest || now - latest.at > TIMING.driftWindowMs) return [];
-  const recent = state.edits.filter(edit => now - edit.at <= TIMING.driftWindowMs);
+  const recent = edits.filter(edit => now - edit.at <= TIMING.driftWindowMs);
   const others = [...new Set(recent.map(edit => edit.file))].filter(file => file !== latest.file);
   const detail = `Possible drift from the goal "${state.goal}": the user now edits ${latest.file}`
     + `${others.length ? ` (recently also ${others.join(', ')})` : ''}${state.branch ? ` on branch ${state.branch}` : ''}.`;
@@ -101,7 +105,7 @@ export function fileStem(file) {
  */
 function redTriggers(state, now) {
   const {tests} = state;
-  const edit = state.edits.at(-1);
+  const edit = userEdits(state).at(-1);
   if (!tests?.failedCount || !tests.files?.length || !edit || edit.at <= tests.at || now - tests.at > TIMING.redMs) return [];
   const named = new Set(tests.files.map(fileStem));
   if (!isSourceFile(edit.file) || named.has(fileStem(edit.file))) return []; // notes and docs are no attempt at a fix
@@ -157,18 +161,22 @@ function crashTriggers(state, now) {
   }];
 }
 
-/** A build printed a warning that no build before it in this session printed. Raised once per build. */
+/**
+ * A build printed a warning that no build before it in this session printed. Raised once per build; a warning on
+ * lines Pair edited last is not news about your code.
+ */
 function warningTriggers(state, now) {
   const {run} = state;
-  if (!run?.newWarnings?.length || now - run.at > TIMING.recentMs) return [];
-  const shown = run.newWarnings.slice(0, 3).map(warning => `${warning.file}:${warning.line}: ${warning.message}`).join('; ');
+  const warnings = (run?.newWarnings ?? []).filter(warning => !pairMade(state, warning.file, warning.line));
+  if (!warnings.length || now - run.at > TIMING.recentMs) return [];
+  const shown = warnings.slice(0, 3).map(warning => `${warning.file}:${warning.line}: ${warning.message}`).join('; ');
   return [{
     kind: 'new_warning',
     key: `warning:${run.at}`,
-    detail: `\`${run.cmd}\` (${runBy(run)}) printed ${run.newWarnings.length === 1 ? 'a new warning' : `${run.newWarnings.length} new warnings`}, not in the builds before: ${shown}`,
-    file: run.newWarnings[0].file,
-    line: run.newWarnings[0].line,
-    warnings: run.newWarnings,
+    detail: `\`${run.cmd}\` (${runBy(run)}) printed ${warnings.length === 1 ? 'a new warning' : `${warnings.length} new warnings`}, not in the builds before: ${shown}`,
+    file: warnings[0].file,
+    line: warnings[0].line,
+    warnings,
   }];
 }
 

@@ -50,6 +50,7 @@ local config = {
 }
 local state = {
   channel = nil, partial = '', attached = {}, pending = {}, open_request = nil, level = nil, role = nil,
+  origins = {}, -- buf -> who makes the change going on in it now, while it is not you: 'pair' or 'gen:#n' (see as_pair)
   points = {}, -- the lines Pair points at: {buf, ids (see draw.point), note, code}, oldest first
   target = nil, -- where the jump key goes: {buf, ns, id, code, col} of Pair's last point, a suggestion, or a run's crash or error
   words = nil, -- Pair's words under your line: {buf, row, id, remark, text, key, undo, sign, spans, teaching, max, more}, until your next edit
@@ -106,16 +107,19 @@ local function project_path(buf)
   return vim.fn.fnamemodify(name, ':p') -- the daemon makes it relative to the project root
 end
 
--- Edits: collected per buffer, sent once typing has paused for debounce_ms.
+-- Edits: collected per buffer, sent once typing has paused for debounce_ms. Each says who made it (its origin):
+-- you, or Pair for you (the Driver's typing, a suggestion you took, an undo from the ledger), so the Watcher never
+-- remarks on Pair's code as if you had written it. Yours and Pair's are never sent as one edit.
 
 local function flush(buf)
   local pending = state.pending[buf]
   state.pending[buf] = nil
+  if pending and pending.timer and not pending.timer:is_closing() then pending.timer:close() end
   local file = vim.api.nvim_buf_is_valid(buf) and project_path(buf)
   if not pending or not file then return end
   local last = math.min(pending.to, vim.api.nvim_buf_line_count(buf))
   local lines = vim.api.nvim_buf_get_lines(buf, pending.from - 1, math.min(last, pending.from + 39), false)
-  event({kind = 'edit', file = file, from = pending.from, to = last, text = table.concat(lines, '\n')})
+  event({kind = 'edit', file = file, from = pending.from, to = last, text = table.concat(lines, '\n'), origin = pending.origin})
   local cursor = vim.api.nvim_win_get_cursor(0)
   event({kind = 'cursor', file = file, line = cursor[1], col = cursor[2]})
 end
@@ -127,6 +131,26 @@ local function flush_all(drop)
     if pending.timer and not pending.timer:is_closing() then pending.timer:close() end
     if drop then state.pending[buf] = nil else flush(buf) end
   end
+end
+
+--- Marks the changes to `buf` from now on as Pair's (`origin`: 'pair', or 'gen:#n' for a /gen request), until the
+--- function it returns is called. Your edits still waiting go first, as your own; Pair's go as soon as it ends.
+local function as_pair(buf, origin)
+  flush(buf)
+  state.origins[buf] = origin or 'pair'
+  return function()
+    state.origins[buf] = nil
+    flush(buf)
+  end
+end
+
+--- Runs `fn`, whose changes to `buf` are Pair's.
+local function by_pair(buf, origin, fn)
+  local done = as_pair(buf, origin)
+  local ok, result = pcall(fn)
+  done()
+  if not ok then error(result, 0) end
+  return result
 end
 
 local function redraw_status()
@@ -425,7 +449,7 @@ local function accept(suggestion)
   hints.used(label(config.accept_key))
   if not unchanged then return vim.notify('Pair: those lines changed, so the suggestion was dropped') end
   local before = vim.api.nvim_buf_get_lines(suggestion.buf, 0, -1, false)
-  vim.api.nvim_buf_set_lines(suggestion.buf, first, last, false, suggestion.new)
+  by_pair(suggestion.buf, suggestion.origin, function() vim.api.nvim_buf_set_lines(suggestion.buf, first, last, false, suggestion.new) end)
   if suggestion.remark then feedback(true, suggestion.remark, true) end
   -- With the text before and after, the ledger can undo it later.
   if suggestion.action then
@@ -473,6 +497,7 @@ local function suggest(message)
   local remark = message.remark ~= vim.NIL and message.remark or nil
   local ids = draw.suggestion(buf, first, old, new, message.note, key)
   local suggestion = {buf = buf, ids = ids, old = old, new = new, remark = remark, insert = message.insert == true, action = message.action}
+  suggestion.origin = type(message.origin) == 'string' and message.origin or 'pair' -- whose code it is once taken
   suggestion.target = {buf = buf, ns = draw.suggest_ns, id = ids[1], suggestion = suggestion}
   for _, gone in ipairs(suggestions.add(suggestion, rows)) do drop_suggestion(gone) end
   -- The jump key goes to the first suggestion of an answer: where the accept key works. The next press goes on to
@@ -495,7 +520,10 @@ end
 
 local typing_sent = 0
 local function on_lines(_, buf, _, first, last, new_last)
-  local pending = state.pending[buf] or {from = first + 1, to = new_last}
+  local origin = state.origins[buf] or 'user'
+  -- A change by someone else than the one before it: what came before goes first, as its own edit.
+  if state.pending[buf] and state.pending[buf].origin ~= origin then flush(buf) end
+  local pending = state.pending[buf] or {from = first + 1, to = new_last, origin = origin}
   pending.from = math.min(pending.from, first + 1)
   pending.to = math.max(pending.to, new_last)
   pending.timer = pending.timer or vim.uv.new_timer()
@@ -512,8 +540,9 @@ local function on_lines(_, buf, _, first, last, new_last)
     end
     edited(buf, first, math.max(last, new_last))
   end)
-  -- A cheap "still typing" signal, at most every half second, so Pair never interrupts mid-thought.
-  if now_ms() - typing_sent > 500 then
+  -- A cheap "still typing" signal, at most every half second, so Pair never interrupts mid-thought. Pair's own
+  -- changes are no typing of yours.
+  if origin == 'user' and now_ms() - typing_sent > 500 then
     typing_sent = now_ms()
     vim.schedule(function() event({kind = 'typing'}) end)
   end
@@ -825,8 +854,10 @@ local function edit(message)
   if not in_view(buf, message.line) then open_split(message.file, message.line) end
   -- The buffer before and after goes to the ledger, which can undo the edit later.
   local before = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  local pair_done = as_pair(buf, 'pair') -- every line it types, and the undo of a half-typed edit, is Pair's
   state.typing = drive.type(buf, message.line - 1, math.min(message.endLine, count) - 1, text_lines(message.text), function(typed, from, to)
     state.typing = nil
+    pair_done()
     local after = typed and vim.api.nvim_buf_get_lines(buf, 0, -1, false)
     reply(typed and {ok = true, from = from + 1, to = to + 1, before = before, after = after} or {error = 'the user has taken the wheel back'})
   end)
@@ -866,7 +897,7 @@ end
 -- The ledger undoes one of Pair's edits, or makes it again: merged into the buffer as it is now.
 local function revert(message)
   local buf = load(message.file)
-  local why = merge.apply(buf, message.base, message.other)
+  local why = by_pair(buf, 'pair', function() return merge.apply(buf, message.base, message.other) end)
   if vim.fn.bufwinid(buf) ~= -1 then vim.cmd.redraw() end -- a change made here shows only at the next event
   send({type = 'reply', id = message.id, result = why and {error = why} or {ok = true}})
 end

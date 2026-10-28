@@ -21,7 +21,7 @@ Neither saves anything. Your buffer changes, and the disk changes only when you 
 
 | You | What happens |
 | --- | --- |
-| Press the accept key (`Alt-y`, `<M-y>`, by default) or `:Pair accept` | The lines are replaced, as your own change: one `u` undoes it |
+| Press the accept key (`Alt-y`, `<M-y>`, by default) or `:Pair accept` | The lines are replaced, unsaved: one `u` undoes it. The Watcher counts them as Pair's code until you edit them ([gen.md](gen.md)) |
 | Edit those lines yourself | The suggestion goes away: you ignored it |
 | `:Pair dismiss` | The suggestion goes away |
 | Do nothing | It stays until one of the above, or until Pair suggests something else on the same lines |
