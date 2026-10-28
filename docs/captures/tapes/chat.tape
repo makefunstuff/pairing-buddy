@@ -40,6 +40,7 @@ Sleep 1.3s
 Screenshot out/chat-working.png
 Sleep 5.5s
 Screenshot out/chat-answer.png
+Sleep 1s
 Ctrl+f
 Sleep 300ms
 Type "outlive"
@@ -50,7 +51,8 @@ Screenshot out/chat-select.png
 Ctrl+c
 Sleep 800ms
 Type "?"
-Sleep 2s
-Screenshot out/chat-help.png
+# No Screenshot here: VHS 0.11 kept handing back an earlier frame for it. encode.sh takes the help's still from the
+# video instead, 3 s before its end, in the middle of these 4 s.
+Sleep 4s
 Type "q"
 Sleep 1.5s

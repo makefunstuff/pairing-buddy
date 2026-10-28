@@ -34,7 +34,9 @@ for name in wrong-turn tests-on-save hand-over take-back held-thought ledger con
 # The ledger's stills from its video: the list before u (5.6 s) and after it (8.5 s), see tapes/ledger.tape.
 frame() { ff -ss "$2" -i "$OUT/$1.mp4" -frames:v 1 "$IMAGES/$3.png"; }
 frame ledger 5.6 ledger; frame ledger 8.5 ledger-undone
-for name in gaze remark jump regression regression-fix driving hand-back held held-shown context context-trimmed build-error crash-jump crash new-warning delight agents-line agents-list teach-hint teach notes-margin notes-decision notes-tasks pickup pickup-jump debrief debrief-edit loop-same loop-moved loop-runs run-hand-back chat-empty chat-remark chat-working chat-answer chat-select chat-help; do cp "$OUT/$name.png" "$IMAGES/$name.png"; done
+# The chat's key help from its video, 3 s before the end (see tapes/chat.tape: VHS's screenshot of it came out stale).
+ff -sseof -3 -i "$OUT/chat.mp4" -frames:v 1 "$IMAGES/chat-help.png"
+for name in gaze remark jump regression regression-fix driving hand-back held held-shown context context-trimmed build-error crash-jump crash new-warning delight agents-line agents-list teach-hint teach notes-margin notes-decision notes-tasks pickup pickup-jump debrief debrief-edit loop-same loop-moved loop-runs run-hand-back chat-empty chat-remark chat-working chat-answer chat-select chat-narrow chat-wide; do cp "$OUT/$name.png" "$IMAGES/$name.png"; done
 # push-to-talk needs whisper.cpp to record (see README.md), so it is encoded only when it was recorded.
 if [ -e "$OUT/push-to-talk.mp4" ]; then
   gif push-to-talk

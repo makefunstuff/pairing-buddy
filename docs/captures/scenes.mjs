@@ -381,3 +381,6 @@ export const scenes = {
     partner: [],
   },
 };
+// The chat pane's layouts (chat-layout): the same remark and question as the chat scene, in a narrow pane, then the
+// pane made wide.
+scenes['chat-layout'] = scenes.chat;
