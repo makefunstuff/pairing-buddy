@@ -42,6 +42,14 @@ The daemon keeps the origin with each edit. An edit Pair made:
   model as `"by": "pair"`, and the run log counts it as a change of the code. A `regression` (the tests on save
   fail where they passed) still speaks, whoever made the change.
 
+## Edits outside the project
+
+An edit of a file outside the session's project (a scratch file, another repository, a file in Pair's own data
+folder, where `/gen try` will put its samples) is dropped when it reaches the daemon, whoever made it. It raises no
+`drift`, is no file you edited, and is not counted as work in this session.
+
+## Making Pair's lines yours
+
 Lines Pair wrote become yours when you edit them: the newest edit of a line decides. An edit of yours elsewhere in
 the file leaves Pair's lines Pair's.
 

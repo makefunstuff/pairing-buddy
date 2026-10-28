@@ -4,6 +4,7 @@ import {readFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {PairSession, runReport} from '../src/session.mjs';
+import {detectTriggers} from '../src/triggers.mjs';
 import {scratch} from './temp.mjs';
 
 const PANE_STATUS = ['activity', 'presence', 'turn']; // what the chat pane's status row shows: no message to the user
@@ -1056,4 +1057,16 @@ test('recursive make: an error in a sub-make\'s folder is placed on its file the
   const {tests, run} = await save(output, 2);
   assert.equal(tests.text, 'does not build · table.c:5');
   assert.deepEqual(run.places.map(place => [place.file, place.line, place.kind]), [[join(root, 'src/table.c'), 5, 'error']]);
+});
+
+test('an edit of a file outside the project is dropped before it is folded: no drift, no edited file, no use of the session', () => {
+  const {pair} = session();
+  for (const file of ['/home/me/.local/share/pair/gen/try-1/main.js', '../other/b.js']) {
+    pair.receive({kind: 'edit', file, from: 1, to: 1, text: 'x', at: 99_000});
+  }
+  assert.deepEqual([pair.state.edits, pair.state.edited, pair.state.file, pair.state.lastEditAt, pair.usedAt, pair.worked], [[], [], null, 0, null, false]);
+  assert.deepEqual(detectTriggers(pair.state, 100_000).filter(trigger => trigger.kind === 'drift'), []);
+  pair.receive({kind: 'edit', file: '/project/src/a.js', from: 1, to: 1, text: 'x', at: 99_500});
+  pair.receive({kind: 'edit', file: '..notes.md', from: 1, to: 1, text: 'x', at: 99_600}); // a file whose name starts with two dots
+  assert.deepEqual(pair.state.edits.map(edit => edit.file), ['src/a.js', '..notes.md']);
 });

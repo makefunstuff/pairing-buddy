@@ -269,6 +269,43 @@ test('edits carry their origin: a suggestion you take and the Driver\'s edit are
   }
 });
 
+test('your edit still waiting for the debounce goes as yours before Pair\'s change; an undo from :Pair today is Pair\'s', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
+  const {partner, messages, remote, keys, send, lines, stop} = await pairInNvim('tune the numbers', {setup: 'debounce_ms = 5000'});
+  const ghosts = () => Number(remote(`luaeval("#vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('pair_suggest'), 0, -1, {})")`));
+  const answered = text => until(() => messages.some(message => message.text === text), `the answer "${text}"`);
+  const ledgerLines = () => JSON.parse(remote('luaeval("vim.json.encode(vim.api.nvim_buf_get_lines(vim.fn.bufnr(\'pair://today\'), 0, -1, false))")'));
+  const a = () => JSON.parse(remote('json_encode(getbufline(bufnr("a.js"), 1, "$"))'));
+  const edits = async text => {
+    let seen;
+    partner.setResponses([context => { seen = context.messages.findLast(message => message.role === 'user').content; return fauxAssistantMessage([fauxText(text)]); }]);
+    send({type: 'ask', text: 'what changed?'});
+    await answered(text);
+    return seen.match(/^Recent edits: (.*)$/m)?.[1];
+  };
+  try {
+    partner.setResponses([
+      fauxAssistantMessage([fauxToolCall('suggest', {file: 'a.js', line: 2, new_text: 'const y = 20', note: 'twenty'})], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxText('Try 20.')]),
+    ]);
+    send({type: 'ask', text: 'what should y be?'});
+    await answered('Try 20.');
+    await until(() => ghosts() === 3, 'the ghost diff');
+    keys('3Gccconst z = 4<Esc>2G<M-y>'); // your edit, then Pair's change, well inside the 5 s debounce
+    await until(() => lines()[1] === 'const y = 20', 'the accepted suggestion');
+    assert.deepEqual(lines(), ['const x = 1', 'const y = 20', 'const z = 4']);
+    assert.match(await edits('Two edits.'), /^a\.js:3-3 \([^,)]*\); a\.js:2-2 \([^)]*, by Pair\)$/, 'two edits, yours first: not one edit of yours');
+
+    keys(':Pair today<CR>');
+    const row = await until(() => ledgerLines().findIndex(line => line.includes('suggested')) + 1, 'the ledger');
+    keys(`${row}Gu`);
+    await until(() => a()[1] === 'const y = 2', 'the undo of the suggestion');
+    keys('q');
+    assert.match(await edits('Undone.'), /^a\.js:3-3 \([^,)]*\); a\.js:2-2 \([^)]*, by Pair\); a\.js:2-2 \([^)]*, by Pair\)$/, 'the ledger\'s undo is Pair\'s change too, sent at once');
+  } finally {
+    await stop();
+  }
+});
+
 test('a note that does not fit after its line goes under it, also when the window narrows; a strike starts at the code, not the indent', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
   const {partner, messages, remote, keys, send, stop} = await pairInNvim('tidy up');
   const marks = namespace => JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('${namespace}'), 0, -1, {details = true}))")`));

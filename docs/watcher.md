@@ -65,7 +65,8 @@ Each edit reaches the daemon with its origin: yours, or Pair's (the Driver's typ
 from `:Pair today`). The moments about code you wrote skip Pair's: `new_code_diagnostic` needs the newest edit near
 the error to be yours, `drift` and `edit_while_red` look at your own last edit, `new_warning` leaves out a warning on
 lines Pair edited last, and a note's stall and drift look only at your words. Pair's edits are no keystrokes either,
-so they never hold a remark back as typing. Editing Pair's lines makes them yours. See [gen.md](gen.md).
+so they never hold a remark back as typing. Editing Pair's lines makes them yours. An edit of a file outside the
+project is dropped altogether: it raises no drift. See [gen.md](gen.md).
 
 ## The wrong turn
 
