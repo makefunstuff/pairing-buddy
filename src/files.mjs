@@ -40,7 +40,7 @@ export async function draftPath(root, file) {
   let folder = dirname(wanted);
   while (!(await stat(folder).catch(() => null))) folder = dirname(folder);
   const real = await insideRoot(realRoot, folder);
-  if (!real) return null;
+  if (!real || !(await stat(real)).isDirectory()) return null; // under a file: no folder can be made there
   const path = join(real, relative(folder, wanted));
   return {path, exists: Boolean(await stat(path).catch(() => null))};
 }

@@ -69,8 +69,7 @@ local function take(buf, force)
     return false
   end
   local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
-  vim.fn.mkdir(vim.fs.dirname(info.file), 'p')
-  if vim.fn.writefile(lines, info.file) ~= 0 then
+  if not pcall(vim.fn.mkdir, vim.fs.dirname(info.file), 'p') or vim.fn.writefile(lines, info.file) ~= 0 then
     vim.notify(('Pair: could not write %s'):format(info.name), vim.log.levels.ERROR)
     return false
   end
@@ -90,8 +89,23 @@ local function take(buf, force)
   return true
 end
 
+--- `:w <other file>` in a proposal: a copy there, as :w would write one, and the proposal stays to review.
+local function write_elsewhere(buf, file)
+  if vim.uv.fs_stat(file) and vim.v.cmdbang ~= 1 then
+    return vim.notify(('Pair: %s exists; :w! writes over it'):format(vim.fn.fnamemodify(file, ':.')), vim.log.levels.ERROR)
+  end
+  if vim.fn.writefile(vim.api.nvim_buf_get_lines(buf, 0, -1, false), file) ~= 0 then
+    return vim.notify(('Pair: could not write %s'):format(vim.fn.fnamemodify(file, ':.')), vim.log.levels.ERROR)
+  end
+  vim.notify(('Pair: written to %s; the proposal is still to review, :w takes it'):format(vim.fn.fnamemodify(file, ':.')))
+end
+
 local function on_write(args)
   local buf = args.buf
+  -- A write to another name (:w other.txt) is no take: it writes there, and nothing else.
+  if args.file ~= '' and args.file ~= vim.api.nvim_buf_get_name(buf) then
+    return write_elsewhere(buf, vim.fn.fnamemodify(args.file, ':p'))
+  end
   -- Only the buffer you are in: a :wa from elsewhere writes the others from an autocommand window.
   if buf == entered and vim.api.nvim_get_current_buf() == buf and vim.fn.win_gettype() ~= 'autocmd' then
     take(buf, vim.v.cmdbang == 1) -- no value back: a callback that returns true deletes its autocommand
@@ -134,7 +148,7 @@ local function make(gen, action, file)
   local filetype = vim.filetype.match({filename = file.file, buf = buf})
   if filetype then vim.bo[buf].filetype = filetype end
   vim.bo[buf].modified = true -- not on disk: quitting warns, as for any change not written
-  local info = {gen = gen, action = action, piece = file.piece, file = file.file, name = file.name}
+  local info = {gen = gen, action = action, piece = file.piece, file = file.file, name = file.name, text = file.text or ''}
   proposals[buf] = info
   vim.b[buf].pair_gen = {gen = gen, action = action, piece = file.piece, file = file.file}
   for _, mark in ipairs(type(file.marks) == 'table' and file.marks or {}) do
@@ -148,11 +162,24 @@ local function make(gen, action, file)
   vim.api.nvim_create_autocmd('BufWinEnter', {group = group, buffer = buf, callback = function()
     vim.api.nvim_set_option_value('winbar', winbar(info), {scope = 'local'})
   end})
-  vim.api.nvim_create_autocmd('BufUnload', {group = group, buffer = buf, once = true, callback = function()
-    -- You took it away (:bd!, :bw!): it is dropped. Not when Neovim quits, nor when Pair takes it away.
-    if proposals[buf] and not quiet[buf] and not leaving then deps.send({type = 'gen_dropped', action = info.action, piece = info.piece}) end
-    proposals[buf] = nil
-    vim.schedule(deps.redraw_status)
+  -- :e! reads it again: the draft as the request made it, still to review. There is no file to read.
+  vim.api.nvim_create_autocmd('BufReadCmd', {group = group, buffer = buf, callback = function()
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, vim.split(info.text, '\n', {plain = true}))
+    vim.bo[buf].modified = true
+  end})
+  vim.api.nvim_create_autocmd('BufUnload', {group = group, buffer = buf, callback = function()
+    if quiet[buf] or leaving then
+      proposals[buf] = nil
+      return
+    end
+    -- You took it away (:bd!, :bw!): it is dropped. Not when Neovim quits, nor when Pair takes it away, nor a
+    -- reload (:e!), after which the buffer is loaded again.
+    vim.schedule(function()
+      if not proposals[buf] or (vim.api.nvim_buf_is_valid(buf) and vim.api.nvim_buf_is_loaded(buf)) then return end
+      proposals[buf] = nil
+      deps.send({type = 'gen_dropped', action = info.action, piece = info.piece})
+      deps.redraw_status()
+    end)
   end})
   return buf
 end

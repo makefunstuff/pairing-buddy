@@ -244,7 +244,9 @@ and the statusline `gen #4 · 2 to review · :Pair gen list`.
   A habitual `:wa` never takes a whole request at once. `:wa` in one of them takes that one, as `:w` would.
 - **Quitting warns.** A buffer to review stays modified until it is taken or dropped, so `:q` in the last window and
   `:qa` stop with Neovim's own `E37`/`E162`, as for any change not written. `:qa!` quits; the files are not lost (below).
-- **`:bd!` or `:bw!`** on one drops it, as `d` in the list does.
+- **`:bd!` or `:bw!`** on one drops it, as `d` in the list does. `:e!` in it brings back the draft as the request
+  made it, still to review.
+- **`:w other.txt`** in one writes a copy there and takes nothing: the proposal stays to review.
 
 ### The review list: :Pair gen list
 

@@ -62,7 +62,7 @@ require('pair').setup({
 | `teach_key` | `'<M-?>'` | Asks for the idea behind Pair's words under your line, then opens its link ([the idea behind it](neovim.md#the-idea-behind-it)). Mapped in Normal mode while they show |
 | `agents_key` | `'<M-a>'` | Goes to the agent whose news Pair relayed, or puts the line away when it has no pane ([agents.md](agents.md)). Mapped in Normal mode while such a line shows |
 | `motion` | `true` | Fades, the glow of a green, and the trail behind the gaze; without it the gaze still steps line by line |
-| `decide_key`, `link_key` | `'<M-d>'`, `'<M-l>'` | In a note's margin: log the decision on your line, open the code a mark names. Mapped in Normal mode only in a note with such a mark ([notes.md](notes.md)) |
+| `decide_key`, `link_key` | `'<M-d>'`, `'<M-l>'` | In a note's margin: log the decision on your line, open the code a mark names. Mapped in Normal mode only in a note with such a mark ([notes.md](notes.md)), and `decide_key` also in [`:Pair gen list`](gen.md#the-review-list-pair-gen-list), where it logs a `? guessed` line as a decision |
 | `searches` | `true` | Read your Telescope, snacks.picker and fzf-lua searches for the [search trail](neovim.md#the-search-trail) |
 | `sounds` | `false` | Short [sounds](neovim.md#sounds-while-you-are-away) for a green, a regression, a remark and the hand-back, only while Neovim does not have the focus |
 | `sound_volume` | `0.5` | Their volume, 0 to 1 |
@@ -143,6 +143,7 @@ vim.o.statusline = "%f %m%=%{%v:lua.require'pair'.statusline()%}  %l:%c "
 | `⠹ pair · thinking` | While its model thinks |
 | `● pair · held thought · M-j` | While a remark waits for your next break |
 | `● pair · gen #4 · generating · 21s`, `● pair · gen #4 asks · M-g`, `● pair · gen #5 waits for the one before`, `● pair · gen #4 ready · M-y takes · :Pair dismiss` | While a [/gen request](gen.md) runs, waits for your answer or its turn, and while its code waits to be taken |
+| `● pair · gen #4 · 2 to review · :Pair gen list`, `● pair · gen · 3 to review · :Pair gen list` | While new files of [/gen file](gen.md#new-files-gen-file) wait as buffers to review: of one request, or of several |
 | `● pair · 5 notes in the margin`, `◆ logged · docs/decisions.md` | In a note with [marks](notes.md), and for a moment after a decision is logged |
 | `● run 3 · exit 0 · 55 ms · avg probe 23.7 · same numbers as run 2` | For 15 minutes after a build or run: what it showed next to the one before, and once the hunt is over, `· 1 debug line from run 2 left · M-j` ([exploration.md](exploration.md)). A crash or a broken build shows with `✗` |
 | `⠹ go test ./...`, `✗ 1 failing · TestX`, `✓ go test ./... · 4 tests, 3 packages` | [Tests on save](tests-on-save.md); `(unsaved)` after the command for the run on the Driver's edit |

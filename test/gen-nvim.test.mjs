@@ -432,6 +432,18 @@ test('/gen file: pair:// buffers to review; :wa skips them, quitting warns, :w t
     keys('<CR>');
     await until(() => remote('bufname()') === 'pair://gen/1/db/0007_status.sql', 'the file opened');
     assert.equal(remote('&winbar'), 'generated · gen #1 · :w takes it to db/0007_status.sql'); // the remote's answer is trimmed
+
+    // :e! brings the draft back, still to review; :w to another name writes a copy there and takes nothing.
+    keys('Goscratch<Esc>:e!<CR>');
+    await sleep(300);
+    assert.deepEqual(JSON.parse(remote('json_encode(getline(1, "$"))')), ['ALTER TABLE orders ADD status TEXT;']);
+    assert.deepEqual([remote('&modified'), remote('bufname()')], ['1', 'pair://gen/1/db/0007_status.sql']);
+    keys(':w copy.sql<CR>');
+    await until(() => existsSync(join(project, 'copy.sql')), 'the copy');
+    await sleep(300);
+    assert.equal(existsSync(migration), false, 'not taken');
+    assert.equal(remote('bufname()'), 'pair://gen/1/db/0007_status.sql');
+    assert.equal(proposals(remote).length, 2);
     keys('Go-- reviewed<Esc>:w<CR>');
     await until(() => existsSync(migration), 'the file written');
     assert.equal(readFileSync(migration, 'utf8'), 'ALTER TABLE orders ADD status TEXT;\n-- reviewed\n', 'as you had it');

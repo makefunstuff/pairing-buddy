@@ -493,6 +493,7 @@ const fileTurn = results => async (conversation, pair) => {
   results.push(await tool(pair, conversation, 'draft', {path: 'math.js', text: 'x', note: 'n'}));
   results.push(await tool(pair, conversation, 'draft', {path: '../outside.js', text: 'x', note: 'n'}));
   results.push(await tool(pair, conversation, 'draft', {path: '.git/config', text: 'x', note: 'n'}));
+  results.push(await tool(pair, conversation, 'draft', {path: 'math.js/inner.js', text: 'x', note: 'n'}));
   results.push(await tool(pair, conversation, 'propose', {file: 'other.js', line: 1, endLine: 1, insert: true, text: 'export {y}', note: 'export'}));
   return 'A migration and its test; I guessed TEXT for the status.';
 };
@@ -514,6 +515,7 @@ test('/gen file: drafts of new files go to Neovim as buffers to review, checked 
     'math.js exists already, and draft makes new files only. To change it, read it and call propose there: the user gets that as a suggestion.',
     'Cannot draft ../outside.js: not a path inside the project.',
     'Cannot draft .git/config: not a path inside the project.',
+    'Cannot draft math.js/inner.js: not a path inside the project.',
     'Shown at other.js:1 as ghost lines, at the user\'s next pause in typing. They take it with one key, or not; nothing changes until then.',
   ]);
 
