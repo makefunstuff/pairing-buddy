@@ -1,7 +1,10 @@
-// Push-to-talk for one session: records while the user holds the listen key in Neovim, has whisper.cpp write
-// down what they said, asks Pair that, and reads the answer aloud only when they are away from the editor.
+// Push-to-talk for one session: records while the user holds the listen key in Neovim, has whisper.cpp (or OpenRouter)
+// write down what they said, asks Pair that, and reads the answer aloud only when they are away from the editor.
+// What fails (no microphone, OpenRouter's timeout or error) shows in the editor and in the chat.
 import {mkdirSync} from 'node:fs';
-import {recorderOf, Recording, speak, speakable, transcribe, whisperPrompt} from './voice.mjs';
+import {recorderOf, Recording, speak, speakable, speaks, transcribe, whisperPrompt} from './voice.mjs';
+
+const sentence = text => `${text.replace(/[.\s]+$/, '')}.`;
 
 export class Listener {
   /**
@@ -14,6 +17,7 @@ export class Listener {
     this.recording = null; // {recording, send, selection, timer} while the key is held
     this.focused = true; // Neovim has the terminal's focus
     this.silence = null; // stops what is being said aloud
+    this.hearing = null; // stops the transcription under way
   }
 
   /** Neovim gained or lost the terminal's focus. Coming back stops what is being read aloud. */
@@ -51,15 +55,21 @@ export class Listener {
     clearTimeout(current.timer);
     const {recording, send, selection} = current;
     let text;
+    const hearing = new AbortController();
     try {
       const pcm = await recording.stop();
       if (!recording.speech) return send({type: 'heard', text: ''});
       send({type: 'heard', state: 'hearing'});
       const started = Date.now();
-      text = await this.transcribeWith(this.voice, pcm, {dir: this.dir, prompt: whisperPrompt(this.session.state)});
+      this.hearing = hearing;
+      text = await this.transcribeWith(this.voice, pcm, {dir: this.dir, prompt: whisperPrompt(this.session.state), signal: hearing.signal})
+        .finally(() => { if (this.hearing === hearing) this.hearing = null; });
+      if (hearing.signal.aborted) return; // voice went off meanwhile
       this.log(`heard ${(recording.ms / 1000).toFixed(1)} s of speech in ${Date.now() - started} ms`);
     } catch (error) {
+      if (hearing.signal.aborted) return;
       this.log(`listening failed: ${error.message}`);
+      this.session.message('system', `Pair could not hear you: ${sentence(error.message)}`);
       return send({type: 'heard', error: error.message});
     }
     send({type: 'heard', text});
@@ -70,7 +80,12 @@ export class Listener {
       return '';
     });
     send({type: 'answer', text: words, pointed: Boolean(this.session.target)}); // then the jump key goes there
-    if (words && this.away && this.voice.speak) this.silence = this.speakWith(this.voice, speakable(words), {log: this.log});
+    if (words && this.away && speaks(this.voice)) {
+      this.silence = this.speakWith(this.voice, speakable(words), {
+        log: this.log,
+        failed: why => this.session.message('system', `Pair could not read its answer aloud: ${sentence(why)}`),
+      });
+    }
   }
 
   /** Drops the recording: nothing is written down or asked. */
@@ -93,6 +108,7 @@ export class Listener {
 
   close() {
     this.cancel();
+    this.hearing?.abort();
     this.hush();
   }
 }

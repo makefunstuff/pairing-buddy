@@ -17,8 +17,8 @@ export function readServiceEnv(path) {
     .map(([, name, value]) => [name, value]));
 }
 
-/** The names of the variables the config's model entries take their keys from. */
-export const keyVariables = config => [...new Set([...Object.values(config.models), config.decision].map(entry => entry?.apiKeyEnv).filter(Boolean))];
+/** The names of the variables the config's model entries (and voice's OpenRouter) take their keys from. */
+export const keyVariables = config => [...new Set([...Object.values(config.models), config.decision, config.voice?.openrouter].map(entry => entry?.apiKeyEnv).filter(Boolean))];
 
 /**
  * Stores each of `names` that `env` has in the file at `path`, readable by its owner only, next to what it holds.
