@@ -105,18 +105,20 @@ whatever the role:
 | `recall` | Search the project's earlier sessions: their goals, notes and chats ([memory.md](memory.md#earlier-sessions)) | yes | yes | yes | yes |
 | `suggest` | Show a change in place that you accept with one key or ignore | yes | yes | yes | no |
 | `search` | ripgrep, typed in Pair's own pane | no | yes | yes | within `gen.limits` |
-| `run` | One command line in Pair's own pane, under the [command policy](scout.md#the-command-policy) | no | yes | yes | only in a `/gen try`, in its own folder, in a sandbox where only that folder is writable |
+| `run` | One command line in Pair's own pane, under the [command policy](scout.md#the-command-policy) | no | yes | yes | only in a `/gen try` or `/gen scaffold`, in its own folder, in a sandbox where only that folder is writable |
 | `edit` | One change in your buffer, typed while you watch, one undo step | no | no | up to five per hand-over | no |
 | `type` | One line into your terminal, after your yes, without Enter | no | no | after a yes | no |
-| `propose` | Code where you asked, shown in place, which you take with one key | no | no | no | within `gen.limits` |
+| `propose` | Code where you asked, shown in place, which you take with one key; in a `/gen scaffold`, a change to its copy | no | no | no | within `gen.limits` |
 | `draft` | A new file, for `/gen file`: a buffer to review in Neovim, which `:w` there writes | no | no | no | within `gen.limits`, new files only |
-| `write` | A file of a `/gen try`'s sample, in the try's own folder outside the project | no | no | no | within `gen.limits`, only in that folder |
+| `write` | A whole file of a `/gen try`'s sample, in the try's own folder outside the project, or of a `/gen scaffold`, in its copy of the project | no | no | no | within `gen.limits`, only in that folder |
 | `ask` | One question to you, with the answer it would take | no | no | no | at most two |
 
 The lists are enforced in code: each conversation is offered only its role's tools, and a `beforeTool` policy
 refuses any other name ([driver.md](driver.md#the-policy-in-code)). Nothing in the daemon writes your files or saves
 buffers, and nothing is typed into your own panes except the Driver's `type`. A try's `write` writes only its own
-folder in Pair's data folder ([gen.md](gen.md#samples-gen-try-and-keep)).
+folder in Pair's data folder ([gen.md](gen.md#samples-gen-try-and-keep)), and a scaffold's only its copy of the
+project there, or its git worktree with `--branch` ([gen.md](gen.md#many-files-gen-scaffold)). What a scaffold makes
+reaches your project only as you keep it, a file at a time, as buffers to review and suggestions.
 
 ## How it talks
 

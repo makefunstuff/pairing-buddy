@@ -265,6 +265,7 @@ export async function changedIn(dir, root, {worktree = false, known = new Set()}
 /** Of `paths` (relative to `root`), those its .gitignore files ignore; none without git. */
 async function ignoredOf(root, paths) {
   const run = promisify(execFile)('git', ['check-ignore', '--no-index', '-z', '--stdin'], {cwd: root, maxBuffer: 64 << 20});
+  run.child.stdin.on('error', () => {}); // outside a repository git ends before it reads them
   run.child.stdin.end(paths.join('\0'));
   const listed = await run.then(result => result.stdout, error => error.stdout ?? '');
   return listed.split('\0').filter(Boolean);

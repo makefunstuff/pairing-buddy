@@ -79,9 +79,9 @@ test('thinking is one level for every turn, or levels for some kinds; off is a c
   assert.throws(() => partner(['low']), /must be a level or map kinds to levels/);
 });
 
-test('gen.limits bound one /gen request, gen.brief names its note, gen.keepTries and gen.network are for tries: the defaults, values of their own, and what is not', () => {
+test('gen.limits bound one /gen request, gen.brief names its note, gen.keepTries and gen.network are for tries and scaffolds, gen.scaffold says where one goes: the defaults, values of their own, and what is not', () => {
   const gen = raw => parseConfig({gen: raw, models: {watcher: {api: 'anthropic', model: 'w'}, partner: {api: 'anthropic', model: 'p'}}}).gen;
-  assert.deepEqual(gen(undefined), {limits: {files: 40, lines: 4000, commands: 8, minutes: 10}, brief: 'NOTES.md', keepTries: 7, network: false});
+  assert.deepEqual(gen(undefined), {limits: {files: 40, lines: 4000, commands: 8, minutes: 10}, brief: 'NOTES.md', keepTries: 7, network: false, scaffold: 'tree'});
   assert.equal(gen({keepTries: 2}).keepTries, 2);
   assert.equal(gen({network: true}).network, true);
   assert.throws(() => gen({keepTries: 0}), /gen\.keepTries must be a whole number of days above 0/);
@@ -95,7 +95,9 @@ test('gen.limits bound one /gen request, gen.brief names its note, gen.keepTries
   assert.throws(() => gen({limits: {tokens: 5}}), /gen\.limits\.tokens: the limits are files, lines, commands, minutes/);
   assert.throws(() => gen({limits: {lines: 0}}), /gen\.limits\.lines must be a whole number above 0/);
   assert.throws(() => gen({limits: {minutes: 1.5}}), /gen\.limits\.minutes must be a whole number/);
-  assert.throws(() => gen({scaffold: 'tree'}), /gen has no scaffold/);
+  assert.equal(gen({scaffold: 'worktree'}).scaffold, 'worktree');
+  assert.throws(() => gen({scaffold: 'branch'}), /gen\.scaffold must be "tree" .* or "worktree"/);
+  assert.throws(() => gen({scaffolds: 'tree'}), /gen has no scaffolds \(only limits, brief, keepTries, network and scaffold\)/);
   assert.throws(() => gen([]), /gen must be an object/);
 });
 

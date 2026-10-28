@@ -364,8 +364,8 @@ scripted.*
 | `pointed`, `showed` | it pointed at a line, or opened one in a split | `⏎ go` |
 | `suggested` | it suggested a change | `⏎ go`; once you accept it, `accepted · u undo` |
 | `typed` | the Driver's edit (`6 lines in backoff_test.go · one undo step`), or one line it typed into your terminal | `u undo`, for the edit |
-| `ran`, `searched` | a command in its pane, or the tests it ran on save or on the unsaved buffer, or a `/gen try`'s run (`go run . (gen #8's try)`), with `✓` or `✗`; the same run in a row is one line (`· 3 times`) | `⏎ output` |
-| `generated` | a [/gen request](gen.md), one line for all of it (`gen #3 · here · a list handler`), with what became of its code (`3 lines proposed`, `1 of 1 piece taken`, `1 dropped`, `2 files to review`, `1 of 2 files taken`, `2 files in its folder · ✓ \`go run .\``, `kept as internal/cache/lru.go`), and `≠1` when its code goes against the [brief](gen.md#the-brief) | `u undo` the whole request, once it has code |
+| `ran`, `searched` | a command in its pane, or the tests it ran on save or on the unsaved buffer, or a `/gen try`'s or a scaffold's run (`go run . (gen #8's try)`, `go test ./... (gen #7's copy)`), with `✓` or `✗`; the same run in a row is one line (`· 3 times`) | `⏎ output` |
+| `generated` | a [/gen request](gen.md), one line for all of it (`gen #3 · here · a list handler`), with what became of its code (`3 lines proposed`, `1 of 1 piece taken`, `1 dropped`, `2 files to review`, `1 of 2 files taken`, `2 files in its folder · ✓ \`go run .\``, `kept as internal/cache/lru.go`, `9 files · 3 of yours changed · ✓ go test ./...`, `2 of 9 files kept · copy deleted`), and `≠1` when its code goes against the [brief](gen.md#the-brief) | `u undo` the whole request, once it has code |
 | `asked`, `refused` | what it asked before running or typing, and what its policy refused, with the reason | `you said no` |
 | `stayed quiet` | the moments it let pass: `3 moments under the bar`, held back by the budget, or `not asked, the server is slow` ([watcher.md](watcher.md#when-the-server-is-slow)) | `⏎ why` |
 

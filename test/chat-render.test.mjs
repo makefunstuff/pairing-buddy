@@ -243,7 +243,12 @@ test('the frame: header in its rule, conversation, status in its rule, input and
 test('the help: each key and command, then what it does, never run together', () => {
   const lines = plain(helpLines(COMMANDS, 80)).filter(line => line.startsWith('  '));
   assert.ok(lines.length > COMMANDS.length);
-  for (const line of lines) assert.match(line, /^.{14} \S/, line); // the column, then a space, then the words
+  // The column, then a space, then the words; a name too long for the column alone, its words under it.
+  for (const [i, line] of lines.entries()) {
+    const alone = line.length >= 15 && /^ {2}\S+( \S+)?$/.test(line) && /^ {15}\S/.test(lines[i + 1] ?? '');
+    if (!alone) assert.match(line, /^.{14} \S/, line);
+  }
+  assert.ok(lines.some((line, i) => line === '  /gen scaffold' && /^ {15}many files and their wiring/.test(lines[i + 1])));
   assert.ok(lines.some(line => /^ {2}\/drive +hand Pair the wheel/.test(line)));
   assert.ok(lines.some(line => /^ {2}\/goal <text> +set the session goal/.test(line)));
 });

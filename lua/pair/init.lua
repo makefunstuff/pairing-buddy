@@ -51,7 +51,7 @@ local config = {
   gen_key = '<M-g>', -- asks Pair for code, in Normal and Visual mode
   gen_input = 'ui', -- or 'cmdline': the request and its questions always on Neovim's own prompt, not vim.ui's
   gen_preview_lines = 30, -- a /gen block taller than this shows in a preview window
-  try_run_key = '<LocalLeader>r', -- in a /gen try's sample: runs it again in Pair's pane
+  try_run_key = '<LocalLeader>r', -- in a /gen try's sample: runs it again in Pair's pane; in a scaffold's copy: checks it
   land = true, -- the morning pick-up opens an empty Neovim where the last session stopped
   answers = true, -- the start of Pair's answer to a question you typed shows under the line it was about, too
 }

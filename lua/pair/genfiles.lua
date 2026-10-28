@@ -468,7 +468,8 @@ local function render()
     local about = {}
     if request.brief and request.brief ~= vim.NIL then table.insert(about, 'brief ' .. request.brief) end
     if request.check and request.check ~= vim.NIL then
-      table.insert(about, ('%s %s (unsaved) · %s'):format(request.check.mark == 'pass' and style.glyphs.pass or style.glyphs.fail, request.check.label, request.check.text))
+      local on = request.shape == 'scaffold' and 'in the copy' or 'unsaved'
+      table.insert(about, ('%s %s (%s) · %s'):format(request.check.mark == 'pass' and style.glyphs.pass or style.glyphs.fail, request.check.label, on, request.check.text))
     end
     if request.running then table.insert(about, 'generating') end
     if request.state == 'undone' then table.insert(about, 'undone · u again makes it again') end

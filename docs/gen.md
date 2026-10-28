@@ -1,5 +1,5 @@
 ---
-description: "/gen: ask Pair for code at your cursor, as new files to review, or as a sample to run outside the project. Take it with one key, :w or /keep."
+description: "/gen: ask Pair for code at your cursor, as new files, as a sample to run, or as a scaffold built in a copy of the project. Take it with one key, :w or k."
 ---
 
 # /gen: ask Pair for code
@@ -17,10 +17,10 @@ A request never changes your text by itself, so it is not the Driver: the Driver
 five edits, while a request makes proposals you review, and is held by size limits instead
 ([driver.md](driver.md#the-driver-and-gen)).
 
-This version builds three shapes: `here`, code at your cursor; `file`, [new files](#new-files-gen-file) you
-review as buffers and take with `:w`; and `try`, [a sample](#samples-gen-try-and-keep) to read and run in a folder of
-its own outside the project, which `/keep` moves in. `scaffold` is named, guessed and confirmed like them, and then
-says it is not built yet.
+There are four shapes: `here`, code at your cursor; `file`, [new files](#new-files-gen-file) you review as buffers
+and take with `:w`; `try`, [a sample](#samples-gen-try-and-keep) to read and run in a folder of its own outside the
+project, which `/keep` moves in; and `scaffold`, [many files and their wiring](#many-files-gen-scaffold), built and
+run in a copy of the project in Pair's data folder, which you keep a file at a time.
 
 ## Asking
 
@@ -34,9 +34,11 @@ says it is not built yet.
 - `Tab` completes the shape word, the first word: `here`, `file`, `scaffold`, `try`.
 - `Esc` asks nothing. An empty `Enter` opens the compose window, for a request longer than one line: a small
   Markdown window where `:w` or `Ctrl-S` sends it, and `:q` drops it. `:Pair gen +` opens it at once.
-- `:Pair gen [here|file|try] <what>` asks without the dialog. `:Pair gen cancel` stops the request that runs or
-  waits, and `:Pair gen list` lists the files of `/gen file` requests to review ([below](#the-review-list-pair-gen-list)).
-  `:Pair gen run`, `:Pair gen tries` and `:Pair keep [path]` are for tries ([below](#samples-gen-try-and-keep)).
+- `:Pair gen [here|file|try|scaffold] <what>` asks without the dialog. `:Pair gen cancel` stops the request that
+  runs or waits, and `:Pair gen list` lists the files of `/gen file` requests to review and of scaffolds to keep
+  ([below](#the-review-list-pair-gen-list)). `:Pair gen run`, `:Pair gen tries` and `:Pair keep [path]` are for tries
+  ([below](#samples-gen-try-and-keep)); `:Pair keep` and `:Pair gen drop` for scaffolds too
+  ([below](#many-files-gen-scaffold)).
 - With a selection, `Alt-g` in Visual mode or `:'<,'>Pair gen`: in code, the code replaces those lines, so the shape
   is `here` and the dialog asks only what to write. In a Markdown note, the selected lines are the request itself: the
   dialog shows their first line to send or change, the rest goes with it, and the shape is guessed.
@@ -44,24 +46,26 @@ says it is not built yet.
 **In the chat**, `/gen here <what>` asks for code at your cursor in the Neovim you work in, and `@here` in it means
 over the lines you selected there last. `/gen file <what>` asks for new files, which open in that Neovim as buffers to
 review. `/gen try <what>` asks for a sample, which opens in that Neovim in a split; `/gen run` runs the newest
-again, `/gen tries` lists the try folders, and `/keep [path]` moves the newest try's file into the project. `/gen`
-alone lists today's requests, and `/gen cancel` stops the one that runs or waits. `/cancel` stops a running request
-too, when Pair answers nothing else.
+again, `/gen tries` lists the try folders, and `/keep [path]` moves the newest try's file into the project.
+`/gen scaffold <what>` (`/gen scaffold --branch <what>` for a git worktree) asks for a scaffold; `/keep <path>` keeps
+a file of it, and `/gen drop` deletes its copy. `/gen` alone lists today's requests, and `/gen cancel` stops the one
+that runs or waits. `/cancel` stops a running request too, when Pair answers nothing else.
 
 ## The shape
 
-| Shape | What it makes | Built |
+| Shape | What it makes | How you take it |
 | --- | --- | --- |
-| `here` | Code at the cursor, or over the selection: a query, a handler, a config block | yes |
-| `file` | New files to review, as unsaved buffers: a migration, a module, a config file, a test file | yes |
-| `scaffold` | Many files and their wiring, in a copy of the project in Pair's data folder | not yet |
-| `try` | A sample to read and run, in a folder of its own outside the project: an LRU in 30 lines, how a library's API feels | yes |
+| `here` | Code at the cursor, or over the selection: a query, a handler, a config block | `Alt-y` |
+| `file` | New files to review, as unsaved buffers: a migration, a module, a config file, a test file | `:w` in one |
+| `scaffold` | Many files and their wiring, built and run in a copy of the project in Pair's data folder: an admin page wired into the router, a service with its tests | `k` per file in `:Pair gen list`, or `/keep <path>` |
+| `try` | A sample to read and run, in a folder of its own outside the project: an LRU in 30 lines, how a library's API feels | `/keep [path]`, if you want it |
 
 When the request does not start with a shape word, a cheap rule guesses one from it, never the model: a selection in
 code is `here`; then words like "here", "below this" or "this function" mean `here`; "scaffold", "wired into", "an
 app" mean `scaffold`; "sample", "example", "to try" mean `try`; a file name or "migration", "test file", "new file"
 mean `file`; anything else is `here`. A guess is always shown first, and goes only once you confirm it, so `scaffold`
-is never picked silently. A shape you typed is not asked about.
+is never picked silently. A shape you typed is not asked about, and neither is `--branch` or `--copy` at the start of
+the request: they say where a scaffold goes, so they make one.
 
 In Neovim the guess comes as a list with the guess first, so `Enter` takes it. A select plugin shows it as its own
 picker; without one (or with `gen_input = 'cmdline'`), Pair's numbered list on the command line asks instead of
@@ -71,7 +75,7 @@ Neovim's own, whose empty `Enter` would cancel. There a number picks another sha
 gen #1 · new files: "migration". Shape?
 1: file      new files to review  (guessed)
 2: here      at the cursor, over a selection
-3: scaffold  many files, in Pair's copy  (not built yet)
+3: scaffold  many files, in Pair's copy
 4: try       a sample outside the project
 Number, Enter takes 1 (Esc cancels):
 ```
@@ -91,14 +95,16 @@ In the chat, `y` takes the guess, a shape word another, and `n` cancels.
 - **What it is told.** Your words and [the brief](#the-brief), read again when the request starts. For `here`, where
   the code goes (the cursor's line, or the lines you selected) and the lines around that place as your buffer has
   them; for `file`, the names of the project's files (`git ls-files`, the first 200); for `try`, its folder and the
-  names of the first 60 of the project's files.
+  names of the first 60 of the project's files; for `scaffold`, where its copy is, its limits, and the names of the
+  first 300.
 - **Its tools.** `say`, `read`, `recall`, `search` (in Pair's pane, also outside Scout), `propose`, `draft`, `write`,
   `run` and `ask`. Never `edit`, `type`, `suggest` or `point`, and a policy in code refuses them
   ([how-it-works.md](how-it-works.md#what-it-can-do)). `propose(file, line, end_line, insert, text, note)` puts the
   code below `line` (`insert`), or in place of `line`..`end_line`; for `here`, only in the file you asked in.
   `draft(path, text, note)` writes a new file, for `file` only (below). `write(path, text)` and `run(command)` work
-  only in a `try`, and only in its own folder ([below](#samples-gen-try-and-keep)); in the other shapes they are
-  refused with why.
+  only in a `try` and a `scaffold`, and only in the request's own folder ([try](#samples-gen-try-and-keep),
+  [scaffold](#many-files-gen-scaffold)), where `propose` changes the copy at once and `read` and `search` see it; in
+  the other shapes they are refused with why.
 - **Its questions.** When a wrong guess would cost you, the model may ask: at most two questions per request, each
   with the answer it would take. They are asked where you asked. In Neovim it is a dialog with that answer filled in,
   never while you type: in Insert mode or right after a change it waits for your pause, and meanwhile the statusline
@@ -110,9 +116,9 @@ In the chat, `y` takes the guess, a shape word another, and `n` cancels.
 
 | Limit | Default | What happens past it |
 | --- | --- | --- |
-| `lines` | `4000` | The proposal or draft is refused: the model is told to propose less |
-| `files` | `40` | A proposal or draft in one more file is refused |
-| `commands` | `8` | Searches, and a try's runs, past it are refused |
+| `lines` | `4000` | The proposal, draft or write is refused: the model is told to propose less. In a scaffold, a change to a file counts the lines it adds |
+| `files` | `40` | A proposal, draft or write in one more file is refused. Files a scaffold's runs made past it are counted in its debrief, not listed |
+| `commands` | `8` | Searches, and the runs of a try or a scaffold, past it are refused |
 | `minutes` | `10` | The model is stopped; what it proposed so far still shows. Time a question waits for you does not count |
 
 ## The brief
@@ -371,6 +377,132 @@ gen #8 · an LRU cache in 30 lines · main.go · kept as internal/cache/lru.go �
 
 `:Pair gen tries` in Neovim shows them as a list (`vim.ui.select`), and the one you pick opens in a split.
 
+## Many files: /gen scaffold
+
+`/gen scaffold an admin page for orders: list, detail, status change, wired into the router` (or `:Pair gen scaffold
+…`, or `scaffold` as the shape) asks for many files and the wiring that joins them to your code. It is the costly
+shape, so Pair never guesses it silently: a guess is always asked first. The request is built away from your project,
+in a copy of it in Pair's data folder, where the model writes, runs and checks what it makes. You then keep what you
+want of it, a file at a time; nothing else reaches your project.
+
+### The copy
+
+```
+~/.local/state/pairing-buddy/gen/shop-1a2b3c4d/7/
+```
+
+The copy is made the way the [check on unsaved buffers](driver.md#the-check-on-the-unsaved-buffer) makes its own: the
+files git knows and the files it ignores (such as `.env`), copied as reflinks where the file system has them, so a
+big project costs little room; folders git ignores (`dist`, `target`) are left out, and dependency folders
+(`node_modules`, `.venv`) are linked. It has your unsaved buffers in it, so it is the project as you see it. It leaves
+git alone: no branch, no change to `.git`. A project of more than 50,000 files is not copied, and the request says so.
+
+- **The model works there.** Its paths are the project's: `write(path, text)` writes a whole file in the copy, new or
+  not; `propose(file, line, end_line, insert, text)` changes lines of a file there at once (a route, an import);
+  `read` and `search` see the copy with its changes. `draft` is refused: there is nothing to draft, the copy is Pair's.
+  A path out of the copy, through a link out of it, or in `.git` is refused.
+- **It runs there.** `run(command)` runs in [Pair's pane](scout.md), in the same narrow sandbox as a try's: only the
+  copy is writable, the project and the rest of the disk are read-only, and there is no network unless
+  [`gen.network`](config.md#gen) is on. The command policy still decides, and without bubblewrap a command Scout
+  would ask about asks first. The model builds and tests what it made, and fixes what fails.
+- **Installs are listed, not run.** Without the network an install cannot work, so a command that installs a package
+  (`npm install zod`, `pip install`, `go get`, `cargo add` and the like) is not run at all: the model is told so, and
+  the debrief lists it for you to run once you keep the files. With `gen.network` on, it runs.
+- **Within its limits.** [`gen.limits`](#how-a-request-runs) holds it: the files it writes, the lines it adds, its
+  commands and its minutes.
+
+### The debrief
+
+When the model is done, Pair adds the files its runs made or changed (a lock file, `go.sum`, generated code), except
+those git would ignore, and checks the copy with the command a [hand-over's check](driver.md#the-check-on-the-unsaved-buffer)
+uses: the project's command on save, else your last build and run (one from your terminal that Scout would ask about
+asks you first). The chat gets the debrief:
+
+```
+gen #7 · scaffold · 9 files, 3 of yours changed · 2m 41s: An admin page under /admin, with the same auth; …
+in Pair's copy /home/you/.local/state/pairing-buddy/gen/shop-1a2b3c4d/7 · ran ✓ `go build ./...` · ✓ `go test ./...`
+check ✓ `go test ./...`: 47 tests, 6 packages
+│ + internal/admin/orders.go       +118
+│ + internal/admin/orders_test.go  +76
+│ ~ cmd/shop/main.go               +3 -1
+│ ~ internal/orders/repo.go        +12 -0
+│ … 5 more
+≠ brief "Admin is read-only for now." NOTES.md:17 · internal/admin/orders.go:64 the page changes the status
+? guessed html/template, no JS
+not run: `npm install htmx.org`: the copy has no network (gen.network), so install it yourself once you keep the files
+In Neovim, :Pair gen list keeps them one at a time (k), shows each (Enter) and deletes the copy (x). Here, /keep <path> keeps one; /gen drop deletes the copy.
+```
+
+`+` is a new file, `~` a change to a file you have, with the lines it adds and removes. The `≠ brief` and `? guessed`
+lines are [the brief's check](#the-debrief--brief-and--guessed), on the first 300 lines of each file. Neovim says
+`Pair · gen #7 · scaffold: 9 files in Pair's copy · :Pair gen list keeps them`, and the statusline
+`gen #7 · scaffold · :Pair gen list keeps it`. The request opens nothing by itself: nothing jumps at you while you type.
+
+### Keeping it a file at a time
+
+`:Pair gen list` lists the scaffold with its files, under the [file requests](#the-review-list-pair-gen-list):
+
+```
+gen #7 · scaffold · an admin page for orders · 14:31
+  copy ~/.local/state/pairing-buddy/gen/shop-1a2b3c4d/7 · 2 of 9 kept   brief NOTES.md + goal   ✓ go test ./... (in the copy) · 47 tests
+  ✓ ~ internal/orders/repo.go        kept · 1 of 1 change taken
+  ✓ + internal/admin/orders.go       kept · unsaved · ⏎ open  w take
+  ◌ + internal/admin/orders_test.go  +76      ⏎ open  k keep  d drop
+  ◌ ~ cmd/shop/main.go               +3 -1    ⏎ diff  k as suggestions  d drop
+  · + web/admin/orders.css           +12      dropped · k keeps it after all
+  t terminal in the copy · r run the check again · x delete the copy
+```
+
+| Key | What it does |
+| --- | --- |
+| `k` | Keeps the file. A **new file** opens as a [buffer to review](#new-files-gen-file), `pair://gen/7/<path>`, exactly like a `/gen file` one: `:w` in it takes it, `:wa` elsewhere skips it, quitting warns. A **change to a file you have** shows in it as suggestions, one per hunk, at the lines it changes; `Alt-y` takes each, as for `here` (below) |
+| `Enter` | Opens it in the window you came from: a new file as the copy's file; a change as your file with the copy's beside it, in a diff (`:diffoff!` ends it). The copy's file has the winbar ` scaffold · gen #7 · Pair's copy, not your file · \r checks it · :Pair keep keeps it ` |
+| `w` | On a kept file still to review: takes it, as `:w` in its buffer |
+| `d` | Drops the file: it is not kept, and stays in the copy until the copy goes. `k` keeps it after all |
+| `r` | Runs the check again in the copy, and says how it went. The run key (`try_run_key`, `\r`) in a file of the copy does it too, after writing that file: you may change the copy's files, and what `k` keeps is the file as you have it then |
+| `t` | Opens a terminal of yours in the copy, in a split. It is yours, not Pair's pane: no sandbox |
+| `x` | Deletes the copy, after a yes (`Delete gen #7's copy? The 6 files not kept go with it.`). What you did not keep is dropped; what you kept stays |
+| `u` | Undoes the whole request ([below](#one-undo-per-request)) |
+
+In the chat, `/keep internal/admin/orders.go` keeps that file of the newest scaffold (when the newest of your tries and
+scaffolds is one); `/keep` alone keeps the only one left, or lists them. `:Pair keep` in a file of the copy keeps
+that file. `/gen drop` and `:Pair gen drop` delete the newest scaffold's copy. Keeping one file at a time is the
+point: there is no key that keeps them all, so you read each before it is yours.
+
+### Changes to your files, as suggestions
+
+A change to a file you have is never written over it. Pair takes the copy's file as it is when you press `k`, and the
+text that file had when the copy was made, and shows each hunk between them as a suggestion in your buffer as it is
+**now**: lines you typed since move it, and it lands where those lines are now. A hunk over lines you changed since the
+copy was made is not shown, and the chat says so: `gen #7: cmd/shop/main.go: 1 change, shown there as suggestions;
+Alt-y (:Pair accept) takes each. 1 change not shown: you changed those lines since; copy it from …/7/cmd/shop/main.go.`
+A hunk that only deletes lines shows as the line next to it, kept, in place of the lines it deletes, since a suggestion
+has at least one line.
+
+### In a git worktree: --branch
+
+`/gen scaffold --branch <what>` (or `:Pair gen scaffold --branch …`) builds it in a git worktree on a new branch
+`gen/<n>`, at the same place in Pair's data folder, instead of in the copy. Choose it when you want to commit the
+scaffold as it is, or open it in herdr as a worktree of its own (it gets its own session there, as any worktree
+does). [`gen.scaffold`](config.md#gen) `"worktree"` makes it the default, and `--copy` then asks for the copy. It needs
+a git repository whose root is the session's, and a commit to start from:
+
+- The worktree starts from `HEAD`: your uncommitted changes and unsaved buffers are not in it, and a change is shown
+  against the file as `HEAD` has it, placed on your buffer as it is now.
+- Keeping, the list and the debrief work as for the copy; the debrief and the list name the worktree and its branch.
+- `x` removes the worktree (`git worktree remove --force`) and deletes the branch while it has no commit of yours; a
+  branch you committed on stays: `gen #7: its worktree is deleted; the branch gen/7 has commits of yours, so it stays.`
+- A branch `gen/<n>` that exists already stops the request: `gen #7: no worktree for the scaffold: the branch gen/7
+  exists already.`
+
+### How long a copy stays
+
+A copy stays until you delete it (`x`, `/gen drop`), or until it has not been used for
+[`gen.keepTries`](config.md#gen) days (7), as a try: a write, a run, a check or a keep in it counts as a use. Older
+copies are deleted when the daemon starts and whenever a try or a scaffold starts. A worktree never expires: it is a
+branch of your repository, and only `x` (or git) removes it. `/gen cancel` on a running scaffold deletes its copy, and
+a scaffold that made nothing leaves none.
+
 ## One undo per request
 
 The ledger books a request as one line: `generated  gen #3 · here · a list handler with paging`, with a note that
@@ -382,10 +514,12 @@ last thing Pair changed today, and for a request that is all of it:
 - what you took is undone, newest first, merged into your buffers as they are now, so your edits since stay. Code
   you have changed since cannot be taken back: the chat says which (`Could not undo gen #1. Not changed: a.js: …`),
   and the request stays taken.
-- a file of `/gen file` you took (wrote), or one you kept from a try and wrote, is deleted, with its buffer, but only
-  while it is exactly as you wrote it and
-  its buffer has no changes you did not save. Otherwise it stays, and the chat says why
-  (`Not changed: db/x.sql: it changed since you wrote it`). Files still to review go, with their buffers.
+- a file of `/gen file` you took (wrote), or one you kept from a try or a scaffold and wrote, is deleted, with its
+  buffer, but only while it is exactly as you wrote it and its buffer has no changes you did not save. Otherwise it
+  stays, and the chat says why (`Not changed: db/x.sql: it changed since you wrote it`). Files still to review go,
+  with their buffers.
+- of a scaffold, the hunks you took from it are undone like code taken from `here`, and the files of its copy you did
+  not keep are dropped. The copy itself stays until you delete it or it expires.
 
 `u` on the request in [`:Pair today`](neovim.md#the-ledger) does the same for any request of the day, and `u` again
 makes what you took again: code goes back into your buffers, and a file deleted by the undo comes back as a buffer
@@ -429,7 +563,8 @@ The daemon keeps the origin with each edit. An edit Pair made:
 ### Edits outside the project
 
 An edit of a file outside the session's project (a scratch file, another repository, a file in Pair's own data
-folder, where `/gen try` puts its samples) is dropped when it reaches the daemon, whoever made it. It raises no
+folder, where `/gen try` puts its samples and `/gen scaffold` its copies) is dropped when it reaches the daemon,
+whoever made it. It raises no
 `drift`, is no file you edited, and is not counted as work in this session.
 
 ### Making Pair's lines yours
@@ -439,7 +574,15 @@ the file leaves Pair's lines Pair's.
 
 ## Limits
 
-- `here`, `file` and `try` are built. `scaffold` is named and guessed, and says it is not built yet.
+- `scaffold` keeps one file at a time; there is no key that keeps them all. Files a scaffold deletes are not
+  proposed: only new and changed files are.
+- A scaffold's copy has your unsaved buffers, but a `--branch` worktree starts from `HEAD`, without your uncommitted
+  changes. A worktree needs the session at the repository's root.
+- A change kept from a scaffold is placed by the text the file had when the copy was made. After a daemon restart,
+  a change its runs made (not its model) is placed against the file as it is on disk then.
+- A scaffold's runs cannot install anything unless `gen.network` is on; installs are listed instead. Without
+  bubblewrap, a run that may write asks first, and could write through the copy's links to your dependency folders.
+- A project of more than 50,000 files cannot be copied for a scaffold; `--branch` still works.
 - `/gen file` makes new files only. A change to a file you have is a suggestion in it, never a buffer to review.
 - A buffer to review is no file yet: no language server attaches to it, and Pair's Watcher does not see your edits in
   it. Once taken, it is an ordinary file.
@@ -452,8 +595,8 @@ the file leaves Pair's lines Pair's.
   one, after a yes for what Scout would ask about. A pane an older Pair opened (before tries) cannot write the try
   folders from its sandbox: close it, and the next run opens a new one.
 - A try cannot install anything unless `gen.network` is on: a sample that needs a package says so instead.
-- The chat's questions are told of the newest try this daemon made; an older one's files can still be read by their
-  full path.
+- The chat's questions are told of the newest try and the newest scaffold this daemon made; an older one's files can
+  still be read by their full path.
 - `/keep` keeps one file at a time, as a new file. To bring a change into a file you have, copy it from the sample.
 - A try whose model never ran it has no command for the run key: run it in a terminal of yours.
 - The brief's two checks (the question before, the debrief after) are each one more answer of the Partner's model.
