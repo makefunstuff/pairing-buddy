@@ -68,7 +68,7 @@ recording comes out the same each time; the tutorial video's scenes use a real m
 | [agents](tapes/agents.tape) | your other agents' news, one line at your next breakpoint, and `:Pair agents` |
 | [notes](tapes/notes.tape) | notes in the margin: the marks, a fixed line, a decision logged, the tasks panel |
 | [teach](tapes/teach.tape) | Alt-? on a remark: the idea worth keeping behind it, and its link |
-| [chat](tapes/chat.tape) | the chat pane: a remark on save with its diff, a question asked there, the status in the rule while Pair reads, the answer streaming in, a remark picked with `Ctrl-F`, and `?` |
+| [chat](tapes/chat.tape) | the chat pane: a remark on save with its diff and action line, a question asked there, the status in the rule while Pair reads, the answer streaming in, `Ctrl-F` on its matches (↑ to the one before, Enter picks its message), the command menu, and `?` |
 | [chat-layout](tapes/chat-layout.tape) | the chat scene in a 44-column pane (the gutter kept, code wrapped between tokens, the header, `⎿` line and footer shorter), then the same pane 112 columns wide (the words by column 80, an answer's meta in its margin) |
 | [no-herdr](tapes/no-herdr.tape) | without herdr: `:Pair chat` opens the chat in Neovim, and Scout's pane is a `:terminal` along the bottom, sandboxed |
 

@@ -70,7 +70,7 @@ export const dim = (text, {color = true} = {}) => (color ? `${DIM}${text}${RESET
 
 // The full-screen pane (chat-render.mjs) builds its lines from segments, {text, style}, and paints them last. The
 // colours are the terminal's own 16, so its theme applies, and Pair's accent; no background fills: a selected
-// message has a bar in the accent, and a search match is underlined.
+// message has a bar in the accent, a search match is underlined, and the one you are on green as well.
 
 const SGR = {
   plain: '',
@@ -78,7 +78,6 @@ const SGR = {
   dim: '\x1b[2m',
   italic: '\x1b[3m',
   under: '\x1b[4m',
-  reverse: '\x1b[7m',
   red: '\x1b[31m',
   green: '\x1b[32m',
   yellow: '\x1b[33m',
@@ -114,8 +113,8 @@ export const STYLES = {
   del: ['red'],
   hunk: ['cyan'],
   rule: ['dim'],
-  match: ['under', 'bold'],
-  chosen: ['reverse'],
+  match: ['under'], // what search finds…
+  found: ['under', 'bold', 'green'], // …and the match you are on
   bar: ['accent'],
   ok: ['green'],
 };

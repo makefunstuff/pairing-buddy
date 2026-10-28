@@ -1,7 +1,8 @@
 # The chat pane: the full-screen pane on the right of Neovim (as `pair` opens it in herdr, here in a :terminal). Your
 # fix for the budget breaks the queue's lease on save; Pair's remark shows in the chat, its suggestion as a diff. You
-# ask why there; the status in the rule says what Pair reads, and the answer streams in. Ctrl-F finds the remark and picks
-# it: the footer lists what you can do with it. ? shows every key.
+# ask why there; the status in the rule says what Pair reads, and the answer streams in. Ctrl-F finds "lease": every
+# match underlined, the one you are on green; ↑ steps to the match before it, and Enter picks its message: the footer
+# lists what you can do with it. / opens the command menu, and ? shows every key.
 Output out/chat.mp4
 Source tapes/head.tape
 Hide
@@ -43,16 +44,23 @@ Screenshot out/chat-answer.png
 Sleep 1s
 Ctrl+f
 Sleep 300ms
-Type "outlive"
-Sleep 500ms
+Type "lease"
+Sleep 900ms
+Screenshot out/chat-find.png
+Up
+Sleep 900ms
 Enter
 Sleep 900ms
 Screenshot out/chat-select.png
 Ctrl+c
 Sleep 800ms
+Type "/"
+# No Screenshot for the menu or the help: VHS 0.11 kept handing back an earlier frame for them. encode.sh takes their
+# stills from the video instead: the menu 7.3 s before its end, in the middle of these 2 s, the help 3 s before it.
+Sleep 2s
+Ctrl+c
+Sleep 800ms
 Type "?"
-# No Screenshot here: VHS 0.11 kept handing back an earlier frame for it. encode.sh takes the help's still from the
-# video instead, 3 s before its end, in the middle of these 4 s.
 Sleep 4s
 Type "q"
 Sleep 1.5s

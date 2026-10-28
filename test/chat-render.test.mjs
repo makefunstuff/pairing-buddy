@@ -2,14 +2,16 @@
 // speaks, folding, the status in its rule in each state, the keys of the footer, the colours each part is drawn
 // with, and the whole frame.
 import assert from 'node:assert/strict';
-import {test} from 'node:test';
+import {mock, test} from 'node:test';
 import {LineEditor} from '../src/chat-input.mjs';
-import {baseNames, bodyLines, breakText, codeLines, cutStart, dedent, diffLines, emptyLines, footerKeys, footerLine, headerLine, helpLines, markdownLines, menuLines, renderFrame, statusLine, transcriptLines, wrapTokens, inlineTokens} from '../src/chat-render.mjs';
+import {baseNames, bodyLines, breakText, codeLines, cutStart, dedent, diffLines, emptyLines, footerKeys, footerLine, headerLine, helpLines, markdownLines, menuLines, remarkKeys, renderFrame, statusLine, transcriptLines, wrapTokens, inlineTokens} from '../src/chat-render.mjs';
 import {COMMANDS} from '../src/chat.mjs';
 import {paintLine, textWidth} from '../src/chat-style.mjs';
 
 const plain = lines => lines.map(line => line.map(seg => seg.text).join(''));
 const at = new Date(2026, 9, 28, 14, 5).getTime();
+// Today is the day of `at`, whatever the day the tests run: a divider says another day's name.
+mock.timers.enable({apis: ['Date'], now: at + 60 * 60_000});
 
 test('Markdown: headings, bold, `code`, lists with a hanging indent, quotes and fenced code', () => {
   const text = '# The cause\nThe **lease ends** in `queue.go:18` before the last attempt.\n\n- one item long enough to wrap\n2. two\n> a quote\n\n```go\nttl := cfg.Budget\n```\n\nAfter.';
@@ -100,7 +102,7 @@ test('the time is a divider: at the start, after five minutes or more, and with 
   assert.equal(plain([footerLine({mode: 'select', selectedEntry: {kind: 'pair', at, meta: {}}, now: minutes(60 * 24)}, 40)])[0], `${' c copy · Esc back'.padEnd(22)}Wed 28 Oct · 14:05`);
 });
 
-test('a long message folds to its start until it is opened; the last remark shows its keys until rated', () => {
+test('a long message folds to its start until it is opened, and says so; the last remark shows its action line until rated', () => {
   const long = {kind: 'pair', at, text: Array.from({length: 30}, (_, i) => `line ${i + 1}`).join('\n\n')};
   const folded = plain(transcriptLines([long], 60).lines).slice(1);
   assert.equal(folded.length, 13);
@@ -109,10 +111,14 @@ test('a long message folds to its start until it is opened; the last remark show
   assert.equal(plain(transcriptLines([long], 60).lines).length, 60);
   long.expanded = false;
   assert.match(plain(transcriptLines([long], 30).lines).at(-1), /^ {7}… \d+ more · Alt-↑ Enter$/, 'a narrow pane: the fold line shorter, not cut');
+  // The pane knows a message is folded from the fold itself, at any width (it used to count rows: > 13).
+  for (const width of [44, 60, 120]) assert.equal(transcriptLines([long], width).ranges[0].folded, true, `${width} columns`);
+  assert.equal(transcriptLines([{...long, expanded: true}], 60).ranges[0].folded, false);
+  assert.equal(transcriptLines([{kind: 'pair', at, text: Array.from({length: 13}, (_, i) => `l${i}`).join('\n')}], 60).ranges[0].folded, false, '13 lines: not folded');
   const remark = {kind: 'watch', at, text: 'Off the goal.', meta: {remark: 1, trigger: 'drift'}};
-  assert.match(plain(transcriptLines([remark], 60, {latestRemark: 0}).lines).at(-1), /\+ useful · - noise · Alt-↑ more$/);
+  assert.match(plain(transcriptLines([remark], 60, {latestRemark: 0}).lines).at(-1), /^ {7}\+ useful {2}- noise {2}· Alt-↑ first$/);
   remark.verdict = 'noise';
-  assert.doesNotMatch(plain(transcriptLines([remark], 60, {latestRemark: 0}).lines).join('\n'), /useful · -/);
+  assert.doesNotMatch(plain(transcriptLines([remark], 60, {latestRemark: 0}).lines).join('\n'), /useful {2}-/);
 });
 
 test('the status is in the rule over the input: what Pair does now, and on the right the model, the time and the cost of the last answer', () => {
@@ -190,7 +196,11 @@ test('the footer shows the keys that work now', () => {
   assert.equal(keys({scroll: 4}), 'End / @ Alt-↑ ?', 'scrolled up: End comes back down');
   assert.equal(keys({mode: 'select', selectedEntry: {kind: 'watch', meta: {remark: 1, place: {}, suggestion: {}}}}), 'c a j +/- m f e Esc');
   assert.equal(keys({mode: 'select', selectedEntry: {kind: 'you', meta: {}}}), 'c Esc');
-  assert.equal(keys({mode: 'search'}), 'type ↑↓ Enter Esc');
+  assert.equal(keys({mode: 'search'}), '↑↓ Enter Esc');
+  assert.equal(footerKeys({mode: 'menu', menu: {kind: 'command'}})[2][1], 'run');
+  assert.equal(footerKeys({mode: 'menu', menu: {kind: 'file'}})[2][1], 'inserts', 'Enter puts a file in what you type: it runs nothing');
+  assert.equal(keys({connection: 'away'}), 'Ctrl-D ?', 'away: nothing sends, so no keys that send');
+  assert.equal(keys({connection: 'away', editorEmpty: false}), 'Alt-Enter Tab');
 });
 
 test('the frame: header in its rule, conversation, status in its rule, input and footer, exactly the pane\'s size, the cursor where you type', () => {
@@ -323,4 +333,135 @@ test('a wide pane: the words end by column 80, code and diffs use the width, and
   assert.equal(transcriptLines([answer], 124).lines[1].at(-1).style, 'dim');
   assert.doesNotMatch(plain(transcriptLines([answer], 80).lines).join('\n'), /6\.4s/, 'no margin in an 80-column pane');
   assert.match(plain(transcriptLines([answer], 100).lines)[1], /word {2,}14:05 · 6\.4s$/, 'less room: the tokens go first');
+});
+
+test('a remark is one unit: its last line has the keys that work on it once picked, spaced like buttons, Alt-↑ as an aside', () => {
+  const suggestion = {action: 4, old: ['return &Lease{ttl: cfg.Budget}'], new: ['return &Lease{ttl: cfg.Budget + cfg.AttemptTimeout}']};
+  const remark = {kind: 'watch', at, text: 'internal/queue/lease.go:18 suggestion: the lease ends before the last attempt does', meta: {remark: 7, trigger: 'regression', place: {file: 'internal/queue/lease.go', line: 18}, suggestion}};
+  const lines = plain(transcriptLines([remark], 80, {latestRemark: 0}).lines);
+  assert.deepEqual(lines.slice(1).map(line => line.trimEnd()), [
+    ' watch regression · internal/queue/lease.go:18',
+    '       the lease ends before the last attempt does',
+    '       │ - return &Lease{ttl: cfg.Budget}',
+    '       │ + return &Lease{ttl: cfg.Budget + cfg.AttemptTimeout}',
+    '       + useful  - noise  a apply  j jump  · Alt-↑ first',
+  ], 'the diff has the code block\'s bar and space');
+  const action = transcriptLines([remark], 80, {latestRemark: 0}).lines.at(-1);
+  assert.deepEqual(action.filter(s => s.style === 'bold').map(s => s.text), ['+', '-', 'a', 'j', 'Alt-↑'], 'the keys bold');
+  assert.ok(action.filter(s => /useful|noise|apply|jump|first/.test(s.text)).every(s => s.style === 'dim'), 'their words dim');
+  assert.match(plain(transcriptLines([{...remark, applied: true}], 80, {latestRemark: 0}).lines).at(-1), /^ {7}\+ useful {2}- noise {2}j jump {2}· Alt-↑ first$/, 'taken: no a');
+  assert.equal(plain(transcriptLines([remark], 80, {latestRemark: 0, selected: 0}).lines).at(-1).trimEnd(), '▌      + useful  - noise  a apply  j jump', 'picked: the keys work now, no aside');
+  assert.equal(plain(transcriptLines([remark], 54, {latestRemark: 0}).lines).at(-1), '       + useful - noise a apply j jump  · Alt-↑ first', 'narrower: the gaps first');
+  assert.equal(plain(transcriptLines([remark], 44, {latestRemark: 0}).lines).at(-1), '       + - a j  · Alt-↑ first', 'a narrow pane: the keys without words, the aside kept');
+  const pieces = [{...remark, text: 'the lease ends early', meta: {...remark.meta, suggestion: undefined}}, {kind: 'watch', at, text: 'see the retry', meta: {remark: 7, trigger: 'regression'}}];
+  assert.deepEqual(Object.keys(remarkKeys(pieces, 1)).filter(key => remarkKeys(pieces, 1)[key]), ['jump'], 'the keys of the whole remark, from its last part');
+});
+
+test('the speakers: ! for an error, not !!, and its text is Markdown, so a command in it is a code span, whole', () => {
+  const error = {kind: 'error', at, text: 'Pair could not answer: connect ECONNREFUSED 127.0.0.1:8080. `pair doctor` checks the models.'};
+  const lines = transcriptLines([error], 60).lines;
+  assert.deepEqual(plain(lines).slice(1), [
+    ' !     Pair could not answer: connect ECONNREFUSED',
+    '       127.0.0.1:8080. pair doctor checks the models.',
+  ]);
+  assert.deepEqual(lines[1][1], {text: '!', style: 'errorBold'});
+  const code = lines[2].filter(s => s.style === 'code').map(s => s.text);
+  assert.deepEqual(code, ['pair', 'doctor'], 'the command in the accent, no backticks');
+  assert.ok(lines[1].slice(3).every(s => s.style === 'error'), 'the words in red');
+});
+
+test('ordered lists: the numbers are padded to the widest of their list, so 9. and 10. end in one column', () => {
+  const text = Array.from({length: 10}, (_, i) => `${i + 1}. step ${i + 1}`).join('\n');
+  const lines = plain(markdownLines(text, 40));
+  assert.equal(lines[0], ' 1. step 1');
+  assert.equal(lines[8], ' 9. step 9');
+  assert.equal(lines[9], '10. step 10');
+  assert.deepEqual(plain(markdownLines('1. one\n2. two\n\nWords.\n\n9. nine\n10. ten', 40)), ['1. one', '2. two', '', 'Words.', '', ' 9. nine', '10. ten'], 'each list its own width');
+  assert.deepEqual(plain(markdownLines('8. a long item that wraps here\n9. b\n10. c', 20)).slice(0, 2), [' 8. a long item that', '    wraps here'], 'the hanging indent follows the padding');
+});
+
+test('find: a match of several words, or over a `code` span, is one match; one over a wrap still finds its message', () => {
+  const answer = {kind: 'pair', at, text: 'The lease ends too early: ttl is only the budget. Run `pair doctor` now.'};
+  const count = query => transcriptLines([answer], 80, {query}).ranges[0].matches;
+  for (const query of ['lease', 'the lease', 'lease ends', 'too early', 'run pair', 'pair doctor now', 'THE LEASE']) assert.equal(count(query), 1, query);
+  assert.equal(count('the'), 2);
+  assert.equal(count('nowhere'), 0);
+  const {lines} = transcriptLines([answer], 80, {query: 'run pair', selected: 0, found: 0});
+  assert.deepEqual(lines[1].filter(s => s.style === 'found').map(s => s.text), ['Run', ' ', 'pair'], 'lit over the word and the span');
+  const wrapped = transcriptLines([answer], 30, {query: 'only the budget'});
+  assert.equal(wrapped.ranges[0].matches, 1, 'over a wrap: the message is found');
+});
+
+test('find: every match underlined, the one you are on bold, underlined and green; a fold opens to show it', () => {
+  const entries = [{kind: 'pair', at, text: 'the lease ends; the lease again'}, {kind: 'you', at, text: 'lease?'}];
+  const {lines, ranges} = transcriptLines(entries, 60, {query: 'lease', selected: 0, found: 1});
+  assert.deepEqual(ranges.map(range => range.matches), [2, 1]);
+  const styles = lines.flat().filter(s => s.text.toLowerCase() === 'lease').map(s => s.style);
+  assert.deepEqual(styles, ['match', 'found', 'match'], 'the second match of the first message is the one you are on');
+  const painted = paintLine(lines[1], {color: true});
+  assert.ok(painted.includes('\x1b[4m\x1b[1m\x1b[32mlease'), 'bold, underlined, green');
+  assert.ok(painted.includes('\x1b[4mlease'), 'the others underlined only');
+  assert.ok(!painted.includes('\x1b[7m'), 'no reverse video');
+  const long = {kind: 'pair', at, text: [...Array.from({length: 20}, (_, i) => `line ${i}`), 'the lease at the end'].join('\n')};
+  const shut = transcriptLines([long], 60, {query: 'lease', selected: 0, found: -1});
+  assert.equal(shut.ranges[0].folded, true);
+  assert.equal(shut.ranges[0].matches, 1, 'a folded match counts');
+  const open = transcriptLines([long], 60, {query: 'lease', selected: 0, found: 0});
+  assert.equal(open.ranges[0].folded, false, 'on it, the message opens');
+  assert.match(plain([open.lines[open.ranges[0].found]])[0], /the lease at the end/, 'and the pane knows its line');
+});
+
+test('the find row stands where you type: what it looks for, which match of how many, and in how many messages', () => {
+  const editor = new LineEditor();
+  editor.insert('a half-typed question');
+  const view = {
+    entries: [{kind: 'pair', at, text: 'the lease ends'}], editor, selected: 0, found: 0, activity: {state: 'idle'},
+    mode: 'search', search: 'lease', searchNote: '1 of 1 · in 1 message',
+  };
+  const {lines, cursor} = renderFrame(view, {width: 60, height: 10});
+  assert.equal(lines.at(-2), ' find: lease  1 of 1 · in 1 message');
+  assert.equal(lines.at(-1).trimEnd(), ' ↑↓ older/newer · Enter keep · Esc close');
+  assert.ok(!lines.join('\n').includes('half-typed'), 'what you typed waits behind it');
+  assert.deepEqual(cursor, {row: 8, column: 12});
+});
+
+test('the command menu: name, arguments and what it does in three columns; how many it shows, and how many more', () => {
+  const items = COMMANDS.map(([name, args, what]) => ({label: name, args, detail: what, value: name}));
+  const lines = plain(menuLines(items, 0, 80));
+  assert.equal(lines.length, 8, 'seven, and the line of how many more');
+  const column = lines[0].indexOf('<text>');
+  assert.match(lines[0], /^ ▸ \/goal +<text> +set the session goal/);
+  assert.equal(lines[1].indexOf('quiet|normal|chatty'), column, 'the arguments in one column');
+  assert.equal(lines[1].indexOf('how often'), lines[0].indexOf('set the session'), 'what it does in another');
+  assert.equal(lines[2].indexOf('speak unasked'), lines[0].indexOf('set the session'), 'with or without arguments');
+  assert.equal(lines[7], `   ↓ ${COMMANDS.length - 7} more`);
+  const down = plain(menuLines(items, 9, 80));
+  assert.match(down[6], /^ ▸ \/cancel/, 'the chosen one in sight, at the bottom');
+  assert.equal(down[7], `   ↑ 3 more · ↓ ${COMMANDS.length - 10} more`);
+  assert.equal(plain(menuLines(items, COMMANDS.length - 1, 80)).at(-1), `   ↑ ${COMMANDS.length - 7} more`);
+  assert.equal(plain(menuLines(items.slice(0, 3), 0, 80)).length, 3, 'all of them: no more line');
+  for (const line of plain(menuLines(items, 0, 44))) assert.ok(textWidth(line) <= 44, line);
+  assert.match(plain(menuLines(items, 0, 44))[1], /^ {3}\/level +quiet\|norm\w*… {2}how often/, 'a narrow pane cuts the arguments, not the column');
+  const frame = renderFrame({entries: [], editor: new LineEditor(), selected: -1, activity: {state: 'idle'}, mode: 'menu', menu: {kind: 'command', items, chosen: 0}}, {width: 80, height: 20});
+  assert.match(frame.lines.find(line => line.startsWith('╶─')), new RegExp(`^╶─ commands · 7 of ${COMMANDS.length} · type to narrow ─+$`));
+  assert.match(frame.lines.at(-1), /Enter run/);
+  const files = renderFrame({entries: [], editor: new LineEditor(), selected: -1, activity: {state: 'idle'}, mode: 'menu', menu: {kind: 'file', items: [{label: '@a.go', value: '@a.go'}], chosen: 0}}, {width: 80, height: 20});
+  assert.match(files.lines.find(line => line.startsWith('╶─')), /^╶─ files ─+$/);
+  assert.match(files.lines.at(-1), /Enter inserts/);
+});
+
+test('the mascot keeps its three rows, however the intro wraps', () => {
+  for (const width of [44, 60, 80, 124, 200]) {
+    const lines = plain(emptyLines(width));
+    assert.deepEqual(lines.slice(0, 3).map(line => line.slice(2, 6)), ['▗▄▄▖', '▐▘▝▌', '▝▀▀▘'], `${width} columns`);
+  }
+});
+
+test('reconnecting: how long the daemon has been away, how many times the pane tried, and that what you type is kept', () => {
+  const now = at + 6000;
+  const row = width => plain([statusLine({now, connection: 'away', away: {since: at, attempts: 3}}, width)])[0];
+  assert.match(row(80), /^── ⚠ the pair daemon went away · reconnecting 6s · attempt 3 ─+$/);
+  assert.match(row(40), /^── ⚠ reconnecting 6s · attempt 3 ─+$/);
+  assert.match(row(28), /^── ⚠ reconnecting 6s ─+$/);
+  assert.match(plain([statusLine({now, connection: 'away', away: {since: at, attempts: 0}}, 80)])[0], /reconnecting 6s ─/, 'no attempt yet: no count');
 });
