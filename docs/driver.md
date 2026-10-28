@@ -46,7 +46,8 @@ A request can say what you expect to see after the change, and which command sho
 
 Then:
 
-1. Pair becomes the Driver for one answer. The chat prompt and `require('pair').status()` show `driver`.
+1. Pair becomes the Driver for one answer. The chat pane's header and `require('pair').status()` show `driver`
+   (the [plain pane](chat.md#the-plain-pane) shows it in its prompt).
 2. It reads the code and calls `edit`, once for each place the change touches, in one file or several. An edit replaces whole lines, or, with `old_text`, only that text in them (`retries + 1` becomes `retries` and the rest of the line stays); `old_text` that is not in those lines exactly once changes nothing, and the model is told why. Neovim types the change while you watch (see [the visible hand-over](neovim.md#the-visible-hand-over)): ghost text with Pair's cursor, each line entering the buffer only when it is whole, all of it one undo step. If no window shows those lines, they open in a split. The edit's answer to the model waits until the typing is done. The chat says `Changed src/ws.mjs:1 (u undoes it).`
    A file that does not exist yet (inside the project, in a folder that does) opens as a new buffer and is typed there, for example the `Makefile` of a [first slice](blank-page.md#the-first-run). Its `read` says it does not exist yet, or shows the buffer once Pair has typed it. The disk has it when you save it.
 3. Each edit is its own undo step. Up to five edits per hand-over: a sixth is refused, and the model is told to say what it changed. An edit Neovim could not apply (a line past the end of the buffer), or that you stopped halfway, does not count. Five keeps a change small enough to watch, and a model that loops harmless.

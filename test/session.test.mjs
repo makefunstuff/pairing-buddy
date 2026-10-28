@@ -6,6 +6,8 @@ import {test} from 'node:test';
 import {PairSession, runReport} from '../src/session.mjs';
 import {scratch} from './temp.mjs';
 
+const PANE_STATUS = ['activity', 'presence', 'turn']; // what the chat pane's status row shows: no message to the user
+
 function session({score = async () => ({value: 9, reason: 'worth it'}), answer = 'Line 2 is off.'} = {}) {
   const asked = [];
   const sent = [];
@@ -43,7 +45,7 @@ test('a SILENT answer reaches nobody and costs no budget', async () => {
   const {pair, sent} = session({answer: 'SILENT'});
   failTwice(pair);
   await pair.tick();
-  assert.deepEqual(sent.filter(message => message.role === 'chat'), []);
+  assert.deepEqual(sent.filter(message => message.role === 'chat' && !PANE_STATUS.includes(message.type)), []);
   assert.equal(pair.budget.allows(100_000).ok, true);
 });
 
@@ -79,7 +81,7 @@ test('an unasked remark that arrives while the user types again waits for their 
     score: async () => ({value: 9, reason: 'worth it'}),
     typingPauseMs: 2000,
     // The ledger's list and the statusline's run line follow along at once: they interrupt nobody.
-    notify: (role, message) => ['ledger_changed', 'run_line'].includes(message.type) || sent.push({role, at: clock, ...message}),
+    notify: (role, message) => ['ledger_changed', 'run_line', ...PANE_STATUS].includes(message.type) || sent.push({role, at: clock, ...message}),
     requestEditor: async () => null,
     now: () => clock,
   });
@@ -789,7 +791,7 @@ test('a regression found on save: Pair checks it as a remark, suggests the fix, 
   // After the baseline, a save runs only the package it is in, and the packages that import it.
   assert.match(input, /^\[watch\] regression: Pair ran `go test \.\/cart` when the user saved cart\/cart\.go\. Now failing, and not in Pair's run before: TestRate, TestTotal\/two_items/);
   assert.match(input, /If a small change fixes it, call suggest/);
-  assert.deepEqual(options, {kind: 'remark'});
+  assert.equal(options.kind, 'remark');
   const remark = sent.find(message => message.type === 'remark' && message.to === 'editor');
   assert.deepEqual([remark.text, remark.target.suggestion, remark.target.line], ['Total skips the first price.', true, 5]);
 });

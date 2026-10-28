@@ -16,7 +16,7 @@ Hide
 Type "cd $CAP/ringbuf && clear && CAP_SCHEME=greys nvim -i NONE --listen $CAP/nvim.sock -u $CAP_HERE/init.lua ring.c"
 Enter
 Sleep 2s
-Type ":botright vnew | vertical resize 56 | terminal $CAP_REPO/bin/pair.mjs chat"
+Type ":botright vnew | setlocal nonumber signcolumn=no | vertical resize 56 | terminal $CAP_REPO/bin/pair.mjs chat"
 Enter
 Sleep 2.5s
 Ctrl+w

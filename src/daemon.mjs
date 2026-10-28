@@ -3,7 +3,7 @@
 import {chmodSync, mkdirSync, unlinkSync} from 'node:fs';
 import {realpath} from 'node:fs/promises';
 import {createServer} from 'node:net';
-import {basename, join} from 'node:path';
+import {basename, join, resolve} from 'node:path';
 import {AgentRelay, itemName} from './agent-relay.mjs';
 import {AgentBoard, STATUSES} from './agents.mjs';
 import {oneAtATime} from './config.mjs';
@@ -202,6 +202,9 @@ export async function startDaemon(config, {
     setRole: (...args) => models.partner.setRole(...args),
     thinkingOf: (...args) => models.partner.thinkingOf(...args),
     cancel: conversationId => slot.cancel(conversationId),
+    // The user stops their own question's turn: the slot cancels only remarks, so this goes to the Partner itself.
+    stop: conversationId => models.partner.cancel(conversationId),
+    modelName: () => models.pairModels.partner.name ?? models.pairModels.partner.id,
     ask: async (conversationId, content, options) => {
       await rebuilt;
       const {partner} = models;
@@ -548,8 +551,13 @@ export async function startDaemon(config, {
     const {session} = client;
     sendMessage(client.socket, {
       type: 'welcome', root: session.root, goal: session.state.goal, level: session.budget.level, role: session.role, models: health.snapshot(),
-      accent: session.accent,
+      accent: session.accent, model: sessionPartner.modelName(), muted: [...session.muted],
     });
+    // The chat pane's status row starts from what Pair does now, and how much it looked at so far.
+    if (client.role === 'chat') {
+      sendMessage(client.socket, session.activityNow);
+      sendMessage(client.socket, session.presence);
+    }
     // A Neovim that connects (or reconnects) after a test run shows its result too, and a late answer it missed.
     if (client.role === 'editor' && session.testsShown) sendMessage(client.socket, session.testsShown);
     if (client.role === 'editor' && session.runShown) sendMessage(client.socket, session.runShown);
@@ -577,6 +585,29 @@ export async function startDaemon(config, {
     const history = store.messages(session.id);
     for (const old of history) sendMessage(client.socket, {type: 'message', history: true, ...old});
     if (!history.length) session.greet();
+  }
+
+  /**
+   * A typed question. From the chat, `here` asks about what the user selected last in Neovim (else their line), and
+   * `about` is the remark it follows up on.
+   */
+  async function askFrom(client, session, message) {
+    const selection = message.selection ?? (message.here ? await requestEditor(session, {type: 'selection'}).catch(() => null) : null);
+    const picked = selection?.file ? selection : null;
+    if (message.here && !picked) session.message('system', 'No Neovim answered for @here, so the question goes without lines.');
+    const about = Number.isInteger(message.about) ? message.about : null;
+    return session.askTyped(message.text, picked, {question: client.role === 'editor', about});
+  }
+
+  /** The id of the `number`th last remark in the session's project, as /remarks lists them; null without a number. */
+  function remarkNumbered(session, number) {
+    if (!Number.isInteger(number) || number < 1) return null;
+    return store.recentRemarks(session.root, number)[number - 1]?.id ?? null;
+  }
+
+  /** Sends `message` to the Neovim the user works in; says so in the chat when there is none. */
+  function relayToEditor(session, message) {
+    if (!notify(session, 'editor', message)) session.message('system', 'No Neovim is connected to this session: :Pair start in Neovim first.');
   }
 
   /** What `pair doctor` asks the daemon. */
@@ -677,7 +708,14 @@ export async function startDaemon(config, {
     if (!session) return sendMessage(client.socket, {type: 'message', sender: 'system', text: 'No active session; send hello first', at: Date.now()});
     if (client.role === 'editor') noteEditor(client, message);
     if (message.type === 'event') return receive(session, message.event);
-    if (message.type === 'ask') return session.askTyped(message.text, message.selection ?? null, {question: client.role === 'editor'});
+    if (message.type === 'ask') return askFrom(client, session, message);
+    if (message.type === 'cancel') return session.stop();
+    if (message.type === 'mute') return session.mute(typeof message.trigger === 'string' ? message.trigger : null);
+    if (message.type === 'unmute') return session.unmute(typeof message.trigger === 'string' ? message.trigger : null);
+    if (message.type === 'undo_last') return session.undoLast();
+    // From the chat pane: a suggestion taken, or a place to go to, in the Neovim the user works in.
+    if (message.type === 'accept' && Number.isInteger(message.action)) return relayToEditor(session, {type: 'accept', action: message.action});
+    if (message.type === 'go' && typeof message.file === 'string') return relayToEditor(session, {type: 'go', file: resolve(session.root, message.file), line: Number(message.line) || 1});
     if (message.type === 'goal') return session.setGoal(message.text);
     if (message.type === 'first' && typeof message.text === 'string' && message.text.trim()) return session.setFirst(message.text.trim());
     if (message.type === 'level') return session.setLevel(message.level);
@@ -706,7 +744,7 @@ export async function startDaemon(config, {
     if (message.type === 'decision') return margins.get(session.root).decide(message.file, message.line);
     if (message.type === 'tasks') return margins.get(session.root).tasks(message.file);
     if (message.type === 'tasks_add') return margins.get(session.root).addTasks(message.file, message.tasks ?? []);
-    if (message.type === 'teach') return session.teach(message.text || undefined, message.remark ?? null);
+    if (message.type === 'teach') return session.teach(message.text || undefined, message.remark ?? remarkNumbered(session, message.number));
     if (message.type === 'end') return endSession(session);
     if (message.type === 'listen') return listen(client, session, message);
     if (message.type === 'focus') {

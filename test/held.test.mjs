@@ -89,7 +89,8 @@ function pairSession() {
   };
   const types = () => { clock.now += 1000; pair.receive({kind: 'typing'}); };
   const shown = type => sent.filter(message => message.type === type && message.via !== 'chat'); // in the editor
-  const chat = () => sent.filter(message => message.via === 'chat');
+  // The chat's messages; not what its status row shows (what Pair does now, how much it looked at).
+  const chat = () => sent.filter(message => message.via === 'chat' && !['activity', 'presence', 'turn'].includes(message.type));
   return {root, file, pair, store, clock, sent, errorInNewCode, types, shown, chat};
 }
 

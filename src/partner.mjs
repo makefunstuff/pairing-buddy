@@ -1,6 +1,6 @@
 // The Partner: one durable pi-durable conversation per pairing session, stored in SQLite.
 import {BACKGROUND_CONTEXT as C} from '@earendil-works/chord/context';
-import {createRegistry, Harness} from '@earendil-works/pi-durable';
+import {createRegistry, Harness, watchEvents} from '@earendil-works/pi-durable';
 import {openNodeSqliteStorage} from '@earendil-works/pi-durable/storage/sqlite/node';
 import {mostThinking, THINKING_DEFAULTS} from './config.mjs';
 import {compactionFor} from './context.mjs';
@@ -41,6 +41,57 @@ function inputText(entry) {
 }
 
 const QUESTION = /^\[user\] ([\s\S]*?)(?:\n\n|$)/; // the user's own words in an asked turn's input (see session.mjs)
+
+/** The tokens and the cost of every model call in a conversation's `pi.usage` (pi-durable's UsageState). */
+function totalUsage(state) {
+  return Object.values(state?.models ?? {}).reduce(
+    (sum, usage) => ({tokens: sum.tokens + (usage.totalTokens ?? 0), cost: sum.cost + (usage.cost?.total ?? 0)}),
+    {tokens: 0, cost: 0},
+  );
+}
+
+/**
+ * Tells `onEvent` what the turn on `conversationId` does as it streams: `{type: 'text', text}` with the text of the
+ * model's message so far (each new message starts again), and at the end `{type: 'usage', tokens, cost}`, what the
+ * turn's model calls took. Resolves with a function that stops it; null when the harness cannot stream events.
+ */
+async function relayEvents(harness, conversationId, onEvent) {
+  const stream = await watchEvents(harness, conversationId, C).catch(() => null);
+  if (!stream) return null;
+  const before = totalUsage(stream.snapshot.usage);
+  let after = before;
+  // The text of each content block of the message in flight, by index; null for a tool call or thinking. A message
+  // starts with what it already has, and its updates add to a block, start one, or replace a block or all of them.
+  let blocks = [];
+  let text = '';
+  const textOf = block => (block?.type === 'text' ? block.text ?? '' : null);
+  const changed = () => {
+    const now = blocks.filter(block => typeof block === 'string').join('');
+    if (now === text) return;
+    text = now;
+    onEvent({type: 'text', text});
+  };
+  stream.start(async events => {
+    for (const event of events) {
+      if (event.type === 'usage_changed') after = totalUsage(event.usage);
+      if (event.type === 'message_start' && event.message?.role === 'assistant') {
+        blocks = (Array.isArray(event.message.content) ? event.message.content : []).map(textOf);
+        changed();
+      }
+      if (event.type !== 'message_update') continue;
+      for (const change of event.changes) {
+        if (change.type === 'message') blocks = (change.message?.content ?? []).map(textOf);
+        else if (change.type === 'text_delta') blocks[change.contentIndex] = (blocks[change.contentIndex] ?? '') + change.delta;
+        else if (['text_start', 'thinking_start', 'toolcall_start', 'block'].includes(change.type)) blocks[change.contentIndex] = textOf(change.block);
+      }
+      changed();
+    }
+  });
+  return async () => {
+    await stream.stop().catch(() => {});
+    onEvent({type: 'usage', tokens: after.tokens - before.tokens, cost: after.cost - before.cost});
+  };
+}
 
 /**
  * Opens the Partner over `storage` (a SQLite file path, or a pi-durable Storage for tests).
@@ -153,8 +204,9 @@ export async function openPartner({storage, models, model, thinking = THINKING_D
     /**
      * Sends one input and resolves with the Partner's final text (tool calls happen on the way), or null when the
      * turn was cancelled. It thinks as a turn of `kind` does, and from the next input on as its role does again.
+     * `onEvent` hears the answer's text as it streams, and the turn's usage at its end (see relayEvents).
      */
-    async ask(conversationId, content, {kind} = {}) {
+    async ask(conversationId, content, {kind, onEvent} = {}) {
       const conversation = await harness.conversation(conversationId, C);
       if (!conversation) throw new Error(`No conversation ${conversationId}`);
       cancelled.delete(conversationId); // a cancel that came after the last turn was done
@@ -162,9 +214,11 @@ export async function openPartner({storage, models, model, thinking = THINKING_D
       const level = thinkingOf(conversationId, kind);
       const switched = agent && level !== agent.thinkingLevel;
       if (switched) await conversation.configure({...agent, thinkingLevel: level}, C);
+      const stop = onEvent ? await relayEvents(harness, conversationId, onEvent) : null;
       try {
         return await answerOf(conversation, await (await conversation.submit({type: 'input', content}, C)).wait(C));
       } finally {
+        await stop?.();
         if (switched) await conversation.configure(agent, C);
       }
     },

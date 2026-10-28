@@ -6,7 +6,7 @@ import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {test} from 'node:test';
 import {createModels, fauxAssistantMessage, fauxProvider, fauxText} from '@earendil-works/pi-ai';
-import {allows, parseInput, remarkLines} from '../src/chat.mjs';
+import {allows, COMMANDS, parseInput, pickFiles, remarkLines} from '../src/chat.mjs';
 import {formatMessage, trueColor} from '../src/chat-style.mjs';
 import {loadConfig} from '../src/config.mjs';
 import {openStore} from '../src/store.mjs';
@@ -21,7 +21,7 @@ test('/scout and /navigate switch the role, /today lists what Pair did; other li
   assert.deepEqual(parseInput('/level chatty'), {type: 'level', level: 'chatty'});
   assert.deepEqual(parseInput('/first lease past the last attempt, in queue.go:18'), {type: 'first', text: 'lease past the last attempt, in queue.go:18'});
   assert.deepEqual(parseInput('where else do we set that?'), {type: 'ask', text: 'where else do we set that?'});
-  assert.deepEqual(parseInput('/drivel'), {local: 'help'});
+  assert.deepEqual(parseInput('/drivel'), {local: 'unknown', command: '/drivel'});
   assert.deepEqual(parseInput('/today'), {type: 'today'});
 });
 
@@ -66,6 +66,37 @@ test('/remarks lists the last remarks; +2, - 3 and /noise 2 rate one of them by 
     '+2 or -2 rates the second last, and so on',
   ]);
   assert.deepEqual(remarkLines([], now), ['Pair has made no remark here yet.']);
+});
+
+test('the new commands: the levels by name, cancel, undo, mute, explain, and the pane\'s own; an unknown one is named', () => {
+  assert.deepEqual(parseInput('/quiet'), {type: 'level', level: 'quiet'});
+  assert.deepEqual(parseInput('/chatty'), {type: 'level', level: 'chatty'});
+  assert.deepEqual(parseInput('/quiet please'), {local: 'unknown', command: '/quiet'});
+  assert.deepEqual(parseInput('/cancel'), {type: 'cancel'});
+  assert.deepEqual(parseInput('/undo'), {type: 'undo_last'});
+  assert.deepEqual(parseInput('/mute'), {type: 'mute'});
+  assert.deepEqual(parseInput('/mute drift'), {type: 'mute', trigger: 'drift'});
+  assert.deepEqual(parseInput('/unmute'), {type: 'unmute'});
+  assert.deepEqual(parseInput('/explain'), {type: 'teach'});
+  assert.deepEqual(parseInput('/explain 2'), {type: 'teach', number: 2});
+  assert.deepEqual(parseInput('?'), {type: 'teach'}, '? and Enter still asks why');
+  assert.deepEqual(parseInput('/help'), {local: 'help'});
+  assert.deepEqual(parseInput('/clear'), {local: 'clear'});
+  assert.deepEqual(parseInput('/copy 3'), {local: 'copy', number: 3});
+  assert.deepEqual(parseInput('/search lease ttl'), {local: 'search', text: 'lease ttl'});
+  assert.deepEqual(parseInput('explain @here please'), {type: 'ask', text: 'explain @here please', here: true});
+  assert.deepEqual(parseInput('mail me@here.com'), {type: 'ask', text: 'mail me@here.com'});
+  // Every command of the menu and the help means something, alone or with what it needs.
+  const example = (name, args) => (args.startsWith('<') ? `${name} x` : args.includes('|') ? `${name} quiet` : name);
+  for (const [name, args] of COMMANDS) assert.notEqual(parseInput(example(name, args))?.local, 'unknown', name);
+});
+
+test('@ picks files: those that start with the words first, then by name, then anywhere, then by their letters', () => {
+  const files = ['internal/queue/queue.go', 'internal/queue/queue_test.go', 'cmd/hookd/main.go', 'README.md', 'docs/queue.md'];
+  assert.deepEqual(pickFiles(files, 'que'), ['docs/queue.md', 'internal/queue/queue.go', 'internal/queue/queue_test.go']);
+  assert.deepEqual(pickFiles(files, 'int'), ['internal/queue/queue.go', 'internal/queue/queue_test.go']);
+  assert.deepEqual(pickFiles(files, 'hkmn'), ['cmd/hookd/main.go']);
+  assert.deepEqual(pickFiles(files, 'zzz'), []);
 });
 
 test('only y or yes allows a command', () => {

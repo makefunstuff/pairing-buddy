@@ -90,6 +90,7 @@ export default defineConfig({
         {text: 'Getting started', link: '/getting-started'},
         {text: 'Install and daily use', link: '/install'},
         {text: 'How it works', link: '/how-it-works'},
+        {text: 'The chat pane', link: '/chat'},
       ]},
       {text: 'Models', items: [
         {text: 'Models and providers', link: '/models'},

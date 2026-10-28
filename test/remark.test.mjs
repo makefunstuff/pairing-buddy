@@ -50,7 +50,7 @@ test('the wrong turn: Pair reads, says why under your line, and points at the re
 
   assert.match(asked[0], /^\[watch\] edit_while_red: The user edits backoff\.go:4-4 while `go test \.\/\.\.\.` is red/);
   assert.match(asked[0], /trace the test through the code as it is now/);
-  assert.deepEqual(options[0], {kind: 'remark'}, 'it thinks as remarks do');
+  assert.equal(options[0].kind, 'remark', 'it thinks as remarks do');
   assert.deepEqual(sent.filter(message => message.type === 'thinking').map(message => [message.via, message.on]), [['editors', true], ['editors', false]],
     'the statusline says Pair thinks while the turn runs');
   const editor = sent.filter(message => message.via === 'editor');

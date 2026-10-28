@@ -417,9 +417,8 @@ local function picked()
   return target or suggestions.all()[#suggestions.all()]
 end
 
-function M.accept()
-  local suggestion = picked()
-  if not suggestion then return end
+--- Takes `suggestion` into its buffer, unless its lines changed since it was shown.
+local function accept(suggestion)
   local unchanged = suggestions.still(suggestion)
   local first, last = suggestions.range(suggestion)
   drop_suggestion(suggestion)
@@ -432,6 +431,19 @@ function M.accept()
   if suggestion.action then
     send({type = 'applied', action = suggestion.action, before = before, after = vim.api.nvim_buf_get_lines(suggestion.buf, 0, -1, false)})
   end
+end
+
+function M.accept()
+  local suggestion = picked()
+  if suggestion then accept(suggestion) end
+end
+
+--- The chat pane's `a` on a suggestion: the one the daemon booked as ledger action `message.action`.
+local function accept_action(message)
+  for _, suggestion in ipairs(suggestions.all()) do
+    if suggestion.action == message.action then return accept(suggestion) end
+  end
+  vim.notify('Pair: that suggestion is no longer shown (taken, dismissed or edited)')
 end
 
 function M.dismiss()
@@ -680,6 +692,46 @@ local function open_split(file, line)
   vim.cmd('belowright split ' .. vim.fn.fnameescape(file))
   pcall(vim.api.nvim_win_set_cursor, 0, {line, 0})
   vim.api.nvim_set_current_win(window) -- the split is for looking; your cursor stays where it was
+end
+
+--- The window the chat pane's jumps land in: the current one, unless it is a terminal (`:Pair chat` runs in one),
+--- else the first window with a file.
+local function work_window()
+  local current = vim.api.nvim_get_current_win()
+  if vim.bo[vim.api.nvim_win_get_buf(current)].buftype == '' then return current end
+  for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    if vim.bo[vim.api.nvim_win_get_buf(win)].buftype == '' then return win end
+  end
+  return current
+end
+
+--- The chat pane's `j`: goes to `message.file`:`message.line`, leaving a mark in the jumplist (Ctrl-O comes back).
+local function go(message)
+  local win = work_window()
+  vim.api.nvim_set_current_win(win)
+  vim.cmd("normal! m'")
+  local buf = load(message.file)
+  vim.bo[buf].buflisted = true
+  vim.api.nvim_win_set_buf(win, buf)
+  pcall(vim.api.nvim_win_set_cursor, win, {math.min(message.line, vim.api.nvim_buf_line_count(buf)), 0})
+  vim.cmd('normal! zz')
+end
+
+--- The lines `@here` in the chat asks about: the last visual selection in the buffer you work in, else your line.
+local function selection(message)
+  local win = work_window()
+  local buf = vim.api.nvim_win_get_buf(win)
+  local file = vim.api.nvim_buf_get_name(buf)
+  local result = vim.NIL
+  if file ~= '' then
+    local from, to = vim.api.nvim_buf_get_mark(buf, '<')[1], vim.api.nvim_buf_get_mark(buf, '>')[1]
+    if from == 0 or to == 0 then
+      local line = vim.api.nvim_win_get_cursor(win)[1]
+      from, to = line, line
+    end
+    result = {file = file, from = math.min(from, to), to = math.max(from, to)}
+  end
+  send({type = 'reply', id = message.id, result = result})
 end
 
 local function open(message)
@@ -948,6 +1000,9 @@ local handlers = {
   read = read,
   buffers = function(message) send({type = 'reply', id = message.id, result = {buffers = buffers.unsaved(message.root)}}) end,
   suggest = suggest,
+  accept = accept_action,
+  go = go,
+  selection = selection,
   edit = edit,
   handback = handback,
   interview = function(message)

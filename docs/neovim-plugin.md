@@ -18,7 +18,9 @@ The keys exist only while there is something for them to do, and only where you 
 | `Alt-a` | Go to the agent whose news Pair relayed ([your other agents](agents.md)) |
 | any key | Take the wheel back while Pair drives |
 
-Each key is an option of `setup` (below); `false` turns one off, and the commands work either way.
+Each key is an option of `setup` (below); `false` turns one off, and the commands work either way. In the
+[chat pane](chat.md#acting-on-a-message), `a` on a suggestion takes it in this Neovim as `Alt-y` does, and `j` on a
+message goes to its line, with a mark for `Ctrl-O`.
 
 ## Setup
 

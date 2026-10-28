@@ -86,6 +86,7 @@ const ADDED_COLUMNS = {
   sessions: {role: 'TEXT NOT NULL DEFAULT \'navigator\'', pickup: 'TEXT', active_ms: 'INTEGER NOT NULL DEFAULT 0', worked: 'INTEGER NOT NULL DEFAULT 0'},
   remarks: {waited_ms: 'INTEGER', shown: 'INTEGER NOT NULL DEFAULT 0'},
   decisions: {state: 'TEXT'},
+  messages: {meta: 'TEXT'}, // what the chat pane shows a message with: its remark, its suggestion, its place
 };
 /** What an added column starts with in the rows already there, where its default is wrong. */
 const FILLED = {
@@ -94,6 +95,11 @@ const FILLED = {
   // A remark that said something has its words in the ledger.
   'remarks.shown': `UPDATE remarks SET shown = EXISTS (SELECT 1 FROM actions a WHERE a.kind = 'said' AND json_extract(a.data, '$.remark') = remarks.id)`,
 };
+
+/** A message row with its `meta` read; a row without one has none. */
+function withMeta({meta, ...row}) {
+  return meta ? {...row, meta: JSON.parse(meta)} : row;
+}
 
 export function openStore(path) {
   const db = new DatabaseSync(path);
@@ -117,7 +123,7 @@ export function openStore(path) {
     activeSessionOf: conversationId => toSession(db.prepare('SELECT * FROM sessions WHERE conversation_id = ? AND ended_at IS NULL').get(JSON.stringify(conversationId))),
 
     /** The messages of session `id` since `since`, oldest first. */
-    messagesSince: (id, since) => db.prepare('SELECT at, sender, text FROM messages WHERE session_id = ? AND at >= ? ORDER BY rowid').all(id, since),
+    messagesSince: (id, since) => db.prepare('SELECT at, sender, text, meta FROM messages WHERE session_id = ? AND at >= ? ORDER BY rowid').all(id, since).map(withMeta),
 
     createSession({root, conversationId, goal, level, at}) {
       const {lastInsertRowid} = db.prepare('INSERT INTO sessions (root, conversation_id, goal, level, started_at) VALUES (?, ?, ?, ?, ?)')
@@ -140,8 +146,10 @@ export function openStore(path) {
     /** The note of the last ended session of `root` before session `id`: where the next session starts from. */
     previousNote: (root, id) => db.prepare('SELECT note FROM sessions WHERE root = ? AND id < ? AND note IS NOT NULL ORDER BY id DESC LIMIT 1').get(root, id)?.note ?? null,
 
-    addMessage: (sessionId, sender, text, at) => db.prepare('INSERT INTO messages (session_id, at, sender, text) VALUES (?, ?, ?, ?)').run(sessionId, at, sender, text),
-    messages: (sessionId, limit = 50) => db.prepare('SELECT at, sender, text FROM (SELECT rowid, * FROM messages WHERE session_id = ? ORDER BY rowid DESC LIMIT ?) ORDER BY rowid').all(sessionId, limit),
+    addMessage: (sessionId, sender, text, at, meta = null) => db.prepare('INSERT INTO messages (session_id, at, sender, text, meta) VALUES (?, ?, ?, ?, ?)')
+      .run(sessionId, at, sender, text, meta && JSON.stringify(meta)),
+    messages: (sessionId, limit = 50) => db.prepare('SELECT at, sender, text, meta FROM (SELECT rowid, * FROM messages WHERE session_id = ? ORDER BY rowid DESC LIMIT ?) ORDER BY rowid')
+      .all(sessionId, limit).map(withMeta),
 
     addRemark: ({sessionId, trigger, score, at, waitedMs}) => Number(db.prepare('INSERT INTO remarks (session_id, trigger, score, at, waited_ms) VALUES (?, ?, ?, ?, ?)')
       .run(sessionId, trigger, score ?? null, at, waitedMs ?? null).lastInsertRowid),
@@ -166,6 +174,10 @@ export function openStore(path) {
     recentRemarks: (root, limit) => db.prepare(`SELECT r.id, r.trigger, r.at, r.verdict,
         (SELECT a.text FROM actions a WHERE a.kind = 'said' AND json_extract(a.data, '$.remark') = r.id) AS text
       FROM remarks r JOIN sessions s ON s.id = r.session_id WHERE s.root = ? AND r.shown ORDER BY r.id DESC LIMIT ?`).all(root, limit),
+    /** Remark `id` with what Pair said in it (its first `said` in the ledger), or undefined. */
+    remark: id => db.prepare(`SELECT r.id, r.trigger, r.at, r.verdict,
+        (SELECT a.text FROM actions a WHERE a.kind = 'said' AND json_extract(a.data, '$.remark') = r.id) AS text
+      FROM remarks r WHERE r.id = ?`).get(id),
     /** Logs one decision of the gate's made with the decision model (see the decisions table); returns its id. */
     addDecision: ({sessionId, at, trigger, sort = null, sortP = null, speakP = null, score = null, bar = null, rule = null, verdict, fallback = null, state = null}) => Number(db.prepare(
       'INSERT INTO decisions (session_id, at, trigger, sort, sort_p, speak_p, score, bar, rule, verdict, fallback, state) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',

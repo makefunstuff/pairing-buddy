@@ -7,7 +7,7 @@ Hide
 Type "cd $CAP/hookd && clear && nvim -i NONE --listen $CAP/nvim.sock -u $CAP_HERE/init.lua internal/queue/queue.go"
 Enter
 Sleep 1.5s
-Type ":botright vnew | vertical resize 58 | terminal $CAP_REPO/bin/pair.mjs chat"
+Type ":botright vnew | setlocal nonumber signcolumn=no | vertical resize 58 | terminal $CAP_REPO/bin/pair.mjs chat"
 Enter
 Sleep 2.5s
 Ctrl+w

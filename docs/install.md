@@ -98,8 +98,9 @@ looks at, and the usual fixes, are in [Troubleshooting](troubleshooting.md).
 The chat pane is optional: a Neovim alone is a whole session.
 
 **Chat commands.** `/goal`, `/level`, `/scout`, `/navigate`, `/drive`, `+` and `-` for your verdict, `/why`,
-`/end` and the rest are in the [command reference](cli.md#chat-commands). Anything else you type is a question for
-Pair, and "you take it" or "your turn" hands it the wheel.
+`/mute`, `/undo`, `/end` and the rest are in the [command reference](cli.md#chat-commands); `/` in the chat lists
+them as you type. Anything else you type is a question for Pair, and "you take it" or "your turn" hands it the
+wheel. What the pane shows and its keys (`?` lists them) are in [the chat pane](chat.md).
 
 **The shell hook.** Optional, for exact command boundaries and exit codes in your own panes: add it to your shell's rc file.
 Pair then catches every command however short and looks at the pane's processes only for an editor while a command
@@ -134,14 +135,14 @@ when none has it (you are in the chat pane, or the browser), the one you were in
 as its LSP's diagnostics or a file it reloads while you are elsewhere, never make it the one. Pair reads a file from
 whichever Neovim has it loaded, the one you are in first.
 
-**Restarts.** If the daemon restarts, the chat pane says so, waits for it and carries on, without printing the
-history again. Neovim reconnects by itself too ([neovim.md](neovim-plugin.md#setup)). If you had asked something the
+**Restarts.** If the daemon restarts, the chat pane's status row says so, the pane waits for it and carries on,
+without showing the history twice. Neovim reconnects by itself too ([neovim.md](neovim-plugin.md#setup)). If you had asked something the
 restart cut off, Pair finishes that answer and shows it marked as late, in the chat and in Neovim, also when they
 reconnect after it. A remark Pair was making unasked, or a hand-over, is dropped instead.
 
-**The chat pane's colours.** It prints Pair's name and the `code` in its words in Pair's accent from Neovim, in true
-colour, so the two read as one; long lines wrap under the words. Until a Neovim with `termguicolors` connects it uses
-the terminal's cyan, and with `NO_COLOR` set it prints no colours.
+**The chat pane's colours.** It uses the terminal's own colours and Pair's accent from Neovim, in true colour, so
+the two read as one ([colours](chat.md#colours)). Until a Neovim with `termguicolors` connects it uses the terminal's
+cyan, and with `NO_COLOR` set it prints no colours.
 
 ## Other commands
 

@@ -42,6 +42,13 @@ stay herdr's:
   again to ask) never guesses ([voice.md](voice.md#4-the-key)).
   [#55](https://github.com/makefunstuff/pairing-buddy/issues/55)
 
+## The chat pane
+
+- **Copying needs OSC 52.** `c` and `/copy` hand the text to the terminal, which puts it on the clipboard only if it
+  takes OSC 52; one that does not drops it, and the pane cannot tell ([chat.md](chat.md#limits)).
+- **Esc mapped in Neovim's Terminal mode** (to leave it) never reaches the pane in `:Pair chat`: `Ctrl-C` stops an
+  answer there instead ([chat.md](chat.md#in-neovim)).
+
 ## Models
 
 - **A slow server still makes each new moment wait for one Watcher call.** Pair asks it about fewer kinds of moment

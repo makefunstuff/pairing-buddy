@@ -1575,3 +1575,39 @@ test('the exploration loop: every run read next to the one before, :Pair runs, a
     await stop();
   }
 });
+
+test('from the chat pane: a takes a suggestion by its id, j goes to a place leaving a jump back, @here sends the selection', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
+  const {project, partner, messages, remote, keys, send, lines, stop} = await pairInNvim('tune the numbers');
+  const answered = text => until(() => messages.some(message => message.text === text), `the answer "${text}"`);
+  try {
+    partner.setResponses([
+      fauxAssistantMessage([fauxToolCall('suggest', {file: 'a.js', line: 3, new_text: 'const z = 30', note: 'thirty'})], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxText('Try 30.')]),
+    ]);
+    send({type: 'ask', text: 'and z?'});
+    await answered('Try 30.');
+    const suggestion = messages.find(message => message.meta?.suggestion);
+    assert.deepEqual(suggestion.meta.suggestion.old, ['const z = 3']);
+    send({type: 'accept', action: suggestion.meta.suggestion.action});
+    await until(() => lines()[2] === 'const z = 30', 'the suggestion taken from the chat');
+    await until(() => messages.some(message => message.type === 'applied' && message.action === suggestion.meta.suggestion.action), 'the chat told it was taken');
+    send({type: 'accept', action: 9999});
+    await sleep(200);
+    assert.deepEqual(lines(), ['const x = 1', 'const y = 2', 'const z = 30'], 'an unknown one changes nothing');
+
+    keys('gg');
+    send({type: 'go', file: 'a.js', line: 2});
+    await until(() => remote('line(".")') === '2', 'the jump to line 2');
+    keys('<C-o>');
+    await until(() => remote('line(".")') === '1', 'Ctrl-O back');
+
+    keys('2GVj<Esc>');
+    partner.setResponses([fauxAssistantMessage([fauxText('Those two set y and z.')])]);
+    send({type: 'ask', text: 'what are @here', here: true});
+    await answered('Those two set y and z.');
+    assert.ok(messages.some(message => message.sender === 'user' && message.text === 'what are @here (a.js:2-3)'), 'the question names the lines it is about');
+    assert.equal(join(project, 'a.js'), JSON.parse(remote('json_encode(expand("%:p"))')));
+  } finally {
+    await stop();
+  }
+});
