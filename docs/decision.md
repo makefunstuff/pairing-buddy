@@ -145,6 +145,42 @@ With this model, Pair at `normal` says a little less than with the rules alone, 
 often. `chatty` (40%) would have let most of those misses through. Or leave the model out until `pair stats` shows
 its remarks are kept more often than the rules' remarks.
 
+### A local model on the CPU
+
+Liquid AI's d1-2B (LFM3) is a decision model that llama.cpp's `llama-server` serves on `/v1/systemone`, so the
+`"system-one"` entry works with it, with no change to Pair:
+
+```jsonc
+"decision": {"api": "system-one", "baseUrl": "http://127.0.0.1:8080/v1", "model": "d1-2B"}
+```
+
+The server reads each question in one batch, so start it with a batch that holds the gate's state, about 650 tokens
+a question. Its default of 512 is too small: every request fails ("input (654 tokens) is too large to process") and
+the model is down at once.
+
+```bash
+llama-server -hf LiquidAI/d1-2B-GGUF:Q4_K_M -b 2048 -ub 2048
+```
+
+It is not a good fit for the gate yet. One run of the same 16 moments on a 6-core desktop CPU (Ryzen 5 9600X,
+4 threads, with other work running), 2026-10-28:
+
+| | d1-2B Q4_K_M | d1-2B Q8_0 | LFM3-1.7B Q4_0 (`"api": "llama-cpp"`) |
+| --- | --- | --- | --- |
+| Gate right, with the model | 7 of 16 | 7 of 16 | 10 of 16 (it says "speak now" to every moment) |
+| Sure sorts, right | 1 of 2 | 1 of 1 | none |
+| Latency per call: median, p90 | 3.2, 5.5 s | 5.7, 10.6 s | 4.7, 7.3 s |
+| Memory of the server | 1.9 GB | 2.0 GB | 2.9 GB |
+
+- **Too slow for `timeoutMs`.** llama.cpp reads the whole state again for each question: the two questions of a
+  sort are about 1,100 input tokens. One question took 1.4 s in the quietest run, so at the default 1.5 s the first
+  sort times out, the model is down, and the gate goes by its rules.
+- **Less right than Jev.** Most misses are wanted remarks under the bar. One sure sort was wrong: drift into billing
+  code was dropped as noise. A Q8_0 file did no better.
+
+A GPU, or a later llama.cpp that reads the state once for all questions, may change the latency. Run
+`node test/decision-check.mjs` with a long `timeoutMs` in `--entry` to judge one on your own machine.
+
 ## When it is down or slow
 
 A decision model that fails, or does not answer within `timeoutMs`, is down at once:
