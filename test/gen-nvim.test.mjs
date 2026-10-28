@@ -27,7 +27,7 @@ vim.ui.select = function(items, opts, on_choice)
   table.insert(_G.gen_asked, {kind = 'select', prompt = opts.prompt, items = shown})
   local answer = table.remove(_G.gen_answers, 1)
   for i, item in ipairs(items) do
-    if answer ~= nil and (item.shape == answer or item.key == answer) then return on_choice(item, i) end
+    if answer ~= nil and (item.shape == answer or item.key == answer or answer == i) then return on_choice(item, i) end
   end
   on_choice(nil, nil)
 end
@@ -44,8 +44,8 @@ const virtLines = marks => marks.filter(([, , , details]) => details.virt_lines)
  * Partner's model answers the brief's checks with `brief(kind, content)` ('conflict' or 'check'; [] by default), apart
  * from the turns a test scripts with `partner.setResponses`, which come in their order.
  */
-async function genInNvim(goal, {stub = false, brief = () => '[]', notes = null} = {}) {
-  const pair = await pairInNvim(goal);
+async function genInNvim(goal, {stub = false, brief = () => '[]', notes = null, runs = false} = {}) {
+  const pair = await pairInNvim(goal, {runs});
   const {remote, messages, send, watcher} = pair;
   if (notes !== null) writeFileSync(join(pair.project, 'NOTES.md'), notes);
   const turns = [];
@@ -111,7 +111,7 @@ test('/gen here with a popup input: the request, the shape guessed and shown, th
       'here      at the cursor, over a selection  (guessed)',
       'file      new files to review',
       'scaffold  many files, in Pair\'s copy  (not built yet)',
-      'try       a sample outside the project  (not built yet)',
+      'try       a sample outside the project',
     ]);
 
     // It lands under the line you asked on, which your typing moved down one, once you pause.
@@ -492,6 +492,76 @@ test('/gen file: pair:// buffers to review; :wa skips them, quitting warns, :w t
     assert.match(asked().at(-1).prompt, /^Take all 1 file of gen #2\? Read them first\.$/);
     await until(() => proposals(remote).length === 0, 'nothing left to review');
   } finally {
+    await stop();
+  }
+});
+
+test('/gen try: the sample in a split outside the project; the run key writes and runs it again; :Pair keep moves it in, :w takes it; :Pair gen tries opens one', {skip, timeout: 60_000}, async () => {
+  const {project, partner, keys, remote, said, messages, send, answer, asked, stop} = await genInNvim('lru', {stub: true, runs: true});
+  const notified = () => JSON.parse(remote('luaeval("vim.json.encode(_G.notified)")'));
+  // Without bubblewrap here, a run that may write asks first, as Scout's does: the test says yes.
+  const yes = setInterval(() => {
+    for (const message of messages.filter(one => one.type === 'confirm' && !one.answered)) {
+      message.answered = true;
+      send({type: 'confirm', id: message.id, ok: true});
+    }
+  }, 100);
+  try {
+    partner.setResponses([
+      fauxAssistantMessage([fauxToolCall('write', {path: 'lru.js', text: 'const cache = new Map()\ncache.set("a", 1)\nconsole.log("get a:", cache.get("a"))\n'})], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxToolCall('run', {command: 'node lru.js'})], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxText('A Map keeps the order.')]),
+    ]);
+    keys(':Pair gen try a small LRU cache<CR>');
+    await said(/^gen #1 · try · lru\.js \+3 · ✓ `node lru\.js`: A Map keeps the order\.\nIn Neovim: lru\.js in a split, outside the project\./);
+    const sample = messages.find(message => message.type === 'message' && /^gen #1 · try/.test(message.text));
+    assert.ok(sample);
+    assert.equal(existsSync(join(project, 'lru.js')), false, 'nothing in the project');
+
+    // It opens in a split below; the cursor stays where it was.
+    await until(() => Number(remote('winnr("$")')) === 2, 'the split');
+    assert.equal(remote('bufname()'), 'a.js');
+    keys('<C-w>j');
+    await until(() => /\/try\/1\/lru\.js$/.test(remote('bufname()')), 'in the split');
+    assert.equal(remote('&winbar'), 'try · gen #1 · outside the project · \\r runs it · :Pair keep moves it in');
+    const dir = remote('expand("%:p:h")');
+    assert.ok(!dir.startsWith(project), 'outside the project');
+
+    // You change it; the run key writes it and runs it again in Pair's pane.
+    keys('Goconsole.log("evicts b")<Esc>');
+    keys('\\r');
+    await until(() => notified().some(text => /^Pair: gen #1 · ✓ `node lru\.js`\n(get a: 1\n)?evicts b$/.test(text)), 'run again');
+    assert.equal(readFileSync(join(dir, 'lru.js'), 'utf8').split('\n').at(-2), 'console.log("evicts b")', 'written before it ran');
+    assert.equal(remote('&modified'), '0');
+
+    // :Pair keep in it: a buffer to review in the project, in its window; :w takes it.
+    keys(':Pair keep src/lru.js<CR>');
+    await until(() => remote('bufname()') === 'pair://gen/1/src/lru.js', 'the kept buffer');
+    assert.deepEqual([remote('&buftype'), remote('&modified'), remote('&winbar')], ['acwrite', '1', 'generated · gen #1 · :w takes it to src/lru.js']);
+    assert.equal(JSON.parse(remote('json_encode(getline(1, "$"))')).at(-1), 'console.log("evicts b")', 'as you changed it');
+    assert.equal(existsSync(join(project, 'src')), false, 'unsaved');
+    await said('gen #1: src/lru.js opened, unsaved, generated. :w takes it; u on gen #1 in :Pair today takes it back.');
+    keys(':w<CR>');
+    await until(() => existsSync(join(project, 'src/lru.js')), 'written');
+    await said('gen #1: src/lru.js written, taken. /undo takes back the request.');
+
+    // :Pair gen tries lists the folders still kept; the one you pick opens.
+    keys(':only<CR>');
+    answer(1);
+    keys(':Pair gen tries<CR>');
+    await until(() => asked().some(one => one.prompt === 'Pair · the /gen tries'), 'the list');
+    assert.deepEqual(asked().at(-1).items, ['gen #1 · a small LRU cache · lru.js · 7 days left']);
+    await until(() => Number(remote('winnr("$")')) === 2, 'opened again');
+
+    // With a mapping of your own on the run key, Pair maps nothing there, and the winbar names :Pair gen run.
+    keys(':only<CR>');
+    remote(`luaeval("vim.keymap.set('n', '<LocalLeader>r', ':echo 1<CR>') or 0")`);
+    remote(`luaeval("require('pair.gentry').on_try({gen = 9, dir = _A[1], open = _A[2], words = 'x'}) or 0", [${JSON.stringify(dir.replace(/\/1$/, '/9'))}, ${JSON.stringify(join(dir.replace(/\/1$/, '/9'), 'x.js'))}])`);
+    keys('<C-w>j');
+    await until(() => /\/try\/9\/x\.js$/.test(remote('bufname()')), 'the other try');
+    assert.equal(remote('&winbar'), 'try · gen #9 · outside the project · :Pair gen run runs it · :Pair keep moves it in');
+  } finally {
+    clearInterval(yes);
     await stop();
   }
 });

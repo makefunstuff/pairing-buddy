@@ -29,6 +29,11 @@ test('/drive, "you take it" and "your turn" hand Pair the wheel; the words go al
   assert.deepEqual(parseInput('/drive'), {type: 'drive', text: ''});
   assert.deepEqual(parseInput('/gen'), {type: 'gen_list'});
   assert.deepEqual(parseInput('/gen cancel'), {type: 'gen_cancel'});
+  assert.deepEqual(parseInput('/gen run'), {type: 'gen_try_run'});
+  assert.deepEqual(parseInput('/gen tries'), {type: 'gen_tries'});
+  assert.deepEqual(parseInput('/gen try an LRU cache'), {type: 'gen', text: 'try an LRU cache'});
+  assert.deepEqual(parseInput('/keep internal/cache/lru.go'), {type: 'keep', path: 'internal/cache/lru.go'});
+  assert.deepEqual(parseInput('/keep'), {type: 'keep', path: ''});
   assert.deepEqual(parseInput('/gen here a list handler'), {type: 'gen', text: 'here a list handler'});
   assert.deepEqual(parseInput('/gen here @here tidy these'), {type: 'gen', text: 'here tidy these', here: true});
   assert.deepEqual(parseInput('/gen here a handler:\n- paging @here\n- newest first'), {type: 'gen', text: 'here a handler:\n- paging \n- newest first', here: true});

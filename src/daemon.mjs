@@ -10,6 +10,7 @@ import {oneAtATime} from './config.mjs';
 import {goalFromContext, SOURCES} from './context-card.mjs';
 import {loadSizedConfig} from './context-window.mjs';
 import {byUse, herdrFocus, noteEditor} from './editors.mjs';
+import {expireTries} from './gen-tree.mjs';
 import {gitRoot} from './git.mjs';
 import {createDecider, DecisionModel} from './decision.mjs';
 import {MODEL_ROLES, ModelHealth} from './health.mjs';
@@ -85,6 +86,8 @@ export async function startDaemon(config, {
 } = {}) {
   mkdirSync(config.dataDir, {recursive: true, mode: 0o700});
   mkdirSync(join(config.dataDir, 'runs'), {recursive: true}); // the output of the tests run on save, one file per session
+  mkdirSync(join(config.dataDir, 'gen'), {recursive: true}); // /gen's folders: the tries, writable in the pane's sandbox
+  expireTries(join(config.dataDir, 'gen'), config.gen.keepTries).catch(() => {}); // and a new request of a try expires them again
   const owner = acquireOwner(config.dataDir);
   const store = openStore(join(config.dataDir, 'sessions.sqlite'));
   store.forgetActionDetails(Date.now() - DETAIL_KEPT_MS);
@@ -292,6 +295,7 @@ export async function startDaemon(config, {
       session.setTestOnSave(testOnSaveOf(session.root, session.id));
       session.gen.limits = config.gen.limits; // a request already running keeps the limits it started with
       session.gen.briefName = config.gen.brief;
+      Object.assign(session.gen, {keepTries: config.gen.keepTries, network: config.gen.network, sandbox: config.scoutPane.sandbox});
       Object.assign(margins.get(session.root) ?? {}, {typingPauseMs: config.typingPauseMs, taskCommand: config.taskCommand});
     }
     if (changed.includes('board')) {
@@ -407,6 +411,7 @@ export async function startDaemon(config, {
         checkOutput: join(config.dataDir, 'runs', `${record.id}.check.out`), // the hand-over's check: writable in the sandbox too
         genLimits: config.gen.limits,
         genBrief: config.gen.brief,
+        genDir: join(config.dataDir, 'gen'), genKeepTries: config.gen.keepTries, genNetwork: config.gen.network, genSandbox: config.scoutPane.sandbox,
         askModel: (systemPrompt, content) => askNoteModel(systemPrompt, content, {asked: true}), // the /gen brief's checks
         notify: (role, message) => notify(session, role, message),
         requestEditor: message => requestEditor(session, message),
@@ -454,7 +459,8 @@ export async function startDaemon(config, {
   /** Pair's pane for `session` on `host` (pane-hosts.mjs). */
   function scoutPane(session, host) {
     return new ScoutPane({
-      host, cwd: session.root, runsDir: join(config.dataDir, 'panes'), setup: config.scoutPane, writable: [join(config.dataDir, 'runs')],
+      // The runs folder for the tests on save, and /gen's for the tries, whose runs narrow the sandbox to their own folder.
+      host, cwd: session.root, runsDir: join(config.dataDir, 'panes'), setup: config.scoutPane, writable: [join(config.dataDir, 'runs'), join(config.dataDir, 'gen')],
       hidden: [config.socket], log: line => log(`[${basename(session.root)}] ${line}`),
     });
   }
@@ -630,6 +636,29 @@ export async function startDaemon(config, {
     if (client.role === 'editor') sendMessage(client.socket, {type: 'message', sender: 'system', text, at: Date.now()});
   }
 
+  /** What a /gen try says to the Neovim that asked, which may have no chat pane to show it. */
+  function toEditor(client, text) {
+    if (client.role === 'editor' && text) sendMessage(client.socket, {type: 'message', sender: 'system', text, at: Date.now()});
+  }
+
+  /** /keep [path] and :Pair keep [path]: from Neovim, with the try `file` it is in (see gen.mjs). */
+  async function keepFrom(client, session, message) {
+    const file = typeof message.file === 'string' ? message.file : null;
+    toEditor(client, await session.gen.keep({path: typeof message.path === 'string' ? message.path : '', file, n: Number.isInteger(message.gen) ? message.gen : null}));
+  }
+
+  /** The run key in a try's buffer, :Pair gen run, /gen run: the try runs again in Pair's pane. */
+  async function tryRunFrom(client, session, message) {
+    const file = typeof message.file === 'string' ? message.file : null;
+    toEditor(client, await session.gen.rerun({file, n: Number.isInteger(message.gen) ? message.gen : null}));
+  }
+
+  /** /gen tries in the chat says them; :Pair gen tries gets them to pick one to open. */
+  async function triesFrom(client, session) {
+    if (client.role === 'editor') return sendMessage(client.socket, {type: 'gen_tries', tries: await session.gen.tries()});
+    await session.gen.triesText();
+  }
+
   /** The id of the `number`th last remark in the session's project, as /remarks lists them; null without a number. */
   function remarkNumbered(session, number) {
     if (!Number.isInteger(number) || number < 1) return null;
@@ -775,6 +804,9 @@ export async function startDaemon(config, {
     if (message.type === 'gen_decide' && Number.isInteger(message.action)) return session.gen.decide(message.action, message.guess);
     if (message.type === 'gen_cancel') return session.gen.cancel();
     if (message.type === 'gen_list') return session.gen.list();
+    if (message.type === 'keep') return keepFrom(client, session, message);
+    if (message.type === 'gen_try_run') return tryRunFrom(client, session, message);
+    if (message.type === 'gen_tries') return triesFrom(client, session);
     if (message.type === 'brief') return briefFrom(client, session, message);
     if (message.type === 'trail') return sendMessage(client.socket, session.trail());
     if (message.type === 'forget_trail') return session.forgetTrail();

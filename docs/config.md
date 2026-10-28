@@ -39,7 +39,7 @@ why while the daemon keeps the config it runs. Run `pair doctor` after a change 
 | `voice` | off | Push-to-talk with whisper.cpp or OpenRouter ([below](#voice), [voice.md](voice.md)) |
 | `scoutPane` | see [below](#scoutpane) | Pair's own pane: your rc file and the sandbox ([scout.md](scout.md#pairs-pane)) |
 | `taskCommand` | none | What `:Pair tasks` runs for each task you say yes to, as a list of words with `{title}` and `{description}`, never through a shell, for example `["gh", "issue", "create", "--title", "{title}", "--body", "{description}"]`. Without it, the tasks are copied as a checklist ([notes.md](notes.md#tasks-only-when-you-ask)) |
-| `gen` | see [below](#gen) | What one `/gen` request may do at most, and its brief's note ([gen.md](gen.md)) |
+| `gen` | see [below](#gen) | What one `/gen` request may do at most, its brief's note, and how long a try's folder stays and whether its runs reach the network ([gen.md](gen.md)) |
 | `board` | `"herdr-projects"` | The herdr work board's command: the goal and the [context card](neovim.md#what-it-knows-the-context-card) read the board task of your branch. `null` turns it off |
 | `socket` | `$PAIR_SOCKET`, else `$XDG_RUNTIME_DIR/pairing-buddy.sock`, else `/tmp/pairing-buddy-<uid>.sock` | The daemon's socket path |
 | `dataDir` | `$XDG_STATE_HOME/pairing-buddy` (`~/.local/state/pairing-buddy`) | Where Pair keeps its data ([data.md](data.md)) |
@@ -116,7 +116,7 @@ Maps a project's folder to the command Pair runs in its pane when you save a sou
 ## `gen`
 
 ```jsonc
-"gen": {"limits": {"files": 40, "lines": 4000, "commands": 8, "minutes": 10}, "brief": "NOTES.md"}
+"gen": {"limits": {"files": 40, "lines": 4000, "commands": 8, "minutes": 10}, "brief": "NOTES.md", "keepTries": 7, "network": false}
 ```
 
 `brief` is the note a request's [brief](gen.md#the-brief) has when you pinned none: a path in the project, used when
@@ -128,12 +128,18 @@ Each limit is a whole number above 0, and one you leave out keeps its default.
 
 | Limit | Default | Meaning |
 | --- | --- | --- |
-| `files` | `40` | Files a request may propose code in or draft |
-| `lines` | `4000` | Lines of code it may propose or draft, in all |
-| `commands` | `8` | Searches it may run in Pair's pane |
+| `files` | `40` | Files a request may propose code in, draft, or write in a try's folder |
+| `lines` | `4000` | Lines of code it may propose, draft or write, in all |
+| `commands` | `8` | Searches it may run in Pair's pane, and a try's runs |
 | `minutes` | `10` | How long its model may work; time a question waits for you does not count |
 
 A change takes effect for the next request; one already running keeps the limits it started with.
+
+`keepTries` is how many days a [/gen try](gen.md#samples-gen-try-and-keep)'s folder (in `dataDir/gen/`) stays after
+anything in it last changed or it last ran: a whole number above 0. Older folders are deleted when the daemon starts and whenever a
+new try starts. `network` lets a try's runs reach the network, to install what a sample needs; off, its sandbox has
+none. A try's sandbox follows `scoutPane.sandbox`: without bubblewrap, a try's command runs in its folder unsandboxed
+and asks first, as Scout's would.
 
 ## `voice`
 

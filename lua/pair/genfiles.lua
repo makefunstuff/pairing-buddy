@@ -4,7 +4,8 @@
 -- since it stays modified until taken or dropped, quitting warns about it as about any change not written. Pair's
 -- check on unsaved buffers (buffers.lua) counts it at its real path. `:Pair gen list` lists the file requests, with
 -- the keys that open, take and drop their files. The daemon keeps each file's text until it is taken or dropped, so a
--- Neovim that restarted gets its buffers again when it connects.
+-- Neovim that restarted gets its buffers again when it connects. A file kept from a /gen try (:Pair keep) is one of
+-- these buffers too, and it opens at once.
 local style = require('pair.style')
 
 local M = {}
@@ -184,17 +185,33 @@ local function make(gen, action, file)
   return buf
 end
 
+--- Shows `buf` where you asked for it: in the window of the try you kept it from, else in a split below yours.
+local function show(buf)
+  local win = vim.api.nvim_get_current_win()
+  if vim.b[vim.api.nvim_win_get_buf(win)].pair_try then return vim.api.nvim_win_set_buf(win, buf) end
+  vim.cmd('belowright split')
+  vim.api.nvim_win_set_buf(0, buf)
+  vim.api.nvim_set_current_win(win)
+end
+
 --- The daemon's gen_files: the files of request `message.gen` to review, as buffers. A file Neovim has already (after
---- a daemon restart) keeps its buffer, with your changes in it.
+--- a daemon restart) keeps its buffer, with your changes in it. With `message.open` (a file kept from a try), they
+--- open too.
 function M.on_files(message)
   local made = 0
   for _, file in ipairs(message.files or {}) do
-    if not find(message.action, file.piece) then
-      make(message.gen, message.action, file)
+    local buf = find(message.action, file.piece)
+    if buf and message.open then
+      -- Kept again, as the try has it now.
+      vim.api.nvim_buf_set_lines(buf, 0, -1, false, vim.split(file.text or '', '\n', {plain = true}))
+      proposals[buf].text = file.text or ''
+    elseif not buf then
+      buf = make(message.gen, message.action, file)
       made = made + 1
     end
+    if message.open then show(buf) end
   end
-  if made > 0 and not message.reopen then
+  if made > 0 and not message.reopen and not message.open then
     vim.notify(('Pair · gen #%d: %s to review, as buffers: :Pair gen list'):format(message.gen, plural(made, 'file')))
   end
   deps.redraw_status()
@@ -354,7 +371,7 @@ local function render()
   local decide = deps.label and deps.label(deps.decide_key) or nil
   for i, request in ipairs(view.requests) do
     if i > 1 then add('', nil) end
-    local head = ('gen #%d · file · %s · %s'):format(request.gen, (request.words:gsub('\n', ' ')), hhmm(request.at))
+    local head = ('gen #%d · %s · %s · %s'):format(request.gen, request.shape or 'file', (request.words:gsub('\n', ' ')), hhmm(request.at))
     add(head, {request = request}, {{0, #('gen #' .. request.gen), 'PairAccent'}})
     local about = {}
     if request.brief and request.brief ~= vim.NIL then table.insert(about, 'brief ' .. request.brief) end
@@ -385,7 +402,7 @@ local function render()
       add(text .. tail, {request = request, guess = g}, {{2, 3, 'PairSign'}, {#text, -1, 'PairKey'}})
     end
   end
-  if #view.requests == 0 then add('No /gen file request in the last days. :Pair gen file <what> asks for one.', nil, {{0, -1, 'PairKey'}}) end
+  if #view.requests == 0 then add('No /gen file request, nor a file kept from a try, in the last days. :Pair gen file <what> asks for one.', nil, {{0, -1, 'PairKey'}}) end
   add('', nil)
   add('⏎ open · w take · d drop · W take all · D drop all · u undo the request · q close', nil, {{0, -1, 'PairKey'}})
   view.rows = rows

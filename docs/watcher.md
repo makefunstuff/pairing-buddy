@@ -69,7 +69,8 @@ so they never hold a remark back as typing. Editing Pair's lines makes them your
 project is dropped altogether: it raises no drift. While a [/gen request](gen.md) runs, no remark nobody asked for
 starts: what comes up waits for the request, as it waits while Pair answers you, and its check speaks for the code
 once you take it. The new files of `/gen file` are no files of the project until you take them: the Watcher does not
-see edits in their `pair://gen/…` buffers. See [gen.md](gen.md).
+see edits in their `pair://gen/…` buffers. Nor does it see a `/gen try`'s sample: its folder is outside the project,
+so your edits there are dropped with the rest. See [gen.md](gen.md).
 
 ## The wrong turn
 

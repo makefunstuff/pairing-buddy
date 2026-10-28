@@ -116,6 +116,10 @@ question for Pair (`@here` in it sends your selection in Neovim along), and a li
 | `/unmute [kind]` | Let one kind, or all, speak again |
 | `/gen here <what>` | Ask Pair for code at your cursor in Neovim; with `@here`, over the lines you selected there ([gen.md](gen.md)) |
 | `/gen file <what>` | Ask Pair for new files: they open in Neovim as buffers to review, and `:w` in one writes it to its path ([gen.md](gen.md#new-files-gen-file)) |
+| `/gen try <what>` | Ask Pair for a sample to read and run, in a folder of its own outside the project, run there in the sandbox; it opens in Neovim in a split ([gen.md](gen.md#samples-gen-try-and-keep)) |
+| `/gen run` | Run the newest `/gen try` again, in Pair's pane, in its sandbox |
+| `/gen tries` | The project's `/gen try` folders still kept, and when each goes (`gen.keepTries`) |
+| `/keep [path]` | Move the newest `/gen try`'s main file into the project at `path`, as a buffer to review in Neovim that `:w` takes |
 | `/gen` | Today's `/gen` requests in this project |
 | `/gen cancel` | Stop the `/gen` request that runs or waits |
 | `/brief [note\|off]` | What `/gen` runs against: the goal, the board task and a note (`NOTES.md` by default); with a note, pin it; `off` leaves the note out ([gen.md](gen.md#the-brief)) |

@@ -17,6 +17,7 @@ The keys exist only while there is something for them to do, and only where you 
 | `Alt-?` | The one idea worth keeping behind Pair's words under your line; again, open its link to the docs |
 | `Alt-a` | Go to the agent whose news Pair relayed ([your other agents](agents.md)) |
 | `Alt-g` | Ask Pair for code ([/gen](gen.md)): at the cursor, or in Visual mode over the selection; while Pair's question waits, show it again |
+| `\r` (`<LocalLeader>r`) | In a [/gen try](gen.md#samples-gen-try-and-keep)'s sample: write it and run it again in Pair's pane |
 | any key | Take the wheel back while Pair drives |
 
 Each key is an option of `setup` (below); `false` turns one off, and the commands work either way. In the
@@ -43,6 +44,7 @@ require('pair').setup({
   gen_key = '<M-g>',   -- asks Pair for code (/gen); false for none
   gen_input = 'ui',    -- 'cmdline': the /gen request and its questions on Neovim's own prompt, not vim.ui's
   gen_preview_lines = 30, -- a /gen block taller than this shows in a preview window
+  try_run_key = '<LocalLeader>r', -- in a /gen try's sample: runs it again
 })
 ```
 
@@ -70,6 +72,7 @@ require('pair').setup({
 | `gen_key` | `'<M-g>'` | Asks Pair for code ([gen.md](gen.md#asking)): a dialog for the request, in Normal mode at the cursor, in Visual mode over the selected lines. While a question of Pair's waits, shows it again. Mapped in Normal and Visual mode from the start |
 | `gen_input` | `'ui'` | Where the `/gen` request, its shape and Pair's questions are asked: `'ui'` through `vim.ui.input` and `vim.ui.select`, which snacks.nvim, dressing.nvim or noice.nvim show as floating dialogs (else Neovim's own prompt); `'cmdline'` always Neovim's own prompt and numbered list |
 | `gen_preview_lines` | `30` | A `/gen` block taller than this (or than its window) shows as one line in place and in a preview window under it, instead of as ghost lines |
+| `try_run_key` | `'<LocalLeader>r'` | In a [/gen try](gen.md#samples-gen-try-and-keep)'s sample (a buffer of its folder): writes the sample's changed buffers and runs it again in Pair's pane, as `:Pair gen run` does. Mapped in Normal mode in those buffers only, and not over a mapping of your own; then the winbar names `:Pair gen run` instead. `<LocalLeader>` is `\` unless you set `maplocalleader`, so it is not Vim's own `r` |
 | `land` | `true` | The [morning pick-up](neovim.md#the-morning-pick-up-and-the-days-end) opens an empty Neovim (or a start screen) on the place the last session's debrief named |
 | `glyphs` | plain Unicode | Pair's marks (below) |
 
@@ -103,8 +106,11 @@ to standard ones and does not fade.
 | `:Pair jump` | Go where Pair pointed last (same as `Alt-j`); `Ctrl-O` comes back. While Pair holds a thought, show it now |
 | `:Pair trail` | Show your searches since your last edit, as Pair saw them; `x` forgets them |
 | `:Pair runs` | The session's builds and runs, newest last, with the change before each and its numbers; `⏎` its output, `d` its change, `x` removes the hunt's debug lines ([exploration.md](exploration.md)) |
-| `:Pair gen [here\|file] [what]` | Ask Pair for code ([gen.md](gen.md)): without words, in a dialog (same as `Alt-g`); with words, at once. With a range (`:'<,'>Pair gen`), over those lines, or in a note, the lines are the request. `:Pair gen +` opens the compose window for a longer request, `:Pair gen cancel` stops the request that runs or waits |
-| `:Pair gen list` | The files of `/gen file` requests to review, as `pair://gen/<n>/<path>` buffers: `⏎` opens one, `w` takes it (writes it to its path, as `:w` in it does), `d` drops it, `W`/`D` all of a request after a yes, `u` undoes the request, `Alt-d` logs a `? guessed` line as a decision ([gen.md](gen.md#the-review-list-pair-gen-list)) |
+| `:Pair gen [here\|file\|try] [what]` | Ask Pair for code ([gen.md](gen.md)): without words, in a dialog (same as `Alt-g`); with words, at once. With a range (`:'<,'>Pair gen`), over those lines, or in a note, the lines are the request. `:Pair gen +` opens the compose window for a longer request, `:Pair gen cancel` stops the request that runs or waits |
+| `:Pair gen list` | The files of `/gen file` requests (and files kept from a try) to review, as `pair://gen/<n>/<path>` buffers: `⏎` opens one, `w` takes it (writes it to its path, as `:w` in it does), `d` drops it, `W`/`D` all of a request after a yes, `u` undoes the request, `Alt-d` logs a `? guessed` line as a decision ([gen.md](gen.md#the-review-list-pair-gen-list)) |
+| `:Pair gen run` | Run the [/gen try](gen.md#samples-gen-try-and-keep) you are in (else the newest) again, in Pair's pane, after writing its changed buffers (same as `\r` in it) |
+| `:Pair gen tries` | The project's `/gen try` folders still kept, with the days each has left; the one you pick opens in a split |
+| `:Pair keep [path]` | Move the `/gen try` file you are in (else the newest try's main file) into the project at `path` (else at its path in the try's folder), as a `pair://gen/<n>/<path>` buffer to review that `:w` takes; only a new file |
 | `:Pair brief [path\|off]` | The [brief](gen.md#the-brief) `/gen` runs against: in a Markdown buffer, pin that note; with a path, pin that note; `off`, leave the note out; elsewhere, say what the brief is |
 | `:Pair accept` | Accept Pair's suggestion under the cursor, else the newest in the buffer (same as `Alt-y`); for a suggestion in an unasked remark, that rates the remark useful |
 | `:Pair dismiss` | Drop the same suggestion, and only that one; for a suggestion in an unasked remark, that rates the remark not useful |

@@ -4,7 +4,10 @@
 // the user hands it the wheel, also has edit (a few edits in the user's buffers, never saved) and type (into
 // the user's terminal, after a yes, without Enter). A /gen request runs in a conversation of its own with the gen
 // tool set: it reads, recalls and searches, proposes code the user takes with one key, drafts new files the user
-// reviews as unsaved buffers, and asks the user at most two questions; it never edits or types (see gen.mjs). Nothing here can write a file or save a buffer. Each
+// reviews as unsaved buffers, and asks the user at most two questions; it never edits or types (see gen.mjs). A /gen
+// try request also writes files and runs commands, but only in its own folder in Pair's data folder, outside the
+// project, and runs them in the sandbox with only that folder writable. Nothing here can write a file of the project
+// or save a buffer. Each
 // conversation is offered only its role's tools, and the policy hook refuses any other name, so a model that
 // invents `bash` or `write` gets an error, not an effect.
 import {Type} from '@earendil-works/pi-ai';
@@ -21,7 +24,7 @@ export const ROLE_TOOLS = {
   scout: [...NAVIGATOR_TOOLS, 'search', 'run'],
   driver: [...NAVIGATOR_TOOLS, 'search', 'run', 'edit', 'type'],
   // A /gen request's own conversation: never stored as the session's role, never edit or type.
-  gen: ['say', 'read', 'recall', 'search', 'propose', 'draft', 'ask'],
+  gen: ['say', 'read', 'recall', 'search', 'propose', 'draft', 'write', 'run', 'ask'],
 };
 
 /** Every tool name of every role, once: what the daemon's hands carry out. */
@@ -35,6 +38,7 @@ const NEEDS_ROLE = {
   type: 'type works only while the user hands you the wheel; say the command instead.',
   propose: 'propose works only in a /gen request; call suggest instead.',
   draft: 'draft works only in a /gen request; describe the file in words instead.',
+  write: 'write works only in a /gen try request; describe the file in words instead.',
   ask: 'ask works only in a /gen request; ask your question in words instead.',
 };
 
@@ -98,8 +102,11 @@ If an answer needs a search or a test run, say so in one sentence: the user can 
   you would take: at most two questions per request. Otherwise decide yourself.
 - In a /gen file request, call draft with each new file's path and whole text: the user reviews it as an unsaved
   buffer and writes it with :w. draft makes new files only; for a change to a file that exists, call propose there.
-- After propose or draft, say in one or two sentences what you wrote, and name what you decided that the user did not say.
-- search works in your own pane, as for Scout. You cannot run commands: Pair checks the code once the user takes it.`,
+- In a /gen try request, the sample lives in a folder of its own outside the project: call write with each file's path in
+  that folder and its whole text, then run with the command that runs it, and fix what the run shows. run works only
+  there, in a sandbox where only that folder is writable. The user reads the sample, runs it again and keeps it, or not.
+- After propose, draft or write, say in one or two sentences what you wrote, and name what you decided that the user did not say.
+- search works in your own pane, as for Scout. Outside a try you cannot run commands: Pair checks the code once the user takes it.`,
 };
 
 const text = value => ({output: [{type: 'text', text: value}]});
@@ -242,6 +249,15 @@ function tools(hands) {
         note: Type.String({description: 'A few words on what it is'}),
       }),
       execute: async (args, api) => text(await hands.draft(api.conversationId, {path: args.path, text: args.text, note: args.note})),
+    }),
+    defineTool({
+      name: 'write',
+      description: 'Write a file of the sample for the user\'s /gen try request, in the request\'s own folder outside the project; writing the same path again replaces it.',
+      parameters: Type.Object({
+        path: Type.String({description: 'The file\'s path relative to the request\'s folder, for example main.go; its folders may be new too'}),
+        text: Type.String({description: 'The whole file'}),
+      }),
+      execute: async (args, api) => text(await hands.write(api.conversationId, {path: args.path, text: args.text})),
     }),
     defineTool({
       name: 'ask',

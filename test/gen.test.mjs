@@ -2,11 +2,15 @@
 // the user's pause, booked in the ledger as one line, and undone as one unit. A session on a store in memory, with a
 // stand-in Partner and editor.
 import assert from 'node:assert/strict';
-import {realpathSync, writeFileSync} from 'node:fs';
-import {join} from 'node:path';
+import {execFile} from 'node:child_process';
+import {existsSync, readFileSync, realpathSync, symlinkSync, lutimesSync, writeFileSync} from 'node:fs';
+import {basename, join} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {test} from 'node:test';
 import {CHECK_PROMPT, CONFLICT_PROMPT} from '../src/brief.mjs';
 import {guessShape, parseGen} from '../src/gen.mjs';
+import {expireTries, projectFolder, tryLine} from '../src/gen-tree.mjs';
+import {sandboxWorks} from '../src/sandbox.mjs';
 import {PairSession} from '../src/session.mjs';
 import {openStore} from '../src/store.mjs';
 import {scratch} from './temp.mjs';
@@ -18,7 +22,7 @@ const SUM = 'function sum(a, b) {\n  return a + b\n}';
  * A session in a scratch project with math.js. Each /gen request's turn runs the next of `turns` with its
  * conversation id; `editor(message)` answers what the session asks Neovim (reverts are fine by default).
  */
-function genSession(turns = [], {editor = async () => null, limits, notes = null, askModel = null, store: given = null, root: at = null} = {}) {
+function genSession(turns = [], {editor = async () => null, limits, notes = null, askModel = null, store: given = null, root: at = null, genDir = null, sandbox = false} = {}) {
   const root = at ?? realpathSync(scratch('pair-gen-'));
   writeFileSync(join(root, 'math.js'), 'const x = 1\n\nexport {x}\n');
   writeFileSync(join(root, 'other.js'), 'const y = 2\n');
@@ -47,6 +51,8 @@ function genSession(turns = [], {editor = async () => null, limits, notes = null
     score: async () => ({value: 9, reason: 'test'}),
     typingPauseMs: 2000,
     genLimits: limits,
+    genDir: genDir ?? scratch('pair-gen-data-'),
+    genSandbox: sandbox,
     askModel,
     notify: (to, message) => { sent.push({via: to, ...message}); return 1; },
     requestEditor: async message => {
@@ -174,8 +180,7 @@ test('a guessed shape is asked first, in the chat for a chat request: y takes th
   assert.equal(confirm.hint, 'y: try · here, file, scaffold · n cancels');
   pair.answer(confirm.id, true);
   await first;
-  assert.ok(said().includes('gen #1: /gen try (a sample outside the project) is not built yet; this version has /gen here and /gen file.'));
-  assert.equal(pair.today().rows.length, 0, 'a request that never ran is not booked');
+  assert.ok(said().includes('gen #1 · try · nothing proposed.'), 'y took the guess, and it ran');
 
   const second = pair.gen.request({text: 'a migration for orders'});
   await new Promise(resolve => setImmediate(resolve));
@@ -187,13 +192,14 @@ test('a guessed shape is asked first, in the chat for a chat request: y takes th
   await new Promise(resolve => setImmediate(resolve));
   pair.answer(of('confirm').at(-1).id, false, undefined, 'scaffold');
   await third;
-  assert.ok(said().includes('gen #3: /gen scaffold (many files, in Pair\'s copy) is not built yet; this version has /gen here and /gen file.'), 'a shape word takes that shape');
+  assert.ok(said().includes('gen #3: /gen scaffold (many files, in Pair\'s copy) is not built yet; this version has /gen here, /gen file and /gen try.'), 'a shape word takes that shape');
+  assert.equal(pair.today().rows.filter(row => row.label === 'generated').length, 1, 'a request that never ran is not booked');
 
   // A shape typed is never asked; from the chat, the Neovim the user works in gives the place.
   const before = of('confirm').length;
   await pair.gen.request({text: 'here x times two'});
   assert.equal(of('confirm').length, before);
-  assert.equal(pair.today().rows[0].place.line, 2);
+  assert.equal(pair.today().rows.filter(row => row.label === 'generated').at(-1).place.line, 2);
 });
 
 test('from Neovim the shape question is a dialog there; one request runs at a time and the next waits', async () => {
@@ -204,7 +210,7 @@ test('from Neovim the shape question is a dialog there; one request runs at a ti
   await until(() => of('gen_ask').length);
   const ask = of('gen_ask').at(-1);
   assert.deepEqual({kind: ask.kind, title: ask.title, gen: ask.gen}, {kind: 'shape', title: 'gen #1 · at the cursor. Shape?', gen: 1});
-  assert.deepEqual(ask.choices.map(choice => [choice.shape, choice.guessed, choice.built]), [['here', true, true], ['file', false, true], ['scaffold', false, false], ['try', false, false]]);
+  assert.deepEqual(ask.choices.map(choice => [choice.shape, choice.guessed, choice.built]), [['here', true, true], ['file', false, true], ['scaffold', false, false], ['try', false, true]]);
   assert.equal(of('confirm').length, 0, 'not asked in the chat as well');
   pair.gen.answer(1, ask.id, 'here');
   await until(() => asked.length === 1);
@@ -605,4 +611,212 @@ test('a file request outlives a daemon restart: its files to review go to Neovim
   assert.equal(logged.file, join(first.root, 'decisions.md'));
   assert.match(logged.text, /## \d{4}-\d\d-\d\d · The status is TEXT\n\n- Status: decided\n- Where: db\/migrations\/0007_status\.sql:1\n- Asked: "gen #1: a migration"/);
   assert.ok(after.said().includes('Logged in decisions.md: The status is TEXT. Save it to keep it.'));
+});
+
+/** Pair's pane, for real: each command line runs in bash in `cwd`, as the pane's shell would run it. */
+const bashPane = (cwd, ran = []) => ({
+  run: command => new Promise(resolve => {
+    ran.push(command);
+    execFile('bash', ['-c', command], {cwd}, (error, stdout, stderr) => resolve({exit: error ? error.code ?? 1 : 0, output: stdout + stderr, timedOut: false}));
+  }),
+});
+
+const LRU = 'const cache = new Map()\ncache.set("a", 1)\nconsole.log("get a:", cache.get("a"))';
+
+test('/gen try: the sample in a folder of its own outside the project, run there, opened in a split, run again, read in the chat, /keep moves it in', async () => {
+  const results = [];
+  const made = [];
+  const unwritten = [];
+  const genDir = realpathSync(scratch('pair-gen-data-'));
+  let of;
+  const {root, pair, asked, of: sentOf, said, clock} = genSession([async (conversation, pair) => {
+    results.push(await tool(pair, conversation, 'write', {path: 'lru.js', text: LRU}));
+    results.push(await tool(pair, conversation, 'write', {path: 'package.json', text: '{"type": "module"}'}));
+    results.push(await tool(pair, conversation, 'write', {path: '../escape.js', text: 'x'}));
+    results.push(await tool(pair, conversation, 'draft', {path: 'lru.js', text: 'x', note: 'x'}));
+    const running = tool(pair, conversation, 'run', {command: 'node lru.js'});
+    await until(() => of('confirm').length); // no sandbox in this pane: it asks, as Scout does
+    pair.answer(of('confirm').at(-1).id, true);
+    results.push(await running);
+    return 'A Map keeps the order; I guessed plain JavaScript, no class.';
+  }], {genDir, editor: async message => {
+    if (message.type === 'gen_files') { made.push(message); return {ok: true}; }
+    if (message.type === 'gen_unwrite') { unwritten.push(message); return {ok: true}; }
+    return null;
+  }});
+  of = sentOf;
+  const ran = [];
+  pair.scout = bashPane(root, ran);
+  await pair.gen.request({text: 'try a small LRU cache'});
+
+  const dir = join(projectFolder(genDir, root), 'try', '1');
+  assert.equal(basename(projectFolder(genDir, root)).replace(/-[0-9a-f]{8}$/, ''), basename(root), 'named after the project, and a hash of its path');
+  assert.match(asked[0].input, new RegExp(`^\\[gen\\] gen #1, try\\. The user asked: "a small LRU cache"\\nA sample to read and run, in a folder of its own outside the project: ${dir}\\n`));
+  assert.match(asked[0].input, /run\(command\), which runs in that folder in a sandbox where only the folder is writable and it has no network/);
+  assert.deepEqual(results.slice(0, 4), [
+    'Wrote lru.js in your folder, 3 lines. run runs it there.',
+    'Wrote package.json in your folder, 1 line. run runs it there.',
+    `Cannot write ../escape.js: not a path inside your folder ${dir}.`,
+    'This request is /gen try: write its files in your folder with write.',
+  ]);
+  assert.equal(results[4], 'exit 0\nget a: 1\n');
+  assert.equal(readFileSync(join(dir, 'lru.js'), 'utf8'), `${LRU}\n`, 'written at once: the folder is Pair\'s');
+  assert.equal(existsSync(join(root, 'lru.js')), false, 'nothing in the project');
+  assert.equal(ran[0], `(cd ${dir} && bash -c 'node lru.js')`, 'in its folder, in a subshell; this pane has no sandbox');
+
+  const [opened] = of('gen_try');
+  assert.deepEqual({...opened, files: undefined}, {
+    via: 'editor', type: 'gen_try', gen: 1, dir, words: 'a small LRU cache', command: 'node lru.js', keep: 7, open: join(dir, 'lru.js'), files: undefined,
+  });
+  assert.deepEqual(opened.files.map(file => file.name), ['lru.js', 'package.json']);
+  assert.ok(said().includes([
+    'gen #1 · try · lru.js +3, package.json +1 · ✓ `node lru.js`: A Map keeps the order; I guessed plain JavaScript, no class.',
+    'In Neovim: lru.js in a split, outside the project. Your run key runs it again; /keep <path> moves it into the project, as a buffer to review. The folder stays 7 days after it last changed or ran (/gen tries).',
+  ].join('\n')));
+  let [row] = pair.today().rows.filter(one => one.label === 'generated');
+  assert.deepEqual([row.text, row.note, row.undo], ['gen #1 · try · a small LRU cache', '2 files in its folder · ✓ `node lru.js`', false], 'nothing to undo until something is kept');
+  assert.equal(of('gen').at(-1).state, 'done');
+
+  // An edit of it is none of the session's work: the Watcher never sees it.
+  pair.receive({kind: 'edit', file: join(dir, 'lru.js'), text: 'x', at: clock.now});
+  assert.equal(pair.state.edits.length, 0);
+
+  // The user's questions in the chat read it.
+  await pair.ask('why a Map?');
+  assert.match(asked.at(-1).input, new RegExp(`The last /gen try, gen #1 \\("a small LRU cache"\\), is a sample outside the project, in ${dir}: lru.js, package.json\\.`));
+  assert.equal(await tool(pair, 'main', 'read', {file: join(dir, 'lru.js')}), '1: const cache = new Map()\n2: cache.set("a", 1)\n3: console.log("get a:", cache.get("a"))\n4: ');
+  assert.equal(await tool(pair, 'main', 'read', {file: dir}), 'lru.js\npackage.json');
+  symlinkSync(root, join(dir, 'project'));
+  assert.match(await tool(pair, 'main', 'read', {file: join(dir, 'project', 'math.js')}), /^Cannot read .*: not a file of gen #1's folder\.$/, 'not through a link out of it');
+
+  // Changed and run again: the model's last command, by the user, in the pane.
+  writeFileSync(join(dir, 'lru.js'), 'console.log("evicts b")\n');
+  assert.equal(await pair.gen.rerun({file: join(dir, 'lru.js')}), 'gen #1 · ✓ `node lru.js`\nevicts b');
+  assert.equal(ran.length, 2);
+
+  // /keep: into the project as a buffer to review, opened; not over a file there, not outside it.
+  await pair.gen.keep({path: 'math.js'});
+  assert.ok(said().includes('gen #1: math.js exists already, and /keep makes a new file. /keep <another path>; or copy what you need from lru.js.'));
+  await pair.gen.keep({path: '../out.js'});
+  assert.ok(said().includes('gen #1: cannot keep lru.js as ../out.js, not a path inside the project.'));
+  assert.equal(await pair.gen.keep({path: 'src/lru.js'}), 'gen #1: src/lru.js opened, unsaved, generated. :w takes it; u on gen #1 in :Pair today takes it back.');
+  const [kept] = made;
+  assert.deepEqual({open: kept.open, gen: kept.gen, files: kept.files.map(({name, text, note}) => ({name, text, note}))}, {
+    open: true, gen: 1, files: [{name: 'src/lru.js', text: 'console.log("evicts b")', note: 'kept from lru.js'}],
+  });
+  assert.equal(existsSync(join(root, 'src')), false, 'unsaved: nothing on disk until :w');
+  [row] = pair.today().rows.filter(one => one.label === 'generated');
+  assert.deepEqual([row.note, row.undo], ['kept as src/lru.js', true]);
+  const [listed] = pair.gen.review().requests;
+  assert.deepEqual([listed.shape, listed.files.map(file => [file.name, file.state])], ['try', [['src/lru.js', 'proposed']]]);
+
+  // :w takes it; /undo deletes what was written, the try folder stays until it expires.
+  pair.gen.fileTaken(row.id, kept.files[0].piece, 'console.log("evicts b")\n');
+  await pair.undoLast();
+  assert.deepEqual(unwritten.map(message => message.file), [join(root, 'src/lru.js')]);
+  assert.ok(existsSync(join(dir, 'lru.js')));
+
+  // /gen tries lists it with its days left; after gen.keepTries days without a change, it goes.
+  const [listedTry] = await pair.gen.tries();
+  assert.deepEqual([listedTry.gen, listedTry.files, listedTry.left, listedTry.kept], [1, ['lru.js', 'package.json'], 7, ['src/lru.js']]);
+  assert.match(await pair.gen.triesText(), /^gen #1 · a small LRU cache · lru\.js, package\.json · kept as src\/lru\.js · goes in 7 days\n {2}\//);
+  assert.deepEqual(await expireTries(genDir, 7, Date.now() + 6 * 24 * 3600_000), []);
+  // Run, it counts as changed: a try 6.5 days old that you run again has its 7 days again.
+  const old = new Date(Date.now() - 6.5 * 24 * 3600_000);
+  for (const file of ['', 'lru.js', 'package.json', 'project']) lutimesSync(join(dir, file), old, old);
+  assert.equal((await pair.gen.tries())[0].left, 1);
+  await pair.gen.rerun({});
+  assert.equal((await pair.gen.tries())[0].left, 7, 'a run keeps it');
+  assert.deepEqual(await expireTries(genDir, 7, Date.now() + 8 * 24 * 3600_000), [dir]);
+  assert.equal(await pair.gen.keep({}), 'No /gen try to keep from: /gen try <what> makes one.');
+  assert.equal(await pair.gen.rerun({}), 'No /gen try to run: /gen try <what> makes one.');
+});
+
+test('a try without the sandbox asks before a command that may write; a here or file request cannot run or write at all', async () => {
+  const results = [];
+  const {root, pair, of} = genSession([async (conversation, pair) => {
+    const running = tool(pair, conversation, 'run', {command: 'node lru.js'});
+    await until(() => of('confirm').length);
+    pair.answer(of('confirm').at(-1).id, false);
+    results.push(await running);
+    results.push(await tool(pair, conversation, 'run', {command: 'curl https://example.com'}));
+    return 'Not run.';
+  }, async (conversation, pair) => {
+    results.push(await tool(pair, conversation, 'run', {command: 'ls'}));
+    results.push(await tool(pair, conversation, 'write', {path: 'x.js', text: 'x'}));
+    return 'SILENT';
+  }]);
+  pair.scout = bashPane(root);
+  await pair.gen.request({text: 'try node streams'});
+  assert.match(of('confirm')[0].text, /^May I run `node lru\.js` in gen #1's folder, outside the project \(node runs a script that may change files\)\? There is no sandbox here\.$/);
+  await pair.gen.request({text: 'file a config file'});
+  assert.deepEqual(results, [
+    'The user did not allow it. Do not run it another way.',
+    'Refused: curl goes over the network. Do not try another way; tell the user.',
+    'run works only in a /gen try request, in its own folder. Here Pair checks your code once the user takes it: do not run anything.',
+    'This request is /gen file: write works only in a /gen try request. Call draft.',
+  ]);
+});
+
+test('a try\'s run in the sandbox writes only its own folder: the project and the rest stay read-only', {skip: sandboxWorks() ? false : 'bubblewrap cannot make a sandbox here'}, async () => {
+  // The project outside /tmp, which the sandbox replaces with an empty one: the write must fail for being read-only.
+  const project = realpathSync(scratch('pair-try-project-', fileURLToPath(new URL('.', import.meta.url))));
+  const dir = realpathSync(scratch('pair-try-folder-'));
+  const line = tryLine(dir, `touch inside.txt; touch ${project}/outside.txt; echo done`, {sandboxed: true});
+  assert.match(line, /^\(cd \S+ && bwrap .* --unshare-all --chdir \S+ bash -c /);
+  const result = await bashPane(project).run(line);
+  assert.match(result.output, /done/);
+  assert.match(result.output, /outside\.txt.*Read-only file system/);
+  assert.ok(existsSync(join(dir, 'inside.txt')));
+  assert.equal(existsSync(join(project, 'outside.txt')), false);
+});
+
+test('a try never changes the project; files its runs made are its sample too; links in its way are refused', async () => {
+  const results = [];
+  const genDir = realpathSync(scratch('pair-gen-data-'));
+  const {root, pair, of, said} = genSession([async (conversation, pair) => {
+    results.push(await tool(pair, conversation, 'propose', {file: 'math.js', line: 1, endLine: 1, insert: true, text: 'x', note: 'x'}));
+    results.push(await tool(pair, conversation, 'run', {command: 'printf "console.log(1)\\n" > made.js # by a run'}));
+    return 'Made by a run.';
+  }, async () => 'Nothing.'], {genDir, sandbox: false});
+  pair.scout = bashPane(root);
+  pair.allowed = async () => true;
+  await pair.gen.request({text: 'try a thing'});
+  assert.equal(results[0], 'This request is /gen try: it never changes the project. Write the sample in your folder with write.');
+  assert.equal(results[1], 'exit 0\n(no output)', 'a comment in the command does not swallow the line');
+  assert.deepEqual(of('suggest'), []);
+  const dir = join(projectFolder(genDir, root), 'try', '1');
+  assert.equal(of('gen_try')[0].open, join(dir, 'made.js'));
+  assert.ok(said().some(text => text.startsWith('gen #1 · try · made.js +1 · ✓ `printf')));
+
+  // A link in place of the file: /keep does not follow it.
+  symlinkSync(join(root, 'math.js'), join(dir, 'leak.js'));
+  assert.equal(await pair.gen.keep({file: join(dir, 'leak.js'), path: 'leak.js'}), 'gen #1: cannot keep leak.js, not a file of its folder.');
+
+  // A link in place of the try folders (Scout may write there): the daemon neither makes nor deletes through it.
+  const elsewhere = realpathSync(scratch('pair-elsewhere-'));
+  const tries = join(projectFolder(genDir, root), 'try');
+  const {rmSync} = await import('node:fs');
+  rmSync(tries, {recursive: true});
+  symlinkSync(elsewhere, tries);
+  await pair.gen.request({text: 'try another'});
+  assert.ok(said().some(text => /^gen #2: no folder for the try: a link on the way to .*: not made there\.$/.test(text)));
+  assert.equal(existsSync(join(elsewhere, '2')), false);
+  assert.deepEqual(await pair.gen.tries(), []);
+});
+
+test('a data folder behind a link still names a try\'s files by their folder', async () => {
+  const real = realpathSync(scratch('pair-gen-real-'));
+  const link = join(scratch('pair-gen-link-'), 'data');
+  symlinkSync(real, link);
+  const results = [];
+  const {root, pair, said} = genSession([async (conversation, pair) => {
+    results.push(await tool(pair, conversation, 'write', {path: 'main.js', text: 'console.log(1)'}));
+    return 'One line.';
+  }], {genDir: link});
+  pair.scout = bashPane(root);
+  await pair.gen.request({text: 'try one line'});
+  assert.equal(results[0], 'Wrote main.js in your folder, 1 line. run runs it there.');
+  assert.ok(said().some(text => text.startsWith('gen #1 · try · main.js +1 · not run: One line.')));
+  assert.match(await pair.gen.keep({}), /^gen #1: main\.js (opened|kept)/);
 });

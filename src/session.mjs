@@ -286,8 +286,10 @@ export class PairSession {
    * model the gate asks (a decision.mjs DecisionModel), or null without one. `genLimits` are what one /gen request may
    * do at most (the config's gen.limits, see gen.mjs), and `genBrief` its gen.brief. `askModel(systemPrompt, content)`
    * is one answer of the Partner's model outside any conversation, which checks a /gen request against its brief.
+   * `genDir` is /gen's folder in Pair's data folder, where the tries go (see gen-tree.mjs): `genKeepTries` days, run
+   * in the sandbox as `genSandbox` (scoutPane.sandbox) says, with the network when `genNetwork`.
    */
-  constructor({record, store, partner, score, pace = null, decision = () => null, typingPauseMs, notify, requestEditor, previousNote = null, lastSession = null, autoTune = false, health = {ok: () => true}, testOnSave = null, checkOutput = null, genLimits, genBrief, askModel = null, log = () => {}, now = Date.now}) {
+  constructor({record, store, partner, score, pace = null, decision = () => null, typingPauseMs, notify, requestEditor, previousNote = null, lastSession = null, autoTune = false, health = {ok: () => true}, testOnSave = null, checkOutput = null, genLimits, genBrief, genDir = null, genKeepTries, genNetwork = false, genSandbox = 'auto', askModel = null, log = () => {}, now = Date.now}) {
     Object.assign(this, {record, store, partner, score, pace, decision, typingPauseMs, notify, requestEditor, previousNote, lastSession, autoTune, health, log, now});
     this.sorted = new Map(); // trigger key -> {at, sort}: what the decision model sorted it as lately
     this.told = new Map(); // trigger key -> what the decision model was told about it first, for the decisions log
@@ -364,7 +366,10 @@ export class PairSession {
     this.remarkTrigger = null; // the trigger kind of the running unasked turn
     this.lastRemarkTrigger = null; // the trigger kind of the last remark the user saw: what /mute alone mutes
     this.cancelled = false; // the user stopped the running answer (/cancel, Esc in the chat)
-    this.gen = new Gen({session: this, limits: genLimits, brief: genBrief, ask: askModel}); // the /gen requests, each in a conversation of its own
+    this.gen = new Gen({
+      session: this, limits: genLimits, brief: genBrief, ask: askModel, keepTries: genKeepTries, network: genNetwork, sandbox: genSandbox,
+      dir: genDir ?? join(tmpdir(), `pair-gen-${process.pid}`),
+    }); // the /gen requests, each in a conversation of its own
   }
 
   /**
@@ -903,7 +908,7 @@ export class PairSession {
     }
     await this.yieldRemark();
     const earlier = remark ? `\n\nThis is about your remark (${remark.trigger}): "${remark.text ?? '(its words were not kept)'}"` : '';
-    await this.talk(`[user] ${text}${earlier}${await this.selected(selection)}${this.recalled(text)}\n\nNow:\n${describeState(this.state, this.now())}\n\n${KEEP.answer}`);
+    await this.talk(`[user] ${text}${earlier}${await this.selected(selection)}${this.recalled(text)}${await this.gen.tryContext()}\n\nNow:\n${describeState(this.state, this.now())}\n\n${KEEP.answer}`);
     // An answer that is no answer still answers: the chat says so, rather than leaving the question hanging.
     if (!this.words.length && !this.target && !this.cancelled && !this.failed) this.message('system', 'Pair had nothing to add to that.');
     return this.words.join('\n');
@@ -1596,6 +1601,9 @@ export class PairSession {
 
   /** Reads a file as the editor has it; the editor shows where Pair reads (its gaze) as it does. */
   async read({file, from, to}) {
+    // A /gen try's sample, outside the project: its request's model and the user's questions about it read it.
+    const tried = await this.gen.readTry(file, from, to);
+    if (tried !== null) return tried;
     const source = await readProjectPath(this.root, file);
     if (source.error) return this.readNew(file, from, to, source.error);
     if (source.listing !== undefined) return source.listing;

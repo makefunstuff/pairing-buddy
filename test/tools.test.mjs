@@ -28,14 +28,15 @@ function fauxModels() {
   return {faux, models, model: faux.getModel()};
 }
 
-test('the Navigator has say, point, open, read, recall and suggest; Scout adds search and run; the Driver edit and type; a /gen request propose, draft and ask; nothing else exists', () => {
+test('the Navigator has say, point, open, read, recall and suggest; Scout adds search and run; the Driver edit and type; a /gen request propose, draft, write, run and ask; nothing else exists', () => {
   const {hands} = recordingHands();
   assert.deepEqual(ROLE_TOOLS.navigator, ['say', 'point', 'open', 'read', 'recall', 'suggest']);
   assert.deepEqual(ROLE_TOOLS.scout, ['say', 'point', 'open', 'read', 'recall', 'suggest', 'search', 'run']);
   assert.deepEqual(ROLE_TOOLS.driver, ['say', 'point', 'open', 'read', 'recall', 'suggest', 'search', 'run', 'edit', 'type']);
-  assert.deepEqual(ROLE_TOOLS.gen, ['say', 'read', 'recall', 'search', 'propose', 'draft', 'ask'], 'a /gen request: no point, open, suggest, run, edit or type');
-  assert.deepEqual(pairExtension(hands).tools.map(tool => tool.name), [...ROLE_TOOLS.driver, 'propose', 'draft', 'ask']);
-  assert.deepEqual(ALL_TOOLS, [...ROLE_TOOLS.driver, 'propose', 'draft', 'ask']);
+  // write and run are a try's, in its own folder only (gen.mjs refuses them in the other shapes).
+  assert.deepEqual(ROLE_TOOLS.gen, ['say', 'read', 'recall', 'search', 'propose', 'draft', 'write', 'run', 'ask'], 'a /gen request: no point, open, suggest, edit or type');
+  assert.deepEqual(pairExtension(hands).tools.map(tool => tool.name), [...ROLE_TOOLS.driver, 'propose', 'draft', 'write', 'ask']);
+  assert.deepEqual(ALL_TOOLS, [...ROLE_TOOLS.driver, 'propose', 'draft', 'write', 'ask']);
 });
 
 test('the policy blocks every tool outside the role', () => {
@@ -51,9 +52,10 @@ test('the policy blocks every tool outside the role', () => {
     assert.match(toolPolicy({name: 'propose'}, role).block, /only in a \/gen request; call suggest instead/);
     assert.match(toolPolicy({name: 'ask'}, role).block, /only in a \/gen request/);
     assert.match(toolPolicy({name: 'draft'}, role).block, /only in a \/gen request/);
+    assert.match(toolPolicy({name: 'write'}, role).block, /only in a \/gen try request/);
   }
-  for (const name of ['edit', 'type', 'run', 'suggest', 'point']) assert.ok(toolPolicy({name}, 'gen').block, `gen has no ${name}`);
-  for (const name of ['write', 'bash', 'save', 'Say', 'read_file', 'Edit']) {
+  for (const name of ['edit', 'type', 'suggest', 'point']) assert.ok(toolPolicy({name}, 'gen').block, `gen has no ${name}`);
+  for (const name of ['bash', 'save', 'Say', 'read_file', 'Edit']) {
     assert.match(toolPolicy({name}, 'navigator').block, /only say, point, open, read, recall, suggest\.$/);
     assert.match(toolPolicy({name}, 'scout').block, /only say, point, open, read, recall, suggest, search, run\.$/);
     assert.match(toolPolicy({name}, 'driver').block, /only say, point, open, read, recall, suggest, search, run, edit, type\.$/);
