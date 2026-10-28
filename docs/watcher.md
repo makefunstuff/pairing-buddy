@@ -1,6 +1,6 @@
 # The Watcher: fast and well-judged
 
-Every candidate remark (a failed command you missed, the same error again, a new diagnostic, a stall, drift, the wrong turn, a regression, a crash, a new warning, and in a Markdown note a stall after a question or a section that drifts) goes through the speak gate before the Partner writes a word. The gate asks the Watcher model for a score from 0 to 10, so the Watcher must answer in well under a second, and must not make the Partner's model slower. This page says how Pair keeps it that way.
+Every candidate remark (a failed command you missed, the same error again, a new diagnostic, a stall, drift, the wrong turn, a regression, a crash, a new warning, a search trail, the same numbers after a change or a number that moved, and in a Markdown note a stall after a question or a section that drifts) goes through the speak gate before the Partner writes a word. The gate asks the Watcher model for a score from 0 to 10, so the Watcher must answer in well under a second, and must not make the Partner's model slower. This page says how Pair keeps it that way.
 
 ## The order of the gate
 
@@ -168,7 +168,7 @@ never the answer, or asks once whether the section still belongs in the note; it
 
 Many local servers unload a model that has not been asked for a few minutes, and loading it again takes from seconds to minutes: the Watcher's call then times out, and Pair stays quiet until the model is back. While you work (a key, an edit or a command in the last five minutes), the daemon makes sure the Watcher's model has been asked something in the last four minutes: if not, it sends the Watcher's own instructions with a one-token answer. When you stop working, the pings stop too, and the server may unload the model as it likes.
 
-`"keepWarm": false` turns this off. With an `anthropic` Watcher it is off unless you set it: a cloud model is never unloaded, and each ping would be a paid request.
+`"keepWarm": false` turns this off. It is on by default only for a Watcher with `"api": "openai"`; with an `anthropic` or a `provider` Watcher it is off unless you set it: a cloud model is never unloaded, and each ping would be a paid request.
 
 ## Two roles, one loaded model
 

@@ -94,7 +94,7 @@ Each role has a fixed set of tools:
 | `suggest` | Show a change in place that you accept with one key or ignore | yes | yes | yes |
 | `search` | ripgrep, typed in Pair's own pane | no | yes | yes |
 | `run` | One command line in Pair's own pane, under the [command policy](scout.md#the-command-policy) | no | yes | yes |
-| `edit` | One change in your buffer, typed while you watch, one undo step | no | no | once per hand-over |
+| `edit` | One change in your buffer, typed while you watch, one undo step | no | no | up to five per hand-over |
 | `type` | One line into your terminal, after your yes, without Enter | no | no | after a yes |
 
 The lists are enforced in code: each conversation is offered only its role's tools, and a `beforeTool` policy
