@@ -158,7 +158,7 @@ As Driver Pair also has `search` and `run` in its own pane (the same command pol
 
 | Tool | Navigator | Scout | Driver |
 | --- | --- | --- | --- |
-| `say`, `point`, `open`, `read`, `suggest` | yes | yes | yes |
+| `say`, `point`, `open`, `read`, `recall`, `suggest` | yes | yes | yes |
 | `search`, `run` | no | yes | yes |
 | `edit` | no | no | up to five per hand-over |
 | `type` | no | no | after a yes, without Enter |
