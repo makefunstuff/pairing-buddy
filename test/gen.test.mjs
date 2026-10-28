@@ -261,6 +261,24 @@ test('a request is held by its limits and its place: other files, too many lines
   assert.equal(pair.today().rows.find(row => row.kind === 'generated').note, 'nothing proposed');
 });
 
+test('a request is told where its mark is when it starts; /undo of code edited since says it could not undo it', async () => {
+  let input;
+  const {root, pair, of, said, reverts} = genSession([async (conversation, pair) => {
+    await tool(pair, conversation, 'propose', {file: 'math.js', line: 3, endLine: 3, insert: true, text: 'const s = 1', note: 's'});
+    return 's';
+  }], {editor: async message => (message.type === 'gen_where' ? {file: join(root, 'math.js'), line: 3} : null)});
+  pair.partner.ask = (ask => async (conversation, text, options) => { input = text; return ask(conversation, text, options); })(pair.partner.ask);
+  await pair.gen.request({text: 'here s', place: {file: join(root, 'math.js'), line: 1}, from: 'editor'});
+  assert.match(input, /cursor is on line 3 of math\.js/, 'the mark moved from line 1 to 3 meanwhile');
+  const suggestion = of('suggest').at(-1);
+  await pair.applied(suggestion.action, ['a'], ['a', 'const s = 1'], {piece: 0, from: 4, to: 4});
+  pair.requestEditor = async message => (message.type === 'revert' ? (reverts.push(message), {error: 'you changed those lines since'}) : null);
+  await pair.undoLast();
+  await pair.undoLast();
+  assert.deepEqual(said().slice(-2), Array(2).fill('Could not undo gen #1. Not changed: math.js: you changed those lines since.'));
+  assert.equal(pair.today().rows.at(-1).state, 'applied');
+});
+
 test('a request a daemon restart stopped says so in the ledger, and the numbers go on', () => {
   const {pair, store} = genSession();
   pair.ledger.add('generated', 'gen #4 · here · a sum', {data: {gen: 4, shape: 'here', note: 'at math.js:1 · generating', undo: true}});

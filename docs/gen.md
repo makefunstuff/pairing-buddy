@@ -52,7 +52,9 @@ app" mean `scaffold`; "sample", "example", "to try" mean `try`; a file name or "
 mean `file`; anything else is `here`. A guess is always shown first, and goes only once you confirm it, so `scaffold`
 is never picked silently. A shape you typed is not asked about.
 
-In Neovim the guess comes as a list with the guess first, so `Enter` takes it:
+In Neovim the guess comes as a list with the guess first, so `Enter` takes it. A select plugin shows it as its own
+picker; without one (or with `gen_input = 'cmdline'`), Pair's numbered list on the command line asks instead of
+Neovim's own, whose empty `Enter` would cancel. There a number picks another shape, and `Esc` cancels:
 
 ```
 gen #1 · new files: "migration". Shape?
@@ -60,6 +62,7 @@ gen #1 · new files: "migration". Shape?
 2: here      at the cursor, over a selection
 3: scaffold  many files, in Pair's copy  (not built yet)
 4: try       a sample outside the project  (not built yet)
+Number, Enter takes 1 (Esc cancels):
 ```
 
 In the chat, `y` takes the guess, a shape word another, and `n` cancels.
@@ -70,7 +73,8 @@ In the chat, `y` takes the guess, a shape word another, and `n` cancels.
   conversation of its own on the Partner's model, at the thinking level of `gen` (`medium` unless the config says,
   [config.md](config.md#model-entries)). Your questions in the chat still get answers meanwhile, in the
   session's own conversation, and Pair keeps its role: a request is no role you switch to.
-- **One at a time.** A second request waits for the first, and the statusline and the chat say so.
+- **One at a time.** A second request waits for the first, and the statusline and the chat say so. When a request
+  starts, it reads where its mark is now, so lines you typed above the place while it waited do not throw it off.
 - **No unasked remarks.** While a request runs, no remark nobody asked for starts: what comes up waits, as it waits
   while Pair answers you. What a request says in the chat is no remark, and costs no talk budget.
 - **What it is told.** Your words, where the code goes (the cursor's line, or the lines you selected), the lines
@@ -129,7 +133,8 @@ last thing Pair changed today, and for a request that is all of it:
 - a request that still runs or waits stops;
 - what it proposed and you did not take goes;
 - what you took is undone, newest first, merged into your buffers as they are now, so your edits since stay. Code
-  you have changed since cannot be taken back, and the chat says which.
+  you have changed since cannot be taken back: the chat says which (`Could not undo gen #1. Not changed: a.js: …`),
+  and the request stays taken.
 
 `u` on the request in [`:Pair today`](neovim.md#the-ledger) does the same for any request of the day, and `u` again
 makes what you took again. Neovim's own `u` right after taking undoes that one step, as your own edit.

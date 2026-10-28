@@ -275,7 +275,7 @@ function M.jump()
   vim.cmd('normal! zz')
   -- A /gen block too tall for ghost lines: the jump goes into its preview, to scroll there.
   local suggestion = target.suggestion
-  if suggestion and suggestion.preview then return gen.preview(suggestion, row, suggestion.line, true) end
+  if suggestion and suggestion.preview then return gen.preview(suggestion, row + suggestion.below, suggestion.line, true) end
   -- From one suggestion the jump key goes on to the next.
   local next = suggestion and suggestions.after(suggestion)
   if next then aim(next.target) end
@@ -537,7 +537,8 @@ local function suggest(message)
   -- the next one.
   if message.aim ~= false or not (state.target and state.target.suggestion) then aim(suggestion.target) end
   map_keys('jump', {{config.jump_key, M.jump, 'Go where Pair points'}})
-  if preview then gen.preview(suggestion, message.insert and first or last, suggestion.line, false) end
+  suggestion.below = message.insert and 0 or last - first -- its hint is under its last row, and the preview below that
+  if preview then gen.preview(suggestion, first + suggestion.below, suggestion.line, false) end
   state.reading = nil
   redraw_status()
 end
@@ -1097,6 +1098,7 @@ local handlers = {
   gen_ask = gen.on_ask,
   gen_drop = gen_drop,
   gen_place = gen_place,
+  gen_where = function(message) send({type = 'reply', id = message.id, result = gen.where(message.gen) or vim.NIL}) end,
   -- Without herdr: Pair's pane, your terminals and typing into one of them, all in this Neovim (pane.lua).
   pane = function(message) pane.request(message, function(result) send({type = 'reply', id = message.id, result = result}) end) end,
   terminals = function(message) send({type = 'reply', id = message.id, result = pane.listing()}) end,

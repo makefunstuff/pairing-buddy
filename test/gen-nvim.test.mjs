@@ -157,8 +157,13 @@ test('/gen here with Neovim\'s own prompt: the request on the command line, the 
     keys('here a table of constants<CR>'); // a shape you type is not asked
     await said(/^gen #1 · here · 40 lines at a\.js:1/);
     // Taller than gen_preview_lines: one line in place, the block in a preview window under it.
-    await until(() => ghosts().length === 1 && floats().length === 1, 'the preview');
+    const previewed = () => ghosts().length === 1 && floats().length === 1;
+    previewed.last = () => JSON.stringify({ghosts: ghosts(), floats: floats(), messages: remote('execute("messages")').slice(0, 400)});
+    await until(previewed, 'the preview');
     assert.deepEqual(floats(), [40]);
+    // Line 1 is the window's first row and its hint the second: the preview's border starts below both.
+    const top = Number(remote(`luaeval("vim.api.nvim_win_get_position(vim.tbl_filter(function(w) return vim.api.nvim_win_get_config(w).relative ~= '' end, vim.api.nvim_list_wins())[1])[1]")`));
+    assert.ok(top >= 2, `the preview starts on screen row ${top}, under the hint`);
     assert.equal(ghosts()[0][1].split('\n').length, 1);
     assert.match(ghosts()[0][1], /gen #1 · 40 lines: the table.*M-y takes · M-j preview/);
     keys('<M-j>'); // into the preview, to scroll
@@ -175,7 +180,7 @@ test('/gen here with Neovim\'s own prompt: the request on the command line, the 
     assert.equal(tall(height - 1), '1');
     assert.equal(lines()[1], 'const r0 = 0');
 
-    // No shape word: the guess comes as Neovim's numbered list, answered with its number.
+    // No shape word: the guess comes as a numbered list on the command line, where an empty Enter takes it.
     partner.setResponses([
       fauxAssistantMessage([fauxToolCall('propose', {file: 'a.js', line: 1, insert: false, end_line: 1, text: 'const x = 10', note: 'ten'})], {stopReason: 'toolUse'}),
       fauxAssistantMessage([fauxText('Ten.')]),
@@ -184,7 +189,7 @@ test('/gen here with Neovim\'s own prompt: the request on the command line, the 
     await sleep(300);
     keys('x as ten<CR>');
     await sleep(500);
-    keys('1<CR>');
+    keys('<CR>');
     await said('gen #2 · here · 1 line at a.js:1: Ten.');
     await until(() => ghosts().length === 1, 'its ghost diff');
     keys(':Pair dismiss<CR>');
@@ -261,6 +266,37 @@ test('/gen here from the chat goes to your Neovim cursor and asks in the chat; a
     await said('gen #2 · here · nothing proposed: No code after all.');
     assert.deepEqual(asked(), [{kind: 'input', prompt: 'gen #2 asks: and u? ', default: '8'}]);
     assert.equal(answered, 'The user answered: "9"');
+  } finally {
+    await stop();
+  }
+});
+
+test('a request that waited its turn is told where its mark is now, after you typed above it', {skip, timeout: 40_000}, async () => {
+  const {partner, keys, lines, ghosts, said, stop} = await genInNvim('two at once');
+  try {
+    let release;
+    let input;
+    partner.setResponses([
+      () => new Promise(resolve => { release = () => resolve(fauxAssistantMessage([fauxText('First, nothing.')])); }),
+      context => {
+        input = JSON.stringify(context.messages.at(-1).content);
+        // By what it sees: below `const z = 3`, which is line 5 now.
+        return fauxAssistantMessage([fauxToolCall('propose', {file: 'a.js', line: 5, insert: true, text: 'const w = 4', note: 'w'})], {stopReason: 'toolUse'});
+      },
+      fauxAssistantMessage([fauxText('Second.')]),
+    ]);
+    keys(':Pair gen here first<CR>');
+    await until(() => release, 'the first request to run');
+    keys('3G:Pair gen here after z<CR>');
+    await said('gen #2 waits for gen #1.');
+    keys('ggOconst a = 0<CR>const b = 0<Esc>');
+    await until(() => lines().length === 5, 'two lines typed above');
+    release();
+    await said('gen #2 · here · 1 line at a.js:5: Second.');
+    assert.match(input, /cursor is on line 5 of a\.js/);
+    assert.match(input, /5: const z = 3/);
+    await until(() => ghosts().length === 1, 'the ghost lines');
+    assert.equal(ghosts()[0][0], 4, 'under `const z = 3`, shifted once, not twice');
   } finally {
     await stop();
   }

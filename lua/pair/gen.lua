@@ -36,12 +36,23 @@ local function cmdline_input(opts, on_confirm)
   on_confirm((ok and text ~= vim.NIL) and text or nil)
 end
 
+-- Neovim's own list (inputlist) takes an empty Enter as a cancel. Pair's numbered list on the command line takes it
+-- as the first item, the guess; Esc cancels, and a number picks another.
 local function cmdline_select(items, opts, on_choice)
   local lines = {opts.prompt or 'Select one of:'}
   for i, item in ipairs(items) do table.insert(lines, ('%d: %s'):format(i, (opts.format_item or tostring)(item))) end
-  local choice = vim.fn.inputlist(lines)
-  if choice < 1 or choice > #items then return on_choice(nil, nil) end
+  table.insert(lines, ('Number, Enter takes 1 (Esc cancels): '))
+  local ok, text = pcall(vim.fn.input, {prompt = table.concat(lines, '\n'), cancelreturn = vim.NIL})
+  if not ok or text == vim.NIL then return on_choice(nil, nil) end
+  local choice = vim.trim(text) == '' and 1 or tonumber(text)
+  if not choice or not items[choice] then return on_choice(nil, nil) end
   on_choice(items[choice], choice)
+end
+
+--- Whether vim.ui.select is still Neovim's own, which no plugin replaced.
+local function own_select()
+  local source = debug.getinfo(vim.ui.select, 'S').source
+  return source:find('vim/ui%.lua$') ~= nil
 end
 
 local function input(opts, on_confirm)
@@ -50,7 +61,7 @@ local function input(opts, on_confirm)
 end
 
 local function select(items, opts, on_choice)
-  local ask = config.input == 'cmdline' and cmdline_select or vim.ui.select
+  local ask = (config.input == 'cmdline' or own_select()) and cmdline_select or vim.ui.select
   ask(items, opts, vim.schedule_wrap(on_choice))
 end
 
@@ -80,6 +91,17 @@ local function unmark(where)
   if not where then return end
   marks[where.token] = nil
   if vim.api.nvim_buf_is_valid(where.buf) then pcall(vim.api.nvim_buf_del_extmark, where.buf, M.ns, where.id) end
+end
+
+--- The line request `n`'s mark is on now, for the daemon when the request starts: from here on, `moved` counts from
+--- there, the place the model is told. Nil without a mark.
+function M.where(n)
+  local where = requests[n] and requests[n].mark
+  if not where or not vim.api.nvim_buf_is_valid(where.buf) then return nil end
+  local pos = vim.api.nvim_buf_get_extmark_by_id(where.buf, M.ns, where.id, {})
+  if not pos[1] then return nil end
+  where.row = pos[1]
+  return {file = where.file, line = pos[1] + 1}
 end
 
 --- How many lines the place request `n` was asked at has moved since, in `buf`: where its code lands.
@@ -318,7 +340,8 @@ function M.preview(suggestion, row, line, enter)
   local height = math.min(#suggestion.new, math.max(5, math.floor(vim.api.nvim_win_get_height(win) / 2)))
   local accept = deps.label(deps.accept_key())
   local spec = {
-    relative = 'win', win = win, bufpos = {row, 0}, row = 1, col = 2, width = width, height = height, border = 'single', style = 'minimal',
+    -- Two rows down: under the line, and under its one-line hint, which stays in view.
+    relative = 'win', win = win, bufpos = {row, 0}, row = 2, col = 2, width = width, height = height, border = 'single', style = 'minimal',
     title = (' gen #%d · %s · %d lines → %s:%d '):format(suggestion.gen, vim.bo[buf].filetype ~= '' and vim.bo[buf].filetype or 'text', #suggestion.new, name, line),
     footer = (' %s takes all %d lines · q closes '):format(accept or ':Pair accept', #suggestion.new), footer_pos = 'right',
   }

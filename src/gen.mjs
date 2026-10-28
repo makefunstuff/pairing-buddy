@@ -233,6 +233,15 @@ export class Gen {
   /** What the request's conversation is told: the request, where its code goes, the lines there and the goal. */
   async input(request) {
     const session = this.session;
+    // Where the mark is now: the user may have typed above it since they asked, or while the request waited its turn.
+    // Neovim counts how the code it proposes moves from here on.
+    const now = await session.requestEditor({type: 'gen_where', gen: request.n}).catch(() => null);
+    if (Number.isInteger(now?.line) && request.selection) {
+      const moved = now.line - request.selection.from;
+      request.selection = {...request.selection, from: now.line, to: request.selection.to + moved};
+    } else if (Number.isInteger(now?.line)) {
+      request.place = {...request.place, line: now.line};
+    }
     const name = relative(this.root, request.file);
     const text = await session.bufferText(request.file).catch(() => '');
     const count = text.split('\n').length;
@@ -519,7 +528,9 @@ export class Gen {
     const left = pieces.filter(piece => piece.state === (undone ? 'undone' : 'taken')).length;
     const state = undone ? (back ? 'applied' : 'undone') : left ? 'applied' : 'undone';
     session.ledger.update(action.id, {state, data: {undo: true}, detail: {...(action.detail ?? {}), pieces: pieces.map(({n: _n, ...piece}) => piece)}});
-    const what = undone ? `Made gen #${n} again: ${plural(back, 'piece')}` : `Undid gen #${n}: ${back ? `took back ${plural(back, 'piece')}` : 'nothing was taken'}`;
+    const what = undone ? `Made gen #${n} again: ${plural(back, 'piece')}`
+      : back ? `Undid gen #${n}: took back ${plural(back, 'piece')}`
+        : taken.length ? `Could not undo gen #${n}` : `Undid gen #${n}: nothing was taken`;
     session.message('system', `${what}${back ? ', unsaved' : ''}.${failed.length ? ` Not changed: ${failed.join('; ')}.` : ''}`);
   }
 
