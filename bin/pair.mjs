@@ -32,7 +32,7 @@ const SERVICE = serviceManager();
 
 const USAGE = `usage:
   pair              open the chat pane next to this one (in herdr), starting the daemon if needed
-  pair chat         run the chat pane here
+  pair chat [--plain]   run the chat pane here (--plain: line by line, not full-screen)
   pair setup        create the config if there is none, install and start the daemon as a service (systemd, launchd)
   pair doctor       check the daemon, Neovim, herdr and the models, and say what is wrong
   pair doctor --thinking   find the thinking settings the Partner's OpenAI-compatible server takes (asks it a dozen times)
@@ -267,7 +267,7 @@ async function runSupervised() {
 
 async function openChatPane(config) {
   await ensureDaemon(config);
-  if (!process.env.HERDR_ENV) return runChat(config.socket);
+  if (!process.env.HERDR_ENV) return runChat(config.socket, {dataDir: config.dataDir});
   const env = Object.fromEntries(['PAIR_CONFIG', 'PAIR_SOCKET', 'PAIR_AUTH'].filter(name => process.env[name]).map(name => [name, process.env[name]]));
   const {pane} = await herdrRequest(process.env.HERDR_SOCKET_PATH, 'pane.split', {
     target_pane_id: process.env.HERDR_PANE_ID, direction: 'right', ratio: 0.7, cwd: process.cwd(), env, focus: false,
@@ -325,7 +325,7 @@ try {
     firstRunConfig();
     const config = loadConfig();
     if (command === undefined) await openChatPane(config);
-    else if (command === 'chat') { await ensureDaemon(config); runChat(config.socket); }
+    else if (command === 'chat') { await ensureDaemon(config); runChat(config.socket, {dataDir: config.dataDir, plain: args.includes('--plain')}); }
     else await daemon(await loadSizedConfig()); // each model's window, from its server or catalog (see context-window.mjs)
   } else {
     console.log(USAGE);
