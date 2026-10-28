@@ -95,3 +95,10 @@ test('a stall remark is one question back: its first question alone, once, and n
   assert.equal(oneQuestion('Line 14 says 5 attempts and line 20 says 6.'), null);
   assert.equal(oneQuestion(`${'word '.repeat(30)}?`), null);
 });
+
+test('text Pair put into a note is no question the user asked, nor a section they began', () => {
+  const pair = fold(initialState({goal: 'dead letters'}), {kind: 'edit', file: NOTE, from: 20, to: 21, text: 'We park after 6 attempts.\nDoes it reach 6?', at: 1000, origin: 'pair'});
+  assert.deepEqual(proseTriggers(pair, 1000 + PROSE_TIMING.stallMs), []);
+  const section = fold(titled(initialState({goal: 'dead letters'})), {kind: 'edit', file: NOTE, from: 30, to: 31, text: '## Pricing tiers\nThree seats.', at: 1000, origin: 'pair'});
+  assert.deepEqual(proseTriggers(section, 1000 + PROSE_TIMING.sectionMs), []);
+});

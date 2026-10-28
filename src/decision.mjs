@@ -9,6 +9,7 @@
 //
 // `ask(questions, state)` is the one way in, so later questions (when to interrupt, drift, whether the user is stuck
 // on the search trail, routing) are a QUESTIONS entry and a state of their own; docs/decision.md lists them.
+import {byUser} from './fold.mjs';
 import {momentOf} from './watcher.mjs';
 
 // A sort the gate acts on without the Watcher needs this much probability; below it the Watcher is asked.
@@ -91,7 +92,7 @@ export function momentState({trigger, state, now, level, bar, score = null, last
       talk_level: level,
     },
     recent: {
-      edits: state.edits.slice(-5).map(edit => ({file: edit.file, seconds_ago: seconds(now, edit.at)})),
+      edits: state.edits.slice(-5).map(edit => ({file: edit.file, seconds_ago: seconds(now, edit.at), ...(byUser(edit) ? {} : {by: edit.origin})})),
       commands: state.commands.slice(-3).map(command => ({cmd: command.cmd, exit: command.exit ?? null, seconds_ago: seconds(now, command.endedAt ?? command.at)})),
       tests: testsOf(state.tests, now),
     },

@@ -224,7 +224,7 @@ test('the state the model judges: the moment, the score, typing, the last remark
     file: 'src/ws.js',
     lastKeyAt: now - 3000,
     typed: [now - 50 * 1000, now - 40 * 1000, now - 3000, now - 2 * MIN],
-    edits: [{file: 'src/ws.js', from: 1, to: 2, at: now - 4000}],
+    edits: [{file: 'src/ws.js', from: 1, to: 2, at: now - 4000}, {file: 'src/ws.js', from: 9, to: 9, at: now - 2000, origin: 'pair'}],
     commands: [{cmd: 'npm test', exit: 1, endedAt: now - 5000}],
     tests: {passed: 10, failedCount: 2, by: 'you', at: now - 5000},
   };
@@ -240,6 +240,7 @@ test('the state the model judges: the moment, the score, typing, the last remark
   const json = momentState({trigger: failure, state, now, level: 'normal', bar: 6, score: 7, lastRemarkAt: now - 10 * MIN, past});
   assert.deepEqual(json.moment, {kind: 'failed_command', what_happened: 'npm test failed', watcher_score: 7, watcher_bar: 6});
   assert.deepEqual(json.user, {goal: 'fix reconnect', file: 'src/ws.js', seconds_since_last_keystroke: 3, seconds_typed_in_last_minute: 1.5, seconds_since_last_unasked_remark: 600, talk_level: 'normal'});
+  assert.deepEqual(json.recent.edits, [{file: 'src/ws.js', seconds_ago: 4}, {file: 'src/ws.js', seconds_ago: 2, by: 'pair'}], 'an edit Pair made says so');
   assert.deepEqual(json.recent.commands, [{cmd: 'npm test', exit: 1, seconds_ago: 5}]);
   assert.deepEqual(json.recent.tests, {passed: 10, failed: 2, by: 'you', seconds_ago: 5});
   assert.equal(json.past_verdicts, past);
