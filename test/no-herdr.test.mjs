@@ -188,8 +188,9 @@ test(':Pair chat opens the chat in a terminal buffer, connected to the daemon ou
   await until(async () => (await status()).sessions[0]?.chats === 1, 'the chat in Neovim to connect');
   const chat = await until(() => lua('for _, buf in ipairs(vim.api.nvim_list_bufs()) do if vim.b[buf].pair_chat then return buf end end return false'), 'the chat buffer');
   const screen = () => lua(`return table.concat(vim.api.nvim_buf_get_lines(${chat}, 0, -1, false), "\\n")`);
-  // The full-screen pane: its header, in the top rule, names the project, the goal and the role; the prompt waits below.
-  await until(() => /^── pair · \S+ · no herdr ─+ navigator( · normal)? ──$/m.test(screen()) && /^› /m.test(screen()), 'the chat\'s header and prompt');
+  // The full-screen pane: its header, in the top rule, names the project and the role, and the goal when there is
+  // room for it (it gives way first); the prompt waits below.
+  await until(() => /^── pair · \S+( · no herdr)? ─+ navigator · normal ──$/m.test(screen()) && /^› /m.test(screen()), 'the chat\'s header and prompt');
   assert.equal((await status()).sessions[0].herdr, false, 'not a herdr chat pane');
 });
 

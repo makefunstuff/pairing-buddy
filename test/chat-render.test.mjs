@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {LineEditor} from '../src/chat-input.mjs';
-import {bodyLines, dedent, emptyLines, footerKeys, footerLine, headerLine, helpLines, markdownLines, renderFrame, statusLine, transcriptLines} from '../src/chat-render.mjs';
+import {baseNames, bodyLines, breakText, codeLines, cutStart, dedent, diffLines, emptyLines, footerKeys, footerLine, headerLine, helpLines, markdownLines, menuLines, renderFrame, statusLine, transcriptLines, wrapTokens, inlineTokens} from '../src/chat-render.mjs';
 import {COMMANDS} from '../src/chat.mjs';
 import {paintLine, textWidth} from '../src/chat-style.mjs';
 
@@ -30,7 +30,7 @@ test('Markdown: headings, bold, `code`, lists with a hanging indent, quotes and 
   assert.deepEqual(styles, [['a', 'text'], [' ', 'text'], ['b', 'code'], [' ', 'bold'], ['c', 'bold']]);
   assert.deepEqual(plain(markdownLines('```diff\n-old\n+new\n```', 30)), ['│ -old', '│ +new']);
   assert.deepEqual(markdownLines('```diff\n-old\n+new\n```', 30).map(line => line[1].style), ['del', 'add']);
-  assert.deepEqual(plain(markdownLines('    indented code stays', 12)), ['  indented c', '  ode stays'], 'code is cut, not wrapped at words');
+  assert.deepEqual(plain(markdownLines('    indented code stays', 12)), ['  indented', '    code', '    stays'], 'code wraps at its spaces, with a hanging indent');
 });
 
 test('a suggestion is a diff, its shared indentation gone; a remark says what it is about first', () => {
@@ -39,16 +39,17 @@ test('a suggestion is a diff, its shared indentation gone; a remark says what it
     '✎ suggested change · qu…',
     'lease past the last',
     'attempt',
-    '│- return &Queue{ttl: b}',
-    '│+ return &Queue{ttl: b ',
-    '│  + t}',
+    '│ - return &Queue{ttl:',
+    '│     b}',
+    '│ + return &Queue{ttl: b',
+    '│     + t}',
   ]);
   assert.deepEqual(dedent(['\t\tif x {', '\t\t\ty()', '', '\t\t}']), ['if x {', '    y()', '', '}']);
   const remark = {kind: 'watch', at, text: 'You moved to docs/.', meta: {remark: 3, trigger: 'drift', place: {file: 'docs/a.md', line: 3}}, verdict: 'useful'};
   assert.deepEqual(plain(bodyLines(remark, 40)), ['drift · docs/a.md:3  ✓ useful', 'You moved to docs/.']);
 });
 
-test('the gutter: the time and who speaks on a turn\'s first line, a bar on the selected message, ⎿ for the tools', () => {
+test('the gutter: who speaks on a turn\'s first line, 7 columns, a bar on the selected message, ⎿ for the tools', () => {
   const entries = [
     {kind: 'you', at, text: 'why does attempt 5 fail?'},
     {kind: 'tool', at, tools: [{tool: 'read', what: 'queue.go 1-40'}, {tool: 'run', what: 'go test ./...'}]},
@@ -59,29 +60,55 @@ test('the gutter: the time and who speaks on a turn\'s first line, a bar on the 
   ];
   const {lines, ranges} = transcriptLines(entries, 60, {selected: 2});
   assert.deepEqual(plain(lines), [
-    ' 14:05 you   why does attempt 5 fail?',
-    '             ⎿ read queue.go 1-40 · ran go test ./...',
+    '                        ── 14:05 ──',
+    ' you   why does attempt 5 fail?',
+    '       ⎿ read queue.go 1-40 · ran go test ./...',
     '',
-    '▌14:05 pair  The lease ends early.',
+    '▌pair  The lease ends early.',
     '',
-    '             queue.go:18 the lease',
+    '       queue.go:18 the lease',
     '',
-    ' 14:05 ··    Goal: retries',
-    '             Talk level: quiet',
+    ' ··    Goal: retries',
+    '       Talk level: quiet',
   ]);
-  assert.deepEqual(ranges.map(r => [r.start, r.end]), [[0, 1], [1, 2], [3, 4], [5, 6], [7, 8], [8, 9]]);
+  assert.deepEqual(ranges.map(r => [r.start, r.end]), [[1, 2], [2, 3], [4, 5], [6, 7], [8, 9], [9, 10]], 'the divider is no message\'s');
   entries[1].expanded = true;
-  assert.deepEqual(plain(transcriptLines(entries.slice(0, 2), 60).lines).slice(1), ['             ⎿ read queue.go 1-40', '             ⎿ ran go test ./...']);
-  assert.deepEqual(plain(transcriptLines(entries.slice(0, 1), 30).lines).map(line => line.trimEnd()), [' 14:05 you', '   why does attempt 5 fail?'], 'narrow: the name above the words');
+  assert.deepEqual(plain(transcriptLines(entries.slice(0, 2), 60).lines).slice(2), ['       ⎿ read queue.go 1-40', '       ⎿ ran go test ./...']);
+  assert.deepEqual(plain(transcriptLines(entries.slice(0, 1), 30).lines).slice(1), [' you   why does attempt 5', '       fail?'], 'narrow: the same gutter, no row for the name');
+});
+
+test('the time is a divider: at the start, after five minutes or more, and with the day across midnight; Alt-↑ shows a message\'s', () => {
+  const minutes = n => at + n * 60_000;
+  const entries = [
+    {kind: 'you', at, text: 'a'},
+    {kind: 'pair', at: minutes(4), text: 'b'},
+    {kind: 'you', at: minutes(9), text: 'c'},
+    {kind: 'pair', at: minutes(9), text: 'd'},
+    {kind: 'you', at: new Date(2026, 9, 29, 0, 2).getTime(), text: 'e'},
+  ];
+  const lines = plain(transcriptLines(entries, 40, {now: at}).lines);
+  assert.deepEqual(lines.map(line => line.trim()).filter(line => line.startsWith('──')), ['── 14:05 ──', '── 14:14 ──', '── Thu 29 Oct · 00:02 ──']);
+  assert.deepEqual(lines.slice(0, 4), ['              ── 14:05 ──', ' you   a', '', ' pair  b'], 'centred, dim, then the message under it');
+  assert.equal(lines[lines.indexOf(lines.find(line => line.includes('14:14'))) - 1], '', 'a blank row before a divider');
+  const divider = transcriptLines(entries.slice(0, 1), 40).lines[0];
+  assert.deepEqual(divider.filter(s => s.text.trim()).map(s => s.style), ['rule', 'dim', 'rule']);
+  assert.match(plain(transcriptLines(entries.slice(0, 1), 40, {now: minutes(60 * 24)}).lines)[0], /── Wed 28 Oct · 14:05 ──/, 'yesterday\'s first message says its day');
+  assert.equal(plain(transcriptLines([entries[0], {kind: 'you', at: minutes(1), text: 'f'}], 40).lines).join('\n').match(/you/g).length, 1, 'the same speaker within the pause: one name');
+  const picked = footerLine({mode: 'select', selectedEntry: {kind: 'pair', at, meta: {}}, now: at}, 40);
+  assert.equal(plain([picked])[0], `${' c copy · Esc back'.padEnd(35)}14:05`, 'the picked message\'s time, in the footer, on the right');
+  assert.equal(picked.at(-1).style, 'dim');
+  assert.equal(plain([footerLine({mode: 'select', selectedEntry: {kind: 'pair', at, meta: {}}, now: minutes(60 * 24)}, 40)])[0], `${' c copy · Esc back'.padEnd(22)}Wed 28 Oct · 14:05`);
 });
 
 test('a long message folds to its start until it is opened; the last remark shows its keys until rated', () => {
   const long = {kind: 'pair', at, text: Array.from({length: 30}, (_, i) => `line ${i + 1}`).join('\n\n')};
-  const folded = plain(transcriptLines([long], 60).lines);
+  const folded = plain(transcriptLines([long], 60).lines).slice(1);
   assert.equal(folded.length, 13);
   assert.match(folded.at(-1), /… \d+ more lines · Alt-↑ and Enter shows all$/);
   long.expanded = true;
-  assert.equal(plain(transcriptLines([long], 60).lines).length, 59);
+  assert.equal(plain(transcriptLines([long], 60).lines).length, 60);
+  long.expanded = false;
+  assert.match(plain(transcriptLines([long], 30).lines).at(-1), /^ {7}… \d+ more · Alt-↑ Enter$/, 'a narrow pane: the fold line shorter, not cut');
   const remark = {kind: 'watch', at, text: 'Off the goal.', meta: {remark: 1, trigger: 'drift'}};
   assert.match(plain(transcriptLines([remark], 60, {latestRemark: 0}).lines).at(-1), /\+ useful · - noise · Alt-↑ more$/);
   remark.verdict = 'noise';
@@ -108,12 +135,14 @@ test('the status is in the rule over the input: what Pair does now, and on the r
   }
 });
 
-test('the header is in the top rule; the goal is cut first, then the level and the role give way', () => {
+test('the header is in the top rule; the goal is cut first, then left out (always under 52 columns), then the role is shortened, then the level gives way', () => {
   const header = {project: 'hookd', goal: 'make the queue lease outlive the last retry', role: 'navigator', level: 'normal'};
   const line = width => plain([headerLine(header, width)])[0];
   assert.equal(line(86), '── pair · hookd · make the queue lease outlive the last retry ── navigator · normal ──');
   assert.equal(line(60), '── pair · hookd · make the queue l… ── navigator · normal ──');
-  assert.equal(line(44), '── pair · hookd · make the … ── navigator ──');
+  assert.equal(plain([headerLine({...header, muted: ['drift', 'tests']}, 60)])[0], '── pair · hookd ──────────── navigator · normal · 2 muted ──', 'the goal left out before the right side gives way');
+  assert.equal(line(44), '── pair · hookd ──────────── nav · normal ──');
+  assert.equal(line(30), '── pair · hookd ─────── nav ──');
   assert.equal(plain([headerLine({}, 20)])[0], '── pair ────────────');
 });
 
@@ -127,11 +156,12 @@ test('colour: yellow only for the Watcher and a waiting ?; dim never for words a
   const ticks = 'ls `pwd`/build && rm -rf out';
   assert.deepEqual(plain(bodyLines({kind: 'confirm', at, text: `May I run \`${ticks}\` in my pane (it runs a command substitution)?`, command: ticks}, 60)),
     ['May I run this in my pane (it runs a command substitution)?', `│ ${ticks}`], 'a command with backticks of its own shows whole');
-  assert.deepEqual(plain(bodyLines(confirm, 30)).slice(-2), ['│ go test ./internal/queue', '│ -run TestLease'], 'a long command wraps at its spaces, behind the bar');
+  assert.deepEqual(plain(bodyLines(confirm, 30)).slice(-2), ['│ go test ./internal/queue', '│   -run TestLease'], 'a long command wraps at its spaces, behind the bar, with a hanging indent');
   assert.equal(bodyLines({...confirm, answer: false}, 60).at(-1)[0].style, 'text');
   const gutter = plain(transcriptLines([confirm], 60).lines)[0];
-  assert.match(gutter, /^ 14:05 pair  May I run this/, 'Pair asks it, as pair');
-  assert.equal(transcriptLines([confirm], 60).lines[0][3].style, 'pair');
+  assert.match(gutter, /── 14:05 ──/);
+  assert.match(plain(transcriptLines([confirm], 60).lines)[1], /^ pair  May I run this/, 'Pair asks it, as pair');
+  assert.equal(transcriptLines([confirm], 60).lines[1][1].style, 'pair');
   const keys = footerLine({confirming: true}, 60);
   assert.equal(plain([keys])[0], ' y allow · n decline · Esc decline');
   assert.deepEqual(keys.filter(s => ['y', 'n'].includes(s.text)).map(s => s.style), ['answer', 'answer'], 'y and n bold yellow');
@@ -179,15 +209,15 @@ test('the frame: header in its rule, conversation, status in its rule, input and
     '',
     '',
     '',
+    '                        ── 14:05 ──',
+    ' you   why?',
     '',
-    ' 14:05 you   why?',
-    '',
-    ' 14:05 pair  Because.',
+    ' pair  Because.',
     '── ◇ watching ───────────────────────────────────── qwen3 ──',
     '› hello',
     ' Enter send · Alt-Enter newline · Tab complete',
   ]);
-  assert.equal(lines[0], '── pair · hookd · retries reach th… ── navigator · normal ──', 'the goal is cut first');
+  assert.equal(lines[0], '── pair · hookd ──────────── navigator · normal · 1 muted ──', 'the goal gives way first');
   assert.deepEqual(cursor, {row: 10, column: 7});
   const empty = renderFrame({...view, entries: [], showEmpty: true, editor: new LineEditor(), placeholder: 'Ask Pair anything'}, {width: 60, height: 24});
   assert.ok(empty.lines.some(line => line.includes('Pair · your pair in the second chair')));
@@ -210,4 +240,71 @@ test('Markdown inline: _italic_ and *italic*, [links](url) as words and address;
   assert.deepEqual(styled('an _ital_ and *also* word').map(([text, style]) => `${text}:${style}`), ['an:text', 'ital:italic', 'and:text', 'also:italic', 'word:text']);
   assert.deepEqual(styled('see [the docs](http://x.y/z) now').map(([text, style]) => `${text}:${style}`), ['see:text', 'the:under', 'docs:under', '(http://x.y/z):dim', 'now:text']);
   assert.deepEqual(plain(markdownLines('a trigger_kind and 2*3*4', 80)), ['a trigger_kind and 2*3*4']);
+});
+
+test('code and diffs wrap between tokens with a hanging indent, never inside a name or a flag', () => {
+  assert.equal(breakText('cfg.AttemptTimeout}', 8), 'cfg', 'before the dot, not inside the name');
+  assert.equal(breakText('&Lease{ttl:', 9), '&Lease{', 'after an opening sign; the colon stays with its name');
+  assert.equal(breakText('-count=1', 4), '-cou', 'a flag longer than the line is cut where it must be');
+  assert.equal(breakText('./internal/queue/lease.go', 20), './internal/queue/');
+  const diff = plain(diffLines({old: ['\treturn &Lease{ttl: cfg.Budget}'], new: ['\treturn &Lease{ttl: cfg.Budget + cfg.AttemptTimeout}']}, 37));
+  assert.deepEqual(diff, ['│ - return &Lease{ttl: cfg.Budget}', '│ + return &Lease{ttl: cfg.Budget +', '│     cfg.AttemptTimeout}']);
+  const code = plain(markdownLines('```\nfoo(alpha, beta, gamma) && go test ./internal/queue -run TestLease -count=1\n```', 30));
+  assert.deepEqual(code, ['│ foo(alpha, beta, gamma) &&', '│   go test ./internal/queue', '│   -run TestLease -count=1']);
+  assert.deepEqual(plain(codeLines('    if (x) {', 40, 'text')), ['    if (x) {'], 'its own indent kept');
+  assert.deepEqual(plain(codeLines('    callSomething(withAVeryLongArgumentName)', 24, 'text')), ['    callSomething(', '      withAVeryLongArgum', '      entName)'], 'the indent of the line and two more');
+});
+
+test('a code span wraps with the word before it, at its own spaces', () => {
+  const lines = plain(wrapTokens(inlineTokens('Run `go test ./internal/queue -run TestLease -count=1` in my pane?'), 37));
+  assert.deepEqual(lines, ['Run go test ./internal/queue -run', 'TestLease -count=1 in my pane?']);
+  assert.ok(wrapTokens(inlineTokens('a `b c`'), 30)[0].filter(s => s.text.trim()).slice(1).every(s => s.style === 'code'));
+});
+
+test('a narrow pane: tool traces by their base names and a count, the remark\'s file by its name, the status shorter but whole', () => {
+  assert.equal(baseNames('read internal/queue/lease.go 1-40'), 'read lease.go 1-40');
+  assert.equal(baseNames('go test ./...'), 'go test ./...', 'nothing to shorten');
+  const tools = {kind: 'tool', at, tools: [{tool: 'read', what: 'internal/queue/lease.go 1-40'}, {tool: 'search', what: 'AttemptTimeout'}]};
+  assert.deepEqual(plain(bodyLines(tools, 80)), ['⎿ read internal/queue/lease.go 1-40 · searched AttemptTimeout'], 'whole where it fits');
+  assert.deepEqual(plain(bodyLines(tools, 48)), ['⎿ read lease.go 1-40 · searched AttemptTimeout']);
+  assert.deepEqual(plain(bodyLines(tools, 37)), ['⎿ read lease.go 1-40 · +1']);
+  const remark = {kind: 'watch', at, text: 'The lease ends early.', meta: {remark: 1, trigger: 'regression', place: {file: 'internal/queue/lease.go', line: 18}}};
+  assert.equal(plain(bodyLines(remark, 37))[0], 'regression · lease.go:18');
+  assert.equal(plain(bodyLines(remark, 60))[0], 'regression · internal/queue/lease.go:18');
+  const now = at + 180_000;
+  const row = (view, width) => plain([statusLine({now, model: 'qwen3-coder-30b', ...view}, width)])[0];
+  const idle = {activity: {state: 'idle'}, presence: {looked: 7, spoke: 1, lastAt: at}};
+  assert.equal(row(idle, 44), '── ◇ watching · 3m ago ─────────────────────', 'the model gives way, then the counts; the time stays');
+  assert.equal(row(idle, 20), '── ◇ watching ──────');
+  assert.match(row({activity: {state: 'waiting'}}, 26), /^── \? waiting ─+$/);
+  assert.match(row({activity: {state: 'tool', tool: 'read', what: 'internal/queue/lease.go 1-40', since: now - 2000}}, 36), /^── ▖ reading lease\.go 1-40 2s ─+$/);
+  assert.match(row({activity: {state: 'tool', tool: 'read', what: 'internal/queue/lease.go 1-40', since: now - 2000}}, 24), /^── ▖ reading 2s ─+$/);
+  assert.match(row({connection: 'away'}, 30), /^── ⚠ reconnecting ─+$/);
+  for (const width of [24, 30, 36, 44]) {
+    for (const view of [idle, {activity: {state: 'waiting'}}, {connection: 'away'}, {connection: 'connecting'}, {activity: {state: 'remark', what: 'edit_while_red', since: now}}]) {
+      assert.doesNotMatch(row(view, width), /[^\s─]…/, `${JSON.stringify(view)} at ${width}: shorter, not cut`);
+    }
+  }
+});
+
+test('the @file menu: a path too long loses its start, a folder at a time, never its end', () => {
+  assert.equal(cutStart('@internal/retry/backoff_test.go', 20), '@…/backoff_test.go');
+  assert.equal(cutStart('@internal/retry/backoff.go', 20), '@…/retry/backoff.go');
+  assert.equal(cutStart('@a_really_long_file_name.go', 12), '@…le_name.go');
+  const items = ['@internal/retry/backoff.go', '@internal/retry/backoff_test.go'].map(label => ({label, value: label}));
+  const lines = plain(menuLines(items, 0, 24, {kind: 'file'}));
+  assert.deepEqual(lines.map(line => line.trimEnd()), [' ▸ @…/retry/backoff.go', '   @…/backoff_test.go'], 'two files, told apart');
+  assert.deepEqual(plain(menuLines(items, 0, 44, {kind: 'file'})).map(line => line.trimEnd()), [' ▸ @internal/retry/backoff.go', '   @internal/retry/backoff_test.go'], 'no detail: the label may take the width');
+});
+
+test('a wide pane: the words end by column 80, code and diffs use the width, and the turn\'s meta sits right of its answer', () => {
+  const text = `${'word '.repeat(40).trim()}\n\n\`\`\`\n${'x'.repeat(100)}\n\`\`\``;
+  const answer = {kind: 'pair', at, text, turn: {ms: 6400, tokens: 3400}};
+  const lines = plain(transcriptLines([answer], 124).lines).slice(1);
+  assert.equal(lines[0], ` pair  ${'word '.repeat(14).trim()}${' '.repeat(124 - 7 - 69 - 23)}14:05 · 6.4s · 3.4k tok`);
+  assert.ok(lines.filter(line => !line.includes('│')).every(line => line.replace(/ +14:05.*$/, '').length <= 80), 'words by column 80');
+  assert.ok(lines.some(line => line === ` ${' '.repeat(6)}│ ${'x'.repeat(100)}`), 'the code block runs on');
+  assert.equal(transcriptLines([answer], 124).lines[1].at(-1).style, 'dim');
+  assert.doesNotMatch(plain(transcriptLines([answer], 80).lines).join('\n'), /6\.4s/, 'no margin in an 80-column pane');
+  assert.match(plain(transcriptLines([answer], 100).lines)[1], /word {2,}14:05 · 6\.4s$/, 'less room: the tokens go first');
 });

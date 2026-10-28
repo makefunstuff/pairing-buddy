@@ -369,6 +369,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
     last: {lines: [], transcript: {ranges: [], height: 0, total: 0}},
   };
   let nextId = 1;
+  let turnFrom = 1; // the first entry of Pair's turn now: what came after the last one
 
   const add = entry => {
     state.entries.push({id: nextId++, at: Date.now(), ...entry});
@@ -444,10 +445,15 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
       case 'presence':
         state.presence = message;
         break;
-      case 'turn':
+      case 'turn': {
         if (message.asked) state.turn = message;
         dropPartial();
+        // What the turn took goes in the margin of what Pair said in it (a wide pane has room for it there).
+        const said = state.entries.findLast(entry => entry.id >= turnFrom && ['pair', 'watch'].includes(entry.kind));
+        if (said && !message.cancelled) said.turn = {ms: message.ms, tokens: message.tokens};
+        turnFrom = nextId;
         break;
+      }
       case 'partial': {
         const i = partialIndex();
         if (!message.text) dropPartial();

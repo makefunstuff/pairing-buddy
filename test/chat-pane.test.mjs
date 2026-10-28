@@ -80,14 +80,15 @@ test('the empty pane says what Pair is and how to talk to it; the goal you type 
   const t = await setUp();
   try {
     await t.shows('What are we doing this session?');
-    assert.match(t.text(), /\d\d:\d\d pair  What are we doing this session\?/, 'Pair asks it, as pair, not as a note');
+    assert.match(t.text(), /^ +── \d\d:\d\d ──\n pair  What are we doing this session\?/m, 'Pair asks it, as pair, not as a note, under the time');
     assert.match(t.text(), /Pair · your pair in the second chair/);
     assert.match(t.text(), /\?      every key/);
     assert.match(t.text(), /› the session's goal, or "later"/, 'the input says what it waits for');
     assert.match(t.text(), /^── pair · pair-pane-\w+ ─+ navigator · normal ──$/m, 'the header in the top rule: the project, the role, the level');
     assert.equal(t.text().split('\n')[1].trim(), '', 'no second rule under it');
     await t.type('make the queue lease right\r');
-    assert.match(t.text(), /\d\d:\d\d you   make the queue lease right/, 'what you sent shows before the daemon answers');
+    assert.match(t.text(), /^ you   make the queue lease right/m, 'what you sent shows before the daemon answers');
+    assert.equal(t.text().match(/── \d\d:\d\d ──/g).length, 1, 'the time once, not on each turn');
     await t.shows(/── pair · pair-pane-\w+ · make the queue … ── navigator/);
     await sleep(200);
     assert.doesNotMatch(t.text(), /Goal: make/, 'the goal is in the header, not said again');
@@ -114,6 +115,28 @@ test('a question: the tool lines, the answer in Markdown, and the model and time
     assert.match(frame, /• ttl is the budget/, 'a list, its code without backticks');
     assert.match(frame, /│ ttl: cfg\.Budget \+ cfg\.AttemptTimeout/, 'a code block, behind its bar');
     assert.match(frame, /── ◇ watching ─+ Faux Model · \d+\.\ds/, 'idle again, with the model and how long it took, in the rule');
+  } finally {
+    await t.close();
+  }
+});
+
+test('a wide pane: the words end by column 80, code runs on, and what the turn took sits right of its answer', {timeout: 20_000}, async () => {
+  const t = await setUp({width: 120});
+  try {
+    await t.shows('What are we doing');
+    await t.type('later\r');
+    await t.shows('No goal then.');
+    const long = 'The lease ends too early because ttl is only the budget and the last attempt can start at the very end of it.';
+    const code = 'return &Queue{ttl: cfg.Budget + cfg.AttemptTimeout, owner: job.Owner, started: time.Now(), budget: cfg.Budget}';
+    t.partner.setResponses([fauxAssistantMessage([fauxText(`${long}\n\n\`\`\`go\n${code}\n\`\`\``)])]);
+    await t.type('why twice?\r');
+    await t.shows(/ \d\d:\d\d · \d+\.\ds · [\d.k]+ tok$/m);
+    const lines = t.text().split('\n');
+    const first = lines.find(line => line.startsWith(' pair  The lease ends'));
+    assert.match(first, /^ pair  The lease ends .{40,73}? +\d\d:\d\d · \d+\.\ds · [\d.k]+ tok$/, 'the meta in the margin of the answer it describes');
+    const words = lines.filter(line => /^ {7}\S/.test(line) && !line.includes('│'));
+    assert.ok(words.length && words.every(line => line.trimEnd().length <= 80), 'every line of words ends by column 80');
+    assert.ok(lines.some(line => line.includes(`│ ${code}`)), 'the code block uses the width of the pane');
   } finally {
     await t.close();
   }
@@ -217,11 +240,11 @@ test('a suggestion: a diff; picked with Alt-↑, a takes it in Neovim and j goes
     ]);
     await t.type('fix it?\r');
     await t.shows('That is all.');
-    assert.match(t.text(), /✎ suggested change · queue\.go:4\n +past the last attempt\n +│- return &Queue\{ttl: cfg\.Budget\}\n +│\+ return &Queue\{ttl: cfg\.Budget \+ cfg\.AttemptTimeout\}/);
+    assert.match(t.text(), /✎ suggested change · queue\.go:4\n +past the last attempt\n +│ - return &Queue\{ttl: cfg\.Budget\}\n +│ \+ return &Queue\{ttl: cfg\.Budget \+ cfg\.AttemptTimeout\}/);
     await t.type('\x1b[1;3A'); // Alt-↑: That is all.
     await t.type('\x1b[1;3A'); // the suggestion
-    assert.match(t.text(), /▌\d\d:\d\d pair  ✎ suggested change/);
-    assert.match(t.text(), /c copy · a apply · j jump · Esc back/);
+    assert.match(t.text(), /▌pair  ✎ suggested change/);
+    assert.match(t.text(), /c copy · a apply · j jump · Esc back +\d\d:\d\d$/, 'the keys on it, and its time on the right');
     await t.type('a');
     const accept = await nvim.next(message => message.type === 'accept');
     nvim.send({type: 'applied', action: accept.action, before: [QUEUE], after: [QUEUE]});
@@ -242,12 +265,14 @@ test('a suggestion: a diff; picked with Alt-↑, a takes it in Neovim and j goes
   }
 });
 
-test('a narrow pane puts the name above the words; a tiny one says it is too small', {timeout: 20_000}, async () => {
+test('a narrow pane keeps the gutter, drops the goal from the header and shortens the keys; a tiny one says it is too small', {timeout: 20_000}, async () => {
   const t = await setUp({width: 40, height: 20});
   try {
     await t.shows('What are we doing');
     await t.type('later\r');
-    await t.shows(/\d\d:\d\d you\n +later/);
+    await t.shows(/^ you   later$/m);
+    assert.match(t.text(), /^── pair · pair-pane-\w+ ─+ nav ──$/m, 'no goal, and the role short');
+    assert.match(t.text(), /^ \/ cmds · @ files · Alt-↑ pick · \? keys$/m);
   } finally {
     await t.close();
   }
