@@ -17,9 +17,10 @@ Four rows of chrome, two of them rules with words in them; the rest is the conve
 
 - **The header, in the top rule**: `── pair · hookd · the session's goal ──── navigator · normal ──`. The project, the
   goal, and on the right Pair's [role](roles.md) and its [talk level](watcher.md) (`quiet`, `normal`, `chatty`), and
-  how many kinds of remark you muted. When the pane is narrow the goal is cut first, then the level and the role
-  give way.
-- **The conversation**, newest at the bottom. Each message has a gutter with its time and who speaks:
+  how many kinds of remark you muted. When the pane is narrow the goal is cut first, then left out (always under 52
+  columns), then the role is shortened (`nav`), then the muted count, the level and the role give way.
+- **The conversation**, newest at the bottom. Each message has a 7-column gutter with who speaks, the same in a wide
+  pane and a narrow one:
 
   | Gutter | Who |
   | --- | --- |
@@ -30,13 +31,31 @@ Four rows of chrome, two of them rules with words in them; the rest is the conve
   | `··` | Notes: the tests on save, a verdict noted, a level changed |
   | `!!` | An error, such as a model that does not answer, with what to check |
 
+  The time is not on each message: a dim `── 21:19 ──` in the middle of the pane says it at the start, and again
+  after a pause of five minutes or more, with the day (`── Thu 29 Oct · 00:12 ──`) when it is another day than the
+  message before it. A picked message (`Alt-↑`, [below](#acting-on-a-message)) shows its own time on the right of the
+  footer.
+
+  ```
+                              ── 21:19 ──
+   watch regression · internal/queue/lease.go:18
+         the lease ends before the last attempt does, so the third retry
+         finds the job taken and gets a 409.
+         │ - return &Lease{ttl: cfg.Budget}
+         │ + return &Lease{ttl: cfg.Budget + cfg.AttemptTimeout}
+         + useful · - noise · Alt-↑ more
+
+   you   why does the third retry get a 409 and not a 200?
+         ⎿ read internal/queue/lease.go 1-40 · searched AttemptTimeout
+  ```
+
   Before Pair runs or types a command it asks, as `pair`: the question in words, and the command under it behind a
   bar, whole (backticks in it too), to read and copy. `y` allows it, `n` or `Esc` declines (and drops what you had typed), or type an answer (the name of another
   terminal, where it offers one); the footer shows those keys, and the message says what you answered.
 
   ```
-   21:19 pair  May I run this in my pane (go test runs code)?
-               │ go test ./internal/queue -run TestLease -count=1
+   pair  May I run this in my pane (go test runs code)?
+         │ go test ./internal/queue -run TestLease -count=1
   ── ? waiting for your answer ──────────────────────── qwen3-coder-30b · 6.4s ──
   y/N › or type an answer
    y allow · n decline · Esc decline
@@ -47,8 +66,35 @@ Four rows of chrome, two of them rules with words in them; the rest is the conve
   under the question, to answer it.
 
   Pair's words are Markdown: `code` shows in Pair's accent, **bold** as bold, _italics_ in italics, a link as its
-  words with the address after them, lists with a hanging indent, headings, quotes, and code blocks behind a bar, not
-  re-wrapped. A table shows as written. A message longer than 18 lines folds to its first 12.
+  words with the address after them, lists with a hanging indent, headings, quotes, and code blocks behind a bar. A
+  table shows as written. A message longer than 18 lines folds to its first 12.
+
+  Code blocks, diffs and the command of a question wrap between tokens, with a hanging indent: at a space first, else
+  before a dot or after an opening bracket, a slash or a value's `=`, never inside a name, a number or a flag
+  (`cfg.AttemptTimeout`, `my-component-name`, `v1.2.3-rc.1`, `--config=`). A name longer than the whole line breaks
+  after a dash in it; only a word with none is cut. A line indented deeper than half the pane shows at half of it, so
+  its words keep the other half. A `code` span in a sentence wraps at its own spaces, so it starts on the line of the
+  word before it.
+
+  **In a wide pane** the words end by column 80, the measure that reads well; code blocks and diffs use the whole
+  width. The margin on the right holds what a turn of Pair's took, on the first line of what it said in it (an answer,
+  or a remark): `21:19 · 6.4s · 3.4k tok`. With less room the tokens go first, then the duration.
+
+  **In a narrow pane** (under 52 columns) the gutter stays, so a message spends no row on its name. What gives way,
+  instead of being cut in the middle:
+
+  - the `⎿` line names files by their base name and counts the tools that do not fit: `⎿ read lease.go 1-40 · +1`;
+  - a remark's place is its file's base name: `regression · lease.go:18`;
+  - the header drops the goal and shortens the role (`── pair · hookd ──── nav · normal ──`);
+  - the status keeps its words whole and drops what it can: the model first, then the counts
+    (`── ◇ watching · 3m ago ──`), `? waiting`, `▖ reading lease.go 1-40 2s`, `⚠ reconnecting`;
+  - the footer says its keys short (`/ cmds · @ files · Alt-↑ pick · ? keys`);
+  - the `@` menu cuts a path at its start, a folder at a time, so two files never look the same:
+    `@…/retry/backoff.go`, `@…/backoff_test.go`.
+
+  ![A 44-column chat pane: the gutter kept, the suggestion's diff wrapped between tokens with a hanging indent, the ⎿ line by base name, nav in the header and the short footer](images/chat-narrow.png)
+
+  ![The same pane 112 columns wide: the words end by column 80, the diff runs on, and each turn's time, duration and tokens on the right of what Pair said](images/chat-wide.png)
 - **The status, in the rule over what you type**: what Pair does now, as `── ▖ writing 6s ──── qwen3-coder-30b ──`.
   It names no keys (those are in the footer), and its word is in body text, so it ranks above the footer. The answer
   streams into the conversation as the model writes it.
@@ -65,7 +111,8 @@ Four rows of chrome, two of them rules with words in them; the rest is the conve
   | `⚠ the pair daemon went away · reconnecting` | The daemon restarted; the pane carries on when it is back |
 
   On the right: the Partner's model, how long its last answer took, and the tokens and cost of it when the provider
-  reports them; when you scrolled up, how many lines are below (and `End` in the footer goes back down).
+  reports them; when you scrolled up, how many lines are below (and `End` in the footer goes back down). The right
+  side gives way first, from its end; then the status is said shorter ([narrow panes](#what-you-see)).
 
   ![Right after a question: the file Pair reads is a ⎿ line under it, and the status in the rule says thinking](images/chat-working.png)
 - **What you type**, after `›`, and under it **the keys that work now**: they change when Pair works, asks, or you
@@ -99,7 +146,7 @@ Anything you type that is not a command is a question for Pair; it is always ans
 ## Acting on a message
 
 **Alt-↑** picks the last message, and further presses go up (**Alt-↓** down; a click picks one too). A bar marks it,
-and the footer lists what you can do with it:
+and the footer lists what you can do with it, with the message's time on the right:
 
 | Key | On the message |
 | --- | --- |
@@ -178,7 +225,7 @@ that light themes wash out:
 | Body text | Everything addressed to you: answers, questions, notes, the status word, the empty card, the help |
 | Pair's accent | Pair's name, `code` in its words, the prompt, the spinner, the bar of a picked message |
 | Yellow | The Watcher: the `watch` label and a remark's kind and place; the `?` of a question waiting for you; `y` and `n` (bold) in the footer while it waits |
-| Dim | Chrome: the rules, the times, what a key in the footer does, the `⎿` tool lines, a fold, a link's address |
+| Dim | Chrome: the rules, the time dividers and an answer's time in the margin, what a key in the footer does, the `⎿` tool lines, a fold, a link's address |
 | Green, red | `+` and `-` lines of a diff; an error, in red |
 
 Light themes are where dim and yellow fade: against the background, dim is about 2 : 1 in Tokyo Night Day and
@@ -203,3 +250,5 @@ rules or the status applies there: Pair's question ends in `[y/N]`, and the goal
 - `@` completes from `git ls-files`; outside a git repository it offers `@here` only, and you can still type a path.
 - Messages from before this version show without their remark, place or diff, as plain text.
 - The cost shows only when the provider reports it: a local server's turns show their time and tokens.
+- An answer's time, duration and tokens show in its margin only in a pane wider than 80 columns, and only for
+  answers given while the pane is open: the conversation it shows again after a restart has its times in the dividers.
