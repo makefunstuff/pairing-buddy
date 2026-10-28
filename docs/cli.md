@@ -115,6 +115,7 @@ question for Pair (`@here` in it sends your selection in Neovim along), and a li
 | `/mute [kind]` | No more remarks of this kind (by default the last remark's: `drift`, `failed_command`, …) for the session |
 | `/unmute [kind]` | Let one kind, or all, speak again |
 | `/gen here <what>` | Ask Pair for code at your cursor in Neovim; with `@here`, over the lines you selected there ([gen.md](gen.md)) |
+| `/gen file <what>` | Ask Pair for new files: they open in Neovim as buffers to review, and `:w` in one writes it to its path ([gen.md](gen.md#new-files-gen-file)) |
 | `/gen` | Today's `/gen` requests in this project |
 | `/gen cancel` | Stop the `/gen` request that runs or waits |
 | `/brief [note\|off]` | What `/gen` runs against: the goal, the board task and a note (`NOTES.md` by default); with a note, pin it; `off` leaves the note out ([gen.md](gen.md#the-brief)) |

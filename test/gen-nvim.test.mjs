@@ -2,7 +2,7 @@
 // vim.ui.input and vim.ui.select (as snacks.nvim, dressing.nvim and noice.nvim do), once with Neovim's own prompt
 // on the command line, driven by keys. Skips without nvim.
 import assert from 'node:assert/strict';
-import {readFileSync, writeFileSync} from 'node:fs';
+import {existsSync, readFileSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {fauxAssistantMessage, fauxText, fauxToolCall} from '@earendil-works/pi-ai';
@@ -109,7 +109,7 @@ test('/gen here with a popup input: the request, the shape guessed and shown, th
     assert.equal(shape.prompt, 'gen #1 · at the cursor. Shape?');
     assert.deepEqual(shape.items, [
       'here      at the cursor, over a selection  (guessed)',
-      'file      new files to review  (not built yet)',
+      'file      new files to review',
       'scaffold  many files, in Pair\'s copy  (not built yet)',
       'try       a sample outside the project  (not built yet)',
     ]);
@@ -384,6 +384,101 @@ test('the brief in Neovim: :Pair brief pins the note, a request against it asks 
     keys(':Pair gen here v that logs<CR>');
     await said('gen #3 cancelled: NOTES.md:4 is open in Neovim. Change the brief or the request, then /gen again.');
     await until(() => remote('fnamemodify(bufname(), ":t")') === 'NOTES.md' && remote('line(".")') === '4', 'the note open at line 4');
+  } finally {
+    await stop();
+  }
+});
+
+/** The pair://gen/<n>/… buffers in Neovim: name, buftype, modified, whether a window shows it, and its lines. */
+const proposals = remote => JSON.parse(remote(`luaeval("vim.json.encode(vim.tbl_map(function(b) return {name = vim.api.nvim_buf_get_name(b), buftype = vim.bo[b].buftype, modified = vim.bo[b].modified, shown = vim.fn.bufwinid(b) ~= -1, lines = vim.api.nvim_buf_get_lines(b, 0, -1, false)} end, vim.tbl_filter(function(b) return vim.api.nvim_buf_is_loaded(b) and vim.api.nvim_buf_get_name(b):find('^pair://gen/%d') ~= nil end, vim.api.nvim_list_bufs())))")`));
+
+test('/gen file: pair:// buffers to review; :wa skips them, quitting warns, :w takes one, the list drops another, /undo deletes the file; they come back after a restart', {skip, timeout: 60_000}, async () => {
+  const {project, partner, keys, remote, status, said, send, asked, answer, restartDaemon, stop} = await genInNvim('orders', {stub: true});
+  const notified = () => JSON.parse(remote('luaeval("vim.json.encode(_G.notified)")'));
+  const listed = () => JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_lines(vim.fn.bufnr('pair://gen/list'), 0, -1, false))")`));
+  const migration = join(project, 'db/0007_status.sql');
+  try {
+    partner.setResponses([
+      fauxAssistantMessage([fauxToolCall('draft', {path: 'db/0007_status.sql', text: 'ALTER TABLE orders ADD status TEXT;\n', note: 'migration'})], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxToolCall('draft', {path: 'status.test.js', text: 'test(\'status\')\n', note: 'its test'})], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxText('A migration and its test.')]),
+    ]);
+    keys(':Pair gen file a migration adding status, and its test<CR>');
+    await said(/^gen #1 · file · 2 new files to review: db\/0007_status\.sql \+1, status\.test\.js \+1: A migration and its test\./);
+    await until(() => proposals(remote).length === 2, 'the buffers');
+    assert.deepEqual(proposals(remote), [
+      {name: 'pair://gen/1/db/0007_status.sql', buftype: 'acwrite', modified: true, shown: false, lines: ['ALTER TABLE orders ADD status TEXT;']},
+      {name: 'pair://gen/1/status.test.js', buftype: 'acwrite', modified: true, shown: false, lines: ['test(\'status\')']},
+    ], 'loaded, not opened');
+    assert.equal(remote('getbufvar("pair://gen/1/db/0007_status.sql", "&filetype")'), 'sql');
+    const reviewing = () => /gen #1 · 2 to review · :Pair gen list/.test(status());
+    reviewing.last = status;
+    await until(reviewing, 'the statusline');
+
+    // :wa in a.js writes a.js and skips them; quitting warns as for any change not written.
+    keys(':wa<CR>');
+    await until(() => notified().some(text => text === 'Pair: gen #1: 2 buffers not taken. :w in one takes it; :Pair gen list lists them'), 'the :wa message');
+    assert.equal(existsSync(migration), false);
+    assert.equal(proposals(remote).every(one => one.modified), true);
+    assert.match(remote('luaeval("select(2, pcall(vim.cmd, \'qa\'))")'), /E37|E162/);
+
+    // :Pair gen list, Enter opens the first one; :w in it takes it, and it is an ordinary buffer of the file then.
+    keys(':Pair gen list<CR>');
+    await until(() => listed().some(line => line.includes('db/0007_status.sql')), 'the list');
+    const list = listed();
+    assert.match(list[0], /^gen #1 · file · a migration adding status, and its test · \d\d:\d\d$/);
+    assert.ok(list.some(line => /◌ db\/0007_status\.sql\s+\+1\s+⏎ open  w take  d drop/.test(line)), list.join('\n'));
+    assert.match(list.at(-1), /W take all · D drop all · u undo the request · q close/);
+    keys('<CR>');
+    await until(() => remote('bufname()') === 'pair://gen/1/db/0007_status.sql', 'the file opened');
+    assert.equal(remote('&winbar'), 'generated · gen #1 · :w takes it to db/0007_status.sql'); // the remote's answer is trimmed
+    keys('Go-- reviewed<Esc>:w<CR>');
+    await until(() => existsSync(migration), 'the file written');
+    assert.equal(readFileSync(migration, 'utf8'), 'ALTER TABLE orders ADD status TEXT;\n-- reviewed\n', 'as you had it');
+    await until(() => remote('bufname()') === 'db/0007_status.sql', 'the real file in its window');
+    assert.deepEqual([remote('&buftype'), remote('&modified'), remote('&winbar')], ['', '0', '']);
+    await said('gen #1: db/0007_status.sql written, taken; 1 more to review. /undo takes back the request.');
+
+    // d in the list drops the other: its buffer goes, and nothing is left to warn about.
+    await until(() => listed().some(line => /◌ status\.test\.js/.test(line)), 'the list again');
+    keys(':Pair gen list<CR>');
+    await until(() => remote('bufname()') === 'pair://gen/list' && /status\.test\.js/.test(remote('getline(".")')), 'the cursor on the file left');
+    keys('d');
+    await said('gen #1: status.test.js dropped.');
+    await until(() => proposals(remote).length === 0, 'its buffer gone');
+    keys('q');
+
+    // /undo deletes the file you wrote, as you wrote it.
+    send({type: 'undo_last'});
+    await said('Undid gen #1: took back 1 piece, 1 file you wrote from it deleted.');
+    assert.equal(existsSync(migration), false);
+
+    // A file to review outlives a daemon restart with your change in its buffer, and a Neovim that lost it gets it again.
+    partner.setResponses([
+      fauxAssistantMessage([fauxToolCall('draft', {path: 'lib/status.js', text: 'export const STATUSES = []\n', note: 'statuses'})], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxText('The statuses.')]),
+    ]);
+    keys(':Pair gen file the statuses in lib/status.js<CR>');
+    await until(() => proposals(remote).length === 1, 'its buffer');
+    remote(`luaeval("vim.api.nvim_buf_set_lines(vim.fn.bufnr(_A[1]), 0, -1, false, {_A[2]})", ['pair://gen/2/lib/status.js', "export const STATUSES = ['new']"])`);
+    await restartDaemon();
+    await until(() => /gen · 1 to review|gen #2 · 1 to review/.test(status()) && remote('luaeval("require(\'pair\').status()")') !== '', 'connected again');
+    await sleep(500);
+    assert.deepEqual(proposals(remote).map(one => one.lines), [['export const STATUSES = [\'new\']']], 'one buffer, your change kept');
+    keys(':Pair stop<CR>:bwipeout! pair://gen/2/lib/status.js<CR>');
+    await until(() => proposals(remote).length === 0, 'lost while away');
+    keys(':Pair start<CR>');
+    await until(() => proposals(remote).length === 1, 'made again when it connects');
+    assert.deepEqual(proposals(remote)[0].lines, ['export const STATUSES = []']);
+
+    // W in the list takes every file of the request, once you said yes.
+    keys(':Pair gen list<CR>');
+    await until(() => remote('bufname()') === 'pair://gen/list' && /lib\/status\.js/.test(remote('getline(".")')), 'the list on gen #2');
+    answer('y');
+    keys('W');
+    await until(() => existsSync(join(project, 'lib/status.js')), 'taken');
+    assert.match(asked().at(-1).prompt, /^Take all 1 file of gen #2\? Read them first\.$/);
+    await until(() => proposals(remote).length === 0, 'nothing left to review');
   } finally {
     await stop();
   }

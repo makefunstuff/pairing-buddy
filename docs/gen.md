@@ -1,5 +1,5 @@
 ---
-description: "/gen: ask Pair for code against your brief. It lands where you asked, you take it with one key, and /undo takes the whole request back."
+description: "/gen: ask Pair for code against your brief, at your cursor or as new files to review. You take it with one key or :w; /undo takes the request back."
 ---
 
 # /gen: ask Pair for code
@@ -17,8 +17,9 @@ A request never changes your text by itself, so it is not the Driver: the Driver
 five edits, while a request makes proposals you review, and is held by size limits instead
 ([driver.md](driver.md#the-driver-and-gen)).
 
-This version builds one shape, `here`. The others are named, guessed and confirmed like it, and then say they are
-not built yet.
+This version builds two shapes: `here`, code at your cursor, and `file`, [new files](#new-files-gen-file) you
+review as buffers and take with `:w`. The others are named, guessed and confirmed like them, and then say they are not
+built yet.
 
 ## Asking
 
@@ -32,13 +33,15 @@ not built yet.
 - `Tab` completes the shape word, the first word: `here`, `file`, `scaffold`, `try`.
 - `Esc` asks nothing. An empty `Enter` opens the compose window, for a request longer than one line: a small
   Markdown window where `:w` or `Ctrl-S` sends it, and `:q` drops it. `:Pair gen +` opens it at once.
-- `:Pair gen [here] <what>` asks without the dialog. `:Pair gen cancel` stops the request that runs or waits.
+- `:Pair gen [here|file] <what>` asks without the dialog. `:Pair gen cancel` stops the request that runs or waits,
+  and `:Pair gen list` lists the files of `/gen file` requests to review ([below](#the-review-list-pair-gen-list)).
 - With a selection, `Alt-g` in Visual mode or `:'<,'>Pair gen`: in code, the code replaces those lines, so the shape
   is `here` and the dialog asks only what to write. In a Markdown note, the selected lines are the request itself: the
   dialog shows their first line to send or change, the rest goes with it, and the shape is guessed.
 
 **In the chat**, `/gen here <what>` asks for code at your cursor in the Neovim you work in, and `@here` in it means
-over the lines you selected there last. `/gen` alone lists today's requests, and `/gen cancel` stops the one that
+over the lines you selected there last. `/gen file <what>` asks for new files, which open in that Neovim as buffers to
+review. `/gen` alone lists today's requests, and `/gen cancel` stops the one that
 runs or waits. `/cancel` stops a running request too, when Pair answers nothing else.
 
 ## The shape
@@ -46,7 +49,7 @@ runs or waits. `/cancel` stops a running request too, when Pair answers nothing 
 | Shape | What it makes | Built |
 | --- | --- | --- |
 | `here` | Code at the cursor, or over the selection: a query, a handler, a config block | yes |
-| `file` | New files to review, as unsaved buffers | not yet |
+| `file` | New files to review, as unsaved buffers: a migration, a module, a config file, a test file | yes |
 | `scaffold` | Many files and their wiring, in a copy of the project in Pair's data folder | not yet |
 | `try` | A sample to read and run, outside the project | not yet |
 
@@ -81,12 +84,14 @@ In the chat, `y` takes the guess, a shape word another, and `n` cancels.
   starts, it reads where its mark is now, so lines you typed above the place while it waited do not throw it off.
 - **No unasked remarks.** While a request runs, no remark nobody asked for starts: what comes up waits, as it waits
   while Pair answers you. What a request says in the chat is no remark, and costs no talk budget.
-- **What it is told.** Your words, where the code goes (the cursor's line, or the lines you selected), the lines
-  around that place as your buffer has them, and [the brief](#the-brief), read again when the request starts.
-- **Its tools.** `say`, `read`, `recall`, `search` (in Pair's pane, also outside Scout), `propose` and `ask`. Never
-  `edit`, `type`, `run`, `suggest` or `point`, and a policy in code refuses them
+- **What it is told.** Your words and [the brief](#the-brief), read again when the request starts. For `here`, where
+  the code goes (the cursor's line, or the lines you selected) and the lines around that place as your buffer has
+  them; for `file`, the names of the project's files (`git ls-files`, the first 200).
+- **Its tools.** `say`, `read`, `recall`, `search` (in Pair's pane, also outside Scout), `propose`, `draft` and `ask`.
+  Never `edit`, `type`, `run`, `suggest` or `point`, and a policy in code refuses them
   ([how-it-works.md](how-it-works.md#what-it-can-do)). `propose(file, line, end_line, insert, text, note)` puts the
   code below `line` (`insert`), or in place of `line`..`end_line`; for `here`, only in the file you asked in.
+  `draft(path, text, note)` writes a new file, for `file` only (below).
 - **Its questions.** When a wrong guess would cost you, the model may ask: at most two questions per request, each
   with the answer it would take. They are asked where you asked. In Neovim it is a dialog with that answer filled in,
   never while you type: in Insert mode or right after a change it waits for your pause, and meanwhile the statusline
@@ -98,8 +103,8 @@ In the chat, `y` takes the guess, a shape word another, and `n` cancels.
 
 | Limit | Default | What happens past it |
 | --- | --- | --- |
-| `lines` | `4000` | The proposal is refused: the model is told to propose less |
-| `files` | `40` | A proposal in one more file is refused |
+| `lines` | `4000` | The proposal or draft is refused: the model is told to propose less |
+| `files` | `40` | A proposal or draft in one more file is refused |
 | `commands` | `8` | Searches past it are refused |
 | `minutes` | `10` | The model is stopped; what it proposed so far still shows. Time a question waits for you does not count |
 
@@ -204,6 +209,77 @@ with the project's command on save, else your last build and run (a command from
 about asks you first). The result shows once, with `✓` or `✗` under the lines taken and in the chat, and the
 Watcher adds no remark of its own about it. No command, no check.
 
+## New files: /gen file
+
+`/gen file a migration adding status to orders, and its test` (or `:Pair gen file …`, or `file` as the shape in the
+dialog) asks for new files. The model writes each with `draft(path, text)`, and Pair checks the path: inside the
+project, not in `.git`, and **new**. A draft of a file that exists is refused, and the model is told to `propose` its
+change there instead: that change shows in your file as a suggestion, as for `here`, and the chat lists it apart.
+Drafting a path again replaces its draft. Folders that do not exist yet are fine.
+
+When the request is done, its files go to the Neovim you work in as buffers named `pair://gen/<n>/<path>`, loaded but
+not opened: nothing jumps at you while you type. The chat says what it made:
+
+```
+gen #4 · file · 2 new files to review: db/migrations/0007_orders_status.sql +14, db/orders_test.go +38: …
+✓ `go test ./...` on the unsaved buffers: 41 pass
+≠ brief "Statuses: new, paid, shipped." NOTES.md:11 · db/migrations/0007_orders_status.sql:6 also adds cancelled
+? guessed existing rows get the status new
+In Neovim, :w in one writes it to its path; :Pair gen list lists them.
+```
+
+and the statusline `gen #4 · 2 to review · :Pair gen list`.
+
+- **The check** runs once, on all the new files at their real paths with every other unsaved buffer of yours, with
+  the command a [hand-over's check](driver.md#the-check-on-the-unsaved-buffer) uses (the project's command on save,
+  else your last build and run). A test file it drafted is in the run. No command, no check. Later checks on unsaved
+  buffers (a hand-over's, code you take from `here`) count the files still to review too, at their real paths.
+- **In a buffer to review** the winbar says ` generated · gen #4 · :w takes it to db/migrations/0007_orders_status.sql `,
+  the file's type gives its syntax, and a `≠ brief` line of the debrief that is about this file shows under its line,
+  with `≠` in the sign column. You may change it before you take it: what you take is what the buffer has.
+- **`:w` in it takes it.** The file is written to its path (its folders made), and the window shows that file as an
+  ordinary buffer from then on: the proposal buffer goes. A file that appeared at that path since is not written
+  over: `:w!` does. This is the one place Pair's code reaches your disk, and it is your `:w`.
+- **`:wa` elsewhere skips them**, and says `Pair: gen #4: 2 buffers not taken. :w in one takes it; :Pair gen list lists them`.
+  A habitual `:wa` never takes a whole request at once. `:wa` in one of them takes that one, as `:w` would.
+- **Quitting warns.** A buffer to review stays modified until it is taken or dropped, so `:q` in the last window and
+  `:qa` stop with Neovim's own `E37`/`E162`, as for any change not written. `:qa!` quits; the files are not lost (below).
+- **`:bd!` or `:bw!`** on one drops it, as `d` in the list does.
+
+### The review list: :Pair gen list
+
+`:Pair gen list` opens the file requests of the last seven days in a split at the bottom, newest first:
+
+```
+gen #4 · file · a migration adding status to orders, and its test · 14:02
+  brief NOTES.md + goal   ✓ go test ./... (unsaved) · 41 pass
+  ◌ db/migrations/0007_orders_status.sql   +14   ⏎ open  w take  d drop
+  ✓ db/orders_test.go                      taken · ⏎ open
+  ≠ brief "Statuses: new, paid, shipped." NOTES.md:11 · db/migrations/0007_orders_status.sql:6 also adds cancelled
+  ? guessed existing rows get the status new   M-d logs it as a decision
+
+⏎ open · w take · d drop · W take all · D drop all · u undo the request · q close
+```
+
+| Key | What it does |
+| --- | --- |
+| `Enter` | Opens the file in the window you came from: the buffer to review, or the file once taken |
+| `w` | Takes it, as `:w` in its buffer does |
+| `d` | Drops it: its buffer goes, and the ledger says so |
+| `W`, `D` | Takes, or drops, every file of the request still to review, after a yes (`Take all 2 files of gen #4? Read them first.`) |
+| `u` | Undoes the whole request ([below](#one-undo-per-request)), and `u` again makes it again |
+| `Alt-d` (the `decide_key`) | On a `? guessed` line: logs it as a decision in `decisions.md` next to the brief's note (else at the project root), in that buffer, unsaved, as `Alt-d` on a note's decision does ([notes.md](notes.md)) |
+| `q` | Closes the list |
+
+After `w` or `d` the cursor goes to the next file to review.
+
+### After a restart
+
+The daemon keeps each file's text in the ledger until you take or drop it. A Neovim that connects gets the buffers of
+every file still to review from the last seven days: after a Neovim restart (or `:qa!`) they come back, as the
+request left them. A Neovim that still has them (the daemon restarted) keeps its own, with your changes in them.
+`Enter` in the list makes one again too, if it went missing.
+
 ## One undo per request
 
 The ledger books a request as one line: `generated  gen #3 · here · a list handler with paging`, with a note that
@@ -215,9 +291,13 @@ last thing Pair changed today, and for a request that is all of it:
 - what you took is undone, newest first, merged into your buffers as they are now, so your edits since stay. Code
   you have changed since cannot be taken back: the chat says which (`Could not undo gen #1. Not changed: a.js: …`),
   and the request stays taken.
+- a file of `/gen file` you took (wrote) is deleted, with its buffer, but only while it is exactly as you wrote it and
+  its buffer has no changes you did not save. Otherwise it stays, and the chat says why
+  (`Not changed: db/x.sql: it changed since you wrote it`). Files still to review go, with their buffers.
 
 `u` on the request in [`:Pair today`](neovim.md#the-ledger) does the same for any request of the day, and `u` again
-makes what you took again. Neovim's own `u` right after taking undoes that one step, as your own edit.
+makes what you took again: code goes back into your buffers, and a file deleted by the undo comes back as a buffer
+to review, not written. Neovim's own `u` right after taking undoes that one step, as your own edit.
 
 ## Who wrote it: edits carry their origin
 
@@ -267,17 +347,27 @@ the file leaves Pair's lines Pair's.
 
 ## Limits
 
-- Only `here` is built. `file`, `scaffold` and `try` are named and guessed, and say they are not built yet.
+- Only `here` and `file` are built. `scaffold` and `try` are named and guessed, and say they are not built yet.
+- `/gen file` makes new files only. A change to a file you have is a suggestion in it, never a buffer to review.
+- A buffer to review is no file yet: no language server attaches to it, and Pair's Watcher does not see your edits in
+  it. Once taken, it is an ordinary file.
+- A file you took is yours from then on: Pair does not mark it as generated, and `:Pair own` does not exist yet.
+- Files to review go to one Neovim, the one you work in; a second Neovim on the project gets them when it connects.
+- Changes you make in a buffer to review live only in that Neovim: after a Neovim restart the buffer comes back as the
+  request drafted it.
+- `:Pair gen list` and the files that come back after a restart cover the last seven days.
 - The brief's two checks (the question before, the debrief after) are each one more answer of the Partner's model.
   They run in its slot like the note reader, so on a slow local model a request takes that much longer. They are made
   only when the brief says something.
 - A brief line you chose to go against is remembered for the session (also across a daemon restart, from the
   ledger); the next session asks again.
-- `? guessed` lines are words in the chat and the ledger: nothing logs them as decisions yet.
+- `? guessed` lines are words in the chat and the ledger. Only `:Pair gen list`, for a `file` request, logs one as a
+  decision (`Alt-d`).
 - Taken code carries no mark of its own in the sign column, and `:Pair own` does not exist yet: it stays the
   request's until you edit its lines, as far as its origin can be followed ([above](#who-wrote-it-edits-carry-their-origin)).
-- A request lives in the daemon's memory. A daemon restart stops one that runs, and code it proposed that you did not
-  take is gone; the ledger line stays, and what you took can still be undone from it.
+- A request lives in the daemon's memory. A daemon restart stops one that runs, and code it proposed at your cursor
+  that you did not take is gone; the ledger line stays, and what you took can still be undone from it. New files
+  to review are not gone: the ledger keeps them ([above](#after-a-restart)).
 - The code shows in the Neovim you work in; a second Neovim on the same project does not show it.
 - A request from the chat asks its questions in the chat only; one from Neovim asks in Neovim, and the chat shows
   them to read.

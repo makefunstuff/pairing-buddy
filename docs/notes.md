@@ -124,7 +124,9 @@ question 3 and an off-topic section 2, under the normal bar of 6, since nothing 
 `NOTES.md` at the project root is also the brief that every [/gen request](gen.md#the-brief) runs against, with the
 goal and the board task; `/brief <note>` or `:Pair brief` in a note pins another one. Pair reads it there as here:
 it never writes it. A request that contradicts a line of it asks you first, and the debrief quotes the line its code
-goes against (`≠ brief "…" NOTES.md:11`).
+goes against (`≠ brief "…" NOTES.md:11`). For a `/gen file` request, `Alt-d` on a `? guessed` line of
+[`:Pair gen list`](gen.md#the-review-list-pair-gen-list) logs that guess as a decision in `decisions.md`, as for a
+decision of the note's.
 
 ## Keys and options
 

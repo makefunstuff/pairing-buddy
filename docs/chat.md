@@ -137,7 +137,9 @@ Anything you type that is not a command is a question for Pair; it is always ans
   it works.
 - "you take it" or "your turn" hands Pair the wheel, as `/drive` does ([Driver](driver.md)).
 - `/gen here <what>` asks Pair for code at your cursor in Neovim, `@here` in it over the lines you selected there
-  ([/gen](gen.md)). When the request's shape is a guess, or Pair asks something about it, the question waits in the
+  ([/gen](gen.md)). `/gen file <what>` asks for new files, which open in Neovim as buffers to review; the chat's
+  line about the request lists them, with the check on them and how to take them
+  ([gen.md](gen.md#new-files-gen-file)). When the request's shape is a guess, or Pair asks something about it, the question waits in the
   chat with what its answers do: `y` takes the guess or the answer given, `n` cancels or leaves it to Pair, and
   anything else you type is the answer. A request that contradicts its [brief](gen.md#the-brief) asks first: `y` as
   asked, `n` follows the brief, `e` opens the note at that line. `/brief` says what the brief is, `/brief <note>`

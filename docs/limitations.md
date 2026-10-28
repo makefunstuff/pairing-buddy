@@ -42,10 +42,11 @@ stay herdr's:
   again to ask) never guesses ([voice.md](voice.md#4-the-key)).
   [#55](https://github.com/makefunstuff/pairing-buddy/issues/55)
 
-- **/gen builds only `here`** in this version: `file`, `scaffold` and `try` are guessed and named, and say they are
+- **/gen builds `here` and `file`** in this version: `scaffold` and `try` are guessed and named, and say they are
   not built yet. Taken code has no mark of its own; the brief's checks cost one more answer of the Partner's model
-  each, before and after a request; `? guessed` lines are not logged as decisions yet; and a daemon restart stops a
-  running request and loses code it proposed that you did not take ([gen.md](gen.md#limits)).
+  each, before and after a request; `? guessed` lines are logged as decisions only from `:Pair gen list`; a daemon
+  restart stops a running request and loses code it proposed at your cursor that you did not take (new files to
+  review are kept); and a buffer to review gets no language server until you take it ([gen.md](gen.md#limits)).
 
 - **Who wrote a line is known only for the session's last 20 edits**, at the line numbers they were sent with, and
   not after a daemon restart: an older edit of Pair's, or one whose lines moved, counts as yours again

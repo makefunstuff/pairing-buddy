@@ -9,19 +9,23 @@
 // goes against the brief (≠ brief) and what it decided that nobody said (? guessed).
 //
 // One request runs at a time; others wait their turn. While one runs, Pair makes no remark nobody asked for, and the
-// user's questions in the chat still get answers, in the session's own conversation. This version builds one shape,
-// here (code at the cursor, or over the selection); the others are named, guessed and confirmed, but not built yet.
-import {relative} from 'node:path';
+// user's questions in the chat still get answers, in the session's own conversation. This version builds two shapes:
+// here (code at the cursor, or over the selection) and file (new files, as pair://gen/<n>/<path> buffers in Neovim
+// that :w in one writes to its real path). The others are named, guessed and confirmed, but not built yet. The
+// ledger keeps each proposed file's text, so Neovim gets its buffers again after a restart of either.
+import {dirname, join, relative} from 'node:path';
 import {
   briefEmpty, briefLine, briefText, CHECK_PROMPT, checkInput, CONFLICT_PROMPT, conflictInput, exceptionKey, parseCheck,
   parseConflict, quotePlace, readBrief,
 } from './brief.mjs';
 import {GEN_BRIEF, GEN_LIMITS} from './config.mjs';
-import {numberedLines, projectFile} from './files.mjs';
+import {logDecision, LOG_NAME} from './decision-log.mjs';
+import {draftPath, numberedLines, projectFile} from './files.mjs';
+import {gitFiles} from './git.mjs';
 import {startOfDay} from './ledger.mjs';
 
 export const SHAPES = ['here', 'file', 'scaffold', 'try'];
-const BUILT = new Set(['here']);
+const BUILT = new Set(['here', 'file']);
 /** What each shape makes, as the shape question lists it. */
 export const SHAPE_WHAT = {
   here: 'at the cursor, over a selection',
@@ -35,6 +39,9 @@ const AROUND = 30; // the request's input shows this many lines above and below 
 const SELECTED = 80; // and of a selection, at most this many
 const NOTE = /\.(md|markdown|txt)$/i;
 const SILENT = /^\W*silent\W*$/i;
+const REVIEW_DAYS = 7; // a file proposed and neither taken nor dropped is offered again for this long
+const DAY = 24 * 60 * 60 * 1000;
+const LISTED = 200; // a file request is told the names of this many of the project's files
 
 /** `/gen [shape] words`: the shape when its first word names one, and the words. */
 export function parseGen(text) {
@@ -68,6 +75,10 @@ export function guessShape(words, {selection = false, note = false} = {}) {
 }
 
 const plural = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`;
+const day = at => {
+  const date = new Date(at);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+};
 const lineCount = text => (text === '' ? 0 : text.replace(/\n$/, '').split('\n').length);
 
 /** The text of a finished turn's answer without SILENT, or ''. */
@@ -162,9 +173,9 @@ export class Gen {
       request.shape = shape;
     }
     if (!BUILT.has(request.shape)) {
-      return this.end(request, 'cancelled', `gen #${request.n}: /gen ${request.shape} (${SHAPE_WHAT[request.shape]}) is not built yet; this version has /gen here.`);
+      return this.end(request, 'cancelled', `gen #${request.n}: /gen ${request.shape} (${SHAPE_WHAT[request.shape]}) is not built yet; this version has /gen here and /gen file.`);
     }
-    if (!(await this.placeOf(request))) return;
+    if (request.shape === 'here' && !(await this.placeOf(request))) return;
     if (!(await this.against(request))) return;
     if (this.running) {
       this.queue.push(request);
@@ -274,11 +285,13 @@ export class Gen {
   async run(request) {
     const session = this.session;
     this.running = request;
-    const where = request.selection ? `${relative(this.root, request.file)}:${request.selection.from}-${request.selection.to}` : `${relative(this.root, request.file)}:${request.place.line}`;
+    const here = request.shape === 'here';
+    const where = !here ? null : request.selection ? `${relative(this.root, request.file)}:${request.selection.from}-${request.selection.to}` : `${relative(this.root, request.file)}:${request.place.line}`;
     const asAsked = request.asAsked && {key: exceptionKey(request.asAsked), source: request.asAsked.source, line: request.asAsked.line, text: request.asAsked.text};
     request.action = session.ledger.add('generated', `gen #${request.n} · ${request.shape} · ${request.words}`, {
       data: {
-        gen: request.n, shape: request.shape, place: {file: request.file, line: request.selection?.from ?? request.place.line}, note: `at ${where} · generating`, undo: true,
+        gen: request.n, shape: request.shape, ...(here ? {place: {file: request.file, line: request.selection?.from ?? request.place.line}} : {}),
+        note: here ? `at ${where} · generating` : 'generating', undo: true,
         ...(request.brief ? {brief: briefLine(request.brief)} : {}), ...(asAsked ? {asAsked} : {}),
       },
       detail: {words: request.words, pieces: []},
@@ -330,6 +343,7 @@ export class Gen {
 
   /** What the request's conversation is told: the request, where its code goes, the lines there and the goal. */
   async input(request) {
+    if (request.shape === 'file') return this.fileInput(request);
     const session = this.session;
     // Where the mark is now: the user may have typed above it since they asked, or while the request waited its turn.
     // Neovim counts how the code it proposes moves from here on.
@@ -361,6 +375,22 @@ export class Gen {
       : request.followBrief ? `\nWhere the request says ${request.followBrief.asked}, the user chose the brief: ${request.followBrief.says} ("${request.followBrief.text}").` : '';
     return `[gen] gen #${request.n}, here. The user asked: "${request.words}"\n${where}\n\n${name} as the editor has it:\n${shown}${brief}${chose}\n\n`
       + 'Read more of the project only if you need it. Then propose the code, and say in one or two sentences what you wrote and what you decided that the user did not say.';
+  }
+
+  /** What a file request's conversation is told: the request, the project's files, and the brief. */
+  async fileInput(request) {
+    const files = (await gitFiles(this.root)) ?? [];
+    const listed = files.length ? `The project's files${files.length > LISTED ? ` (the first ${LISTED} of ${files.length})` : ''}:\n${files.slice(0, LISTED).join('\n')}`
+      : 'read(".") lists the project.';
+    request.brief = await this.brief();
+    const brief = briefEmpty(request.brief) ? '' : `\n\n${briefText(request.brief)}`;
+    const chose = request.asAsked ? `\nThe user chose the request over the brief's "${request.asAsked.text}": do as asked there.`
+      : request.followBrief ? `\nWhere the request says ${request.followBrief.asked}, the user chose the brief: ${request.followBrief.says} ("${request.followBrief.text}").` : '';
+    return `[gen] gen #${request.n}, file. The user asked: "${request.words}"\n`
+      + 'Write each new file with draft(path, text): the user reviews it as an unsaved buffer and writes it, or not. Only new files: '
+      + 'for a change to a file that exists, read it and call propose there, which the user gets as a suggestion.\n\n'
+      + `${listed}${brief}${chose}\n\n`
+      + 'Read the files the new ones follow, so names, imports and style match. Then draft the files, and say in one or two sentences what you wrote and what you decided that the user did not say.';
   }
 
   /** A request ends: `state`, and the line the chat gets. */
@@ -410,17 +440,20 @@ export class Gen {
     }
     if (!request.pieces.length) {
       this.book(request, {note: 'nothing proposed', undo: false});
-      session.message('pair', `${n} · here · nothing proposed${said ? `: ${said}` : '.'}`, {gen: request.n});
+      session.message('pair', `${n} · ${request.shape} · nothing proposed${said ? `: ${said}` : '.'}`, {gen: request.n});
       return this.setState(request, 'done');
     }
     const lines = request.pieces.reduce((sum, piece) => sum + lineCount(piece.text), 0);
     const check = await this.checkBrief(request);
     if (['cancelled', 'undone'].includes(request.state)) return;
+    for (const item of check.contradicts) item.place = quotePlace(request.brief, item);
     request.check = check;
+    const debrief = this.checkLines(request, check);
+    request.debrief = debrief;
+    if (debrief.length && request.from === 'editor') this.session.notify('editor', {type: 'gen_debrief', gen: request.n, lines: debrief});
+    if (request.shape === 'file') return this.finishFiles(request, {said, debrief});
     const against = check.contradicts.length ? ` · ≠${check.contradicts.length}` : '';
     this.book(request, {note: `${plural(lines, 'line')} proposed${against}`});
-    const debrief = this.checkLines(request, check);
-    if (debrief.length && request.from === 'editor') this.session.notify('editor', {type: 'gen_debrief', gen: request.n, lines: debrief});
     // The chat shows the first piece as a diff, which `a` there takes in Neovim as Alt-y does.
     const [first] = request.pieces;
     const meta = {gen: request.n, place: {file: relative(this.root, first.file), line: first.line}, suggestion: {action: request.action, old: first.old, new: first.text.split('\n')}};
@@ -430,6 +463,54 @@ export class Gen {
     if (request.pieces.some(piece => piece.state === 'proposed')) this.setState(request, 'ready');
   }
 
+  /**
+   * A file request's model is done: its new files go to Neovim as buffers to review, loaded but not opened, and are
+   * checked there as unsaved buffers at their real paths. Changes it proposed to files that exist show as suggestions,
+   * as for here.
+   */
+  async finishFiles(request, {said, debrief}) {
+    const session = this.session;
+    const files = request.pieces.filter(piece => piece.kind === 'file');
+    const changes = request.pieces.filter(piece => piece.kind !== 'file');
+    const shown = files.length ? await this.showFiles(request.action, request.n, files) : false;
+    const check = files.length ? await session.checkGenerated(files.map(piece => piece.file), new Map(files.map(piece => [piece.file, `${piece.text}\n`]))) : null;
+    if (['cancelled', 'undone'].includes(request.state)) return;
+    const against = request.check.contradicts.length ? ` · ≠${request.check.contradicts.length}` : '';
+    const what = [files.length ? `${plural(files.length, 'file')} to review` : '', changes.length ? plural(changes.length, 'change') : ''].filter(Boolean).join(' · ');
+    this.book(request, {note: `${what}${against}`, ...(check ? {check: {label: check.label, mark: check.mark, text: check.text}} : {})});
+    const names = files.map(piece => `${relative(this.root, piece.file)} +${lineCount(piece.text)}`);
+    const lines = [
+      `gen #${request.n} · file · ${files.length ? `${plural(files.length, 'new file')} to review: ${names.join(', ')}` : 'no new file'}${said ? `: ${said}` : ''}`,
+      ...(changes.length ? [`${plural(changes.length, 'change')} to files you have, as suggestions there: ${changes.map(piece => this.placeText(piece)).join(', ')}`] : []),
+      ...(check ? [`${check.mark === 'pass' ? '✓' : '✗'} \`${check.label}\` on the unsaved buffers: ${check.text}`] : []),
+      ...debrief,
+      ...(!files.length ? [] : shown ? ['In Neovim, :w in one writes it to its path; :Pair gen list lists them.'] : ['No Neovim shows them now: they open there as buffers once one connects.']),
+    ];
+    session.message('pair', lines.join('\n'), {gen: request.n});
+    if (request.pieces.some(piece => piece.state === 'proposed')) this.setState(request, 'ready');
+  }
+
+  /** What Neovim gets to make buffers of the proposed `files` of request `n` (ledger entry `action`). */
+  filesMessage(action, n, files, contradicts = []) {
+    return {
+      type: 'gen_files', gen: n, action,
+      files: files.map(piece => ({
+        piece: piece.i, file: piece.file, name: relative(this.root, piece.file), text: piece.text, note: piece.note ?? '',
+        marks: contradicts.filter(item => item.file === piece.file).map(item => ({line: item.fileLine, text: [`≠ brief "${item.text}"`, item.place, `· ${item.why}`].filter(Boolean).join(' ')})),
+      })),
+    };
+  }
+
+  /**
+   * Sends the proposed `files` of request `n` (ledger entry `action`) to the Neovim the user works in, as buffers,
+   * with what the debrief found against the brief in them; false without a Neovim.
+   */
+  async showFiles(action, n, files) {
+    const contradicts = this.requests.get(n)?.check?.contradicts ?? this.session.store.action(action)?.detail?.contradicts ?? [];
+    const reply = await this.session.requestEditor(this.filesMessage(action, n, files, contradicts)).catch(() => null);
+    return reply?.ok === true;
+  }
+
   placeText(piece) {
     return `${relative(this.root, piece.file)}:${piece.line}`;
   }
@@ -437,9 +518,26 @@ export class Gen {
   /** Writes the request's ledger entry anew: `data` merged, and its pieces as they are now. */
   book(request, data = {}) {
     if (!request.action) return;
-    const pieces = request.pieces.map(({i, file, line, endLine, insert, text, note, state, patch, from, to}) => ({i, file, line, endLine, insert, text, note, state, patch, from, to}));
-    const check = request.check ? {contradicts: request.check.contradicts, guessed: request.check.guessed} : {};
+    const pieces = request.pieces.map(({i, kind, file, line, endLine, insert, text, note, state, patch, from, to, written}) => ({i, kind, file, line, endLine, insert, text, note, state, patch, from, to, written}));
+    const check = request.check ? {contradicts: request.check.contradicts, guessed: request.check.guessed, debrief: request.debrief ?? []} : {};
     this.session.ledger.update(request.action, {data, detail: {words: request.words, pieces, ...check}});
+  }
+
+  /**
+   * The request booked as ledger entry `action`: `{entry, request, pieces}`, `request` while this daemon runs it, and
+   * its pieces as it has them, else as the ledger does (a request of a daemon before a restart).
+   */
+  piecesOf(action) {
+    const entry = this.session.store.action(action);
+    const live = entry?.kind === 'generated' ? this.requests.get(entry.data?.gen) : null;
+    const request = live?.action === action ? live : null;
+    return {entry, request, pieces: request?.pieces ?? entry?.detail?.pieces ?? []};
+  }
+
+  /** Books `data` on ledger entry `action` with its pieces as they are now. */
+  rebook(action, {entry, request, pieces}, data) {
+    if (request) return this.book(request, data);
+    this.session.ledger.update(action, {data, detail: {...(entry.detail ?? {}), pieces}});
   }
 
   /**
@@ -567,6 +665,7 @@ export class Gen {
       return session.search(args, {gen: true}).catch(error => `Not searched: ${error.message}`);
     }
     if (name === 'propose') return this.propose(request, args);
+    if (name === 'draft') return this.draft(request, args);
     if (name === 'ask') return this.ask(request, args);
     return `Pair has no tool "${name}" in a /gen request.`;
   }
@@ -583,7 +682,7 @@ export class Gen {
     const session = this.session;
     const path = await projectFile(this.root, file);
     if (!path) return `No file ${file} in the project`;
-    if (path !== request.file) return `This request is /gen here in ${relative(this.root, request.file)}: propose there.`;
+    if (request.shape === 'here' && path !== request.file) return `This request is /gen here in ${relative(this.root, request.file)}: propose there.`;
     if (endLine < line) return `end_line ${endLine} is before line ${line}`;
     const buffer = (await session.bufferText(path)).split('\n');
     const count = buffer.length;
@@ -601,6 +700,27 @@ export class Gen {
     this.due.push(piece);
     this.showDue();
     return `Shown at ${file}:${line} as ghost lines, at the user's next pause in typing. They take it with one key, or not; nothing changes until then.`;
+  }
+
+  /** A new file for a file request: it goes to Neovim as a buffer to review once the model is done. */
+  async draft(request, {path, text, note}) {
+    if (request.shape !== 'file') return `This request is /gen ${request.shape}: draft makes new files only in a /gen file request. Call propose.`;
+    const at = await draftPath(this.root, path);
+    if (!at) return `Cannot draft ${path}: not a path inside the project.`;
+    const name = relative(this.root, at.path);
+    if (at.exists) return `${name} exists already, and draft makes new files only. To change it, read it and call propose there: the user gets that as a suggestion.`;
+    const body = text.replace(/\n$/, '');
+    const lines = lineCount(body);
+    if (!lines) return 'draft needs the file: text has no lines.';
+    const old = request.pieces.find(piece => piece.kind === 'file' && piece.file === at.path);
+    if (request.lines - (old ? lineCount(old.text) : 0) + lines > request.limits.lines) return `That is more than ${request.limits.lines} lines for this request (gen.limits.lines): draft less, or say what is left.`;
+    if (!request.files.has(at.path) && request.files.size >= request.limits.files) return `That is ${request.limits.files} files for this request (gen.limits.files).`;
+    request.lines += lines - (old ? lineCount(old.text) : 0);
+    request.files.add(at.path);
+    if (old) Object.assign(old, {text: body, note, endLine: lines});
+    else request.pieces.push({i: request.pieces.length, n: request.n, kind: 'file', file: at.path, line: 1, endLine: lines, insert: false, text: body, note, state: 'proposed'});
+    this.book(request);
+    return `Drafted ${name}${old ? ' anew' : ''}, ${plural(lines, 'line')}. Once you are done, the user reviews it as an unsaved buffer and writes it to ${name}, or not.`;
   }
 
   /** Shows the pieces that wait, once the user pauses typing: like an unasked remark, they never land mid-thought. */
@@ -647,28 +767,54 @@ export class Gen {
     session.message('system', `gen #${n}: ${plural(lines, 'line')} taken into ${relative(this.root, piece.file)}, unsaved${check ? `; \`${check.label}\` on the unsaved buffer: ${check.text}` : ''}. /undo takes back the request.`);
   }
 
-  /** The user dismissed piece `i` (or edited its lines): it is dropped, not taken. */
+  /**
+   * The user wrote piece `i`, a proposed file, to its path (:w in its buffer, w in :Pair gen list), as `text`: it is
+   * taken. It is an ordinary file of theirs from then on; /undo of the request deletes it while it is as written.
+   */
+  fileTaken(action, i, text) {
+    const found = this.piecesOf(action);
+    const piece = found.pieces[i];
+    if (!piece || piece.kind !== 'file' || piece.state !== 'proposed') return;
+    piece.state = 'taken';
+    piece.written = typeof text === 'string' ? text : `${piece.text}\n`;
+    const files = found.pieces.filter(one => one.kind === 'file');
+    const taken = files.filter(one => one.state === 'taken').length;
+    this.rebook(action, found, {note: `${taken} of ${plural(files.length, 'file')} taken`, undo: true});
+    this.session.ledger.update(action, {state: 'applied'});
+    this.session.notify('chat', {type: 'applied', action});
+    const left = files.filter(one => one.state === 'proposed').length;
+    this.session.message('system', `gen #${found.entry.data.gen}: ${relative(this.root, piece.file)} written, taken${left ? `; ${left} more to review` : ''}. /undo takes back the request.`);
+    this.settle(found);
+  }
+
+  /** A live request with nothing left to take is done. */
+  settle({request, pieces}) {
+    if (request && !pieces.some(one => one.state === 'proposed') && ['ready', 'done'].includes(request.state)) this.setState(request, 'done');
+  }
+
+  /** The user dismissed piece `i` (or edited its lines), or dropped a proposed file: it is dropped, not taken. */
   dropped(action, i) {
-    const entry = this.session.store.action(action);
-    const request = this.requests.get(entry?.data?.gen);
-    const piece = request?.pieces[i];
+    const found = this.piecesOf(action);
+    const piece = found.pieces[i];
     if (!piece || piece.state !== 'proposed') return;
     piece.state = 'dropped';
-    const taken = request.pieces.some(one => one.state === 'taken');
-    const showing = request.pieces.some(one => one.state === 'proposed');
-    this.book(request, {note: `${request.pieces.filter(one => one.state === 'dropped').length} dropped`, undo: taken || showing});
-    if (!showing && request.state === 'ready') this.setState(request, 'done');
+    const taken = found.pieces.some(one => one.state === 'taken');
+    const showing = found.pieces.some(one => one.state === 'proposed');
+    this.rebook(action, found, {note: `${found.pieces.filter(one => one.state === 'dropped').length} dropped`, undo: taken || showing});
+    if (piece.kind === 'file') this.session.message('system', `gen #${found.entry.data.gen}: ${relative(this.root, piece.file)} dropped.`);
+    this.settle(found);
   }
 
   /**
    * /undo of the request booked as ledger entry `action`: it stops if it still runs, what it proposed and was not taken
-   * goes, and what was taken is undone, newest first, merged into the buffers as they are now. Once undone, again makes
-   * what was taken again.
+   * goes, and what was taken is undone, newest first: code merged out of the buffers as they are now, a file written
+   * from it deleted while it is as written. Once undone, again makes the code taken again, and the files proposals to
+   * review again.
    */
   async undo(action) {
     const session = this.session;
     const n = action.data.gen;
-    const request = this.requests.get(n);
+    const request = this.requests.get(n)?.action === action.id ? this.requests.get(n) : null;
     const pieces = request?.pieces ?? action.detail?.pieces ?? [];
     const undone = action.state === 'undone';
     if (!undone && request) this.stop(request, 'undone');
@@ -681,21 +827,101 @@ export class Gen {
       if (reply?.error) failed.push(`${relative(this.root, piece.file)}: ${reply.error}`);
       else piece.state = undone ? 'taken' : 'undone';
     }
+    const files = pieces.filter(piece => piece.kind === 'file' && piece.state === (undone ? 'undone' : 'taken'));
+    for (const piece of files) {
+      if (undone) {
+        piece.state = 'proposed';
+        continue;
+      }
+      const reply = await session.requestEditor({type: 'gen_unwrite', file: piece.file, text: piece.written}).catch(error => ({error: error.message}));
+      if (reply?.error) failed.push(`${relative(this.root, piece.file)}: ${reply.error}`);
+      else piece.state = 'undone';
+    }
     for (const piece of pieces) if (!undone && piece.state === 'proposed') piece.state = 'dropped';
-    const back = taken.length - failed.length;
+    const again = undone ? files : [];
+    const back = taken.length + files.length - failed.length;
     const left = pieces.filter(piece => piece.state === (undone ? 'undone' : 'taken')).length;
     const state = undone ? (back ? 'applied' : 'undone') : left ? 'applied' : 'undone';
     session.ledger.update(action.id, {state, data: {undo: true}, detail: {...(action.detail ?? {}), pieces: pieces.map(({n: _n, ...piece}) => piece)}});
+    if (again.length) {
+      if (request) this.setState(request, 'ready');
+      await this.showFiles(action.id, n, again);
+    }
+    const deleted = files.filter(piece => piece.state === 'undone').length;
     const what = undone ? `Made gen #${n} again: ${plural(back, 'piece')}`
       : back ? `Undid gen #${n}: took back ${plural(back, 'piece')}`
-        : taken.length ? `Could not undo gen #${n}` : `Undid gen #${n}: nothing was taken`;
-    session.message('system', `${what}${back ? ', unsaved' : ''}.${failed.length ? ` Not changed: ${failed.join('; ')}.` : ''}`);
+        : taken.length + files.length ? `Could not undo gen #${n}` : `Undid gen #${n}: nothing was taken`;
+    const how = undone ? [taken.length ? 'unsaved' : '', again.length ? `${plural(again.length, 'file')} to review again` : ''].filter(Boolean).join('; ')
+      : [back - deleted ? 'unsaved' : '', deleted ? `${plural(deleted, 'file')} you wrote from it deleted` : ''].filter(Boolean).join('; ');
+    session.message('system', `${what}${how ? `, ${how}` : ''}.${failed.length ? ` Not changed: ${failed.join('; ')}.` : ''}`);
+  }
+
+  /**
+   * The file requests of the last REVIEW_DAYS days, newest first, as :Pair gen list shows them: each file, with its
+   * text while it is still to review, so Neovim can open it again after either of them restarted.
+   */
+  review() {
+    const {store} = this.session;
+    const rows = store.actions(this.root, this.session.now() - REVIEW_DAYS * DAY).filter(row => row.kind === 'generated' && row.data?.shape === 'file');
+    const requests = rows.reverse().map(row => {
+      const entry = store.action(row.id);
+      const pieces = entry.detail?.pieces ?? [];
+      const live = this.requests.get(row.data.gen);
+      return {
+        action: row.id, gen: row.data.gen, words: entry.detail?.words ?? row.text, at: row.at, state: row.state, note: row.data.note ?? '',
+        running: Boolean(live?.action === row.id && ['asking', 'asks', 'queued', 'generating'].includes(live.state)),
+        brief: row.data.brief ?? null, check: row.data.check ?? null,
+        files: pieces.filter(piece => piece.kind === 'file').map(piece => ({
+          piece: piece.i, file: piece.file, name: relative(this.root, piece.file), lines: lineCount(piece.text), state: piece.state, note: piece.note ?? '',
+          ...(piece.state === 'proposed' ? {text: piece.text} : {}),
+        })),
+        changes: pieces.filter(piece => piece.kind !== 'file').map(piece => ({name: relative(this.root, piece.file), line: piece.line, state: piece.state})),
+        contradicts: (entry.detail?.debrief ?? []).filter(line => line.startsWith('≠')),
+        guessed: entry.detail?.guessed ?? [],
+      };
+    });
+    return {type: 'gen_review', requests};
+  }
+
+  /**
+   * What a Neovim that connects gets to make buffers of the files still to review: it may have restarted, or not
+   * have them at all. One that has them keeps its own, with what the user changed in them.
+   */
+  reopen() {
+    return this.review().requests.filter(request => !request.running && request.files.some(file => file.state === 'proposed')).map(request => {
+      const {detail} = this.session.store.action(request.action);
+      const proposed = detail.pieces.filter(piece => piece.kind === 'file' && piece.state === 'proposed');
+      return {...this.filesMessage(request.action, request.gen, proposed, detail.contradicts ?? []), reopen: true};
+    });
+  }
+
+  /**
+   * Alt-d on `? guessed` line `i` of the request booked as `action`, in :Pair gen list: the guess is logged as a
+   * decision in decisions.md next to the brief's note (else at the project root), in the buffer, which the user saves.
+   */
+  async decide(action, i) {
+    const session = this.session;
+    const entry = session.store.action(action);
+    const guess = entry?.kind === 'generated' && entry.detail?.guessed?.[i];
+    if (!guess) return;
+    const brief = await this.brief();
+    const logPath = join(brief.note?.path ? dirname(brief.note.path) : this.root, LOG_NAME);
+    const [first] = entry.detail.pieces ?? [];
+    const decision = guess.charAt(0).toUpperCase() + guess.slice(1);
+    const result = logDecision(await session.bufferText(logPath).catch(() => ''), {
+      date: day(session.now()), text: decision, file: first ? relative(this.root, first.file) : relative(this.root, logPath), line: first?.line ?? 1, section: null,
+      asked: `gen #${entry.data.gen}: ${entry.detail.words ?? entry.text}`,
+    });
+    const name = relative(this.root, logPath);
+    if (!result) return session.message('system', `That decision is in ${name} already.`);
+    session.notify('editor', {type: 'decision_log', file: logPath, text: result.text, line: result.line, name});
+    session.message('system', `Logged in ${name}: ${decision}. Save it to keep it.`);
   }
 
   /** What /gen alone shows: today's requests in this project, one line each. */
   list() {
     const rows = this.session.store.actions(this.root, startOfDay(this.session.now())).filter(action => action.kind === 'generated');
-    if (!rows.length) return this.session.message('system', 'No /gen requests here today. /gen here <what> asks for code at your cursor in Neovim.');
+    if (!rows.length) return this.session.message('system', 'No /gen requests here today. /gen here <what> asks for code at your cursor in Neovim; /gen file <what> for new files.');
     const lines = rows.map(row => `${new Date(row.at).toTimeString().slice(0, 5)}  ${row.text}${row.data?.note ? ` · ${row.data.note}` : ''}${row.state === 'undone' ? ' (undone)' : ''}`);
     this.session.message('system', `${lines.join('\n')}\n/undo takes back the last one; u in :Pair today any of them.`);
   }

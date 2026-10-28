@@ -1,6 +1,6 @@
 // Read-only access to the project's files for the `read` tool, confined to the project root.
 import {readdir, readFile, realpath, stat} from 'node:fs/promises';
-import {basename, dirname, isAbsolute, join, relative, resolve} from 'node:path';
+import {basename, dirname, isAbsolute, join, relative, resolve, sep} from 'node:path';
 
 export const MAX_LINES = 300; // of a file, read shows this many lines at most
 const MAX_ENTRIES = 200;
@@ -26,6 +26,23 @@ export async function newProjectFile(root, file) {
   if (!folder) return null;
   const path = join(folder, basename(file));
   return (await stat(path).catch(() => null)) ? null : path;
+}
+
+/**
+ * Where a new file at `file` would go inside `root`, its folders new or not: `{path, exists}`, `exists` when a file
+ * or folder is there already. Null outside the root (symlinks resolved), at the root itself, or in .git.
+ */
+export async function draftPath(root, file) {
+  const realRoot = await realpath(root);
+  const wanted = resolve(realRoot, file);
+  const rel = relative(realRoot, wanted);
+  if (!rel || rel.startsWith('..') || isAbsolute(rel) || rel.split(sep).includes('.git')) return null;
+  let folder = dirname(wanted);
+  while (!(await stat(folder).catch(() => null))) folder = dirname(folder);
+  const real = await insideRoot(realRoot, folder);
+  if (!real) return null;
+  const path = join(real, relative(folder, wanted));
+  return {path, exists: Boolean(await stat(path).catch(() => null))};
 }
 
 /** Lines `from`..`to` (1-based, inclusive) with line numbers, at most MAX_LINES of them. */
