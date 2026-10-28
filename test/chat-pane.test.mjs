@@ -138,6 +138,26 @@ test('typing: / opens the commands, Tab completes, Up brings back what you sent,
   }
 });
 
+test('the header follows the talk level: /quiet, /level and Alt-L, which goes on from the level now', {timeout: 20_000}, async () => {
+  const t = await setUp();
+  const level = () => / navigator · (\w+) $/m.exec(t.text())?.[1];
+  try {
+    await t.shows('What are we doing');
+    await t.type('later\r');
+    await t.shows('No goal then.');
+    await t.type('/quiet\r');
+    await t.shows(/ navigator · quiet $/m);
+    for (const next of ['normal', 'chatty', 'quiet', 'normal']) {
+      await t.type('\x1bl'); // Alt-L
+      await t.shows(new RegExp(` navigator · ${next} $`, 'm'), `the level ${next} after ${level()}`);
+    }
+    await t.type('/level chatty\r');
+    await t.shows(/ navigator · chatty $/m);
+  } finally {
+    await t.close();
+  }
+});
+
 test('? shows every key, any key closes it; Ctrl-C twice on an empty line closes the pane', {timeout: 20_000}, async () => {
   const t = await setUp();
   try {
@@ -254,5 +274,32 @@ test('the Partner streams the answer\'s text and says what the turn used', async
     assert.ok(usage.tokens > 0);
   } finally {
     await partner.close();
+  }
+});
+
+test('a streamed answer never loses its start: each text streamed is the start of the answer, from its first word', async () => {
+  const hands = {...Object.fromEntries(ROLE_TOOLS.driver.map(name => [name, async () => 'ok'])), roleOf: () => 'navigator'};
+  const answers = [
+    '# Heading\n\nThe lease ends **too early**, so a second worker takes the job.',
+    'This answer is slow. This answer is slow on purpose, word by word.',
+    'Short.',
+  ];
+  for (const tokensPerSecond of [40, 120, 400]) {
+    const faux = fauxProvider({tokensPerSecond});
+    const models = createModels();
+    models.setProvider(faux.provider);
+    const partner = await openPartner({storage: new MemoryStorage(), models, model: faux.getModel(), hands});
+    try {
+      const id = await partner.createConversation();
+      for (const answer of answers) {
+        faux.setResponses([fauxAssistantMessage([fauxText(answer)])]);
+        const texts = [];
+        assert.equal(await partner.ask(id, '[user] go', {onEvent: event => event.type === 'text' && texts.push(event.text)}), answer);
+        assert.ok(texts.length > 0, `${tokensPerSecond} tok/s: something streamed for "${answer}"`);
+        for (const text of texts) assert.ok(answer.startsWith(text), `${tokensPerSecond} tok/s: "${text}" is not the start of "${answer}"`);
+      }
+    } finally {
+      await partner.close();
+    }
   }
 });

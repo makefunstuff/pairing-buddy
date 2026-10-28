@@ -3,7 +3,8 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {LineEditor} from '../src/chat-input.mjs';
-import {bodyLines, dedent, footerKeys, markdownLines, renderFrame, statusLine, transcriptLines} from '../src/chat-render.mjs';
+import {bodyLines, dedent, footerKeys, helpLines, markdownLines, renderFrame, statusLine, transcriptLines} from '../src/chat-render.mjs';
+import {COMMANDS} from '../src/chat.mjs';
 import {paintLine, textWidth} from '../src/chat-style.mjs';
 
 const plain = lines => lines.map(line => line.map(seg => seg.text).join(''));
@@ -144,4 +145,19 @@ test('the frame: header, conversation, status, input and footer, exactly the pan
   const painted = renderFrame(view, {width: 60, height: 12, look: {color: true, accent: '#7fd1b9'}});
   assert.match(painted.lines[0], /\x1b\[38;2;127;209;185m\x1b\[1m pair/, 'Pair\'s name in the editor\'s accent');
   assert.equal(paintLine([{text: 'x', style: 'add'}], {color: false}), 'x');
+});
+
+test('the help: each key and command, then what it does, never run together', () => {
+  const lines = plain(helpLines(COMMANDS, 80)).filter(line => line.startsWith('  '));
+  assert.ok(lines.length > COMMANDS.length);
+  for (const line of lines) assert.match(line, /^.{14} \S/, line); // the column, then a space, then the words
+  assert.ok(lines.some(line => /^ {2}\/drive +hand Pair the wheel/.test(line)));
+  assert.ok(lines.some(line => /^ {2}\/goal <text> +set the session goal/.test(line)));
+});
+
+test('Markdown inline: _italic_ and *italic*, [links](url) as words and address; snake_case and 2*3*4 stay as written', () => {
+  const styled = text => markdownLines(text, 80)[0].filter(seg => seg.text.trim()).map(seg => [seg.text, seg.style]);
+  assert.deepEqual(styled('an _ital_ and *also* word').map(([text, style]) => `${text}:${style}`), ['an:text', 'ital:italic', 'and:text', 'also:italic', 'word:text']);
+  assert.deepEqual(styled('see [the docs](http://x.y/z) now').map(([text, style]) => `${text}:${style}`), ['see:text', 'the:under', 'docs:under', '(http://x.y/z):dim', 'now:text']);
+  assert.deepEqual(plain(markdownLines('a trigger_kind and 2*3*4', 80)), ['a trigger_kind and 2*3*4']);
 });

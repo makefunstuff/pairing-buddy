@@ -60,16 +60,31 @@ async function relayEvents(harness, conversationId, onEvent) {
   if (!stream) return null;
   const before = totalUsage(stream.snapshot.usage);
   let after = before;
+  // The text of each content block of the message in flight, by index; null for a tool call or thinking. A message
+  // starts with what it already has, and its updates add to a block, start one, or replace a block or all of them.
+  let blocks = [];
   let text = '';
+  const textOf = block => (block?.type === 'text' ? block.text ?? '' : null);
+  const changed = () => {
+    const now = blocks.filter(block => typeof block === 'string').join('');
+    if (now === text) return;
+    text = now;
+    onEvent({type: 'text', text});
+  };
   stream.start(async events => {
     for (const event of events) {
-      if (event.type === 'message_start' && event.message?.role === 'assistant') text = '';
       if (event.type === 'usage_changed') after = totalUsage(event.usage);
+      if (event.type === 'message_start' && event.message?.role === 'assistant') {
+        blocks = (Array.isArray(event.message.content) ? event.message.content : []).map(textOf);
+        changed();
+      }
       if (event.type !== 'message_update') continue;
-      const delta = event.changes.filter(change => change.type === 'text_delta').map(change => change.delta).join('');
-      if (!delta) continue;
-      text += delta;
-      onEvent({type: 'text', text});
+      for (const change of event.changes) {
+        if (change.type === 'message') blocks = (change.message?.content ?? []).map(textOf);
+        else if (change.type === 'text_delta') blocks[change.contentIndex] = (blocks[change.contentIndex] ?? '') + change.delta;
+        else if (['text_start', 'thinking_start', 'toolcall_start', 'block'].includes(change.type)) blocks[change.contentIndex] = textOf(change.block);
+      }
+      changed();
     }
   });
   return async () => {

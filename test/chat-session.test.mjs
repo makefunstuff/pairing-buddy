@@ -196,3 +196,19 @@ test('what a tool does, in a few words; streamed text shows once it cannot be SI
   for (const text of ['', ' ', 'S', 'SILEN', 'SILENT', 'silent.', 'ok <tool_call>{']) assert.equal(streamable(text), false, text);
   for (const text of ['Sure', 'The lease', 'SILENTLY? no']) assert.equal(streamable(text), true, text);
 });
+
+test('a new talk level reaches the chat pane\'s header', () => {
+  const {pair, sent} = pairSession();
+  pair.setLevel('quiet');
+  assert.deepEqual(chat(sent).find(message => message.type === 'level'), {via: 'chat', type: 'level', level: 'quiet'});
+});
+
+test('a command Pair asks to run gets its tool line only once it ran, and none when you decline', async () => {
+  const {pair, sent} = pairSession([], {partner: {}});
+  pair.run = async ({command}) => (command === 'rm x' ? 'The user did not allow it. Do not run it another way.' : 'exit 0');
+  pair.busy = true;
+  await pair.useTool('run', {command: 'rm x'});
+  assert.ok(!chat(sent).some(message => message.type === 'tool'), 'declined: no line');
+  await pair.useTool('run', {command: 'make'});
+  assert.deepEqual(chat(sent).filter(message => message.type === 'tool').map(message => message.what), ['make']);
+});

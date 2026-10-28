@@ -423,6 +423,9 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
       case 'goal':
         state.header.goal = message.goal;
         break;
+      case 'level':
+        state.header.level = message.level;
+        break;
       case 'muted':
         state.header.muted = message.kinds ?? [];
         break;

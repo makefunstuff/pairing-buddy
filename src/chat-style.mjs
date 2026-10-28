@@ -95,6 +95,8 @@ export const STYLES = {
   plain: [],
   text: [],
   bold: ['bold'],
+  italic: ['italic'],
+  under: ['under'],
   dim: ['dim'],
   accent: ['accent'],
   accentBold: ['accent', 'bold'],

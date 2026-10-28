@@ -339,7 +339,9 @@ replayed unedited; the point's note too.*
 ![The idea under the remark, and the key that opens its link](images/teach.png)
 
 It works on any words of Pair's under your line: a remark, or the hand-back line after the Driver's edit. In the
-chat, `?` or `/why` asks about what Pair said last. Asking about a remark counts as having seen it.
+chat, `/why` asks about what Pair said last (`?` and Enter in the [plain pane](chat.md#the-plain-pane); in the
+full-screen pane `?` shows the keys), and `e` on a picked remark asks about that one. Asking about a remark counts as
+having seen it.
 
 ## The ledger
 

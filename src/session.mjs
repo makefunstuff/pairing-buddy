@@ -126,6 +126,7 @@ const MAX_EDITS = 5; // per hand-over: a change in a few places, still small eno
 
 const CONFIRM_MS = 60_000;
 const UNDO_LOOKBACK_MS = 24 * 60 * 60_000; // /undo finds Pair's last change of the last day
+const ASKING_TOOLS = new Set(['run', 'type']); // tools that may ask the user before they do anything
 
 /**
  * What a tool call of the Partner's is about, for the chat pane's status row and its tool lines: the file and lines
@@ -997,13 +998,16 @@ export class PairSession {
   async useTool(name, args) {
     this.showThinking(false);
     // The chat pane shows what the tool does: in its status row, and for a question asked, as a line in the answer.
+    // A tool that asks first (run, type) gets its line once it ran, and none when the user said no.
     const what = toolWhat(name, args);
-    if (what !== null) {
-      this.activity('tool', {tool: name, what});
-      if (!this.unasked) this.notify('chat', {type: 'tool', tool: name, what, at: this.now()});
-    }
+    const line = () => what !== null && !this.unasked && this.notify('chat', {type: 'tool', tool: name, what, at: this.now()});
+    const asks = ASKING_TOOLS.has(name);
+    if (what !== null) this.activity('tool', {tool: name, what});
+    if (!asks) line();
     try {
-      return await this[name](args);
+      const result = await this[name](args);
+      if (asks && !/did not allow/.test(String(result))) line();
+      return result;
     } finally {
       if (this.busy) {
         this.showThinking(true);
@@ -1043,6 +1047,7 @@ export class PairSession {
   setLevel(level) {
     this.budget.setLevel(level);
     this.store.setLevel(this.id, level);
+    this.notify('chat', {type: 'level', level}); // the chat pane's header
     this.message('system', `Talk level: ${level}`);
   }
 

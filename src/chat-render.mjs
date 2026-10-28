@@ -46,17 +46,22 @@ export function duration(ms) {
 /** The inline tokens of one line of Markdown: words, `code` spans and **bold**, each with the spaces before it. */
 export function inlineTokens(line, base = 'text', {markdown = true} = {}) {
   const out = [];
-  const pattern = markdown ? /(\s*)(?:(`+)([^`]+?)\2|\*\*([^*]+?)\*\*|(\S+))/g : /(\s*)(\S+)/g;
-  for (const match of line.matchAll(pattern)) {
-    const space = match[1];
-    if (!markdown) {
-      out.push({space, text: match[2], style: base});
-      continue;
-    }
-    const [, , , code, bold, word] = match;
+  const words = (text, style, space) => text.trim().split(/\s+/).forEach((part, i) => out.push({space: i === 0 ? space : ' ', text: part, style}));
+  if (!markdown) {
+    for (const [, space, word] of line.matchAll(/(\s*)(\S+)/g)) out.push({space, text: word, style: base});
+    return out;
+  }
+  // `code`, **bold**, *italic* or _italic_ (not inside a word: snake_case stays), a [link](url) as its words and the
+  // address, dim; anything else word by word.
+  const pattern = /(?<space>\s*)(?:(?<ticks>`+)(?<code>[^`]+?)\k<ticks>|\*\*(?<bold>[^*]+?)\*\*|(?<![\w*])[*_](?![\s*_])(?<italic>[^*_]+?)(?<!\s)[*_](?![\w*])|\[(?<label>[^\]]+)\]\((?<url>[^)\s]+)\)|(?<word>\S+))/g;
+  for (const {groups: {space, code, bold, italic, label, url, word}} of line.matchAll(pattern)) {
     if (code !== undefined) out.push({space, text: code, style: 'code'});
-    else if (bold !== undefined) bold.trim().split(/\s+/).forEach((part, i) => out.push({space: i === 0 ? space : ' ', text: part, style: 'bold'}));
-    else out.push({space, text: word, style: base});
+    else if (bold !== undefined) words(bold, 'bold', space);
+    else if (italic !== undefined) words(italic, 'italic', space);
+    else if (label !== undefined) {
+      words(label, 'under', space);
+      out.push({space: ' ', text: `(${url})`, style: 'dim'});
+    } else out.push({space, text: word, style: base});
   }
   return out;
 }
@@ -489,13 +494,15 @@ export function helpLines(commands, width) {
     ['Alt-M', 'mouse on or off (off: select text with it)'],
     ['Ctrl-C', 'stop, or clear; twice on an empty line: close'],
   ];
+  // The left column is 15 wide, with at least one space after what it names: a command too long for it goes without its arguments.
   const two = (left, right, leftStyle = 'bold') => wrapTokens(inlineTokens(right, 'dim', {markdown: false}), width, [seg(`  ${left}`.padEnd(15), leftStyle)], [seg(' '.repeat(15))]);
+  const label = (name, args) => (args && name.length + args.length + 1 <= 12 ? `${name} ${args}` : name);
   return [
     [seg(' Keys', 'accentBold')],
     ...keys.flatMap(([left, right]) => two(left, right)),
     blank(),
     [seg(' Commands', 'accentBold'), seg(' · anything else is a question for Pair', 'dim')],
-    ...commands.flatMap(([name, args, what]) => two(`${name}${args ? ` ${args}` : ''}`.length > 13 ? name : `${name}${args ? ` ${args}` : ''}`, what)),
+    ...commands.flatMap(([name, args, what]) => two(label(name, args), what)),
   ].map(line => clipLine(line, width));
 }
 

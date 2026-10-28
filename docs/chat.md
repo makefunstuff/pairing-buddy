@@ -29,8 +29,9 @@ From the top:
   | `!!` | An error, such as a model that does not answer, with what to check |
   | `?` | Pair asks before it runs or types a command: `y` allows it, `n` declines |
 
-  Pair's words are Markdown: `code` shows in Pair's accent, **bold** as bold, lists with a hanging indent, code
-  blocks behind a bar, not re-wrapped. A message longer than 18 lines folds to its first 12.
+  Pair's words are Markdown: `code` shows in Pair's accent, **bold** as bold, _italics_ in italics, a link as its
+  words with the address after them, lists with a hanging indent, headings, quotes, and code blocks behind a bar, not
+  re-wrapped. A table shows as written. A message longer than 18 lines folds to its first 12.
 - **The status row**: what Pair does now. The answer streams into the conversation as the model writes it.
 
   | Status | Means |
@@ -147,8 +148,9 @@ red; there are no background fills. With `NO_COLOR` set it prints no colours.
 ## The plain pane
 
 When the pane's input or output is no terminal (a pipe, a script), with `TERM=dumb`, or with `pair chat --plain`, it
-is the plain pane: lines as they come, a `navigator ›` prompt, one line per question, the same commands, and `⎿`
-lines for the tools. Nothing above about keys, picking, the menu or the status row applies there.
+is the plain pane: lines as they come, a `navigator ›` prompt, one line per question, and `⎿` lines for the tools. It
+takes the same commands but `/search`, `/copy` and `/clear`, which say they work in the full-screen pane only;
+there `?` and Enter asks about what Pair said last, as `/why` does. Nothing above about keys, picking, the menu or the status row applies there.
 
 ## Limits
 
