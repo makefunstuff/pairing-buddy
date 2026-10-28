@@ -420,3 +420,165 @@ test('a goal set elsewhere while Pair\'s question for it is open answers it on s
     await daemon.close();
   }
 });
+
+/** The pane on a stand-in daemon, `width` by `height`: its frame as text, and a wait for what it shows. */
+async function standInPane(width = 90, height = 20, welcome = {}) {
+  const dir = realpathSync(scratch('pair-pane-'));
+  const daemon = await standIn(dir, welcome);
+  const pane = startChatPane(daemon.socket, {input: new PassThrough(), output: {isTTY: false, write: () => {}, on: () => {}}, size: () => ({width, height}), cwd: dir, env: {}, exit: () => {}});
+  const text = () => pane.frame().join('\n');
+  const shows = async pattern => {
+    for (let i = 0; i < 200 && !pattern.test(text()); i++) await sleep(25);
+    assert.match(text(), pattern);
+  };
+  const type = async keys => {
+    pane.key(keys);
+    await sleep(40);
+  };
+  const sent = async type => {
+    for (let i = 0; i < 100 && !daemon.got.some(m => m.type === type); i++) await sleep(20);
+    return daemon.got.filter(m => m.type === type).at(-1);
+  };
+  await shows(/── pair · pair-pane-\w+ ─/);
+  return {dir, daemon, pane, text, shows, type, sent, close: async () => { pane.close(); await daemon.close(); }};
+}
+
+const REMARK = {
+  type: 'message', sender: 'pair', text: 'internal/queue/lease.go:18 suggestion: the lease ends before the last attempt does\n\treturn &Lease{ttl: cfg.Budget + cfg.AttemptTimeout}',
+  meta: {remark: 5, trigger: 'regression', place: {file: 'internal/queue/lease.go', line: 18}, suggestion: {action: 9, old: ['\treturn &Lease{ttl: cfg.Budget}'], new: ['\treturn &Lease{ttl: cfg.Budget + cfg.AttemptTimeout}']}},
+};
+
+test('a remark\'s action line: a question that starts with a, j, + or - is typed; Alt-↑ picks the remark, and then its keys act', {timeout: 20_000}, async () => {
+  const t = await standInPane();
+  try {
+    t.daemon.send({...REMARK, at: Date.now()});
+    await t.shows(/│ \+ return &Lease\{ttl: cfg\.Budget \+ cfg\.AttemptTimeout\}\n {7}\+ useful {2}- noise {2}a apply {2}j jump {2}· Alt-↑ first\n/);
+    for (const question of ['are you sure?', 'just why?', '-v flag?', '+1 on that']) {
+      await t.type(question);
+      assert.match(t.text(), new RegExp(`^› ${question.replace(/[?+]/g, '\\$&')}$`, 'm'), `${question}: typed whole`);
+      await t.type('\x15'); // Ctrl-U
+    }
+    assert.deepEqual(t.daemon.got.filter(m => ['accept', 'go', 'feedback'].includes(m.type)), [], 'nothing taken, no jump, no verdict');
+    assert.doesNotMatch(t.text(), /✗ noise|✓ useful/);
+
+    t.daemon.send({type: 'message', sender: 'system', text: 'tests on save: 1 failed', at: Date.now()});
+    await t.shows(/tests on save/);
+    await t.type('\x1b[1;3A'); // Alt-↑: the remark, not the note after it
+    await t.shows(/^▌ +\+ useful {2}- noise {2}a apply {2}j jump$/m);
+    assert.match(t.text(), /c copy · a apply · j jump · \+\/- rate/);
+    await t.type('a');
+    assert.deepEqual(await t.sent('accept'), {type: 'accept', action: 9}, 'picked: a takes its suggestion');
+    await t.type('j');
+    assert.deepEqual(await t.sent('go'), {type: 'go', file: 'internal/queue/lease.go', line: 18}, 'j goes to its line');
+    await t.type('+');
+    assert.deepEqual(await t.sent('feedback'), {type: 'feedback', useful: true, remark: 5});
+    await t.shows(/regression · internal\/queue\/lease\.go:18 {2}✓ useful/);
+    assert.doesNotMatch(t.text(), /\+ useful {2}-/, 'rated: the line goes');
+
+    t.daemon.send({...REMARK, at: Date.now(), meta: {...REMARK.meta, remark: 6}});
+    await t.shows(/a apply {2}j jump {2}· Alt-↑ first/);
+    t.daemon.send({type: 'message', sender: 'pair', text: 'And another thing.', at: Date.now()});
+    await t.shows(/And another thing\./);
+    assert.doesNotMatch(t.text(), /a apply/, 'Pair spoke since: the line goes');
+    await t.type('\x1b'); // back to typing
+    await t.type('\x1b[1;3A');
+    assert.match(t.text(), /^▌pair +And another thing\./m, 'and Alt-↑ picks the newest message again');
+  } finally {
+    await t.close();
+  }
+});
+
+test('find counts a phrase as one match, also over a code span', {timeout: 20_000}, async () => {
+  const t = await standInPane(80, 24);
+  try {
+    t.daemon.send({type: 'message', sender: 'pair', text: 'Run `pair doctor` to check the provider you set.', at: Date.now()});
+    await t.shows(/provider you set/);
+    for (const query of ['run pair', 'provider you set']) {
+      await t.type(`\x06${query}`);
+      await t.shows(/find: .* {2}1 of 1 · in 1 message$/m);
+      await t.type('\x1b');
+    }
+  } finally {
+    await t.close();
+  }
+});
+
+test('find steps through the matches, not the messages, says how many messages they are in, and opens a fold to show one', {timeout: 20_000}, async () => {
+  const t = await standInPane(80, 24);
+  try {
+    const long = [...Array.from({length: 20}, (_, i) => `${i + 1}. step ${i + 1}`), 'the lease ends here'].join('\n');
+    t.daemon.send({type: 'message', sender: 'pair', text: long, at: Date.now()});
+    t.daemon.send({type: 'message', sender: 'pair', text: 'the lease, and the lease again', at: Date.now()});
+    await t.shows(/the lease again/);
+    await t.type('\x06lease'); // Ctrl-F
+    await t.shows(/^ find: lease {2}3 of 3 · in 2 messages$/m);
+    assert.match(t.text(), /^ ↑↓ older\/newer · Enter keep · Esc close$/m);
+    assert.equal(t.pane.state.found, 1, 'on the newest match: the second in the last message');
+    await t.type('\x1b[A');
+    await t.shows(/2 of 3 · in 2 messages/);
+    assert.equal(t.pane.state.selected, t.pane.state.entries.length - 1, 'up: the other match of the same message');
+    assert.equal(t.pane.state.found, 0);
+    await t.type('\x1b[A');
+    await t.shows(/1 of 3 · in 2 messages/);
+    assert.match(t.text(), /▌ +the lease ends here/, 'the folded message opens to show the match');
+    await t.type('\x1b[B');
+    await t.shows(/2 of 3/);
+    await t.type('\x1b');
+    await t.shows(/^› Ask Pair anything/m);
+  } finally {
+    await t.close();
+  }
+});
+
+test('a folded message, picked, offers Enter in the footer at every width', {timeout: 20_000}, async () => {
+  for (const width of [44, 80, 120]) {
+    const t = await standInPane(width, 24);
+    try {
+      t.daemon.send({type: 'message', sender: 'pair', text: Array.from({length: 30}, (_, i) => `line ${i + 1}`).join('\n'), at: Date.now()});
+      await t.shows(/more lines|more ·/);
+      await t.type('\x1b[1;3A'); // Alt-↑
+      await t.shows(/Enter (unfold|unf)/);
+      await t.type('\r');
+      await t.shows(/Enter fold/);
+    } finally {
+      await t.close();
+    }
+  }
+});
+
+test('the command menu shows seven of them and how many more; ↓ goes on past the seventh; Enter inserts a file', {timeout: 20_000}, async () => {
+  const t = await standInPane(80, 24);
+  try {
+    await t.type('/');
+    await t.shows(/╶─ commands · 7 of \d+ · type to narrow ─/);
+    await t.shows(/^ {3}↓ \d+ more$/m);
+    assert.match(t.text(), /^ ▸ \/goal +<text> +set the session goal$/m);
+    for (let i = 0; i < 8; i++) await t.type('\x1b[B');
+    assert.match(t.text(), /^ ▸ \/drive! /m, 'the eighth, chosen, in sight');
+    assert.match(t.text(), /^ {3}↑ 2 more · ↓ \d+ more$/m);
+    await t.type('\x15/qu');
+    await t.shows(/╶─ commands ─+\n ▸ \/quiet/);
+    assert.doesNotMatch(t.text(), /type to narrow/, 'all of them shown: no count');
+  } finally {
+    await t.close();
+  }
+});
+
+test('reconnecting: the status counts the time away and the attempts, what you type is kept and not sent', {timeout: 20_000}, async () => {
+  const t = await standInPane(90, 16);
+  try {
+    t.daemon.send({type: 'message', sender: 'pair', text: 'Hello.', at: Date.now()});
+    await t.shows(/Hello\./);
+    await t.daemon.close();
+    await t.shows(/── ⚠ the pair daemon went away · reconnecting \d+s ─/);
+    await t.shows(/reconnecting \ds · attempt [1-9]/);
+    assert.match(t.text(), /^› what you type is kept; Enter sends once it is back$/m);
+    assert.match(t.text(), /^ Ctrl-D close · \? keys$/m);
+    await t.type('still here?\r');
+    assert.match(t.text(), /^› still here\?/m, 'kept');
+    assert.match(t.text(), /Not sent: the daemon is not back yet/, 'said for a moment, in the footer');
+    assert.doesNotMatch(t.text(), /^ ! /m, 'not an error in the conversation');
+  } finally {
+    t.pane.close();
+  }
+});
