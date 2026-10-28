@@ -6,6 +6,7 @@ import {readFileSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {fauxAssistantMessage, fauxText, fauxToolCall} from '@earendil-works/pi-ai';
+import {CHECK_PROMPT, CONFLICT_PROMPT} from '../src/brief.mjs';
 import {hasNvim, pairInNvim, sleep, until} from './nvim-harness.mjs';
 import {scratch} from './temp.mjs';
 
@@ -26,19 +27,38 @@ vim.ui.select = function(items, opts, on_choice)
   table.insert(_G.gen_asked, {kind = 'select', prompt = opts.prompt, items = shown})
   local answer = table.remove(_G.gen_answers, 1)
   for i, item in ipairs(items) do
-    if item.shape == answer then return on_choice(item, i) end
+    if answer ~= nil and (item.shape == answer or item.key == answer) then return on_choice(item, i) end
   end
   on_choice(nil, nil)
 end
+_G.notified = {}
+local notify = vim.notify
+vim.notify = function(text, ...) table.insert(_G.notified, text) return notify(text, ...) end
 `;
 
 const virtLines = marks => marks.filter(([, , , details]) => details.virt_lines)
   .map(([, row, , details]) => [row, details.virt_lines.map(line => line.map(chunk => chunk[0]).join('')).join('\n')]);
 
-/** Pair in Neovim, with what `pairInNvim` gives and helpers for /gen's ghost lines, its dialogs and the ledger. */
-async function genInNvim(goal, {stub = false} = {}) {
+/**
+ * Pair in Neovim, with what `pairInNvim` gives and helpers for /gen's ghost lines, its dialogs and the ledger. The
+ * Partner's model answers the brief's checks with `brief(kind, content)` ('conflict' or 'check'; [] by default), apart
+ * from the turns a test scripts with `partner.setResponses`, which come in their order.
+ */
+async function genInNvim(goal, {stub = false, brief = () => '[]', notes = null} = {}) {
   const pair = await pairInNvim(goal);
   const {remote, messages, send, watcher} = pair;
+  if (notes !== null) writeFileSync(join(pair.project, 'NOTES.md'), notes);
+  const turns = [];
+  const route = async (context, ...rest) => {
+    const system = context.messages[0]?.role === 'system' ? context.messages[0].content : context.systemPrompt; // the provider's own form
+    const kind = system === CONFLICT_PROMPT ? 'conflict' : system === CHECK_PROMPT ? 'check' : null;
+    if (kind) return fauxAssistantMessage([fauxText(brief(kind, context.messages.at(-1).content))]);
+    const step = turns.shift();
+    if (!step) throw new Error('No more faux responses queued');
+    return typeof step === 'function' ? step(context, ...rest) : step;
+  };
+  pair.partner.setResponses(Array.from({length: 500}, () => route));
+  const partner = {...pair.partner, setResponses: list => { turns.splice(0, turns.length, ...list); }};
   watcher.setResponses(Array.from({length: 100}, () => fauxAssistantMessage([fauxText('0')]))); // no moment worth a remark
   if (stub) {
     const file = join(scratch('pair-stub-'), 'stub.lua');
@@ -48,6 +68,7 @@ async function genInNvim(goal, {stub = false} = {}) {
   const extmarks = ns => JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('${ns}'), 0, -1, {details = true}))")`));
   return {
     ...pair,
+    partner,
     /** The ghost lines in the current buffer: [row, the lines as text]. */
     ghosts: () => virtLines(extmarks('pair_suggest')),
     /** Pair's words under the lines, as the hand-back line draws them: [row, text]. */
@@ -297,6 +318,72 @@ test('a request that waited its turn is told where its mark is now, after you ty
     assert.match(input, /5: const z = 3/);
     await until(() => ghosts().length === 1, 'the ghost lines');
     assert.equal(ghosts()[0][0], 4, 'under `const z = 3`, shifted once, not twice');
+  } finally {
+    await stop();
+  }
+});
+
+test('the brief in Neovim: :Pair brief pins the note, a request against it asks in a dialog, the debrief says what holds up', {skip, timeout: 60_000}, async () => {
+  const bigint = JSON.stringify([{source: 'note', line: 3, quote: 'no BigInt', brief_says: 'plain numbers', asked: 'BigInt'}]);
+  const logs = JSON.stringify([{source: 'note', line: 4, quote: 'Every helper is pure', brief_says: 'pure helpers', asked: 'logging'}]);
+  const check = JSON.stringify([
+    {kind: 'contradicts', source: 'note', line: 3, quote: 'no BigInt', piece: 1, piece_line: 1, text: 'uses BigInt'}, // the user chose that
+    {kind: 'contradicts', source: 'note', line: 4, quote: 'Every helper is pure', piece: 1, piece_line: 1, text: 'logs w'},
+    {kind: 'contradicts', source: 'note', line: 2, quote: 'made up', piece: 1, piece_line: 1, text: 'invented'},
+    {kind: 'guessed', text: 'w is a BigInt literal'},
+  ]);
+  const seen = [];
+  const brief = (kind, content) => {
+    seen.push({kind, content});
+    const request = content.split('The request:')[1] ?? '';
+    if (kind === 'check') return check;
+    return /log/.test(request) ? logs : /BigInt/.test(request) ? bigint : '[]';
+  };
+  const {project, partner, keys, remote, asked, answer, said, today, messages, stop} = await genInNvim('add helpers', {stub: true, brief, notes: '# Helpers\n\nNumbers are plain: no BigInt.\nEvery helper is pure.\n'});
+  const notified = () => JSON.parse(remote('luaeval("vim.json.encode(_G.notified)")'));
+  try {
+    writeFileSync(join(project, 'plan.md'), '# Plan\n\nNumbers are plain: no BigInt.\n');
+    keys(':edit plan.md<CR>:Pair brief<CR>');
+    await said('The brief: plan.md (pinned) + goal "add helpers". Every /gen runs against it; Pair never edits it.');
+    await until(() => notified().includes('Pair: The brief: plan.md (pinned) + goal "add helpers". Every /gen runs against it; Pair never edits it.'), 'Neovim to say it too');
+    keys(':Pair brief off<CR>');
+    await said('The brief leaves the note out now: goal "add helpers". /brief <note> pins one.');
+    keys(':Pair brief NOTES.md<CR>');
+    await said('The brief: NOTES.md (pinned) + goal "add helpers". Every /gen runs against it; Pair never edits it.');
+    keys(':buffer a.js<CR>');
+
+    // The request contradicts the brief: Neovim asks in a dialog, the brief's choice first.
+    partner.setResponses([
+      fauxAssistantMessage([fauxToolCall('propose', {file: 'a.js', line: 2, insert: true, text: 'const w = 4n', note: 'w'})], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxText('w as a BigInt.')]),
+    ]);
+    answer('y');
+    keys('2G:Pair gen here w as a BigInt<CR>');
+    const debrief = '≠ brief "Every helper is pure." NOTES.md:4 · a.js:3 logs w\n? guessed w is a BigInt literal';
+    await said(`gen #1 · here · 1 line at a.js:2: w as a BigInt.\n${debrief}`);
+    const dialog = asked().find(one => one.kind === 'select');
+    assert.deepEqual(dialog, {
+      kind: 'select', prompt: 'gen #1 · the brief says plain numbers: "Numbers are plain: no BigInt." NOTES.md:3',
+      items: ['follow the brief: plain numbers', 'as asked: BigInt', 'open NOTES.md:3'],
+    });
+    assert.ok(messages.some(message => message.text === 'gen #1: as asked, BigInt, against NOTES.md:3. Pair does not ask about that line again this session.'));
+    assert.match(seen.find(call => call.kind === 'check').content, /The user chose the request over the brief's "Numbers are plain: no BigInt\."/);
+    await until(() => notified().includes(`Pair · gen #1\n${debrief}`), 'the debrief in Neovim');
+    const row = (await today()).find(one => one.kind === 'generated');
+    assert.equal(row.note, '1 line proposed · ≠1');
+
+    // The line the user went against is not asked about again this session.
+    keys(':Pair dismiss<CR>');
+    partner.setResponses([fauxAssistantMessage([fauxText('Nothing.')])]);
+    keys(':Pair gen here v as a BigInt too<CR>');
+    await said('gen #2 · here · nothing proposed: Nothing.');
+    assert.equal(asked().filter(one => one.kind === 'select').length, 1, 'no second dialog');
+
+    // e on another line opens the brief there, in a split, and the request ends.
+    answer('e');
+    keys(':Pair gen here v that logs<CR>');
+    await said('gen #3 cancelled: NOTES.md:4 is open in Neovim. Change the brief or the request, then /gen again.');
+    await until(() => remote('fnamemodify(bufname(), ":t")') === 'NOTES.md' && remote('line(".")') === '4', 'the note open at line 4');
   } finally {
     await stop();
   }

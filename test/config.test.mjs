@@ -79,9 +79,13 @@ test('thinking is one level for every turn, or levels for some kinds; off is a c
   assert.throws(() => partner(['low']), /must be a level or map kinds to levels/);
 });
 
-test('gen.limits bound one /gen request: the defaults, a limit of its own, and what is not a limit', () => {
+test('gen.limits bound one /gen request, and gen.brief names its note: the defaults, values of their own, and what is not', () => {
   const gen = raw => parseConfig({gen: raw, models: {watcher: {api: 'anthropic', model: 'w'}, partner: {api: 'anthropic', model: 'p'}}}).gen;
-  assert.deepEqual(gen(undefined), {limits: {files: 40, lines: 4000, commands: 8, minutes: 10}});
+  assert.deepEqual(gen(undefined), {limits: {files: 40, lines: 4000, commands: 8, minutes: 10}, brief: 'NOTES.md'});
+  assert.equal(gen({brief: 'docs/plan.md'}).brief, 'docs/plan.md');
+  assert.equal(gen({brief: null}).brief, null, 'the goal and the board task only');
+  assert.throws(() => gen({brief: '/etc/notes.md'}), /gen\.brief must be a path in the project/);
+  assert.throws(() => gen({brief: 3}), /gen\.brief must be a path/);
   assert.deepEqual(gen({limits: {lines: 500}}).limits, {files: 40, lines: 500, commands: 8, minutes: 10});
   assert.throws(() => gen({limits: {tokens: 5}}), /gen\.limits\.tokens: the limits are files, lines, commands, minutes/);
   assert.throws(() => gen({limits: {lines: 0}}), /gen\.limits\.lines must be a whole number above 0/);

@@ -39,7 +39,7 @@ why while the daemon keeps the config it runs. Run `pair doctor` after a change 
 | `voice` | off | Push-to-talk with whisper.cpp or OpenRouter ([below](#voice), [voice.md](voice.md)) |
 | `scoutPane` | see [below](#scoutpane) | Pair's own pane: your rc file and the sandbox ([scout.md](scout.md#pairs-pane)) |
 | `taskCommand` | none | What `:Pair tasks` runs for each task you say yes to, as a list of words with `{title}` and `{description}`, never through a shell, for example `["gh", "issue", "create", "--title", "{title}", "--body", "{description}"]`. Without it, the tasks are copied as a checklist ([notes.md](notes.md#tasks-only-when-you-ask)) |
-| `gen` | see [below](#gen) | What one `/gen` request may do at most ([gen.md](gen.md)) |
+| `gen` | see [below](#gen) | What one `/gen` request may do at most, and its brief's note ([gen.md](gen.md)) |
 | `board` | `"herdr-projects"` | The herdr work board's command: the goal and the [context card](neovim.md#what-it-knows-the-context-card) read the board task of your branch. `null` turns it off |
 | `socket` | `$PAIR_SOCKET`, else `$XDG_RUNTIME_DIR/pairing-buddy.sock`, else `/tmp/pairing-buddy-<uid>.sock` | The daemon's socket path |
 | `dataDir` | `$XDG_STATE_HOME/pairing-buddy` (`~/.local/state/pairing-buddy`) | Where Pair keeps its data ([data.md](data.md)) |
@@ -116,11 +116,15 @@ Maps a project's folder to the command Pair runs in its pane when you save a sou
 ## `gen`
 
 ```jsonc
-"gen": {"limits": {"files": 40, "lines": 4000, "commands": 8, "minutes": 10}}
+"gen": {"limits": {"files": 40, "lines": 4000, "commands": 8, "minutes": 10}, "brief": "NOTES.md"}
 ```
 
-What one [/gen request](gen.md) may do at most. They stop a model that loops; they are no review budget. Each limit
-is a whole number above 0, and one you leave out keeps its default.
+`brief` is the note a request's [brief](gen.md#the-brief) has when you pinned none: a path in the project, used when
+the project has that file. `null` leaves the note out, so a brief is the goal and the board task only. `/brief` and
+`:Pair brief` pin another note, or none, for the project; a pin wins over this setting.
+
+`limits` is what one [/gen request](gen.md) may do at most. They stop a model that loops; they are no review budget.
+Each limit is a whole number above 0, and one you leave out keeps its default.
 
 | Limit | Default | Meaning |
 | --- | --- | --- |

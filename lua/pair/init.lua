@@ -1096,6 +1096,7 @@ local handlers = {
   revert = revert,
   gen = gen.on_state,
   gen_ask = gen.on_ask,
+  gen_debrief = gen.on_debrief,
   gen_drop = gen_drop,
   gen_place = gen_place,
   gen_where = function(message) send({type = 'reply', id = message.id, result = gen.where(message.gen) or vim.NIL}) end,
@@ -1402,6 +1403,15 @@ local commands = {
     if arg == 'cancel' then return send({type = 'gen_cancel'}) end
     local compose = arg == '+' or vim.startswith(arg, '+ ')
     gen.ask(compose and vim.trim(arg:sub(2)) or arg, selection, compose)
+  end,
+  -- The brief /gen runs against: `:Pair brief` in a note pins it (elsewhere shows the brief), `:Pair brief <path>`
+  -- pins that note, `:Pair brief off` leaves the note out.
+  brief = function(arg)
+    if not M.connect() then return vim.notify('Pair: not connected; :Pair brief again once it is', vim.log.levels.WARN) end
+    if arg == 'off' then return send({type = 'brief', off = true}) end
+    if arg ~= '' then return send({type = 'brief', file = vim.fn.fnamemodify(vim.fn.expand(arg), ':p')}) end
+    local file = vim.bo.filetype == 'markdown' and project_path(0)
+    send(file and {type = 'brief', file = file} or {type = 'brief'})
   end,
   -- Your last edits belong to the session that ends: its debrief counts them, and the next one starts empty.
   ['end'] = function()

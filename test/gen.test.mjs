@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import {realpathSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {test} from 'node:test';
+import {CHECK_PROMPT, CONFLICT_PROMPT} from '../src/brief.mjs';
 import {guessShape, parseGen} from '../src/gen.mjs';
 import {PairSession} from '../src/session.mjs';
 import {openStore} from '../src/store.mjs';
@@ -17,11 +18,12 @@ const SUM = 'function sum(a, b) {\n  return a + b\n}';
  * A session in a scratch project with math.js. Each /gen request's turn runs the next of `turns` with its
  * conversation id; `editor(message)` answers what the session asks Neovim (reverts are fine by default).
  */
-function genSession(turns = [], {editor = async () => null, limits} = {}) {
-  const root = realpathSync(scratch('pair-gen-'));
+function genSession(turns = [], {editor = async () => null, limits, notes = null, askModel = null, store: given = null, root: at = null} = {}) {
+  const root = at ?? realpathSync(scratch('pair-gen-'));
   writeFileSync(join(root, 'math.js'), 'const x = 1\n\nexport {x}\n');
   writeFileSync(join(root, 'other.js'), 'const y = 2\n');
-  const store = openStore(':memory:');
+  if (notes !== null) writeFileSync(join(root, 'NOTES.md'), notes);
+  const store = given ?? openStore(':memory:');
   const clock = {now: NOON};
   const sent = [];
   const asked = []; // {conversation, input, kind}
@@ -45,6 +47,7 @@ function genSession(turns = [], {editor = async () => null, limits} = {}) {
     score: async () => ({value: 9, reason: 'test'}),
     typingPauseMs: 2000,
     genLimits: limits,
+    askModel,
     notify: (to, message) => { sent.push({via: to, ...message}); return 1; },
     requestEditor: async message => {
       if (message.type === 'revert') {
@@ -103,7 +106,7 @@ test('/gen here from Neovim: its own conversation, the code at the next pause, t
   assert.match(turn.input, /^\[gen\] gen #1, here\. The user asked: "a sum function"/);
   assert.match(turn.input, /cursor is on line 1 of math\.js: propose with insert true and line 1/);
   assert.match(turn.input, /1: const x = 1\n2: \n3: export \{x\}/);
-  assert.match(turn.input, /The session's goal: add helpers/);
+  assert.match(turn.input, /The brief: the user's own idea in their words\. Follow it; never edit it\.\nGoal: add helpers/);
   assert.equal(pair.gen.owns('gen-1'), false, 'its conversation is done');
 
   assert.deepEqual(of('suggest'), [], 'nothing lands while the user types');
@@ -314,4 +317,158 @@ test('/gen cancel and /cancel in the chat stop a running request; a dropped prop
   assert.equal(of('gen').at(-1).state, 'done');
   pair.gen.list();
   assert.match(said().at(-1), /^12:00 {2}gen #1 · here · a sum · cancelled\n12:00 {2}gen #2 · here · z · 1 dropped\n/);
+});
+
+const NOTES = '# Helpers\n\nNumbers are plain: no BigInt.\nEvery helper is pure.\n';
+const BIGINT = JSON.stringify([{source: 'note', line: 3, quote: 'no BigInt', brief_says: 'plain numbers', asked: 'BigInt'}]);
+
+/** A stand-in for the model's one answers: `conflict` and `check` by prompt; each call is kept in `calls`. */
+function briefModel({conflict = '[]', check = '[]'} = {}) {
+  const calls = [];
+  const ask = async (prompt, content) => {
+    calls.push({prompt: prompt === CONFLICT_PROMPT ? 'conflict' : prompt === CHECK_PROMPT ? 'check' : 'other', content});
+    return prompt === CONFLICT_PROMPT ? (typeof conflict === 'function' ? conflict(content) : conflict) : check;
+  };
+  return {ask, calls};
+}
+
+const sumTurn = text => async (conversation, pair) => {
+  await tool(pair, conversation, 'propose', {file: 'math.js', line: 1, endLine: 1, insert: true, text, note: 'sum'});
+  return 'A sum.';
+};
+
+test('every request runs against the brief: NOTES.md by default, said once; the model reads it, numbered', async () => {
+  const model = briefModel();
+  const {root, pair, asked, said} = genSession([sumTurn(SUM), sumTurn(SUM)], {notes: NOTES, askModel: model.ask});
+  const place = {file: join(root, 'math.js'), line: 1};
+  await pair.gen.request({text: 'here a sum function', place, from: 'editor'});
+  await pair.gen.request({text: 'here another', place, from: 'editor'});
+  assert.deepEqual(said().filter(text => /runs against the brief/.test(text)), [
+    'gen #1 runs against the brief: NOTES.md + goal "add helpers". /brief <note> pins another note; /brief off leaves it out.',
+  ], 'said once, for the first request');
+  assert.match(asked[0].input, /Goal: add helpers\nNote NOTES\.md:\n1: # Helpers\n2: \n3: Numbers are plain: no BigInt\.\n4: Every helper is pure\./);
+  assert.deepEqual(model.calls.map(call => call.prompt), ['conflict', 'check', 'conflict', 'check']);
+  assert.match(model.calls[0].content, /The request: "a sum function"$/);
+  assert.match(model.calls[1].content, /Piece 1, for math\.js:1:\n1: function sum\(a, b\) \{/);
+  assert.equal(pair.today().rows[0].data?.brief ?? pair.store.action(pair.today().rows[0].id).data.brief, 'NOTES.md + goal "add helpers"');
+});
+
+test('a request against the brief asks first in the chat: y goes as asked and is not asked again, n follows the brief', async () => {
+  const model = briefModel({conflict: content => (/BigInt/.test(content.split('The request:')[1]) ? BIGINT : '[]')});
+  const {root, pair, asked, of, said} = genSession([sumTurn(SUM), sumTurn(SUM), sumTurn(SUM)], {notes: NOTES, askModel: model.ask});
+  const editor = {file: join(root, 'math.js'), line: 1};
+  pair.gen.placeOf = async request => { request.file = editor.file; request.place = editor; return true; }; // the chat's Neovim, at line 1
+
+  const first = pair.gen.request({text: 'here a sum with BigInt'});
+  await until(() => of('confirm').length);
+  const confirm = of('confirm').at(-1);
+  assert.equal(confirm.text, 'gen #1 · the brief says plain numbers:\n│ "Numbers are plain: no BigInt." NOTES.md:3\nBigInt anyway?');
+  assert.equal(confirm.hint, 'y as asked · n follow the brief (plain numbers) · e open NOTES.md:3');
+  assert.equal(asked.length, 0, 'nothing generates before the answer');
+  pair.answer(confirm.id, true);
+  await first;
+  assert.ok(said().includes('gen #1: as asked, BigInt, against NOTES.md:3. Pair does not ask about that line again this session.'));
+  assert.match(asked[0].input, /The user chose the request over the brief's "Numbers are plain: no BigInt\.": do as asked there\./);
+  const row = pair.store.actions(root, 0).find(action => action.kind === 'generated');
+  assert.deepEqual(row.data.asAsked, {key: 'note:numbers are plain: no bigint.', source: 'note', line: 3, text: 'Numbers are plain: no BigInt.'});
+
+  await pair.gen.request({text: 'here a product with BigInt'});
+  assert.equal(of('confirm').length, 1, 'that line is not asked about again');
+  assert.equal(asked.length, 2);
+
+  // Another session in the same project (the daemon restarted): the exception is this session's, so it asks again.
+  const conflict = model.calls.filter(call => call.prompt === 'conflict').length;
+  assert.equal(conflict, 2);
+  pair.gen.exceptions.clear();
+  const third = pair.gen.request({text: 'here a max with BigInt'});
+  await until(() => of('confirm').length === 2);
+  pair.answer(of('confirm').at(-1).id, false, undefined, 'n');
+  await third;
+  assert.ok(said().includes('gen #3 follows the brief: plain numbers (NOTES.md:3).'));
+  assert.match(asked[2].input, /Where the request says BigInt, the user chose the brief: plain numbers \("Numbers are plain: no BigInt\."\)\./);
+});
+
+test('e opens the brief at the line and ends the request; from Neovim the question is a dialog of three choices', async () => {
+  const model = briefModel({conflict: BIGINT});
+  const {root, pair, asked, of, said} = genSession([], {notes: NOTES, askModel: model.ask});
+  const place = {file: join(root, 'math.js'), line: 1};
+  pair.gen.placeOf = async request => { request.file = place.file; request.place = place; return true; };
+  const chat = pair.gen.request({text: 'here a BigInt sum'});
+  await until(() => of('confirm').length);
+  pair.answer(of('confirm').at(-1).id, false, undefined, 'e');
+  await chat;
+  assert.deepEqual(of('open').map(({file, line, ask}) => ({file, line, ask})), [{file: join(root, 'NOTES.md'), line: 3, ask: false}]);
+  assert.ok(said().includes('gen #1 cancelled: NOTES.md:3 is open in Neovim. Change the brief or the request, then /gen again.'));
+  assert.equal(asked.length, 0);
+
+  const fromEditor = pair.gen.request({text: 'here a BigInt sum', place, from: 'editor'});
+  await until(() => of('gen_ask').length);
+  const ask = of('gen_ask').at(-1);
+  assert.deepEqual({kind: ask.kind, title: ask.title, quote: ask.quote, place: ask.place, choices: ask.choices}, {
+    kind: 'brief', title: 'gen #2 · the brief says plain numbers', quote: 'Numbers are plain: no BigInt.', place: 'NOTES.md:3',
+    choices: [
+      {key: 'n', what: 'follow the brief: plain numbers'},
+      {key: 'y', what: 'as asked: BigInt'},
+      {key: 'e', what: 'open NOTES.md:3', file: join(root, 'NOTES.md'), line: 3},
+    ],
+  });
+  assert.equal(of('confirm').length, 1, 'not asked in the chat as well');
+  assert.ok(said().includes('gen #2 · the brief says plain numbers: "Numbers are plain: no BigInt." NOTES.md:3. BigInt anyway? (answer in Neovim)'));
+  pair.gen.answer(2, ask.id, 'e'); // Neovim opened the note itself
+  await fromEditor;
+  assert.equal(of('open').length, 1);
+  assert.equal(of('gen').at(-1).state, 'cancelled');
+});
+
+test('the debrief says where the code goes against the brief and what it guessed, only what holds up', async () => {
+  const check = JSON.stringify([
+    {kind: 'contradicts', source: 'note', line: 4, quote: 'Every helper is pure', piece: 1, piece_line: 2, text: 'logs to the console'},
+    {kind: 'contradicts', source: 'note', line: 3, quote: 'floats are fine', piece: 1, piece_line: 1, text: 'invented'},
+    {kind: 'contradicts', source: 'note', line: 3, quote: 'no BigInt', piece: 4, piece_line: 1, text: 'no such piece'},
+    {kind: 'guessed', text: 'the function is named sum'},
+  ]);
+  const model = briefModel({check});
+  const code = 'function sum(a, b) {\n  console.log(a, b)\n  return a + b\n}';
+  const {root, pair, of, said} = genSession([sumTurn(code)], {notes: NOTES, askModel: model.ask});
+  await pair.gen.request({text: 'here a sum', place: {file: join(root, 'math.js'), line: 1}, from: 'editor'});
+  const lines = ['≠ brief "Every helper is pure." NOTES.md:4 · math.js:3 logs to the console', '? guessed the function is named sum'];
+  assert.ok(said().includes(`gen #1 · here · 4 lines at math.js:1: A sum.\n${lines.join('\n')}`));
+  assert.deepEqual(of('gen_debrief').map(({gen, lines: shown}) => ({gen, lines: shown})), [{gen: 1, lines}], 'Neovim, where it was asked, says it too');
+  const [row] = pair.today().rows;
+  assert.equal(row.note, '4 lines proposed · ≠1');
+  const detail = pair.store.action(row.id).detail;
+  assert.deepEqual(detail.guessed, ['the function is named sum']);
+  assert.equal(detail.contradicts[0].fileLine, 3);
+});
+
+test('without a model for the checks, or with an empty brief, a request asks nothing and checks nothing', async () => {
+  const model = briefModel({conflict: BIGINT});
+  const {root, pair, asked, of} = genSession([sumTurn(SUM)], {askModel: model.ask});
+  pair.state.goal = null;
+  await pair.gen.request({text: 'here a BigInt sum', place: {file: join(root, 'math.js'), line: 1}, from: 'editor'});
+  assert.equal(model.calls.length, 0, 'no goal, no task, no NOTES.md: nothing to compare with');
+  assert.equal(of('gen_ask').length, 0);
+  assert.doesNotMatch(asked[0].input, /The brief/);
+
+  const plain = genSession([sumTurn(SUM)], {notes: NOTES});
+  await plain.pair.gen.request({text: 'here a BigInt sum', place: {file: join(plain.root, 'math.js'), line: 1}, from: 'editor'});
+  assert.equal(plain.of('gen_ask').length, 0);
+  assert.match(plain.asked[0].input, /Note NOTES\.md:/, 'the brief still goes with the request');
+});
+
+test('/brief shows the brief, pins a note, leaves it out; a pin lasts into the next session of the project', async () => {
+  const {root, pair, store, said} = genSession([], {notes: NOTES});
+  writeFileSync(join(root, 'plan.md'), 'Plan: one file.\n');
+  assert.equal(await pair.gen.pinBrief({}), 'The brief: NOTES.md + goal "add helpers" (NOTES.md by default, gen.brief). /brief <note> pins another note; /brief off leaves the note out.');
+  assert.equal(await pair.gen.pinBrief({file: 'nope.md'}), 'No file nope.md in the project to pin as the brief.');
+  assert.equal(await pair.gen.pinBrief({file: join(root, 'plan.md')}), 'The brief: plan.md (pinned) + goal "add helpers". Every /gen runs against it; Pair never edits it.');
+  assert.equal(said().at(-1), 'The brief: plan.md (pinned) + goal "add helpers". Every /gen runs against it; Pair never edits it.');
+  assert.equal(store.lastBrief(root), 'plan.md');
+  store.endSession(pair.id, null, NOON);
+  const next = genSession([], {store, root});
+  assert.equal(next.pair.gen.pin, 'plan.md', 'the next session has the pin');
+  assert.equal(await next.pair.gen.pinBrief({off: true}), 'The brief leaves the note out now: goal "add helpers". /brief <note> pins one.');
+  assert.equal(store.lastBrief(root), '');
+  next.pair.state.goal = null;
+  assert.equal(await next.pair.gen.pinBrief({}), 'The brief is empty: no goal, no board task, no note. /goal sets the goal; /brief <note> pins a note.');
 });

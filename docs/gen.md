@@ -1,5 +1,5 @@
 ---
-description: "/gen: ask Pair for code. It lands where you asked, you take it with one key, and /undo takes the whole request back. Every edit says who made it."
+description: "/gen: ask Pair for code against your brief. It lands where you asked, you take it with one key, and /undo takes the whole request back."
 ---
 
 # /gen: ask Pair for code
@@ -8,6 +8,10 @@ Pair writes code when you ask for it, and only then. `/gen here a list handler w
 is a request: it gets a number, `gen #3`, runs in a conversation of its own, and hands you a proposal at the place
 you asked. You take it with one key, or not. Taken code lands in your buffer unsaved, as one undo step: as with
 everything Pair does, the disk changes only when you save. `/undo` takes back everything a request gave you, as one.
+
+Every request runs against [the brief](#the-brief): your goal, your board task and a note of yours, `NOTES.md` by
+default. Pair reads it and never writes it. When your request contradicts it, Pair asks one question first; when its
+code does, the debrief says so.
 
 A request never changes your text by itself, so it is not the Driver: the Driver edits while you watch and is held to
 five edits, while a request makes proposals you review, and is held by size limits instead
@@ -78,7 +82,7 @@ In the chat, `y` takes the guess, a shape word another, and `n` cancels.
 - **No unasked remarks.** While a request runs, no remark nobody asked for starts: what comes up waits, as it waits
   while Pair answers you. What a request says in the chat is no remark, and costs no talk budget.
 - **What it is told.** Your words, where the code goes (the cursor's line, or the lines you selected), the lines
-  around that place as your buffer has them, and the session goal.
+  around that place as your buffer has them, and [the brief](#the-brief), read again when the request starts.
 - **Its tools.** `say`, `read`, `recall`, `search` (in Pair's pane, also outside Scout), `propose` and `ask`. Never
   `edit`, `type`, `run`, `suggest` or `point`, and a policy in code refuses them
   ([how-it-works.md](how-it-works.md#what-it-can-do)). `propose(file, line, end_line, insert, text, note)` puts the
@@ -98,6 +102,82 @@ In the chat, `y` takes the guess, a shape word another, and `n` cancels.
 | `files` | `40` | A proposal in one more file is refused |
 | `commands` | `8` | Searches past it are refused |
 | `minutes` | `10` | The model is stopped; what it proposed so far still shows. Time a question waits for you does not count |
+
+## The brief
+
+The brief is your idea in your own words. Every request runs against it, and Pair never edits it, as it never
+writes your notes. It is made of:
+
+- **the session goal**, as `/goal` set it or as the session took it from the board task or the branch;
+- **the board task** of the branch, its number and title, when the [board](herdr.md) has one;
+- **one note**: the one you pinned, else `NOTES.md` at the project root when it exists (the config's
+  [`gen.brief`](config.md#gen)). The note goes as your buffer has it, unsaved changes and all, its first 300 lines.
+
+The first request that runs against `NOTES.md` without your pinning it says so once in the chat:
+`gen #1 runs against the brief: NOTES.md + goal "orders API". /brief <note> pins another note; /brief off leaves it out.`
+
+| You | What it does |
+| --- | --- |
+| `/brief`, or `:Pair brief` outside a note | Says what the brief is now: `The brief: NOTES.md + goal "orders API" + board task shop/12` |
+| `/brief docs/orders.md`, `:Pair brief docs/orders.md`, or `:Pair brief` in a Markdown buffer | Pins that note as the brief's note |
+| `/brief off`, `:Pair brief off` | Leaves the note out: the brief is the goal and the board task. `/brief <note>` pins one again |
+
+A pin lasts into the next sessions of the project, until you change it. A request reads the brief when it starts, so
+a change to the note counts from the next request on.
+
+### When the request contradicts the brief
+
+Before a request generates, the Partner's model compares it with the brief, outside the request's conversation. A
+clear contradiction (the brief says SQLite, you ask for Postgres) is one question, asked where you asked. A request
+for something the brief does not mention is no contradiction. In the chat:
+
+```
+gen #5 · the brief says SQLite:
+│ "The store: SQLite, one file next to the binary. No server." NOTES.md:4
+Postgres anyway?
+  y as asked · n follow the brief (SQLite) · e open NOTES.md:4
+```
+
+In Neovim it is a dialog, `vim.ui.select` as for the shape, with the brief's choice first so that `Enter` takes it:
+
+```
+gen #5 · the brief says SQLite: "The store: SQLite, one file next to the binary. No server." NOTES.md:4
+1: follow the brief: SQLite
+2: as asked: Postgres
+3: open NOTES.md:4
+```
+
+| Answer | What happens |
+| --- | --- |
+| `y`, as asked | The request goes as you asked, and the model is told you chose it over that line. The ledger books the exception with the request, and Pair does not ask about that line again this session |
+| `n` (or `Esc` in the chat), follow the brief | The request goes, and the model is told to follow the brief there |
+| `e`, open the note | The note opens at that line in Neovim, and the request ends: change the brief or the request, then ask again |
+
+In Neovim, `Esc` leaves the question waiting, and `Alt-g` shows it again. The question counts only when it holds up
+in code, not on the model's word: its quote must be words of the brief (of a line of the note, the goal or the board
+task), and both sides must be named. Otherwise the request goes without asking.
+
+### The debrief: ≠ brief and ? guessed
+
+When the model is done, it is asked about its own code against the brief, again outside its conversation, and the
+chat's line about the request gets up to three lines of each kind:
+
+```
+gen #4 · here · 12 lines at internal/orders/handler.go:42: A list handler with cursor paging.
+≠ brief "Statuses: new, paid, shipped." NOTES.md:11 · internal/orders/handler.go:47 filters on cancelled too
+? guessed the page size is 50 when the request has no limit
+```
+
+- **`≠ brief`** says where the code goes against the brief: the brief's line, quoted, and the line of the code that
+  does. It is kept only when the quote is words of the brief and the place is a line of the code proposed, at most
+  three. A line you chose to go against (`y`, above) is no news, and is left out.
+- **`? guessed`** says what the code decides that neither the brief nor your request settles: a library, a name, a
+  default, an error behaviour. At most three. These are the decisions to read before you take the code, and the ones
+  worth writing into the note, in your words, when you agree.
+
+A request asked in Neovim shows the same lines there too, as a message. The ledger's line counts the `≠` items
+(`12 lines proposed · ≠1`), and the entry keeps them all. Without a model for the checks, or with an empty brief (no
+goal, no board task, no note), a request asks nothing and checks nothing.
 
 ## The code lands where you asked
 
@@ -188,8 +268,12 @@ the file leaves Pair's lines Pair's.
 ## Limits
 
 - Only `here` is built. `file`, `scaffold` and `try` are named and guessed, and say they are not built yet.
-- A request knows your words, the place and the session goal. A pinned note as the request's brief, and a check of
-  the code against it, are not in this version.
+- The brief's two checks (the question before, the debrief after) are each one more answer of the Partner's model.
+  They run in its slot like the note reader, so on a slow local model a request takes that much longer. They are made
+  only when the brief says something.
+- A brief line you chose to go against is remembered for the session (also across a daemon restart, from the
+  ledger); the next session asks again.
+- `? guessed` lines are words in the chat and the ledger: nothing logs them as decisions yet.
 - Taken code carries no mark of its own in the sign column, and `:Pair own` does not exist yet: it stays the
   request's until you edit its lines, as far as its origin can be followed ([above](#who-wrote-it-edits-carry-their-origin)).
 - A request lives in the daemon's memory. A daemon restart stops one that runs, and code it proposed that you did not

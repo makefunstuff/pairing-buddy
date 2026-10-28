@@ -15,7 +15,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   note TEXT,
   pickup TEXT, -- JSON: where the next session picks up, {first: {step, file, line, text}, tests} (see debrief.mjs)
   active_ms INTEGER NOT NULL DEFAULT 0,
-  worked INTEGER NOT NULL DEFAULT 0 -- the user worked in it (see WORK_EVENTS in session.mjs), not only read
+  worked INTEGER NOT NULL DEFAULT 0, -- the user worked in it (see WORK_EVENTS in session.mjs), not only read
+  brief TEXT -- the note pinned as the /gen brief (see brief.mjs), '' when the user left the note out
 );
 CREATE TABLE IF NOT EXISTS messages (
   session_id INTEGER NOT NULL REFERENCES sessions(id),
@@ -83,7 +84,7 @@ const ACTION_COLUMNS = new Set(['text', 'data', 'detail', 'state']);
 
 /** Columns added since v0.1, by table, with their definitions. */
 const ADDED_COLUMNS = {
-  sessions: {role: 'TEXT NOT NULL DEFAULT \'navigator\'', pickup: 'TEXT', active_ms: 'INTEGER NOT NULL DEFAULT 0', worked: 'INTEGER NOT NULL DEFAULT 0'},
+  sessions: {role: 'TEXT NOT NULL DEFAULT \'navigator\'', pickup: 'TEXT', active_ms: 'INTEGER NOT NULL DEFAULT 0', worked: 'INTEGER NOT NULL DEFAULT 0', brief: 'TEXT'},
   remarks: {waited_ms: 'INTEGER', shown: 'INTEGER NOT NULL DEFAULT 0'},
   decisions: {state: 'TEXT'},
   messages: {meta: 'TEXT'}, // what the chat pane shows a message with: its remark, its suggestion, its place
@@ -134,6 +135,10 @@ export function openStore(path) {
     setGoal: (id, goal) => db.prepare('UPDATE sessions SET goal = ? WHERE id = ?').run(goal, id),
     setLevel: (id, level) => db.prepare('UPDATE sessions SET level = ? WHERE id = ?').run(level, id),
     setRole: (id, role) => db.prepare('UPDATE sessions SET role = ? WHERE id = ?').run(role, id),
+    /** The /gen brief's note of session `id`: a path in the project, '' for none, null for the config's. */
+    setBrief: (id, brief) => db.prepare('UPDATE sessions SET brief = ? WHERE id = ?').run(brief, id),
+    /** The brief's note the last session of `root` that set one had: a pin lasts across sessions. Null when none did. */
+    lastBrief: root => db.prepare('SELECT brief FROM sessions WHERE root = ? AND brief IS NOT NULL ORDER BY id DESC LIMIT 1').get(root)?.brief ?? null,
     endSession: (id, note, at, pickup = null) => db.prepare('UPDATE sessions SET ended_at = ?, note = ?, pickup = ? WHERE id = ?')
       .run(at, note, pickup && JSON.stringify(pickup), id),
     updateDebrief: (id, note, pickup) => db.prepare('UPDATE sessions SET note = ?, pickup = ? WHERE id = ?').run(note, JSON.stringify(pickup), id),

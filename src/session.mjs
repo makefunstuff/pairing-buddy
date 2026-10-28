@@ -284,9 +284,10 @@ export class PairSession {
    * budget (see tuning.mjs). `checkOutput` is where the hand-over's check writes its output and scratch copy when it
    * is not the command on save (see check.mjs): in the sandbox's writable runs folder. `decision()` is the decision
    * model the gate asks (a decision.mjs DecisionModel), or null without one. `genLimits` are what one /gen request may
-   * do at most (the config's gen.limits, see gen.mjs).
+   * do at most (the config's gen.limits, see gen.mjs), and `genBrief` its gen.brief. `askModel(systemPrompt, content)`
+   * is one answer of the Partner's model outside any conversation, which checks a /gen request against its brief.
    */
-  constructor({record, store, partner, score, pace = null, decision = () => null, typingPauseMs, notify, requestEditor, previousNote = null, lastSession = null, autoTune = false, health = {ok: () => true}, testOnSave = null, checkOutput = null, genLimits, log = () => {}, now = Date.now}) {
+  constructor({record, store, partner, score, pace = null, decision = () => null, typingPauseMs, notify, requestEditor, previousNote = null, lastSession = null, autoTune = false, health = {ok: () => true}, testOnSave = null, checkOutput = null, genLimits, genBrief, askModel = null, log = () => {}, now = Date.now}) {
     Object.assign(this, {record, store, partner, score, pace, decision, typingPauseMs, notify, requestEditor, previousNote, lastSession, autoTune, health, log, now});
     this.sorted = new Map(); // trigger key -> {at, sort}: what the decision model sorted it as lately
     this.told = new Map(); // trigger key -> what the decision model was told about it first, for the decisions log
@@ -363,7 +364,7 @@ export class PairSession {
     this.remarkTrigger = null; // the trigger kind of the running unasked turn
     this.lastRemarkTrigger = null; // the trigger kind of the last remark the user saw: what /mute alone mutes
     this.cancelled = false; // the user stopped the running answer (/cancel, Esc in the chat)
-    this.gen = new Gen({session: this, limits: genLimits}); // the /gen requests, each in a conversation of its own
+    this.gen = new Gen({session: this, limits: genLimits, brief: genBrief, ask: askModel}); // the /gen requests, each in a conversation of its own
   }
 
   /**
