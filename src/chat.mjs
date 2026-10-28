@@ -9,7 +9,7 @@ import {clearLine, createInterface, cursorTo} from 'node:readline';
 import {agentListLines} from './agent-relay.mjs';
 import {openHistory} from './chat-history.mjs';
 import {LineEditor} from './chat-input.mjs';
-import {renderFrame, searchText, shownTool, toolDone} from './chat-render.mjs';
+import {remarkKeys, renderFrame, searchText, shownTool, toolDone, transcriptLines} from './chat-render.mjs';
 import {KeyDecoder, Screen} from './chat-screen.mjs';
 import {dim, formatMessage} from './chat-style.mjs';
 import {LEVELS} from './config.mjs';
@@ -129,7 +129,7 @@ const RECONNECT_MS = 1000;
  * with `resume`. `on.message`, `on.lost` (it went away), `on.failed` (it was never there).
  */
 function linkDaemon(socketPath, on, {cwd = process.cwd(), env = process.env} = {}) {
-  const link = {socket: null, welcomed: false, away: false, closed: false};
+  const link = {socket: null, welcomed: false, away: false, closed: false, attempts: 0}; // attempts: to reconnect, since it went away
   link.hello = resume => sendMessage(link.socket, {
     type: 'hello',
     role: 'chat',
@@ -142,6 +142,7 @@ function linkDaemon(socketPath, on, {cwd = process.cwd(), env = process.env} = {
   });
   link.send = message => sendMessage(link.socket, message);
   function open() {
+    if (link.away) link.attempts += 1;
     link.socket = connect(socketPath);
     link.socket.on('connect', () => link.hello(link.welcomed));
     link.socket.on('error', error => {
@@ -158,6 +159,7 @@ function linkDaemon(socketPath, on, {cwd = process.cwd(), env = process.env} = {
         on.message(message, {reconnected: link.away});
         link.welcomed = true;
         link.away = false;
+        link.attempts = 0;
         return;
       }
       on.message(message, {});
@@ -355,6 +357,8 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
     scroll: 0, // lines scrolled up from the bottom; 0 follows what comes
     total: 0,
     search: '',
+    found: -1, // the match you are on, by its number in the selected message
+    awaySince: null, // when the daemon went away
     helpScroll: 0,
     menuChosen: 0,
     menuClosedFor: null, // the text the menu was closed for with Esc
@@ -392,6 +396,16 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
     return state.entries.findLastIndex(entry => entry.meta?.goal === 'ask' || /^What are we doing this session\?/.test(entry.text ?? '')) > lastYou;
   };
   const latestRemark = () => state.entries.findLastIndex(entry => entry.meta?.trigger && entry.kind === 'watch');
+  /**
+   * The remark whose keys work at once (+ - a j on an empty line): the last one, unrated, while it is the last thing
+   * said (the pane's notes, such as the tests on save, may follow it, but not a list such as /remarks, whose +2 must
+   * type); -1 when there is none. Its last line shows those keys.
+   */
+  const liveRemark = () => {
+    const i = latestRemark();
+    if (i === -1 || state.entries[i].verdict) return -1;
+    return state.entries.slice(i + 1).every(entry => ['system', 'error'].includes(entry.kind)) ? i : -1;
+  };
 
   /** A message from the daemon as an entry: who speaks, and what the pane shows it with. */
   function entryOf(message) {
@@ -545,7 +559,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
 
   function send(message) {
     if (state.connection !== 'up') {
-      note('Not sent: the daemon is not back yet. It is kept below; Enter sends it again.', 'error');
+      flash('Not sent: the daemon is not back yet. What you typed is kept; Enter sends it once it is');
       return false;
     }
     link.send(message);
@@ -641,28 +655,36 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
   function openSearch(text = '') {
     state.mode = 'search';
     state.search = text;
+    state.searchNote = '';
     findMatch(-1, true);
   }
 
-  /** The index of the next message (by `step`, -1 older) that matches the search, from the selected one. */
+  /**
+   * Goes to the next match of the search (by `step`, -1 older), from the one you are on; `fromEnd`, to the newest.
+   * Matches are counted as the pane shows them, so ↑ and ↓ step through each of them, not message by message.
+   */
   function findMatch(step, fromEnd = false) {
-    const query = state.search.toLowerCase();
-    if (!query) return;
-    const hits = state.entries.map((entry, i) => [i, searchText(entry).toLowerCase().includes(query)]).filter(([, hit]) => hit).map(([i]) => i);
+    if (!state.search) {
+      state.searchNote = '';
+      return;
+    }
+    const {ranges} = transcriptLines(state.entries, measure().width, {query: state.search});
+    const hits = ranges.flatMap(({matches}, i) => Array.from({length: matches}, (_, nth) => [i, nth]));
     if (!hits.length) {
       state.searchNote = 'no match';
       return;
     }
-    let next;
-    if (fromEnd || state.selected === -1) next = hits.at(-1);
-    else next = step < 0 ? hits.filter(i => i < state.selected).at(-1) ?? hits.at(-1) : hits.find(i => i > state.selected) ?? hits[0];
-    state.selected = next;
-    state.searchNote = `${hits.indexOf(next) + 1} of ${hits.length}`;
+    const at = hits.findIndex(([i, nth]) => i === state.selected && nth === state.found);
+    const next = fromEnd || at === -1 ? hits.length - 1 : (at + step + hits.length) % hits.length;
+    [state.selected, state.found] = hits[next];
+    const messages = ranges.filter(range => range.matches).length;
+    state.searchNote = `${next + 1} of ${hits.length} · in ${messages} message${messages === 1 ? '' : 's'}`;
   }
 
   /** Selects the message `by` away from the selected one (-1: older); none selected, the newest. */
   function selectBy(by) {
     if (!state.entries.length) return;
+    state.found = -1;
     if (state.selected === -1) state.selected = state.entries.length - 1;
     else state.selected = Math.max(0, Math.min(state.entries.length - 1, state.selected + by));
     state.mode = 'select';
@@ -670,6 +692,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
 
   function deselect() {
     state.selected = -1;
+    state.found = -1;
     if (state.mode === 'select') state.mode = 'idle';
   }
 
@@ -697,13 +720,30 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
     return true;
   }
 
+  /** A key of the last remark's action line (+ - a j). True when it acted. */
+  function remarkKey(name) {
+    const i = liveRemark();
+    if (i === -1) return false;
+    const {meta} = state.entries[i];
+    const {apply, jump} = remarkKeys(state.entries, i);
+    if (name === '+' || name === '-') {
+      rated({useful: name === '+', remark: meta.remark});
+      send({type: 'feedback', useful: name === '+', remark: meta.remark});
+    } else if (name === 'a' && apply) send({type: 'accept', action: apply.meta.suggestion.action});
+    else if (name === 'j' && jump) {
+      const {file, line} = jump.meta.place;
+      if (send({type: 'go', file, line})) flash(`Neovim goes to ${file}:${line}; Ctrl-O comes back`);
+    } else return false;
+    return true;
+  }
+
   // The menu over the input: commands after /, files after @.
 
   function menu() {
     if (state.mode !== 'idle' || state.menuClosedFor === editor.text) return null;
     if (/^\/\S*$/.test(editor.text)) {
-      const items = COMMANDS.filter(([name]) => name.startsWith(editor.text)).map(([name, args, what]) => ({label: name, detail: `${args ? `${args}  ` : ''}${what}`, value: name, args: Boolean(args)}));
-      return items.length && !(items.length === 1 && items[0].value === editor.text && !items[0].args) ? {kind: 'command', items: items.slice(0, 7)} : null;
+      const items = COMMANDS.filter(([name]) => name.startsWith(editor.text)).map(([name, args, what]) => ({label: name, args, detail: what, value: name}));
+      return items.length && !(items.length === 1 && items[0].value === editor.text && !items[0].args) ? {kind: 'command', items} : null;
     }
     const word = editor.word();
     if (word.text.startsWith('@') && editor.cursor === word.end) {
@@ -792,6 +832,8 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
     // Pair asks: y or n on an empty line answers at once.
     if (state.confirming !== null && editor.empty && !ctrl && !meta && /^[yYnN]$/.test(name)) return answer(name);
     if (name === '?' && editor.empty && !ctrl && !meta) return openHelp();
+    // The keys on the last remark's action line act at once, on an empty line, while it is the last thing said.
+    if (editor.empty && !ctrl && !meta && state.confirming === null && ['+', '-', 'a', 'j'].includes(name) && remarkKey(name)) return;
     if (name === 'enter' && (meta || key.shift)) return editor.insert('\n');
     if (ctrl && name === 'j') return editor.insert('\n');
     if (name === 'enter') return submit();
@@ -834,6 +876,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
       state.mode = 'idle';
       state.search = '';
       state.selected = -1;
+      state.found = -1;
       return;
     }
     if (name === 'enter') {
@@ -886,6 +929,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
     const index = transcript.ranges.findIndex(range => line >= range.start && line < range.end);
     if (index === -1) return deselect();
     state.selected = index;
+    state.found = -1;
     state.mode = 'select';
   }
 
@@ -900,19 +944,21 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
       header: state.header,
       entries: state.entries,
       selected: state.selected,
-      latestRemark: latestRemark(),
+      latestRemark: liveRemark(),
       scroll: state.scroll,
       editor,
       mode: open && state.mode === 'idle' ? 'menu' : state.mode,
       menu: open ? {kind: open.kind, items: open.items, chosen: state.menuChosen} : null,
       search: state.search,
       searchNote: state.searchNote,
+      found: state.found,
       query: state.mode === 'select' ? state.query : '',
       helpScroll: state.helpScroll,
       commands: COMMANDS,
       activity: state.activity,
       presence: state.presence,
       connection: state.connection,
+      away: state.connection === 'away' ? {since: state.awaySince, attempts: link.attempts} : null,
       turn: state.turn,
       model: state.down.length ? `⚠ ${state.down.join(', ')} not answering` : state.model,
       role: state.header.role,
@@ -922,10 +968,11 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
       about: state.about?.text,
       busy: busy(),
       editorEmpty: editor.empty,
-      selectedEntry: selectedEntry && {...selectedEntry, folded: !selectedEntry.expanded && selectedEntry.kind !== 'tool' && state.last.transcript.ranges[state.selected] && (state.last.transcript.ranges[state.selected].end - state.last.transcript.ranges[state.selected].start) > 13},
+      selectedEntry: selectedEntry && {...selectedEntry, folded: Boolean(state.last.transcript.ranges[state.selected]?.folded)},
       showEmpty: !state.entries.some(entry => ['you', 'pair', 'watch', 'tool', 'confirm'].includes(entry.kind) && !entry.meta?.greeting), // Pair's greeting goes with the card
       writing: partialIndex() !== -1,
-      placeholder: state.confirming !== null ? 'or type an answer'
+      placeholder: state.connection === 'away' ? 'what you type is kept; Enter sends once it is back'
+        : state.confirming !== null ? 'or type an answer'
         : askedForGoal ? 'the session\'s goal, or "later"'
           : busy() ? 'type ahead' : 'Ask Pair anything · / for commands',
     };
@@ -949,8 +996,9 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
       state.scroll += frame.transcript.total - state.total;
       frame = renderFrame({...v, scroll: state.scroll}, {width, height, look});
     }
-    // The selected message in sight.
-    const range = frame.transcript.ranges[state.selected];
+    // The selected message in sight; the match you are on, when the message is taller than the pane.
+    const whole = frame.transcript.ranges[state.selected];
+    const range = whole?.found !== undefined && whole.end - whole.start > frame.transcript.height ? {start: whole.found, end: whole.found + 1} : whole;
     if (range) {
       const end = frame.transcript.total - state.scroll;
       const start = end - frame.transcript.height;
@@ -993,6 +1041,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
     },
     lost: () => {
       state.connection = 'away';
+      state.awaySince = Date.now();
       render();
     },
     message: onMessage,

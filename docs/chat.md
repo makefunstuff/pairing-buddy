@@ -29,7 +29,7 @@ Four rows of chrome, two of them rules with words in them; the rest is the conve
   | `watch` | What Pair said unasked: the kind of moment and the file and line first, then its words |
   | `⎿` | What Pair's tools did for your question: the files it read, the commands it ran, what it searched |
   | `··` | Notes: the tests on save, a verdict noted, a level changed |
-  | `!!` | An error, such as a model that does not answer, with what to check |
+  | `!` | An error, in red, such as a model that does not answer, with what to check: its words are Markdown, so a command in it (`pair doctor`) is a code span, whole, to copy |
 
   The time is not on each message: a dim `── 21:19 ──` in the middle of the pane says it at the start, and again
   after a pause of five minutes or more, with the day (`── Thu 29 Oct · 00:12 ──`) when it is another day than the
@@ -43,11 +43,18 @@ Four rows of chrome, two of them rules with words in them; the rest is the conve
          finds the job taken and gets a 409.
          │ - return &Lease{ttl: cfg.Budget}
          │ + return &Lease{ttl: cfg.Budget + cfg.AttemptTimeout}
-         + useful · - noise · Alt-↑ more
+         + useful  - noise  a apply  j jump  · Alt-↑ more
 
    you   why does the third retry get a 409 and not a 200?
          ⎿ read internal/queue/lease.go 1-40 · searched AttemptTimeout
   ```
+
+  A remark is one unit: what about, its words, its diff behind the same `│ ` bar as a code block, and last its
+  **action line**, the keys that work on it, spaced like buttons: `+` useful, `-` noise, `a` takes its suggestion,
+  `j` goes to its line (each only where it applies), and `Alt-↑` for the rest ([below](#acting-on-a-message)). These
+  keys act at once on an empty line, while the remark is the last thing said (a note after it, such as the tests on
+  save, does not count); once you rate it, or you or Pair say something after it, the line goes and the letters are
+  letters again.
 
   Before Pair runs or types a command it asks, as `pair`: the question in words, and the command under it behind a
   bar, whole (backticks in it too), to read and copy. `y` allows it, `n` or `Esc` declines (and drops what you had typed), or type an answer (the name of another
@@ -67,7 +74,8 @@ Four rows of chrome, two of them rules with words in them; the rest is the conve
 
   Pair's words are Markdown: `code` shows in Pair's accent, **bold** as bold, _italics_ in italics, a link as its
   words with the address after them, lists with a hanging indent, headings, quotes, and code blocks behind a bar. A
-  table shows as written. A message longer than 18 lines folds to its first 12.
+  table shows as written. The numbers of an ordered list are padded to the widest of it, so ` 9.` and `10.` end in
+  one column. A message longer than 18 lines folds to its first 12; picked, `Enter` in the footer unfolds it.
 
   Code blocks, diffs and the command of a question wrap between tokens, with a hanging indent: at a space first, else
   before a dot or after an opening bracket, a slash or a value's `=`, never inside a name, a number or a flag
@@ -87,7 +95,7 @@ Four rows of chrome, two of them rules with words in them; the rest is the conve
   - a remark's place is its file's base name: `regression · lease.go:18`;
   - the header drops the goal and shortens the role (`── pair · hookd ──── nav · normal ──`);
   - the status keeps its words whole and drops what it can: the model first, then the counts
-    (`── ◇ watching · 3m ago ──`), `? waiting`, `▖ reading lease.go 1-40 2s`, `⚠ reconnecting`;
+    (`── ◇ watching · 3m ago ──`), `? waiting`, `▖ reading lease.go 1-40 2s`, `⚠ reconnecting 6s`;
   - the footer says its keys short (`/ cmds · @ files · Alt-↑ pick · ? keys`);
   - the `@` menu cuts a path at its start, a folder at a time, so two files never look the same:
     `@…/retry/backoff.go`, `@…/backoff_test.go`.
@@ -108,7 +116,7 @@ Four rows of chrome, two of them rules with words in them; the rest is the conve
   | `▖ looking at regression` | Pair looks at a moment of its own accord; it may say nothing |
   | `? waiting for your answer` | It asked to run or type a command |
   | `◆ Pair drives` | Pair has the wheel ([Driver](driver.md)) |
-  | `⚠ the pair daemon went away · reconnecting` | The daemon restarted; the pane carries on when it is back |
+  | `⚠ the pair daemon went away · reconnecting 6s · attempt 4` | The daemon restarted: how long it has been away and how many times the pane tried, so a blip reads differently from a daemon that is gone. What you type is kept (the input says so); nothing sends until it is back, and the pane carries on then |
 
   On the right: the Partner's model, how long its last answer took, and the tokens and cost of it when the provider
   reports them; when you scrolled up, how many lines are below (and `End` in the footer goes back down). The right
@@ -118,7 +126,7 @@ Four rows of chrome, two of them rules with words in them; the rest is the conve
 - **What you type**, after `›`, and under it **the keys that work now**: they change when Pair works, asks, or you
   pick a message. The footer holds keys only; a short note (copied, taken in Neovim) shows there for a moment.
 
-![A remark on save: watch, regression, the file and line, the suggestion as a diff, and the keys to rate it](images/chat-remark.png)
+![A remark on save: watch, regression, the file and line, the suggestion as a diff, and its action line: + useful, - noise, a apply, j jump](images/chat-remark.png)
 
 ## Talking to Pair
 
@@ -128,9 +136,14 @@ Anything you type that is not a command is a question for Pair; it is always ans
   paste keeps its line breaks and does not send.
 - **Up** and **Down** move between the lines of what you type, and from the first or the last line through what you
   sent before in this project, kept across panes and restarts.
-- **/** opens the commands as you type, each with what it does; **Tab** completes, **Enter** runs one that needs
-  nothing more. The [chat commands](cli.md#chat-commands) list them all.
-- **@** opens the project's files (from git): `@internal/queue/queue.go` names one in your question, for Pair to read.
+- **/** opens the commands as you type, in three columns: the command, its arguments, what it does. It shows seven at a
+  time; its rule says how many of all (`commands · 7 of 27 · type to narrow`) and its last line how many more there
+  are (`↓ 20 more`); **↑** and **↓** go through all of them. **Tab** completes, **Enter** runs one that needs nothing
+  more. The [chat commands](cli.md#chat-commands) list them all.
+
+  ![The command menu: seven of 27 commands in three columns (name, arguments, what it does), the count in its rule and ↓ 20 more under it](images/chat-menu.png)
+- **@** opens the project's files (from git): `@internal/queue/queue.go` names one in your question, for Pair to read;
+  **Tab** or **Enter** inserts it (the footer says `Enter inserts`).
   **@here** sends the lines you selected last in Neovim with it, else the line you are on: the question names them
   (`queue.go:18-20`), as `:'<,'>Pair ask` does.
 - **Esc** (or **Ctrl-C**) stops the answer Pair is working on; `/cancel` too. You can type your next question while
@@ -156,16 +169,23 @@ and the footer lists what you can do with it, with the message's time on the rig
 | `Enter` | Unfold a long message, or the tool lines one per line |
 | `Esc` | Back to typing; any other key does that too |
 
-The last remark you have not rated shows `+ useful · - noise` under it; typing `+` or `-` and Enter still rates it.
+The last remark, while it is the last thing said, has these keys on its own [action line](#what-you-see), and `+`,
+`-`, `a` and `j` work on it without picking it. Typing `+` or `-` and Enter rates the last remark later too, and
+`/useful 2` or `/noise 2` an older one, as `+2` and `-2` do after `/remarks` (its list ends the action line).
 
-![A remark picked with Ctrl-F: the bar on its left, and the keys that act on it in the footer](images/chat-select.png)
+![A message picked with Ctrl-F and Enter: the bar on its left, the match it was found by in green, and the keys that act on it in the footer](images/chat-select.png)
 
 ## Finding and scrolling
 
 - **PgUp** and **PgDn** scroll half a pane, the mouse wheel three lines. **End** on an empty line (or PgDn to the
   bottom) follows the conversation again. What you read stays put while new messages come in below.
-- **Ctrl-F** finds in the conversation (`/search <text>` too): the matches are underlined, **↑** and **↓** go to the
-  older or newer one, **Enter** keeps the one you are on picked, **Esc** closes.
+- **Ctrl-F** finds in the conversation (`/search <text>` too). The find row stands where you type (what you typed
+  waits) and says which match you are on, of how many, and in how many messages: `find: lease  3 of 9 · in 4
+  messages`. Every match is underlined; the one you are on is bold, underlined and green (no reverse video, no
+  fill). **↑** and **↓** go from match to match, older or newer, also between two in one message; a folded message
+  opens to show a match in its folded part. **Enter** keeps the message picked, **Esc** closes.
+
+  ![Finding lease: every match underlined, the one you are on bold and green, and the find row: 8 of 8 · in 4 messages](images/chat-find.png)
 - **Alt-M** turns the mouse off, so that the terminal selects text with it again, and on. While it is on, most
   terminals still select text with Shift held.
 
@@ -195,6 +215,7 @@ The last remark you have not rated shows `+ useful · - noise` under it; typing 
 | `Ctrl-C` | Stop the answer; else clear what you typed; twice on an empty line, close the pane |
 | `Ctrl-D` | Close the pane, on an empty line |
 | `y` `n` | While Pair asks: allow, decline; `Esc` declines too |
+| `+` `-` `a` `j` | On the last remark, on an empty line, while it is the last thing said: rate it, take its suggestion, go to its line |
 | `?` | The keys, on an empty line |
 
 Closing the pane leaves the session running; `pair` or `:Pair chat` opens it again, with the conversation so far.
@@ -222,7 +243,7 @@ that light themes wash out:
 | Pair's accent | Pair's name, `code` in its words, the prompt, the spinner, the bar of a picked message |
 | Yellow | The Watcher: the `watch` label and a remark's kind and place; the `?` of a question waiting for you; `y` and `n` (bold) in the footer while it waits |
 | Dim | Chrome: the rules, the time dividers and an answer's time in the margin, what a key in the footer does, the `⎿` tool lines, a fold, a link's address |
-| Green, red | `+` and `-` lines of a diff; an error, in red |
+| Green, red | `+` and `-` lines of a diff; the find match you are on, in green (bold and underlined too); an error, in red |
 
 Light themes are where dim and yellow fade: against the background, dim is about 2 : 1 in Tokyo Night Day and
 Solarized Light, and yellow is 3.0 : 1 in Solarized Light and 1.7 : 1 in xterm's default light (body text wants

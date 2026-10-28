@@ -108,7 +108,7 @@ question for Pair (`@here` in it sends your selection in Neovim along), and a li
 | `/drive [what]` | Hand Pair the wheel for one change |
 | `/drive! [what]` | The same, and Pair keeps the wheel until you take it back |
 | `/cancel` | Stop the answer Pair is working on (`Esc` in the pane); while it drives, take the wheel back |
-| `+` or `/useful`, `-` or `/noise` | Your verdict on Pair's last unasked remark |
+| `+` or `/useful`, `-` or `/noise` | Your verdict on Pair's last unasked remark (in the full-screen pane, while its action line shows, `+` and `-` rate it at once) |
 | `/remarks` | The last nine remarks in the project; `+2` (or `/useful 2`) and `-3` (or `/noise 3`) rate an older one |
 | `?` or `/why` | The idea worth keeping behind what Pair said last (in the full-screen pane, `?` on an empty line shows the keys: type `/why`) |
 | `/explain [n]` | The same; with `n`, about remark `n` of `/remarks` |

@@ -2,7 +2,7 @@
 // which role and at which level), the conversation, the status in the rule under it (what Pair does now), what you
 // type, and a line of the keys that work now: four rows of chrome. Each message has a 7-column gutter with who speaks:
 // you, pair (answers, and the questions Pair asks you), watch (what Pair said unasked), ·· (notes of the pane and the
-// daemon), !! (errors); what Pair's tools did is a ⎿ line under the question. The time is a divider, ── 21:19 ──, at
+// daemon), ! (errors); what Pair's tools did is a ⎿ line under the question. The time is a divider, ── 21:19 ──, at
 // the start and after a pause; in a wide pane the words end by column 80, and an answer's time, duration and tokens
 // sit in the margin to its right. Pair's words are Markdown: code blocks, `code`, **bold**, lists and headings show
 // as such, a suggestion as a diff. Code wraps between its tokens, never inside a name or a flag.
@@ -14,7 +14,7 @@ import {clipLine, fitText, lineWidth, paintLine, textWidth} from './chat-style.m
 const seg = (text, style = 'text') => ({text, style});
 const blank = () => [];
 
-const LABELS = {you: 'you', pair: 'pair', watch: 'watch', system: '··', error: '!!', confirm: 'pair', note: '··'};
+const LABELS = {you: 'you', pair: 'pair', watch: 'watch', system: '··', error: '!', confirm: 'pair', note: '··'};
 const LABEL_STYLES = {you: 'you', pair: 'pair', watch: 'watch', system: 'dim', error: 'errorBold', confirm: 'pair', note: 'dim'};
 const NARROW = 52; // below this, the header drops the goal and the footer its long words
 const GUTTER = 7; // the selection bar, the name in five, a space
@@ -220,6 +220,32 @@ function diffStyle(line) {
   return 'text';
 }
 
+const ITEM = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/;
+
+/**
+ * The width of each ordered item's number (by its row in `rows`): the widest of its list at its depth, so that 9.
+ * and 10. end in the same column. A list goes on over blank rows and the rows of its deeper items.
+ */
+function numberWidths(rows) {
+  const widths = new Map();
+  let list = []; // the rows of the list we are in, as [row, depth, number]
+  const close = () => {
+    for (const depth of new Set(list.map(([, d]) => d))) {
+      const mine = list.filter(([, d]) => d === depth);
+      const widest = Math.max(...mine.map(([, , n]) => n.length));
+      for (const [row] of mine) widths.set(row, widest);
+    }
+    list = [];
+  };
+  rows.forEach((raw, row) => {
+    const item = ITEM.exec(raw);
+    if (item && /\d/.test(item[2])) list.push([row, Math.floor(item[1].length / 2), item[2]]);
+    else if (!item && raw.trim()) close();
+  });
+  close();
+  return widths;
+}
+
 /**
  * `text` as Markdown, in lines of segments: fenced code (a bar on its left, wrapped between its tokens; a diff in its
  * colours) at most `width` wide, and at most `measure` wide headings, lists with a hanging indent, quotes, and
@@ -231,49 +257,51 @@ export function markdownLines(text, width, {base = 'text', measure = width} = {}
   const lines = [];
   let fence = null; // the language of the code block we are in, or null
   let blankBefore = false;
-  for (const raw of text.replace(/\r/g, '').split('\n')) {
+  const rows = text.replace(/\r/g, '').split('\n');
+  const numbers = numberWidths(rows);
+  rows.forEach((raw, row) => {
     const fenceMatch = /^\s*(```+|~~~+)\s*([\w+-]*)/.exec(raw);
     if (fenceMatch) {
       fence = fence === null ? fenceMatch[2].toLowerCase() : null;
       blankBefore = false;
-      continue;
+      return;
     }
     if (fence !== null) {
       const style = fence === 'diff' ? diffStyle(raw) : 'text';
       lines.push(...codeLines(raw, code, style, [seg('│ ', 'rule')]));
       blankBefore = false;
-      continue;
+      return;
     }
     if (!raw.trim()) {
       if (lines.length && !blankBefore) lines.push(blank());
       blankBefore = true;
-      continue;
+      return;
     }
     blankBefore = false;
     if (/^( {4}|\t)/.test(raw)) {
       lines.push(...codeLines(raw.replace(/^( {4}|\t)/, ''), code, 'text', [seg('  ', 'text')]));
-      continue;
+      return;
     }
     const heading = /^#{1,6}\s+(.*)$/.exec(raw);
     if (heading) {
       lines.push(...wrapTokens(inlineTokens(heading[1], 'bold').map(token => ({...token, style: token.style === 'code' ? 'code' : 'bold'})), width));
-      continue;
+      return;
     }
-    const item = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/.exec(raw);
+    const item = ITEM.exec(raw);
     if (item) {
       const depth = Math.min(3, Math.floor(item[1].length / 2));
-      const mark = /\d/.test(item[2]) ? `${item[2]} ` : '• ';
+      const mark = /\d/.test(item[2]) ? `${item[2].padStart(numbers.get(row))} ` : '• ';
       const indent = '  '.repeat(depth);
       lines.push(...wrapTokens(inlineTokens(item[3], base), width, [seg(indent + mark, 'dim')], [seg(' '.repeat(textWidth(indent + mark)), 'text')]));
-      continue;
+      return;
     }
     const quote = /^>\s?(.*)$/.exec(raw);
     if (quote) {
       lines.push(...wrapTokens(inlineTokens(quote[1], 'italic'), width, [seg('▎ ', 'rule')]));
-      continue;
+      return;
     }
     lines.push(...wrapTokens(inlineTokens(raw.trim(), base), width));
-  }
+  });
   while (lines.length && !lines.at(-1).length) lines.pop();
   return lines;
 }
@@ -336,7 +364,7 @@ export function bodyLines(entry, width, {continued = false, measure = width} = {
     return [...about, ...plainLines(text, words)];
   }
   if (kind === 'system') return plainLines(text, words, 'text');
-  if (kind === 'error') return plainLines(text, words, 'error');
+  if (kind === 'error') return markdownLines(text, width, {base: 'error', measure}); // a command in it is `code`, whole
   // Pair's words: a remark says what about first; a suggestion shows as a diff under its first line.
   const lines = [];
   if (meta.trigger && !continued) {
@@ -366,9 +394,11 @@ export function bodyLines(entry, width, {continued = false, measure = width} = {
   return lines;
 }
 
-/** Underlines what matches `query` in `line` (any case). */
-function highlight(line, query) {
-  if (!query) return line;
+/**
+ * Underlines what matches `query` in `line` (any case), counting the matches in `count.n`: the one numbered
+ * `current` (from 0) is the match you are on, green and bold too.
+ */
+function highlight(line, query, count, current = -1) {
   const needle = query.toLowerCase();
   return line.flatMap(s => {
     const lower = s.text.toLowerCase();
@@ -377,7 +407,8 @@ function highlight(line, query) {
     let at = 0;
     for (let i = lower.indexOf(needle); i !== -1; i = lower.indexOf(needle, at)) {
       if (i > at) parts.push(seg(s.text.slice(at, i), s.style));
-      parts.push(seg(s.text.slice(i, i + needle.length), 'match'));
+      parts.push(seg(s.text.slice(i, i + needle.length), count.n === current ? 'found' : 'match'));
+      count.n += 1;
       at = i + needle.length;
     }
     if (at < s.text.length) parts.push(seg(s.text.slice(at), s.style));
@@ -385,8 +416,29 @@ function highlight(line, query) {
   });
 }
 
-/** Whether `entry` matches the search `query`. */
-export const matches = (entry, query) => Boolean(query) && searchText(entry).toLowerCase().includes(query.toLowerCase());
+/** The keys that work on a remark at once, as its last line shows them: rate it, take its suggestion, go to its line. */
+export function remarkKeys(entries, index) {
+  const id = entries[index]?.meta?.remark;
+  const group = entries.filter(entry => id && entry.meta?.remark === id);
+  return {
+    apply: group.find(entry => entry.meta.suggestion && !entry.applied) ?? null,
+    jump: group.findLast(entry => entry.meta.place) ?? null,
+  };
+}
+
+/**
+ * The action line under a remark, `width` wide: + useful  - noise  a apply  j jump  · Alt-↑ more, spaced like
+ * buttons. Where it does not fit, the aside goes first, then the gaps narrow.
+ */
+function actionLine(entries, index, width) {
+  const {apply, jump} = remarkKeys(entries, index);
+  const keys = [['+', 'useful'], ['-', 'noise'], ...(apply ? [['a', 'apply']] : []), ...(jump ? [['j', 'jump']] : [])];
+  const line = (gap, aside) => [
+    ...keys.flatMap(([key, what], i) => [...(i ? [seg(gap)] : []), seg(key, 'bold'), seg(` ${what}`, 'dim')]),
+    ...(aside ? [seg('  · Alt-↑ more', 'dim')] : []),
+  ];
+  return [line('  ', true), line('  ', false), line(' ', false)].find(l => lineWidth(l) <= width) ?? clipLine(line(' ', false), width);
+}
 
 /** All the text of `entry`, as search and copy see it. */
 export function searchText(entry) {
@@ -420,11 +472,14 @@ function turnMeta(entry, room) {
 }
 
 /**
- * The lines of the whole conversation `width` wide, and where each message is among them ({start, end}, end
- * exclusive). `selected` is the index of the selected message, `query` what search looks for, `latestRemark`
- * the index of the remark whose rating keys the pane shows, `now` today, for the day of a divider.
+ * The lines of the whole conversation `width` wide, and where each message is among them ({start, end, folded,
+ * matches, found}, end exclusive; `matches` counts what search finds in it, folded or not, and `found` is the line of
+ * the match you are on). `selected` is the index of the
+ * selected message, `query` what search looks for and `found` the match you are on, by its number in the selected
+ * message (a fold opens to show it); `latestRemark` the index of the remark whose action line the pane shows, `now`
+ * today, for the day of a divider.
  */
-export function transcriptLines(entries, width, {selected = -1, query = '', latestRemark = -1, now = Date.now()} = {}) {
+export function transcriptLines(entries, width, {selected = -1, query = '', found = -1, latestRemark = -1, now = Date.now()} = {}) {
   const lines = [];
   const ranges = [];
   const bodyWidth = Math.max(8, width - GUTTER);
@@ -449,14 +504,25 @@ export function transcriptLines(entries, width, {selected = -1, query = '', late
     const head = turn && label ? [seg(label, LABEL_STYLES[entry.kind]), seg(' '.repeat(GUTTER - 1 - textWidth(label)))] : null;
     const continued = Boolean(entry.meta?.remark && entry.meta.remark === previous?.meta?.remark);
     let body = bodyLines(entry, bodyWidth, {continued, measure});
-    if (!entry.expanded && entry.kind !== 'tool' && body.length > FOLD_OVER) {
+    // What search finds: all of it underlined, the match you are on in green too; a fold does not hide it.
+    const count = {n: 0};
+    let foundRow = -1;
+    if (query) {
+      body = body.map((line, row) => {
+        const before = count.n;
+        const lit = highlight(line, query, count, index === selected ? found : -1);
+        if (index === selected && found >= before && found < count.n) foundRow = row;
+        return lit;
+      });
+    }
+    const folded = !entry.expanded && entry.kind !== 'tool' && body.length > FOLD_OVER && foundRow < FOLD_TO;
+    if (folded) {
       const hidden = body.length - FOLD_TO;
       const how = index === selected ? 'Enter' : 'Alt-↑ and Enter';
       const folds = [`… ${hidden} more lines · ${how} shows all`, `… ${hidden} more lines · ${how.replace(' and ', ' ')}`, `… ${hidden} more · ${how.replace(' and ', ' ')}`];
       body = [...body.slice(0, FOLD_TO), [seg(folds.find(fold => textWidth(fold) <= bodyWidth) ?? folds.at(-1), 'dim')]];
     }
-    if (index === latestRemark && !entry.verdict) body.push([seg('+', 'bold'), seg(' useful · ', 'dim'), seg('-', 'bold'), seg(' noise · ', 'dim'), seg('Alt-↑', 'bold'), seg(' more', 'dim')]);
-    if (query && matches(entry, query)) body = body.map(line => highlight(line, query));
+    if (index === latestRemark && !entry.verdict) body.push(actionLine(entries, index, bodyWidth));
     // A wide pane has room right of the words: what the turn took goes there, on its answer's first line.
     if (entry.turn && body.length && width > MEASURE) {
       const used = GUTTER + lineWidth(body[0]);
@@ -465,7 +531,7 @@ export function transcriptLines(entries, width, {selected = -1, query = '', late
     }
     body.forEach((line, i) => lines.push([bar, ...(i === 0 && head ? head : [seg(' '.repeat(GUTTER - 1))]), ...line]));
     if (!body.length && head) lines.push([bar, ...head]);
-    ranges.push({start, end: lines.length});
+    ranges.push({start, end: lines.length, folded, matches: count.n, ...(foundRow !== -1 ? {found: start + foundRow} : {})});
     previous = entry;
     if (timed) lastAt = entry.at;
   });
@@ -543,13 +609,23 @@ function ago(at, now) {
  * names no keys: those are in the footer.
  */
 export function statusLine(view, width) {
-  const {activity = {state: 'idle'}, presence, connection = 'up', now = Date.now(), frame = 0, turn, model, scrolled = 0, role, keepWheel, writing} = view;
+  const {activity = {state: 'idle'}, presence, connection = 'up', now = Date.now(), frame = 0, turn, model, scrolled = 0, role, keepWheel, writing, away} = view;
   const spin = SPINNER[frame % SPINNER.length];
   const since = activity.since ? [seg(` ${duration(now - activity.since)}`, 'dim')] : [];
   // Each state long to short: a narrow pane gets a shorter one whole, not a long one cut in the middle.
   let lefts;
   if (connection === 'connecting') lefts = [[seg('… ', 'dim'), seg('connecting to the pair daemon', 'text')], [seg('… ', 'dim'), seg('connecting', 'text')]];
-  else if (connection === 'away') lefts = [[seg('⚠ ', 'error'), seg('the pair daemon went away', 'text'), seg(' · reconnecting', 'dim')], [seg('⚠ ', 'error'), seg('reconnecting', 'text')]];
+  else if (connection === 'away') {
+    // How long it has been away and how many times the pane tried, so a blip reads differently from a dead daemon.
+    const gone = away?.since ? [seg(` ${duration(now - away.since)}`, 'dim')] : [];
+    const tries = away?.attempts ? [seg(` · attempt ${away.attempts}`, 'dim')] : [];
+    lefts = [
+      [seg('⚠ ', 'error'), seg('the pair daemon went away', 'text'), seg(' · reconnecting', 'dim'), ...gone, ...tries],
+      [seg('⚠ ', 'error'), seg('reconnecting', 'text'), ...gone, ...tries],
+      [seg('⚠ ', 'error'), seg('reconnecting', 'text'), ...gone],
+      [seg('⚠ ', 'error'), seg('reconnecting', 'text')],
+    ];
+  }
   else if (activity.state === 'thinking') lefts = [[seg(`${spin} `, 'accent'), seg(writing ? 'writing' : 'thinking', 'text'), ...since]];
   else if (activity.state === 'tool') {
     const doing = DOING[activity.tool] ?? activity.tool;
@@ -590,11 +666,11 @@ export function statusLine(view, width) {
 
 /** The keys that work now, for the footer. */
 export function footerKeys(view) {
-  const {mode = 'idle', busy, editorEmpty = true, selectedEntry, confirming, about, scroll = 0} = view;
+  const {mode = 'idle', busy, editorEmpty = true, selectedEntry, confirming, about, scroll = 0, connection = 'up', menu} = view;
   const k = (keys, what, style = 'bold', short = what) => [keys, what, style, short];
   if (mode === 'help') return [k('↑↓ PgUp PgDn', 'scroll'), k('any other key', 'closes this')];
-  if (mode === 'search') return [k('type', 'to find'), k('↑↓', 'older/newer'), k('Enter', 'keep'), k('Esc', 'close')];
-  if (mode === 'menu') return [k('↑↓', 'choose'), k('Tab', 'complete'), k('Enter', 'run'), k('Esc', 'close')];
+  if (mode === 'search') return [k('↑↓', 'older/newer'), k('Enter', 'keep'), k('Esc', 'close')];
+  if (mode === 'menu') return [k('↑↓', 'choose'), k('Tab', 'complete'), k('Enter', menu?.kind === 'file' ? 'inserts' : 'run'), k('Esc', 'close')];
   if (mode === 'select' && selectedEntry) {
     const keys = [k('c', 'copy')];
     if (selectedEntry.meta?.suggestion && !selectedEntry.applied) keys.push(k('a', 'apply'));
@@ -604,6 +680,8 @@ export function footerKeys(view) {
     keys.push(k('Esc', 'back'));
     return keys;
   }
+  // Away, nothing sends: what you type waits in the input.
+  if (connection === 'away') return editorEmpty ? [k('Ctrl-D', 'close'), k('?', 'keys')] : [k('Alt-Enter', 'newline'), k('Tab', 'complete')];
   if (confirming && editorEmpty) return [k('y', 'allow', 'answer'), k('n', 'decline', 'answer'), k('Esc', 'decline')];
   if (confirming) return [k('Enter', 'answers'), k('Esc', 'decline')];
   const keys = [];
@@ -656,21 +734,42 @@ export function cutStart(label, width) {
   return `${at}…${out}`;
 }
 
-/** The menu over the input: `items` as {label, detail}, the `chosen` one marked. Files lose their start, not their end. */
-export function menuLines(items, chosen, width, {kind = 'command'} = {}) {
+export const MENU_ROWS = 7;
+
+/** The first of `count` items the menu shows, `rows` at a time, so that the `chosen` one is in sight. */
+export const menuStart = (count, chosen, rows = MENU_ROWS) => Math.max(0, Math.min(chosen - rows + 1, count - rows));
+
+/**
+ * The menu over the input: `items` as {label, args, detail}, `rows` of them from the one that keeps the `chosen` one
+ * in sight, marked; the label, the arguments and what it does each in a column of their own, and a last line for
+ * what is above and below. Files lose their start, not their end.
+ */
+export function menuLines(items, chosen, width, {kind = 'command', rows = MENU_ROWS} = {}) {
+  const first = menuStart(items.length, chosen, rows);
+  const shown = items.slice(first, first + rows);
   const most = items.some(item => item.detail) ? Math.floor(width / 2) : width - 3;
   const labelWidth = Math.min(Math.max(...items.map(item => textWidth(item.label)), 4) + 2, most);
-  return items.map((item, i) => {
-    const mark = i === chosen;
+  const longest = Math.max(0, ...items.map(item => textWidth(item.args ?? '')));
+  const argsWidth = longest ? Math.min(longest + 2, Math.max(0, Math.floor((width - 3 - labelWidth) / 2))) : 0;
+  const lines = shown.map((item, i) => {
+    const mark = first + i === chosen;
     const label = (kind === 'file' ? cutStart(item.label, labelWidth - 1) : fitText(item.label, labelWidth - 1)).padEnd(labelWidth);
-    return clipLine([seg(mark ? ' ▸ ' : '   ', mark ? 'accent' : 'dim'), seg(label, mark ? 'accentBold' : 'bold'), seg(item.detail ?? '', 'dim')], width);
+    const args = item.args && textWidth(item.args) > argsWidth - 2 ? `${fitText(item.args, argsWidth - 3)}…` : item.args ?? '';
+    return clipLine([
+      seg(mark ? ' ▸ ' : '   ', mark ? 'accent' : 'dim'), seg(label, mark ? 'accentBold' : 'bold'),
+      ...(argsWidth ? [seg(args.padEnd(argsWidth), 'text')] : []), seg(item.detail ?? '', 'dim'),
+    ], width);
   });
+  const above = first;
+  const below = items.length - first - shown.length;
+  if (above || below) lines.push([seg('   '), seg([...(above ? [`↑ ${above} more`] : []), ...(below ? [`↓ ${below} more`] : [])].join(' · '), 'dim')]);
+  return lines;
 }
 
-/** The line over the menu: what it lists. */
-function menuRule(kind, width) {
-  const name = kind === 'file' ? ' files ' : ' commands ';
-  return clipLine([seg('╶─', 'rule'), seg(name, 'dim'), seg('─'.repeat(Math.max(0, width - name.length - 2)), 'rule')], width);
+/** The line over the menu: what it lists, and how many of them it shows when not all. */
+function menuRule(kind, count, width) {
+  const name = kind === 'file' ? ' files ' : ` commands${count > MENU_ROWS ? ` · ${MENU_ROWS} of ${count} · type to narrow` : ''} `;
+  return clipLine([seg('╶─', 'rule'), seg(name, 'dim'), seg('─'.repeat(Math.max(0, width - textWidth(name) - 2)), 'rule')], width);
 }
 
 /** What the pane shows before anything is said: what Pair does, and how to talk to it. */
@@ -679,6 +778,7 @@ export function emptyLines(width) {
   const key = (keys, words) => text(words, 'text', [seg(`  ${keys.padEnd(7)}`, 'bold')], [seg(' '.repeat(9))]);
   const mascot = ['▗▄▄▖ ', '▐▘▝▌ ', '▝▀▀▘ '];
   const intro = text('It watches you work and speaks rarely: a line in Neovim, more here when you ask.', 'text', [seg('       ')], [seg('       ')]);
+  while (intro.length < mascot.length - 1) intro.push([seg('       ')]); // the head keeps its three rows, however the words wrap
   const top = [[seg('  '), seg(mascot[0], 'accent'), seg('Pair', 'accentBold'), seg(' · your pair in the second chair')], ...intro];
   top.forEach((line, i) => {
     if (i > 0 && i < mascot.length) line.splice(0, 1, seg('  '), seg(mascot[i], 'accent'));
@@ -706,8 +806,9 @@ export function helpLines(commands, width) {
     ['  + - m', 'rate the remark useful or noise · mute its kind'],
     ['  f e', 'ask a follow-up about it · explain it'],
     ['  Enter', 'unfold a long message or the tool lines'],
+    ['+ - a j', 'on the last remark, at once: rate it, apply it, jump to it'],
     ['PgUp PgDn', 'scroll; the mouse wheel too · End: back down'],
-    ['Ctrl-F', 'find in the conversation'],
+    ['Ctrl-F', 'find in the conversation; ↑ ↓ go from match to match'],
     ['Alt-L', 'quiet → normal → chatty'],
     ['Alt-M', 'mouse on or off (off: select text with it)'],
     ['Ctrl-C', 'stop, or clear; twice on an empty line: close'],
@@ -746,9 +847,10 @@ export function renderFrame(view, {width, height, look = {color: false}}) {
   ]);
   if (view.editor.empty && view.placeholder) input[0].push(seg(view.placeholder, 'dim'));
   if (view.about) input.unshift(clipLine([seg('↳ ', 'accent'), seg('follow-up on: ', 'dim'), seg(view.about, 'text')], width));
-  if (view.search !== undefined && view.mode === 'search') input.unshift([seg(' find: ', 'accent'), seg(view.search, 'bold'), seg(view.searchNote ? `  ${view.searchNote}` : '', 'dim')]);
+  // While you find, the find row stands where you type (what you typed waits there).
+  if (view.mode === 'search') input.splice(0, input.length, [seg(' find: ', 'accent'), seg(view.search ?? '', 'bold'), seg(view.searchNote ? `  ${view.searchNote}` : '', 'dim')]);
   const bottom = [statusLine({...view, scrolled: view.mode === 'help' ? 0 : view.scroll ?? 0}, width), ...input, footerLine(view, width)];
-  const menu = view.menu?.items?.length ? [menuRule(view.menu.kind, width), ...menuLines(view.menu.items, view.menu.chosen, width, {kind: view.menu.kind})] : [];
+  const menu = view.menu?.items?.length ? [menuRule(view.menu.kind, view.menu.items.length, width), ...menuLines(view.menu.items, view.menu.chosen, width, {kind: view.menu.kind})] : [];
   const middle = Math.max(1, height - top.length - bottom.length - menu.length);
 
   let body;
@@ -757,11 +859,11 @@ export function renderFrame(view, {width, height, look = {color: false}}) {
     const help = helpLines(view.commands ?? [], width);
     body = help.slice(view.helpScroll ?? 0, (view.helpScroll ?? 0) + middle);
   } else {
-    const {lines, ranges} = transcriptLines(view.entries, width, {selected: view.selected, query: view.mode === 'search' ? view.search : view.query, latestRemark: view.latestRemark, now: view.now});
+    const {lines, ranges} = transcriptLines(view.entries, width, {selected: view.selected, query: view.mode === 'search' ? view.search : view.query, found: view.found, latestRemark: view.latestRemark, now: view.now});
     const card = view.showEmpty ? [blank(), ...emptyLines(width), blank()] : [];
     const all = [...card, ...lines];
     const offset = card.length;
-    transcript = {height: middle, total: all.length, ranges: ranges.map(r => ({start: r.start + offset, end: r.end + offset}))};
+    transcript = {height: middle, total: all.length, ranges: ranges.map(r => ({...r, start: r.start + offset, end: r.end + offset, ...(r.found !== undefined ? {found: r.found + offset} : {})}))};
     const end = Math.max(0, all.length - (view.scroll ?? 0));
     body = all.slice(Math.max(0, end - middle), end);
   }
@@ -769,7 +871,7 @@ export function renderFrame(view, {width, height, look = {color: false}}) {
   const lines = [...top, ...body, ...menu, ...bottom].slice(0, height).map(line => paintLine(clipLine(line, width), look));
   const cursorRow = height - 1 - 1 - (shown - 1 - (layout.row - first));
   const cursor = view.mode === 'help' ? null : view.mode === 'search'
-    ? {row: height - 1 - shown - (view.about ? 1 : 0) - 1, column: Math.min(width - 1, 7 + textWidth(view.search ?? ''))}
+    ? {row: height - 2, column: Math.min(width - 1, 7 + textWidth(view.search ?? ''))}
     : {row: cursorRow, column: Math.min(width - 1, textWidth(prompt) + layout.column)};
   return {lines, cursor, transcript};
 }
