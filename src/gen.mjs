@@ -9,29 +9,41 @@
 // goes against the brief (≠ brief) and what it decided that nobody said (? guessed).
 //
 // One request runs at a time; others wait their turn. While one runs, Pair makes no remark nobody asked for, and the
-// user's questions in the chat still get answers, in the session's own conversation. This version builds three
-// shapes: here (code at the cursor, or over the selection), file (new files, as pair://gen/<n>/<path> buffers in
-// Neovim that :w in one writes to its real path) and try (a sample in a folder of its own outside the project, which
-// the model writes and runs there in the sandbox, and which opens in a split; /keep moves a file of it into the project
-// as a buffer to review, as a file request's). Scaffold is named, guessed and confirmed, but not built yet. The ledger
-// keeps each proposed file's text, so Neovim gets its buffers again after a restart of either.
+// user's questions in the chat still get answers, in the session's own conversation. There are four shapes: here
+// (code at the cursor, or over the selection), file (new files, as pair://gen/<n>/<path> buffers in Neovim that :w in
+// one writes to its real path), try (a sample in a folder of its own outside the project, which the model writes and
+// runs there in the sandbox, and which opens in a split; /keep moves a file of it into the project as a buffer to
+// review, as a file request's) and scaffold (many files and their wiring, built and run in a copy of the project in
+// Pair's data folder, or with --branch in a git worktree; the user keeps a file at a time: a new file as a buffer to
+// review, a change to a file of theirs as suggestions in it, and deletes the copy with one key). Scaffold is never
+// guessed silently: a guess is always confirmed. The ledger keeps each proposed file's text, so Neovim gets its
+// buffers again after a restart of either.
 import {realpathSync} from 'node:fs';
-import {mkdir, readFile, utimes, writeFile} from 'node:fs/promises';
-import {dirname, isAbsolute, join, relative, sep} from 'node:path';
+import {execFile} from 'node:child_process';
+import {mkdir, readdir, readFile, realpath, stat, utimes, writeFile} from 'node:fs/promises';
+import {dirname, isAbsolute, join, normalize, relative, sep} from 'node:path';
+import {promisify} from 'node:util';
 import {
   briefEmpty, briefLine, briefText, CHECK_PROMPT, checkInput, CONFLICT_PROMPT, conflictInput, exceptionKey, parseCheck,
   parseConflict, quotePlace, readBrief,
 } from './brief.mjs';
+import {checkCommand} from './check.mjs';
 import {commandPolicy} from './command-policy.mjs';
-import {GEN_BRIEF, GEN_KEEP_TRIES, GEN_LIMITS} from './config.mjs';
+import {GEN_BRIEF, GEN_KEEP_TRIES, GEN_LIMITS, GEN_SCAFFOLD} from './config.mjs';
 import {logDecision, LOG_NAME} from './decision-log.mjs';
 import {draftPath, numberedLines, projectFile} from './files.mjs';
-import {daysLeft, expireTries, filesIn, freshFolder, noLinks, pathIn, projectFolder, tryFolder, tryLine, triesIn, trySandboxed} from './gen-tree.mjs';
+import {
+  changedIn, daysLeft, expireTries, filesIn, freshFolder, linesOf, makeCopy, makeWorktree, noLinks, pathIn, placeHunks, projectFolder,
+  removeCopy, removeWorktree, scaffoldFolder, sizeOf, textOf, tryFolder, tryLine, triesIn, trySandboxed,
+} from './gen-tree.mjs';
 import {gitFiles} from './git.mjs';
 import {keptOutput, startOfDay} from './ledger.mjs';
+import {runText} from './session.mjs';
+import {parseTestOutput} from './test-output.mjs';
+import {runLabel} from './test-runs.mjs';
 
 export const SHAPES = ['here', 'file', 'scaffold', 'try'];
-const BUILT = new Set(['here', 'file', 'try']);
+const BUILT = new Set(SHAPES);
 /** What each shape makes, as the shape question lists it. */
 export const SHAPE_WHAT = {
   here: 'at the cursor, over a selection',
@@ -51,6 +63,12 @@ const LISTED = 200; // a file request is told the names of this many of the proj
 const TRY_LISTED = 60; // and a try request, of this many
 const RUN_CHARS = 3000; // of a try's run, the model is told the last this many characters of its output
 const RAN_LINES = 3; // and the chat shows its last this many lines, when the user runs it again
+const SCAFFOLD_LISTED = 300; // a scaffold request is told the names of this many of the project's files
+const CARD_FILES = 8; // the chat's line about a scaffold names this many of its files
+const CHECKED_LINES = 300; // the brief's check after a scaffold reads this many lines of each file
+const FLAG = /^--(branch|copy)(?=\s|$)\s*/; // /gen scaffold --branch: in a git worktree; --copy: in Pair's copy
+// What installs a package: in a copy without the network it is listed for the user, not run.
+const INSTALL = /(^|[\s;&|(])(npm (i|install|add|ci)|pnpm (i|install|add)|yarn( add| install|\s*$)|bun (i|install|add)|pip3? install|uv (add|pip install|sync)|poetry (add|install)|go (get|mod download)|cargo (add|install|fetch)|gem install|bundle( install)?\s*$|composer (require|install))\b/;
 
 /** Of a try's files, the one that opens: the longest, the sample itself rather than its go.mod or package.json. */
 const mainFile = files => files.reduce((best, piece) => (!best || lineCount(piece.text) > lineCount(best.text) ? piece : best), null);
@@ -104,10 +122,11 @@ export class Gen {
    * The requests of `session` (a PairSession); `limits` are the config's gen.limits, read when a request starts, and
    * `brief` its gen.brief, the note a brief has when the user pinned none. `ask(systemPrompt, content)` is one answer
    * of the Partner's model outside any conversation, for the brief's checks; without it, they are not made. `dir` is
-   * /gen's folder in Pair's data folder (gen-tree.mjs), where the tries go: `keepTries` days, run in the sandbox as
-   * `sandbox` (scoutPane.sandbox) says, with the network only when `network`.
+   * /gen's folder in Pair's data folder (gen-tree.mjs), where the tries and the scaffold copies go: `keepTries` days,
+   * run in the sandbox as `sandbox` (scoutPane.sandbox) says, with the network only when `network`. `scaffold` is
+   * where a scaffold goes without --branch or --copy: 'tree' (Pair's copy) or 'worktree'.
    */
-  constructor({session, limits = GEN_LIMITS, brief = GEN_BRIEF, ask = null, dir, keepTries = GEN_KEEP_TRIES, network = false, sandbox = 'auto'}) {
+  constructor({session, limits = GEN_LIMITS, brief = GEN_BRIEF, ask = null, dir, keepTries = GEN_KEEP_TRIES, network = false, sandbox = 'auto', scaffold = GEN_SCAFFOLD}) {
     this.session = session;
     this.limits = limits;
     this.briefName = brief;
@@ -115,7 +134,7 @@ export class Gen {
     // Its real path, so the names of a try's files, which pathIn gives as real paths, are relative to their folder.
     this.dir = (() => { try { return realpathSync(dir); } catch { return dir; } })();
     this.folder = projectFolder(this.dir, session.root); // this project's
-    Object.assign(this, {keepTries, network, sandbox});
+    Object.assign(this, {keepTries, network, sandbox, scaffold});
     const pinned = session.record.brief ?? session.store.lastBrief?.(session.root) ?? null;
     this.pin = pinned === '' ? false : pinned; // the note the user pinned, false for none, null for gen.brief's
     this.toldBrief = false; // the chat said once that a request runs against gen.brief's note
@@ -173,14 +192,17 @@ export class Gen {
   async request({text = '', shape = null, here = false, selection = null, place = null, token = null, from = 'chat'} = {}) {
     const session = this.session;
     const parsed = parseGen(text);
-    const words = parsed.words;
-    const named = SHAPES.includes(shape) ? shape : parsed.shape;
-    session.message('user', `/gen ${[named, words].filter(Boolean).join(' ')}`);
+    let named = SHAPES.includes(shape) ? shape : parsed.shape;
+    // --branch and --copy say where a scaffold goes, so they make one.
+    const flag = !named || named === 'scaffold' ? FLAG.exec(parsed.words)?.[1] ?? null : null;
+    const words = flag ? parsed.words.replace(FLAG, '') : parsed.words;
+    if (flag) named = 'scaffold';
+    session.message('user', `/gen ${[named, flag && `--${flag}`, words].filter(Boolean).join(' ')}`);
     session.usedAt = session.now();
     session.worked = true;
     if (!words) return session.message('system', 'Say what Pair should write: /gen here a function that …');
     const request = {
-      n: this.next(), words, shape: named, given: Boolean(named), here, selection, place, token, from,
+      n: this.next(), words, shape: named, given: Boolean(named), flag, here, selection, place, token, from,
       state: 'asking', since: session.now(), pieces: [], said: [], questions: 0, commands: 0, lines: 0, files: new Set(),
       limits: {...this.limits}, action: null, conversation: null, question: null,
     };
@@ -192,9 +214,6 @@ export class Gen {
       if (request.state === 'cancelled') return;
       if (!shape) return this.end(request, 'cancelled', `gen #${request.n} cancelled.`);
       request.shape = shape;
-    }
-    if (!BUILT.has(request.shape)) {
-      return this.end(request, 'cancelled', `gen #${request.n}: /gen ${request.shape} (${SHAPE_WHAT[request.shape]}) is not built yet; this version has /gen here, /gen file and /gen try.`);
     }
     if (request.shape === 'here' && !(await this.placeOf(request))) return;
     if (!(await this.against(request))) return;
@@ -309,16 +328,22 @@ export class Gen {
     const here = request.shape === 'here';
     const where = !here ? null : request.selection ? `${relative(this.root, request.file)}:${request.selection.from}-${request.selection.to}` : `${relative(this.root, request.file)}:${request.place.line}`;
     const asAsked = request.asAsked && {key: exceptionKey(request.asAsked), source: request.asAsked.source, line: request.asAsked.line, text: request.asAsked.text};
-    if (request.shape === 'try') {
-      request.dir = tryFolder(this.folder, request.n);
-      await this.expire();
-      const made = await freshFolder(this.dir, request.dir).then(() => null, error => error.message);
-      if (made) return this.end(request, 'failed', `gen #${request.n}: no folder for the try: ${made}.`);
+    if (request.shape === 'try' || request.shape === 'scaffold') {
+      const made = await this.folderFor(request).then(() => null, error => error.message);
+      if (made) {
+        this.end(request, 'failed', `gen #${request.n}: no ${request.shape === 'try' ? 'folder for the try' : request.mode === 'worktree' ? 'worktree for the scaffold' : 'copy for the scaffold'}: ${made}.`);
+        return this.release();
+      }
+      if (request.state === 'cancelled') {
+        if (request.shape === 'scaffold') await this.removeTree(request);
+        return this.release();
+      }
     }
     request.action = session.ledger.add('generated', `gen #${request.n} · ${request.shape} · ${request.words}`, {
       data: {
         gen: request.n, shape: request.shape, ...(here ? {place: {file: request.file, line: request.selection?.from ?? request.place.line}} : {}),
-        ...(request.dir ? {dir: request.dir} : {}),
+        ...(request.dir ? {dir: request.dir} : {}), ...(request.mode ? {mode: request.mode} : {}),
+        ...(request.branch ? {branch: request.branch, base: request.base} : {}),
         note: here ? `at ${where} · generating` : 'generating', undo: true,
         ...(request.brief ? {brief: briefLine(request.brief)} : {}), ...(asAsked ? {asAsked} : {}),
       },
@@ -343,8 +368,36 @@ export class Gen {
       this.running = null;
     }
     await this.finish(request, failure);
+    await this.release();
+  }
+
+  /** The request that ran is done: the next one waiting runs. */
+  async release() {
+    this.running = null;
     const next = this.queue.shift();
     if (next) await this.run(next);
+  }
+
+  /**
+   * Makes the folder `request` (a try or a scaffold) works in: a try's, empty; a scaffold's copy of the project as the
+   * user sees it (unsaved buffers included), or with --branch (or gen.scaffold "worktree") a git worktree on branch
+   * gen/<n>. Throws with why when it cannot.
+   */
+  async folderFor(request) {
+    await this.expire();
+    if (request.shape === 'try') {
+      request.dir = tryFolder(this.folder, request.n);
+      return freshFolder(this.dir, request.dir);
+    }
+    request.dir = scaffoldFolder(this.folder, request.n);
+    request.mode = request.flag === 'branch' ? 'worktree' : request.flag === 'copy' ? 'copy' : this.scaffold === 'worktree' ? 'worktree' : 'copy';
+    if (request.mode === 'worktree') {
+      request.branch = `gen/${request.n}`;
+      request.base = (await makeWorktree(this.dir, request.dir, this.root, request.branch)).base;
+      return;
+    }
+    request.texts = await this.session.unsavedBuffers().catch(() => new Map());
+    await makeCopy(this.dir, request.dir, this.root, request.texts);
   }
 
   /** Stops the request's model once it has worked its minutes, not counting the time a question waits for the user. */
@@ -373,6 +426,7 @@ export class Gen {
   async input(request) {
     if (request.shape === 'file') return this.fileInput(request);
     if (request.shape === 'try') return this.tryInput(request);
+    if (request.shape === 'scaffold') return this.scaffoldInput(request);
     const session = this.session;
     // Where the mark is now: the user may have typed above it since they asked, or while the request waited its turn.
     // Neovim counts how the code it proposes moves from here on.
@@ -442,6 +496,30 @@ export class Gen {
       + 'Keep it small: one file if one does, and what it needs to run. Then say in one or two sentences what it shows, and what you decided that the user did not say.';
   }
 
+  /** What a scaffold request's conversation is told: the request, where it builds, its tools there, and the brief. */
+  async scaffoldInput(request) {
+    const files = (await gitFiles(this.root)) ?? [];
+    const listed = files.length ? `The project's files${files.length > SCAFFOLD_LISTED ? ` (the first ${SCAFFOLD_LISTED} of ${files.length})` : ''}:\n${files.slice(0, SCAFFOLD_LISTED).join('\n')}`
+      : 'read(".") lists the project.';
+    request.brief = await this.brief();
+    const brief = briefEmpty(request.brief) ? '' : `\n\n${briefText(request.brief)}`;
+    const chose = request.asAsked ? `\nThe user chose the request over the brief's "${request.asAsked.text}": do as asked there.`
+      : request.followBrief ? `\nWhere the request says ${request.followBrief.asked}, the user chose the brief: ${request.followBrief.says} ("${request.followBrief.text}").` : '';
+    const where = request.mode === 'worktree' ? `a git worktree of the project on a new branch ${request.branch}, at ${request.dir}`
+      : `a copy of the project in Pair's data folder, at ${request.dir}`;
+    const network = this.network ? 'it may reach the network' : 'it has no network: install nothing, and say which packages it needs, for the user to install';
+    const {files: most, lines} = request.limits;
+    return `[gen] gen #${request.n}, scaffold. The user asked: "${request.words}"\n`
+      + `You build it in ${where}, not in the project: the user keeps what they want of it, a file at a time.\n`
+      + 'Paths are as in the project, and read reads the copy, with your changes in it. write(path, text) writes a whole file there, new or not. '
+      + 'propose(file, line, end_line, insert, text) changes lines of a file there: use it for small changes to files the project has (a route, an import). '
+      + `run(command) runs a command there, in a sandbox where only the copy is writable and ${network}. Build and test what you made, and fix what fails. `
+      + `At most ${plural(most, 'file')} and ${plural(lines, 'line')} written (gen.limits).\n\n`
+      + `${listed}${brief}${chose}\n\n`
+      + 'Read the files yours follow, so names, imports and style match, and change files the project has only where the wiring needs it. '
+      + 'Then say in two or three sentences what you made, how to run it, and what you decided that the user did not say.';
+  }
+
   /** A request ends: `state`, and the line the chat gets. */
   end(request, state, text) {
     this.setState(request, state);
@@ -454,10 +532,13 @@ export class Gen {
    */
   async checkBrief(request) {
     const {brief} = request;
-    if (!this.askModel || !brief || briefEmpty(brief) || !request.pieces.length) return {contradicts: [], guessed: []};
+    // A scaffold's files as the copy has them, each at most CHECKED_LINES lines.
+    const pieces = request.shape !== 'scaffold' ? request.pieces : request.pieces.filter(piece => piece.kind === 'tree')
+      .map(piece => ({file: piece.file, line: 1, insert: false, text: linesOf(`${piece.text}\n`).slice(0, CHECKED_LINES).join('\n')}));
+    if (!this.askModel || !brief || briefEmpty(brief) || !pieces.length) return {contradicts: [], guessed: []};
     try {
-      const answer = await this.askModel(CHECK_PROMPT, checkInput({...brief, asAsked: request.asAsked}, request.words, request.pieces, this.root));
-      return parseCheck(answer, brief, request.pieces, this.exceptions);
+      const answer = await this.askModel(CHECK_PROMPT, checkInput({...brief, asAsked: request.asAsked}, request.words, pieces, this.root));
+      return parseCheck(answer, brief, pieces, this.exceptions);
     } catch (error) {
       this.session.log(`gen #${request.n}: checking against the brief failed: ${error.message}`);
       return {contradicts: [], guessed: []};
@@ -479,16 +560,19 @@ export class Gen {
     const n = `gen #${request.n}`;
     const said = request.said.join(' ');
     if (request.shape === 'try') await this.scanTry(request);
+    if (request.shape === 'scaffold') await this.scanTree(request);
     if (failure || request.over) {
       const why = failure ? `Pair could not finish it: ${failure}` : `stopped: ${request.over}`;
       this.book(request, {note: request.pieces.length ? `${plural(request.pieces.length, 'piece')} · ${why}` : why});
       if (!request.pieces.length) {
+        if (request.shape === 'scaffold') await this.removeTree(request);
         this.book(request, {undo: false});
         return this.end(request, 'failed', `${n} · ${why}.`);
       }
       session.message('system', `${n} · ${why}; what it proposed so far shows.`);
     }
     if (!request.pieces.length) {
+      if (request.shape === 'scaffold') await this.removeTree(request);
       this.book(request, {note: 'nothing proposed', undo: false});
       session.message('pair', `${n} · ${request.shape} · nothing proposed${said ? `: ${said}` : '.'}`, {gen: request.n});
       return this.setState(request, 'done');
@@ -503,6 +587,7 @@ export class Gen {
     if (debrief.length && request.from === 'editor') this.session.notify('editor', {type: 'gen_debrief', gen: request.n, lines: debrief});
     if (request.shape === 'file') return this.finishFiles(request, {said, debrief});
     if (request.shape === 'try') return this.finishTry(request, {said, debrief, cut: failure || request.over});
+    if (request.shape === 'scaffold') return this.finishScaffold(request, {said, debrief});
     const against = check.contradicts.length ? ` · ≠${check.contradicts.length}` : '';
     this.book(request, {note: `${plural(lines, 'line')} proposed${against}`});
     // The chat shows the first piece as a diff, which `a` there takes in Neovim as Alt-y does.
@@ -585,6 +670,119 @@ export class Gen {
     this.setState(request, 'done');
   }
 
+  // Scaffolds: a copy of the project (or a worktree) the model builds in; the user keeps a file of it at a time.
+
+  /** Where the scaffold `request` is, as the chat says it: `Pair's copy <dir>`, or `the worktree <dir>, branch gen/7`. */
+  whereText(request) {
+    return request.mode === 'worktree' ? `the worktree ${request.dir}, branch ${request.branch}` : `Pair's copy ${request.dir}`;
+  }
+
+  /** The text of the project's file `file` the scaffold `request` started from: the buffer then, else the disk, else HEAD. */
+  async baseOf(request, file) {
+    if (request.texts?.has(file)) return request.texts.get(file);
+    if (request.mode === 'worktree') {
+      const rel = relative(this.root, file).split(sep).join('/');
+      return promisify(execFile)('git', ['show', `${request.base}:${rel}`], {cwd: this.root, maxBuffer: 64 << 20}).then(result => result.stdout, () => null);
+    }
+    return readFile(file, 'utf8').catch(() => null);
+  }
+
+  /**
+   * The files a scaffold's runs made or changed in its copy (a lock file, `go.sum`, generated code) are pieces of it
+   * too, as long as git would not ignore them; past gen.limits.files they are counted, not listed.
+   */
+  async scanTree(request) {
+    const known = new Set(request.pieces.filter(piece => piece.kind === 'tree').map(piece => relative(request.dir, piece.tree)));
+    for (const {rel, isNew} of await changedIn(request.dir, this.root, {worktree: request.mode === 'worktree', known})) {
+      const at = await pathIn(request.dir, rel);
+      const text = at && (await textOf(at));
+      if (text === null || !at) continue;
+      const file = join(this.root, rel);
+      const base = isNew ? null : await this.baseOf(request, file);
+      if (base === text) continue; // touched, not changed
+      if (request.pieces.filter(piece => piece.kind === 'tree').length >= request.limits.files) {
+        request.unlisted = (request.unlisted ?? 0) + 1;
+        continue;
+      }
+      const body = text.replace(/\n$/, '');
+      const {added, removed} = sizeOf(base, text);
+      request.pieces.push({i: request.pieces.length, n: request.n, kind: 'tree', file, tree: at, line: 1, endLine: lineCount(body), insert: false, text: body, base, added, removed, state: 'proposed', note: 'by a run'});
+    }
+  }
+
+  /**
+   * The check of the scaffold `request` (`{n, dir}` will do) in its folder: the command a hand-over's check would use
+   * (the project's command on save, else the user's last build and run), in Pair's pane, in the sandbox where only
+   * the folder is writable. `{label, mark, text}`, or `{none}` with why nothing ran.
+   */
+  async checkTree(request) {
+    const session = this.session;
+    const check = checkCommand({testCommand: session.testRuns?.command, runs: session.state.runs, root: this.root});
+    if (!check.command) return {none: check.none};
+    if (!(await session.checkAllowed(check))) return {none: `the user did not allow \`${check.command}\``};
+    const result = await this.runIn(request, request.dir, check.command, {byUser: true});
+    if (typeof result === 'string') return {none: result};
+    const tests = parseTestOutput(result.output);
+    return {label: runLabel(check.command), mark: result.exit === 0 && !result.timedOut ? 'pass' : 'fail', text: runText({...result, tests})};
+  }
+
+  /**
+   * A scaffold request's model is done: its copy is checked, the chat gets the debrief (what it made, where, how its
+   * runs and the check went, the brief, what it could not install), and Neovim's review list keeps it a file at a time.
+   */
+  async finishScaffold(request, {said, debrief}) {
+    const session = this.session;
+    const files = request.pieces.filter(piece => piece.kind === 'tree');
+    const changed = files.filter(piece => piece.base !== null);
+    const check = await this.checkTree(request);
+    if (['cancelled', 'undone'].includes(request.state)) return;
+    request.checked = check;
+    const against = request.check.contradicts.length ? ` · ≠${request.check.contradicts.length}` : '';
+    const mark = check.label ? ` · ${check.mark === 'pass' ? '✓' : '✗'} ${check.label}` : '';
+    this.book(request, {
+      note: `${plural(files.length, 'file')}${changed.length ? ` · ${changed.length} of yours changed` : ''}${against}${mark}`,
+      ...(check.label ? {check: {label: check.label, mark: check.mark, text: check.text}} : {}),
+    });
+    const seconds = Math.round((session.now() - request.started) / 1000);
+    const took = seconds >= 60 ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : `${seconds}s`;
+    const ran = [...(request.runs ?? new Map()).values()].slice(-3).map(ranText);
+    const checked = check.label ? `check ${check.mark === 'pass' ? '✓' : '✗'} \`${check.label}\`: ${check.text}` : `no check: ${check.none}`;
+    const width = Math.max(...files.slice(0, CARD_FILES).map(piece => relative(this.root, piece.file).length));
+    const listed = files.slice(0, CARD_FILES).map(piece => {
+      const name = relative(this.root, piece.file).padEnd(width);
+      return piece.base === null ? `│ + ${name}  +${piece.added}` : `│ ~ ${name}  +${piece.added} -${piece.removed}`;
+    });
+    const more = files.length - CARD_FILES + (request.unlisted ?? 0);
+    const installs = [...(request.installs ?? [])];
+    const opened = session.notify('editor', {type: 'gen_scaffold', gen: request.n, action: request.action, dir: request.dir, files: files.length});
+    const lines = [
+      `gen #${request.n} · scaffold · ${plural(files.length, 'file')}${changed.length ? `, ${changed.length} of yours changed` : ''} · ${took}${said ? `: ${said}` : ''}`,
+      `in ${this.whereText(request)}${ran.length ? ` · ran ${ran.join(' · ')}` : ''}`,
+      checked,
+      ...listed,
+      ...(more > 0 ? [`│ … ${more} more`] : []),
+      ...debrief,
+      ...(installs.length ? [`not run: ${installs.map(command => `\`${command}\``).join(', ')}: the copy has no network (gen.network), so install it yourself once you keep the files`] : []),
+      opened ? 'In Neovim, :Pair gen list keeps them one at a time (k), shows each (Enter) and deletes the copy (x). Here, /keep <path> keeps one; /gen drop deletes the copy.'
+        : 'No Neovim now: /keep <path> keeps a file; :Pair gen list lists them once one connects. /gen drop deletes the copy.',
+    ];
+    session.message('pair', lines.join('\n'), {gen: request.n});
+    this.setState(request, 'ready');
+  }
+
+  /** Deletes the folder of scaffold `request` (`{dir, mode, branch, base}`): a copy, or a worktree and its unused branch. */
+  async removeTree(request) {
+    if (!request.dir || !(await noLinks(this.dir, request.dir))) return {removed: false};
+    if (request.mode === 'worktree') return removeWorktree(this.root, request.dir, request.branch, request.base);
+    return {removed: await removeCopy(request.dir)};
+  }
+
+  /** A write, a run or a keep in `dir` keeps it from expiring for gen.keepTries days. */
+  async touch(dir) {
+    const now = new Date();
+    await utimes(dir, now, now).catch(() => {});
+  }
+
   /** What Neovim gets to make buffers of the proposed `files` of request `n` (ledger entry `action`); `open` opens them. */
   filesMessage(action, n, files, contradicts = [], open = false) {
     return {
@@ -612,14 +810,17 @@ export class Gen {
 
   /** How the chat names `file`: by its path in the project, or in its try folder. */
   nameOf(file) {
-    const tried = this.tryOfPath(file);
+    const tried = this.tryOfPath(file) ?? this.scaffoldOfPath(file);
     return tried ? relative(tried.dir, file) : relative(this.root, file);
   }
 
   /** Writes the request's ledger entry anew: `data` merged, and its pieces as they are now. */
   book(request, data = {}) {
     if (!request.action) return;
-    const pieces = request.pieces.map(({i, kind, file, line, endLine, insert, text, note, state, patch, from, to, written, source}) => ({i, kind, file, line, endLine, insert, text, note, state, patch, from, to, written, source}));
+    // A scaffold's file keeps its text in its copy, not in the ledger; a change keeps what it was changed from.
+    const pieces = request.pieces.map(({i, kind, file, line, endLine, insert, text, note, state, patch, from, to, written, source, tree, base, added, removed, old}) => (kind === 'tree'
+      ? {i, kind, file, tree, line, endLine, base, added, removed, note, state}
+      : {i, kind, file, line, endLine, insert, text, note, state, patch, from, to, written, source, ...(kind === 'hunk' ? {old} : {})}));
     const check = request.check ? {contradicts: request.check.contradicts, guessed: request.check.guessed, debrief: request.debrief ?? []} : {};
     this.session.ledger.update(request.action, {data, detail: {words: request.words, pieces, ...check}});
   }
@@ -732,6 +933,19 @@ export class Gen {
     this.stop(request, 'cancelled');
     this.book(request, {note: 'cancelled', undo: request.pieces.some(piece => piece.state === 'taken')});
     this.session.message('system', `gen #${request.n} cancelled.`);
+    // Not taken is not kept: a scaffold's copy goes with it, once its model has stopped writing there.
+    if (request.shape === 'scaffold' && request.dir && request.action) {
+      this.book(request, {deleted: true});
+      (this.running === request ? this.whenDone(request) : Promise.resolve()).then(() => this.removeTree(request));
+    }
+  }
+
+  /** Resolves once `request`'s model has stopped. */
+  whenDone(request) {
+    return new Promise(resolve => {
+      const wait = () => (this.running === request ? setTimeout(wait, 50).unref?.() : resolve());
+      wait();
+    });
   }
 
   /** Ends `request` now as `state`: its question, its place in the queue, its model, its proposals still showing. */
@@ -759,11 +973,12 @@ export class Gen {
       if (words) request.said.push(words);
       return 'noted: the user reads it with your code';
     }
-    if (name === 'read') return session.read(args);
+    if (name === 'read') return request.shape === 'scaffold' ? this.readTree(request, args) : session.read(args);
     if (name === 'recall') return session.recall(args);
     if (name === 'search') {
       if (++request.commands > request.limits.commands) return `That is ${request.limits.commands} searches for this request (gen.limits.commands): propose with what you found.`;
-      return session.search(args, {gen: true}).catch(error => `Not searched: ${error.message}`);
+      // A scaffold searches its copy, with what it wrote there.
+      return session.search(args, {gen: true, ...(request.shape === 'scaffold' ? {cwd: request.dir} : {})}).catch(error => `Not searched: ${error.message}`);
     }
     if (name === 'propose') return this.propose(request, args);
     if (name === 'draft') return this.draft(request, args);
@@ -783,6 +998,7 @@ export class Gen {
 
   async propose(request, {file, line, endLine, insert, text, note}) {
     const session = this.session;
+    if (request.shape === 'scaffold') return this.proposeTree(request, {file, line, endLine, insert, text});
     const path = await projectFile(this.root, file);
     if (!path) return `No file ${file} in the project`;
     if (request.shape === 'here' && path !== request.file) return `This request is /gen here in ${relative(this.root, request.file)}: propose there.`;
@@ -809,6 +1025,7 @@ export class Gen {
   /** A new file for a file request: it goes to Neovim as a buffer to review once the model is done. */
   async draft(request, {path, text, note}) {
     if (request.shape === 'try') return 'This request is /gen try: write its files in your folder with write.';
+    if (request.shape === 'scaffold') return 'This request is /gen scaffold: write its files in the copy with write, new or not.';
     if (request.shape !== 'file') return `This request is /gen ${request.shape}: draft makes new files only in a /gen file request. Call propose.`;
     const at = await draftPath(this.root, path);
     if (!at) return `Cannot draft ${path}: not a path inside the project.`;
@@ -830,7 +1047,14 @@ export class Gen {
 
   /** A file of a try request's sample, written in its folder at once: the folder is Pair's, not the project. */
   async write(request, {path, text}) {
-    if (request.shape !== 'try') return `This request is /gen ${request.shape}: write works only in a /gen try request. ${request.shape === 'file' ? 'Call draft.' : 'Call propose.'}`;
+    if (request.shape === 'scaffold') {
+      const written = await this.writeTree(request, path, text);
+      if (typeof written === 'string') return written;
+      const name = relative(this.root, written.file);
+      const what = written.base === null ? `a new file, ${plural(lineCount(written.text), 'line')}` : `+${written.added} -${written.removed} against the project`;
+      return `Wrote ${name} in the copy: ${what}. run runs commands there.`;
+    }
+    if (request.shape !== 'try') return `This request is /gen ${request.shape}: write works only in a /gen try or scaffold request. ${request.shape === 'file' ? 'Call draft.' : 'Call propose.'}`;
     const at = await pathIn(request.dir, path);
     if (!at) return `Cannot write ${path}: not a path inside your folder ${request.dir}.`;
     const name = relative(request.dir, at);
@@ -856,11 +1080,19 @@ export class Gen {
 
   /** run in a try request: `command` in its folder, in the sandbox; the last one is how the user runs it again. */
   async runTry(request, {command}) {
-    if (request.shape !== 'try') return 'run works only in a /gen try request, in its own folder. Here Pair checks your code once the user takes it: do not run anything.';
+    if (!['try', 'scaffold'].includes(request.shape)) return 'run works only in a /gen try or scaffold request, in its own folder. Here Pair checks your code once the user takes it: do not run anything.';
+    if (request.shape === 'scaffold' && !this.network && INSTALL.test(command)) {
+      (request.installs ??= new Set()).add(command);
+      return 'Not run: the copy has no network (gen.network), so nothing can be installed. The user is told to install it; go on without it, and say what needs it.';
+    }
     if (++request.commands > request.limits.commands) return `That is ${request.limits.commands} commands for this request (gen.limits.commands): say what you have.`;
     const result = await this.runIn(request, request.dir, command);
     if (typeof result === 'string') return result;
     request.ran = {command, exit: result.exit, timedOut: result.timedOut};
+    if (request.shape === 'scaffold') {
+      (request.runs ??= new Map()).delete(command); // the last run of each command, in the order they last ran
+      request.runs.set(command, request.ran);
+    }
     this.book(request, {command});
     const said = result.timedOut ? 'It ran too long, so it was stopped with Ctrl-C.' : `exit ${result.exit}`;
     return `${said}\n${tail(result.output, RUN_CHARS) || '(no output)'}`;
@@ -885,8 +1117,9 @@ export class Gen {
     } catch (error) {
       return `Not run: ${error.message}.`;
     }
+    const folder = request.shape === 'scaffold' ? 'copy' : 'folder';
     if (policy.verdict === 'ask' && !sandboxed && !byUser
-      && !(await session.allowed(command, `May I run \`${command}\` in gen #${request.n}'s folder, outside the project (${policy.reason})? There is no sandbox here.`))) {
+      && !(await session.allowed(command, `May I run \`${command}\` in gen #${request.n}'s ${folder}, outside the project (${policy.reason})? There is no sandbox here.`))) {
       return 'The user did not allow it. Do not run it another way.';
     }
     let result;
@@ -895,14 +1128,96 @@ export class Gen {
     } catch (error) {
       return `Not run: ${error.message}.`;
     }
-    // A run keeps the try: its folder counts as changed now, for gen.keepTries.
-    const now = new Date();
-    await utimes(dir, now, now).catch(() => {});
-    session.ledger.add('ran', `${command} (gen #${request.n}'s try)`, {
+    // A run keeps the try or the copy: its folder counts as changed now, for gen.keepTries.
+    await this.touch(dir);
+    session.ledger.add('ran', `${command} (gen #${request.n}'s ${request.shape === 'scaffold' ? 'copy' : 'try'})`, {
       data: {note: result.timedOut ? 'stopped' : result.exit ? `exit ${result.exit}` : undefined, result: result.exit === 0 && !result.timedOut ? 'pass' : 'fail'},
       detail: {output: keptOutput(result.output)},
     });
     return result;
+  }
+
+  /**
+   * `path` as a path in scaffold `request`'s copy, relative to it: a path of the project (relative, or absolute in the
+   * project or in the copy), never in .git; null for one outside.
+   */
+  relInTree(request, path) {
+    if (typeof path !== 'string' || !path.trim()) return null;
+    const wanted = path.trim();
+    const rel = !isAbsolute(wanted) ? normalize(wanted)
+      : !relative(request.dir, wanted).startsWith('..') ? relative(request.dir, wanted) : relative(this.root, wanted);
+    if (rel === '.' || rel === '') return '';
+    if (rel.startsWith('..') || isAbsolute(rel) || rel.split(sep).includes('.git')) return null;
+    return rel;
+  }
+
+  /**
+   * Writes `text` as the file at `path` in scaffold `request`'s copy, within its limits: the piece it is now, or why
+   * not. The file's text before the first write is the project's, which a change of it is kept against.
+   */
+  async writeTree(request, path, text) {
+    const rel = this.relInTree(request, path);
+    const at = rel && (await pathIn(request.dir, rel));
+    if (!at) return `Cannot write ${path}: not a file's path in the project.`;
+    const body = text.replace(/\n$/, '');
+    if (!lineCount(body)) return 'write needs the file: text has no lines.';
+    const old = request.pieces.find(piece => piece.kind === 'tree' && piece.tree === at);
+    const base = old ? old.base : await readFile(at, 'utf8').catch(() => null);
+    const size = sizeOf(base, `${body}\n`);
+    const others = request.pieces.filter(piece => piece.kind === 'tree' && piece !== old);
+    const written = others.reduce((sum, piece) => sum + piece.added, 0);
+    if (written + size.added > request.limits.lines) return `That is more than ${request.limits.lines} lines for this request (gen.limits.lines): write less, or say what is left.`;
+    if (!old && others.length >= request.limits.files) return `That is ${request.limits.files} files for this request (gen.limits.files).`;
+    try {
+      await mkdir(dirname(at), {recursive: true});
+      await writeFile(at, `${body}\n`);
+    } catch (error) {
+      return `Not written: ${error.message}.`;
+    }
+    await this.touch(request.dir);
+    const piece = old ?? {i: request.pieces.length, n: request.n, kind: 'tree', file: join(this.root, rel), tree: at, line: 1, insert: false, base, state: 'proposed'};
+    Object.assign(piece, {text: body, endLine: lineCount(body), added: size.added, removed: size.removed});
+    if (!old) request.pieces.push(piece);
+    request.lines = written + size.added;
+    this.book(request);
+    return piece;
+  }
+
+  /** propose in a scaffold: lines of a file of the copy change at once, as they would in the user's buffer. */
+  async proposeTree(request, {file, line, endLine, insert, text}) {
+    const rel = this.relInTree(request, file);
+    const at = rel && (await pathIn(request.dir, rel));
+    const current = at && (await textOf(at));
+    if (current === null || !at) return `No file ${file} in the copy: write makes a new file.`;
+    const lines = linesOf(current);
+    const last = insert ? line : endLine ?? line;
+    if (!Number.isInteger(line) || line < (insert ? 0 : 1) || last < line) return `Lines ${line}-${last} are no lines to change. Read the file first.`;
+    if (last > lines.length) return `Line ${last} is past the end of ${rel}, which has ${lines.length} lines. Read it first.`;
+    const added = linesOf(`${text.replace(/\n$/, '')}\n`);
+    const changed = insert ? [...lines.slice(0, line), ...added, ...lines.slice(line)] : [...lines.slice(0, line - 1), ...added, ...lines.slice(last)];
+    const written = await this.writeTree(request, rel, changed.join('\n'));
+    if (typeof written === 'string') return written;
+    const where = insert ? `below line ${line}` : `lines ${line}-${last}`;
+    return `Changed ${rel} in the copy, ${where}: now +${written.added} -${written.removed} against the project. read shows it as it is now.`;
+  }
+
+  /** read in a scaffold: a file or folder of its copy, by its path in the project. */
+  async readTree(request, {file, from, to}) {
+    const rel = this.relInTree(request, file ?? '.');
+    if (rel === null) return `Cannot read ${file}: not a path in the project.`;
+    const at = join(request.dir, rel);
+    const realDir = await realpath(request.dir).catch(() => request.dir);
+    const real = await realpath(at).catch(() => null);
+    if (!real) return `${file} does not exist in the copy.`;
+    if ((await stat(real)).isDirectory()) {
+      if (real !== realDir && relative(realDir, real).startsWith('..')) return `Cannot read ${file}: it leads out of the copy.`;
+      const entries = (await readdir(real, {withFileTypes: true})).filter(entry => entry.name !== '.git').sort((a, b) => a.name.localeCompare(b.name));
+      return entries.slice(0, 200).map(entry => (entry.isDirectory() ? `${entry.name}/` : entry.name)).join('\n') || `${file} is empty.`;
+    }
+    const path = await pathIn(request.dir, rel);
+    const text = path && (await textOf(path));
+    if (!path || text === null) return `Cannot read ${file}: not a text file of the copy.`;
+    return numberedLines(text, from ?? 1, to);
   }
 
   // Tries after the model is done: the user runs one again, keeps a file of it, lists them; they expire.
@@ -921,6 +1236,35 @@ export class Gen {
     const [n, ...rest] = rel.split(sep);
     if (!/^[1-9]\d*$/.test(n) || rel.startsWith('..')) return null;
     return {n: Number(n), dir: tryFolder(this.folder, Number(n)), inside: rest.length > 0};
+  }
+
+  /** The scaffold request whose copy (or worktree) holds `file`, as `{n, dir, inside}`, or null. */
+  scaffoldOfPath(file) {
+    if (typeof file !== 'string' || !isAbsolute(file)) return null;
+    const rel = relative(this.folder, file);
+    const [n, ...rest] = rel.split(sep);
+    if (!/^[1-9]\d*$/.test(n) || rel.startsWith('..')) return null;
+    return {n: Number(n), dir: scaffoldFolder(this.folder, Number(n)), inside: rest.length > 0};
+  }
+
+  /**
+   * A scaffold request to keep from or act on: the one booked as `action`, number `n`, the one whose copy holds
+   * `file`, else (`newest`) the newest try or scaffold, when that is a scaffold whose copy is still there. As `{n, dir,
+   * data, action, entry, request, pieces}`, or null.
+   */
+  async scaffoldOf({action = null, n = null, file = null, newest = true} = {}) {
+    const rows = this.session.store.actions(this.root, 0).filter(row => row.kind === 'generated' && ['try', 'scaffold'].includes(row.data?.shape) && row.data?.dir);
+    const found = row => (row?.data.shape === 'scaffold' ? {n: row.data.gen, dir: row.data.dir, data: row.data, action: row.id, ...this.piecesOf(row.id)} : null);
+    if (action !== null) return found(rows.find(row => row.id === action));
+    const number = n ?? this.scaffoldOfPath(file)?.n ?? null;
+    if (number !== null) return found(rows.findLast(row => row.data.gen === number && row.data.shape === 'scaffold'));
+    if (!newest || this.tryOfPath(file)) return null;
+    for (const row of rows.reverse()) {
+      // The newest is a try still in its folder: /keep is for it.
+      if (row.data.shape === 'try' && (await filesIn(row.data.dir)).length) return null;
+      if (row.data.shape === 'scaffold' && !row.data.deleted && (await stat(row.data.dir).catch(() => null))) return found(row);
+    }
+    return null;
   }
 
   /**
@@ -943,10 +1287,15 @@ export class Gen {
 
   /**
    * /keep [path] and :Pair keep: a file of a try (`file`, else the try's main file) goes into the project at `path`
-   * (else its path in the folder), as a buffer to review that :w takes, like a file request's. Only a new file.
+   * (else its path in the folder), as a buffer to review that :w takes, like a file request's. Only a new file. When
+   * the newest of them is a scaffold (or `file`, `n` or `action` names one), a file of its copy is kept instead (see
+   * keepTree): `piece`, `file`, or the one at `path`.
    */
-  async keep({path = '', file = null, n = null} = {}) {
+  async keep({path = '', file = null, n = null, action = null, piece: index = null} = {}) {
     const session = this.session;
+    const scaffold = await this.scaffoldOf({action, n, file});
+    if (scaffold) return this.keepTree(scaffold, {path, file, piece: index});
+    if (action !== null) return this.said('No /gen scaffold to keep from there.');
     const found = await this.tryOf({n, file});
     if (!found) return this.said('No /gen try to keep from: /gen try <what> makes one.');
     const name = `gen #${found.n}`;
@@ -977,9 +1326,124 @@ export class Gen {
       : `${name}: ${keptName} kept as a buffer to review; it opens in Neovim once one connects.`);
   }
 
+  /**
+   * Keeps one file of the scaffold `found` (see scaffoldOf): piece `piece`, the copy's `file`, or the one at `path`
+   * in the project, else the only one left. A new file opens as a buffer to review that :w takes, as a file request's;
+   * a change to a file of the user's shows in it as suggestions, a hunk each, on their buffer as it is now. A hunk on
+   * lines they changed since the copy was made is not shown, and the chat says so.
+   */
+  async keepTree(found, {path = '', file = null, piece = null} = {}) {
+    const session = this.session;
+    const name = `gen #${found.n}`;
+    const files = found.pieces.filter(one => one.kind === 'tree');
+    const wanted = path.trim() && normalize(path.trim());
+    const target = Number.isInteger(piece) ? files.find(one => one.i === piece)
+      : file && this.scaffoldOfPath(file)?.inside ? files.find(one => one.tree === file)
+        : wanted ? files.find(one => relative(this.root, one.file) === wanted)
+          : files.filter(one => one.state === 'proposed').length === 1 ? files.find(one => one.state === 'proposed') : null;
+    if (found.request && ['asking', 'asks', 'queued', 'generating'].includes(found.request.state)) return this.said(`${name} is still at work: keep its files once it is done.`);
+    if (found.data.deleted) return this.said(`${name}: its copy is deleted, so there is nothing left to keep.`);
+    if (!target) {
+      const left = files.filter(one => one.state === 'proposed').map(one => relative(this.root, one.file));
+      if (!left.length) return this.said(`${name}: nothing left to keep. /gen drop deletes its copy.`);
+      const which = wanted ? `no file ${wanted} in its copy` : `${plural(left.length, 'file')} to keep`;
+      return this.said(`${name}: ${which}: ${left.slice(0, 10).join(', ')}${left.length > 10 ? ', …' : ''}. /keep <path> keeps one; :Pair gen list in Neovim lists them.`);
+    }
+    const rel = relative(this.root, target.file);
+    if (target.state === 'kept') return this.said(`${name}: ${rel} is kept already.`);
+    const text = await textOf(target.tree);
+    if (text === null) return this.said(`${name}: ${rel} is gone from its copy.`);
+    // As the user may have changed it in the copy, in Neovim.
+    const now = await session.bufferText(target.tree, text).catch(() => text);
+    const at = await draftPath(this.root, rel);
+    if (!at) return this.said(`${name}: cannot keep ${rel}, not a path inside the project.`);
+    await this.touch(found.dir);
+    if (!at.exists) {
+      const body = now.replace(/\n$/, '');
+      const kept = {i: found.pieces.length, n: found.n, kind: 'file', file: at.path, line: 1, endLine: lineCount(body), insert: false, text: body, state: 'proposed', note: `from gen #${found.n}'s copy`, source: target.tree};
+      found.pieces.push(kept);
+      target.state = 'kept';
+      this.keptNote(found);
+      const shown = await this.showFiles(found.action, found.n, [kept], {open: true});
+      return this.said(shown ? `${name}: ${rel} opened, unsaved, generated. :w takes it.` : `${name}: ${rel} kept as a buffer to review; it opens in Neovim once one connects.`);
+    }
+    // A file of the user's: the change since the copy was made, as hunks on their buffer now.
+    const current = await session.bufferText(at.path).catch(() => null);
+    if (current === null) return this.said(`${name}: cannot read ${rel} to show the change in it.`);
+    const {hunks, conflicts} = placeHunks(target.base ?? current, now, current);
+    const pieces = hunks.map((hunk, k) => ({
+      i: found.pieces.length + k, n: found.n, kind: 'hunk', file: at.path, ...hunk, state: 'proposed', source: target.tree,
+      note: hunks.length > 1 ? `${rel} · ${k + 1} of ${hunks.length}` : rel,
+    }));
+    found.pieces.push(...pieces);
+    target.state = 'kept';
+    this.keptNote(found);
+    for (const one of pieces) this.show(one, found.action);
+    const skipped = conflicts ? ` ${plural(conflicts, 'change')} not shown: you changed those lines since; copy it from ${target.tree}.` : '';
+    if (!pieces.length) return this.said(`${name}: ${rel}: ${conflicts ? 'no change shown.' : 'nothing to change, it is as the copy has it.'}${skipped}`);
+    return this.said(`${name}: ${rel}: ${plural(pieces.length, 'change')}, shown there as suggestions; Alt-y (:Pair accept) takes each.${skipped}`);
+  }
+
+  /** Books what is kept of scaffold `found` so far, which makes it undoable. */
+  keptNote(found) {
+    const files = found.pieces.filter(one => one.kind === 'tree');
+    const kept = files.filter(one => one.state === 'kept').length;
+    this.rebook(found.action, found, {note: `${kept} of ${plural(files.length, 'file')} kept`, undo: true});
+    if (found.entry?.state === 'undone') this.session.ledger.update(found.action, {state: null}); // kept again after an undo
+    this.session.notify('editors', {type: 'gen_kept', gen: found.n});
+  }
+
+  /** d on a file of a scaffold in :Pair gen list: it is not kept. It stays in the copy, until the copy goes. */
+  async dropTree(action, i) {
+    const found = await this.scaffoldOf({action});
+    const target = found?.pieces.find(one => one.i === i && one.kind === 'tree');
+    if (!target || target.state !== 'proposed') return;
+    target.state = 'dropped';
+    const files = found.pieces.filter(one => one.kind === 'tree');
+    this.rebook(action, found, {note: `${files.filter(one => one.state === 'kept').length} of ${plural(files.length, 'file')} kept · ${files.filter(one => one.state === 'dropped').length} dropped`});
+    this.said(`gen #${found.n}: ${relative(this.root, target.file)} dropped.`);
+  }
+
+  /**
+   * x in :Pair gen list, /gen drop, :Pair gen drop: the copy of scaffold `action` (else the newest) is deleted, and
+   * what is not kept of it is dropped. A worktree goes with its branch, unless the user committed on it.
+   */
+  async deleteCopy({action = null} = {}) {
+    const found = await this.scaffoldOf({action});
+    if (!found) return this.said('No /gen scaffold with a copy to delete.');
+    const name = `gen #${found.n}`;
+    if (found.request && ['asking', 'asks', 'queued', 'generating'].includes(found.request.state)) return this.said(`${name} is still at work: /gen cancel stops it.`);
+    if (found.data.deleted) return this.said(`${name}: its copy is deleted already.`);
+    const {removed, branchKept} = await this.removeTree({dir: found.dir, mode: found.data.mode, branch: found.data.branch, base: found.data.base});
+    if (!removed) return this.said(`${name}: could not delete ${found.dir}.`);
+    const files = found.pieces.filter(one => one.kind === 'tree');
+    for (const one of files) if (one.state === 'proposed') one.state = 'dropped';
+    const kept = files.filter(one => one.state === 'kept').length;
+    this.rebook(found.action, found, {note: `${kept} of ${plural(files.length, 'file')} kept · copy deleted`, deleted: true});
+    if (found.request?.state === 'ready') this.setState(found.request, 'done');
+    this.session.notify('editors', {type: 'gen_copy_gone', gen: found.n, dir: found.dir});
+    const what = found.data.mode === 'worktree' ? `its worktree is deleted${branchKept ? `; the branch ${found.data.branch} has commits of yours, so it stays` : `, and its branch ${found.data.branch}`}` : 'its copy is deleted';
+    return this.said(`${name}: ${what}. ${kept ? `${plural(kept, 'file')} kept from it stay` : 'Nothing of it was kept'}.`);
+  }
+
+  /** r in :Pair gen list, the run key in a file of a copy: the check runs again in the copy of scaffold `action`. */
+  async checkAgain({action = null, n = null, file = null} = {}) {
+    const found = await this.scaffoldOf({action, n, file});
+    if (!found) return this.said('No /gen scaffold to check.');
+    const name = `gen #${found.n}`;
+    if (found.data.deleted) return this.said(`${name}: its copy is deleted.`);
+    if (found.request && ['asking', 'asks', 'queued', 'generating'].includes(found.request.state)) return this.said(`${name} is still at work.`);
+    const check = await this.checkTree({n: found.n, shape: 'scaffold', dir: found.dir});
+    if (!check.label) return this.said(`${name} · no check: ${check.none}.`);
+    this.rebook(found.action, found, {check: {label: check.label, mark: check.mark, text: check.text}});
+    return this.said(`${name} · ${check.mark === 'pass' ? '✓' : '✗'} \`${check.label}\` in the copy: ${check.text}`);
+  }
+
   /** The user runs try `n` (or the one of `file`, or the newest) again; what it showed, for the chat and Neovim. */
   async rerun({n = null, file = null} = {}) {
     const session = this.session;
+    // The run key in a file of a scaffold's copy checks the copy again.
+    if (this.scaffoldOfPath(file)) return this.checkAgain({file});
     const found = await this.tryOf({n, file});
     if (!found) return this.said('No /gen try to run: /gen try <what> makes one.');
     const command = found.request?.ran?.command ?? found.entry?.data?.command ?? null;
@@ -1028,7 +1492,7 @@ export class Gen {
    * file as the editor has it, or the folder's files. Null for any other path.
    */
   async readTry(file, from, to) {
-    const tried = this.tryOfPath(file);
+    const tried = this.tryOfPath(file) ?? this.scaffoldOfPath(file);
     if (!tried) return null;
     if (!tried.inside) {
       const files = await filesIn(tried.dir);
@@ -1036,6 +1500,10 @@ export class Gen {
     }
     const at = await pathIn(tried.dir, file);
     if (!at) return `Cannot read ${file}: not a file of gen #${tried.n}'s folder.`;
+    if (at && !this.tryOfPath(file)) {
+      const text = await textOf(at);
+      return text === null ? `Cannot read ${file}: not a text file.` : numberedLines(text, from ?? 1, to);
+    }
     const text = await this.session.bufferText(at).catch(() => null) ?? (await readFile(at, 'utf8').catch(() => null));
     if (text === null) return `${file} does not exist.`;
     return numberedLines(text, from ?? 1, to);
@@ -1044,10 +1512,17 @@ export class Gen {
   /** What the user's questions in the chat are told of the newest try this daemon made, while its folder is there. */
   async tryContext() {
     const request = [...this.requests.values()].reverse().find(one => one.shape === 'try' && one.dir && one.pieces.some(piece => piece.kind === 'try'));
-    if (!request) return '';
-    const files = await filesIn(request.dir);
-    if (!files.length) return '';
-    return `\n\nThe last /gen try, gen #${request.n} ("${request.words}"), is a sample outside the project, in ${request.dir}: ${files.join(', ')}. read takes its files by their full path, such as ${join(request.dir, files[0])}.`;
+    const files = request ? await filesIn(request.dir) : [];
+    const tried = files.length ? `\n\nThe last /gen try, gen #${request.n} ("${request.words}"), is a sample outside the project, in ${request.dir}: ${files.join(', ')}. read takes its files by their full path, such as ${join(request.dir, files[0])}.` : '';
+    return tried + (await this.scaffoldContext());
+  }
+
+  /** What the user's questions in the chat are told of the newest scaffold this daemon made, while its copy is there. */
+  async scaffoldContext() {
+    const request = [...this.requests.values()].reverse().find(one => one.shape === 'scaffold' && one.dir && one.pieces.some(piece => piece.kind === 'tree'));
+    if (!request || !(await stat(request.dir).catch(() => null))) return '';
+    const files = request.pieces.filter(piece => piece.kind === 'tree').map(piece => relative(this.root, piece.file));
+    return `\n\nThe last /gen scaffold, gen #${request.n} ("${request.words}"), is in ${this.whereText(request)}: ${files.slice(0, 20).join(', ')}${files.length > 20 ? ', …' : ''}. read takes its files by their full path there, such as ${join(request.dir, files[0])}.`;
   }
 
   /** Shows the pieces that wait, once the user pauses typing: like an unasked remark, they never land mid-thought. */
@@ -1056,14 +1531,14 @@ export class Gen {
     for (const piece of this.due.splice(0)) this.show(piece);
   }
 
-  show(piece) {
+  /** Shows `piece` in Neovim as a suggestion of ledger entry `action` (the live request's, by default). */
+  show(piece, action = this.requests.get(piece.n)?.action) {
     const session = this.session;
-    const request = this.requests.get(piece.n);
-    if (!request || piece.state !== 'proposed') return;
+    if (!action || piece.state !== 'proposed') return;
     const origin = `gen:#${piece.n}`;
     const shown = session.notify('editor', {
       type: 'suggest', file: piece.file, line: piece.line, endLine: piece.endLine, insert: piece.insert, text: piece.text,
-      note: `gen #${piece.n} · ${piece.note}`, action: request.action, piece: piece.i, gen: piece.n, origin, aim: true,
+      note: `gen #${piece.n} · ${piece.note}`, action, piece: piece.i, gen: piece.n, origin, aim: true,
     });
     if (!shown) session.message('system', `gen #${piece.n}: no Neovim to show its code in; :Pair start in Neovim, then /gen again.`);
   }
@@ -1189,11 +1664,12 @@ export class Gen {
    */
   review() {
     const {store} = this.session;
-    const rows = store.actions(this.root, this.session.now() - REVIEW_DAYS * DAY).filter(row => row.kind === 'generated' && ['file', 'try'].includes(row.data?.shape));
+    const rows = store.actions(this.root, this.session.now() - REVIEW_DAYS * DAY).filter(row => row.kind === 'generated' && ['file', 'try', 'scaffold'].includes(row.data?.shape));
     const requests = rows.reverse().map(row => {
       const entry = store.action(row.id);
       const pieces = entry.detail?.pieces ?? [];
       if (row.data.shape === 'try' && !pieces.some(piece => piece.kind === 'file')) return null; // a try with nothing kept
+      if (row.data.shape === 'scaffold' && !pieces.some(piece => piece.kind === 'tree')) return null; // nothing made
       const live = this.requests.get(row.data.gen);
       return {
         action: row.id, gen: row.data.gen, shape: row.data.shape, words: entry.detail?.words ?? row.text, at: row.at, state: row.state, note: row.data.note ?? '',
@@ -1203,7 +1679,19 @@ export class Gen {
           piece: piece.i, file: piece.file, name: relative(this.root, piece.file), lines: lineCount(piece.text), state: piece.state, note: piece.note ?? '',
           ...(piece.state === 'proposed' ? {text: piece.text} : {}),
         })),
-        changes: pieces.filter(piece => !['file', 'try'].includes(piece.kind)).map(piece => ({name: relative(this.root, piece.file), line: piece.line, state: piece.state})),
+        changes: pieces.filter(piece => !['file', 'try', 'tree'].includes(piece.kind)).map(piece => ({name: relative(this.root, piece.file), line: piece.line, state: piece.state})),
+        ...(row.data.shape === 'scaffold' ? {
+          dir: row.data.dir, mode: row.data.mode ?? 'copy', branch: row.data.branch ?? null, deleted: Boolean(row.data.deleted),
+          tree: pieces.filter(piece => piece.kind === 'tree').map(piece => {
+            const kept = pieces.find(one => one.kind === 'file' && one.source === piece.tree);
+            const hunks = pieces.filter(one => one.kind === 'hunk' && one.source === piece.tree);
+            return {
+              piece: piece.i, name: relative(this.root, piece.file), file: piece.file, tree: piece.tree, state: piece.state, isNew: piece.base === null,
+              added: piece.added ?? 0, removed: piece.removed ?? 0, ...(kept ? {kept: kept.i} : {}),
+              ...(hunks.length ? {hunks: hunks.length, taken: hunks.filter(one => one.state === 'taken').length} : {}),
+            };
+          }),
+        } : {}),
         contradicts: (entry.detail?.debrief ?? []).filter(line => line.startsWith('≠')),
         guessed: entry.detail?.guessed ?? [],
       };
@@ -1249,7 +1737,7 @@ export class Gen {
   /** What /gen alone shows: today's requests in this project, one line each. */
   list() {
     const rows = this.session.store.actions(this.root, startOfDay(this.session.now())).filter(action => action.kind === 'generated');
-    if (!rows.length) return this.session.message('system', 'No /gen requests here today. /gen here <what> asks for code at your cursor in Neovim; /gen file <what> for new files; /gen try <what> for a sample to run.');
+    if (!rows.length) return this.session.message('system', 'No /gen requests here today. /gen here <what> asks for code at your cursor in Neovim; /gen file <what> for new files; /gen try <what> for a sample to run; /gen scaffold <what> for many files, built in a copy.');
     const lines = rows.map(row => `${new Date(row.at).toTimeString().slice(0, 5)}  ${row.text}${row.data?.note ? ` · ${row.data.note}` : ''}${row.state === 'undone' ? ' (undone)' : ''}`);
     this.session.message('system', `${lines.join('\n')}\n/undo takes back the last one; u in :Pair today any of them.`);
   }

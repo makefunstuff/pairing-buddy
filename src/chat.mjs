@@ -40,9 +40,11 @@ export const COMMANDS = [
   ['/gen here', '<what>', 'ask Pair for code at your cursor in Neovim (@here: over the selection)'],
   ['/gen file', '<what>', 'new files, as unsaved buffers to review in Neovim (:w in one takes it)'],
   ['/gen try', '<what>', 'a sample to read and run, in a folder outside the project, opened in a split in Neovim'],
+  ['/gen scaffold', '[--branch] <what>', 'many files and their wiring, built in a copy of the project (--branch: a git worktree); you keep a file at a time'],
   ['/gen run', '', 'run the newest /gen try again, in Pair\'s pane, in the sandbox'],
   ['/gen tries', '', 'the /gen try folders still kept, and when each goes (gen.keepTries)'],
-  ['/keep', '[path]', 'move the newest /gen try\'s file into the project, as a buffer to review (:w takes it)'],
+  ['/gen drop', '', 'delete the newest /gen scaffold\'s copy; what you did not keep of it is dropped'],
+  ['/keep', '[path]', 'keep a file of the newest /gen try or scaffold: a new file as a buffer to review (:w takes it), a change as suggestions'],
   ['/gen cancel', '', 'stop the /gen request that runs or waits'],
   ['/brief', '[note|off]', 'what /gen runs against: the goal, the board task and a note (NOTES.md); pin another, or none'],
   ['/undo', '', 'undo Pair\'s last change: an edit of the Driver\'s, a suggestion you took, a /gen request'],
@@ -91,6 +93,7 @@ export function parseInput(line) {
   if (command === '/gen' && arg === 'cancel') return {type: 'gen_cancel'};
   if (command === '/gen' && arg === 'run') return {type: 'gen_try_run'};
   if (command === '/gen' && arg === 'tries') return {type: 'gen_tries'};
+  if (command === '/gen' && arg === 'drop') return {type: 'gen_copy_delete'};
   if (command === '/keep') return {type: 'keep', path: arg};
   if (command === '/brief') return !arg ? {type: 'brief'} : arg === 'off' ? {type: 'brief', off: true} : {type: 'brief', file: arg};
   if (command === '/gen') {

@@ -6,8 +6,9 @@
 // tool set: it reads, recalls and searches, proposes code the user takes with one key, drafts new files the user
 // reviews as unsaved buffers, and asks the user at most two questions; it never edits or types (see gen.mjs). A /gen
 // try request also writes files and runs commands, but only in its own folder in Pair's data folder, outside the
-// project, and runs them in the sandbox with only that folder writable. Nothing here can write a file of the project
-// or save a buffer. Each
+// project, and runs them in the sandbox with only that folder writable; a /gen scaffold request does the same in its
+// copy of the project (or its git worktree), where propose changes the copy's lines too. Nothing here can write a
+// file of the project or save a buffer. Each
 // conversation is offered only its role's tools, and the policy hook refuses any other name, so a model that
 // invents `bash` or `write` gets an error, not an effect.
 import {Type} from '@earendil-works/pi-ai';
@@ -38,7 +39,7 @@ const NEEDS_ROLE = {
   type: 'type works only while the user hands you the wheel; say the command instead.',
   propose: 'propose works only in a /gen request; call suggest instead.',
   draft: 'draft works only in a /gen request; describe the file in words instead.',
-  write: 'write works only in a /gen try request; describe the file in words instead.',
+  write: 'write works only in a /gen try or scaffold request; describe the file in words instead.',
   ask: 'ask works only in a /gen request; ask your question in words instead.',
 };
 
@@ -105,8 +106,12 @@ If an answer needs a search or a test run, say so in one sentence: the user can 
 - In a /gen try request, the sample lives in a folder of its own outside the project: call write with each file's path in
   that folder and its whole text, then run with the command that runs it, and fix what the run shows. run works only
   there, in a sandbox where only that folder is writable. The user reads the sample, runs it again and keeps it, or not.
+- In a /gen scaffold request, you build in a copy of the project (or a git worktree), with paths as in the project:
+  write writes a whole file there, new or not, propose changes lines of a file there at once, read and search see
+  the copy with your changes, and run runs commands there, in a sandbox where only the copy is writable. Build and test
+  it. The user keeps what they want of it, a file at a time.
 - After propose, draft or write, say in one or two sentences what you wrote, and name what you decided that the user did not say.
-- search works in your own pane, as for Scout. Outside a try you cannot run commands: Pair checks the code once the user takes it.`,
+- search works in your own pane, as for Scout. Outside a try or a scaffold you cannot run commands: Pair checks the code once the user takes it.`,
 };
 
 const text = value => ({output: [{type: 'text', text: value}]});
@@ -234,7 +239,7 @@ function tools(hands) {
     }),
     defineTool({
       name: 'propose',
-      description: 'Propose code for the user\'s /gen request: it shows in the editor as ghost lines, and the user takes it with one key or not. Nothing changes until they take it.',
+      description: 'Propose code for the user\'s /gen request: it shows in the editor as ghost lines, and the user takes it with one key or not. Nothing changes until they take it. In a /gen scaffold request, it changes the lines of a file in the copy at once.',
       parameters: proposal,
       execute: async (args, api) => text(await hands.propose(api.conversationId, {
         file: args.file, line: args.line, endLine: args.insert ? args.line : args.end_line ?? args.line, insert: args.insert === true, text: args.text, note: args.note,
@@ -252,9 +257,9 @@ function tools(hands) {
     }),
     defineTool({
       name: 'write',
-      description: 'Write a file of the sample for the user\'s /gen try request, in the request\'s own folder outside the project; writing the same path again replaces it.',
+      description: 'Write a whole file for the user\'s /gen try request, in its own folder outside the project, or for a /gen scaffold request, in its copy of the project, new or not; writing the same path again replaces it.',
       parameters: Type.Object({
-        path: Type.String({description: 'The file\'s path relative to the request\'s folder, for example main.go; its folders may be new too'}),
+        path: Type.String({description: 'The file\'s path relative to the request\'s folder (a try) or as in the project (a scaffold), for example main.go; its folders may be new too'}),
         text: Type.String({description: 'The whole file'}),
       }),
       execute: async (args, api) => text(await hands.write(api.conversationId, {path: args.path, text: args.text})),

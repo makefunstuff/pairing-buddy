@@ -287,9 +287,10 @@ export class PairSession {
    * do at most (the config's gen.limits, see gen.mjs), and `genBrief` its gen.brief. `askModel(systemPrompt, content)`
    * is one answer of the Partner's model outside any conversation, which checks a /gen request against its brief.
    * `genDir` is /gen's folder in Pair's data folder, where the tries go (see gen-tree.mjs): `genKeepTries` days, run
-   * in the sandbox as `genSandbox` (scoutPane.sandbox) says, with the network when `genNetwork`.
+   * in the sandbox as `genSandbox` (scoutPane.sandbox) says, with the network when `genNetwork`; a scaffold goes
+   * where `genScaffold` says ('tree', Pair's copy, or 'worktree').
    */
-  constructor({record, store, partner, score, pace = null, decision = () => null, typingPauseMs, notify, requestEditor, previousNote = null, lastSession = null, autoTune = false, health = {ok: () => true}, testOnSave = null, checkOutput = null, genLimits, genBrief, genDir = null, genKeepTries, genNetwork = false, genSandbox = 'auto', askModel = null, log = () => {}, now = Date.now}) {
+  constructor({record, store, partner, score, pace = null, decision = () => null, typingPauseMs, notify, requestEditor, previousNote = null, lastSession = null, autoTune = false, health = {ok: () => true}, testOnSave = null, checkOutput = null, genLimits, genBrief, genDir = null, genKeepTries, genNetwork = false, genSandbox = 'auto', genScaffold, askModel = null, log = () => {}, now = Date.now}) {
     Object.assign(this, {record, store, partner, score, pace, decision, typingPauseMs, notify, requestEditor, previousNote, lastSession, autoTune, health, log, now});
     this.sorted = new Map(); // trigger key -> {at, sort}: what the decision model sorted it as lately
     this.told = new Map(); // trigger key -> what the decision model was told about it first, for the decisions log
@@ -367,7 +368,7 @@ export class PairSession {
     this.lastRemarkTrigger = null; // the trigger kind of the last remark the user saw: what /mute alone mutes
     this.cancelled = false; // the user stopped the running answer (/cancel, Esc in the chat)
     this.gen = new Gen({
-      session: this, limits: genLimits, brief: genBrief, ask: askModel, keepTries: genKeepTries, network: genNetwork, sandbox: genSandbox,
+      session: this, limits: genLimits, brief: genBrief, ask: askModel, keepTries: genKeepTries, network: genNetwork, sandbox: genSandbox, scaffold: genScaffold,
       dir: genDir ?? join(tmpdir(), `pair-gen-${process.pid}`),
     }); // the /gen requests, each in a conversation of its own
   }
@@ -1659,10 +1660,13 @@ export class PairSession {
     return result;
   }
 
-  async search({pattern, path = '.'}, {gen = false} = {}) {
-    if (!(await insideRoot(this.root, path))) return `Cannot search ${path}: not inside the project`;
+  /** rg in Pair's pane, in the project; a /gen scaffold (`cwd`) searches its copy of it. */
+  async search({pattern, path = '.'}, {gen = false, cwd = null} = {}) {
+    if (!(await insideRoot(cwd ?? this.root, path))) return `Cannot search ${path}: not inside the project`;
     // Always with a path: rg without one searches its stdin when that is not a terminal.
-    const result = await this.inPane(`rg --line-number --no-heading --color never --max-columns 200 --max-count 20 -- ${shellQuote(pattern)} ${shellQuote(path)}`, {gen});
+    const rg = `rg --line-number --no-heading --color never --max-columns 200 --max-count 20 -- ${shellQuote(pattern)} ${shellQuote(path)}`;
+    // In a subshell: the pane's own directory stays the project.
+    const result = await this.inPane(cwd ? `(cd ${shellQuote(cwd)} && ${rg})` : rg, {gen});
     const lines = result.output.split('\n');
     const found = result.exit === 0 ? `${lines.length} ${lines.length === 1 ? 'match' : 'matches'}` : result.exit === 1 ? 'no matches' : `exit ${result.exit}`;
     this.ledger.add('searched', `${pattern}${path === '.' ? '' : ` in ${path}`}`, {data: {note: found}, detail: {output: keptOutput(result.output)}});

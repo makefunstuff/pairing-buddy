@@ -1114,6 +1114,16 @@ local handlers = {
   -- /gen try: the sample opens in a split; :Pair gen tries picks one of those still kept.
   gen_try = gentry.on_try,
   gen_tries = gentry.on_tries,
+  -- /gen scaffold: done in its copy; its copy deleted; a file of it kept elsewhere (the chat's /keep).
+  gen_scaffold = function(message)
+    gentry.on_scaffold(message)
+    genfiles.refresh_open()
+  end,
+  gen_copy_gone = function(message)
+    gentry.on_copy_gone(message)
+    genfiles.refresh_open()
+  end,
+  gen_kept = function() genfiles.refresh_open() end,
   gen_unwrite = function(message) send({type = 'reply', id = message.id, result = genfiles.unwrite(message)}) end,
   -- Without herdr: Pair's pane, your terminals and typing into one of them, all in this Neovim (pane.lua).
   pane = function(message) pane.request(message, function(result) send({type = 'reply', id = message.id, result = result}) end) end,
@@ -1413,19 +1423,21 @@ local commands = {
   agents = agents.request,
   -- /gen: `:Pair gen` asks in a dialog, `:Pair gen [here|file] <what>` asks at once, `:Pair gen +` opens the compose
   -- window; with a range, over those lines (in a note, the lines are the request). `:Pair gen cancel` stops it,
-  -- `:Pair gen list` lists the files of /gen file requests to review, `:Pair gen run` runs the try you are in (else
-  -- the newest) again, and `:Pair gen tries` picks a try folder to open.
+  -- `:Pair gen list` lists the files of /gen file requests to review and of scaffolds to keep, `:Pair gen run` runs
+  -- the try you are in (else the newest) again, `:Pair gen tries` picks a try folder to open, and `:Pair gen drop`
+  -- deletes the newest scaffold's copy.
   gen = function(arg, selection)
     if not M.connect() then return vim.notify('Pair: not connected, so no /gen yet; :Pair gen again once it is', vim.log.levels.WARN) end
     if arg == 'cancel' then return send({type = 'gen_cancel'}) end
     if arg == 'list' then return genfiles.open() end
     if arg == 'run' then return gentry.run() end
     if arg == 'tries' then return send({type = 'gen_tries'}) end
+    if arg == 'drop' then return send({type = 'gen_copy_delete'}) end
     local compose = arg == '+' or vim.startswith(arg, '+ ')
     gen.ask(compose and vim.trim(arg:sub(2)) or arg, selection, compose)
   end,
   -- `:Pair keep [path]`: the /gen try file you are in (else the newest try's) moves into the project, as a buffer
-  -- to review that :w takes.
+  -- to review that :w takes; in a file of a scaffold's copy (or with the path of one), that file is kept.
   keep = function(arg)
     if not M.connect() then return vim.notify('Pair: not connected; :Pair keep again once it is', vim.log.levels.WARN) end
     gentry.keep(arg)

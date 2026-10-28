@@ -192,8 +192,8 @@ test('a guessed shape is asked first, in the chat for a chat request: y takes th
   await new Promise(resolve => setImmediate(resolve));
   pair.answer(of('confirm').at(-1).id, false, undefined, 'scaffold');
   await third;
-  assert.ok(said().includes('gen #3: /gen scaffold (many files, in Pair\'s copy) is not built yet; this version has /gen here, /gen file and /gen try.'), 'a shape word takes that shape');
-  assert.equal(pair.today().rows.filter(row => row.label === 'generated').length, 1, 'a request that never ran is not booked');
+  assert.ok(said().includes('gen #3 · scaffold · nothing proposed.'), 'a shape word takes that shape');
+  assert.equal(pair.today().rows.filter(row => row.label === 'generated').length, 2, 'a request that never ran is not booked');
 
   // A shape typed is never asked; from the chat, the Neovim the user works in gives the place.
   const before = of('confirm').length;
@@ -210,7 +210,7 @@ test('from Neovim the shape question is a dialog there; one request runs at a ti
   await until(() => of('gen_ask').length);
   const ask = of('gen_ask').at(-1);
   assert.deepEqual({kind: ask.kind, title: ask.title, gen: ask.gen}, {kind: 'shape', title: 'gen #1 · at the cursor. Shape?', gen: 1});
-  assert.deepEqual(ask.choices.map(choice => [choice.shape, choice.guessed, choice.built]), [['here', true, true], ['file', false, true], ['scaffold', false, false], ['try', false, true]]);
+  assert.deepEqual(ask.choices.map(choice => [choice.shape, choice.guessed, choice.built]), [['here', true, true], ['file', false, true], ['scaffold', false, true], ['try', false, true]]);
   assert.equal(of('confirm').length, 0, 'not asked in the chat as well');
   pair.gen.answer(1, ask.id, 'here');
   await until(() => asked.length === 1);
@@ -753,8 +753,8 @@ test('a try without the sandbox asks before a command that may write; a here or 
   assert.deepEqual(results, [
     'The user did not allow it. Do not run it another way.',
     'Refused: curl goes over the network. Do not try another way; tell the user.',
-    'run works only in a /gen try request, in its own folder. Here Pair checks your code once the user takes it: do not run anything.',
-    'This request is /gen file: write works only in a /gen try request. Call draft.',
+    'run works only in a /gen try or scaffold request, in its own folder. Here Pair checks your code once the user takes it: do not run anything.',
+    'This request is /gen file: write works only in a /gen try or scaffold request. Call draft.',
   ]);
 });
 
@@ -819,4 +819,225 @@ test('a data folder behind a link still names a try\'s files by their folder', a
   assert.equal(results[0], 'Wrote main.js in your folder, 1 line. run runs it there.');
   assert.ok(said().some(text => text.startsWith('gen #1 · try · main.js +1 · not run: One line.')));
   assert.match(await pair.gen.keep({}), /^gen #1: main\.js (opened|kept)/);
+});
+
+const ADMIN = 'import {x} from \'../math.js\'\nexport const admin = () => x';
+
+/** A scaffold's turn: a new file, a change by propose and one by write, reads and refusals, an install, a run. */
+const scaffoldTurn = results => async (conversation, pair) => {
+  results.push(await tool(pair, conversation, 'write', {path: 'admin/orders.js', text: ADMIN}));
+  results.push(await tool(pair, conversation, 'propose', {file: 'math.js', line: 1, endLine: 1, insert: true, text: 'const z = 3', note: 'z'}));
+  results.push(await tool(pair, conversation, 'write', {path: 'other.js', text: 'const y = 3'}));
+  results.push(await tool(pair, conversation, 'read', {file: 'math.js'}));
+  results.push(await tool(pair, conversation, 'read', {file: '.'}));
+  results.push(await tool(pair, conversation, 'write', {path: '../outside.js', text: 'x'}));
+  results.push(await tool(pair, conversation, 'write', {path: '.git/config', text: 'x'}));
+  results.push(await tool(pair, conversation, 'draft', {path: 'new.js', text: 'x', note: 'x'}));
+  results.push(await tool(pair, conversation, 'run', {command: 'npm install zod'}));
+  results.push(await tool(pair, conversation, 'run', {command: 'printf "made\\n" > made.txt'}));
+  return 'An admin page for orders; node admin/orders.js runs it. I guessed one file per page.';
+};
+
+test('/gen scaffold: built and run in a copy of the project, checked there; the debrief; kept a file at a time; x deletes the copy', async () => {
+  const results = [];
+  const made = [];
+  const unwritten = [];
+  const genDir = realpathSync(scratch('pair-gen-data-'));
+  const {root, pair, asked, of, said, reverts} = genSession([scaffoldTurn(results)], {genDir, editor: filesEditor(made, unwritten)});
+  const ran = [];
+  pair.scout = bashPane(root, ran);
+  pair.allowed = async () => true;
+  pair.testRuns = {command: 'ls admin'}; // the project's command on save: the check
+  pair.checkGenerated = async () => ({label: 'ls admin', mark: 'pass', text: 'passed'});
+  writeFileSync(join(root, 'notes.txt'), 'on disk\n');
+  await pair.gen.request({text: 'scaffold an admin page for orders'});
+
+  const dir = join(projectFolder(genDir, root), '1');
+  assert.match(asked[0].input, new RegExp(`^\\[gen\\] gen #1, scaffold\\. The user asked: "an admin page for orders"\\nYou build it in a copy of the project in Pair's data folder, at ${dir}, not in the project`));
+  assert.match(asked[0].input, /in a sandbox where only the copy is writable and it has no network: install nothing/);
+  assert.deepEqual(results.filter((_, i) => i !== 3 && i !== 4), [
+    'Wrote admin/orders.js in the copy: a new file, 2 lines. run runs commands there.',
+    'Changed math.js in the copy, below line 1: now +1 -0 against the project. read shows it as it is now.',
+    'Wrote other.js in the copy: +1 -1 against the project. run runs commands there.',
+    'Cannot write ../outside.js: not a file\'s path in the project.',
+    'Cannot write .git/config: not a file\'s path in the project.',
+    'This request is /gen scaffold: write its files in the copy with write, new or not.',
+    'Not run: the copy has no network (gen.network), so nothing can be installed. The user is told to install it; go on without it, and say what needs it.',
+    'exit 0\n(no output)',
+  ]);
+  assert.equal(results[3], '1: const x = 1\n2: const z = 3\n3: \n4: export {x}\n5: ', 'read sees the copy, with its change');
+  assert.match(results[4], /^admin\/\nmath\.js\nnotes\.txt\nother\.js$/m);
+  assert.equal(readFileSync(join(dir, 'notes.txt'), 'utf8'), 'on disk\n', 'a copy of the project');
+  assert.equal(readFileSync(join(root, 'math.js'), 'utf8'), 'const x = 1\n\nexport {x}\n', 'the project is untouched');
+  assert.equal(existsSync(join(root, 'admin')), false);
+  assert.ok(ran.every(line => line.startsWith(`(cd ${dir} && `)), 'every run in the copy');
+
+  // The debrief: what it made, where, the runs and the check, the files, what it could not install.
+  const card = said().find(text => text.startsWith('gen #1 · scaffold'));
+  const lines = card.split('\n');
+  assert.match(lines[0], /^gen #1 · scaffold · 4 files, 2 of yours changed · \d+s: An admin page for orders; node admin\/orders\.js runs it\. I guessed one file per page\.$/);
+  assert.equal(lines[1], `in Pair's copy ${dir} · ran ✓ \`printf "made\\n" > made.txt\``);
+  assert.equal(lines[2], 'check ✓ `ls admin`: passed');
+  assert.deepEqual(lines.slice(3, 7), [
+    '│ + admin/orders.js  +2', '│ ~ math.js          +1 -0', '│ ~ other.js         +1 -1', '│ + made.txt         +1',
+  ]);
+  assert.equal(lines[7], 'not run: `npm install zod`: the copy has no network (gen.network), so install it yourself once you keep the files');
+  assert.match(lines[8], /^In Neovim, :Pair gen list keeps them one at a time \(k\)/);
+  assert.equal(of('gen_scaffold')[0].files, 4);
+  assert.equal(of('gen').at(-1).state, 'ready');
+  let [row] = pair.today().rows.filter(one => one.label === 'generated');
+  assert.deepEqual([row.text, row.note], ['gen #1 · scaffold · an admin page for orders', '4 files · 2 of yours changed · ✓ ls admin']);
+
+  // :Pair gen list shows the files of the copy.
+  let [listed] = pair.gen.review().requests;
+  assert.deepEqual([listed.shape, listed.dir, listed.mode, listed.deleted], ['scaffold', dir, 'copy', false]);
+  assert.deepEqual(listed.tree.map(({name, state, isNew, added, removed}) => [name, state, isNew, added, removed]), [
+    ['admin/orders.js', 'proposed', true, 2, 0], ['math.js', 'proposed', false, 1, 0], ['other.js', 'proposed', false, 1, 1], ['made.txt', 'proposed', true, 1, 0],
+  ]);
+
+  // /keep without a path, with several left, lists them.
+  assert.match(await pair.gen.keep({}), /^gen #1: 4 files to keep: admin\/orders\.js, math\.js, other\.js, made\.txt\. \/keep <path> keeps one/);
+
+  // A new file: a buffer to review, opened.
+  assert.equal(await pair.gen.keep({path: 'admin/orders.js'}), 'gen #1: admin/orders.js opened, unsaved, generated. :w takes it.');
+  assert.deepEqual(made.at(-1).files.map(({name, text, note}) => ({name, text, note})), [{name: 'admin/orders.js', text: ADMIN, note: 'from gen #1\'s copy'}]);
+  assert.equal(made.at(-1).open, true);
+  assert.equal(await pair.gen.keep({path: 'admin/orders.js'}), 'gen #1: admin/orders.js is kept already.');
+
+  // A change to a file of yours: hunks as suggestions there, on your buffer as it is now.
+  assert.equal(await pair.gen.keep({file: join(dir, 'math.js')}), 'gen #1: math.js: 1 change, shown there as suggestions; Alt-y (:Pair accept) takes each.');
+  const [hunk] = of('suggest');
+  assert.deepEqual({...hunk, action: undefined}, {
+    via: 'editor', type: 'suggest', file: join(root, 'math.js'), line: 1, endLine: 1, insert: true, text: 'const z = 3',
+    note: 'gen #1 · math.js', action: undefined, piece: hunk.piece, gen: 1, origin: 'gen:#1', aim: true,
+  });
+  // You changed other.js since the copy was made: that hunk is not shown.
+  writeFileSync(join(root, 'other.js'), 'const y = 22\n');
+  assert.equal(await pair.gen.keep({path: 'other.js'}), `gen #1: other.js: no change shown. 1 change not shown: you changed those lines since; copy it from ${join(dir, 'other.js')}.`);
+  pair.gen.dropTree(row.id, 3);
+  await until(() => said().includes('gen #1: made.txt dropped.'));
+
+  // Alt-y takes the hunk; :w the new file.
+  await pair.applied(hunk.action, ['const x = 1', '', 'export {x}', ''], ['const x = 1', 'const z = 3', '', 'export {x}', ''], {piece: hunk.piece, from: 2, to: 2});
+  pair.gen.fileTaken(row.id, made.at(-1).files[0].piece, `${ADMIN}\n`);
+  [listed] = pair.gen.review().requests;
+  assert.deepEqual(listed.tree.map(({name, state, kept, hunks, taken}) => [name, state, kept !== undefined, hunks, taken]), [
+    ['admin/orders.js', 'kept', true, undefined, undefined], ['math.js', 'kept', false, 1, 1], ['other.js', 'kept', false, undefined, undefined], ['made.txt', 'dropped', false, undefined, undefined],
+  ]);
+  assert.deepEqual(listed.files.map(({name, state}) => [name, state]), [['admin/orders.js', 'taken']]);
+
+  // r: the check again; x: the copy goes, and what was not kept with it.
+  assert.equal(await pair.gen.checkAgain({action: row.id}), 'gen #1 · ✓ `ls admin` in the copy: passed');
+  assert.equal(await pair.gen.deleteCopy({action: row.id}), 'gen #1: its copy is deleted. 3 files kept from it stay.');
+  assert.equal(existsSync(dir), false);
+  assert.equal(existsSync(`${dir}.json`), false, 'and its manifest');
+  assert.ok(of('gen_copy_gone').some(message => message.dir === dir));
+  [row] = pair.today().rows.filter(one => one.label === 'generated');
+  assert.equal(row.note, '3 of 4 files kept · copy deleted');
+  assert.equal(await pair.gen.deleteCopy({action: row.id}), 'gen #1: its copy is deleted already.');
+  assert.equal(await pair.gen.keep({}), 'No /gen try to keep from: /gen try <what> makes one.', 'nothing left to keep from');
+
+  // /undo takes back what was kept: the hunk out of the buffer, the file written from it deleted.
+  await pair.undoLast();
+  assert.deepEqual(reverts.map(message => message.file), [join(root, 'math.js')]);
+  assert.deepEqual(unwritten.map(message => message.file), [join(root, 'admin/orders.js')]);
+});
+
+test('a scaffold is held by its limits; the copy has your unsaved buffers; cancelled, it goes; unused, it expires', async () => {
+  const results = [];
+  const genDir = realpathSync(scratch('pair-gen-data-'));
+  let release;
+  const held = new Promise(resolve => { release = resolve; });
+  const {root, pair, asked, said} = genSession([async (conversation, pair) => {
+    results.push(await tool(pair, conversation, 'read', {file: 'math.js'}));
+    results.push(await tool(pair, conversation, 'write', {path: 'a.js', text: 'a\nb'}));
+    results.push(await tool(pair, conversation, 'write', {path: 'b.js', text: 'b'}));
+    results.push(await tool(pair, conversation, 'write', {path: 'a.js', text: 'a\nb\nc\nd'}));
+    results.push(await tool(pair, conversation, 'write', {path: 'a.js', text: 'a'}));
+    return 'Two files.';
+  }, async () => { await held; return 'Never done.'; }], {
+    genDir, limits: {files: 2, lines: 3, commands: 8, minutes: 10},
+    editor: async message => (message.type === 'buffers' ? {buffers: [{file: join(root, 'math.js'), text: 'const x = 41\n'}]} : null),
+  });
+  pair.scout = bashPane(root);
+  await pair.gen.request({text: 'scaffold two files'});
+  assert.match(asked[0].input, /At most 2 files and 3 lines written \(gen\.limits\)\./);
+  assert.equal(results[0], '1: const x = 41\n2: ', 'the copy has your unsaved buffer');
+  assert.deepEqual(results.slice(1), [
+    'Wrote a.js in the copy: a new file, 2 lines. run runs commands there.',
+    'Wrote b.js in the copy: a new file, 1 line. run runs commands there.',
+    'That is more than 3 lines for this request (gen.limits.lines): write less, or say what is left.',
+    'Wrote a.js in the copy: a new file, 1 line. run runs commands there.',
+  ]);
+  const one = join(projectFolder(genDir, root), '1');
+  assert.ok(existsSync(one));
+
+  // Cancelled while it works: its copy goes.
+  const second = pair.gen.request({text: 'scaffold another'});
+  const two = join(projectFolder(genDir, root), '2');
+  await until(() => existsSync(two) && pair.gen.running?.n === 2);
+  pair.gen.cancel();
+  release();
+  await second;
+  await until(() => !existsSync(two));
+  assert.ok(said().includes('gen #2 cancelled.'));
+
+  // A copy not used for gen.keepTries days goes, as a try does.
+  assert.deepEqual(await expireTries(genDir, 7, Date.now() + 6 * 24 * 3600_000), []);
+  assert.deepEqual(await expireTries(genDir, 7, Date.now() + 8 * 24 * 3600_000), [one]);
+  assert.equal(existsSync(`${one}.json`), false);
+});
+
+test('/gen scaffold --branch: a git worktree on a branch gen/<n>; gen.scaffold "worktree" by default, --copy over it; deleted with its branch', async () => {
+  const genDir = realpathSync(scratch('pair-gen-data-'));
+  const results = [];
+  const {root, pair, asked, said} = genSession([async (conversation, pair) => {
+    results.push(await tool(pair, conversation, 'write', {path: 'admin.js', text: 'export const admin = 1'}));
+    results.push(await tool(pair, conversation, 'write', {path: 'math.js', text: 'const x = 2\n\nexport {x}'}));
+    return 'On a branch.';
+  }, async (conversation, pair) => {
+    results.push(await tool(pair, conversation, 'write', {path: 'c.js', text: 'c'}));
+    return 'In the copy.';
+  }], {genDir});
+  const git = (...args) => new Promise((resolve, reject) => execFile('git', args, {cwd: root}, (error, stdout) => (error ? reject(error) : resolve(stdout.trim()))));
+  await git('init', '-q');
+  await git('-c', 'user.email=t@t', '-c', 'user.name=t', 'add', '.');
+  await git('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'start');
+  writeFileSync(join(root, 'math.js'), 'const x = 1\n\nexport {x}\n// uncommitted\n');
+  pair.scout = bashPane(root);
+  await pair.gen.request({text: 'scaffold --branch an admin'});
+  const dir = join(projectFolder(genDir, root), '1');
+  assert.match(asked[0].input, new RegExp(`You build it in a git worktree of the project on a new branch gen/1, at ${dir}`));
+  assert.equal(await git('branch', '--list', '--format=%(refname:short)', 'gen/1'), 'gen/1');
+  assert.ok(existsSync(join(dir, '.git')), 'a worktree');
+  assert.equal(readFileSync(join(dir, 'math.js'), 'utf8'), 'const x = 2\n\nexport {x}\n');
+  const card = said().find(text => text.startsWith('gen #1 · scaffold'));
+  assert.match(card, new RegExp(`\\nin the worktree ${dir}, branch gen/1\\n`));
+  assert.match(card, /│ ~ math\.js {3}\+1 -1/, 'against HEAD, which the worktree starts from');
+  const [listed] = pair.gen.review().requests;
+  assert.deepEqual([listed.mode, listed.branch], ['worktree', 'gen/1']);
+  assert.deepEqual(await expireTries(genDir, 7, Date.now() + 30 * 24 * 3600_000), [], 'a worktree does not expire');
+
+  // A branch of that name already: it says so.
+  await git('branch', 'gen/2');
+  await pair.gen.request({text: 'scaffold --branch another'});
+  assert.ok(said().includes('gen #2: no worktree for the scaffold: the branch gen/2 exists already.'));
+
+  // gen.scaffold "worktree" makes it the default; --copy goes in Pair's copy anyway.
+  pair.gen.scaffold = 'worktree';
+  await pair.gen.request({text: 'scaffold --copy a third'});
+  assert.ok(existsSync(join(projectFolder(genDir, root), '3', 'c.js')));
+  assert.equal(existsSync(join(projectFolder(genDir, root), '3', '.git')), false);
+
+  // x: the worktree goes, and its branch, which has no commit of yours.
+  const row = pair.today().rows.find(one => one.text === 'gen #1 · scaffold · an admin');
+  assert.equal(await pair.gen.deleteCopy({action: row.id}), 'gen #1: its worktree is deleted, and its branch gen/1. Nothing of it was kept.');
+  assert.equal(existsSync(dir), false);
+  assert.equal(await git('branch', '--list', '--format=%(refname:short)', 'gen/1'), '');
+  assert.equal(results.length, 3);
+});
+
+test('the flags make a scaffold; scaffold is guessed only with a question', () => {
+  assert.equal(guessShape('an admin page for orders, wired into the router').shape, 'scaffold');
+  assert.deepEqual(parseGen('scaffold --branch an admin'), {shape: 'scaffold', words: '--branch an admin'});
 });

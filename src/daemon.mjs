@@ -295,7 +295,7 @@ export async function startDaemon(config, {
       session.setTestOnSave(testOnSaveOf(session.root, session.id));
       session.gen.limits = config.gen.limits; // a request already running keeps the limits it started with
       session.gen.briefName = config.gen.brief;
-      Object.assign(session.gen, {keepTries: config.gen.keepTries, network: config.gen.network, sandbox: config.scoutPane.sandbox});
+      Object.assign(session.gen, {keepTries: config.gen.keepTries, network: config.gen.network, sandbox: config.scoutPane.sandbox, scaffold: config.gen.scaffold});
       Object.assign(margins.get(session.root) ?? {}, {typingPauseMs: config.typingPauseMs, taskCommand: config.taskCommand});
     }
     if (changed.includes('board')) {
@@ -411,7 +411,7 @@ export async function startDaemon(config, {
         checkOutput: join(config.dataDir, 'runs', `${record.id}.check.out`), // the hand-over's check: writable in the sandbox too
         genLimits: config.gen.limits,
         genBrief: config.gen.brief,
-        genDir: join(config.dataDir, 'gen'), genKeepTries: config.gen.keepTries, genNetwork: config.gen.network, genSandbox: config.scoutPane.sandbox,
+        genDir: join(config.dataDir, 'gen'), genKeepTries: config.gen.keepTries, genNetwork: config.gen.network, genSandbox: config.scoutPane.sandbox, genScaffold: config.gen.scaffold,
         askModel: (systemPrompt, content) => askNoteModel(systemPrompt, content, {asked: true}), // the /gen brief's checks
         notify: (role, message) => notify(session, role, message),
         requestEditor: message => requestEditor(session, message),
@@ -641,10 +641,26 @@ export async function startDaemon(config, {
     if (client.role === 'editor' && text) sendMessage(client.socket, {type: 'message', sender: 'system', text, at: Date.now()});
   }
 
-  /** /keep [path] and :Pair keep [path]: from Neovim, with the try `file` it is in (see gen.mjs). */
+  /**
+   * /keep [path] and :Pair keep [path]: from Neovim, with the try or scaffold `file` it is in; k in :Pair gen list,
+   * with the scaffold's `action` and the `piece` to keep (see gen.mjs).
+   */
   async function keepFrom(client, session, message) {
     const file = typeof message.file === 'string' ? message.file : null;
-    toEditor(client, await session.gen.keep({path: typeof message.path === 'string' ? message.path : '', file, n: Number.isInteger(message.gen) ? message.gen : null}));
+    const int = value => (Number.isInteger(value) ? value : null);
+    toEditor(client, await session.gen.keep({
+      path: typeof message.path === 'string' ? message.path : '', file, n: int(message.gen), action: int(message.action), piece: int(message.piece),
+    }));
+  }
+
+  /** x in :Pair gen list, :Pair gen drop, /gen drop: a scaffold's copy is deleted. */
+  async function copyDeleteFrom(client, session, message) {
+    toEditor(client, await session.gen.deleteCopy({action: Number.isInteger(message.action) ? message.action : null}));
+  }
+
+  /** r in :Pair gen list: a scaffold's copy is checked again. */
+  async function checkFrom(client, session, message) {
+    toEditor(client, await session.gen.checkAgain({action: Number.isInteger(message.action) ? message.action : null}));
   }
 
   /** The run key in a try's buffer, :Pair gen run, /gen run: the try runs again in Pair's pane. */
@@ -807,6 +823,9 @@ export async function startDaemon(config, {
     if (message.type === 'keep') return keepFrom(client, session, message);
     if (message.type === 'gen_try_run') return tryRunFrom(client, session, message);
     if (message.type === 'gen_tries') return triesFrom(client, session);
+    if (message.type === 'gen_tree_drop' && Number.isInteger(message.action) && Number.isInteger(message.piece)) return session.gen.dropTree(message.action, message.piece);
+    if (message.type === 'gen_copy_delete') return copyDeleteFrom(client, session, message);
+    if (message.type === 'gen_check') return checkFrom(client, session, message);
     if (message.type === 'brief') return briefFrom(client, session, message);
     if (message.type === 'trail') return sendMessage(client.socket, session.trail());
     if (message.type === 'forget_trail') return session.forgetTrail();

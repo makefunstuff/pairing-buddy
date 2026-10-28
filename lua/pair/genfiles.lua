@@ -5,7 +5,10 @@
 -- check on unsaved buffers (buffers.lua) counts it at its real path. `:Pair gen list` lists the file requests, with
 -- the keys that open, take and drop their files. The daemon keeps each file's text until it is taken or dropped, so a
 -- Neovim that restarted gets its buffers again when it connects. A file kept from a /gen try (:Pair keep) is one of
--- these buffers too, and it opens at once.
+-- these buffers too, and it opens at once. The list shows a /gen scaffold's files too, those of its copy of the
+-- project: `k` keeps one (a new file as one of these buffers, a change to a file of yours as suggestions in it), `d`
+-- drops it, `Enter` opens it (a change, as a diff with your file), `r` checks the copy again, `t` opens a terminal
+-- in it and `x` deletes it.
 local style = require('pair.style')
 
 local M = {}
@@ -293,7 +296,30 @@ local function buffer_of(request, file)
   return find(request.action, file.piece) or (file.text and make(request.gen, request.action, file))
 end
 
+--- Enter on a file of a scaffold's copy: a new one opens in the window you came from; a change opens your file there,
+--- with the copy's beside it as a diff.
+local function open_tree(row)
+  local entry = row.tree
+  if row.request.deleted or not vim.uv.fs_stat(entry.tree) then return vim.notify(('Pair: gen #%d: its copy is deleted'):format(row.request.gen)) end
+  local win = work_window()
+  if win then vim.api.nvim_set_current_win(win) else vim.cmd('aboveleft split') end
+  if entry.isNew then return vim.cmd('edit ' .. vim.fn.fnameescape(entry.tree)) end
+  vim.cmd('edit ' .. vim.fn.fnameescape(vim.fn.fnamemodify(entry.file, ':.')))
+  vim.cmd('vertical diffsplit ' .. vim.fn.fnameescape(entry.tree))
+end
+
+--- t: a terminal of yours in the scaffold's copy, in a split above the list. Yours, not Pair's: no sandbox.
+local function terminal(request)
+  if request.deleted or not vim.uv.fs_stat(request.dir) then return vim.notify(('Pair: gen #%d: its copy is deleted'):format(request.gen)) end
+  local win = work_window()
+  if win then vim.api.nvim_set_current_win(win) end
+  vim.cmd('belowright new')
+  vim.fn.jobstart({vim.o.shell}, {term = true, cwd = request.dir})
+  vim.cmd('startinsert')
+end
+
 local function open(row)
+  if row.tree and not row.file then return open_tree(row) end
   local file, request = row.file, row.request
   local buf
   if file.state == 'proposed' then buf = buffer_of(request, file)
@@ -324,6 +350,14 @@ local function drop_row(row)
   M.refresh()
 end
 
+--- Asks `prompt` with a yes (`yes`, what it does) and a no; runs `run` on the yes.
+local function confirm(prompt, yes, run)
+  local choices = {{key = 'y', what = yes}, {key = 'n', what = 'no'}}
+  vim.ui.select(choices, {prompt = prompt, format_item = function(choice) return choice.what end, kind = 'pair_gen_all'}, function(choice)
+    if choice and choice.key == 'y' then run() end
+  end)
+end
+
 --- W and D: every file of the request still to review, once you said yes.
 local function all(row, verb)
   local request = row and row.request
@@ -347,6 +381,31 @@ local function act(key)
     if row and row.request then deps.send({type = 'undo', action = row.request.action}) M.refresh() end
     return
   end
+  local scaffold = row and row.request and row.request.shape == 'scaffold' and row.request or nil
+  if key == 'k' then
+    if row and row.tree and row.tree.state ~= 'kept' and not scaffold.deleted then
+      deps.send({type = 'keep', action = scaffold.action, piece = row.tree.piece})
+      M.refresh()
+    end
+    return
+  end
+  if key == 'x' or key == 'r' or key == 't' then
+    if not scaffold or scaffold.deleted then return end
+    if key == 'r' then return deps.send({type = 'gen_check', action = scaffold.action}) end
+    if key == 't' then return terminal(scaffold) end
+    local left = #vim.tbl_filter(function(entry) return entry.state == 'proposed' end, scaffold.tree)
+    local what = scaffold.mode == 'worktree' and 'worktree' or 'copy'
+    local prompt = ('Delete gen #%d\'s %s?%s'):format(scaffold.gen, what, left > 0 and (' The %s not kept go with it.'):format(plural(left, 'file')) or '')
+    return confirm(prompt, ('yes, delete the %s'):format(what), function()
+      deps.send({type = 'gen_copy_delete', action = scaffold.action})
+      M.refresh()
+    end)
+  end
+  if key == 'd' and row and row.tree and not row.file then
+    if row.tree.state == 'proposed' then deps.send({type = 'gen_tree_drop', action = scaffold.action, piece = row.tree.piece}) M.refresh() end
+    return
+  end
+  if key == 'open' and row and row.tree then return open(row) end
   if key == 'W' or key == 'D' then return all(row, key == 'W' and 'take' or 'drop') end
   if key == 'decide' then
     if row and row.guess then deps.send({type = 'gen_decide', action = row.request.action, guess = row.guess - 1}) end
@@ -359,6 +418,39 @@ local function act(key)
 end
 
 local function hhmm(at) return os.date('%H:%M', math.floor(at / 1000)) end
+
+--- A scaffold's files, those of its copy, under its head: what each is (+ new, ~ a change to a file of yours), and
+--- what was done with it. A file kept as a buffer to review is that buffer's row too: Enter opens it, w takes it.
+local function render_tree(request, add)
+  local width = 0
+  for _, entry in ipairs(request.tree) do width = math.max(width, vim.fn.strdisplaywidth(entry.name)) end
+  local files = {}
+  for _, file in ipairs(request.files) do files[file.piece] = file end
+  for _, entry in ipairs(request.tree) do
+    local size = entry.isNew and ('+%d'):format(entry.added) or ('+%d -%d'):format(entry.added, entry.removed)
+    local file = entry.kept and files[entry.kept] or nil
+    local what
+    if entry.state == 'proposed' then
+      what = entry.isNew and ('%-8s ⏎ open  k keep  d drop'):format(size) or ('%-8s ⏎ diff  k as suggestions  d drop'):format(size)
+    elseif entry.state == 'kept' and file then
+      what = file.state == 'proposed' and 'kept · unsaved · ⏎ open  w take' or file.state == 'taken' and 'kept · written · ⏎ open' or ('kept · %s'):format(file.state)
+    elseif entry.state == 'kept' then
+      what = entry.hunks and ('kept · %d of %s taken'):format(entry.taken or 0, plural(entry.hunks, 'change')) or 'kept · nothing to change'
+    else
+      what = request.deleted and 'dropped' or ('%-8s dropped · k keeps it after all'):format(size)
+    end
+    local glyph = ({proposed = style.glyphs.away, kept = style.glyphs.pass})[entry.state] or '·'
+    local mark = entry.isNew and '+' or '~'
+    local text = ('  %s %s %s%s   %s'):format(glyph, mark, entry.name, string.rep(' ', width - vim.fn.strdisplaywidth(entry.name)), what)
+    local hls = {{#text - #what, -1, 'PairKey'}}
+    if entry.state == 'dropped' then table.insert(hls, {2, #text - #what, 'PairSuggestDelete'}) end
+    add(text, {request = request, tree = entry, file = file and (file.state == 'proposed' or file.state == 'taken') and file or nil}, hls)
+  end
+  if not request.deleted then
+    local what = request.mode == 'worktree' and 'worktree' or 'copy'
+    add(('  t terminal in the %s · r run the check again · x delete the %s'):format(what, what), {request = request}, {{0, -1, 'PairKey'}})
+  end
+end
 
 local function render()
   local lines, marks, rows = {}, {}, {}
@@ -380,20 +472,31 @@ local function render()
     end
     if request.running then table.insert(about, 'generating') end
     if request.state == 'undone' then table.insert(about, 'undone · u again makes it again') end
-    if #about > 0 then add('  ' .. table.concat(about, '   '), {request = request}, {{0, -1, 'PairKey'}}) end
-    local width = 0
-    for _, file in ipairs(request.files) do width = math.max(width, vim.fn.strdisplaywidth(file.name)) end
-    for _, file in ipairs(request.files) do
-      local glyph = ({proposed = style.glyphs.away, taken = style.glyphs.pass, dropped = '·', undone = '·'})[file.state] or '·'
-      local what = file.state == 'proposed' and ('+%-4d ⏎ open  w take  d drop'):format(file.lines)
-        or file.state == 'taken' and 'taken · ⏎ open' or file.state
-      local text = ('  %s %s%s   %s'):format(glyph, file.name, string.rep(' ', width - vim.fn.strdisplaywidth(file.name)), what)
-      local hls = {{#text - #what, -1, 'PairKey'}}
-      if file.state ~= 'proposed' and file.state ~= 'taken' then table.insert(hls, {2, #text - #what, 'PairSuggestDelete'}) end
-      add(text, {request = request, file = file}, hls)
+    if request.shape == 'scaffold' then
+      local kept = #vim.tbl_filter(function(entry) return entry.state == 'kept' end, request.tree)
+      local where = request.deleted and (request.mode == 'worktree' and 'worktree deleted' or 'copy deleted')
+        or request.mode == 'worktree' and ('worktree %s · branch %s'):format(vim.fn.fnamemodify(request.dir, ':~'), request.branch)
+        or ('copy %s'):format(vim.fn.fnamemodify(request.dir, ':~'))
+      table.insert(about, 1, ('%s · %d of %d kept'):format(where, kept, #request.tree))
     end
-    for _, change in ipairs(request.changes or {}) do
-      add(('  ~ %s:%d   a suggestion there · %s'):format(change.name, change.line, change.state), {request = request}, {{0, -1, 'PairKey'}})
+    if #about > 0 then add('  ' .. table.concat(about, '   '), {request = request}, {{0, -1, 'PairKey'}}) end
+    if request.shape == 'scaffold' then
+      render_tree(request, add)
+    else
+      local width = 0
+      for _, file in ipairs(request.files) do width = math.max(width, vim.fn.strdisplaywidth(file.name)) end
+      for _, file in ipairs(request.files) do
+        local glyph = ({proposed = style.glyphs.away, taken = style.glyphs.pass, dropped = '·', undone = '·'})[file.state] or '·'
+        local what = file.state == 'proposed' and ('+%-4d ⏎ open  w take  d drop'):format(file.lines)
+          or file.state == 'taken' and 'taken · ⏎ open' or file.state
+        local text = ('  %s %s%s   %s'):format(glyph, file.name, string.rep(' ', width - vim.fn.strdisplaywidth(file.name)), what)
+        local hls = {{#text - #what, -1, 'PairKey'}}
+        if file.state ~= 'proposed' and file.state ~= 'taken' then table.insert(hls, {2, #text - #what, 'PairSuggestDelete'}) end
+        add(text, {request = request, file = file}, hls)
+      end
+      for _, change in ipairs(request.changes or {}) do
+        add(('  ~ %s:%d   a suggestion there · %s'):format(change.name, change.line, change.state), {request = request}, {{0, -1, 'PairKey'}})
+      end
     end
     for _, line in ipairs(request.contradicts or {}) do add('  ' .. line, {request = request}, {{2, 2 + #'≠', 'PairSign'}}) end
     for g, guess in ipairs(request.guessed or {}) do
@@ -402,9 +505,10 @@ local function render()
       add(text .. tail, {request = request, guess = g}, {{2, 3, 'PairSign'}, {#text, -1, 'PairKey'}})
     end
   end
-  if #view.requests == 0 then add('No /gen file request, nor a file kept from a try, in the last days. :Pair gen file <what> asks for one.', nil, {{0, -1, 'PairKey'}}) end
+  if #view.requests == 0 then add('No /gen file or scaffold request, nor a file kept from a try, in the last days. :Pair gen file <what> asks for one.', nil, {{0, -1, 'PairKey'}}) end
   add('', nil)
-  add('⏎ open · w take · d drop · W take all · D drop all · u undo the request · q close', nil, {{0, -1, 'PairKey'}})
+  local any_scaffold = vim.iter(view.requests):any(function(request) return request.shape == 'scaffold' end)
+  add(('⏎ open · w take · %sd drop · W take all · D drop all · u undo the request · q close'):format(any_scaffold and 'k keep · ' or ''), nil, {{0, -1, 'PairKey'}})
   view.rows = rows
   vim.bo[view.buf].modifiable = true
   vim.api.nvim_buf_set_lines(view.buf, 0, -1, false, lines)
@@ -430,6 +534,10 @@ local function list_buffer()
   map('W', function() act('W') end, 'Take every file of the request')
   map('D', function() act('D') end, 'Drop every file of the request')
   map('u', function() act('u') end, 'Undo the request, or make it again')
+  map('k', function() act('k') end, 'Keep the file of the scaffold\'s copy')
+  map('x', function() act('x') end, 'Delete the scaffold\'s copy')
+  map('r', function() act('r') end, 'Run the check again in the scaffold\'s copy')
+  map('t', function() act('t') end, 'A terminal in the scaffold\'s copy')
   map('q', function() M.close() end, 'Close the list')
   if deps.decide_key and deps.decide_key ~= '' then map(deps.decide_key, function() act('decide') end, 'Log the guess as a decision') end
   return buf
@@ -458,6 +566,11 @@ function M.refresh()
   view.refresh:start(100, 0, vim.schedule_wrap(function() deps.send({type = 'gen_review'}) end))
 end
 
+--- Asks the daemon for the list again, when it is open: something in it changed elsewhere (/keep in the chat).
+function M.refresh_open()
+  if valid_win() then M.refresh() end
+end
+
 function M.close()
   if valid_win() and #vim.api.nvim_tabpage_list_wins(0) > 1 then vim.api.nvim_win_close(view.win, true) end
   view.win = nil
@@ -473,15 +586,24 @@ function M.on_review(message)
   local height = math.min(MAX_HEIGHT, math.max(4, vim.api.nvim_buf_line_count(view.buf)))
   if vim.api.nvim_win_get_height(view.win) < height then pcall(vim.api.nvim_win_set_height, view.win, height) end
   -- The cursor stays on its file while it is to review, else goes to the first file that is.
+  -- A row to act on: a file to review, or a file of a scaffold's copy not kept yet (once kept, the next one is).
+  local function todo(row)
+    if not row then return false end
+    if row.tree then return row.tree.state == 'proposed' end
+    return row.file ~= nil and row.file.state == 'proposed'
+  end
+  local function same(row)
+    if not (at and row and row.request.action == at.request.action) then return false end
+    if at.tree and row.tree then return row.tree.piece == at.tree.piece end
+    return at.file and row.file and not at.tree and not row.tree and row.file.piece == at.file.piece
+  end
   local line
   for i, row in pairs(view.rows) do
-    local same = at and at.file and row.file and row.request.action == at.request.action and row.file.piece == at.file.piece
-    if same and row.file.state == 'proposed' then line = i end
+    if same(row) and todo(row) then line = i end
   end
   if not line then
     for i = 1, vim.api.nvim_buf_line_count(view.buf) do
-      local row = view.rows[i]
-      if row and row.file and row.file.state == 'proposed' then line = i break end
+      if todo(view.rows[i]) then line = i break end
     end
   end
   if line and vim.api.nvim_win_get_buf(view.win) == view.buf then pcall(vim.api.nvim_win_set_cursor, view.win, {line, 0}) end

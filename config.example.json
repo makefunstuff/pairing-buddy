@@ -38,9 +38,11 @@
   // are put in as whole words, never through a shell. Without it, the tasks are copied as a Markdown checklist.
   // "taskCommand": ["gh", "issue", "create", "--title", "{title}", "--body", "{description}"],
 
-  // What one /gen request may do at most (see docs/gen.md); they stop a model that loops. And the note its brief has
-  // when you pinned none (/brief), when the project has it; null for the goal and the board task only. The defaults:
-  // "gen": {"limits": {"files": 40, "lines": 4000, "commands": 8, "minutes": 10}, "brief": "NOTES.md"},
+  // What one /gen request may do at most (see docs/gen.md); they stop a model that loops. The note its brief has
+  // when you pinned none (/brief), when the project has it; null for the goal and the board task only. The days a
+  // /gen try folder or a scaffold's copy stays, whether their runs reach the network, and where a /gen scaffold goes:
+  // "tree", a copy in Pair's data folder, or "worktree", a git worktree on a branch gen/<n>. The defaults:
+  // "gen": {"limits": {"files": 40, "lines": 4000, "commands": 8, "minutes": 10}, "brief": "NOTES.md", "keepTries": 7, "network": false, "scaffold": "tree"},
 
   // Pair's own pane, where Scout's commands and the tests on save run (see docs/scout.md#pairs-pane): your rc file
   // for its aliases, functions and PATH (true is ~/.bashrc), and the bubblewrap sandbox: "auto" where bwrap works,
