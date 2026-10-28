@@ -148,10 +148,18 @@ its remarks are kept more often than the rules' remarks.
 ### A local model on the CPU
 
 Liquid AI's d1-2B (LFM3) is a decision model that llama.cpp's `llama-server` serves on `/v1/systemone`, so the
-`"system-one"` entry works with it unchanged:
+`"system-one"` entry works with it, with no change to Pair:
 
 ```jsonc
 "decision": {"api": "system-one", "baseUrl": "http://127.0.0.1:8080/v1", "model": "d1-2B"}
+```
+
+The server reads each question in one batch, so start it with a batch that holds the gate's state, about 650 tokens
+a question. Its default of 512 is too small: every request fails ("input (654 tokens) is too large to process") and
+the model is down at once.
+
+```bash
+llama-server -hf LiquidAI/d1-2B-GGUF:Q4_K_M -b 2048 -ub 2048
 ```
 
 It is not a good fit for the gate yet. One run of the same 16 moments on a 6-core desktop CPU (Ryzen 5 9600X,
