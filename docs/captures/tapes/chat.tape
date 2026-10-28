@@ -1,6 +1,6 @@
 # The chat pane: the full-screen pane on the right of Neovim (as `pair` opens it in herdr, here in a :terminal). Your
 # fix for the budget breaks the queue's lease on save; Pair's remark shows in the chat, its suggestion as a diff. You
-# ask why there; the status row says what Pair reads, and the answer streams in. Ctrl-F finds the remark and picks
+# ask why there; the status in the rule says what Pair reads, and the answer streams in. Ctrl-F finds the remark and picks
 # it: the footer lists what you can do with it. ? shows every key.
 Output out/chat.mp4
 Source tapes/head.tape
@@ -50,7 +50,7 @@ Screenshot out/chat-select.png
 Ctrl+c
 Sleep 300ms
 Type "?"
-Sleep 800ms
+Sleep 1.5s
 Screenshot out/chat-help.png
 Type "q"
 Sleep 1.5s

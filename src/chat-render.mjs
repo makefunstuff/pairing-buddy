@@ -230,7 +230,7 @@ export function bodyLines(entry, width, {continued = false} = {}) {
     const command = /`([^`]+)`/.exec(text)?.[1];
     const words = command ? text.replace(`\`${command}\``, 'this') : text;
     const lines = wrapTokens(inlineTokens(words, 'text'), width);
-    if (command) lines.push(...hardWrap(command, width, 'text', [seg('│ ', 'rule')], [seg('│ ', 'rule')]));
+    if (command) lines.push(...wrapTokens(inlineTokens(command, 'text', {markdown: false}), width, [seg('│ ', 'rule')]));
     if (entry.answer !== undefined) lines.push([seg(entry.answer ? 'you allowed it' : 'you declined', entry.answer ? 'ok' : 'text')]);
     return lines;
   }

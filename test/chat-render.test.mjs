@@ -122,8 +122,9 @@ test('colour: yellow only for the Watcher and a waiting ?; dim never for words a
   const confirm = {kind: 'confirm', at, text: 'May I run `go test ./internal/queue -run TestLease` in my pane (go test runs code)?'};
   assert.deepEqual(plain(bodyLines(confirm, 60)), ['May I run this in my pane (go test runs code)?', '│ go test ./internal/queue -run TestLease']);
   assert.ok(bodyLines(confirm, 60)[0].every(s => s.style === 'text'), 'the question in body text');
-  assert.deepEqual(styles(bodyLines(confirm, 60)[1]), ['│:rule', 'go test ./internal/queue -run TestLease:text']);
+  assert.deepEqual([...new Set(styles(bodyLines(confirm, 60)[1]).map(s => s.split(':').at(-1)))], ['rule', 'text'], 'the command in body text, behind a bar');
   assert.deepEqual(plain(bodyLines({...confirm, answer: false}, 60)).at(-1), 'you declined');
+  assert.deepEqual(plain(bodyLines(confirm, 30)).slice(-2), ['│ go test ./internal/queue', '│ -run TestLease'], 'a long command wraps at its spaces, behind the bar');
   assert.equal(bodyLines({...confirm, answer: false}, 60).at(-1)[0].style, 'text');
   const gutter = plain(transcriptLines([confirm], 60).lines)[0];
   assert.match(gutter, /^ 14:05 pair  May I run this/, 'Pair asks it, as pair');
