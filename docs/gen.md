@@ -1,5 +1,5 @@
 ---
-description: "/gen: ask Pair for code against your brief, at your cursor or as new files to review. You take it with one key or :w; /undo takes the request back."
+description: "/gen: ask Pair for code at your cursor, as new files to review, or as a sample to run outside the project. Take it with one key, :w or /keep."
 ---
 
 # /gen: ask Pair for code
@@ -17,9 +17,10 @@ A request never changes your text by itself, so it is not the Driver: the Driver
 five edits, while a request makes proposals you review, and is held by size limits instead
 ([driver.md](driver.md#the-driver-and-gen)).
 
-This version builds two shapes: `here`, code at your cursor, and `file`, [new files](#new-files-gen-file) you
-review as buffers and take with `:w`. The others are named, guessed and confirmed like them, and then say they are not
-built yet.
+This version builds three shapes: `here`, code at your cursor; `file`, [new files](#new-files-gen-file) you
+review as buffers and take with `:w`; and `try`, [a sample](#samples-gen-try-and-keep) to read and run in a folder of
+its own outside the project, which `/keep` moves in. `scaffold` is named, guessed and confirmed like them, and then
+says it is not built yet.
 
 ## Asking
 
@@ -33,16 +34,19 @@ built yet.
 - `Tab` completes the shape word, the first word: `here`, `file`, `scaffold`, `try`.
 - `Esc` asks nothing. An empty `Enter` opens the compose window, for a request longer than one line: a small
   Markdown window where `:w` or `Ctrl-S` sends it, and `:q` drops it. `:Pair gen +` opens it at once.
-- `:Pair gen [here|file] <what>` asks without the dialog. `:Pair gen cancel` stops the request that runs or waits,
-  and `:Pair gen list` lists the files of `/gen file` requests to review ([below](#the-review-list-pair-gen-list)).
+- `:Pair gen [here|file|try] <what>` asks without the dialog. `:Pair gen cancel` stops the request that runs or
+  waits, and `:Pair gen list` lists the files of `/gen file` requests to review ([below](#the-review-list-pair-gen-list)).
+  `:Pair gen run`, `:Pair gen tries` and `:Pair keep [path]` are for tries ([below](#samples-gen-try-and-keep)).
 - With a selection, `Alt-g` in Visual mode or `:'<,'>Pair gen`: in code, the code replaces those lines, so the shape
   is `here` and the dialog asks only what to write. In a Markdown note, the selected lines are the request itself: the
   dialog shows their first line to send or change, the rest goes with it, and the shape is guessed.
 
 **In the chat**, `/gen here <what>` asks for code at your cursor in the Neovim you work in, and `@here` in it means
 over the lines you selected there last. `/gen file <what>` asks for new files, which open in that Neovim as buffers to
-review. `/gen` alone lists today's requests, and `/gen cancel` stops the one that
-runs or waits. `/cancel` stops a running request too, when Pair answers nothing else.
+review. `/gen try <what>` asks for a sample, which opens in that Neovim in a split; `/gen run` runs the newest
+again, `/gen tries` lists the try folders, and `/keep [path]` moves the newest try's file into the project. `/gen`
+alone lists today's requests, and `/gen cancel` stops the one that runs or waits. `/cancel` stops a running request
+too, when Pair answers nothing else.
 
 ## The shape
 
@@ -51,7 +55,7 @@ runs or waits. `/cancel` stops a running request too, when Pair answers nothing 
 | `here` | Code at the cursor, or over the selection: a query, a handler, a config block | yes |
 | `file` | New files to review, as unsaved buffers: a migration, a module, a config file, a test file | yes |
 | `scaffold` | Many files and their wiring, in a copy of the project in Pair's data folder | not yet |
-| `try` | A sample to read and run, outside the project | not yet |
+| `try` | A sample to read and run, in a folder of its own outside the project: an LRU in 30 lines, how a library's API feels | yes |
 
 When the request does not start with a shape word, a cheap rule guesses one from it, never the model: a selection in
 code is `here`; then words like "here", "below this" or "this function" mean `here`; "scaffold", "wired into", "an
@@ -68,7 +72,7 @@ gen #1 · new files: "migration". Shape?
 1: file      new files to review  (guessed)
 2: here      at the cursor, over a selection
 3: scaffold  many files, in Pair's copy  (not built yet)
-4: try       a sample outside the project  (not built yet)
+4: try       a sample outside the project
 Number, Enter takes 1 (Esc cancels):
 ```
 
@@ -86,12 +90,15 @@ In the chat, `y` takes the guess, a shape word another, and `n` cancels.
   while Pair answers you. What a request says in the chat is no remark, and costs no talk budget.
 - **What it is told.** Your words and [the brief](#the-brief), read again when the request starts. For `here`, where
   the code goes (the cursor's line, or the lines you selected) and the lines around that place as your buffer has
-  them; for `file`, the names of the project's files (`git ls-files`, the first 200).
-- **Its tools.** `say`, `read`, `recall`, `search` (in Pair's pane, also outside Scout), `propose`, `draft` and `ask`.
-  Never `edit`, `type`, `run`, `suggest` or `point`, and a policy in code refuses them
+  them; for `file`, the names of the project's files (`git ls-files`, the first 200); for `try`, its folder and the
+  names of the first 60 of the project's files.
+- **Its tools.** `say`, `read`, `recall`, `search` (in Pair's pane, also outside Scout), `propose`, `draft`, `write`,
+  `run` and `ask`. Never `edit`, `type`, `suggest` or `point`, and a policy in code refuses them
   ([how-it-works.md](how-it-works.md#what-it-can-do)). `propose(file, line, end_line, insert, text, note)` puts the
   code below `line` (`insert`), or in place of `line`..`end_line`; for `here`, only in the file you asked in.
-  `draft(path, text, note)` writes a new file, for `file` only (below).
+  `draft(path, text, note)` writes a new file, for `file` only (below). `write(path, text)` and `run(command)` work
+  only in a `try`, and only in its own folder ([below](#samples-gen-try-and-keep)); in the other shapes they are
+  refused with why.
 - **Its questions.** When a wrong guess would cost you, the model may ask: at most two questions per request, each
   with the answer it would take. They are asked where you asked. In Neovim it is a dialog with that answer filled in,
   never while you type: in Insert mode or right after a change it waits for your pause, and meanwhile the statusline
@@ -105,7 +112,7 @@ In the chat, `y` takes the guess, a shape word another, and `n` cancels.
 | --- | --- | --- |
 | `lines` | `4000` | The proposal or draft is refused: the model is told to propose less |
 | `files` | `40` | A proposal or draft in one more file is refused |
-| `commands` | `8` | Searches past it are refused |
+| `commands` | `8` | Searches, and a try's runs, past it are refused |
 | `minutes` | `10` | The model is stopped; what it proposed so far still shows. Time a question waits for you does not count |
 
 ## The brief
@@ -282,6 +289,86 @@ every file still to review from the last seven days: after a Neovim restart (or 
 request left them. A Neovim that still has them (the daemon restarted) keeps its own, with your changes in them.
 `Enter` in the list makes one again too, if it went missing.
 
+## Samples: /gen try and /keep
+
+`/gen try an LRU cache in 30 lines` (or `:Pair gen try …`, or `try` as the shape) asks for code to read and run, not
+to put in your project: how a library's API feels, an algorithm, a pattern you want to see work first. It goes in a
+folder of its own in Pair's data folder, outside the project:
+
+```
+~/.local/state/pairing-buddy/gen/shop-1a2b3c4d/try/8/main.go
+```
+
+The folder is named after the project and a short hash of its path, so two projects called `shop` do not share one,
+and after the request's number. A folder left from an earlier request of that number is emptied first.
+
+- **The model writes and runs there.** `write(path, text)` writes a file of the sample, with its path relative to the
+  folder (its folders may be new; writing a path again replaces it). A path that leaves the folder, or goes through a
+  link out of it, is refused. `run(command)` runs a command in the folder, in [Pair's pane](scout.md), where you see
+  it typed and run, and the model reads its exit code and output and fixes what it shows. Its last command is how you
+  run the sample again.
+- **The sandbox is narrower than Scout's.** A try's command runs in a sandbox of its own, inside the pane's: only
+  its folder is writable, the project and the rest of the disk are read-only, `/tmp` is empty and private, and there
+  is no network unless [`gen.network`](config.md#gen) is on, so nothing can be installed. Your sockets are hidden as
+  in the pane's ([scout.md](scout.md#the-sandbox)). The [command policy](scout.md) still decides: what it refuses
+  (`git push`, `curl`, `sudo`) is refused, and what it would ask about (`node main.js`, `go run .`) runs at once,
+  since it can write nothing but the folder. Without bubblewrap (or with `scoutPane.sandbox` false) the command runs
+  in the folder without a sandbox, and asks first as Scout's would.
+- **It opens in a split.** When the model is done, the sample's main file (its longest, the code rather than its
+  `go.mod`) opens in Neovim in a split below your window, as the real file it is; your cursor stays where it was. Its
+  winbar says what it is: ` try · gen #8 · outside the project · \r runs it · :Pair keep moves it in `. The chat says
+  what it made and how its run went:
+
+```
+gen #8 · try · main.go +34 · ✓ `go run .`: evicts b, the least recently used. I guessed string keys.
+In Neovim: main.go in a split, outside the project. Your run key runs it again; /keep <path> moves it into the project, as a buffer to review. The folder stays 7 days after it last changed (/gen tries).
+```
+
+- **You change it and run it again.** It is a real file: edit it, save it or not. The run key (`try_run_key`,
+  `<LocalLeader>r`, which is `\r` unless you set `maplocalleader`) in a try's buffer, `:Pair gen run` in Neovim or
+  `/gen run` in the chat writes the sample's changed buffers to its folder (the folder is Pair's, not your project)
+  and runs the model's last command again in Pair's pane, in the same sandbox. Neovim and the chat show its end:
+  `gen #8 · ✓ \`go run .\`` and the last three lines of its output. A try whose model never ran it has no command to
+  run again; the chat says so.
+- **The Watcher does not see it.** Your edits in a try's buffer are dropped when they reach the daemon, as for any
+  file [outside the project](#edits-outside-the-project): no `drift`, no remark, no work counted.
+- **Ask about it in the chat.** Your questions are told where the newest try of this daemon is, and `read` reads its
+  files by their full path, so `why MoveToFront on get and not on put?` gets an answer about the sample, with its
+  lines.
+
+### /keep: moving it into the project
+
+`/keep internal/cache/lru.go` in the chat, or `:Pair keep internal/cache/lru.go` in Neovim, moves the sample into the
+project as a [buffer to review](#new-files-gen-file), `pair://gen/8/internal/cache/lru.go`, opened at once: in the
+try's window when you are in it, else in a split below yours. It is unsaved and generated, exactly like a file of
+`/gen file`: `:w` in it takes it, `:wa` elsewhere skips it, quitting warns, `:Pair gen list` lists it under the try
+(`gen #8 · try · …`), and it comes back after a restart. Its text is the try's file as you have it now, your changes
+included.
+
+- **Which file.** `:Pair keep` in a try's buffer keeps that file; otherwise (and `/keep` in the chat) it keeps the
+  newest try's main file.
+- **Where.** At the path you give, inside the project and not in `.git`. Without one, at the file's path in the
+  try's folder (`main.go` at the project root).
+- **Only a new file.** A path that exists is refused: `gen #8: internal/cache/lru.go exists already, and /keep makes
+  a new file. /keep <another path>; or copy what you need from main.go.` `/keep` to the same path again, before you
+  take it, keeps the try's file as it is now in place of the earlier text.
+- **Undo.** `/undo` takes back the request as for a `file` request: a kept file you wrote is deleted while it is as
+  you wrote it, and one still to review goes. The try's folder stays. Until a file of it is kept, a try has nothing to
+  undo, and `/undo` takes back what came before it.
+
+### /gen tries and how long they stay
+
+A try folder stays for [`gen.keepTries`](config.md#gen) days (7) after anything in it last changed, so a try you
+keep running stays. Older ones are deleted when the daemon starts and whenever a new try starts, every project's.
+`/gen tries` in the chat lists the project's folders still there, newest first:
+
+```
+gen #8 · an LRU cache in 30 lines · main.go · kept as internal/cache/lru.go · goes in 6 days
+  /home/you/.local/state/pairing-buddy/gen/shop-1a2b3c4d/try/8
+```
+
+`:Pair gen tries` in Neovim shows them as a list (`vim.ui.select`), and the one you pick opens in a split.
+
 ## One undo per request
 
 The ledger books a request as one line: `generated  gen #3 · here · a list handler with paging`, with a note that
@@ -293,7 +380,8 @@ last thing Pair changed today, and for a request that is all of it:
 - what you took is undone, newest first, merged into your buffers as they are now, so your edits since stay. Code
   you have changed since cannot be taken back: the chat says which (`Could not undo gen #1. Not changed: a.js: …`),
   and the request stays taken.
-- a file of `/gen file` you took (wrote) is deleted, with its buffer, but only while it is exactly as you wrote it and
+- a file of `/gen file` you took (wrote), or one you kept from a try and wrote, is deleted, with its buffer, but only
+  while it is exactly as you wrote it and
   its buffer has no changes you did not save. Otherwise it stays, and the chat says why
   (`Not changed: db/x.sql: it changed since you wrote it`). Files still to review go, with their buffers.
 
@@ -339,7 +427,7 @@ The daemon keeps the origin with each edit. An edit Pair made:
 ### Edits outside the project
 
 An edit of a file outside the session's project (a scratch file, another repository, a file in Pair's own data
-folder, where `/gen try` will put its samples) is dropped when it reaches the daemon, whoever made it. It raises no
+folder, where `/gen try` puts its samples) is dropped when it reaches the daemon, whoever made it. It raises no
 `drift`, is no file you edited, and is not counted as work in this session.
 
 ### Making Pair's lines yours
@@ -349,7 +437,7 @@ the file leaves Pair's lines Pair's.
 
 ## Limits
 
-- Only `here` and `file` are built. `scaffold` and `try` are named and guessed, and say they are not built yet.
+- `here`, `file` and `try` are built. `scaffold` is named and guessed, and says it is not built yet.
 - `/gen file` makes new files only. A change to a file you have is a suggestion in it, never a buffer to review.
 - A buffer to review is no file yet: no language server attaches to it, and Pair's Watcher does not see your edits in
   it. Once taken, it is an ordinary file.
@@ -358,6 +446,14 @@ the file leaves Pair's lines Pair's.
 - Changes you make in a buffer to review live only in that Neovim: after a Neovim restart the buffer comes back as the
   request drafted it.
 - `:Pair gen list` and the files that come back after a restart cover the last seven days.
+- A try's sandbox needs bubblewrap, as Pair's pane's does; without it, a try's command runs in its folder without
+  one, after a yes for what Scout would ask about. A pane an older Pair opened (before tries) cannot write the try
+  folders from its sandbox: close it, and the next run opens a new one.
+- A try cannot install anything unless `gen.network` is on: a sample that needs a package says so instead.
+- The chat's questions are told of the newest try this daemon made; an older one's files can still be read by their
+  full path.
+- `/keep` keeps one file at a time, as a new file. To bring a change into a file you have, copy it from the sample.
+- A try whose model never ran it has no command for the run key: run it in a terminal of yours.
 - The brief's two checks (the question before, the debrief after) are each one more answer of the Partner's model.
   They run in its slot like the note reader, so on a slow local model a request takes that much longer. They are made
   only when the brief says something.

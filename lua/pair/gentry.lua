@@ -43,7 +43,8 @@ end
 local function mark(buf, try)
   if vim.b[buf].pair_try then return end
   vim.b[buf].pair_try = {gen = try.gen, dir = try.dir}
-  if deps.run_key and deps.run_key ~= '' then
+  -- Only where you have no mapping of your own, as Pair's other keys.
+  if deps.run_key and deps.run_key ~= '' and vim.fn.maparg(deps.run_key, 'n') == '' then
     vim.keymap.set('n', deps.run_key, function() M.run(buf) end, {buffer = buf, desc = 'Run Pair\'s /gen try again'})
   end
   -- Like :setlocal, for this buffer in the window: another buffer there keeps the window's own winbar.
