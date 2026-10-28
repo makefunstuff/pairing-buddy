@@ -167,7 +167,9 @@ export class Screen {
     let out = '\x1b[?25l';
     lines.forEach((line, i) => {
       if (this.last[i] === line) return;
-      out += `\x1b[${i + 1};1H\x1b[0m${line}\x1b[0m\x1b[K`;
+      // Cleared first: after a line as wide as the pane the cursor waits on its last column, where an erase after
+      // it would take that column's character too.
+      out += `\x1b[${i + 1};1H\x1b[0m\x1b[K${line}\x1b[0m`;
     });
     for (let i = lines.length; i < this.last.length; i++) out += `\x1b[${i + 1};1H\x1b[K`;
     this.last = lines;

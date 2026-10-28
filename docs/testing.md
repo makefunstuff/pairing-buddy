@@ -70,11 +70,12 @@ Runs every test that needs no model, in under a minute, with scripted models and
   is fixed or you left the file, one held at a time. Also the chat pane's true-colour lines and wrapping.
 - **The chat pane.** Its editor (words, lines, history, the word Tab completes), the terminal's keys (modifiers,
   Shift-Enter and Alt-Enter, pastes split across reads, the mouse wheel), OSC 52, and the history file; what it draws,
-  as text: Markdown, a suggestion's diff, the gutter wide and narrow, folding, the status row in each state, the
-  footer's keys, the whole frame. The session tells it what Pair does (thinking, a tool, a remark, waiting), streams the
+  as text: Markdown, a suggestion's diff, the gutter wide and narrow, folding, the header and the status in their
+  rules in each state, the footer's keys, which colour each part is drawn with, the whole frame. The session tells it what Pair does (thinking, a tool, a remark, waiting), streams the
   answer, says how long a turn took, and stops, mutes, follows up and undoes on request. The full-screen pane itself,
   driven by keys against the daemon with a scripted model and a stand-in Neovim: the empty card, a question and its
-  answer, the `/` menu, Up, pastes, `?`, Esc stopping a streamed answer, a suggestion picked and taken in Neovim, a
+  answer, the `/` menu, Up, pastes, `?`, Esc stopping a streamed answer, Pair's y/N question (against a stand-in
+  daemon) and Esc declining it, a suggestion picked and taken in Neovim, a
   jump, `@here`, a narrow and a tiny pane; and in a headless Neovim, `a`, `j` and `@here` for real.
 - **Install and daily use.** The config with comments and the first run's example; model entries that name a provider
   or a stored key; the credential store (owner-only, a token renewed once when two processes need it at the same

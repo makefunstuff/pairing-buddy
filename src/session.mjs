@@ -1049,7 +1049,7 @@ export class PairSession {
     this.receive({kind: 'goal', text: goal});
     this.goalFrom = from;
     this.notify('chat', {type: 'goal', goal}); // the chat pane's header
-    if (!from) this.message('system', `Goal: ${goal}`);
+    if (!from) this.message('system', `Goal: ${goal}`, {goal: 'set'}); // the full pane has it in its header
   }
 
   /** What the context card shows: the goal, and every source with what it sends (see context-card.mjs). */
@@ -1222,12 +1222,14 @@ export class PairSession {
    * Asks the user in the chat pane; resolves false without a chat pane, on no, or after a minute (`timeoutMs`, null:
    * no limit). An answer that is one of `choices` allows it too, there: it resolves with that choice; with `free`, any
    * words but n do. `hint` is what the chat's input line says meanwhile, and `said(result)` the line the chat gets
-   * after the answer, instead of "Allowed." or "Not allowed." (null: none).
+   * after the answer, instead of "Allowed." or "Not allowed." (null: none). `command` is the command it asks about,
+   * which the full pane shows whole under the question.
    */
-  confirm(text, choices = [], {free = false, timeoutMs = CONFIRM_MS, hint = null, said = null} = {}) {
+  confirm(text, choices = [], {command = null, free = false, timeoutMs = CONFIRM_MS, hint = null, said = null} = {}) {
     const id = ++this.lastConfirmation;
-    if (!this.notify('chat', {type: 'confirm', id, text, ...(hint ? {hint} : {})})) return Promise.resolve(false);
-    this.activity('waiting', {what: text, ...(hint ? {hint} : {})});
+    // The command goes as it is too: the full pane shows it whole under the question, backticks and all.
+    if (!this.notify('chat', {type: 'confirm', id, text, ...(command ? {command} : {}), ...(hint ? {hint} : {})})) return Promise.resolve(false);
+    this.activity('waiting', {what: text});
     return new Promise(resolve => {
       const timer = timeoutMs === null ? null : setTimeout(() => this.answer(id, false, 'No answer, so no.'), timeoutMs);
       this.confirmations.set(id, {choices, free, said, resolve: ok => { clearTimeout(timer); resolve(ok); }});
@@ -1246,7 +1248,7 @@ export class PairSession {
 
   /** Asks the user whether Pair may do `what` with question `text`, and books their answer in the ledger. */
   async allowed(what, text, choices = []) {
-    const ok = await this.confirm(text, choices);
+    const ok = await this.confirm(text, choices, {command: what});
     this.ledger.add('asked', what, {data: {answer: ok ? 'yes' : 'no'}});
     return ok;
   }
@@ -1430,9 +1432,10 @@ export class PairSession {
   greet() {
     // Right after the last session's debrief, it is still on screen.
     const fresh = this.lastSession && this.now() - this.lastSession.endedAt < PICKUP_AFTER_MS;
-    if (this.previousNote && !fresh) this.message('system', `Last time:\n${this.previousNote}`);
-    if (this.state.goal) this.message('system', `Goal${this.goalFrom ? `, from ${this.goalFrom}` : ''}: ${this.state.goal}`);
-    else this.message('system', 'What are we doing this session? Type the goal here, or "later".');
+    // Pair's own words, addressed to you; the goal it names is in the full pane's header already.
+    if (this.previousNote && !fresh) this.message('pair', `Last time:\n${this.previousNote}`, {greeting: true});
+    if (this.state.goal) this.message('pair', `Goal${this.goalFrom ? `, from ${this.goalFrom}` : ''}: ${this.state.goal}`, {greeting: true, goal: 'set'});
+    else this.message('pair', 'What are we doing this session? Type the goal here, or "later".', {greeting: true, goal: 'ask'});
   }
 
   /**
@@ -1666,7 +1669,7 @@ export class PairSession {
       this.message('system', `Pair may not run \`${command}\`: ${policy.reason}.`);
       return `Refused: ${policy.reason}. Do not try another way; tell the user.`;
     }
-    if (policy.verdict === 'ask' && !(await this.allowed(command, `Pair wants to run \`${command}\` in its pane (${policy.reason}). Allow?`))) {
+    if (policy.verdict === 'ask' && !(await this.allowed(command, `May I run \`${command}\` in my pane (${policy.reason})?`))) {
       return 'The user did not allow it. Do not run it another way.';
     }
     const buffers = await this.unsavedBuffers();
@@ -1808,7 +1811,7 @@ export class PairSession {
    */
   async checkAllowed({command, ask}) {
     if (!ask || this.checksAllowed.has(command)) return true;
-    const ok = await this.allowed(command, `Pair wants to run \`${command}\` on the unsaved buffer, in a scratch copy, to check its edit (${ask}). Allow?`);
+    const ok = await this.allowed(command, `May I run \`${command}\` on the unsaved buffer, in a scratch copy, to check my edit (${ask})?`);
     if (ok) this.checksAllowed.add(command);
     return ok;
   }
@@ -1834,7 +1837,7 @@ export class PairSession {
     // The question names the terminal, and the user may answer with another one's name instead of yes.
     const [target, ...others] = named([pane, ...(await this.panes.list()).filter(other => other !== pane)]);
     const another = others.length ? ` (y, or another terminal: ${others.map(other => other.name).join(', ')})` : '';
-    const answer = await this.allowed(text, `Pair wants to type \`${text}\` into your terminal (pane ${target.name}), without pressing Enter. Allow?${another}`, others.map(other => other.name));
+    const answer = await this.allowed(text, `May I type \`${text}\` into your terminal (pane ${target.name}), without pressing Enter?${another}`, others.map(other => other.name));
     if (!answer) return 'The user did not allow it.';
     const after = this.wheel();
     if (after) return after;

@@ -486,7 +486,7 @@ test('the hand-over without a test: your last run builds and runs the unsaved bu
     send({type: 'drive', text: 'you take it: raise x, x stays over 50'});
     // The command came from your terminal and is no known test or build: the chat asks first.
     const question = await until(() => messages.find(message => message.type === 'confirm'), 'the question', 20_000);
-    assert.match(question.text, /^Pair wants to run `node show\.mjs` on the unsaved buffer, in a scratch copy, to check its edit/);
+    assert.match(question.text, /^May I run `node show\.mjs` on the unsaved buffer, in a scratch copy, to check my edit/);
     send({type: 'confirm', id: question.id, ok: true});
     const words = await until(() => marks().find(([, , , details]) => details.virt_lines), 'the hand-back line', 20_000);
     assert.match(reply, /The user expects: "x stays over 50"\. It printed x 100, which meets it\./);
@@ -972,7 +972,7 @@ test('a thought that can wait: a dot where it points and a word in the statuslin
     await until(() => dot().length, 'the dot in the margin', 12_000);
     assert.deepEqual(dot(), [0], 'on the line it points at');
     assert.equal(status(), '● pair · held thought · M-j');
-    assert.ok(!messages.some(message => message.sender === 'pair'), 'nothing in the chat yet');
+    assert.ok(!messages.some(message => message.sender === 'pair' && !message.meta?.greeting), 'nothing in the chat yet');
     assert.equal(remote('mode()'), 'i', 'nothing took you out of Insert mode');
 
     keys('<Esc><M-j>');
