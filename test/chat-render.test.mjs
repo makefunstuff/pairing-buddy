@@ -514,7 +514,9 @@ test('calm motion: what waits under the answer that streams, safe glyphs', () =>
   const row = (view, width) => plain([statusLine({now, model: 'qwen3', activity: {state: 'thinking', since: at}, writing: true, ...view}, width)])[0];
   assert.match(row({held: {remarks: 1}}, 64), /^── ▖ writing 10s · 1 remark below ─+ qwen3 ──$/);
   assert.match(row({held: {remarks: 1}}, 40), /^── ▖ writing 10s · 1 remark below ─+$/, 'the model gives way first');
-  assert.match(row({held: {remarks: 1}}, 24), /^── ▖ writing 10s ─+$/);
+  assert.match(row({held: {remarks: 1}}, 32), /^── ▖ writing · 1 remark below ─+$/, 'narrower: the seconds give way before what waits');
+  assert.match(row({held: {remarks: 2, notes: 1}}, 44), /^── ▖ writing · 2 remarks and 1 note below ─+$/);
+  assert.match(row({held: {remarks: 1}}, 24), /^── ▖ writing 10s ─+$/, 'too narrow for it: the status as without');
   // Glyphs every font has, one column wide: no ⚠, no ⎿.
   const away = statusLine({now, connection: 'away', away: {since: at}}, 64);
   assert.deepEqual(away.filter(s => s.style === 'warn').map(s => s.text), ['! '], 'away: a yellow !');

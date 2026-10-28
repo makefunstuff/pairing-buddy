@@ -685,7 +685,11 @@ export function statusLine(view, width) {
   }
   // What came while the answer streams waits under it, and says so: nothing above the words you read moves.
   const waits = heldText(held);
-  if (waits) lefts = [...lefts.map(left => [...left, seg(' · ', 'dim'), seg(waits, 'text')]), ...lefts];
+  // In a narrow pane the seconds give way before it does.
+  if (waits) {
+    const held = left => [...left, seg(' · ', 'dim'), seg(waits, 'text')];
+    lefts = [...lefts.map(held), ...lefts.map(left => held(left.filter(part => !since.includes(part)))), ...lefts];
+  }
   const right = [];
   if (connection === 'up') {
     if (scrolled) right.push(seg(`↓ ${scrolled} line${scrolled === 1 ? '' : 's'} below`, 'text'));

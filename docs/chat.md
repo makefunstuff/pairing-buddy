@@ -108,10 +108,12 @@ Four rows of chrome, two of them rules with words in them; the rest is the conve
 
   ![The same pane 112 columns wide: the words end by column 80, the diff runs on, and each turn's time, duration and tokens on the right of what Pair said](images/chat-wide.png)
 - **The status, in the rule over what you type**: what Pair does now, as `── ▖ writing 6s ──── qwen3-coder-30b ──`.
-  It names no keys (those are in the footer), and its word is in body text, so it ranks above the footer. The answer
-  streams into the conversation as the model writes it. How long Pair has been at it shows once that is 3 seconds,
-  so a short turn does not tick. Its glyph has the colour of the part at work: the Watcher's `◉` yellow, the
-  Driver's `◆` red, Pair's own spinner and word in its accent.
+  It names no keys (those are in the footer). The answer streams into the conversation as the model writes it. How
+  long Pair has been at it shows once that is 3 seconds, so a short turn does not tick. The status has the colour of
+  the part at work: while Pair works on your question its spinner and its word (`thinking`, `writing`, `reading`) are
+  in its accent, bold; the Watcher's `◉` and its spinner while it looks are yellow; the Driver's `◆` and `Pair drives`
+  are red, bold. The other words (`watching`, `waiting for your answer`, `reconnecting`) are body text, so they rank
+  above the footer. In a narrow pane, what waits under the answer (`1 remark below`) stays longer than the seconds.
 
   | Status | Means |
   | --- | --- |
@@ -291,12 +293,12 @@ that light themes wash out:
 
 | Colour | Only for |
 | --- | --- |
-| Body text | Everything addressed to you: answers, questions, notes, the status word, the empty card, the help |
+| Body text | Everything addressed to you: answers, questions, notes, the status word while Pair is idle, waits for you or reconnects, the empty card, the help |
 | Pair's accent | Pair's name, `code` in its words, the prompt, the spinner and the word of what it does, the bar of a picked message, the frame of its head |
 | Yellow | The Watcher: the `watch` label, a remark's kind and place, the `◉` of the status and its spinner while it looks; the `?` of a question waiting for you; `y` and `n` (bold) in the footer while it waits; the `!` of a daemon gone or a model that does not answer |
 | Dim | Chrome: the rules, the time dividers and an answer's time in the margin, what a key in the footer does, the `└` tool lines, a fold, a link's address |
 | Green, red | `+` and `-` lines of a diff; the find match you are on, in green (bold and underlined too); an error, in red |
-| Blue, green, red (bold) | The role in the header, as on the website: `navigator` blue, `scout` green, `driver` red, and the Driver's `◆` in the status |
+| Blue, green, red (bold) | The role in the header, as on the website: `navigator` blue, `scout` green, `driver` red; and the Driver's `◆ Pair drives` in the status |
 | Green, magenta | The eyes and the antenna of Pair's head, on the empty pane |
 
 Light themes are where dim and yellow fade: against the background, dim is about 2 : 1 in Tokyo Night Day and
