@@ -33,8 +33,8 @@ local function try_of(buf)
   end
 end
 
-local function winbar(try)
-  local key = shown(deps.run_key)
+local function winbar(try, mapped)
+  local key = mapped and shown(deps.run_key)
   local run = key and (' · %s runs it'):format(key) or ' · :Pair gen run runs it'
   return ((' try · gen #%d · outside the project%s · :Pair keep moves it in '):format(try.gen, run):gsub('%%', '%%%%'))
 end
@@ -43,16 +43,17 @@ end
 local function mark(buf, try)
   if vim.b[buf].pair_try then return end
   vim.b[buf].pair_try = {gen = try.gen, dir = try.dir}
-  -- Only where you have no mapping of your own, as Pair's other keys.
-  if deps.run_key and deps.run_key ~= '' and vim.fn.maparg(deps.run_key, 'n') == '' then
+  -- Only where you have no mapping of your own, as Pair's other keys; the winbar names the key only when it is Pair's.
+  local mapped = deps.run_key and deps.run_key ~= '' and vim.fn.maparg(deps.run_key, 'n') == ''
+  if mapped then
     vim.keymap.set('n', deps.run_key, function() M.run(buf) end, {buffer = buf, desc = 'Run Pair\'s /gen try again'})
   end
   -- Like :setlocal, for this buffer in the window: another buffer there keeps the window's own winbar.
   vim.api.nvim_create_autocmd('BufWinEnter', {group = group, buffer = buf, callback = function()
-    vim.api.nvim_set_option_value('winbar', winbar(try), {scope = 'local'})
+    vim.api.nvim_set_option_value('winbar', winbar(try, mapped), {scope = 'local'})
   end})
   for _, win in ipairs(vim.fn.win_findbuf(buf)) do
-    vim.api.nvim_win_call(win, function() vim.api.nvim_set_option_value('winbar', winbar(try), {scope = 'local'}) end)
+    vim.api.nvim_win_call(win, function() vim.api.nvim_set_option_value('winbar', winbar(try, mapped), {scope = 'local'}) end)
   end
 end
 

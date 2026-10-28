@@ -16,7 +16,7 @@
 // as a buffer to review, as a file request's). Scaffold is named, guessed and confirmed, but not built yet. The ledger
 // keeps each proposed file's text, so Neovim gets its buffers again after a restart of either.
 import {realpathSync} from 'node:fs';
-import {mkdir, readFile, writeFile} from 'node:fs/promises';
+import {mkdir, readFile, utimes, writeFile} from 'node:fs/promises';
 import {dirname, isAbsolute, join, relative, sep} from 'node:path';
 import {
   briefEmpty, briefLine, briefText, CHECK_PROMPT, checkInput, CONFLICT_PROMPT, conflictInput, exceptionKey, parseCheck,
@@ -578,7 +578,7 @@ export class Gen {
     const lines = [
       `gen #${request.n} · try · ${names.join(', ')} · ${ran ? ranText(ran) : 'not run'}${said ? `: ${said}` : ''}`,
       ...debrief,
-      opened ? `In Neovim: ${relative(request.dir, main.file)} in a split, outside the project. ${ran ? 'Your run key runs it again; ' : ''}/keep <path> moves it into the project, as a buffer to review. The folder stays ${plural(this.keepTries, 'day')} after it last changed (/gen tries).`
+      opened ? `In Neovim: ${relative(request.dir, main.file)} in a split, outside the project. ${ran ? 'Your run key runs it again; ' : ''}/keep <path> moves it into the project, as a buffer to review. The folder stays ${plural(this.keepTries, 'day')} after it last changed or ran (/gen tries).`
         : `No Neovim to open it in: it is in ${request.dir}. /keep <path> moves it into the project once one connects.`,
     ];
     if (!cut || files.length) session.message('pair', lines.join('\n'), {gen: request.n});
@@ -895,6 +895,9 @@ export class Gen {
     } catch (error) {
       return `Not run: ${error.message}.`;
     }
+    // A run keeps the try: its folder counts as changed now, for gen.keepTries.
+    const now = new Date();
+    await utimes(dir, now, now).catch(() => {});
     session.ledger.add('ran', `${command} (gen #${request.n}'s try)`, {
       data: {note: result.timedOut ? 'stopped' : result.exit ? `exit ${result.exit}` : undefined, result: result.exit === 0 && !result.timedOut ? 'pass' : 'fail'},
       detail: {output: keptOutput(result.output)},

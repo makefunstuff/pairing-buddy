@@ -552,6 +552,14 @@ test('/gen try: the sample in a split outside the project; the run key writes an
     await until(() => asked().some(one => one.prompt === 'Pair · the /gen tries'), 'the list');
     assert.deepEqual(asked().at(-1).items, ['gen #1 · a small LRU cache · lru.js · 7 days left']);
     await until(() => Number(remote('winnr("$")')) === 2, 'opened again');
+
+    // With a mapping of your own on the run key, Pair maps nothing there, and the winbar names :Pair gen run.
+    keys(':only<CR>');
+    remote(`luaeval("vim.keymap.set('n', '<LocalLeader>r', ':echo 1<CR>') or 0")`);
+    remote(`luaeval("require('pair.gentry').on_try({gen = 9, dir = _A[1], open = _A[2], words = 'x'}) or 0", [${JSON.stringify(dir.replace(/\/1$/, '/9'))}, ${JSON.stringify(join(dir.replace(/\/1$/, '/9'), 'x.js'))}])`);
+    keys('<C-w>j');
+    await until(() => /\/try\/9\/x\.js$/.test(remote('bufname()')), 'the other try');
+    assert.equal(remote('&winbar'), 'try · gen #9 · outside the project · :Pair gen run runs it · :Pair keep moves it in');
   } finally {
     clearInterval(yes);
     await stop();

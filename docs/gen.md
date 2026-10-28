@@ -323,7 +323,7 @@ and after the request's number. A folder left from an earlier request of that nu
 
 ```
 gen #8 · try · main.go +34 · ✓ `go run .`: evicts b, the least recently used. I guessed string keys.
-In Neovim: main.go in a split, outside the project. Your run key runs it again; /keep <path> moves it into the project, as a buffer to review. The folder stays 7 days after it last changed (/gen tries).
+In Neovim: main.go in a split, outside the project. Your run key runs it again; /keep <path> moves it into the project, as a buffer to review. The folder stays 7 days after it last changed or ran (/gen tries).
 ```
 
 - **You change it and run it again.** It is a real file: edit it, save it or not. The run key (`try_run_key`,
@@ -360,8 +360,8 @@ included.
 
 ### /gen tries and how long they stay
 
-A try folder stays for [`gen.keepTries`](config.md#gen) days (7) after anything in it last changed, so a try you
-keep running stays. Older ones are deleted when the daemon starts and whenever a new try starts, every project's.
+A try folder stays for [`gen.keepTries`](config.md#gen) days (7) after anything in it last changed or it last ran
+(the model's runs and yours count), so a try you keep running stays. Older ones are deleted when the daemon starts and whenever a new try starts, every project's.
 `/gen tries` in the chat lists the project's folders still there, newest first:
 
 ```

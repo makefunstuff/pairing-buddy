@@ -2,7 +2,7 @@
 // /gen try request, which the model writes and runs there and the user reads, runs again and changes in a split. A
 // try folder is no part of the project: the Watcher never sees its edits (session.mjs drops edits outside the root),
 // and /keep is the only way its code gets in, as a buffer to review. Runs there happen in the sandbox with only that
-// folder writable. A folder goes once it has not changed for gen.keepTries days.
+// folder writable. A folder goes once it has not changed, nor been run, for gen.keepTries days.
 import {createHash} from 'node:crypto';
 import {lstat, mkdir, readdir, realpath, rm, stat} from 'node:fs/promises';
 import {basename, dirname, isAbsolute, join, relative, resolve, sep} from 'node:path';

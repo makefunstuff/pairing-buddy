@@ -3,8 +3,9 @@
 // stand-in Partner and editor.
 import assert from 'node:assert/strict';
 import {execFile} from 'node:child_process';
-import {existsSync, readFileSync, realpathSync, symlinkSync, writeFileSync} from 'node:fs';
+import {existsSync, readFileSync, realpathSync, symlinkSync, lutimesSync, writeFileSync} from 'node:fs';
 import {basename, join} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {test} from 'node:test';
 import {CHECK_PROMPT, CONFLICT_PROMPT} from '../src/brief.mjs';
 import {guessShape, parseGen} from '../src/gen.mjs';
@@ -670,7 +671,7 @@ test('/gen try: the sample in a folder of its own outside the project, run there
   assert.deepEqual(opened.files.map(file => file.name), ['lru.js', 'package.json']);
   assert.ok(said().includes([
     'gen #1 · try · lru.js +3, package.json +1 · ✓ `node lru.js`: A Map keeps the order; I guessed plain JavaScript, no class.',
-    'In Neovim: lru.js in a split, outside the project. Your run key runs it again; /keep <path> moves it into the project, as a buffer to review. The folder stays 7 days after it last changed (/gen tries).',
+    'In Neovim: lru.js in a split, outside the project. Your run key runs it again; /keep <path> moves it into the project, as a buffer to review. The folder stays 7 days after it last changed or ran (/gen tries).',
   ].join('\n')));
   let [row] = pair.today().rows.filter(one => one.label === 'generated');
   assert.deepEqual([row.text, row.note, row.undo], ['gen #1 · try · a small LRU cache', '2 files in its folder · ✓ `node lru.js`', false], 'nothing to undo until something is kept');
@@ -720,6 +721,12 @@ test('/gen try: the sample in a folder of its own outside the project, run there
   assert.deepEqual([listedTry.gen, listedTry.files, listedTry.left, listedTry.kept], [1, ['lru.js', 'package.json'], 7, ['src/lru.js']]);
   assert.match(await pair.gen.triesText(), /^gen #1 · a small LRU cache · lru\.js, package\.json · kept as src\/lru\.js · goes in 7 days\n {2}\//);
   assert.deepEqual(await expireTries(genDir, 7, Date.now() + 6 * 24 * 3600_000), []);
+  // Run, it counts as changed: a try 6.5 days old that you run again has its 7 days again.
+  const old = new Date(Date.now() - 6.5 * 24 * 3600_000);
+  for (const file of ['', 'lru.js', 'package.json', 'project']) lutimesSync(join(dir, file), old, old);
+  assert.equal((await pair.gen.tries())[0].left, 1);
+  await pair.gen.rerun({});
+  assert.equal((await pair.gen.tries())[0].left, 7, 'a run keeps it');
   assert.deepEqual(await expireTries(genDir, 7, Date.now() + 8 * 24 * 3600_000), [dir]);
   assert.equal(await pair.gen.keep({}), 'No /gen try to keep from: /gen try <what> makes one.');
   assert.equal(await pair.gen.rerun({}), 'No /gen try to run: /gen try <what> makes one.');
@@ -752,12 +759,14 @@ test('a try without the sandbox asks before a command that may write; a here or 
 });
 
 test('a try\'s run in the sandbox writes only its own folder: the project and the rest stay read-only', {skip: sandboxWorks() ? false : 'bubblewrap cannot make a sandbox here'}, async () => {
-  const project = realpathSync(scratch('pair-try-project-'));
+  // The project outside /tmp, which the sandbox replaces with an empty one: the write must fail for being read-only.
+  const project = realpathSync(scratch('pair-try-project-', fileURLToPath(new URL('.', import.meta.url))));
   const dir = realpathSync(scratch('pair-try-folder-'));
   const line = tryLine(dir, `touch inside.txt; touch ${project}/outside.txt; echo done`, {sandboxed: true});
   assert.match(line, /^\(cd \S+ && bwrap .* --unshare-all --chdir \S+ bash -c /);
   const result = await bashPane(project).run(line);
   assert.match(result.output, /done/);
+  assert.match(result.output, /outside\.txt.*Read-only file system/);
   assert.ok(existsSync(join(dir, 'inside.txt')));
   assert.equal(existsSync(join(project, 'outside.txt')), false);
 });

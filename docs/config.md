@@ -136,7 +136,7 @@ Each limit is a whole number above 0, and one you leave out keeps its default.
 A change takes effect for the next request; one already running keeps the limits it started with.
 
 `keepTries` is how many days a [/gen try](gen.md#samples-gen-try-and-keep)'s folder (in `dataDir/gen/`) stays after
-anything in it last changed: a whole number above 0. Older folders are deleted when the daemon starts and whenever a
+anything in it last changed or it last ran: a whole number above 0. Older folders are deleted when the daemon starts and whenever a
 new try starts. `network` lets a try's runs reach the network, to install what a sample needs; off, its sandbox has
 none. A try's sandbox follows `scoutPane.sandbox`: without bubblewrap, a try's command runs in its folder unsandboxed
 and asks first, as Scout's would.
