@@ -8,16 +8,19 @@ and eyes stay on the code, and saying the problem out loud is rubber-ducking wit
 *Recorded from [the push-to-talk tape](captures/tapes/push-to-talk.tape). The question is spoken by espeak-ng into
 the recorder, and whisper.cpp hears it for real; only the Partner's answer is scripted.*
 
-Everything happens on your machine. [whisper.cpp](https://github.com/ggml-org/whisper.cpp) writes down what you
-said, on the CPU: with the `base.en` model a short question takes about half a second on a desktop CPU, and no GPU
-is used. The audio is kept in memory and in a temporary file only while whisper reads it.
+By default everything happens on your machine. [whisper.cpp](https://github.com/ggml-org/whisper.cpp) writes down
+what you said, on the CPU: with the `base.en` model a short question takes about half a second on a desktop CPU, and
+no GPU is used. The audio is kept in memory and in a temporary file only while whisper reads it.
+
+Or [OpenRouter](#openrouter) does it: a transcription model hears the recording, and a speech model reads answers
+aloud, with no whisper.cpp to build. The recording (or the words read aloud) then leaves your machine.
 
 ## What you see
 
 | Moment | Under your line | Statusline |
 | --- | --- | --- |
 | You hold the key | `◉ ▂▅▇▆▃▂▁▃▅▆  listening   let go to ask`: a meter of the last second | `◉ pair · listening` |
-| You let go | `⠹ hearing` while whisper works | `⠹ pair · hearing` |
+| You let go | `⠹ hearing` while whisper (or OpenRouter) works | `⠹ pair · hearing` |
 | Whisper is done | `› why does delivery give up one retry too early?`: your words, as heard | `⠹ pair · thinking` |
 | Pair answers | Pair's words in place of yours, with `M-j` when it points at a line | `● pair` |
 
@@ -28,7 +31,9 @@ is used. The audio is kept in memory and in a temporary file only while whisper 
 The question also goes to the chat pane, like a typed one, and the whole answer is there. Pair's words under your
 line go with your next edit, as its other words do. Whisper heard nothing (a cough, a key pressed by mistake)? The
 line says `◌ heard nothing` for a moment and Pair is not asked. Pair could not answer (its model is down, say)?
-The line says `◌ no answer · the chat says why` for a moment, and the chat pane says why.
+The line says `◌ no answer · the chat says why` for a moment, and the chat pane says why. Pair could not hear you (no
+microphone, OpenRouter did not answer in time, refused the key or is out of credits)? Neovim says
+`Pair could not listen: …` and the chat pane says the same, with what went wrong in plain words.
 
 **Hold or tap.** A terminal sends no key-up, only the key again and again while you hold it. Pair counts the key as
 let go when those repeats stop (about 0.2 s after the last one). A short press that does not repeat is a tap: Pair
@@ -54,15 +59,18 @@ events before a plugin can see them ([#55](https://github.com/makefunstuff/pairi
 **About the selection.** In Visual mode the key asks about the selected lines, as `:'<,'>Pair ask` does.
 
 **Whisper hears your project's words.** It is told the file you are in and the session goal, which helps with names
-it would otherwise mishear ("attempt five" rather than "a temp five").
+it would otherwise mishear ("attempt five" rather than "a temp five"). OpenRouter's models are not told: its
+transcription API has no prompt that every model takes.
 
 ## Spoken answers, only when you are away
 
-With a `speak` command set, the answer to a spoken question is also read aloud, but only when you are away from the
+With a `speak` command or [an OpenRouter voice](#openrouter) set, the answer to a spoken question is also read aloud, but only when you are away from the
 editor when it comes: Neovim has lost the focus (another window, the browser), or herdr shows another workspace.
 At the editor you read it; nothing ever speaks at you while you look at the code. Only the first sentence or two is
 read (up to 240 characters), without Markdown, with `retry.c:42` read as "retry.c, line 42". Coming back to Neovim
-stops it, every part of the `speak` command (a pipeline's player too). Pair never speaks its unasked remarks.
+stops it, every part of the `speak` command (a pipeline's player too), or OpenRouter's audio whether it is still on
+its way or playing. Pair never speaks its unasked remarks. When reading aloud fails (the speech command fails,
+OpenRouter's error, no player), the chat pane says `Pair could not read its answer aloud: …`.
 
 Away is told by the terminal's focus reports, which Neovim turns on by itself; herdr and most terminals send them.
 
@@ -70,7 +78,7 @@ Away is told by the terminal's focus reports, which Neovim turns on by itself; h
 
 ### 1. Build whisper.cpp (CPU only)
 
-Any scratch folder will do. Without GPU options, whisper.cpp builds for the CPU only, and Pair runs it with
+Skip this step when [OpenRouter](#openrouter) hears. Any scratch folder will do. Without GPU options, whisper.cpp builds for the CPU only, and Pair runs it with
 `--no-gpu` as well.
 
 ```sh
@@ -99,8 +107,8 @@ Most desktops have one. The daemon runs as your user, so it uses your default mi
 }
 ```
 
-Save the config (the daemon takes it as you save it), then `pair doctor` checks it: it finds the recorder, and runs whisper on a second of silence to
-say how long it takes.
+Save the config (the daemon takes it as you save it), then `pair doctor` checks it: it finds the recorder, and runs
+whisper on a second of silence to say how long it takes.
 
 ```
 ✓ voice     pw-record records, whisper.cpp hears a second in 0.4 s on the CPU
@@ -110,13 +118,15 @@ All fields:
 
 | Field | Default | What |
 | --- | --- | --- |
-| `model` | (needed) | the whisper.cpp model file |
+| `model` | (needed, unless OpenRouter hears) | the whisper.cpp model file |
 | `whisper` | `whisper-cli` | the whisper.cpp program |
 | `threads` | `4` | CPU threads whisper uses |
 | `language` | `en` | what you speak (`auto` with a multilingual model) |
 | `record` | the first recorder found | a shell command that writes raw 16-bit little-endian mono at 16 kHz to stdout |
-| `speak` | none | a shell command that reads the answer from stdin and says it; without one nothing is read aloud |
+| `speak` | none | a shell command that reads the answer from stdin and says it; without one (or `openrouter.speak`) nothing is read aloud |
+| `play` | `mpv`, else `ffplay` | a shell command that plays OpenRouter's audio (MP3 or WAV) from stdin |
 | `maxSeconds` | `60` | the longest recording |
+| `openrouter` | none | hearing, reading aloud or both through OpenRouter ([below](#openrouter)) |
 
 Some `speak` commands (any speech program that reads text on stdin works):
 
@@ -127,6 +137,53 @@ Some `speak` commands (any speech program that reads text on stdin works):
 
 A neural voice such as Kokoro or Piper also runs on the CPU; wrap it in a small script that reads stdin and plays
 the audio, and name that script.
+
+### OpenRouter
+
+Instead of whisper.cpp, or of a `speak` command, or both, voice can go through
+[OpenRouter](https://openrouter.ai)'s audio APIs. Its key comes from one of `apiKeyFile`, `apiKeyEnv`, `auth` (an API key
+stored by `pair auth login openrouter`; its sign-in does not serve voice) or `apiKey`, as in a [model entry](models.md):
+
+```jsonc
+"voice": {
+  "openrouter": {
+    "apiKeyFile": "~/.config/openrouter.key",
+    "hear": "openai/whisper-large-v3-turbo",                      // a transcription model: instead of "model"
+    "speak": {"model": "x-ai/grok-voice-tts-1.0", "voice": "eve"}  // a speech model and voice: instead of "speak"
+  }
+}
+```
+
+- **Hearing**: with `hear` set, the recording goes to OpenRouter's transcription API as a WAV file, with your
+  `language`, and its text comes back. whisper.cpp is not needed (and `model` is not taken with it). Without `hear`,
+  whisper.cpp hears as above. [OpenRouter's transcription models](https://openrouter.ai/models?output_modalities=transcription)
+  include `openai/whisper-large-v3-turbo`, `openai/gpt-4o-mini-transcribe` and `google/gemini-3.5-transcribe`.
+- **Reading aloud**: with `speak` set, the short answer (the same first sentence or two, without Markdown, as for a
+  `speak` command, and only when you are away) goes to OpenRouter's speech API, and its audio plays with `mpv`, else
+  `ffplay` (ffmpeg), or your `play` command. Each [speech model](https://openrouter.ai/models?output_modalities=speech)
+  has its own voices: `x-ai/grok-voice-tts-1.0` has `eve`, `ara`, `rex`, `sal` and `leo`; `mistralai/voxtral-mini-tts-2603`
+  has `en_paul_neutral`. A `speak` command and `openrouter.speak` cannot both be set.
+
+| Field | Default | What |
+| --- | --- | --- |
+| `apiKeyFile`, `apiKeyEnv`, `auth`, `apiKey` | (one needed) | where the OpenRouter key comes from; `pair setup` stores an `apiKeyEnv` variable for the service |
+| `hear` | none | a transcription model's id: it hears instead of whisper.cpp |
+| `speak.model`, `speak.voice` | none | a speech model's id and one of its voices: it reads answers aloud instead of a `speak` command |
+| `speak.format` | `"mp3"` | `"mp3"` or `"wav"`, what the player gets (some models make MP3 only) |
+| `speak.speed` | the model's | how fast it speaks, like `1.2`, on models that take it |
+| `timeoutMs` | `30000` | how long Pair waits for OpenRouter; then the pane says `OpenRouter did not answer in 30 s` |
+| `baseUrl` | `https://openrouter.ai/api/v1` | where the API is |
+
+`pair doctor` asks OpenRouter whether it takes the key, and whether `hear` and `speak.model` are among its
+transcription and speech models; it looks for the player. It sends no audio and records nothing:
+
+```
+✓ voice     pw-record records, OpenRouter's openai/whisper-large-v3-turbo hears, and OpenRouter's x-ai/grok-voice-tts-1.0 (eve) reads answers aloud through mpv when you are away
+```
+
+Each spoken question costs one transcription, and each answer read aloud one speech request, at the model's price.
+Nothing goes to OpenRouter while voice is off, or until you press the key: Pair records only while you hold it, and
+sends only a recording that holds speech.
 
 ### 4. The key
 
@@ -156,4 +213,7 @@ holds holds; `listen_release_ms` must be longer than the time between two of its
 - Voice is off until `voice` is in the config. Pair records only while you hold the key (or between two taps). When
   the Neovim that started a recording goes away (it quits or crashes), the recording stops at once and nothing is
   asked.
+- With OpenRouter, the recording (and the words read aloud) go to OpenRouter and the model's provider. Turning voice
+  off (or changing it) while OpenRouter hears stops that request, and nothing is asked. Hearing waits for the whole
+  recording: there is no streaming as you speak.
 - One recording at a time per project; pressing the key in another Neovim of the same project starts over there.

@@ -26,9 +26,9 @@ Start with `pair doctor`. It checks every part, one line each, and names the fix
 | neovim | How many Neovims are connected, in which projects |
 | herdr | herdr answers on its socket (only checked when run inside herdr) |
 | logins | `auth.json` is readable by you only (shown when there is one) |
-| keys | The environment variables your model entries name in `apiKeyEnv` are set, and stored in `service.env` for the service (shown when there are any) |
+| keys | The environment variables your model entries (and `voice.openrouter`) name in `apiKeyEnv` are set, and stored in `service.env` for the service (shown when there are any) |
 | pane | Pair's pane: the `scoutPane.rc` file is there, and whether its commands run in the bubblewrap sandbox |
-| voice | Off, or the recorder, the whisper.cpp model and program, and the `speak` command ([voice.md](voice.md)) |
+| voice | Off, or the recorder, the whisper.cpp model and program (or OpenRouter's key and transcription model), and the `speak` command (or OpenRouter's speech model and a player) ([voice.md](voice.md)) |
 | watcher, partner | The login or key the model needs is there and, for a subscription, still renews (with the token's expiry); the server answers and lists the model; one short completion works, and how long it took (about 1 s is the aim for the Watcher). One line, `models`, when both use the same model. A warning when the Watcher runs on a subscription |
 | thinking | The Partner thinks when asked to, and its levels reach the server |
 | decision | The [decision model](decision.md): none set, or its login or key, one small question and how long the answer took against its `timeoutMs`, and, while the daemon runs, how often it was asked and the gate fell back to its rules. It fails when the model does not answer in time; the gate then goes by its own rules |

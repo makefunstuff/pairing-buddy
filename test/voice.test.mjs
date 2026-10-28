@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {chmodSync, existsSync, readdirSync, readFileSync, writeFileSync} from 'node:fs';
+import {createServer} from 'node:http';
 import {connect} from 'node:net';
 import {join} from 'node:path';
 import {test} from 'node:test';
@@ -12,7 +13,8 @@ import {sendMessage} from '../src/protocol.mjs';
 import {initialState} from '../src/fold.mjs';
 import {voiceCheck} from '../src/doctor.mjs';
 import {Listener} from '../src/listen.mjs';
-import {cleanTranscript, loudness, meterLevel, RATE, recorderOf, Recording, speak, speakable, transcribe, voiceConfig, wav, whisperPrompt} from '../src/voice.mjs';
+import {keyVariables} from '../src/service-env.mjs';
+import {cleanTranscript, loudness, meterLevel, playerOf, RATE, recorderOf, Recording, speak, speakable, speakOpenRouter, speaks, transcribe, voiceConfig, wav, whisperPrompt} from '../src/voice.mjs';
 import {scratch} from './temp.mjs';
 
 /** Whether a process whose command line has `marker` runs. */
@@ -36,7 +38,40 @@ test('voice config: off without one; a model is needed; paths expand and default
   assert.throws(() => voiceConfig({model: 'm.bin', speak: 3}), /voice\.speak must be a string/);
   const voice = voiceConfig({model: '~/models/ggml-base.en.bin'});
   assert.match(voice.model, /^\/.*\/models\/ggml-base\.en\.bin$/);
-  assert.deepEqual({...voice, model: undefined}, {whisper: 'whisper-cli', threads: 4, language: 'en', record: null, speak: null, maxSeconds: 60, model: undefined});
+  assert.deepEqual({...voice, model: undefined}, {whisper: 'whisper-cli', threads: 4, language: 'en', record: null, speak: null, play: null, maxSeconds: 60, model: undefined, openrouter: null});
+});
+
+test('voice config with OpenRouter: one key, a model to hear with or a voice, and no second way to do either', () => {
+  const key = {apiKeyFile: '~/openrouter.key'};
+  const heard = voiceConfig({openrouter: {...key, hear: 'openai/whisper-large-v3-turbo'}});
+  assert.equal(heard.model, null, 'no whisper.cpp model is needed');
+  assert.deepEqual(heard.openrouter, {apiKeyFile: '~/openrouter.key', hear: 'openai/whisper-large-v3-turbo', speak: null, baseUrl: 'https://openrouter.ai/api/v1', timeoutMs: 30_000});
+  assert.equal(speaks(heard), false);
+  const spoken = voiceConfig({model: 'm.bin', openrouter: {...key, speak: {model: 'x-ai/grok-voice-tts-1.0', voice: 'eve'}, timeoutMs: 5000}});
+  assert.deepEqual(spoken.openrouter.speak, {model: 'x-ai/grok-voice-tts-1.0', voice: 'eve', format: 'mp3'});
+  assert.equal(spoken.openrouter.hear, null);
+  assert.equal(speaks(spoken), true);
+  assert.throws(() => voiceConfig({openrouter: {...key, speak: {model: 'x', voice: 'eve'}}}), /voice\.model/, 'whisper.cpp hears without hear');
+  assert.throws(() => voiceConfig({openrouter: {hear: 'm'}}), /needs its key/);
+  assert.throws(() => voiceConfig({openrouter: {...key, apiKeyEnv: 'K', hear: 'm'}}), /takes one of apiKeyFile, apiKeyEnv/);
+  assert.throws(() => voiceConfig({model: 'm.bin', openrouter: key}), /needs "hear"/);
+  assert.throws(() => voiceConfig({model: 'm.bin', openrouter: {...key, hear: 'm'}}), /one of model \(whisper\.cpp\) and openrouter\.hear/);
+  assert.throws(() => voiceConfig({model: 'm.bin', speak: 'piper', openrouter: {...key, speak: {model: 'x', voice: 'v'}}}), /one of speak/);
+  assert.throws(() => voiceConfig({model: 'm.bin', openrouter: {...key, speak: {model: 'x'}}}), /speak\.voice is missing/);
+  assert.throws(() => voiceConfig({model: 'm.bin', openrouter: {...key, speak: {model: 'x', voice: 'v', format: 'ogg'}}}), /mp3/);
+  assert.throws(() => voiceConfig({model: 'm.bin', openrouter: {...key, hear: 'm', timeoutMs: 0}}), /timeoutMs/);
+  const config = parseConfig({
+    models: {watcher: {api: 'openai', baseUrl: 'http://unused', model: 'w'}, partner: {api: 'openai', baseUrl: 'http://unused', model: 'p'}},
+    voice: {openrouter: {apiKeyEnv: 'OPENROUTER_API_KEY', hear: 'openai/whisper-large-v3-turbo'}},
+  });
+  assert.deepEqual(keyVariables(config), ['OPENROUTER_API_KEY'], '`pair setup` stores the key for the service');
+});
+
+test('the player for OpenRouter\'s voice: the configured command, else mpv or ffplay on PATH, else none', () => {
+  assert.deepEqual(playerOf({play: 'pw-play -'}), ['sh', '-c', 'pw-play -']);
+  assert.equal(playerOf({play: null}, name => name === 'ffplay')[0], 'ffplay');
+  assert.equal(playerOf({play: null}, () => true)[0], 'mpv');
+  assert.equal(playerOf({play: null}, () => false), null);
 });
 
 test('the recorder: the configured command, else the first one on PATH, else none', () => {
@@ -139,7 +174,7 @@ test('transcribe runs whisper.cpp on the CPU with the prompt, from a WAV file it
 
 /** A Listener on a session state, a tone for a microphone and `heard` for whisper; `sent` collects its messages. */
 function listener({heard = 'why does it give up?', speakCommand = null, seconds = 2, answer = 'Attempt 5 gives up at `retry.c:42`.'} = {}) {
-  const session = {state: {...initialState({goal: 'retries'}), file: 'retry.c'}};
+  const session = {state: {...initialState({goal: 'retries'}), file: 'retry.c'}, message: () => {}};
   const sent = [];
   const asked = [];
   const spoken = [];
@@ -308,5 +343,211 @@ test('the daemon: Neovim quitting mid-recording closes the microphone at once, a
     assert.equal(existsSync(join(dir, 'whisper-ran')), false, 'nothing was transcribed');
   } finally {
     await daemon.close();
+  }
+});
+
+/**
+ * A fake OpenRouter on localhost: `routes[path](request, body, response)` answers, else a 404. `requests` collects
+ * `{method, path, headers, body}`. Never the real one.
+ */
+async function fakeOpenRouter(routes) {
+  const requests = [];
+  const server = createServer(async (request, response) => {
+    const chunks = [];
+    for await (const chunk of request) chunks.push(chunk);
+    const text = Buffer.concat(chunks).toString();
+    const body = text ? JSON.parse(text) : null;
+    requests.push({method: request.method, path: request.url, headers: request.headers, body});
+    const route = routes[request.url.split('?')[0]];
+    if (!route) return json(response, 404, {error: {code: 404, message: 'Not Found'}});
+    route(request, body, response);
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  return {
+    url: `http://127.0.0.1:${server.address().port}/api/v1`,
+    requests,
+    close: () => new Promise(resolve => { server.closeAllConnections(); server.close(resolve); }),
+  };
+}
+
+const json = (response, status, value) => response.writeHead(status, {'content-type': 'application/json'}).end(JSON.stringify(value));
+
+/** A voice config whose OpenRouter is `server`, with a fake key in a file. */
+function openrouterVoice(server, openrouter, fields = {}) {
+  const dir = scratch('pair-or-key-');
+  const apiKeyFile = join(dir, 'openrouter.key');
+  writeFileSync(apiKeyFile, 'sk-or-fake\n', {mode: 0o600});
+  return voiceConfig({record: 'true', ...fields, openrouter: {apiKeyFile, baseUrl: server.url, ...openrouter}});
+}
+
+test('OpenRouter hears: the recording goes as a WAV with the model and language, and its text comes back clean', async () => {
+  const server = await fakeOpenRouter({'/api/v1/audio/transcriptions': (request, body, response) => json(response, 200, {text: ' Why does attempt 5\n give up? [BLANK_AUDIO]', usage: {seconds: 2}})});
+  try {
+    const voice = openrouterVoice(server, {hear: 'openai/whisper-large-v3-turbo'});
+    const pcm = Buffer.alloc(3200, 1);
+    assert.equal(await transcribe(voice, pcm, {dir: scratch('pair-or-'), prompt: 'About retry.c.'}), 'Why does attempt 5 give up?');
+    const [request] = server.requests;
+    assert.equal(request.method, 'POST');
+    assert.equal(request.headers.authorization, 'Bearer sk-or-fake', 'the key from apiKeyFile');
+    assert.equal(request.body.model, 'openai/whisper-large-v3-turbo');
+    assert.equal(request.body.language, 'en');
+    assert.equal(request.body.input_audio.format, 'wav');
+    assert.deepEqual(Buffer.from(request.body.input_audio.data, 'base64'), wav(pcm));
+  } finally {
+    await server.close();
+  }
+});
+
+test('OpenRouter\'s errors say what went wrong: a refused key, a timeout, no server, no key', async () => {
+  const server = await fakeOpenRouter({
+    '/api/v1/audio/transcriptions': (request, body, response) => (body.model === 'slow' ? null : json(response, 401, {error: {code: 401, message: 'User not found.'}})),
+  });
+  const dir = scratch('pair-or-');
+  try {
+    await assert.rejects(transcribe(openrouterVoice(server, {hear: 'm'}), Buffer.alloc(3200), {dir}), {message: 'OpenRouter answered 401 (the key is not valid): User not found.'});
+    await assert.rejects(transcribe(openrouterVoice(server, {hear: 'slow', timeoutMs: 300}), Buffer.alloc(3200), {dir}), {message: 'OpenRouter did not answer in 0.3 s (voice.openrouter.timeoutMs)'});
+    const gone = await fakeOpenRouter({});
+    await gone.close();
+    await assert.rejects(transcribe(openrouterVoice(gone, {hear: 'm'}), Buffer.alloc(3200), {dir}), /^Error: OpenRouter could not be reached: ECONNREFUSED/);
+    const missing = voiceConfig({openrouter: {apiKeyFile: join(dir, 'none.key'), baseUrl: server.url, hear: 'm'}});
+    await assert.rejects(transcribe(missing, Buffer.alloc(3200), {dir}), /^Error: no OpenRouter key: no file .*none\.key/);
+    const unset = voiceConfig({openrouter: {apiKeyEnv: 'PAIR_TEST_UNSET_KEY', baseUrl: server.url, hear: 'm'}});
+    await assert.rejects(transcribe(unset, Buffer.alloc(3200), {dir}), {message: 'no OpenRouter key: $PAIR_TEST_UNSET_KEY is not set'});
+    assert.equal(server.requests.length, 2, 'nothing is sent without a key');
+  } finally {
+    await server.close();
+  }
+});
+
+test('OpenRouter speaks: the short answer goes with the model and voice, and its audio goes to the player', async () => {
+  const audio = Buffer.from('ID3 fake mp3 bytes');
+  const server = await fakeOpenRouter({'/api/v1/audio/speech': (request, body, response) => response.writeHead(200, {'content-type': 'audio/mpeg'}).end(audio)});
+  const dir = scratch('pair-or-play-');
+  try {
+    const voice = openrouterVoice(server, {speak: {model: 'x-ai/grok-voice-tts-1.0', voice: 'eve', speed: 1.2}}, {model: 'm.bin', play: `cat > ${dir}/played`});
+    const failures = [];
+    speak(voice, 'Attempt 5 gives up at retry.c, line 42.', {failed: why => failures.push(why)});
+    await sleep(500);
+    assert.deepEqual(readFileSync(join(dir, 'played')), audio, 'played what came');
+    assert.deepEqual(server.requests[0].body, {model: 'x-ai/grok-voice-tts-1.0', input: 'Attempt 5 gives up at retry.c, line 42.', voice: 'eve', response_format: 'mp3', speed: 1.2});
+    assert.deepEqual(failures, []);
+  } finally {
+    await server.close();
+  }
+});
+
+test('OpenRouter\'s voice: a stop while the audio is on its way plays nothing; a failure or no player is reported', async () => {
+  let answer = () => {};
+  const server = await fakeOpenRouter({
+    '/api/v1/audio/speech': (request, body, response) => {
+      if (body.voice === 'broke') return json(response, 402, {error: {code: 402, message: 'Insufficient credits'}});
+      answer = () => response.writeHead(200, {'content-type': 'audio/mpeg'}).end('mp3');
+    },
+  });
+  const dir = scratch('pair-or-stop-');
+  try {
+    const failures = [];
+    const failed = why => failures.push(why);
+    const voice = openrouterVoice(server, {speak: {model: 'm', voice: 'eve'}}, {model: 'm.bin', play: `cat > ${dir}/played`});
+    const hush = speak(voice, 'Line 9.', {failed});
+    await sleep(200);
+    hush(); // you came back before the audio did
+    answer();
+    await sleep(300);
+    assert.equal(existsSync(join(dir, 'played')), false, 'nothing played');
+    assert.deepEqual(failures, [], 'a stop is no failure');
+
+    speak(openrouterVoice(server, {speak: {model: 'm', voice: 'broke'}}, {model: 'm.bin', play: 'cat >/dev/null'}), 'Line 9.', {failed});
+    await sleep(300);
+    assert.deepEqual(failures, ['OpenRouter answered 402 (the account is out of credits): Insufficient credits']);
+
+    const before = server.requests.length;
+    speakOpenRouter(openrouterVoice(server, {speak: {model: 'm', voice: 'eve'}}, {model: 'm.bin'}), 'Line 9.', {failed, player: null});
+    assert.match(failures.at(-1), /no player found .*install mpv or ffmpeg/);
+    assert.equal(server.requests.length, before, 'and nothing is sent');
+  } finally {
+    await server.close();
+  }
+});
+
+test('the listener reports what failed in the chat: hearing, and reading the answer aloud', async () => {
+  const messages = [];
+  const session = {state: {...initialState({goal: 'retries'}), file: 'retry.c'}, message: (sender, text) => messages.push([sender, text])};
+  const sent = [];
+  const listening = new Listener({
+    voice: voiceConfig({model: 'm.bin', record: toneCommand(2), speak: 'cat >/dev/null'}),
+    session,
+    dir: scratch('pair-listen-'),
+    ask: async () => 'Attempt 5 gives up.',
+    transcribeWith: async () => { throw new Error('OpenRouter did not answer in 30 s (voice.openrouter.timeoutMs)'); },
+    speakWith: (voice, text, {failed}) => { failed('OpenRouter answered 402 (the account is out of credits)'); return () => {}; },
+  });
+  listening.start(message => sent.push(message));
+  await sleep(400);
+  await listening.stop();
+  assert.deepEqual(sent.at(-1), {type: 'heard', error: 'OpenRouter did not answer in 30 s (voice.openrouter.timeoutMs)'}, 'the editor says so');
+  assert.deepEqual(messages, [['system', 'Pair could not hear you: OpenRouter did not answer in 30 s (voice.openrouter.timeoutMs).']], 'and the chat');
+
+  listening.transcribeWith = async () => 'why does it give up?';
+  listening.focus(false);
+  listening.start(message => sent.push(message));
+  await sleep(400);
+  await listening.stop();
+  assert.deepEqual(messages.at(-1), ['system', 'Pair could not read its answer aloud: OpenRouter answered 402 (the account is out of credits).']);
+});
+
+test('voice going off while OpenRouter hears: the request stops, and nothing is shown or asked', async () => {
+  const session = {state: initialState({}), message: () => assert.fail('nothing to report')};
+  const sent = [];
+  const asked = [];
+  let signal;
+  const listening = new Listener({
+    voice: voiceConfig({model: 'm.bin', record: toneCommand(2)}),
+    session,
+    dir: scratch('pair-listen-'),
+    ask: async text => { asked.push(text); return ''; },
+    transcribeWith: (voice, pcm, options) => new Promise((resolve, reject) => {
+      signal = options.signal;
+      signal.addEventListener('abort', () => reject(new Error('aborted')));
+    }),
+  });
+  listening.start(message => sent.push(message));
+  await sleep(400);
+  const stopping = listening.stop();
+  await sleep(50);
+  listening.close(); // the config's voice changed
+  await stopping;
+  assert.equal(signal.aborted, true);
+  assert.deepEqual(sent.filter(message => message.type === 'heard'), [{type: 'heard', state: 'hearing'}]);
+  assert.deepEqual(asked, []);
+});
+
+test('pair doctor with OpenRouter: a refused key, a model it does not have, no player, and a setup that works; no audio is sent', async () => {
+  let keyStatus = 200;
+  const server = await fakeOpenRouter({
+    '/api/v1/key': (request, body, response) => json(response, keyStatus, keyStatus === 200 ? {data: {label: 'fake'}} : {error: {code: 401, message: 'User not found.'}}),
+    '/api/v1/models': (request, body, response) => json(response, 200, {
+      data: request.url.includes('transcription') ? [{id: 'openai/whisper-large-v3-turbo'}] : [{id: 'x-ai/grok-voice-tts-1.0'}],
+    }),
+  });
+  try {
+    const found = name => name === 'pw-record' || name === 'mpv';
+    const good = {hear: 'openai/whisper-large-v3-turbo', speak: {model: 'x-ai/grok-voice-tts-1.0', voice: 'eve'}};
+    const voice = (openrouter = good) => ({...openrouterVoice(server, openrouter), record: null});
+    const works = await voiceCheck(voice(), found);
+    assert.deepEqual(works, {level: 'ok', name: 'voice', text: 'pw-record records, OpenRouter\'s openai/whisper-large-v3-turbo hears, and OpenRouter\'s x-ai/grok-voice-tts-1.0 (eve) reads answers aloud through mpv when you are away'});
+    assert.equal(server.requests.find(request => request.path === '/api/v1/key').headers.authorization, 'Bearer sk-or-fake');
+    assert.ok(server.requests.every(request => request.method === 'GET'), 'only questions, no audio');
+
+    const noPlayer = await voiceCheck(voice(), name => name === 'pw-record');
+    assert.equal(noPlayer.level, 'warn');
+    assert.match(noPlayer.text, /no player is found .*install mpv/);
+    const unknown = await voiceCheck(voice({...good, hear: 'openai/whisper-9'}), found);
+    assert.deepEqual([unknown.level, unknown.text.split(';')[0]], ['fail', 'voice.openrouter.hear: openai/whisper-9 is not one of OpenRouter\'s transcription models']);
+    keyStatus = 401;
+    const refused = await voiceCheck(voice(), found);
+    assert.deepEqual([refused.level, refused.text], ['fail', 'OpenRouter: OpenRouter answered 401 (the key is not valid): User not found.']);
+  } finally {
+    await server.close();
   }
 });

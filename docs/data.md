@@ -16,7 +16,7 @@ description: "What Pair keeps and where: logins in auth.json, the rest in its da
 | `chat-history.json` | What you sent in the [chat pane](chat.md), the last 200 lines of each project, for Up to bring back |
 | `runs/` | The output of the latest [tests on save](tests-on-save.md) run of each session and of the hand-over's [check](driver.md#the-check-on-the-unsaved-buffer), and in `runs/trees/` the scratch copy of each project that check runs in (safe to delete) |
 | `panes/` | Pair's own pane: its shell's output log and each command's exit code, one folder per pane, removed when the pane closes ([herdr.md](herdr.md#pairs-own-pane-exact)) |
-| `voice/` | A [push-to-talk](voice.md) recording, only while whisper.cpp reads it |
+| `voice/` | A [push-to-talk](voice.md) recording, only while whisper.cpp reads it (OpenRouter's is kept in memory only) |
 | `daemon.log` | The daemon's log, when `pair` started it (under systemd it goes to the journal, under launchd to `~/Library/Logs/pairing-buddy.log`) |
 | `daemon.lock` | Makes sure one daemon owns the files above |
 
@@ -24,11 +24,12 @@ The [run log](exploration.md) (each build's and run's output and the lines you t
 daemon's memory only, for the session.
 
 Nothing is written to your repository or to the work board (Pair only lists its tasks). Nothing leaves your machine
-except the requests to the model endpoints you configured, `gh pr view` for the
+except the requests to the model endpoints you configured (OpenRouter's voice too, when you set it), `gh pr view` for the
 [context card](neovim.md#what-it-knows-the-context-card) when `gh` is installed and, for a login, to the provider's
 sign-in service. Those requests carry your code: the Watcher gets each moment's text (your edits, a command's
 output, a test's failure), and the Partner the files and lines it reads, the diffs it suggests and your questions. With
 a cloud provider, that code goes to the provider: check that your employer allows it before you use Pair on work code;
 a local server keeps it on your machine. A [decision model](decision.md#what-it-is-told), when you set one, gets each moment's kind and
 text, your goal, the paths you edited, your last commands and test counts, and your verdicts on earlier remarks; never
-the contents of a file.
+the contents of a file. With [voice through OpenRouter](voice.md#openrouter), your spoken question's recording goes to
+OpenRouter's transcription model, and the answer's first sentences to its speech model.
