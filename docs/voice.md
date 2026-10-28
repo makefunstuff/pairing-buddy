@@ -124,7 +124,7 @@ All fields:
 | `language` | `en` | what you speak (`auto` with a multilingual model) |
 | `record` | the first recorder found | a shell command that writes raw 16-bit little-endian mono at 16 kHz to stdout |
 | `speak` | none | a shell command that reads the answer from stdin and says it; without one (or `openrouter.speak`) nothing is read aloud |
-| `play` | `mpv`, else `ffplay` | a shell command that plays OpenRouter's audio (MP3 or WAV) from stdin |
+| `play` | `mpv`, else `ffplay` | a shell command that plays OpenRouter's audio (MP3) from stdin |
 | `maxSeconds` | `60` | the longest recording |
 | `openrouter` | none | hearing, reading aloud or both through OpenRouter ([below](#openrouter)) |
 
@@ -159,8 +159,8 @@ stored by `pair auth login openrouter`; its sign-in does not serve voice) or `ap
   whisper.cpp hears as above. [OpenRouter's transcription models](https://openrouter.ai/models?output_modalities=transcription)
   include `openai/whisper-large-v3-turbo`, `openai/gpt-4o-mini-transcribe` and `google/gemini-3.5-transcribe`.
 - **Reading aloud**: with `speak` set, the short answer (the same first sentence or two, without Markdown, as for a
-  `speak` command, and only when you are away) goes to OpenRouter's speech API, and its audio plays with `mpv`, else
-  `ffplay` (ffmpeg), or your `play` command. Each [speech model](https://openrouter.ai/models?output_modalities=speech)
+  `speak` command, and only when you are away) goes to OpenRouter's speech API, and its audio (MP3) plays with `mpv`,
+  else `ffplay` (ffmpeg), or your `play` command. Each [speech model](https://openrouter.ai/models?output_modalities=speech)
   has its own voices: `x-ai/grok-voice-tts-1.0` has `eve`, `ara`, `rex`, `sal` and `leo`; `mistralai/voxtral-mini-tts-2603`
   has `en_paul_neutral`. A `speak` command and `openrouter.speak` cannot both be set.
 
@@ -169,7 +169,6 @@ stored by `pair auth login openrouter`; its sign-in does not serve voice) or `ap
 | `apiKeyFile`, `apiKeyEnv`, `auth`, `apiKey` | (one needed) | where the OpenRouter key comes from; `pair setup` stores an `apiKeyEnv` variable for the service |
 | `hear` | none | a transcription model's id: it hears instead of whisper.cpp |
 | `speak.model`, `speak.voice` | none | a speech model's id and one of its voices: it reads answers aloud instead of a `speak` command |
-| `speak.format` | `"mp3"` | `"mp3"` or `"wav"`, what the player gets (some models make MP3 only) |
 | `speak.speed` | the model's | how fast it speaks, like `1.2`, on models that take it |
 | `timeoutMs` | `30000` | how long Pair waits for OpenRouter; then the pane says `OpenRouter did not answer in 30 s` |
 | `baseUrl` | `https://openrouter.ai/api/v1` | where the API is |
@@ -214,6 +213,6 @@ holds holds; `listen_release_ms` must be longer than the time between two of its
   the Neovim that started a recording goes away (it quits or crashes), the recording stops at once and nothing is
   asked.
 - With OpenRouter, the recording (and the words read aloud) go to OpenRouter and the model's provider. Turning voice
-  off (or changing it) while OpenRouter hears stops that request, and nothing is asked. Hearing waits for the whole
+  off (or changing it) while OpenRouter hears stops that request: Neovim says to ask again, and nothing is asked. Hearing waits for the whole
   recording: there is no streaming as you speak.
 - One recording at a time per project; pressing the key in another Neovim of the same project starts over there.

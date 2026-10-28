@@ -66,9 +66,10 @@ export function voiceConfig(raw) {
 }
 
 /**
- * `voice.openrouter`: null, or `{hear, speak: {model, voice, format, speed}, baseUrl, timeoutMs}` with the key in one of
+ * `voice.openrouter`: null, or `{hear, speak: {model, voice, speed}, baseUrl, timeoutMs}` with the key in one of
  * `auth`, `apiKey`, `apiKeyFile` and `apiKeyEnv`, as in a model entry. `hear` is a transcription model's id, like
- * openai/whisper-large-v3-turbo; `speak` a speech model and one of its voices. Either may be left out.
+ * openai/whisper-large-v3-turbo; `speak` a speech model and one of its voices, asked for MP3: OpenRouter's other
+ * format, PCM, does not say its rate to a player. Either may be left out.
  */
 function openrouterConfig(raw) {
   if (raw === undefined || raw === null) return null;
@@ -85,9 +86,9 @@ function openrouterConfig(raw) {
     for (const field of ['model', 'voice']) {
       if (typeof entry[field] !== 'string' || !entry[field].trim()) throw new Error(`config: voice.openrouter.speak.${field} is missing: an OpenRouter speech model and one of its voices`);
     }
-    if (entry.format !== undefined && !['mp3', 'wav'].includes(entry.format)) throw new Error('config: voice.openrouter.speak.format must be "mp3" or "wav"');
+    if (entry.format !== undefined) throw new Error('config: voice.openrouter.speak.format is not taken: Pair asks OpenRouter for MP3, which every speech model makes');
     if (entry.speed !== undefined && !(typeof entry.speed === 'number' && entry.speed > 0)) throw new Error('config: voice.openrouter.speak.speed must be a number, like 1.2');
-    speak = {model: entry.model, voice: entry.voice, format: entry.format ?? 'mp3', ...(entry.speed === undefined ? {} : {speed: entry.speed})};
+    speak = {model: entry.model, voice: entry.voice, ...(entry.speed === undefined ? {} : {speed: entry.speed})};
   }
   if (raw.hear === undefined && !speak) throw new Error('config: voice.openrouter needs "hear" (a transcription model), "speak" (a voice), or both');
   const timeoutMs = raw.timeoutMs ?? OPENROUTER_TIMEOUT_MS;
@@ -374,7 +375,7 @@ function play([command, ...args], input, report) {
  */
 export function speakOpenRouter(voice, text, {log = () => {}, failed = () => {}, player = playerOf(voice)} = {}) {
   const {openrouter} = voice;
-  const {model, voice: name, format, speed} = openrouter.speak;
+  const {model, voice: name, speed} = openrouter.speak;
   const report = why => { log(`speaking failed: ${why}`); failed(why); };
   const stopped = new AbortController();
   let stopPlayer = null;
@@ -382,7 +383,7 @@ export function speakOpenRouter(voice, text, {log = () => {}, failed = () => {},
     report('no player found to play OpenRouter\'s voice: install mpv or ffmpeg (ffplay), or set voice.play');
     return () => {};
   }
-  const body = {model, input: text, voice: name, response_format: format, ...(speed === undefined ? {} : {speed})};
+  const body = {model, input: text, voice: name, response_format: 'mp3', ...(speed === undefined ? {} : {speed})};
   openrouterRequest(openrouter, '/audio/speech', body, {signal: stopped.signal, read: async response => Buffer.from(await response.arrayBuffer())})
     .then(audio => {
       if (stopped.signal.aborted) return;

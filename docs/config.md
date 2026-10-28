@@ -133,7 +133,7 @@ Off until set. Set up in [voice.md](voice.md#setup).
 | --- | --- | --- |
 | `apiKeyFile`, `apiKeyEnv`, `auth`, `apiKey` | (one needed) | The OpenRouter key, as in a model entry |
 | `hear` | none | A transcription model, like `"openai/whisper-large-v3-turbo"`: it hears instead of whisper.cpp (then `model` is not taken) |
-| `speak` | none | `{"model": ..., "voice": ...}`, a speech model and one of its voices, with optional `"format"` (`"mp3"`, the default, or `"wav"`) and `"speed"`: it reads answers aloud instead of a `speak` command (then `speak` is not taken) |
+| `speak` | none | `{"model": ..., "voice": ...}`, a speech model and one of its voices, asked for MP3, with an optional `"speed"`: it reads answers aloud instead of a `speak` command (then `speak` is not taken) |
 | `timeoutMs` | `30000` | How long Pair waits for OpenRouter before it says so |
 | `baseUrl` | `"https://openrouter.ai/api/v1"` | Where the API is |
 

@@ -48,7 +48,7 @@ test('voice config with OpenRouter: one key, a model to hear with or a voice, an
   assert.deepEqual(heard.openrouter, {apiKeyFile: '~/openrouter.key', hear: 'openai/whisper-large-v3-turbo', speak: null, baseUrl: 'https://openrouter.ai/api/v1', timeoutMs: 30_000});
   assert.equal(speaks(heard), false);
   const spoken = voiceConfig({model: 'm.bin', openrouter: {...key, speak: {model: 'x-ai/grok-voice-tts-1.0', voice: 'eve'}, timeoutMs: 5000}});
-  assert.deepEqual(spoken.openrouter.speak, {model: 'x-ai/grok-voice-tts-1.0', voice: 'eve', format: 'mp3'});
+  assert.deepEqual(spoken.openrouter.speak, {model: 'x-ai/grok-voice-tts-1.0', voice: 'eve'});
   assert.equal(spoken.openrouter.hear, null);
   assert.equal(speaks(spoken), true);
   assert.throws(() => voiceConfig({openrouter: {...key, speak: {model: 'x', voice: 'eve'}}}), /voice\.model/, 'whisper.cpp hears without hear');
@@ -58,7 +58,7 @@ test('voice config with OpenRouter: one key, a model to hear with or a voice, an
   assert.throws(() => voiceConfig({model: 'm.bin', openrouter: {...key, hear: 'm'}}), /one of model \(whisper\.cpp\) and openrouter\.hear/);
   assert.throws(() => voiceConfig({model: 'm.bin', speak: 'piper', openrouter: {...key, speak: {model: 'x', voice: 'v'}}}), /one of speak/);
   assert.throws(() => voiceConfig({model: 'm.bin', openrouter: {...key, speak: {model: 'x'}}}), /speak\.voice is missing/);
-  assert.throws(() => voiceConfig({model: 'm.bin', openrouter: {...key, speak: {model: 'x', voice: 'v', format: 'ogg'}}}), /mp3/);
+  assert.throws(() => voiceConfig({model: 'm.bin', openrouter: {...key, speak: {model: 'x', voice: 'v', format: 'wav'}}}), /format is not taken: Pair asks OpenRouter for MP3/);
   assert.throws(() => voiceConfig({model: 'm.bin', openrouter: {...key, hear: 'm', timeoutMs: 0}}), /timeoutMs/);
   const config = parseConfig({
     models: {watcher: {api: 'openai', baseUrl: 'http://unused', model: 'w'}, partner: {api: 'openai', baseUrl: 'http://unused', model: 'p'}},
@@ -496,7 +496,7 @@ test('the listener reports what failed in the chat: hearing, and reading the ans
   assert.deepEqual(messages.at(-1), ['system', 'Pair could not read its answer aloud: OpenRouter answered 402 (the account is out of credits).']);
 });
 
-test('voice going off while OpenRouter hears: the request stops, and nothing is shown or asked', async () => {
+test('voice going off while OpenRouter hears: the request stops, the editor is told to ask again, and nothing is asked', async () => {
   const session = {state: initialState({}), message: () => assert.fail('nothing to report')};
   const sent = [];
   const asked = [];
@@ -518,7 +518,10 @@ test('voice going off while OpenRouter hears: the request stops, and nothing is 
   listening.close(); // the config's voice changed
   await stopping;
   assert.equal(signal.aborted, true);
-  assert.deepEqual(sent.filter(message => message.type === 'heard'), [{type: 'heard', state: 'hearing'}]);
+  assert.deepEqual(sent.filter(message => message.type === 'heard'), [
+    {type: 'heard', state: 'hearing'},
+    {type: 'heard', error: 'voice was turned off or changed while Pair was hearing you: ask again'}, // the spinner stops
+  ]);
   assert.deepEqual(asked, []);
 });
 

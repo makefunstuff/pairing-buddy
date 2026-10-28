@@ -19,7 +19,7 @@ Run once after installing, and again after an upgrade or a Node.js upgrade:
 
 1. writes a commented config to `~/.config/pairing-buddy/config.json` if there is none;
 2. in a terminal, offers a login to a model provider (Enter skips it);
-3. stores the environment variables your model entries name in `apiKeyEnv` in `service.env`, for the service;
+3. stores the environment variables your model entries (and `voice.openrouter`) name in `apiKeyEnv` in `service.env`, for the service;
 4. installs and starts the daemon as a service that starts at login: a systemd user service,
    `pairing-buddy.service`, on Linux, a launchd agent, `io.github.makefunstuff.pairing-buddy`, on macOS;
 5. prints the next steps.

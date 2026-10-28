@@ -4,6 +4,7 @@
 import {mkdirSync} from 'node:fs';
 import {recorderOf, Recording, speak, speakable, speaks, transcribe, whisperPrompt} from './voice.mjs';
 
+const STOPPED = 'voice was turned off or changed while Pair was hearing you: ask again';
 const sentence = text => `${text.replace(/[.\s]+$/, '')}.`;
 
 export class Listener {
@@ -64,10 +65,10 @@ export class Listener {
       this.hearing = hearing;
       text = await this.transcribeWith(this.voice, pcm, {dir: this.dir, prompt: whisperPrompt(this.session.state), signal: hearing.signal})
         .finally(() => { if (this.hearing === hearing) this.hearing = null; });
-      if (hearing.signal.aborted) return; // voice went off meanwhile
+      if (hearing.signal.aborted) return send({type: 'heard', error: STOPPED}); // voice went off or changed meanwhile
       this.log(`heard ${(recording.ms / 1000).toFixed(1)} s of speech in ${Date.now() - started} ms`);
     } catch (error) {
-      if (hearing.signal.aborted) return;
+      if (hearing.signal.aborted) return send({type: 'heard', error: STOPPED});
       this.log(`listening failed: ${error.message}`);
       this.session.message('system', `Pair could not hear you: ${sentence(error.message)}`);
       return send({type: 'heard', error: error.message});
