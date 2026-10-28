@@ -87,6 +87,14 @@
   //   "whisper": "whisper-cli",            // the program, on PATH or a path
   //   "speak": "espeak-ng"                 // reads an answer aloud, only when you are away from the editor
   // },
+  // Or through OpenRouter, without whisper.cpp: a transcription model hears, a speech model reads aloud.
+  // "voice": {
+  //   "openrouter": {
+  //     "apiKeyFile": "~/.config/openrouter.key",
+  //     "hear": "openai/whisper-large-v3-turbo",
+  //     "speak": {"model": "x-ai/grok-voice-tts-1.0", "voice": "eve"}
+  //   }
+  // },
 
   // Also: "typingPauseMs" (default 2000), "socket" and "dataDir" (see docs/config.md).
 }

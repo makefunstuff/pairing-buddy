@@ -19,7 +19,7 @@ import {sandboxWorks} from './sandbox.mjs';
 import {keyVariables, readServiceEnv} from './service-env.mjs';
 import {serviceManager} from './service.mjs';
 import {VERSION} from './version.mjs';
-import {RATE, recorderOf, transcribe} from './voice.mjs';
+import {openrouterRequest, playerOf, RATE, recorderOf, transcribe} from './voice.mjs';
 
 const WATCHER_MS = SLOW_MS; // the Watcher scores every candidate remark: about a second is the aim, and over this Pair asks about less
 const PARTNER_MS = 20_000;
@@ -177,28 +177,79 @@ export function keysCheck(names, env, path) {
 }
 
 /**
- * Push-to-talk: a recorder, the whisper.cpp model, and how long whisper takes for a second of audio on the CPU; and the
- * speech command, if one is set.
+ * Push-to-talk: a recorder; the whisper.cpp model and how long whisper takes for a second of audio on the CPU, or
+ * OpenRouter's key and transcription model; and the speech command or OpenRouter's voice and a player, if one is set.
+ * Nothing is recorded, and no audio goes to OpenRouter: it is asked about the key and its models only.
  */
 export async function voiceCheck(voice, found = name => onPath(name, process.env)) {
   if (!voice) return ok('voice', 'off: to speak to Pair, set "voice" in the config (see docs/voice.md)');
   const recorder = recorderOf(voice, found);
   if (!recorder) return fail('voice', 'no recorder found: install pw-record (pipewire), parec (pulseaudio-utils) or arecord (alsa-utils), or set voice.record');
-  if (!existsSync(voice.model)) return fail('voice', `no whisper.cpp model at ${tilde(voice.model)}: see docs/voice.md`);
-  const speech = voice.speak?.trim().split(/\s+/)[0];
-  if (speech && !found(speech)) return warn('voice', `the speech command \`${speech}\` is not on PATH: answers are not read aloud when you are away`);
-  const dir = mkdtempSync(join(tmpdir(), 'pair-doctor-voice-'));
-  const started = Date.now();
-  try {
-    await transcribe(voice, Buffer.alloc(RATE * 2), {dir});
-  } catch (error) {
-    return fail('voice', `whisper.cpp fails: ${error.message}`);
-  } finally {
-    rmSync(dir, {recursive: true, force: true});
-  }
+  const {openrouter} = voice;
   const records = voice.record ? 'your record command' : recorder[0];
-  const speaks = speech ? `, and \`${speech}\` reads answers aloud when you are away` : '';
-  return ok('voice', `${records} records, whisper.cpp hears a second in ${seconds(Date.now() - started)} on the CPU${speaks}`);
+  if (openrouter) {
+    const problem = await openrouterProblem(openrouter);
+    if (problem) return problem;
+  }
+  let hears;
+  if (openrouter?.hear) hears = `OpenRouter's ${openrouter.hear} hears`;
+  else {
+    if (!existsSync(voice.model)) return fail('voice', `no whisper.cpp model at ${tilde(voice.model)}: see docs/voice.md`);
+    const dir = mkdtempSync(join(tmpdir(), 'pair-doctor-voice-'));
+    const started = Date.now();
+    try {
+      await transcribe(voice, Buffer.alloc(RATE * 2), {dir});
+    } catch (error) {
+      return fail('voice', `whisper.cpp fails: ${error.message}`);
+    } finally {
+      rmSync(dir, {recursive: true, force: true});
+    }
+    hears = `whisper.cpp hears a second in ${seconds(Date.now() - started)} on the CPU`;
+  }
+  let reads = '';
+  if (openrouter?.speak) {
+    const player = playerOf(voice, found);
+    const {model, voice: name} = openrouter.speak;
+    if (!player) return warn('voice', `${records} records and ${hears}, but no player is found for OpenRouter's voice: install mpv or ffmpeg (ffplay), or set voice.play; answers are not read aloud when you are away`);
+    if (voice.play && !found(voice.play.trim().split(/\s+/)[0])) return warn('voice', `the player \`${voice.play.trim().split(/\s+/)[0]}\` is not on PATH: answers are not read aloud when you are away`);
+    reads = `, and OpenRouter's ${model} (${name}) reads answers aloud through ${voice.play ? 'your play command' : player[0]} when you are away`;
+  } else {
+    const speech = voice.speak?.trim().split(/\s+/)[0];
+    if (speech && !found(speech)) return warn('voice', `the speech command \`${speech}\` is not on PATH: answers are not read aloud when you are away`);
+    if (speech) reads = `, and \`${speech}\` reads answers aloud when you are away`;
+  }
+  return ok('voice', `${records} records, ${hears}${reads}`);
+}
+
+const DOCTOR_OPENROUTER_MS = 10_000;
+
+/**
+ * What is wrong with voice's OpenRouter, as a check, or null: the key is missing or refused, or a model is not one of
+ * its transcription or speech models. A catalog that cannot be read is only a warning.
+ */
+async function openrouterProblem(openrouter) {
+  const timeoutMs = Math.min(openrouter.timeoutMs, DOCTOR_OPENROUTER_MS);
+  try {
+    await openrouterRequest(openrouter, '/key', null, {timeoutMs});
+  } catch (error) {
+    return fail('voice', `OpenRouter: ${error.message}`);
+  }
+  const wanted = [
+    openrouter.hear && {id: openrouter.hear, modality: 'transcription', field: 'hear'},
+    openrouter.speak && {id: openrouter.speak.model, modality: 'speech', field: 'speak.model'},
+  ].filter(Boolean);
+  for (const {id, modality, field} of wanted) {
+    let models;
+    try {
+      models = (await openrouterRequest(openrouter, `/models?output_modalities=${modality}`, null, {timeoutMs})).data ?? [];
+    } catch (error) {
+      return warn('voice', `OpenRouter's ${modality} models could not be listed, so ${id} is not checked: ${error.message}`);
+    }
+    if (!models.some(model => model.id === id)) {
+      return fail('voice', `voice.openrouter.${field}: ${id} is not one of OpenRouter's ${modality} models; see https://openrouter.ai/models?output_modalities=${modality}`);
+    }
+  }
+  return null;
 }
 
 /** How Pair's pane runs its commands: with the user's rc file or not, in the sandbox or not. */

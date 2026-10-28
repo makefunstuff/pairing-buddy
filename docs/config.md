@@ -35,7 +35,7 @@ why while the daemon keeps the config it runs. Run `pair doctor` after a change 
 | `testOnSave` | none | A test command per project folder, run when you save ([below](#testonsave), [tests-on-save.md](tests-on-save.md)) |
 | `sessionRoots` | `[]` | Folders that are projects of their own, for a monorepo ([session roots](#session-roots)) |
 | `agents` | `true` | The relay of your other agents' news, from herdr and the `board`: `false` turns it off ([agents.md](agents.md#configure)) |
-| `voice` | off | Push-to-talk with whisper.cpp ([below](#voice), [voice.md](voice.md)) |
+| `voice` | off | Push-to-talk with whisper.cpp or OpenRouter ([below](#voice), [voice.md](voice.md)) |
 | `scoutPane` | see [below](#scoutpane) | Pair's own pane: your rc file and the sandbox ([scout.md](scout.md#pairs-pane)) |
 | `taskCommand` | none | What `:Pair tasks` runs for each task you say yes to, as a list of words with `{title}` and `{description}`, never through a shell, for example `["gh", "issue", "create", "--title", "{title}", "--body", "{description}"]`. Without it, the tasks are copied as a checklist ([notes.md](notes.md#tasks-only-when-you-ask)) |
 | `board` | `"herdr-projects"` | The herdr work board's command: the goal and the [context card](neovim.md#what-it-knows-the-context-card) read the board task of your branch. `null` turns it off |
@@ -117,13 +117,27 @@ Off until set. Set up in [voice.md](voice.md#setup).
 
 | Field | Default | Meaning |
 | --- | --- | --- |
-| `model` | (needed) | The whisper.cpp model file, like `ggml-base.en.bin` |
+| `model` | (needed, unless `openrouter.hear` is set) | The whisper.cpp model file, like `ggml-base.en.bin` |
 | `whisper` | `"whisper-cli"` | The whisper.cpp program, on `PATH` or a path |
 | `threads` | `4` | CPU threads whisper uses |
 | `language` | `"en"` | What you speak (`auto` with a multilingual model) |
 | `record` | the first recorder found | A shell command that writes raw 16-bit little-endian mono at 16 kHz to stdout |
-| `speak` | none | A shell command that reads the answer from stdin and says it; without one nothing is read aloud |
+| `speak` | none | A shell command that reads the answer from stdin and says it; without one (or `openrouter.speak`) nothing is read aloud |
+| `play` | `mpv`, else `ffplay` | A shell command that plays OpenRouter's audio from stdin |
 | `maxSeconds` | `60` | The longest recording |
+| `openrouter` | none | Hearing and reading aloud through OpenRouter, below |
+
+`voice.openrouter` ([voice.md](voice.md#openrouter)):
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `apiKeyFile`, `apiKeyEnv`, `auth`, `apiKey` | (one needed) | The OpenRouter key, as in a model entry |
+| `hear` | none | A transcription model, like `"openai/whisper-large-v3-turbo"`: it hears instead of whisper.cpp (then `model` is not taken) |
+| `speak` | none | `{"model": ..., "voice": ...}`, a speech model and one of its voices, with optional `"format"` (`"mp3"`, the default, or `"wav"`) and `"speed"`: it reads answers aloud instead of a `speak` command (then `speak` is not taken) |
+| `timeoutMs` | `30000` | How long Pair waits for OpenRouter before it says so |
+| `baseUrl` | `"https://openrouter.ai/api/v1"` | Where the API is |
+
+At least one of `hear` and `speak` is needed.
 
 ## Session roots
 
