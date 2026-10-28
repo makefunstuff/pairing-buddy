@@ -32,7 +32,7 @@ import {parseTestOutput, testSummary} from './test-output.mjs';
 import {TestRuns, treeOf} from './test-runs.mjs';
 import {named} from './terminals.mjs';
 import {currentTrail, trailMatches, trailSummary} from './trail.mjs';
-import {detectTriggers} from './triggers.mjs';
+import {detectTriggers, TRIGGER_KINDS} from './triggers.mjs';
 import {IGNORED_AFTER_MS, keptShares, outcome, tuning, WINDOW_MS} from './tuning.mjs';
 import {prepareUnsaved, withTree} from './unsaved.mjs';
 import {KEEP, splitTeaching, teachInput} from './tone.mjs';
@@ -125,6 +125,30 @@ const KEEP_NOTE = 'Pair keeps the wheel for each request until you take it back:
 const MAX_EDITS = 5; // per hand-over: a change in a few places, still small enough to watch, and each one undo step
 
 const CONFIRM_MS = 60_000;
+const UNDO_LOOKBACK_MS = 24 * 60 * 60_000; // /undo finds Pair's last change of the last day
+
+/**
+ * What a tool call of the Partner's is about, for the chat pane's status row and its tool lines: the file and lines
+ * it reads, the command it runs, the words it searches for. Null for `say`, whose words are the message itself.
+ */
+export function toolWhat(name, args = {}) {
+  const at = args.file ? `${args.file}${args.line ? `:${args.line}` : ''}` : '';
+  switch (name) {
+    case 'read': return `${args.file ?? ''}${args.from ? ` ${args.from}-${args.to ?? ''}` : ''}`.trim();
+    case 'search': return `"${args.pattern ?? ''}"${args.path && args.path !== '.' ? ` in ${args.path}` : ''}`;
+    case 'run': return args.command ?? '';
+    case 'recall': return args.query ?? '';
+    case 'type': return args.text ?? '';
+    case 'say': return null;
+    default: return at || name;
+  }
+}
+
+/** Whether streamed text `text` may show yet: not while it could still be the start of SILENT, and never SILENT. */
+export function streamable(text) {
+  const start = text.trimStart();
+  return start.length > 0 && !'SILENT'.startsWith(start.toUpperCase()) && !/^SILENT\b/i.test(start) && !/<tool_call>/.test(text);
+}
 const REMARKS_LISTED = 9; // /remarks lists this many, so +N and -N take one digit
 const PANE_USES_PER_TURN = 4; // small steps: a few searches or commands per question, not a long plan
 const SEARCH_LINES = 50;
@@ -326,6 +350,13 @@ export class PairSession {
     this.pickedUp = false; // the morning pick-up ran, or this session carries straight on from the last
     this.firstStep = null; // the user's own first step for next time (/first), for this session's debrief
     this.blankPage = null; // the questions of :Pair new and their slice (see blank-page.mjs)
+    // For the chat pane: what Pair does now (see activity), and how many moments the Watcher looked at this session.
+    this.activityNow = {type: 'activity', state: 'idle', since: this.now()};
+    this.presence = {type: 'presence', looked: 0, spoke: 0, lastAt: null};
+    this.muted = new Set(); // the kinds of remark the user muted for this session (/mute)
+    this.remarkTrigger = null; // the trigger kind of the running unasked turn
+    this.lastRemarkTrigger = null; // the trigger kind of the last remark the user saw: what /mute alone mutes
+    this.cancelled = false; // the user stopped the running answer (/cancel, Esc in the chat)
   }
 
   /**
@@ -566,7 +597,7 @@ export class PairSession {
     if (this.ticking || this.role === 'driver' || !this.health.ok()) return;
     const now = this.now();
     // While :Pair new asks its questions, the note they are in is no place for remarks.
-    const triggers = detectTriggers(this.state, now, this.fired).filter(trigger => !this.blankPage?.covers(trigger));
+    const triggers = detectTriggers(this.state, now, this.fired).filter(trigger => !this.blankPage?.covers(trigger) && !this.muted.has(trigger.kind));
     this.waits = new Map([...this.waits].filter(([key]) => triggers.some(trigger => trigger.key === key)));
     // While the Partner is at work, what comes up waits for the model; how long goes with the remark it becomes.
     if (this.busy) return triggers.forEach(trigger => this.waitFor(trigger, now));
@@ -585,7 +616,9 @@ export class PairSession {
           trigger, state: this.state, now, budget: this.budget, score: (judged, state) => this.scoreWithGist(judged, state), typingPauseMs: this.typingPauseMs,
           pace: this.pace, decider: this.decider(now),
         });
-        if (!this.repeats(trigger, decision)) this.log(`${trigger.kind}: ${decision.verdict} (${decision.reason})`);
+        const repeated = this.repeats(trigger, decision);
+        if (!repeated) this.log(`${trigger.kind}: ${decision.verdict} (${decision.reason})`);
+        if (!repeated && decision.verdict !== 'wait') this.looked(now);
         const logged = this.logDecision(trigger, decision, now);
         if (decision.held) this.waitFor(trigger, now);
         else this.waited(trigger, now);
@@ -602,6 +635,31 @@ export class PairSession {
     } finally {
       this.ticking = false;
     }
+  }
+
+  /** The Watcher looked at one more moment: the chat pane's quiet sign that Pair is there. */
+  looked(now) {
+    this.presence = {...this.presence, looked: this.presence.looked + 1, lastAt: now};
+    this.notify('chat', this.presence);
+  }
+
+  /**
+   * Tells the chat pane what Pair does now: `idle`, `thinking` (on a question), `remark` (looking at a moment of its
+   * own accord, `what` its kind), `tool` (`tool` and `what`, see toolWhat) or `waiting` (for the user's y/N).
+   */
+  activity(state, extra = {}) {
+    this.activityNow = {type: 'activity', state, ...extra, since: this.now()};
+    this.notify('chat', this.activityNow);
+  }
+
+  /** The state of a turn at work, between its tool calls. */
+  working() {
+    this.activity(this.unasked ? 'remark' : 'thinking', this.unasked ? {what: this.remarkTrigger} : {});
+  }
+
+  /** What the chat pane shows a message of the running turn with: the remark it belongs to. */
+  metaNow() {
+    return this.unasked && this.remarkId ? {remark: this.remarkId, trigger: this.remarkTrigger} : {};
   }
 
   /**
@@ -720,6 +778,7 @@ export class PairSession {
     this.holding = urgent(trigger.kind) ? null : [];
     const since = this.now(); // a breakpoint from here on is the one it waits for
     const id = this.remarkId = this.store.addRemark({sessionId: this.id, trigger: trigger.kind, score, at: this.now(), waitedMs});
+    this.remarkTrigger = trigger.kind;
     if (decisionId) this.store.linkDecision(decisionId, id);
     try {
       // The trail's queries, searched in the project: which of the user's words the code has, and where.
@@ -737,7 +796,10 @@ export class PairSession {
         this.budget.spend(this.now());
         this.lastRemark = id;
         this.store.showRemark(id);
-        this.notify('chat', {type: 'remark', id});
+        this.lastRemarkTrigger = trigger.kind;
+        this.presence = {...this.presence, spoke: this.presence.spoke + 1};
+        this.notify('chat', {type: 'remark', id, trigger: trigger.kind, place: target ? {file: relative(this.root, target.file), line: target.line} : null});
+        this.notify('chat', this.presence);
         this.notify('editor', {type: 'remark', id, text: words.join('\n'), target});
         this.earcon('tick');
       });
@@ -747,6 +809,7 @@ export class PairSession {
       this.asksBack = false;
       this.holding = null;
       this.remarkId = null;
+      this.remarkTrigger = null;
       this.remarking = null;
     }
   }
@@ -794,9 +857,12 @@ export class PairSession {
    * ({file, from, to}) is the lines they asked about. Resolves with what Pair said, '' when it only pointed or the
    * text became the goal.
    */
-  async ask(text, selection = null, {question = false} = {}) {
+  async ask(text, selection = null, {question = false, about = null} = {}) {
     if (this.role === 'driver' && this.keepWheel && !this.busy) return this.drive(text, selection);
-    this.message('user', selection ? `${text} (${relative(this.root, selection.file)}:${selection.from}-${selection.to})` : text);
+    // A follow-up on one of Pair's remarks (the chat's `f`): its words go with the question.
+    const remark = about ? this.store.remark(about) : null;
+    if (remark) this.seen(remark.id);
+    this.message('user', selection ? `${text} (${relative(this.root, selection.file)}:${selection.from}-${selection.to})` : text, remark ? {about: remark.id} : null);
     this.usedAt = this.now();
     this.worked = true;
     // Typed in the chat, which asked for the goal, the first words are the goal. A `question` (:Pair ask, or asked
@@ -811,7 +877,10 @@ export class PairSession {
       return '';
     }
     await this.yieldRemark();
-    await this.talk(`[user] ${text}${await this.selected(selection)}${this.recalled(text)}\n\nNow:\n${describeState(this.state, this.now())}\n\n${KEEP.answer}`);
+    const earlier = remark ? `\n\nThis is about your remark (${remark.trigger}): "${remark.text ?? '(its words were not kept)'}"` : '';
+    await this.talk(`[user] ${text}${earlier}${await this.selected(selection)}${this.recalled(text)}\n\nNow:\n${describeState(this.state, this.now())}\n\n${KEEP.answer}`);
+    // An answer that is no answer still answers: the chat says so, rather than leaving the question hanging.
+    if (!this.words.length && !this.target && !this.cancelled && !this.failed) this.message('system', 'Pair had nothing to add to that.');
     return this.words.join('\n');
   }
 
@@ -861,20 +930,33 @@ export class PairSession {
    * it for silence. While one of its tools runs (it types an edit, reads, runs a command) it says what that does.
    * `answering` resolves with the answer, as the Partner's ask does: by default, it asks.
    */
-  async talk(input, options = {}, answering = () => this.partner.ask(this.conversationId, input, options)) {
+  async talk(input, options = {}, answering = null) {
     this.busy = true;
     this.spoke = false;
     this.said = false;
+    this.failed = false;
+    this.cancelled = false;
     this.paneUses = 0;
     this.words = [];
     this.target = null;
     this.thinks = this.partner.thinkingOf(this.conversationId, options.kind) !== 'off';
     this.showThinking(true);
+    this.working();
+    const started = this.now();
+    const asked = !this.unasked;
+    let usage = null;
+    // The chat pane shows an answer to the user as it streams; a remark nobody asked for shows only once it is done.
+    const onEvent = event => {
+      if (event.type === 'usage') usage = event;
+      else if (asked && !this.blankPage?.consulting && (event.text === '' || streamable(event.text))) this.notify('chat', {type: 'partial', text: event.text});
+    };
+    const ask = answering ?? (() => this.partner.ask(this.conversationId, input, {...options, onEvent}));
     try {
-      const answer = this.voiced(await answering());
+      const answer = this.voiced(await ask());
       // After a say, local models tend to end with filler or a repeat; the say already was the answer.
       if (answer && !silent(answer) && !this.said) {
-        this.show(() => this.message('pair', answer));
+        const meta = this.metaNow();
+        this.show(() => this.message('pair', answer, meta));
         this.words.push(answer);
         this.spoke = true;
       }
@@ -883,13 +965,19 @@ export class PairSession {
         this.bookWords();
       }
     } catch (error) {
+      this.failed = true;
       // A remark nobody asked for fails quietly: the statusline already says that the model is down.
       if (this.unasked) this.log(`remark failed: ${error.message}`);
-      else this.message('system', `Pair could not answer: ${error.message}`);
+      else this.message('system', `Pair could not answer: ${error.message}. \`pair doctor\` checks the models.`, {error: true});
     } finally {
       this.busy = false;
       this.showThinking(false);
       this.thinks = false;
+      this.notify('chat', {
+        type: 'turn', asked, ms: this.now() - started, model: this.partner.modelName?.() ?? null,
+        tokens: usage?.tokens || null, cost: usage?.cost || null, cancelled: this.cancelled,
+      });
+      this.activity('idle');
     }
     return this.spoke;
   }
@@ -908,10 +996,19 @@ export class PairSession {
   /** Carries out one of the Partner's tools: the model waits for it meanwhile, and is not thinking. */
   async useTool(name, args) {
     this.showThinking(false);
+    // The chat pane shows what the tool does: in its status row, and for a question asked, as a line in the answer.
+    const what = toolWhat(name, args);
+    if (what !== null) {
+      this.activity('tool', {tool: name, what});
+      if (!this.unasked) this.notify('chat', {type: 'tool', tool: name, what, at: this.now()});
+    }
     try {
       return await this[name](args);
     } finally {
-      if (this.busy) this.showThinking(true);
+      if (this.busy) {
+        this.showThinking(true);
+        this.working();
+      }
     }
   }
 
@@ -920,6 +1017,7 @@ export class PairSession {
     this.store.setGoal(this.id, goal);
     this.receive({kind: 'goal', text: goal});
     this.goalFrom = from;
+    this.notify('chat', {type: 'goal', goal}); // the chat pane's header
     if (!from) this.message('system', `Goal: ${goal}`);
   }
 
@@ -1095,6 +1193,7 @@ export class PairSession {
   confirm(text, choices = []) {
     const id = ++this.lastConfirmation;
     if (!this.notify('chat', {type: 'confirm', id, text})) return Promise.resolve(false);
+    this.activity('waiting', {what: text});
     return new Promise(resolve => {
       const timer = setTimeout(() => this.answer(id, false, 'No answer, so no.'), CONFIRM_MS);
       this.confirmations.set(id, {choices, resolve: ok => { clearTimeout(timer); resolve(ok); }});
@@ -1115,6 +1214,7 @@ export class PairSession {
     this.confirmations.delete(id);
     const choice = !ok && waiting.choices.find(name => name.toLowerCase() === text.trim().toLowerCase());
     this.notify('chat', {type: 'confirmed', id});
+    if (this.busy) this.working();
     this.message('system', choice ? `Allowed, in ${choice}.` : note);
     waiting.resolve(choice || ok);
   }
@@ -1268,6 +1368,7 @@ export class PairSession {
     const action = this.store.action(id);
     if (action?.root !== this.root || action.kind !== 'suggested' || !Array.isArray(before) || !Array.isArray(after)) return;
     this.ledger.update(id, {state: 'applied', data: {undo: true}, detail: {patch: {file: action.data.place.file, before, after}}});
+    this.notify('chat', {type: 'applied', action: id});
   }
 
   greet() {
@@ -1278,10 +1379,54 @@ export class PairSession {
     else this.message('system', 'What are we doing this session? Type the goal here, or "later".');
   }
 
-  message(sender, text) {
+  /**
+   * One message in the chat, stored for its history. `meta` is what the chat pane shows it with: the `remark` and its
+   * `trigger`, the `place` it points at, the `suggestion` ({action, old, new}) it is, the remark it is `about`, an `error`.
+   */
+  message(sender, text, meta = null) {
     const at = this.now();
-    this.store.addMessage(this.id, sender, text, at);
-    this.notify('chat', {type: 'message', sender, text, at});
+    const kept = meta && Object.keys(meta).length ? meta : null;
+    this.store.addMessage(this.id, sender, text, at, kept);
+    this.notify('chat', {type: 'message', sender, text, at, ...(kept ? {meta: kept} : {})});
+  }
+
+  /**
+   * The user stops the running answer (/cancel, Esc in the chat): a question's turn is cancelled, a remark gives way,
+   * and while Pair drives, the wheel comes back.
+   */
+  async stop() {
+    if (this.role === 'driver' && this.busy) return this.takeBack();
+    if (!this.busy) return this.message('system', 'Pair is not answering anything now.');
+    if (this.unasked) return this.yieldRemark();
+    this.cancelled = true;
+    await (this.partner.stop ?? this.partner.cancel)(this.conversationId);
+    this.message('system', 'Stopped. Ask again, or ask something else.');
+  }
+
+  /** Pair says nothing about remarks of `kind` (by default the last remark's) for the rest of this session. */
+  mute(kind = null) {
+    const which = kind || this.lastRemarkTrigger || (this.lastRemark && this.store.remark(this.lastRemark)?.trigger);
+    if (!which) return this.message('system', `Pair has made no remark to mute yet. /mute <kind> takes one of: ${TRIGGER_KINDS.join(', ')}.`);
+    if (!TRIGGER_KINDS.includes(which)) return this.message('system', `There is no remark kind ${which}. One of: ${TRIGGER_KINDS.join(', ')}.`);
+    this.muted.add(which);
+    this.notify('chat', {type: 'muted', kinds: [...this.muted]});
+    this.message('system', `Muted ${which}: Pair says nothing about it for the rest of this session. /unmute brings it back.`);
+  }
+
+  /** Pair may speak about `kind` again; without a kind, about every kind muted. */
+  unmute(kind = null) {
+    const kinds = kind ? [kind] : [...this.muted];
+    if (!kinds.some(which => this.muted.has(which))) return this.message('system', kind ? `${kind} is not muted.` : 'Nothing is muted.');
+    for (const which of kinds) this.muted.delete(which);
+    this.notify('chat', {type: 'muted', kinds: [...this.muted]});
+    this.message('system', `Pair may speak about ${kinds.join(', ')} again.`);
+  }
+
+  /** Undoes Pair's last change that can be undone (/undo): an edit of the Driver's or a suggestion you took. */
+  async undoLast() {
+    const last = this.store.actions(this.root, this.now() - UNDO_LOOKBACK_MS).filter(action => action.data?.undo && action.state !== 'undone').at(-1);
+    if (!last) return this.message('system', 'Pair has changed nothing today that can be undone.');
+    await this.undo(last.id);
   }
 
   // The Partner's tools (see tools.mjs). Each returns what the model is told.
@@ -1312,7 +1457,8 @@ export class PairSession {
     this.spoke = true;
     this.said = true;
     this.words.push(text);
-    this.show(() => this.message('pair', text));
+    const meta = this.metaNow();
+    this.show(() => this.message('pair', text, meta));
     return 'shown';
   }
 
@@ -1338,9 +1484,10 @@ export class PairSession {
     this.spoke = true;
     if (!this.target?.suggestion) this.target = {file: path, line, endLine, note, code};
     this.ledger.add('pointed', `${relative(this.root, path)}:${line}, ${note}`, {data: {place: {file: path, line}}});
+    const meta = {...this.metaNow(), place: {file: relative(this.root, path), line}};
     this.show(() => {
       this.notify('editor', {type: 'point', file: path, line, endLine, note, code});
-      this.message('pair', `${file}:${line} ${note}`);
+      this.message('pair', `${file}:${line} ${note}`, meta);
     });
     return 'highlighted';
   }
@@ -1363,7 +1510,8 @@ export class PairSession {
     const path = await projectFile(this.root, file);
     if (!path) return `No file ${file} in the project`;
     if (endLine < line) return `end_line ${endLine} is before line ${line}`;
-    const count = (await this.bufferText(path)).split('\n').length;
+    const lines = (await this.bufferText(path)).split('\n');
+    const count = lines.length;
     if (line > count) return `Line ${line} is past the end of ${file}, which has ${count} lines. Read it first.`;
     this.spoke = true;
     // The jump key goes to the turn's first suggestion before a point: that is where the one key that takes it works.
@@ -1372,9 +1520,12 @@ export class PairSession {
     if (first) this.target = {file: path, line, endLine, note, suggestion: true};
     const remark = this.remarkId; // now: a suggestion held for the user's pause is shown after the turn ended
     const action = this.ledger.add('suggested', `${relative(this.root, path)}:${line}, ${note}`, {data: {place: {file: path, line}, remark: remark ?? undefined}});
+    // The chat pane shows it as a diff, which `a` there takes, as the accept key does in Neovim.
+    const suggestion = {action, old: lines.slice(line - 1, endLine), new: text.split('\n')};
+    const meta = {...this.metaNow(), place: {file: relative(this.root, path), line}, suggestion};
     this.show(() => {
       this.notify('editor', {type: 'suggest', file: path, line, endLine, text, note, remark, action, aim: first});
-      this.message('pair', `${file}:${line}${endLine > line ? `-${endLine}` : ''} suggestion: ${note}\n${text}`);
+      this.message('pair', `${file}:${line}${endLine > line ? `-${endLine}` : ''} suggestion: ${note}\n${text}`, meta);
     });
     return 'Shown in the editor. The user accepts it with one key or ignores it.';
   }
