@@ -9,46 +9,66 @@ herdr, `pair` opens it on the right of the pane you run it in; without herdr, `:
 buffer on the right of Neovim, and `pair chat` runs it in any terminal. It is optional: a Neovim alone is a whole
 session.
 
-![The chat pane on the right of Neovim: a remark on save with its diff, a question, the status row while Pair reads, the answer streaming in, a remark picked, and the keys](images/chat.gif)
+![The chat pane on the right of Neovim: a remark on save with its diff, a question, the status while Pair reads, the answer streaming in, a remark picked, and the keys](images/chat.gif)
 
 ## What you see
 
-From the top:
+Four rows of chrome, two of them rules with words in them; the rest is the conversation. From the top:
 
-- **The header**: the project, the session's goal, and on the right Pair's [role](roles.md) and its
-  [talk level](watcher.md) (`quiet`, `normal`, `chatty`), and how many kinds of remark you muted.
+- **The header, in the top rule**: `── pair · hookd · the session's goal ──── navigator · normal ──`. The project, the
+  goal, and on the right Pair's [role](roles.md) and its [talk level](watcher.md) (`quiet`, `normal`, `chatty`), and
+  how many kinds of remark you muted. When the pane is narrow the goal is cut first, then the level and the role
+  give way.
 - **The conversation**, newest at the bottom. Each message has a gutter with its time and who speaks:
 
   | Gutter | Who |
   | --- | --- |
   | `you` | What you sent, on screen as soon as you press Enter |
-  | `pair` | Pair's answer to a question; a `✎ suggested change` shows as a diff |
+  | `pair` | Pair's answer to a question; a `✎ suggested change` shows as a diff. Also what Pair asks you: the session's goal, its greeting with last time's note, and whether it may run or type a command |
   | `watch` | What Pair said unasked: the kind of moment and the file and line first, then its words |
   | `⎿` | What Pair's tools did for your question: the files it read, the commands it ran, what it searched |
-  | `··` | Notes: the goal, the tests on save, a verdict noted, the daemon going away |
+  | `··` | Notes: the tests on save, a verdict noted, a level changed |
   | `!!` | An error, such as a model that does not answer, with what to check |
-  | `?` | Pair asks before it runs or types a command: `y` allows it, `n` declines |
+
+  Before Pair runs or types a command it asks, as `pair`: the question in words, and the command under it behind a
+  bar, whole, to read and copy. `y` allows it, `n` or `Esc` declines, or type an answer (the name of another
+  terminal, where it offers one); the footer shows those keys, and the message says what you answered.
+
+  ```
+   21:19 pair  May I run this in my pane (go test runs code)?
+               │ go test ./internal/queue -run TestLease -count=1
+  ── ? waiting for your answer ──────────────────────── qwen3-coder-30b · 6.4s ──
+  y/N › or type an answer
+   y allow · n decline · Esc decline
+  ```
+
+  The goal you type, or the one Pair took from the board or the branch, is in the header; the conversation does not
+  say it again.
 
   Pair's words are Markdown: `code` shows in Pair's accent, **bold** as bold, _italics_ in italics, a link as its
   words with the address after them, lists with a hanging indent, headings, quotes, and code blocks behind a bar, not
   re-wrapped. A table shows as written. A message longer than 18 lines folds to its first 12.
-- **The status row**: what Pair does now. The answer streams into the conversation as the model writes it.
+- **The status, in the rule over what you type**: what Pair does now, as `── ▖ writing 6s ──── qwen3-coder-30b ──`.
+  It names no keys (those are in the footer), and its word is in body text, so it ranks above the footer. The answer
+  streams into the conversation as the model writes it.
 
   | Status | Means |
   | --- | --- |
   | `◇ watching · looked at 12 moments, spoke 2 · 3m ago` | Idle. The Watcher looked at 12 moments this session and Pair spoke at 2: most moments are not worth a word |
-  | `▖ thinking · 4s · Esc stops` | Pair works on your question |
+  | `▖ thinking 4s` | Pair works on your question; `Esc` stops it |
+  | `▖ writing 6s` | Its answer is arriving, word by word |
   | `▖ reading queue.go 1-40`, `running go test ./...` | One of its tools is at work, and on what |
-  | `looking at regression` (dim) | Pair looks at a moment of its own accord; it may say nothing |
-  | `? Pair waits for your answer` | It asked to run or type a command |
+  | `▖ looking at regression` | Pair looks at a moment of its own accord; it may say nothing |
+  | `? waiting for your answer` | It asked to run or type a command |
+  | `◆ Pair drives` | Pair has the wheel ([Driver](driver.md)) |
   | `⚠ the pair daemon went away · reconnecting` | The daemon restarted; the pane carries on when it is back |
 
   On the right: the Partner's model, how long its last answer took, and the tokens and cost of it when the provider
-  reports them; when you scrolled up, how many lines are below.
+  reports them; when you scrolled up, how many lines are below (and `End` in the footer goes back down).
 
-  ![Right after a question: the file Pair reads is a ⎿ line under it, and the status row says thinking and that Esc stops it](images/chat-working.png)
+  ![Right after a question: the file Pair reads is a ⎿ line under it, and the status in the rule says thinking](images/chat-working.png)
 - **What you type**, after `›`, and under it **the keys that work now**: they change when Pair works, asks, or you
-  pick a message.
+  pick a message. The footer holds keys only; a short note (copied, taken in Neovim) shows there for a moment.
 
 ![A remark on save: watch, regression, the file and line, the suggestion as a diff, and the keys to rate it](images/chat-remark.png)
 
@@ -126,7 +146,7 @@ The last remark you have not rated shows `+ useful · - noise` under it; typing 
 | `Ctrl-L` | Draw the pane again |
 | `Ctrl-C` | Stop the answer; else clear what you typed; twice on an empty line, close the pane |
 | `Ctrl-D` | Close the pane, on an empty line |
-| `y` `n` | While Pair asks: allow, decline |
+| `y` `n` | While Pair asks: allow, decline; `Esc` declines too |
 | `?` | The keys, on an empty line |
 
 Closing the pane leaves the session running; `pair` or `:Pair chat` opens it again, with the conversation so far.
@@ -142,15 +162,31 @@ picked message.
 
 The pane uses your terminal's own 16 colours, so it follows your theme, and Pair's accent: the colour Neovim derives
 from your colorscheme, in true colour, so that Pair reads the same in both. Until a Neovim with `termguicolors`
-connects, the accent is the terminal's cyan. `+` lines of a diff are green, `-` lines red, remarks yellow, errors
-red; there are no background fills. With `NO_COLOR` set it prints no colours.
+connects, the accent is the terminal's cyan. There are no background fills, gradients or glows. With `NO_COLOR` set
+it prints no colours.
+
+Each colour has one job, so that it still means something, and so that what you must read is never in the colours
+that light themes wash out:
+
+| Colour | Only for |
+| --- | --- |
+| Body text | Everything addressed to you: answers, questions, notes, the status word, the empty card, the help |
+| Pair's accent | Pair's name, `code` in its words, the prompt, the spinner, the bar of a picked message |
+| Yellow | The Watcher: the `watch` label and a remark's kind and place; the `?` of a question waiting for you; `y` and `n` (bold) in the footer while it waits |
+| Dim | Chrome: the rules, the times, what a key in the footer does, the `⎿` tool lines, a fold, a link's address |
+| Green, red | `+` and `-` lines of a diff; an error, in red |
+
+In light themes the dim and yellow of most palettes fall below 3 : 1 against the background (Solarized Light, Tokyo
+Night Day, xterm's default light), so no sentence is set in either: the y/N question is body text with its command
+behind a bar, and only the keys `y` and `n`, in bold, keep the yellow.
 
 ## The plain pane
 
 When the pane's input or output is no terminal (a pipe, a script), with `TERM=dumb`, or with `pair chat --plain`, it
 is the plain pane: lines as they come, a `navigator ›` prompt, one line per question, and `⎿` lines for the tools. It
 takes the same commands but `/search`, `/copy` and `/clear`, which say they work in the full-screen pane only;
-there `?` and Enter asks about what Pair said last, as `/why` does. Nothing above about keys, picking, the menu or the status row applies there.
+there `?` and Enter asks about what Pair said last, as `/why` does. Nothing above about keys, picking, the menu, the
+rules or the status applies there: Pair's question ends in `[y/N]`, and the goal is said in the conversation.
 
 ## Limits
 

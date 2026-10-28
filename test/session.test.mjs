@@ -585,7 +585,7 @@ test('the question names the terminal and the others; an answer naming another o
     return typing;
   };
   assert.match(await confirmed('NVIM:3'), /^Typed/);
-  assert.match(lastConfirm(sent).text, /into your terminal \(pane w1:p1\), without pressing Enter\. Allow\? \(y, or another terminal: nvim:3\)$/);
+  assert.match(lastConfirm(sent).text, /into your terminal \(pane w1:p1\), without pressing Enter\? \(y, or another terminal: nvim:3\)$/);
   assert.ok(sent.some(message => message.text === 'Allowed, in nvim:3.'));
   assert.match(await confirmed('nvim:9'), /did not allow/, 'a name the question did not list is a no');
   assert.match(await confirmed('y', true), /^Typed/);
@@ -599,7 +599,7 @@ test('two Neovims with a terminal in the same buffer: the question names them ap
   pair.receive({kind: 'terminal', pane: 'nvim:41:3'});
   const typing = pair.type({text: 'echo hi'});
   await new Promise(resolve => setImmediate(resolve));
-  assert.match(lastConfirm(sent).text, /\(pane nvim:41:3\), without pressing Enter\. Allow\? \(y, or another terminal: nvim:42:3, nvim:2\)$/);
+  assert.match(lastConfirm(sent).text, /\(pane nvim:41:3\), without pressing Enter\? \(y, or another terminal: nvim:42:3, nvim:2\)$/);
   pair.answer(lastConfirm(sent).id, false, undefined, 'nvim:3');
   assert.match(await typing, /did not allow/, 'the short name both share is no answer');
   const again = pair.type({text: 'echo hi'});

@@ -487,6 +487,8 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
         add({kind: 'note', text: remarkLines(message.remarks).join('\n')});
         break;
       case 'message': {
+        // The goal, said again: the header shows it.
+        if (message.meta?.goal === 'set') break;
         const entry = entryOf(message);
         if (message.sender === 'user' && !message.history) {
           // What you sent is on screen already: the daemon's copy takes its place, with the lines it is about.
@@ -766,6 +768,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
       }
     }
     if (name === 'escape') {
+      if (state.confirming !== null) return answer('n');
       if (busy() || state.activity.state === 'remark') return send({type: 'cancel'});
       if (state.about) state.about = null;
       return;
@@ -859,7 +862,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
     if (mouse === 'wheeldown') return scrollBy(-1, 3);
     // A click on a message selects it.
     const {transcript} = state.last;
-    const top = 2; // the header and its rule
+    const top = 1; // the header, in its rule
     const row = y - 1 - top;
     if (row < 0 || row >= transcript.height) return;
     const end = Math.max(0, transcript.total - state.scroll);
@@ -876,7 +879,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
     const open = menu();
     if (open) state.menuChosen = Math.min(state.menuChosen, open.items.length - 1);
     const lastYou = state.entries.findLastIndex(entry => entry.kind === 'you');
-    const goalAsked = !state.header.goal && state.entries.findLastIndex(entry => /^What are we doing this session\?/.test(entry.text ?? '')) > lastYou;
+    const goalAsked = !state.header.goal && state.entries.findLastIndex(entry => entry.meta?.goal === 'ask' || /^What are we doing this session\?/.test(entry.text ?? '')) > lastYou;
     const selectedEntry = state.entries[state.selected];
     return {
       header: state.header,
@@ -905,10 +908,11 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
       busy: busy(),
       editorEmpty: editor.empty,
       selectedEntry: selectedEntry && {...selectedEntry, folded: !selectedEntry.expanded && selectedEntry.kind !== 'tool' && state.last.transcript.ranges[state.selected] && (state.last.transcript.ranges[state.selected].end - state.last.transcript.ranges[state.selected].start) > 13},
-      showEmpty: !state.entries.some(entry => ['you', 'pair', 'watch', 'tool', 'confirm'].includes(entry.kind)),
-      placeholder: state.confirming !== null ? 'y allows it, n declines'
+      showEmpty: !state.entries.some(entry => ['you', 'pair', 'watch', 'tool', 'confirm'].includes(entry.kind) && !entry.meta?.greeting), // Pair's greeting goes with the card
+      writing: partialIndex() !== -1,
+      placeholder: state.confirming !== null ? 'or type an answer'
         : goalAsked ? 'the session\'s goal, or "later"'
-          : busy() ? 'Pair is answering · type ahead' : 'Ask Pair anything · / for commands',
+          : busy() ? 'type ahead' : 'Ask Pair anything · / for commands',
     };
   }
 
@@ -946,7 +950,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
     }
     state.total = frame.transcript.total;
     if (state.flash && state.flash.until > Date.now()) {
-      frame.lines[frame.lines.length - 1] = color ? `\x1b[33m ${state.flash.text}\x1b[0m` : ` ${state.flash.text}`;
+      frame.lines[frame.lines.length - 1] = ` ${state.flash.text}`; // body text: it speaks to you
     }
     state.last = frame;
     screen.draw(frame.lines, frame.cursor);

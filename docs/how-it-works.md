@@ -80,7 +80,7 @@ next pause. One that can wait (drift, a stall, an error in code you moved on fro
 a save, a run that ended, a stop out of Insert mode, or a quiet stretch. Meanwhile a `•` in Neovim's margin marks it,
 and `Alt-j` shows it early. Details in [watcher.md](watcher.md).
 
-Most of this is quiet on purpose, but none of it is hidden: the [chat pane](chat.md)'s status row says how many
+Most of this is quiet on purpose, but none of it is hidden: the [chat pane](chat.md)'s status, in the rule over the input, says how many
 moments the Watcher looked at and how many Pair spoke about, and while the Partner works, what it does (thinking, the
 file it reads, the command it runs), with its answer streaming in under your question.
 

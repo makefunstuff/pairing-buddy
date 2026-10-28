@@ -51,11 +51,12 @@ The next session in the same project (the same git root, or [session root](confi
 - The chat shows it before the new goal (or before asking for one), unless the last session ended less than 30 minutes ago and its debrief is still on screen:
 
   ```
-  ·· Last time:
-  Goal: reconnect drops after the phone sleeps.
-  Changed: RECONNECT_TIMEOUT_MS in src/ws.ts is now 30000.
-  Loose end: try it on a real phone.
-  ·· What are we doing this session? Type the goal here, or "later".
+  pair  Last time:
+        Goal: reconnect drops after the phone sleeps.
+        Changed: RECONNECT_TIMEOUT_MS in src/ws.ts is now 30000.
+        Loose end: try it on a real phone.
+
+  pair  What are we doing this session? Type the goal here, or "later".
   ```
 
 - The Partner's instructions carry it, with the advice to use it when you ask about the last session or its loose ends, and not to bring it up otherwise. "What did we leave open last time?" gets an answer from it; a remark nobody asked for is not made because of it.
