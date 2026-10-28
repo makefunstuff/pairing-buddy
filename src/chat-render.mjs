@@ -2,7 +2,7 @@
 // which role and at which level), the conversation, the status in the rule under it (what Pair does now), what you
 // type, and a line of the keys that work now: four rows of chrome. Each message has a 7-column gutter with who speaks:
 // you, pair (answers, and the questions Pair asks you), watch (what Pair said unasked), ·· (notes of the pane and the
-// daemon), ! (errors); what Pair's tools did is a ⎿ line under the question. The time is a divider, ── 21:19 ──, at
+// daemon), ! (errors); what Pair's tools did is a └ line under the question. The time is a divider, ── 21:19 ──, at
 // the start and after a pause; in a wide pane the words end by column 80, and an answer's time, duration and tokens
 // sit in the margin to its right. Pair's words are Markdown: code blocks, `code`, **bold**, lists and headings show
 // as such, a suggestion as a diff. Code wraps between its tokens, never inside a name or a flag.
@@ -24,7 +24,7 @@ const FOLD_OVER = 18; // a longer message folds to its start…
 const FOLD_TO = 12; // …this long
 const SPINNER = ['▖', '▘', '▝', '▗'];
 
-/** What a tool did, in the past (the ⎿ line) and as it runs (the status row). Point and suggest show as messages. */
+/** What a tool did, in the past (the └ line) and as it runs (the status row). Point and suggest show as messages. */
 const DONE = {read: 'read', search: 'searched', run: 'ran', recall: 'recalled', open: 'opened', edit: 'edited', type: 'typed'};
 const DOING = {
   read: 'reading', search: 'searching', run: 'running', recall: 'recalling', open: 'opening', edit: 'editing', type: 'typing',
@@ -324,11 +324,11 @@ export function diffLines({old = [], new: added = []}, width) {
 // Messages.
 
 /**
- * The ⎿ line of what the tools did, `width` wide: when it is too long, paths by their last part, then the last tools
+ * The └ line of what the tools did, `width` wide: when it is too long, paths by their last part, then the last tools
  * as a count (read lease.go 1-40 · +1).
  */
 function toolLine(tools, width) {
-  const line = parts => [seg('⎿ ', 'dim'), seg(parts.join(' · '), 'dim')];
+  const line = parts => [seg('└ ', 'dim'), seg(parts.join(' · '), 'dim')];
   const done = tools.map(({tool, what}) => toolDone(tool, what));
   if (lineWidth(line(done)) <= width) return line(done);
   const short = tools.map(({tool, what}) => toolDone(tool, baseNames(what)));
@@ -344,7 +344,7 @@ export function bodyLines(entry, width, {continued = false, measure = width} = {
   const {kind, text = '', meta = {}} = entry;
   const words = Math.min(width, measure);
   if (kind === 'tool') {
-    if (entry.expanded) return entry.tools.flatMap(({tool, what}) => codeLines(toolDone(tool, what), width, 'dim', [seg('⎿ ', 'dim')], [seg('  ', 'dim')]));
+    if (entry.expanded) return entry.tools.flatMap(({tool, what}) => codeLines(toolDone(tool, what), width, 'dim', [seg('└ ', 'dim')], [seg('  ', 'dim')]));
     return [toolLine(entry.tools, width)];
   }
   if (kind === 'confirm') {
@@ -587,15 +587,17 @@ function fittedRule(variants, width) {
 }
 
 const SHORT_ROLES = {navigator: 'nav'};
+const ROLE_STYLES = ['navigator', 'scout', 'driver']; // each in its colour (see chat-style.mjs)
 
 /**
- * The header, in the top rule: where you pair and on what, then the role and the level, on the right. The goal is
- * cut first, to a few words, then left out (always in a narrow pane), then the role is shortened (nav), and the
- * muted kinds, the level and the role give way.
+ * The header, in the top rule: where you pair and on what, then the role, in its colour, and the level (the Driver
+ * that keeps the wheel says so instead), on the right. The goal is cut first, to a few words, then left out (always
+ * in a narrow pane), then the role is shortened (nav), and the muted kinds, the level and the role give way.
  */
-export function headerLine({project, goal, role, level, muted = []}, width) {
+export function headerLine({project, goal, role, level, muted = [], keep = false}, width) {
   const where = [seg('pair', 'accentBold'), ...(project ? [seg(' · ', 'dim'), seg(project, 'bold')] : [])];
-  const right = (name, parts = 3) => (role ? [seg(name, 'dim'), seg(` · ${level ?? ''}`, 'dim'), ...(muted.length ? [seg(` · ${muted.length} muted`, 'dim')] : [])].slice(0, parts) : []);
+  const second = role === 'driver' && keep ? 'keeps the wheel' : level ?? '';
+  const right = (name, parts = 3) => (role ? [seg(name, ROLE_STYLES.includes(role) ? role : 'dim'), seg(` · ${second}`, 'text'), ...(muted.length ? [seg(` · ${muted.length} muted`, 'dim')] : [])].slice(0, parts) : []);
   const short = SHORT_ROLES[role] ?? role;
   const variants = [
     ...(goal && width >= NARROW ? [[[...where, seg(' · ', 'dim'), seg(goal, 'text')], right(role), lineWidth(where) + 12]] : []),
@@ -621,56 +623,73 @@ function ago(at, now) {
   return ms < 60_000 ? 'just now' : `${duration(ms).split(' ')[0]} ago`;
 }
 
+const ELAPSED_AFTER_MS = 3000; // a short turn does not tick
+
+/** What waits under the answer that streams: 1 remark below, 2 notes below, 1 remark and 1 note below. */
+export function heldText(held) {
+  const {remarks = 0, notes = 0} = held ?? {};
+  const count = (n, word) => (n ? [`${n} ${word}${n === 1 ? '' : 's'}`] : []);
+  const parts = [...count(remarks, 'remark'), ...count(notes, 'note')];
+  return parts.length ? `${parts.join(' and ')} below` : '';
+}
+
 /**
  * The status, in the rule over the input: what Pair does now on the left, in body text (with a spinner while it
- * works), and on the right the model, how long its last answer took and what it cost, or that you scrolled up. It
- * names no keys: those are in the footer.
+ * works, and how long it has worked once that is 3s), and what waits under the answer that streams; on the right the
+ * model, how long its last answer took and what it cost, or that you scrolled up. The glyph has its part's colour:
+ * the Watcher's ◉ yellow, the Driver's ◆ red, Pair's spinner the accent. It names no keys: those are in the footer.
  */
 export function statusLine(view, width) {
-  const {activity = {state: 'idle'}, presence, connection = 'up', now = Date.now(), frame = 0, turn, model, scrolled = 0, role, keepWheel, writing, away} = view;
+  const {activity = {state: 'idle'}, presence, connection = 'up', now = Date.now(), frame = 0, turn, model, down = [], scrolled = 0, role, writing, away, held} = view;
   const spin = SPINNER[frame % SPINNER.length];
-  const since = activity.since ? [seg(` ${duration(now - activity.since)}`, 'dim')] : [];
+  const elapsed = from => (from && now - from >= ELAPSED_AFTER_MS ? [seg(` ${duration(now - from)}`, 'dim')] : []);
+  const since = elapsed(activity.since);
   // Each state long to short: a narrow pane gets a shorter one whole, not a long one cut in the middle.
   let lefts;
   if (connection === 'connecting') lefts = [[seg('… ', 'dim'), seg('connecting to the pair daemon', 'text')], [seg('… ', 'dim'), seg('connecting', 'text')]];
   else if (connection === 'away') {
     // How long it has been away and how many times the pane tried, so a blip reads differently from a dead daemon.
-    const gone = away?.since ? [seg(` ${duration(now - away.since)}`, 'dim')] : [];
+    const gone = elapsed(away?.since);
     const tries = away?.attempts ? [seg(` · attempt ${away.attempts}`, 'dim')] : [];
     lefts = [
-      [seg('⚠ ', 'error'), seg('the pair daemon went away', 'text'), seg(' · reconnecting', 'dim'), ...gone, ...tries],
-      [seg('⚠ ', 'error'), seg('reconnecting', 'text'), ...gone, ...tries],
-      [seg('⚠ ', 'error'), seg('reconnecting', 'text'), ...gone],
-      [seg('⚠ ', 'error'), seg('reconnecting', 'text')],
+      [seg('! ', 'warn'), seg('the pair daemon went away', 'text'), seg(' · reconnecting', 'dim'), ...gone, ...tries],
+      [seg('! ', 'warn'), seg('reconnecting', 'text'), ...gone, ...tries],
+      [seg('! ', 'warn'), seg('reconnecting', 'text'), ...gone],
+      [seg('! ', 'warn'), seg('reconnecting', 'text')],
     ];
   }
-  else if (activity.state === 'thinking') lefts = [[seg(`${spin} `, 'accent'), seg(writing ? 'writing' : 'thinking', 'text'), ...since]];
+  else if (activity.state === 'thinking') lefts = [[seg(`${spin} `, 'accent'), seg(writing ? 'writing' : 'thinking', 'accentBold'), ...since]];
   else if (activity.state === 'tool') {
     const doing = DOING[activity.tool] ?? activity.tool;
     const what = activity.what ?? '';
     lefts = [
-      [seg(`${spin} `, 'accent'), seg(`${doing} `, 'text'), seg(what, 'text'), ...since],
-      [seg(`${spin} `, 'accent'), seg(`${doing} `, 'text'), seg(baseNames(what), 'text'), ...since],
-      [seg(`${spin} `, 'accent'), seg(doing.split(' ')[0], 'text'), ...since],
+      [seg(`${spin} `, 'accent'), seg(doing, 'accentBold'), seg(` ${what}`, 'text'), ...since],
+      [seg(`${spin} `, 'accent'), seg(doing, 'accentBold'), seg(` ${baseNames(what)}`, 'text'), ...since],
+      [seg(`${spin} `, 'accent'), seg(doing.split(' ')[0], 'accentBold'), ...since],
     ];
   } else if (activity.state === 'remark') {
-    lefts = [[seg(`${spin} `, 'accent'), seg(`looking at ${(activity.what ?? 'a moment').replace(/_/g, ' ')}`, 'text'), ...since], [seg(`${spin} `, 'accent'), seg('looking', 'text'), ...since]];
+    // The Watcher looks: its colour.
+    lefts = [[seg(`${spin} `, 'watcher'), seg(`looking at ${(activity.what ?? 'a moment').replace(/_/g, ' ')}`, 'text'), ...since], [seg(`${spin} `, 'watcher'), seg('looking', 'text'), ...since]];
   } else if (activity.state === 'waiting') lefts = [[seg('? ', 'warn'), seg('waiting for your answer', 'text')], [seg('? ', 'warn'), seg('waiting', 'text')]];
-  else if (role === 'driver') lefts = [[seg('◆ ', 'accent'), seg(keepWheel ? 'Pair keeps the wheel' : 'Pair drives', 'text')]];
+  else if (role === 'driver') lefts = [[seg('◆ ', 'driverGlyph'), seg('Pair drives', 'driver'), seg(' · any key in Neovim takes it back', 'dim')], [seg('◆ ', 'driverGlyph'), seg('Pair drives', 'driver')]];
   else {
     const looked = presence?.looked ? ` · looked at ${presence.looked} moment${presence.looked === 1 ? '' : 's'}, spoke ${presence.spoke}` : '';
     const last = presence?.lastAt ? ` · ${ago(presence.lastAt, now)}` : '';
-    const watching = [seg('◇ ', 'accent'), seg(role === 'scout' ? 'watching, as Scout' : 'watching', 'text')];
+    const watching = [seg('◉ ', 'watcher'), seg(role === 'scout' ? 'watching, as Scout' : 'watching', 'text')];
     lefts = [
       [...watching, ...(looked || last ? [seg(`${looked}${last}`, 'dim')] : [])],
       ...(looked && last ? [[...watching, seg(last, 'dim')]] : []),
       ...(looked || last ? [watching] : []),
-      ...(role === 'scout' ? [[seg('◇ ', 'accent'), seg('Scout', 'text')]] : []),
+      ...(role === 'scout' ? [[seg('◉ ', 'watcher'), seg('Scout', 'text')]] : []),
     ];
   }
+  // What came while the answer streams waits under it, and says so: nothing above the words you read moves.
+  const waits = heldText(held);
+  if (waits) lefts = [...lefts.map(left => [...left, seg(' · ', 'dim'), seg(waits, 'text')]), ...lefts];
   const right = [];
   if (connection === 'up') {
     if (scrolled) right.push(seg(`↓ ${scrolled} line${scrolled === 1 ? '' : 's'} below`, 'text'));
+    else if (down.length) right.push(seg('! ', 'warn'), seg(`${down.join(', ')} not answering`, 'text'));
     else {
       if (model) right.push(seg(model, 'dim'));
       if (turn?.ms) right.push(seg(`${model ? ' · ' : ''}${(turn.ms / 1000).toFixed(1)}s`, 'dim'));
@@ -679,7 +698,9 @@ export function statusLine(view, width) {
     }
   }
   // What Pair does comes first: the right side gives way, from its end, before the words get shorter.
-  return fittedRule([...right.map((_, n) => [lefts[0], right.slice(0, right.length - n)]), ...lefts.map(left => [left, []])], width);
+  // (A model that does not answer goes whole or not at all.)
+  const rights = right.map((_, n) => right.slice(0, right.length - n)).filter(r => r.at(-1).text !== '! ');
+  return fittedRule([...rights.map(r => [lefts[0], r]), ...lefts.map(left => [left, []])], width);
 }
 
 /** The keys that work now, for the footer. */
@@ -790,23 +811,47 @@ function menuRule(kind, count, width) {
   return clipLine([seg('╶─', 'rule'), seg(name, 'dim'), seg('─'.repeat(Math.max(0, width - textWidth(name) - 2)), 'rule')], width);
 }
 
-/** What the pane shows before anything is said: what Pair does, and how to talk to it. */
+/**
+ * Pair's head, as on the site: a CRT in the accent, two green eyes and a magenta antenna, in quadrant blocks. Four
+ * rows, whatever the words beside it do.
+ */
+export const HEAD = [
+  [seg('   '), seg('▗▖', 'antenna')],
+  [seg('▗▛▀▀▀▀▜▖', 'accent')],
+  [seg('▐', 'accent'), seg(' '), seg('▀', 'eyes'), seg('  '), seg('▀', 'eyes'), seg(' '), seg('▌', 'accent')],
+  [seg('▝▙▄▄▄▄▟▘', 'accent')],
+];
+const HEAD_AT = 3; // the head's column…
+const WORDS_AT = HEAD_AT + 8 + 2; // …and its words'
+
+/** What the pane shows before anything is said: Pair's head and what it does, then how to talk to it. */
 export function emptyLines(width) {
-  const text = (words, style = 'text', first = [seg('  ')], rest = [seg('  ')]) => wrapTokens(inlineTokens(words, style, {markdown: false}), width, first, rest);
-  const key = (keys, words) => text(words, 'text', [seg(`  ${keys.padEnd(7)}`, 'bold')], [seg(' '.repeat(9))]);
-  const mascot = ['▗▄▄▖ ', '▐▘▝▌ ', '▝▀▀▘ '];
-  const intro = text('It watches you work and speaks rarely: a line in Neovim, more here when you ask.', 'text', [seg('       ')], [seg('       ')]);
-  while (intro.length < mascot.length - 1) intro.push([seg('       ')]); // the head keeps its three rows, however the words wrap
-  const top = [[seg('  '), seg(mascot[0], 'accent'), seg('Pair', 'accentBold'), seg(' · your pair in the second chair')], ...intro];
-  top.forEach((line, i) => {
-    if (i > 0 && i < mascot.length) line.splice(0, 1, seg('  '), seg(mascot[i], 'accent'));
-  });
+  // The words start on the frame's row, beside the head, and end by the measure; where the title does not fit beside
+  // it whole, they go under it.
+  const title = inlineTokens('Pair · your pair in the second chair', 'text', {markdown: false});
+  const beside = Math.min(width, MEASURE) - WORDS_AT >= lineWidth(wrapTokens(title, Infinity)[0]);
+  const at = beside ? WORDS_AT : HEAD_AT;
+  const room = Math.min(width, MEASURE) - at;
+  title[0] = {...title[0], style: 'accentBold'};
+  const words = [
+    ...wrapTokens(title, room),
+    ...wrapTokens(inlineTokens('It watches you work and speaks rarely: a line in Neovim, more here when you ask.', 'text', {markdown: false}), room),
+  ];
+  const indent = n => seg(' '.repeat(n));
+  const top = HEAD.map(row => [indent(HEAD_AT), ...row]);
+  if (beside) words.forEach((line, i) => (top[i + 1] ? top[i + 1].push(indent(2), ...line) : top.push([indent(at), ...line])));
+  else top.push(...words.map(line => [indent(at), ...line]));
+  // A key, then what it does; a /command or @here in it in the accent, as Pair's own words show code.
+  const key = (keys, what) => wrapTokens(
+    inlineTokens(what, 'text', {markdown: false}).map(token => (/^[/@][a-z]/.test(token.text) ? {...token, style: 'accent'} : token)),
+    width, [seg(' '.repeat(HEAD_AT)), seg(keys.padEnd(8), 'bold')], [seg(' '.repeat(HEAD_AT + 8))],
+  );
   return [
     ...top,
     blank(),
-    [seg('  Ask anything below; '), seg('Enter', 'bold'), seg(' sends.')],
-    ...key('/', 'commands: /drive hands it the keyboard, /scout gives it a pane'),
-    ...key('@', 'a file, or @here for what you selected in Neovim'),
+    ...key('Enter', 'ask anything'),
+    ...key('/', 'commands · /drive hands it the keyboard'),
+    ...key('@', 'a file, or @here for your selection'),
     ...key('Alt-↑', 'pick a message: copy, apply, jump, rate'),
     ...key('?', 'every key'),
   ].map(line => clipLine(line, width));

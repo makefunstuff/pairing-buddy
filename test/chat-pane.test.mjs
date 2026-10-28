@@ -9,7 +9,7 @@ import {PassThrough} from 'node:stream';
 import {test} from 'node:test';
 import {createModels, fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall} from '@earendil-works/pi-ai';
 import {MemoryStorage} from '@earendil-works/pi-durable';
-import {startChatPane} from '../src/chat.mjs';
+import {runChat, startChatPane} from '../src/chat.mjs';
 import {loadConfig} from '../src/config.mjs';
 import {startDaemon} from '../src/daemon.mjs';
 import {openPartner} from '../src/partner.mjs';
@@ -82,7 +82,8 @@ test('the empty pane says what Pair is and how to talk to it; the goal you type 
     await t.shows('What are we doing this session?');
     assert.match(t.text(), /^ +── \d\d:\d\d ──\n pair  What are we doing this session\?/m, 'Pair asks it, as pair, not as a note, under the time');
     assert.match(t.text(), /Pair · your pair in the second chair/);
-    assert.match(t.text(), /\?      every key/);
+    assert.match(t.text(), /▗▛▀▀▀▀▜▖  Pair · your pair/, "Pair's head beside its name");
+    assert.match(t.text(), /^   \?       every key$/m);
     assert.match(t.text(), /› the session's goal, or "later"/, 'the input says what it waits for');
     assert.match(t.text(), /^── pair · pair-pane-\w+ ─+ navigator · normal ──$/m, 'the header in the top rule: the project, the role, the level');
     assert.equal(t.text().split('\n')[1].trim(), '', 'no second rule under it');
@@ -109,12 +110,12 @@ test('a question: the tool lines, the answer in Markdown, and the model and time
       fauxAssistantMessage([fauxText('The lease ends **too early**:\n\n- `ttl` is the budget\n- the last attempt runs past it\n\n```go\nttl: cfg.Budget + cfg.AttemptTimeout\n```')]),
     ]);
     await t.type('why twice?\r');
-    await t.shows('⎿ read queue.go 3-5');
+    await t.shows('└ read queue.go 3-5');
     await t.shows('The lease ends too early:');
     const frame = t.text();
     assert.match(frame, /• ttl is the budget/, 'a list, its code without backticks');
     assert.match(frame, /│ ttl: cfg\.Budget \+ cfg\.AttemptTimeout/, 'a code block, behind its bar');
-    assert.match(frame, /── ◇ watching ─+ Faux Model · \d+\.\ds/, 'idle again, with the model and how long it took, in the rule');
+    assert.match(frame, /── ◉ watching ─+ Faux Model · \d+\.\ds/, 'idle again, with the model and how long it took, in the rule');
   } finally {
     await t.close();
   }
@@ -212,15 +213,15 @@ test('Esc stops an answer while it streams; what streamed goes, and the pane say
     await t.type('later\r');
     t.partner.setResponses([fauxAssistantMessage([fauxText('This answer takes a long time to come, word by word, so that there is time to stop it.')])]);
     await t.type('tell me slowly\r');
-    await t.shows(/── ▖ thinking \d+s ─/);
+    await t.shows(/── ▖ thinking ─/, 'thinking, with no counter in its first 3s');
     assert.match(t.text(), /^ Esc stop · /m, 'the key is in the footer');
     assert.doesNotMatch(t.text(), /thinking.*Esc/, 'the status names no keys');
     await t.shows('This answer');
     assert.match(t.text(), /▍/, 'the cursor of an answer still coming');
-    await t.shows(/── ▖ writing \d+s ─/, 'writing, once the words arrive');
+    await t.shows(/── ▖ writing( \d+s)? ─/, 'writing, once the words arrive');
     await t.type('\x1b');
     await t.shows('Stopped. Ask again, or ask something else.');
-    await t.shows('◇ watching');
+    await t.shows('◉ watching');
     assert.doesNotMatch(t.text(), /▍/);
   } finally {
     await t.close();
@@ -570,7 +571,7 @@ test('reconnecting: the status counts the time away and the attempts, what you t
     t.daemon.send({type: 'message', sender: 'pair', text: 'Hello.', at: Date.now()});
     await t.shows(/Hello\./);
     await t.daemon.close();
-    await t.shows(/── ⚠ the pair daemon went away · reconnecting \d+s ─/);
+    await t.shows(/── ! the pair daemon went away · reconnecting ─/, 'a yellow !, not ⚠; no counter yet');
     await t.shows(/reconnecting \ds · attempt [1-9]/);
     assert.match(t.text(), /^› what you type is kept; Enter sends once it is back$/m);
     assert.match(t.text(), /^ Ctrl-D close · \? keys$/m);
@@ -580,5 +581,84 @@ test('reconnecting: the status counts the time away and the attempts, what you t
     assert.doesNotMatch(t.text(), /^ ! /m, 'not an error in the conversation');
   } finally {
     t.pane.close();
+  }
+});
+
+test('calm motion: a remark that comes while an answer streams waits under it, and the status says so; nothing above moves', {timeout: 20_000}, async () => {
+  const t = await standInPane(80, 30);
+  try {
+    t.daemon.send({type: 'message', sender: 'user', text: 'why does the lease end early?', at: Date.now(), history: true});
+    t.daemon.send({type: 'activity', state: 'thinking', since: Date.now()});
+    t.daemon.send({type: 'partial', text: 'The lease ends too early: ttl is only'});
+    await t.shows(/pair  The lease ends too early: ttl is only ▍/);
+    const before = t.text().split('\n');
+    const above = before.slice(0, before.findIndex(line => line.includes('The lease ends too early')) + 1);
+    t.daemon.send({...REMARK, at: Date.now()});
+    await t.shows(/── ▖ writing · 1 remark below ─/);
+    t.daemon.send({type: 'agents', item: {id: 21}, text: '#21 needs you'});
+    await t.shows(/── ▖ writing · 1 remark and 1 note below ─/);
+    const during = t.text().split('\n');
+    assert.deepEqual(during.slice(0, above.length), above, 'the lines over the answer stay where they were');
+    assert.doesNotMatch(t.text(), /regression/, 'the remark waits');
+    t.daemon.send({type: 'partial', text: 'The lease ends too early: ttl is only the budget, but the last attempt can start at its very end.'});
+    await t.shows(/at its very end\. ▍/);
+    assert.doesNotMatch(t.text(), /regression/, 'still waiting while the words come');
+    t.daemon.send({type: 'message', sender: 'pair', text: 'The lease ends too early: ttl is only the budget, but the last attempt can start at its very end.', at: Date.now()});
+    t.daemon.send({type: 'activity', state: 'idle'});
+    await t.shows(/watch +regression · internal\/queue\/lease\.go:18/);
+    const after = t.text();
+    assert.ok(after.indexOf('at its very end.') < after.indexOf('regression'), 'the remark under the answer, not over it');
+    assert.ok(after.indexOf('regression') < after.indexOf('#21 needs you'), 'what waited, in the order it came');
+    assert.doesNotMatch(after, /below/, 'nothing waits any more');
+  } finally {
+    await t.close();
+  }
+});
+
+test('the role in the header in its colour; the Driver that keeps the wheel says so', {timeout: 20_000}, async () => {
+  const dir = realpathSync(scratch('pair-pane-'));
+  const daemon = await standIn(dir, {role: 'driver', keep: true});
+  const written = [];
+  const pane = startChatPane(daemon.socket, {input: new PassThrough(), output: {isTTY: true, write: data => written.push(data), on: () => {}}, size: () => ({width: 80, height: 20}), cwd: dir, env: {}, exit: () => {}});
+  const text = () => pane.frame().join('\n').replace(/\x1b\[[0-9;]*m/g, '');
+  try {
+    for (let i = 0; i < 200 && !/driver · keeps the wheel/.test(text()); i++) await sleep(25);
+    assert.match(text(), /^── pair · pair-pane-\w+ ─+ driver · keeps the wheel ──$/m);
+    assert.match(text(), /── ◆ Pair drives · any key in Neovim takes it back ─/);
+    assert.match(pane.frame()[0], /\x1b\[31m\x1b\[1mdriver/, 'the Driver in red');
+    daemon.send({type: 'role', role: 'scout'});
+    for (let i = 0; i < 200 && !/scout · normal/.test(text()); i++) await sleep(25);
+    assert.match(text(), /─ scout · normal ──$/m);
+    assert.match(pane.frame()[0], /\x1b\[32m\x1b\[1mscout/, 'Scout in green');
+  } finally {
+    pane.close();
+    await daemon.close();
+  }
+});
+
+test('the plain pane (--plain): the role in its prompt in its colour, and └ for the tools', {timeout: 20_000}, async () => {
+  const dir = realpathSync(scratch('pair-pane-'));
+  const daemon = await standIn(dir, {role: 'scout'});
+  const input = new PassThrough();
+  const output = new PassThrough();
+  output.isTTY = true;
+  output.columns = 80;
+  let out = '';
+  output.on('data', data => { out += data; });
+  let closed = null;
+  runChat(daemon.socket, {plain: true, input, output, cwd: dir, env: {}, exit: code => { closed = code; }});
+  const shows = async pattern => {
+    for (let i = 0; i < 200 && !pattern.test(out); i++) await sleep(25);
+    assert.match(out, pattern);
+  };
+  try {
+    await shows(/\x1b\[32m\x1b\[1mscout\x1b\[0m › /);
+    daemon.send({type: 'tool', tool: 'read', what: 'queue.go 1-5'});
+    await shows(/└ read queue\.go 1-5/);
+    assert.doesNotMatch(out, /⎿/);
+  } finally {
+    input.end();
+    await daemon.close();
+    for (let i = 0; i < 40 && closed === null; i++) await sleep(25);
   }
 });
