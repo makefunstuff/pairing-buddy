@@ -31,7 +31,7 @@ Four rows of chrome, two of them rules with words in them; the rest is the conve
   | `!!` | An error, such as a model that does not answer, with what to check |
 
   Before Pair runs or types a command it asks, as `pair`: the question in words, and the command under it behind a
-  bar, whole, to read and copy. `y` allows it, `n` or `Esc` declines, or type an answer (the name of another
+  bar, whole (backticks in it too), to read and copy. `y` allows it, `n` or `Esc` declines (and drops what you had typed), or type an answer (the name of another
   terminal, where it offers one); the footer shows those keys, and the message says what you answered.
 
   ```
@@ -43,7 +43,8 @@ Four rows of chrome, two of them rules with words in them; the rest is the conve
   ```
 
   The goal you type, or the one Pair took from the board or the branch, is in the header; the conversation does not
-  say it again.
+  say it again. Only a goal set elsewhere (`:Pair goal`) while Pair's question for it is open shows as a `··` note
+  under the question, to answer it.
 
   Pair's words are Markdown: `code` shows in Pair's accent, **bold** as bold, _italics_ in italics, a link as its
   words with the address after them, lists with a hanging indent, headings, quotes, and code blocks behind a bar, not
@@ -176,9 +177,10 @@ that light themes wash out:
 | Dim | Chrome: the rules, the times, what a key in the footer does, the `⎿` tool lines, a fold, a link's address |
 | Green, red | `+` and `-` lines of a diff; an error, in red |
 
-In light themes the dim and yellow of most palettes fall below 3 : 1 against the background (Solarized Light, Tokyo
-Night Day, xterm's default light), so no sentence is set in either: the y/N question is body text with its command
-behind a bar, and only the keys `y` and `n`, in bold, keep the yellow.
+Light themes are where dim and yellow fade: against the background, dim is about 2 : 1 in Tokyo Night Day and
+Solarized Light, and yellow is 3.0 : 1 in Solarized Light and 1.7 : 1 in xterm's default light (body text wants
+4.5 : 1). So no sentence is set in either: the y/N question is body text with its command behind a bar, and only the
+keys `y` and `n`, in bold, keep the yellow.
 
 ## The plain pane
 

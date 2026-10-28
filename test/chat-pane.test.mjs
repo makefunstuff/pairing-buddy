@@ -346,16 +346,50 @@ test('Pair asks before it runs a command: its words in body text, the command be
     await shows(/── pair · pair-pane-\w+ · make the lease outlive the retry ─+ navigator · normal ──/);
     daemon.send({type: 'message', sender: 'pair', text: 'Goal: make the lease outlive the retry', at: Date.now(), meta: {greeting: true, goal: 'set'}});
     daemon.send({type: 'activity', state: 'waiting'});
-    daemon.send({type: 'confirm', id: 7, text: 'May I run `go test ./internal/queue -run TestLease -count=1` in my pane (go test runs code)?'});
+    daemon.send({type: 'confirm', id: 7, text: 'May I run `go test ./internal/queue -run TestLease -count=1` in my pane (go test runs code)?', command: 'go test ./internal/queue -run TestLease -count=1'});
     await shows(/pair  May I run this in my pane \(go test runs code\)\?\n +│ go test \.\/internal\/queue -run TestLease -count=1/);
     const frame = text();
     assert.doesNotMatch(frame, /Goal: make/, 'the goal only once, in the header');
     assert.match(frame, /── \? waiting for your answer ─+ qwen3 ──\ny\/N › or type an answer\n y allow · n decline · Esc decline$/);
     assert.equal(frame.match(/decline/g).length, 2, 'the answer keys once, in the footer');
+    pane.key('logs');
+    await sleep(50);
     pane.key('\x1b');
     for (let i = 0; i < 100 && !daemon.got.some(m => m.type === 'confirm'); i++) await sleep(20);
     assert.deepEqual(daemon.got.find(m => m.type === 'confirm'), {type: 'confirm', id: 7, ok: false, text: 'n'});
     await shows(/you declined/);
+    assert.match(text(), /^› Ask Pair anything/m, 'what was typed is dropped, not sent later as a question');
+    daemon.send({type: 'activity', state: 'idle'});
+    const ticks = 'ls `pwd`/build && rm -rf out';
+    daemon.send({type: 'confirm', id: 8, text: `May I run \`${ticks}\` in my pane (it runs a command substitution)?`, command: ticks});
+    await shows(/May I run this in my pane \(it runs a command substitution\)\?\n +│ ls `pwd`\/build && rm -rf out/);
+  } finally {
+    pane.close();
+    await daemon.close();
+  }
+});
+
+test('a goal set elsewhere while Pair\'s question for it is open answers it on screen; one you typed is not said again', {timeout: 20_000}, async () => {
+  const dir = realpathSync(scratch('pair-pane-'));
+  const daemon = await standIn(dir, {});
+  const pane = startChatPane(daemon.socket, {input: new PassThrough(), output: {isTTY: false, write: () => {}, on: () => {}}, size: () => ({width: 90, height: 16}), cwd: dir, env: {}, exit: () => {}});
+  const text = () => pane.frame().join('\n');
+  const shows = async pattern => {
+    for (let i = 0; i < 200 && !pattern.test(text()); i++) await sleep(25);
+    assert.match(text(), pattern);
+  };
+  try {
+    await shows(/── pair · pair-pane-\w+ ─/);
+    daemon.send({type: 'message', sender: 'pair', text: 'What are we doing this session? Type the goal here, or "later".', at: Date.now(), meta: {greeting: true, goal: 'ask'}});
+    daemon.send({type: 'goal', goal: 'retries reach the budget'});
+    daemon.send({type: 'message', sender: 'system', text: 'Goal: retries reach the budget', at: Date.now(), meta: {goal: 'set'}});
+    await shows(/What are we doing this session\?[\s\S]*·· +Goal: retries reach the budget/);
+    daemon.send({type: 'message', sender: 'pair', text: 'What are we doing this session? Type the goal here, or "later".', at: Date.now(), meta: {greeting: true, goal: 'ask'}});
+    daemon.send({type: 'message', sender: 'user', text: 'make the lease right', at: Date.now(), history: true});
+    daemon.send({type: 'message', sender: 'system', text: 'Goal: make the lease right', at: Date.now(), meta: {goal: 'set'}});
+    await shows(/you +make the lease right/);
+    await sleep(100);
+    assert.doesNotMatch(text(), /Goal: make the lease right/, 'you typed it: the header has it');
   } finally {
     pane.close();
     await daemon.close();

@@ -385,6 +385,11 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
     const i = partialIndex();
     if (i !== -1) state.entries.splice(i, 1);
   };
+  /** Whether Pair's question for the goal is the last word on it: asked, and nothing you typed since. */
+  const goalAsked = () => {
+    const lastYou = state.entries.findLastIndex(entry => entry.kind === 'you');
+    return state.entries.findLastIndex(entry => entry.meta?.goal === 'ask' || /^What are we doing this session\?/.test(entry.text ?? '')) > lastYou;
+  };
   const latestRemark = () => state.entries.findLastIndex(entry => entry.meta?.trigger && entry.kind === 'watch');
 
   /** A message from the daemon as an entry: who speaks, and what the pane shows it with. */
@@ -459,7 +464,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
       }
       case 'confirm':
         state.confirming = message.id;
-        add({kind: 'confirm', text: message.text, confirm: message.id});
+        add({kind: 'confirm', text: message.text, confirm: message.id, ...(message.command ? {command: message.command} : {})});
         break;
       case 'confirmed': {
         if (message.id === state.confirming) state.confirming = null;
@@ -487,8 +492,9 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
         add({kind: 'note', text: remarkLines(message.remarks).join('\n')});
         break;
       case 'message': {
-        // The goal, said again: the header shows it.
-        if (message.meta?.goal === 'set') break;
+        // The goal, said again: the header shows it. Only when Pair's question for it is still open (the goal was
+        // set elsewhere: :Pair goal, the board) does the note stay, to answer it.
+        if (message.meta?.goal === 'set' && !goalAsked()) break;
         const entry = entryOf(message);
         if (message.sender === 'user' && !message.history) {
           // What you sent is on screen already: the daemon's copy takes its place, with the lines it is about.
@@ -768,7 +774,10 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
       }
     }
     if (name === 'escape') {
-      if (state.confirming !== null) return answer('n');
+      if (state.confirming !== null) {
+        answer('n');
+        return editor.clear(); // what you had typed answered nothing: it is not sent later as a question
+      }
       if (busy() || state.activity.state === 'remark') return send({type: 'cancel'});
       if (state.about) state.about = null;
       return;
@@ -878,8 +887,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
   function view() {
     const open = menu();
     if (open) state.menuChosen = Math.min(state.menuChosen, open.items.length - 1);
-    const lastYou = state.entries.findLastIndex(entry => entry.kind === 'you');
-    const goalAsked = !state.header.goal && state.entries.findLastIndex(entry => entry.meta?.goal === 'ask' || /^What are we doing this session\?/.test(entry.text ?? '')) > lastYou;
+    const askedForGoal = !state.header.goal && goalAsked();
     const selectedEntry = state.entries[state.selected];
     return {
       header: state.header,
@@ -911,7 +919,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
       showEmpty: !state.entries.some(entry => ['you', 'pair', 'watch', 'tool', 'confirm'].includes(entry.kind) && !entry.meta?.greeting), // Pair's greeting goes with the card
       writing: partialIndex() !== -1,
       placeholder: state.confirming !== null ? 'or type an answer'
-        : goalAsked ? 'the session\'s goal, or "later"'
+        : askedForGoal ? 'the session\'s goal, or "later"'
           : busy() ? 'type ahead' : 'Ask Pair anything · / for commands',
     };
   }

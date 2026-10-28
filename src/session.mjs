@@ -1195,9 +1195,10 @@ export class PairSession {
    * Asks the user in the chat pane; resolves false without a chat pane, on no, or after a minute. An answer that is
    * one of `choices` allows it too, there: it resolves with that choice.
    */
-  confirm(text, choices = []) {
+  confirm(text, choices = [], command = null) {
     const id = ++this.lastConfirmation;
-    if (!this.notify('chat', {type: 'confirm', id, text})) return Promise.resolve(false);
+    // The command goes as it is too: the full pane shows it whole under the question, backticks and all.
+    if (!this.notify('chat', {type: 'confirm', id, text, ...(command ? {command} : {})})) return Promise.resolve(false);
     this.activity('waiting', {what: text});
     return new Promise(resolve => {
       const timer = setTimeout(() => this.answer(id, false, 'No answer, so no.'), CONFIRM_MS);
@@ -1207,7 +1208,7 @@ export class PairSession {
 
   /** Asks the user whether Pair may do `what` with question `text`, and books their answer in the ledger. */
   async allowed(what, text, choices = []) {
-    const ok = await this.confirm(text, choices);
+    const ok = await this.confirm(text, choices, what);
     this.ledger.add('asked', what, {data: {answer: ok ? 'yes' : 'no'}});
     return ok;
   }

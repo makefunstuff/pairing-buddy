@@ -225,10 +225,11 @@ export function bodyLines(entry, width, {continued = false} = {}) {
     return [clipLine([seg('⎿ ', 'dim'), seg(done.join(' · '), 'dim')], width)];
   }
   if (kind === 'confirm') {
-    // Pair's question in body text; the command it asks about, its first `code`, under it in a code bar, to read
-    // and copy whole. The keys that answer are in the footer, once.
-    const command = /`([^`]+)`/.exec(text)?.[1];
-    const words = command ? text.replace(`\`${command}\``, 'this') : text;
+    // Pair's question in body text; the command it asks about under it in a code bar, to read and copy whole: the
+    // session's own copy of it (a command may hold backticks itself), else the question's first `code`. The keys
+    // that answer are in the footer, once.
+    const command = entry.command ?? /`([^`]+)`/.exec(text)?.[1];
+    const words = command ? text.replace(`\`${command}\``, () => 'this') : text;
     const lines = wrapTokens(inlineTokens(words, 'text'), width);
     if (command) lines.push(...wrapTokens(inlineTokens(command, 'text', {markdown: false}), width, [seg('│ ', 'rule')]));
     if (entry.answer !== undefined) lines.push([seg(entry.answer ? 'you allowed it' : 'you declined', entry.answer ? 'ok' : 'text')]);
@@ -406,7 +407,7 @@ export function statusLine(view, width) {
   else if (activity.state === 'tool') left = [seg(`${spin} `, 'accent'), seg(`${DOING[activity.tool] ?? activity.tool} `, 'text'), seg(activity.what ?? '', 'text'), ...since];
   else if (activity.state === 'remark') left = [seg(`${spin} `, 'accent'), seg(`looking at ${(activity.what ?? 'a moment').replace(/_/g, ' ')}`, 'text'), ...since];
   else if (activity.state === 'waiting') left = [seg('? ', 'warn'), seg('waiting for your answer', 'text')];
-  else if (role === 'driver') left = [seg('◆ ', 'accent'), seg(keepWheel ? 'Pair keeps the wheel' : 'Pair drives', 'text'), ...(keepWheel ? [seg(' · any key in Neovim takes it back', 'dim')] : [])];
+  else if (role === 'driver') left = [seg('◆ ', 'accent'), seg(keepWheel ? 'Pair keeps the wheel' : 'Pair drives', 'text')];
   else {
     const looked = presence?.looked ? ` · looked at ${presence.looked} moment${presence.looked === 1 ? '' : 's'}, spoke ${presence.spoke}` : '';
     const last = presence?.lastAt ? ` · ${ago(presence.lastAt, now)}` : '';
@@ -527,7 +528,7 @@ export function helpLines(commands, width) {
     [seg(' Keys', 'accentBold')],
     ...keys.flatMap(([left, right]) => two(left, right)),
     blank(),
-    [seg(' Commands', 'accentBold'), seg(' · anything else is a question for Pair', 'dim')],
+    [seg(' Commands', 'accentBold'), seg(' · anything else is a question for Pair', 'text')],
     ...commands.flatMap(([name, args, what]) => two(label(name, args), what)),
   ].map(line => clipLine(line, width));
 }

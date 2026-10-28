@@ -558,6 +558,7 @@ test('the Driver types into the user\'s terminal only after a yes, never Enter, 
   const denied = pair.type({text: 'npm test'});
   await Promise.resolve();
   assert.match(lastConfirm(sent).text, /type `npm test` into your terminal \(pane w1:p1\), without pressing Enter/);
+  assert.equal(lastConfirm(sent).command, 'npm test', 'the command goes as it is, for the chat to show whole');
   pair.answer(lastConfirm(sent).id, false);
   assert.match(await denied, /did not allow/);
 

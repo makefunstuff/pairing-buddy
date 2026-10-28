@@ -48,9 +48,9 @@ Enter
 Sleep 900ms
 Screenshot out/chat-select.png
 Ctrl+c
-Sleep 300ms
+Sleep 800ms
 Type "?"
-Sleep 1.5s
+Sleep 2s
 Screenshot out/chat-help.png
 Type "q"
 Sleep 1.5s
