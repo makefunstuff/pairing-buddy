@@ -17,6 +17,7 @@ local ledger = require('pair.ledger')
 local earcons = require('pair.earcons')
 local gen = require('pair.gen')
 local genfiles = require('pair.genfiles')
+local gentry = require('pair.gentry')
 local listen = require('pair.listen')
 local margin = require('pair.margin')
 local pane = require('pair.pane')
@@ -50,6 +51,7 @@ local config = {
   gen_key = '<M-g>', -- asks Pair for code, in Normal and Visual mode
   gen_input = 'ui', -- or 'cmdline': the request and its questions always on Neovim's own prompt, not vim.ui's
   gen_preview_lines = 30, -- a /gen block taller than this shows in a preview window
+  try_run_key = '<LocalLeader>r', -- in a /gen try's sample: runs it again in Pair's pane
   land = true, -- the morning pick-up opens an empty Neovim where the last session stopped
   answers = true, -- the start of Pair's answer to a question you typed shows under the line it was about, too
 }
@@ -1109,6 +1111,9 @@ local handlers = {
     if message.id then send({type = 'reply', id = message.id, result = result}) end
   end,
   gen_review = genfiles.on_review,
+  -- /gen try: the sample opens in a split; :Pair gen tries picks one of those still kept.
+  gen_try = gentry.on_try,
+  gen_tries = gentry.on_tries,
   gen_unwrite = function(message) send({type = 'reply', id = message.id, result = genfiles.unwrite(message)}) end,
   -- Without herdr: Pair's pane, your terminals and typing into one of them, all in this Neovim (pane.lua).
   pane = function(message) pane.request(message, function(result) send({type = 'reply', id = message.id, result = result}) end) end,
@@ -1407,14 +1412,23 @@ local commands = {
   why = function() M.teach() end,
   agents = agents.request,
   -- /gen: `:Pair gen` asks in a dialog, `:Pair gen [here|file] <what>` asks at once, `:Pair gen +` opens the compose
-  -- window; with a range, over those lines (in a note, the lines are the request). `:Pair gen cancel` stops it, and
-  -- `:Pair gen list` lists the files of /gen file requests to review.
+  -- window; with a range, over those lines (in a note, the lines are the request). `:Pair gen cancel` stops it,
+  -- `:Pair gen list` lists the files of /gen file requests to review, `:Pair gen run` runs the try you are in (else
+  -- the newest) again, and `:Pair gen tries` picks a try folder to open.
   gen = function(arg, selection)
     if not M.connect() then return vim.notify('Pair: not connected, so no /gen yet; :Pair gen again once it is', vim.log.levels.WARN) end
     if arg == 'cancel' then return send({type = 'gen_cancel'}) end
     if arg == 'list' then return genfiles.open() end
+    if arg == 'run' then return gentry.run() end
+    if arg == 'tries' then return send({type = 'gen_tries'}) end
     local compose = arg == '+' or vim.startswith(arg, '+ ')
     gen.ask(compose and vim.trim(arg:sub(2)) or arg, selection, compose)
+  end,
+  -- `:Pair keep [path]`: the /gen try file you are in (else the newest try's) moves into the project, as a buffer
+  -- to review that :w takes.
+  keep = function(arg)
+    if not M.connect() then return vim.notify('Pair: not connected; :Pair keep again once it is', vim.log.levels.WARN) end
+    gentry.keep(arg)
   end,
   -- The brief /gen runs against: `:Pair brief` in a note pins it (elsewhere shows the brief), `:Pair brief <path>`
   -- pins that note, `:Pair brief off` leaves the note out.
@@ -1498,6 +1512,7 @@ function M.setup(opts)
     files_status = genfiles.status,
   })
   genfiles.setup({send = send, redraw_status = redraw_status, label = label, decide_key = config.decide_key})
+  gentry.setup({send = send, run_key = config.try_run_key})
   style.apply()
   local group = vim.api.nvim_create_augroup('pair', {clear = true})
   local function restyle()

@@ -79,9 +79,14 @@ test('thinking is one level for every turn, or levels for some kinds; off is a c
   assert.throws(() => partner(['low']), /must be a level or map kinds to levels/);
 });
 
-test('gen.limits bound one /gen request, and gen.brief names its note: the defaults, values of their own, and what is not', () => {
+test('gen.limits bound one /gen request, gen.brief names its note, gen.keepTries and gen.network are for tries: the defaults, values of their own, and what is not', () => {
   const gen = raw => parseConfig({gen: raw, models: {watcher: {api: 'anthropic', model: 'w'}, partner: {api: 'anthropic', model: 'p'}}}).gen;
-  assert.deepEqual(gen(undefined), {limits: {files: 40, lines: 4000, commands: 8, minutes: 10}, brief: 'NOTES.md'});
+  assert.deepEqual(gen(undefined), {limits: {files: 40, lines: 4000, commands: 8, minutes: 10}, brief: 'NOTES.md', keepTries: 7, network: false});
+  assert.equal(gen({keepTries: 2}).keepTries, 2);
+  assert.equal(gen({network: true}).network, true);
+  assert.throws(() => gen({keepTries: 0}), /gen\.keepTries must be a whole number of days above 0/);
+  assert.throws(() => gen({keepTries: 1.5}), /gen\.keepTries must be a whole number/);
+  assert.throws(() => gen({network: 'yes'}), /gen\.network must be true or false/);
   assert.equal(gen({brief: 'docs/plan.md'}).brief, 'docs/plan.md');
   assert.equal(gen({brief: null}).brief, null, 'the goal and the board task only');
   assert.throws(() => gen({brief: '/etc/notes.md'}), /gen\.brief must be a path in the project/);

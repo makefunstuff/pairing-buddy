@@ -265,22 +265,27 @@ function testCommands(raw = {}) {
 export const GEN_LIMITS = {files: 40, lines: 4000, commands: 8, minutes: 10};
 // The note a /gen brief has when the user pinned none, when the project has it (see brief.mjs).
 export const GEN_BRIEF = 'NOTES.md';
+// Days a /gen try folder stays once it last changed (see gen-tree.mjs).
+export const GEN_KEEP_TRIES = 7;
 
 /**
- * `gen`: `{limits, brief}`, each limit a whole number above zero, the rest of a limit its default; `brief` a path in
- * the project, or null for a brief of the goal and the board task only.
+ * `gen`: `{limits, brief, keepTries, network}`, each limit a whole number above zero, the rest of a limit its
+ * default; `brief` a path in the project, or null for a brief of the goal and the board task only; `keepTries` the
+ * days a try folder stays; `network` whether a try's runs reach the network.
  */
 function genConfig(raw = {}) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('config: gen must be an object, for example {"limits": {"lines": 2000}}');
-  const {limits = {}, brief = GEN_BRIEF, ...rest} = raw;
-  if (Object.keys(rest).length) throw new Error(`config: gen has no ${Object.keys(rest).join(', ')} (only limits and brief)`);
+  const {limits = {}, brief = GEN_BRIEF, keepTries = GEN_KEEP_TRIES, network = false, ...rest} = raw;
+  if (Object.keys(rest).length) throw new Error(`config: gen has no ${Object.keys(rest).join(', ')} (only limits, brief, keepTries and network)`);
+  if (!Number.isInteger(keepTries) || keepTries < 1) throw new Error('config: gen.keepTries must be a whole number of days above 0');
+  if (typeof network !== 'boolean') throw new Error('config: gen.network must be true or false');
   if (brief !== null && (typeof brief !== 'string' || !brief.trim() || isAbsolute(brief))) throw new Error('config: gen.brief must be a path in the project, like "NOTES.md", or null');
   if (!limits || typeof limits !== 'object' || Array.isArray(limits)) throw new Error('config: gen.limits must be an object');
   for (const [name, value] of Object.entries(limits)) {
     if (!(name in GEN_LIMITS)) throw new Error(`config: gen.limits.${name}: the limits are ${Object.keys(GEN_LIMITS).join(', ')}`);
     if (!Number.isInteger(value) || value < 1) throw new Error(`config: gen.limits.${name} must be a whole number above 0`);
   }
-  return {limits: {...GEN_LIMITS, ...limits}, brief};
+  return {limits: {...GEN_LIMITS, ...limits}, brief, keepTries, network};
 }
 
 /** `taskCommand`: the command, as words, that :Pair tasks runs for each task, with {title} and {description} in them. */

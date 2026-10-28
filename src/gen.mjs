@@ -9,23 +9,28 @@
 // goes against the brief (≠ brief) and what it decided that nobody said (? guessed).
 //
 // One request runs at a time; others wait their turn. While one runs, Pair makes no remark nobody asked for, and the
-// user's questions in the chat still get answers, in the session's own conversation. This version builds two shapes:
-// here (code at the cursor, or over the selection) and file (new files, as pair://gen/<n>/<path> buffers in Neovim
-// that :w in one writes to its real path). The others are named, guessed and confirmed, but not built yet. The
-// ledger keeps each proposed file's text, so Neovim gets its buffers again after a restart of either.
-import {dirname, join, relative} from 'node:path';
+// user's questions in the chat still get answers, in the session's own conversation. This version builds three
+// shapes: here (code at the cursor, or over the selection), file (new files, as pair://gen/<n>/<path> buffers in
+// Neovim that :w in one writes to its real path) and try (a sample in a folder of its own outside the project, which
+// the model writes and runs there in the sandbox, and which opens in a split; /keep moves a file of it into the project
+// as a buffer to review, as a file request's). Scaffold is named, guessed and confirmed, but not built yet. The ledger
+// keeps each proposed file's text, so Neovim gets its buffers again after a restart of either.
+import {mkdir, readFile, writeFile} from 'node:fs/promises';
+import {dirname, isAbsolute, join, relative, sep} from 'node:path';
 import {
   briefEmpty, briefLine, briefText, CHECK_PROMPT, checkInput, CONFLICT_PROMPT, conflictInput, exceptionKey, parseCheck,
   parseConflict, quotePlace, readBrief,
 } from './brief.mjs';
-import {GEN_BRIEF, GEN_LIMITS} from './config.mjs';
+import {commandPolicy} from './command-policy.mjs';
+import {GEN_BRIEF, GEN_KEEP_TRIES, GEN_LIMITS} from './config.mjs';
 import {logDecision, LOG_NAME} from './decision-log.mjs';
 import {draftPath, numberedLines, projectFile} from './files.mjs';
+import {daysLeft, expireTries, filesIn, freshFolder, pathIn, projectFolder, tryFolder, tryLine, triesIn, trySandboxed} from './gen-tree.mjs';
 import {gitFiles} from './git.mjs';
-import {startOfDay} from './ledger.mjs';
+import {keptOutput, startOfDay} from './ledger.mjs';
 
 export const SHAPES = ['here', 'file', 'scaffold', 'try'];
-const BUILT = new Set(['here', 'file']);
+const BUILT = new Set(['here', 'file', 'try']);
 /** What each shape makes, as the shape question lists it. */
 export const SHAPE_WHAT = {
   here: 'at the cursor, over a selection',
@@ -42,6 +47,12 @@ const SILENT = /^\W*silent\W*$/i;
 const REVIEW_DAYS = 7; // a file proposed and neither taken nor dropped is offered again for this long
 const DAY = 24 * 60 * 60 * 1000;
 const LISTED = 200; // a file request is told the names of this many of the project's files
+const TRY_LISTED = 60; // and a try request, of this many
+const RUN_CHARS = 3000; // of a try's run, the model is told the last this many characters of its output
+const RAN_LINES = 3; // and the chat shows its last this many lines, when the user runs it again
+
+/** Of a try's files, the one that opens: the longest, the sample itself rather than its go.mod or package.json. */
+const mainFile = files => files.reduce((best, piece) => (!best || lineCount(piece.text) > lineCount(best.text) ? piece : best), null);
 
 /** `/gen [shape] words`: the shape when its first word names one, and the words. */
 export function parseGen(text) {
@@ -83,18 +94,26 @@ const lineCount = text => (text === '' ? 0 : text.replace(/\n$/, '').split('\n')
 
 /** The text of a finished turn's answer without SILENT, or ''. */
 const answerOf = text => (text && !SILENT.test(text) ? text.trim() : '');
+const ranMark = ran => (ran.exit === 0 && !ran.timedOut ? '✓' : '✗');
+const ranText = ran => `${ranMark(ran)} \`${ran.command}\`${ran.timedOut ? ' (stopped: it ran too long)' : ran.exit ? ` exit ${ran.exit}` : ''}`;
+const tail = (text, chars) => (text.length > chars ? `…${text.slice(-chars)}` : text);
 
 export class Gen {
   /**
    * The requests of `session` (a PairSession); `limits` are the config's gen.limits, read when a request starts, and
    * `brief` its gen.brief, the note a brief has when the user pinned none. `ask(systemPrompt, content)` is one answer
-   * of the Partner's model outside any conversation, for the brief's checks; without it, they are not made.
+   * of the Partner's model outside any conversation, for the brief's checks; without it, they are not made. `dir` is
+   * /gen's folder in Pair's data folder (gen-tree.mjs), where the tries go: `keepTries` days, run in the sandbox as
+   * `sandbox` (scoutPane.sandbox) says, with the network only when `network`.
    */
-  constructor({session, limits = GEN_LIMITS, brief = GEN_BRIEF, ask = null}) {
+  constructor({session, limits = GEN_LIMITS, brief = GEN_BRIEF, ask = null, dir, keepTries = GEN_KEEP_TRIES, network = false, sandbox = 'auto'}) {
     this.session = session;
     this.limits = limits;
     this.briefName = brief;
     this.askModel = ask;
+    this.dir = dir;
+    this.folder = projectFolder(dir, session.root); // this project's
+    Object.assign(this, {keepTries, network, sandbox});
     const pinned = session.record.brief ?? session.store.lastBrief?.(session.root) ?? null;
     this.pin = pinned === '' ? false : pinned; // the note the user pinned, false for none, null for gen.brief's
     this.toldBrief = false; // the chat said once that a request runs against gen.brief's note
@@ -173,7 +192,7 @@ export class Gen {
       request.shape = shape;
     }
     if (!BUILT.has(request.shape)) {
-      return this.end(request, 'cancelled', `gen #${request.n}: /gen ${request.shape} (${SHAPE_WHAT[request.shape]}) is not built yet; this version has /gen here and /gen file.`);
+      return this.end(request, 'cancelled', `gen #${request.n}: /gen ${request.shape} (${SHAPE_WHAT[request.shape]}) is not built yet; this version has /gen here, /gen file and /gen try.`);
     }
     if (request.shape === 'here' && !(await this.placeOf(request))) return;
     if (!(await this.against(request))) return;
@@ -288,9 +307,15 @@ export class Gen {
     const here = request.shape === 'here';
     const where = !here ? null : request.selection ? `${relative(this.root, request.file)}:${request.selection.from}-${request.selection.to}` : `${relative(this.root, request.file)}:${request.place.line}`;
     const asAsked = request.asAsked && {key: exceptionKey(request.asAsked), source: request.asAsked.source, line: request.asAsked.line, text: request.asAsked.text};
+    if (request.shape === 'try') {
+      request.dir = tryFolder(this.folder, request.n);
+      await this.expire();
+      await freshFolder(request.dir).catch(error => session.log(`gen #${request.n}: its folder: ${error.message}`));
+    }
     request.action = session.ledger.add('generated', `gen #${request.n} · ${request.shape} · ${request.words}`, {
       data: {
         gen: request.n, shape: request.shape, ...(here ? {place: {file: request.file, line: request.selection?.from ?? request.place.line}} : {}),
+        ...(request.dir ? {dir: request.dir} : {}),
         note: here ? `at ${where} · generating` : 'generating', undo: true,
         ...(request.brief ? {brief: briefLine(request.brief)} : {}), ...(asAsked ? {asAsked} : {}),
       },
@@ -344,6 +369,7 @@ export class Gen {
   /** What the request's conversation is told: the request, where its code goes, the lines there and the goal. */
   async input(request) {
     if (request.shape === 'file') return this.fileInput(request);
+    if (request.shape === 'try') return this.tryInput(request);
     const session = this.session;
     // Where the mark is now: the user may have typed above it since they asked, or while the request waited its turn.
     // Neovim counts how the code it proposes moves from here on.
@@ -393,6 +419,26 @@ export class Gen {
       + 'Read the files the new ones follow, so names, imports and style match. Then draft the files, and say in one or two sentences what you wrote and what you decided that the user did not say.';
   }
 
+  /** What a try request's conversation is told: the request, its folder, how it writes and runs there, and the brief. */
+  async tryInput(request) {
+    const files = (await gitFiles(this.root)) ?? [];
+    const listed = files.length ? `The project's files${files.length > TRY_LISTED ? ` (the first ${TRY_LISTED} of ${files.length})` : ''}, for what the sample may follow:\n${files.slice(0, TRY_LISTED).join('\n')}`
+      : 'read(".") lists the project.';
+    request.brief = await this.brief();
+    const brief = briefEmpty(request.brief) ? '' : `\n\n${briefText(request.brief)}`;
+    const chose = request.asAsked ? `\nThe user chose the request over the brief's "${request.asAsked.text}": do as asked there.`
+      : request.followBrief ? `\nWhere the request says ${request.followBrief.asked}, the user chose the brief: ${request.followBrief.says} ("${request.followBrief.text}").` : '';
+    const network = this.network ? 'it may reach the network' : 'it has no network, so nothing can be installed';
+    return `[gen] gen #${request.n}, try. The user asked: "${request.words}"\n`
+      + `A sample to read and run, in a folder of its own outside the project: ${request.dir}\n`
+      + 'Write its files with write(path, text), each path relative to that folder; read takes them by their full path, '
+      + `such as ${join(request.dir, 'main.go')}, and the project's files by their path in the project. `
+      + `Then run it with run(command), which runs in that folder in a sandbox where only the folder is writable and ${network}; `
+      + 'fix what the run shows. Your last command is how the user runs it again, with one key.\n\n'
+      + `${listed}${brief}${chose}\n\n`
+      + 'Keep it small: one file if one does, and what it needs to run. Then say in one or two sentences what it shows, and what you decided that the user did not say.';
+  }
+
   /** A request ends: `state`, and the line the chat gets. */
   end(request, state, text) {
     this.setState(request, state);
@@ -418,7 +464,7 @@ export class Gen {
   /** The debrief's lines of `check`: `≠ brief "…" NOTES.md:4 · math.js:7 why` and `? guessed …`. */
   checkLines(request, check) {
     return [
-      ...check.contradicts.map(item => `≠ brief "${item.text}" ${quotePlace(request.brief, item)} · ${relative(this.root, item.file)}:${item.fileLine} ${item.why}`),
+      ...check.contradicts.map(item => `≠ brief "${item.text}" ${quotePlace(request.brief, item)} · ${this.nameOf(item.file)}:${item.fileLine} ${item.why}`),
       ...check.guessed.map(text => `? guessed ${text}`),
     ];
   }
@@ -452,6 +498,7 @@ export class Gen {
     request.debrief = debrief;
     if (debrief.length && request.from === 'editor') this.session.notify('editor', {type: 'gen_debrief', gen: request.n, lines: debrief});
     if (request.shape === 'file') return this.finishFiles(request, {said, debrief});
+    if (request.shape === 'try') return this.finishTry(request, {said, debrief, cut: failure || request.over});
     const against = check.contradicts.length ? ` · ≠${check.contradicts.length}` : '';
     this.book(request, {note: `${plural(lines, 'line')} proposed${against}`});
     // The chat shows the first piece as a diff, which `a` there takes in Neovim as Alt-y does.
@@ -490,10 +537,37 @@ export class Gen {
     if (request.pieces.some(piece => piece.state === 'proposed')) this.setState(request, 'ready');
   }
 
-  /** What Neovim gets to make buffers of the proposed `files` of request `n` (ledger entry `action`). */
-  filesMessage(action, n, files, contradicts = []) {
+  /**
+   * A try request's model is done: its sample opens in Neovim in a split, a real file outside the project, and the
+   * chat says what it made and how its last run went. `cut`: the model was stopped before it was done.
+   */
+  async finishTry(request, {said, debrief, cut}) {
+    const session = this.session;
+    const files = request.pieces.filter(piece => piece.kind === 'try');
+    const main = mainFile(files);
+    const ran = request.ran ?? null;
+    // Nothing to undo until a file of it is kept: /undo takes back what came before.
+    const kept = request.pieces.some(piece => piece.kind === 'file');
+    this.book(request, {note: `${plural(files.length, 'file')} in its folder · ${ran ? ranText(ran) : 'not run'}`, undo: kept, ...(ran ? {command: ran.command} : {})});
+    const opened = session.notify('editor', {
+      type: 'gen_try', gen: request.n, dir: request.dir, words: request.words, command: ran?.command ?? null, keep: this.keepTries,
+      open: main.file, files: files.map(piece => ({file: piece.file, name: relative(request.dir, piece.file)})),
+    });
+    const names = files.map(piece => `${relative(request.dir, piece.file)} +${lineCount(piece.text)}`);
+    const lines = [
+      `gen #${request.n} · try · ${names.join(', ')} · ${ran ? ranText(ran) : 'not run'}${said ? `: ${said}` : ''}`,
+      ...debrief,
+      opened ? `In Neovim: ${relative(request.dir, main.file)} in a split, outside the project. ${ran ? 'Your run key runs it again; ' : ''}/keep <path> moves it into the project, as a buffer to review. The folder stays ${plural(this.keepTries, 'day')} after it last changed (/gen tries).`
+        : `No Neovim to open it in: it is in ${request.dir}. /keep <path> moves it into the project once one connects.`,
+    ];
+    if (!cut || files.length) session.message('pair', lines.join('\n'), {gen: request.n});
+    this.setState(request, 'done');
+  }
+
+  /** What Neovim gets to make buffers of the proposed `files` of request `n` (ledger entry `action`); `open` opens them. */
+  filesMessage(action, n, files, contradicts = [], open = false) {
     return {
-      type: 'gen_files', gen: n, action,
+      type: 'gen_files', gen: n, action, ...(open ? {open: true} : {}),
       files: files.map(piece => ({
         piece: piece.i, file: piece.file, name: relative(this.root, piece.file), text: piece.text, note: piece.note ?? '',
         marks: contradicts.filter(item => item.file === piece.file).map(item => ({line: item.fileLine, text: [`≠ brief "${item.text}"`, item.place, `· ${item.why}`].filter(Boolean).join(' ')})),
@@ -505,20 +579,26 @@ export class Gen {
    * Sends the proposed `files` of request `n` (ledger entry `action`) to the Neovim the user works in, as buffers,
    * with what the debrief found against the brief in them; false without a Neovim.
    */
-  async showFiles(action, n, files) {
+  async showFiles(action, n, files, {open = false} = {}) {
     const contradicts = this.requests.get(n)?.check?.contradicts ?? this.session.store.action(action)?.detail?.contradicts ?? [];
-    const reply = await this.session.requestEditor(this.filesMessage(action, n, files, contradicts)).catch(() => null);
+    const reply = await this.session.requestEditor(this.filesMessage(action, n, files, contradicts, open)).catch(() => null);
     return reply?.ok === true;
   }
 
   placeText(piece) {
-    return `${relative(this.root, piece.file)}:${piece.line}`;
+    return `${this.nameOf(piece.file)}:${piece.line}`;
+  }
+
+  /** How the chat names `file`: by its path in the project, or in its try folder. */
+  nameOf(file) {
+    const tried = this.tryOfPath(file);
+    return tried ? relative(tried.dir, file) : relative(this.root, file);
   }
 
   /** Writes the request's ledger entry anew: `data` merged, and its pieces as they are now. */
   book(request, data = {}) {
     if (!request.action) return;
-    const pieces = request.pieces.map(({i, kind, file, line, endLine, insert, text, note, state, patch, from, to, written}) => ({i, kind, file, line, endLine, insert, text, note, state, patch, from, to, written}));
+    const pieces = request.pieces.map(({i, kind, file, line, endLine, insert, text, note, state, patch, from, to, written, source}) => ({i, kind, file, line, endLine, insert, text, note, state, patch, from, to, written, source}));
     const check = request.check ? {contradicts: request.check.contradicts, guessed: request.check.guessed, debrief: request.debrief ?? []} : {};
     this.session.ledger.update(request.action, {data, detail: {words: request.words, pieces, ...check}});
   }
@@ -666,6 +746,8 @@ export class Gen {
     }
     if (name === 'propose') return this.propose(request, args);
     if (name === 'draft') return this.draft(request, args);
+    if (name === 'write') return this.write(request, args);
+    if (name === 'run') return this.runTry(request, args);
     if (name === 'ask') return this.ask(request, args);
     return `Pair has no tool "${name}" in a /gen request.`;
   }
@@ -704,6 +786,7 @@ export class Gen {
 
   /** A new file for a file request: it goes to Neovim as a buffer to review once the model is done. */
   async draft(request, {path, text, note}) {
+    if (request.shape === 'try') return 'This request is /gen try: write its files in your folder with write.';
     if (request.shape !== 'file') return `This request is /gen ${request.shape}: draft makes new files only in a /gen file request. Call propose.`;
     const at = await draftPath(this.root, path);
     if (!at) return `Cannot draft ${path}: not a path inside the project.`;
@@ -721,6 +804,220 @@ export class Gen {
     else request.pieces.push({i: request.pieces.length, n: request.n, kind: 'file', file: at.path, line: 1, endLine: lines, insert: false, text: body, note, state: 'proposed'});
     this.book(request);
     return `Drafted ${name}${old ? ' anew' : ''}, ${plural(lines, 'line')}. Once you are done, the user reviews it as an unsaved buffer and writes it to ${name}, or not.`;
+  }
+
+  /** A file of a try request's sample, written in its folder at once: the folder is Pair's, not the project. */
+  async write(request, {path, text}) {
+    if (request.shape !== 'try') return `This request is /gen ${request.shape}: write works only in a /gen try request. ${request.shape === 'file' ? 'Call draft.' : 'Call propose.'}`;
+    const at = await pathIn(request.dir, path);
+    if (!at) return `Cannot write ${path}: not a path inside your folder ${request.dir}.`;
+    const name = relative(request.dir, at);
+    const body = text.replace(/\n$/, '');
+    const lines = lineCount(body);
+    if (!lines) return 'write needs the file: text has no lines.';
+    const old = request.pieces.find(piece => piece.kind === 'try' && piece.file === at);
+    if (request.lines - (old ? lineCount(old.text) : 0) + lines > request.limits.lines) return `That is more than ${request.limits.lines} lines for this request (gen.limits.lines): write less, or say what is left.`;
+    if (!request.files.has(at) && request.files.size >= request.limits.files) return `That is ${request.limits.files} files for this request (gen.limits.files).`;
+    try {
+      await mkdir(dirname(at), {recursive: true});
+      await writeFile(at, `${body}\n`);
+    } catch (error) {
+      return `Not written: ${error.message}.`;
+    }
+    request.lines += lines - (old ? lineCount(old.text) : 0);
+    request.files.add(at);
+    if (old) Object.assign(old, {text: body, endLine: lines});
+    else request.pieces.push({i: request.pieces.length, n: request.n, kind: 'try', file: at, line: 1, endLine: lines, insert: false, text: body, state: 'scratch'});
+    this.book(request);
+    return `Wrote ${name} in your folder, ${plural(lines, 'line')}${old ? ', anew' : ''}. run runs it there.`;
+  }
+
+  /** run in a try request: `command` in its folder, in the sandbox; the last one is how the user runs it again. */
+  async runTry(request, {command}) {
+    if (request.shape !== 'try') return 'run works only in a /gen try request, in its own folder. Here Pair checks your code once the user takes it: do not run anything.';
+    if (++request.commands > request.limits.commands) return `That is ${request.limits.commands} commands for this request (gen.limits.commands): say what you have.`;
+    const result = await this.runIn(request, request.dir, command);
+    if (typeof result === 'string') return result;
+    request.ran = {command, exit: result.exit, timedOut: result.timedOut};
+    this.book(request, {command});
+    const said = result.timedOut ? 'It ran too long, so it was stopped with Ctrl-C.' : `exit ${result.exit}`;
+    return `${said}\n${tail(result.output, RUN_CHARS) || '(no output)'}`;
+  }
+
+  /**
+   * Runs `command` of try request `request` (`{n}` will do) in its folder `dir`, in Pair's pane: `{exit, output,
+   * timedOut}`, or why not as text. In the sandbox (only that folder writable) it runs at once unless the command
+   * policy refuses it; without one, a command Scout would ask about asks first, unless the user ran it (`byUser`).
+   */
+  async runIn(request, dir, command, {byUser = false} = {}) {
+    const session = this.session;
+    const policy = commandPolicy(command);
+    if (policy.verdict === 'refuse') {
+      session.ledger.add('refused', command, {data: {note: policy.reason}});
+      session.message('system', `Pair may not run \`${command}\`: ${policy.reason}.`);
+      return `Refused: ${policy.reason}. Do not try another way; tell the user.`;
+    }
+    let sandboxed;
+    try {
+      sandboxed = trySandboxed(this.sandbox);
+    } catch (error) {
+      return `Not run: ${error.message}.`;
+    }
+    if (policy.verdict === 'ask' && !sandboxed && !byUser
+      && !(await session.allowed(command, `May I run \`${command}\` in gen #${request.n}'s folder, outside the project (${policy.reason})? There is no sandbox here.`))) {
+      return 'The user did not allow it. Do not run it another way.';
+    }
+    let result;
+    try {
+      result = await session.inPane(tryLine(dir, command, {sandboxed, network: this.network}), {gen: true});
+    } catch (error) {
+      return `Not run: ${error.message}.`;
+    }
+    session.ledger.add('ran', `${command} (gen #${request.n}'s try)`, {
+      data: {note: result.timedOut ? 'stopped' : result.exit ? `exit ${result.exit}` : undefined, result: result.exit === 0 && !result.timedOut ? 'pass' : 'fail'},
+      detail: {output: keptOutput(result.output)},
+    });
+    return result;
+  }
+
+  // Tries after the model is done: the user runs one again, keeps a file of it, lists them; they expire.
+
+  /** Deletes the try folders, of every project, that have not changed for gen.keepTries days. */
+  async expire() {
+    // By the clock, not the session's: the folders' times are the disk's.
+    const gone = await expireTries(this.dir, this.keepTries, Date.now()).catch(() => []);
+    if (gone.length) this.session.log(`gen: ${plural(gone.length, 'try folder')} older than ${plural(this.keepTries, 'day')} deleted`);
+  }
+
+  /** The try request whose folder holds `file`, as `{n, dir}`, or null. */
+  tryOfPath(file) {
+    if (typeof file !== 'string' || !isAbsolute(file)) return null;
+    const rel = relative(join(this.folder, 'try'), file);
+    const [n, ...rest] = rel.split(sep);
+    if (!/^[1-9]\d*$/.test(n) || rel.startsWith('..')) return null;
+    return {n: Number(n), dir: tryFolder(this.folder, Number(n)), inside: rest.length > 0};
+  }
+
+  /**
+   * A try request: number `n`, or the one whose folder holds `file`, else the newest whose folder is still there. As
+   * `{n, dir, action, entry, request, pieces}`, or null.
+   */
+  async tryOf({n = null, file = null} = {}) {
+    const wanted = n ?? this.tryOfPath(file)?.n ?? null;
+    const rows = this.session.store.actions(this.root, 0).filter(row => row.kind === 'generated' && row.data?.shape === 'try' && row.data?.dir);
+    for (const row of rows.reverse()) {
+      if (wanted !== null && row.data.gen !== wanted) continue;
+      if (!(await filesIn(row.data.dir)).length) {
+        if (wanted !== null) return null;
+        continue;
+      }
+      return {n: row.data.gen, dir: row.data.dir, action: row.id, ...this.piecesOf(row.id)};
+    }
+    return null;
+  }
+
+  /**
+   * /keep [path] and :Pair keep: a file of a try (`file`, else the try's main file) goes into the project at `path`
+   * (else its path in the folder), as a buffer to review that :w takes, like a file request's. Only a new file.
+   */
+  async keep({path = '', file = null, n = null} = {}) {
+    const session = this.session;
+    const found = await this.tryOf({n, file});
+    if (!found) return this.said('No /gen try to keep from: /gen try <what> makes one.');
+    const name = `gen #${found.n}`;
+    const scratch = found.pieces.filter(piece => piece.kind === 'try');
+    const source = file && this.tryOfPath(file)?.n === found.n && this.tryOfPath(file).inside ? file : mainFile(scratch)?.file ?? join(found.dir, (await filesIn(found.dir))[0]);
+    const sourceName = relative(found.dir, source);
+    const target = path.trim() || sourceName;
+    const at = await draftPath(this.root, target);
+    if (!at) return this.said(`${name}: cannot keep ${sourceName} as ${target}, not a path inside the project.`);
+    const keptName = relative(this.root, at.path);
+    if (at.exists) return this.said(`${name}: ${keptName} exists already, and /keep makes a new file. /keep <another path>; or copy what you need from ${sourceName}.`);
+    const text = await session.bufferText(source).catch(() => readFile(source, 'utf8').catch(() => null));
+    if (text === null) return this.said(`${name}: ${sourceName} is gone from its folder.`);
+    const body = text.replace(/\n$/, '');
+    const old = found.pieces.find(piece => piece.kind === 'file' && piece.file === at.path && piece.state === 'proposed');
+    const piece = old ?? {i: found.pieces.length, n: found.n, kind: 'file', file: at.path, line: 1, insert: false, state: 'proposed'};
+    Object.assign(piece, {text: body, endLine: lineCount(body), note: `kept from ${sourceName}`, source});
+    if (!old) found.pieces.push(piece);
+    const kept = found.pieces.filter(one => one.kind === 'file').map(one => relative(this.root, one.file));
+    this.rebook(found.action, found, {note: `kept as ${kept.join(', ')}`, undo: true});
+    const shown = await this.showFiles(found.action, found.n, [piece], {open: true});
+    return this.said(shown ? `${name}: ${keptName} opened, unsaved, generated. :w takes it; /undo takes back ${name}.`
+      : `${name}: ${keptName} kept as a buffer to review; it opens in Neovim once one connects.`);
+  }
+
+  /** The user runs try `n` (or the one of `file`, or the newest) again; what it showed, for the chat and Neovim. */
+  async rerun({n = null, file = null} = {}) {
+    const session = this.session;
+    const found = await this.tryOf({n, file});
+    if (!found) return this.said('No /gen try to run: /gen try <what> makes one.');
+    const command = found.request?.ran?.command ?? found.entry?.data?.command ?? null;
+    if (!command) return this.said(`gen #${found.n} has no command to run it by: its model never ran it. Ask in the chat, or run it in a terminal of yours.`);
+    const result = await this.runIn({n: found.n}, found.dir, command, {byUser: true});
+    if (typeof result === 'string') return this.said(`gen #${found.n} · ${result}`);
+    const ran = {command, exit: result.exit, timedOut: result.timedOut};
+    const shown = result.output.trimEnd().split('\n').slice(-RAN_LINES).join('\n');
+    return this.said(`gen #${found.n} · ${ranText(ran)}${shown ? `\n${shown}` : ''}`);
+  }
+
+  said(text) {
+    this.session.message('system', text);
+    return text;
+  }
+
+  /** /gen tries: the tries of the project still in their folders, newest first, with the days they have left. */
+  async tries() {
+    const rows = this.session.store.actions(this.root, 0).filter(row => row.kind === 'generated' && row.data?.shape === 'try');
+    const tries = [];
+    for (const one of await triesIn(this.folder)) {
+      const row = rows.findLast(each => each.data.gen === one.n);
+      const files = await filesIn(one.dir);
+      if (!files.length) continue;
+      const pieces = row ? this.piecesOf(row.id).pieces : [];
+      const main = mainFile(pieces.filter(piece => piece.kind === 'try'))?.file ?? join(one.dir, files[0]);
+      tries.push({
+        gen: one.n, dir: one.dir, words: row ? (this.session.store.action(row.id)?.detail?.words ?? row.text) : '', files, main,
+        left: daysLeft(one.changed, this.keepTries, Date.now()), command: row?.data?.command ?? null,
+        kept: pieces.filter(piece => piece.kind === 'file').map(piece => relative(this.root, piece.file)),
+      });
+    }
+    return tries;
+  }
+
+  /** What /gen tries says in the chat. */
+  async triesText() {
+    const tries = await this.tries();
+    if (!tries.length) return this.said('No /gen try folders for this project. /gen try <what> makes one.');
+    const lines = tries.map(one => `gen #${one.gen} · ${one.words || '(not in the ledger)'} · ${one.files.join(', ')}${one.kept.length ? ` · kept as ${one.kept.join(', ')}` : ''} · ${one.left ? `goes in ${plural(one.left, 'day')}` : 'goes today'}\n  ${one.dir}`);
+    return this.said(`${lines.join('\n')}\n:Pair gen tries in Neovim opens one; /keep <path> keeps a file of the newest.`);
+  }
+
+  /**
+   * read of a file in one of the project's try folders (the gen request's, or the user's question about a try): the
+   * file as the editor has it, or the folder's files. Null for any other path.
+   */
+  async readTry(file, from, to) {
+    const tried = this.tryOfPath(file);
+    if (!tried) return null;
+    if (!tried.inside) {
+      const files = await filesIn(tried.dir);
+      return files.length ? files.join('\n') : `${file} is empty, or gone.`;
+    }
+    const at = await pathIn(tried.dir, file);
+    if (!at) return `Cannot read ${file}: not a file of gen #${tried.n}'s folder.`;
+    const text = await this.session.bufferText(at).catch(() => null) ?? (await readFile(at, 'utf8').catch(() => null));
+    if (text === null) return `${file} does not exist.`;
+    return numberedLines(text, from ?? 1, to);
+  }
+
+  /** What the user's questions in the chat are told of the newest try this daemon made, while its folder is there. */
+  async tryContext() {
+    const request = [...this.requests.values()].reverse().find(one => one.shape === 'try' && one.dir && one.pieces.some(piece => piece.kind === 'try'));
+    if (!request) return '';
+    const files = await filesIn(request.dir);
+    if (!files.length) return '';
+    return `\n\nThe last /gen try, gen #${request.n} ("${request.words}"), is a sample outside the project, in ${request.dir}: ${files.join(', ')}. read takes its files by their full path, such as ${join(request.dir, files[0])}.`;
   }
 
   /** Shows the pieces that wait, once the user pauses typing: like an unasked remark, they never land mid-thought. */
@@ -862,24 +1159,25 @@ export class Gen {
    */
   review() {
     const {store} = this.session;
-    const rows = store.actions(this.root, this.session.now() - REVIEW_DAYS * DAY).filter(row => row.kind === 'generated' && row.data?.shape === 'file');
+    const rows = store.actions(this.root, this.session.now() - REVIEW_DAYS * DAY).filter(row => row.kind === 'generated' && ['file', 'try'].includes(row.data?.shape));
     const requests = rows.reverse().map(row => {
       const entry = store.action(row.id);
       const pieces = entry.detail?.pieces ?? [];
+      if (row.data.shape === 'try' && !pieces.some(piece => piece.kind === 'file')) return null; // a try with nothing kept
       const live = this.requests.get(row.data.gen);
       return {
-        action: row.id, gen: row.data.gen, words: entry.detail?.words ?? row.text, at: row.at, state: row.state, note: row.data.note ?? '',
+        action: row.id, gen: row.data.gen, shape: row.data.shape, words: entry.detail?.words ?? row.text, at: row.at, state: row.state, note: row.data.note ?? '',
         running: Boolean(live?.action === row.id && ['asking', 'asks', 'queued', 'generating'].includes(live.state)),
         brief: row.data.brief ?? null, check: row.data.check ?? null,
         files: pieces.filter(piece => piece.kind === 'file').map(piece => ({
           piece: piece.i, file: piece.file, name: relative(this.root, piece.file), lines: lineCount(piece.text), state: piece.state, note: piece.note ?? '',
           ...(piece.state === 'proposed' ? {text: piece.text} : {}),
         })),
-        changes: pieces.filter(piece => piece.kind !== 'file').map(piece => ({name: relative(this.root, piece.file), line: piece.line, state: piece.state})),
+        changes: pieces.filter(piece => !['file', 'try'].includes(piece.kind)).map(piece => ({name: relative(this.root, piece.file), line: piece.line, state: piece.state})),
         contradicts: (entry.detail?.debrief ?? []).filter(line => line.startsWith('≠')),
         guessed: entry.detail?.guessed ?? [],
       };
-    });
+    }).filter(Boolean);
     return {type: 'gen_review', requests};
   }
 
@@ -921,7 +1219,7 @@ export class Gen {
   /** What /gen alone shows: today's requests in this project, one line each. */
   list() {
     const rows = this.session.store.actions(this.root, startOfDay(this.session.now())).filter(action => action.kind === 'generated');
-    if (!rows.length) return this.session.message('system', 'No /gen requests here today. /gen here <what> asks for code at your cursor in Neovim; /gen file <what> for new files.');
+    if (!rows.length) return this.session.message('system', 'No /gen requests here today. /gen here <what> asks for code at your cursor in Neovim; /gen file <what> for new files; /gen try <what> for a sample to run.');
     const lines = rows.map(row => `${new Date(row.at).toTimeString().slice(0, 5)}  ${row.text}${row.data?.note ? ` · ${row.data.note}` : ''}${row.state === 'undone' ? ' (undone)' : ''}`);
     this.session.message('system', `${lines.join('\n')}\n/undo takes back the last one; u in :Pair today any of them.`);
   }
