@@ -6,6 +6,7 @@
 -- window for a longer request. The place you asked at is marked, so you can keep typing: the code lands there, as a
 -- suggestion of its own you take with the accept key, and a block taller than `gen_preview_lines` shows in a
 -- preview window. A question of Pair's never opens while you type: it waits for your pause, in the statusline.
+-- A request that contradicts the brief asks first: follow the brief, as asked, or open the brief at that line.
 -- Only the dialogs, the marks and the preview: init.lua draws the suggestion and tells the daemon.
 local M = {}
 
@@ -202,7 +203,8 @@ function M.ask(words, range, compose)
   end)
 end
 
--- Pair's questions: the shape it guessed, and at most two of the model's. Esc leaves one waiting; the gen key shows it again.
+-- Pair's questions: the shape it guessed, the brief a request contradicts, and at most two of the model's. Esc leaves
+-- one waiting; the gen key shows it again.
 
 local function answer(message, text)
   if waiting == message then waiting = nil end
@@ -215,11 +217,27 @@ local function shape_line(choice)
   return ('%-9s %s%s'):format(choice.shape, choice.what, why)
 end
 
+local function brief_line(choice) return choice.what end
+
+--- `e` on a brief question: the brief's note, at the line the request contradicts, in a split.
+local function open_brief(choice)
+  vim.cmd('split ' .. vim.fn.fnameescape(choice.file))
+  pcall(vim.api.nvim_win_set_cursor, 0, {choice.line, 0})
+end
+
 --- Shows question `message` now.
 function M.show(message)
   if message.kind == 'shape' then
     return select(message.choices or {}, {prompt = message.title, format_item = shape_line, kind = 'pair_gen_shape'}, function(choice)
       if choice and waiting == message then answer(message, choice.shape) end
+    end)
+  end
+  if message.kind == 'brief' then
+    local title = ('%s: "%s" %s'):format(message.title, message.quote or '', message.place or '')
+    return select(message.choices or {}, {prompt = title, format_item = brief_line, kind = 'pair_gen_brief'}, function(choice)
+      if not choice or waiting ~= message then return end
+      if choice.key == 'e' and choice.file then open_brief(choice) end
+      answer(message, choice.key)
     end)
   end
   input({prompt = message.title .. ' ', default = type(message.answer) == 'string' and message.answer or ''}, function(text)
@@ -236,8 +254,8 @@ end
 function M.on_ask(message)
   waiting = message
   deps.redraw_status()
-  -- The shape comes as the answer to your own request: at once. A question of the model's waits for your pause.
-  if message.kind == 'shape' and free() then return M.show(message) end
+  -- The shape and the brief come as the answer to your own request: at once. A question of the model's waits for your pause.
+  if message.kind ~= 'question' and free() then return M.show(message) end
   local timer = vim.uv.new_timer()
   timer:start(PAUSE_MS, PAUSE_MS, vim.schedule_wrap(function()
     if waiting ~= message then return timer:close() end
@@ -278,6 +296,12 @@ function M.on_state(message)
   end
   tick(message.state == 'generating')
   deps.redraw_status()
+end
+
+--- What the request found against the brief, once its code is there: the ≠ brief and ? guessed lines.
+function M.on_debrief(message)
+  if type(message.lines) ~= 'table' or #message.lines == 0 then return end
+  vim.notify(('Pair · gen #%d\n%s'):format(message.gen, table.concat(message.lines, '\n')), vim.log.levels.INFO)
 end
 
 --- What the statusline shows of /gen: {text, busy}, or nil when nothing runs, waits or is ready.

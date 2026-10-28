@@ -119,6 +119,13 @@ something other than the note's title. Asked only whether a remark would save ti
 question 3 and an off-topic section 2, under the normal bar of 6, since nothing failed; asked this way, 7 and 8, and
 2 for a section on the note's own subject.
 
+## The note as a brief for /gen
+
+`NOTES.md` at the project root is also the brief that every [/gen request](gen.md#the-brief) runs against, with the
+goal and the board task; `/brief <note>` or `:Pair brief` in a note pins another one. Pair reads it there as here:
+it never writes it. A request that contradicts a line of it asks you first, and the debrief quotes the line its code
+goes against (`≠ brief "…" NOTES.md:11`).
+
 ## Keys and options
 
 `setup({decide_key = '<M-d>', link_key = '<M-l>'})`: both are mapped in Normal mode, only in a note that has a mark

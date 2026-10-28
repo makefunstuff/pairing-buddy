@@ -4,11 +4,19 @@
 // is Pair's (origin gen:#n, see fold.mjs) until the user edits it. The ledger books a request as one line with its
 // pieces, and /undo takes back all of it: what was taken goes, what was not is dropped.
 //
+// Every request runs against the brief (see brief.mjs): the goal, the board task and a note, NOTES.md by default.
+// When the request contradicts it, Pair asks one question before generating; after, the debrief says where the code
+// goes against the brief (≠ brief) and what it decided that nobody said (? guessed).
+//
 // One request runs at a time; others wait their turn. While one runs, Pair makes no remark nobody asked for, and the
 // user's questions in the chat still get answers, in the session's own conversation. This version builds one shape,
 // here (code at the cursor, or over the selection); the others are named, guessed and confirmed, but not built yet.
 import {relative} from 'node:path';
-import {GEN_LIMITS} from './config.mjs';
+import {
+  briefEmpty, briefLine, briefText, CHECK_PROMPT, checkInput, CONFLICT_PROMPT, conflictInput, exceptionKey, parseCheck,
+  parseConflict, quotePlace, readBrief,
+} from './brief.mjs';
+import {GEN_BRIEF, GEN_LIMITS} from './config.mjs';
 import {numberedLines, projectFile} from './files.mjs';
 import {startOfDay} from './ledger.mjs';
 
@@ -66,10 +74,20 @@ const lineCount = text => (text === '' ? 0 : text.replace(/\n$/, '').split('\n')
 const answerOf = text => (text && !SILENT.test(text) ? text.trim() : '');
 
 export class Gen {
-  /** The requests of `session` (a PairSession); `limits` are the config's gen.limits, read when a request starts. */
-  constructor({session, limits = GEN_LIMITS}) {
+  /**
+   * The requests of `session` (a PairSession); `limits` are the config's gen.limits, read when a request starts, and
+   * `brief` its gen.brief, the note a brief has when the user pinned none. `ask(systemPrompt, content)` is one answer
+   * of the Partner's model outside any conversation, for the brief's checks; without it, they are not made.
+   */
+  constructor({session, limits = GEN_LIMITS, brief = GEN_BRIEF, ask = null}) {
     this.session = session;
     this.limits = limits;
+    this.briefName = brief;
+    this.askModel = ask;
+    const pinned = session.record.brief ?? session.store.lastBrief?.(session.root) ?? null;
+    this.pin = pinned === '' ? false : pinned; // the note the user pinned, false for none, null for gen.brief's
+    this.toldBrief = false; // the chat said once that a request runs against gen.brief's note
+    this.exceptions = new Set(); // the brief's lines the user chose a request over (y): not asked about again
     this.stale();
     this.requests = new Map(); // n -> request, since the daemon loaded the session
     this.conversations = new Map(); // conversation id -> its request
@@ -86,6 +104,7 @@ export class Gen {
   stale() {
     const {store} = this.session;
     for (const action of store.actions?.(this.root, startOfDay(this.session.now())) ?? []) {
+      if (action.kind === 'generated' && action.data?.asAsked?.key && action.at >= (this.session.record.started_at ?? 0)) this.exceptions.add(action.data.asAsked.key);
       if (action.kind !== 'generated' || !/generating$/.test(action.data?.note ?? '')) continue;
       store.updateAction(action.id, {data: {...action.data, note: 'stopped: the daemon restarted'}});
     }
@@ -146,6 +165,7 @@ export class Gen {
       return this.end(request, 'cancelled', `gen #${request.n}: /gen ${request.shape} (${SHAPE_WHAT[request.shape]}) is not built yet; this version has /gen here.`);
     }
     if (!(await this.placeOf(request))) return;
+    if (!(await this.against(request))) return;
     if (this.running) {
       this.queue.push(request);
       this.setState(request, 'queued');
@@ -176,13 +196,91 @@ export class Gen {
     return true;
   }
 
+  /** The brief as it is now: the pinned note or gen.brief's, the goal and the board task. */
+  brief() {
+    const {session} = this;
+    return readBrief({root: this.root, pin: this.pin, fallback: this.briefName, goal: session.state.goal, task: session.state.board?.task, read: path => session.bufferText(path)});
+  }
+
+  /**
+   * /brief and :Pair brief: pins the note `file`, leaves the note out (`off`), or with neither shows what the brief is.
+   * The pin lasts into the next sessions of the project, until the user changes it.
+   */
+  async pinBrief({file = null, off = false} = {}) {
+    const text = await this.briefSaid({file, off});
+    this.session.message('system', text);
+    return text;
+  }
+
+  /** What /brief says: what it pinned, or what the brief is. */
+  async briefSaid({file, off}) {
+    if (off || file) {
+      const path = off ? null : await projectFile(this.root, file).catch(() => null);
+      if (!off && !path) return `No file ${file} in the project to pin as the brief.`;
+      this.pin = off ? false : relative(this.root, path);
+      this.session.store.setBrief?.(this.session.id, off ? '' : this.pin);
+    }
+    const brief = await this.brief();
+    const line = briefLine(brief);
+    if (off) return `The brief leaves the note out now: ${line}. /brief <note> pins one.`;
+    if (file) return `The brief: ${line}. Every /gen runs against it; Pair never edits it.`;
+    if (briefEmpty(brief)) return 'The brief is empty: no goal, no board task, no note. /goal sets the goal; /brief <note> pins a note.';
+    const how = brief.note && !brief.note.pinned ? ` (${brief.note.file} by default, gen.brief)` : '';
+    return `The brief: ${line}${how}. /brief <note> pins another note; /brief off leaves the note out.`;
+  }
+
+  /**
+   * Compares `request` with the brief before it generates. A clear contradiction is one question: y goes as asked (and
+   * that line is not asked about again this session), n follows the brief, e opens the brief there and ends the request.
+   * False when the request ends.
+   */
+  async against(request) {
+    const session = this.session;
+    const brief = await this.brief();
+    request.brief = brief;
+    if (brief.note && !brief.note.pinned && !this.toldBrief) {
+      this.toldBrief = true;
+      session.message('system', `gen #${request.n} runs against the brief: ${briefLine(brief)}. /brief <note> pins another note; /brief off leaves it out.`);
+    }
+    if (briefEmpty(brief) || !this.askModel) return true;
+    let conflict = null;
+    try {
+      conflict = parseConflict(await this.askModel(CONFLICT_PROMPT, conflictInput(brief, request.words)), brief, this.exceptions);
+    } catch (error) {
+      session.log(`gen #${request.n}: comparing with the brief failed: ${error.message}`);
+    }
+    if (request.state === 'cancelled') return false;
+    if (!conflict) return true;
+    const place = quotePlace(brief, conflict);
+    const choice = await this.question(request, {kind: 'brief', title: `gen #${request.n} · the brief says ${conflict.says}`, conflict, place});
+    if (request.state === 'cancelled' || !choice) return false;
+    if (choice === 'e') {
+      if (request.from !== 'editor' && conflict.source === 'note') session.notify('editor', {type: 'open', file: brief.note.path, line: conflict.line, ask: false});
+      this.end(request, 'cancelled', `gen #${request.n} cancelled: ${place} is ${conflict.source === 'note' ? 'open in Neovim' : 'where the brief says it'}. Change the brief or the request, then /gen again.`);
+      return false;
+    }
+    if (choice === 'y') {
+      request.asAsked = conflict;
+      this.exceptions.add(exceptionKey(conflict));
+      session.message('system', `gen #${request.n}: as asked, ${conflict.asked}, against ${place}. Pair does not ask about that line again this session.`);
+    } else {
+      request.followBrief = conflict;
+      session.message('system', `gen #${request.n} follows the brief: ${conflict.says} (${place}).`);
+    }
+    return true;
+  }
+
   /** Runs `request` in a conversation of its own, then the next one waiting. */
   async run(request) {
     const session = this.session;
     this.running = request;
     const where = request.selection ? `${relative(this.root, request.file)}:${request.selection.from}-${request.selection.to}` : `${relative(this.root, request.file)}:${request.place.line}`;
+    const asAsked = request.asAsked && {key: exceptionKey(request.asAsked), source: request.asAsked.source, line: request.asAsked.line, text: request.asAsked.text};
     request.action = session.ledger.add('generated', `gen #${request.n} · ${request.shape} · ${request.words}`, {
-      data: {gen: request.n, shape: request.shape, place: {file: request.file, line: request.selection?.from ?? request.place.line}, note: `at ${where} · generating`, undo: true},
+      data: {
+        gen: request.n, shape: request.shape, place: {file: request.file, line: request.selection?.from ?? request.place.line}, note: `at ${where} · generating`, undo: true,
+        ...(request.brief ? {brief: briefLine(request.brief)} : {}), ...(asAsked ? {asAsked} : {}),
+      },
       detail: {words: request.words, pieces: []},
     });
     this.setState(request, 'generating');
@@ -203,7 +301,7 @@ export class Gen {
       this.conversations.delete(request.conversation);
       this.running = null;
     }
-    this.finish(request, failure);
+    await this.finish(request, failure);
     const next = this.queue.shift();
     if (next) await this.run(next);
   }
@@ -256,8 +354,12 @@ export class Gen {
       where = `The user's cursor is on line ${line} of ${name}: propose with insert true and line ${line}, unless the request names another place in this file.`;
       shown = numberedLines(text, Math.max(1, line - AROUND), Math.min(count, line + AROUND));
     }
-    const goal = session.state.goal ? `\n\nThe session's goal: ${session.state.goal}` : '';
-    return `[gen] gen #${request.n}, here. The user asked: "${request.words}"\n${where}\n\n${name} as the editor has it:\n${shown}${goal}\n\n`
+    // The brief as it is when the request starts: the user may have changed it while the request waited its turn.
+    request.brief = await this.brief();
+    const brief = briefEmpty(request.brief) ? '' : `\n\n${briefText(request.brief)}`;
+    const chose = request.asAsked ? `\nThe user chose the request over the brief's "${request.asAsked.text}": do as asked there.`
+      : request.followBrief ? `\nWhere the request says ${request.followBrief.asked}, the user chose the brief: ${request.followBrief.says} ("${request.followBrief.text}").` : '';
+    return `[gen] gen #${request.n}, here. The user asked: "${request.words}"\n${where}\n\n${name} as the editor has it:\n${shown}${brief}${chose}\n\n`
       + 'Read more of the project only if you need it. Then propose the code, and say in one or two sentences what you wrote and what you decided that the user did not say.';
   }
 
@@ -267,8 +369,32 @@ export class Gen {
     if (text) this.session.message('system', text);
   }
 
+  /**
+   * What the code proposed does against the brief and what it guessed, as lines of the debrief: at most three
+   * `≠ brief` and three `? guessed`, only what holds up (see brief.mjs). None without pieces, a brief, or the model.
+   */
+  async checkBrief(request) {
+    const {brief} = request;
+    if (!this.askModel || !brief || briefEmpty(brief) || !request.pieces.length) return {contradicts: [], guessed: []};
+    try {
+      const answer = await this.askModel(CHECK_PROMPT, checkInput({...brief, asAsked: request.asAsked}, request.words, request.pieces, this.root));
+      return parseCheck(answer, brief, request.pieces, this.exceptions);
+    } catch (error) {
+      this.session.log(`gen #${request.n}: checking against the brief failed: ${error.message}`);
+      return {contradicts: [], guessed: []};
+    }
+  }
+
+  /** The debrief's lines of `check`: `≠ brief "…" NOTES.md:4 · math.js:7 why` and `? guessed …`. */
+  checkLines(request, check) {
+    return [
+      ...check.contradicts.map(item => `≠ brief "${item.text}" ${quotePlace(request.brief, item)} · ${relative(this.root, item.file)}:${item.fileLine} ${item.why}`),
+      ...check.guessed.map(text => `? guessed ${text}`),
+    ];
+  }
+
   /** The request's model is done: what it proposed shows at the user's next pause, and the chat says what it made. */
-  finish(request, failure) {
+  async finish(request, failure) {
     const session = this.session;
     if (['cancelled', 'undone'].includes(request.state)) return;
     const n = `gen #${request.n}`;
@@ -288,11 +414,19 @@ export class Gen {
       return this.setState(request, 'done');
     }
     const lines = request.pieces.reduce((sum, piece) => sum + lineCount(piece.text), 0);
-    this.book(request, {note: `${plural(lines, 'line')} proposed`});
+    const check = await this.checkBrief(request);
+    if (['cancelled', 'undone'].includes(request.state)) return;
+    request.check = check;
+    const against = check.contradicts.length ? ` · ≠${check.contradicts.length}` : '';
+    this.book(request, {note: `${plural(lines, 'line')} proposed${against}`});
+    const debrief = this.checkLines(request, check);
+    if (debrief.length && request.from === 'editor') this.session.notify('editor', {type: 'gen_debrief', gen: request.n, lines: debrief});
     // The chat shows the first piece as a diff, which `a` there takes in Neovim as Alt-y does.
     const [first] = request.pieces;
     const meta = {gen: request.n, place: {file: relative(this.root, first.file), line: first.line}, suggestion: {action: request.action, old: first.old, new: first.text.split('\n')}};
-    if (!failure && !request.over) session.message('pair', `${n} · here · ${plural(lines, 'line')} at ${this.placeText(first)}${said ? `: ${said}` : ''}`, meta);
+    const more = debrief.length ? `\n${debrief.join('\n')}` : '';
+    if (!failure && !request.over) session.message('pair', `${n} · here · ${plural(lines, 'line')} at ${this.placeText(first)}${said ? `: ${said}` : ''}${more}`, meta);
+    else if (more) session.message('pair', `${n} · against the brief:${more}`, {gen: request.n});
     if (request.pieces.some(piece => piece.state === 'proposed')) this.setState(request, 'ready');
   }
 
@@ -304,27 +438,37 @@ export class Gen {
   book(request, data = {}) {
     if (!request.action) return;
     const pieces = request.pieces.map(({i, file, line, endLine, insert, text, note, state, patch, from, to}) => ({i, file, line, endLine, insert, text, note, state, patch, from, to}));
-    this.session.ledger.update(request.action, {data, detail: {words: request.words, pieces}});
+    const check = request.check ? {contradicts: request.check.contradicts, guessed: request.check.guessed} : {};
+    this.session.ledger.update(request.action, {data, detail: {words: request.words, pieces, ...check}});
   }
 
   /**
    * Asks the user about `request` where they asked for it: in Neovim as a dialog, else in the chat. `kind` 'shape'
    * resolves with a shape (the `guess` first) or null; 'question' with the answer, `answer` when they keep the one
-   * given, or null when they leave it to Pair.
+   * given, or null when they leave it to Pair; 'brief', about a `conflict` with the brief at `place`, with y (as
+   * asked), n (follow the brief) or e (open the brief there).
    */
-  async question(request, {kind, title, guess = null, answer = ''}) {
+  async question(request, {kind, title, guess = null, answer = '', conflict = null, place = null}) {
     const session = this.session;
     const id = ++this.asked;
-    const choices = kind === 'shape' ? [guess, ...SHAPES.filter(shape => shape !== guess)] : null;
-    const waiting = new Promise(resolve => { request.question = {id, kind, title, choices, answer, resolve}; });
+    const choices = kind === 'shape' ? [guess, ...SHAPES.filter(shape => shape !== guess)]
+      : kind === 'brief' ? ['n', 'y', ...(conflict.source === 'note' ? ['e'] : [])] : null;
+    const waiting = new Promise(resolve => { request.question = {id, kind, title, choices, answer, conflict, place, resolve}; });
+    const options = kind === 'shape' ? choices.map(shape => ({shape, what: SHAPE_WHAT[shape], built: BUILT.has(shape), guessed: shape === guess}))
+      : kind === 'brief' ? choices.map(key => ({
+        key,
+        what: {n: `follow the brief: ${conflict.says}`, y: `as asked: ${conflict.asked}`, e: `open ${place}`}[key],
+        ...(key === 'e' ? {file: request.brief.note.path, line: conflict.line} : {}),
+      })) : undefined;
     const asked = request.from === 'editor' && session.notify('editor', {
-      type: 'gen_ask', gen: request.n, id, kind, title, answer,
-      choices: choices?.map(shape => ({shape, what: SHAPE_WHAT[shape], built: BUILT.has(shape), guessed: shape === guess})),
+      type: 'gen_ask', gen: request.n, id, kind, title, answer, choices: options,
+      ...(conflict ? {quote: conflict.text, place} : {}),
     });
     if (request.state === 'generating') this.pause(request);
     this.setState(request, request.state === 'generating' ? 'asks' : 'asking');
     if (asked) {
       if (kind === 'question') session.message('system', `${title} (default: ${answer || 'none'}; answer in Neovim)`);
+      if (kind === 'brief') session.message('system', `${title}: "${conflict.text}" ${place}. ${conflict.asked} anyway? (answer in Neovim)`);
     } else {
       this.inChat(request, request.question);
     }
@@ -337,10 +481,23 @@ export class Gen {
     return result;
   }
 
-  /** The question as the chat asks it: y keeps the guess or the answer given, n leaves it, other words answer. */
+  /**
+   * The question as the chat asks it: y keeps the guess or the answer given, n leaves it, other words answer. About
+   * the brief: y as asked, n (or Esc) follows the brief, e opens it.
+   */
   inChat(request, question) {
     const session = this.session;
     const {kind, title, choices, answer} = question;
+    if (kind === 'brief') {
+      const {conflict, place} = question;
+      const open = choices.includes('e') ? ` · e open ${place}` : '';
+      const asking = session.confirm(`${title}:\n│ "${conflict.text}" ${place}\n${conflict.asked} anyway?`, choices.includes('e') ? ['e'] : [], {
+        timeoutMs: null, hint: `y as asked · n follow the brief (${conflict.says})${open}`, said: () => null,
+      });
+      question.confirm = session.lastConfirmation;
+      asking.then(result => this.answered(request, question.id, result === true ? 'y' : result === 'e' ? 'e' : 'n'));
+      return;
+    }
     const others = choices?.slice(1).join(', ');
     const text = kind === 'shape' ? `${title} y: ${choices[0]}, or type ${others}; n cancels.` : `${title} y keeps \`${answer}\`, n leaves it to Pair, or type your answer.`;
     const asking = session.confirm(text, choices ?? [], {
@@ -363,6 +520,7 @@ export class Gen {
     const question = request.question;
     if (!question || question.id !== id) return;
     if (question.kind === 'shape') return question.resolve(SHAPES.includes(text) ? text : null);
+    if (question.kind === 'brief') return question.resolve(question.choices.includes(text) ? text : null);
     question.resolve(text === null ? null : text.trim() || question.answer || null);
   }
 

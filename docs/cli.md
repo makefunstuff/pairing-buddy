@@ -117,6 +117,7 @@ question for Pair (`@here` in it sends your selection in Neovim along), and a li
 | `/gen here <what>` | Ask Pair for code at your cursor in Neovim; with `@here`, over the lines you selected there ([gen.md](gen.md)) |
 | `/gen` | Today's `/gen` requests in this project |
 | `/gen cancel` | Stop the `/gen` request that runs or waits |
+| `/brief [note\|off]` | What `/gen` runs against: the goal, the board task and a note (`NOTES.md` by default); with a note, pin it; `off` leaves the note out ([gen.md](gen.md#the-brief)) |
 | `/undo` | Undo Pair's last change of the day: an edit of the Driver's, a suggestion you took, or a whole `/gen` request; as `u` in `:Pair today` |
 | `/today` | What Pair did here today, as in `:Pair today` |
 | `/agents` | Your other agents and board tasks |

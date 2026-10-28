@@ -138,11 +138,11 @@ Anything you type that is not a command is a question for Pair; it is always ans
 - **Up** and **Down** move between the lines of what you type, and from the first or the last line through what you
   sent before in this project, kept across panes and restarts.
 - **/** opens the commands as you type, in three columns: the command, its arguments, what it does. It shows seven at a
-  time; its rule says how many of all (`commands · 7 of 30 · type to narrow`) and its last line how many more there
-  are (`↓ 23 more`); **↑** and **↓** go through all of them. **Tab** completes, **Enter** runs one that needs nothing
+  time; its rule says how many of all (`commands · 7 of 31 · type to narrow`) and its last line how many more there
+  are (`↓ 24 more`); **↑** and **↓** go through all of them. **Tab** completes, **Enter** runs one that needs nothing
   more. The [chat commands](cli.md#chat-commands) list them all.
 
-  ![The command menu: seven of 30 commands in three columns (name, arguments, what it does), the count in its rule and ↓ 23 more under it](images/chat-menu.png)
+  ![The command menu: seven of 31 commands in three columns (name, arguments, what it does), the count in its rule and ↓ 24 more under it](images/chat-menu.png)
 - **@** opens the project's files (from git): `@internal/queue/queue.go` names one in your question, for Pair to read;
   **Tab** or **Enter** inserts it (the footer says `Enter inserts`).
   **@here** sends the lines you selected last in Neovim with it, else the line you are on: the question names them
@@ -153,7 +153,9 @@ Anything you type that is not a command is a question for Pair; it is always ans
 - `/gen here <what>` asks Pair for code at your cursor in Neovim, `@here` in it over the lines you selected there
   ([/gen](gen.md)). When the request's shape is a guess, or Pair asks something about it, the question waits in the
   chat with what its answers do: `y` takes the guess or the answer given, `n` cancels or leaves it to Pair, and
-  anything else you type is the answer.
+  anything else you type is the answer. A request that contradicts its [brief](gen.md#the-brief) asks first: `y` as
+  asked, `n` follows the brief, `e` opens the note at that line. `/brief` says what the brief is, `/brief <note>`
+  pins a note, `/brief off` leaves it out.
 
 ![A question in the chat: the file Pair read for it under it, and its answer with a list and a code block](images/chat-answer.png)
 

@@ -2,7 +2,7 @@
 // It is JSON with // and /* */ comments; the first run writes the commented example there.
 import {copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync} from 'node:fs';
 import {homedir} from 'node:os';
-import {dirname, join, resolve} from 'node:path';
+import {dirname, isAbsolute, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {thinkingBudgetForLevel} from '@earendil-works/pi-ai/api/simple-options';
 import {MIN_CONTEXT, replyRoom} from './context.mjs';
@@ -263,18 +263,24 @@ function testCommands(raw = {}) {
 
 // What one /gen request may do at most: they stop a model that loops, they are no review budget (see gen.mjs).
 export const GEN_LIMITS = {files: 40, lines: 4000, commands: 8, minutes: 10};
+// The note a /gen brief has when the user pinned none, when the project has it (see brief.mjs).
+export const GEN_BRIEF = 'NOTES.md';
 
-/** `gen`: `{limits}`, each limit a whole number above zero; the rest of a limit is its default. */
+/**
+ * `gen`: `{limits, brief}`, each limit a whole number above zero, the rest of a limit its default; `brief` a path in
+ * the project, or null for a brief of the goal and the board task only.
+ */
 function genConfig(raw = {}) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('config: gen must be an object, for example {"limits": {"lines": 2000}}');
-  const {limits = {}, ...rest} = raw;
-  if (Object.keys(rest).length) throw new Error(`config: gen has no ${Object.keys(rest).join(', ')} (only limits)`);
+  const {limits = {}, brief = GEN_BRIEF, ...rest} = raw;
+  if (Object.keys(rest).length) throw new Error(`config: gen has no ${Object.keys(rest).join(', ')} (only limits and brief)`);
+  if (brief !== null && (typeof brief !== 'string' || !brief.trim() || isAbsolute(brief))) throw new Error('config: gen.brief must be a path in the project, like "NOTES.md", or null');
   if (!limits || typeof limits !== 'object' || Array.isArray(limits)) throw new Error('config: gen.limits must be an object');
   for (const [name, value] of Object.entries(limits)) {
     if (!(name in GEN_LIMITS)) throw new Error(`config: gen.limits.${name}: the limits are ${Object.keys(GEN_LIMITS).join(', ')}`);
     if (!Number.isInteger(value) || value < 1) throw new Error(`config: gen.limits.${name} must be a whole number above 0`);
   }
-  return {limits: {...GEN_LIMITS, ...limits}};
+  return {limits: {...GEN_LIMITS, ...limits}, brief};
 }
 
 /** `taskCommand`: the command, as words, that :Pair tasks runs for each task, with {title} and {description} in them. */
@@ -330,7 +336,7 @@ export function parseConfig(raw, {windows = {}} = {}) {
     scoutPane: scoutPaneConfig(raw.scoutPane), // Pair's pane: your rc file and the sandbox (see scout-shell.mjs)
     voice: voiceConfig(raw.voice), // push-to-talk; null when off (see voice.mjs)
     taskCommand: taskCommand(raw.taskCommand),
-    gen: genConfig(raw.gen), // what one /gen request may do at most (see gen.mjs)
+    gen: genConfig(raw.gen), // what one /gen request may do at most, and its brief's note (see gen.mjs)
     board: boardCommand(raw.board),
     windows, // as found (see context-window.mjs), so a reload can keep one a server cannot tell then
     agents: raw.agents ?? true, // relays your other agents' news (see agents.mjs)

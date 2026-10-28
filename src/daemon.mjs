@@ -291,6 +291,7 @@ export async function startDaemon(config, {
       session.autoTune = config.autoTune;
       session.setTestOnSave(testOnSaveOf(session.root, session.id));
       session.gen.limits = config.gen.limits; // a request already running keeps the limits it started with
+      session.gen.briefName = config.gen.brief;
       Object.assign(margins.get(session.root) ?? {}, {typingPauseMs: config.typingPauseMs, taskCommand: config.taskCommand});
     }
     if (changed.includes('board')) {
@@ -405,6 +406,8 @@ export async function startDaemon(config, {
         testOnSave: testOnSaveOf(root, record.id),
         checkOutput: join(config.dataDir, 'runs', `${record.id}.check.out`), // the hand-over's check: writable in the sandbox too
         genLimits: config.gen.limits,
+        genBrief: config.gen.brief,
+        askModel: (systemPrompt, content) => askNoteModel(systemPrompt, content, {asked: true}), // the /gen brief's checks
         notify: (role, message) => notify(session, role, message),
         requestEditor: message => requestEditor(session, message),
         log: line => log(`[${basename(root)}] ${line}`),
@@ -619,6 +622,12 @@ export async function startDaemon(config, {
     });
   }
 
+  /** /brief and :Pair brief (see gen.mjs): the chat says what it did, and the Neovim that asked does too. */
+  async function briefFrom(client, session, message) {
+    const text = await session.gen.pinBrief({file: typeof message.file === 'string' ? message.file : null, off: message.off === true});
+    if (client.role === 'editor') sendMessage(client.socket, {type: 'message', sender: 'system', text, at: Date.now()});
+  }
+
   /** The id of the `number`th last remark in the session's project, as /remarks lists them; null without a number. */
   function remarkNumbered(session, number) {
     if (!Number.isInteger(number) || number < 1) return null;
@@ -761,6 +770,7 @@ export async function startDaemon(config, {
     if (message.type === 'gen_dropped' && Number.isInteger(message.action)) return session.gen.dropped(message.action, message.piece);
     if (message.type === 'gen_cancel') return session.gen.cancel();
     if (message.type === 'gen_list') return session.gen.list();
+    if (message.type === 'brief') return briefFrom(client, session, message);
     if (message.type === 'trail') return sendMessage(client.socket, session.trail());
     if (message.type === 'forget_trail') return session.forgetTrail();
     if (message.type === 'runs') return session.runs().then(runs => sendMessage(client.socket, runs));
