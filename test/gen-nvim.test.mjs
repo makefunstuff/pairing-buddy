@@ -540,7 +540,7 @@ test('/gen try: the sample in a split outside the project; the run key writes an
     assert.deepEqual([remote('&buftype'), remote('&modified'), remote('&winbar')], ['acwrite', '1', 'generated · gen #1 · :w takes it to src/lru.js']);
     assert.equal(JSON.parse(remote('json_encode(getline(1, "$"))')).at(-1), 'console.log("evicts b")', 'as you changed it');
     assert.equal(existsSync(join(project, 'src')), false, 'unsaved');
-    await said('gen #1: src/lru.js opened, unsaved, generated. :w takes it; /undo takes back gen #1.');
+    await said('gen #1: src/lru.js opened, unsaved, generated. :w takes it; u on gen #1 in :Pair today takes it back.');
     keys(':w<CR>');
     await until(() => existsSync(join(project, 'src/lru.js')), 'written');
     await said('gen #1: src/lru.js written, taken. /undo takes back the request.');

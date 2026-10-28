@@ -80,9 +80,27 @@ async function changedAt(dir) {
   return newest;
 }
 
+/**
+ * Whether `dir` lies in `genDir` through real folders only: a link on the way (Scout's commands may write in the gen
+ * folder) would send the daemon's writes and deletes elsewhere.
+ */
+export async function noLinks(genDir, dir) {
+  const rel = relative(genDir, dir);
+  if (!rel || rel.startsWith('..') || isAbsolute(rel)) return false;
+  let at = genDir;
+  for (const part of rel.split(sep)) {
+    at = join(at, part);
+    const info = await lstat(at).catch(() => null);
+    if (info?.isSymbolicLink() || (info && !info.isDirectory())) return false;
+  }
+  return true;
+}
+
 /** The try folders of the project whose /gen folder is `folder`, newest number first: `{n, dir, changed}`. */
 export async function triesIn(folder) {
   const root = join(folder, 'try');
+  // Not through a link: what is listed here may be deleted.
+  if ((await lstat(folder).catch(() => null))?.isSymbolicLink() || (await lstat(root).catch(() => null))?.isSymbolicLink()) return [];
   const entries = await readdir(root, {withFileTypes: true}).catch(() => []);
   const tries = [];
   for (const entry of entries) {
@@ -112,8 +130,12 @@ export async function expireTries(genDir, days, now = Date.now()) {
   return gone;
 }
 
-/** Makes try folder `dir`, empty: a folder left from an earlier request of that number goes first. */
-export async function freshFolder(dir) {
+/**
+ * Makes try folder `dir` in `genDir`, empty: a folder left from an earlier request of that number goes first. Throws
+ * when a link on the way would put it elsewhere.
+ */
+export async function freshFolder(genDir, dir) {
+  if (!(await noLinks(genDir, dir))) throw new Error(`a link on the way to ${dir}: not made there`);
   await rm(dir, {recursive: true, force: true});
   await mkdir(dir, {recursive: true, mode: 0o700});
 }
@@ -134,10 +156,10 @@ export function trySandboxed(sandbox = 'auto', works = sandboxWorks) {
 /**
  * The line Pair's pane runs `command` of a try by, in its folder `dir`: in a subshell, so the pane stays in the
  * project, and in the sandbox (`sandboxed`) with only `dir` writable, the project and the rest of the disk read-only,
- * and no network unless `network`.
+ * and no network unless `network`. The command goes as one word to bash, so a comment or a heredoc in it ends there.
  */
 export function tryLine(dir, command, {sandboxed = true, network = false, caches = cacheFolders()} = {}) {
-  if (!sandboxed) return `(cd ${word(dir)} && ${command})`;
+  if (!sandboxed) return `(cd ${word(dir)} && bash -c ${shellQuote(command)})`;
   const words = sandboxWords({cwd: dir, network, caches});
   return `(cd ${word(dir)} && ${[...words, 'bash', '-c', command].map(word).join(' ')})`;
 }

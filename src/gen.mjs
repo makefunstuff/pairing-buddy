@@ -15,6 +15,7 @@
 // the model writes and runs there in the sandbox, and which opens in a split; /keep moves a file of it into the project
 // as a buffer to review, as a file request's). Scaffold is named, guessed and confirmed, but not built yet. The ledger
 // keeps each proposed file's text, so Neovim gets its buffers again after a restart of either.
+import {realpathSync} from 'node:fs';
 import {mkdir, readFile, writeFile} from 'node:fs/promises';
 import {dirname, isAbsolute, join, relative, sep} from 'node:path';
 import {
@@ -25,7 +26,7 @@ import {commandPolicy} from './command-policy.mjs';
 import {GEN_BRIEF, GEN_KEEP_TRIES, GEN_LIMITS} from './config.mjs';
 import {logDecision, LOG_NAME} from './decision-log.mjs';
 import {draftPath, numberedLines, projectFile} from './files.mjs';
-import {daysLeft, expireTries, filesIn, freshFolder, pathIn, projectFolder, tryFolder, tryLine, triesIn, trySandboxed} from './gen-tree.mjs';
+import {daysLeft, expireTries, filesIn, freshFolder, noLinks, pathIn, projectFolder, tryFolder, tryLine, triesIn, trySandboxed} from './gen-tree.mjs';
 import {gitFiles} from './git.mjs';
 import {keptOutput, startOfDay} from './ledger.mjs';
 
@@ -111,8 +112,9 @@ export class Gen {
     this.limits = limits;
     this.briefName = brief;
     this.askModel = ask;
-    this.dir = dir;
-    this.folder = projectFolder(dir, session.root); // this project's
+    // Its real path, so the names of a try's files, which pathIn gives as real paths, are relative to their folder.
+    this.dir = (() => { try { return realpathSync(dir); } catch { return dir; } })();
+    this.folder = projectFolder(this.dir, session.root); // this project's
     Object.assign(this, {keepTries, network, sandbox});
     const pinned = session.record.brief ?? session.store.lastBrief?.(session.root) ?? null;
     this.pin = pinned === '' ? false : pinned; // the note the user pinned, false for none, null for gen.brief's
@@ -310,7 +312,8 @@ export class Gen {
     if (request.shape === 'try') {
       request.dir = tryFolder(this.folder, request.n);
       await this.expire();
-      await freshFolder(request.dir).catch(error => session.log(`gen #${request.n}: its folder: ${error.message}`));
+      const made = await freshFolder(this.dir, request.dir).then(() => null, error => error.message);
+      if (made) return this.end(request, 'failed', `gen #${request.n}: no folder for the try: ${made}.`);
     }
     request.action = session.ledger.add('generated', `gen #${request.n} · ${request.shape} · ${request.words}`, {
       data: {
@@ -475,6 +478,7 @@ export class Gen {
     if (['cancelled', 'undone'].includes(request.state)) return;
     const n = `gen #${request.n}`;
     const said = request.said.join(' ');
+    if (request.shape === 'try') await this.scanTry(request);
     if (failure || request.over) {
       const why = failure ? `Pair could not finish it: ${failure}` : `stopped: ${request.over}`;
       this.book(request, {note: request.pieces.length ? `${plural(request.pieces.length, 'piece')} · ${why}` : why});
@@ -537,6 +541,18 @@ export class Gen {
     if (request.pieces.some(piece => piece.state === 'proposed')) this.setState(request, 'ready');
   }
 
+  /** The files a try's runs made in its folder (`go mod init`, a heredoc) are pieces of it too, as written there. */
+  async scanTry(request) {
+    for (const name of await filesIn(request.dir)) {
+      const at = await pathIn(request.dir, name);
+      if (!at || request.pieces.some(piece => piece.kind === 'try' && piece.file === at)) continue;
+      const text = await readFile(at, 'utf8').catch(() => null);
+      if (text === null || text.includes('\0')) continue;
+      const body = text.replace(/\n$/, '');
+      request.pieces.push({i: request.pieces.length, n: request.n, kind: 'try', file: at, line: 1, endLine: lineCount(body), insert: false, text: body, state: 'scratch'});
+    }
+  }
+
   /**
    * A try request's model is done: its sample opens in Neovim in a split, a real file outside the project, and the
    * chat says what it made and how its last run went. `cut`: the model was stopped before it was done.
@@ -546,6 +562,11 @@ export class Gen {
     const files = request.pieces.filter(piece => piece.kind === 'try');
     const main = mainFile(files);
     const ran = request.ran ?? null;
+    if (!main) {
+      this.book(request, {note: 'nothing in its folder', undo: false});
+      session.message('pair', `gen #${request.n} · try · nothing in its folder${said ? `: ${said}` : '.'}`, {gen: request.n});
+      return this.setState(request, 'done');
+    }
     // Nothing to undo until a file of it is kept: /undo takes back what came before.
     const kept = request.pieces.some(piece => piece.kind === 'file');
     this.book(request, {note: `${plural(files.length, 'file')} in its folder · ${ran ? ranText(ran) : 'not run'}`, undo: kept, ...(ran ? {command: ran.command} : {})});
@@ -765,6 +786,7 @@ export class Gen {
     const path = await projectFile(this.root, file);
     if (!path) return `No file ${file} in the project`;
     if (request.shape === 'here' && path !== request.file) return `This request is /gen here in ${relative(this.root, request.file)}: propose there.`;
+    if (request.shape === 'try') return 'This request is /gen try: it never changes the project. Write the sample in your folder with write.';
     if (endLine < line) return `end_line ${endLine} is before line ${line}`;
     const buffer = (await session.bufferText(path)).split('\n');
     const count = buffer.length;
@@ -926,7 +948,10 @@ export class Gen {
     if (!found) return this.said('No /gen try to keep from: /gen try <what> makes one.');
     const name = `gen #${found.n}`;
     const scratch = found.pieces.filter(piece => piece.kind === 'try');
-    const source = file && this.tryOfPath(file)?.n === found.n && this.tryOfPath(file).inside ? file : mainFile(scratch)?.file ?? join(found.dir, (await filesIn(found.dir))[0]);
+    const wanted = file && this.tryOfPath(file)?.n === found.n && this.tryOfPath(file).inside ? file : mainFile(scratch)?.file ?? join(found.dir, (await filesIn(found.dir))[0]);
+    // Not through a link: a sample's run may have made its file one, to anything you can read.
+    const source = await pathIn(found.dir, wanted);
+    if (!source || !(await noLinks(this.dir, found.dir))) return this.said(`${name}: cannot keep ${relative(found.dir, wanted)}, not a file of its folder.`);
     const sourceName = relative(found.dir, source);
     const target = path.trim() || sourceName;
     const at = await draftPath(this.root, target);
@@ -942,8 +967,10 @@ export class Gen {
     if (!old) found.pieces.push(piece);
     const kept = found.pieces.filter(one => one.kind === 'file').map(one => relative(this.root, one.file));
     this.rebook(found.action, found, {note: `kept as ${kept.join(', ')}`, undo: true});
+    if (found.entry?.state === 'undone') this.session.ledger.update(found.action, {state: null}); // kept again after an undo
     const shown = await this.showFiles(found.action, found.n, [piece], {open: true});
-    return this.said(shown ? `${name}: ${keptName} opened, unsaved, generated. :w takes it; /undo takes back ${name}.`
+    // The try's ledger line is the one to undo, which may not be the newest: /undo takes back the newest.
+    return this.said(shown ? `${name}: ${keptName} opened, unsaved, generated. :w takes it; u on ${name} in :Pair today takes it back.`
       : `${name}: ${keptName} kept as a buffer to review; it opens in Neovim once one connects.`);
   }
 

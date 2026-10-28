@@ -306,7 +306,9 @@ and after the request's number. A folder left from an earlier request of that nu
   folder (its folders may be new; writing a path again replaces it). A path that leaves the folder, or goes through a
   link out of it, is refused. `run(command)` runs a command in the folder, in [Pair's pane](scout.md), where you see
   it typed and run, and the model reads its exit code and output and fixes what it shows. Its last command is how you
-  run the sample again.
+  run the sample again. A file a run made in the folder (`go mod init`, a heredoc) is part of the sample too. A try
+  never changes the project: `propose` and `draft` are refused in one. The daemon makes, lists and deletes try
+  folders only through real folders, never through a link someone put in its way.
 - **The sandbox is narrower than Scout's.** A try's command runs in a sandbox of its own, inside the pane's: only
   its folder is writable, the project and the rest of the disk are read-only, `/tmp` is empty and private, and there
   is no network unless [`gen.network`](config.md#gen) is on, so nothing can be installed. Your sockets are hidden as
@@ -345,14 +347,14 @@ try's window when you are in it, else in a split below yours. It is unsaved and 
 (`gen #8 · try · …`), and it comes back after a restart. Its text is the try's file as you have it now, your changes
 included.
 
-- **Which file.** `:Pair keep` in a try's buffer keeps that file; otherwise (and `/keep` in the chat) it keeps the
+- **Which file.** A link is not kept, whatever it points to. `:Pair keep` in a try's buffer keeps that file; otherwise (and `/keep` in the chat) it keeps the
   newest try's main file.
 - **Where.** At the path you give, inside the project and not in `.git`. Without one, at the file's path in the
   try's folder (`main.go` at the project root).
 - **Only a new file.** A path that exists is refused: `gen #8: internal/cache/lru.go exists already, and /keep makes
   a new file. /keep <another path>; or copy what you need from main.go.` `/keep` to the same path again, before you
   take it, keeps the try's file as it is now in place of the earlier text.
-- **Undo.** `/undo` takes back the request as for a `file` request: a kept file you wrote is deleted while it is as
+- **Undo.** `u` on the request in `:Pair today` (or `/undo`, when it is the newest thing to undo) takes it back as for a `file` request: a kept file you wrote is deleted while it is as
   you wrote it, and one still to review goes. The try's folder stays. Until a file of it is kept, a try has nothing to
   undo, and `/undo` takes back what came before it.
 
