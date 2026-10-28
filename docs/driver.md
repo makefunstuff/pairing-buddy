@@ -62,7 +62,8 @@ A hand-over needs Neovim connected (`:Pair start`), and is refused while Pair is
 `:Pair drive! [what]` or `/drive! [what]` hands Pair the wheel until you take it back. It answers the request as
 Driver and keeps the wheel when the answer ends: each question you type after it, in the chat or with `:Pair ask`,
 is a hand-over of its own, with its own edits, check and hand-back line. The chat says
-`Pair keeps the wheel for each request until you take it back: any key in Neovim, or /navigate.`
+`Pair keeps the wheel for each request until you take it back: any key in Neovim, or /navigate.` and its header
+`driver · keeps the wheel` until it gives the wheel back.
 
 In Neovim, a `:Pair` command (`:Pair ask and y to 20`, `:'<,'>Pair ask ...`) is how you talk to it: the keys of
 that command line do not take the wheel back. It ends as any hand-over does when you take the wheel back (any other

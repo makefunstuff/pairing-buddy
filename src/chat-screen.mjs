@@ -1,5 +1,6 @@
 // The terminal under the full-screen chat pane: the keys as they come in (escape sequences, pastes, the mouse
-// wheel), and the frame going out, only the lines that changed. It also copies text to the clipboard the terminal
+// wheel), and the frame going out, only the lines that changed, as one update where the terminal says it can
+// (synchronized output, DEC mode 2026), so a frame never shows half drawn. It also copies text to the clipboard the terminal
 // way (OSC 52), which reaches your clipboard through herdr, tmux and ssh where they pass it on.
 
 const MODS = m => ({shift: Boolean((m - 1) & 1), meta: Boolean((m - 1) & 2), ctrl: Boolean((m - 1) & 4)});
@@ -24,8 +25,8 @@ function plainKey(char) {
 }
 
 /**
- * Turns what the terminal sends into keys, pastes (`{paste: text}`) and mouse events (`{mouse: 'wheelup' |
- * 'wheeldown' | 'press', x, y}`). Feed it each chunk; an escape sequence split across chunks waits for its rest.
+ * Turns what the terminal sends into keys, pastes (`{paste: text}`), mouse events (`{mouse: 'wheelup' |
+ * 'wheeldown' | 'press', x, y}`) and the terminal's answer about a mode (`{report: {mode, value}}`). Feed it each chunk; an escape sequence split across chunks waits for its rest.
  */
 export class KeyDecoder {
   constructor() {
@@ -74,10 +75,12 @@ export class KeyDecoder {
   escape(data) {
     const second = data[1];
     if (second === '[') {
-      const match = /^\x1b\[([<?]?)([\d;:]*)([\x40-\x7e])/.exec(data);
+      const match = /^\x1b\[([<?]?)([\d;:]*)([\x20-\x2f]*)([\x40-\x7e])/.exec(data);
       if (!match) return data.length > 16 ? {event: null, length: 2} : null;
-      const [all, lead, params, final] = match;
+      const [all, lead, params, between, final] = match;
       const numbers = params.split(';').map(n => Number.parseInt(n, 10) || 0);
+      // DECRPM, the answer to a question about a mode: CSI ? mode ; value $ y.
+      if (between) return {event: lead === '?' && between === '$' && final === 'y' ? {report: {mode: numbers[0], value: numbers[1] ?? 0}} : null, length: all.length};
       return {event: this.csi(lead, numbers, final), length: all.length};
     }
     if (second === 'O') {
@@ -126,9 +129,13 @@ export function clipboardSequence(text, {tmux = false} = {}) {
   return tmux ? `\x1bPtmux;${osc.replaceAll('\x1b', '\x1b\x1b')}\x1b\\` : osc;
 }
 
+/** The question whether the terminal can draw a frame as one update (DECRQM for mode 2026). */
+export const SYNC_QUERY = '\x1b[?2026$p';
+
 /**
  * The alternate screen the pane draws on: `draw(lines, cursor)` writes the lines that changed since the last frame
- * and puts the cursor where you type (null hides it).
+ * and puts the cursor where you type (null hides it). It asks the terminal whether it can take a frame as one
+ * update; `report` takes the answer, and from then on each frame is one (a terminal that does not answer never is).
  */
 export class Screen {
   constructor(output, {mouse = true, tmux = false} = {}) {
@@ -137,11 +144,17 @@ export class Screen {
     this.tmux = tmux;
     this.last = [];
     this.on = false;
+    this.sync = false;
+  }
+
+  /** The terminal's answer about a mode: 1 or 2 for 2026 means it draws a frame as one update. */
+  report({mode, value}) {
+    if (mode === 2026) this.sync = value === 1 || value === 2;
   }
 
   start() {
     this.on = true;
-    this.output.write(`\x1b[?1049h\x1b[?2004h${this.mouse ? '\x1b[?1000h\x1b[?1006h' : ''}\x1b[2J`);
+    this.output.write(`\x1b[?1049h\x1b[?2004h${this.mouse ? '\x1b[?1000h\x1b[?1006h' : ''}\x1b[2J${SYNC_QUERY}`);
     this.last = [];
   }
 
@@ -174,7 +187,7 @@ export class Screen {
     for (let i = lines.length; i < this.last.length; i++) out += `\x1b[${i + 1};1H\x1b[K`;
     this.last = lines;
     if (cursor) out += `\x1b[${cursor.row + 1};${cursor.column + 1}H\x1b[?25h`;
-    this.output.write(out);
+    this.output.write(this.sync ? `\x1b[?2026h${out}\x1b[?2026l` : out);
   }
 
   copy(text) {

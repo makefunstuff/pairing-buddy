@@ -408,8 +408,11 @@ test('/drive! keeps the wheel: each request after it is a hand-over with its own
   assert.match(inputs[1], /^\[drive\] You have the wheel until the user takes it back; this request is one change\. The user said: "and the next line"/);
   assert.equal(edits.length, 2, 'each request has its own edits');
   assert.deepEqual(roleChanges(), ['driver'], 'the role is told once');
+  const chatRoles = () => sent.filter(message => message.type === 'role' && message.to === 'chat').map(({role, keep}) => (keep ? `${role}, keeps` : role));
+  assert.deepEqual(chatRoles(), ['driver', 'driver, keeps'], 'the chat\'s header is told it keeps the wheel');
   await pair.takeBack();
   assert.equal(pair.role, 'navigator');
+  assert.equal(chatRoles().at(-1), 'navigator', 'and that it no longer does');
   assert.equal(pair.keepWheel, false);
   await pair.ask('what now?');
   assert.match(inputs[2], /^\[user\] what now\?/, 'a question again, as Navigator');

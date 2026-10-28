@@ -86,7 +86,7 @@ your keys and logins).
 
 - [Getting started](docs/getting-started.md) and [install and daily use](docs/install.md)
 - [How it works](docs/how-it-works.md), [roles](docs/roles.md) and [workflows](docs/workflows.md)
-- [The chat pane](docs/chat.md): who speaks, what Pair is doing now, wide and narrow panes, a remark's own keys, find, its keys and commands
+- [The chat pane](docs/chat.md): who speaks, what Pair is doing now, wide and narrow panes, a remark's own keys, find, calm motion, role colours, its keys and commands
 - [/gen](docs/gen.md): ask Pair for code at your cursor, as new files to review, or as a sample to run outside the
   project, against your brief; take it with one key, `:w` or `/keep`, undo the request as one; Pair's own edits carry
   their origin

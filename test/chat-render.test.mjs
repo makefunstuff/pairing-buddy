@@ -4,9 +4,9 @@
 import assert from 'node:assert/strict';
 import {mock, test} from 'node:test';
 import {LineEditor} from '../src/chat-input.mjs';
-import {baseNames, bodyLines, breakText, codeLines, cutStart, dedent, diffLines, emptyLines, footerKeys, footerLine, headerLine, helpLines, markdownLines, menuLines, remarkKeys, renderFrame, statusLine, transcriptLines, wrapTokens, inlineTokens} from '../src/chat-render.mjs';
+import {baseNames, bodyLines, heldText, breakText, codeLines, cutStart, dedent, diffLines, emptyLines, footerKeys, footerLine, headerLine, helpLines, markdownLines, menuLines, remarkKeys, renderFrame, statusLine, transcriptLines, wrapTokens, inlineTokens} from '../src/chat-render.mjs';
 import {COMMANDS} from '../src/chat.mjs';
-import {paintLine, textWidth} from '../src/chat-style.mjs';
+import {STYLES, paintLine, textWidth} from '../src/chat-style.mjs';
 
 const plain = lines => lines.map(line => line.map(seg => seg.text).join(''));
 const at = new Date(2026, 9, 28, 14, 5).getTime();
@@ -51,7 +51,7 @@ test('a suggestion is a diff, its shared indentation gone; a remark says what it
   assert.deepEqual(plain(bodyLines(remark, 40)), ['drift · docs/a.md:3  ✓ useful', 'You moved to docs/.']);
 });
 
-test('the gutter: who speaks on a turn\'s first line, 7 columns, a bar on the selected message, ⎿ for the tools', () => {
+test('the gutter: who speaks on a turn\'s first line, 7 columns, a bar on the selected message, └ for the tools', () => {
   const entries = [
     {kind: 'you', at, text: 'why does attempt 5 fail?'},
     {kind: 'tool', at, tools: [{tool: 'read', what: 'queue.go 1-40'}, {tool: 'run', what: 'go test ./...'}]},
@@ -64,7 +64,7 @@ test('the gutter: who speaks on a turn\'s first line, 7 columns, a bar on the se
   assert.deepEqual(plain(lines), [
     '                        ── 14:05 ──',
     ' you   why does attempt 5 fail?',
-    '       ⎿ read queue.go 1-40 · ran go test ./...',
+    '       └ read queue.go 1-40 · ran go test ./...',
     '',
     '▌pair  The lease ends early.',
     '',
@@ -75,7 +75,7 @@ test('the gutter: who speaks on a turn\'s first line, 7 columns, a bar on the se
   ]);
   assert.deepEqual(ranges.map(r => [r.start, r.end]), [[1, 2], [2, 3], [4, 5], [6, 7], [8, 9], [9, 10]], 'the divider is no message\'s');
   entries[1].expanded = true;
-  assert.deepEqual(plain(transcriptLines(entries.slice(0, 2), 60).lines).slice(2), ['       ⎿ read queue.go 1-40', '       ⎿ ran go test ./...']);
+  assert.deepEqual(plain(transcriptLines(entries.slice(0, 2), 60).lines).slice(2), ['       └ read queue.go 1-40', '       └ ran go test ./...']);
   assert.deepEqual(plain(transcriptLines(entries.slice(0, 1), 30).lines).slice(1), [' you   why does attempt 5', '       fail?'], 'narrow: the same gutter, no row for the name');
 });
 
@@ -125,16 +125,19 @@ test('the status is in the rule over the input: what Pair does now, and on the r
   const now = at + 75_000;
   const row = (view, width = 72) => plain([statusLine({now, model: 'qwen3', ...view}, width)])[0];
   const idle = {activity: {state: 'idle'}, presence: {looked: 3, spoke: 1, lastAt: at}, turn: {ms: 2100, tokens: 3400, cost: 0.0042}};
-  assert.equal(row(idle, 100), '── ◇ watching · looked at 3 moments, spoke 1 · 1m ago ───────── qwen3 · 2.1s · 3.4k tok · $0.0042 ──');
-  assert.equal(row(idle, 72), '── ◇ watching · looked at 3 moments, spoke 1 · 1m ago ── qwen3 · 2.1s ──', 'narrower: the right side gives way');
+  assert.equal(row(idle, 100), '── ◉ watching · looked at 3 moments, spoke 1 · 1m ago ───────── qwen3 · 2.1s · 3.4k tok · $0.0042 ──');
+  assert.equal(row(idle, 72), '── ◉ watching · looked at 3 moments, spoke 1 · 1m ago ── qwen3 · 2.1s ──', 'narrower: the right side gives way');
   assert.match(row({activity: {state: 'thinking', since: at}}), /^── ▖ thinking 1m 15s ─+ qwen3 ──$/);
   assert.match(row({activity: {state: 'thinking', since: now - 6000}, writing: true}), /^── ▖ writing 6s ─+ qwen3 ──$/, 'writing, once the words arrive');
   assert.match(row({activity: {state: 'tool', tool: 'run', what: 'go test ./...', since: now - 3000}}), /^── ▖ running go test \.\/\.\.\. 3s ─/);
-  assert.match(row({activity: {state: 'remark', what: 'edit_while_red', since: now}}), /^── ▖ looking at edit while red 0s ─/);
+  assert.match(row({activity: {state: 'remark', what: 'edit_while_red', since: now - 4000}}), /^── ▖ looking at edit while red 4s ─/);
+  assert.match(row({activity: {state: 'thinking', since: now - 2900}}), /^── ▖ thinking ─+ qwen3 ──$/, 'no counter for the first 3s: a short turn does not tick');
+  assert.match(row({activity: {state: 'thinking', since: now - 3000}}), /^── ▖ thinking 3s ─/);
   assert.match(row({activity: {state: 'waiting'}}), /^── \? waiting for your answer ─+ qwen3 ──$/);
-  assert.match(row({connection: 'away'}), /^── ⚠ the pair daemon went away · reconnecting ─+$/);
+  assert.match(row({connection: 'away'}), /^── ! the pair daemon went away · reconnecting ─+$/);
   assert.match(row({activity: {state: 'idle'}, scrolled: 12}), /─ ↓ 12 lines below ──$/);
-  assert.match(row({activity: {state: 'idle'}, role: 'driver', keepWheel: true}), /◆ Pair keeps the wheel/);
+  assert.match(row({activity: {state: 'idle'}, role: 'driver'}), /^── ◆ Pair drives · any key in Neovim takes it back ─/);
+  assert.match(row({activity: {state: 'idle'}, role: 'driver'}, 30), /^── ◆ Pair drives ─+$/);
   assert.equal(textWidth(row(idle, 33)), 33);
   for (const view of [idle, {activity: {state: 'thinking', since: at}}, {activity: {state: 'waiting'}}, {activity: {state: 'idle'}, scrolled: 3}]) {
     assert.doesNotMatch(row(view, 120), /Esc|End|\by\b allow|decline/, 'the status names no keys');
@@ -223,7 +226,7 @@ test('the frame: header in its rule, conversation, status in its rule, input and
     ' you   why?',
     '',
     ' pair  Because.',
-    '── ◇ watching ───────────────────────────────────── qwen3 ──',
+    '── ◉ watching ───────────────────────────────────── qwen3 ──',
     '› hello',
     ' Enter send · Alt-Enter newline · Tab complete',
   ]);
@@ -289,23 +292,23 @@ test('a narrow pane: tool traces by their base names and a count, the remark\'s 
   assert.equal(baseNames('go test ./...'), 'go test ./...', 'nothing to shorten');
   assert.equal(baseNames('go test ./internal/queue -run TestLease'), 'go test ./internal/queue -run TestLease', 'a command stays one you could run');
   const tools = {kind: 'tool', at, tools: [{tool: 'read', what: 'internal/queue/lease.go 1-40'}, {tool: 'search', what: 'AttemptTimeout'}]};
-  assert.deepEqual(plain(bodyLines(tools, 80)), ['⎿ read internal/queue/lease.go 1-40 · searched AttemptTimeout'], 'whole where it fits');
-  assert.deepEqual(plain(bodyLines(tools, 48)), ['⎿ read lease.go 1-40 · searched AttemptTimeout']);
-  assert.deepEqual(plain(bodyLines(tools, 37)), ['⎿ read lease.go 1-40 · +1']);
+  assert.deepEqual(plain(bodyLines(tools, 80)), ['└ read internal/queue/lease.go 1-40 · searched AttemptTimeout'], 'whole where it fits');
+  assert.deepEqual(plain(bodyLines(tools, 48)), ['└ read lease.go 1-40 · searched AttemptTimeout']);
+  assert.deepEqual(plain(bodyLines(tools, 37)), ['└ read lease.go 1-40 · +1']);
   const remark = {kind: 'watch', at, text: 'The lease ends early.', meta: {remark: 1, trigger: 'regression', place: {file: 'internal/queue/lease.go', line: 18}}};
   assert.equal(plain(bodyLines(remark, 37))[0], 'regression · lease.go:18');
   assert.equal(plain(bodyLines(remark, 60))[0], 'regression · internal/queue/lease.go:18');
   const now = at + 180_000;
   const row = (view, width) => plain([statusLine({now, model: 'qwen3-coder-30b', ...view}, width)])[0];
   const idle = {activity: {state: 'idle'}, presence: {looked: 7, spoke: 1, lastAt: at}};
-  assert.equal(row(idle, 44), '── ◇ watching · 3m ago ─────────────────────', 'the model gives way, then the counts; the time stays');
-  assert.equal(row(idle, 20), '── ◇ watching ──────');
+  assert.equal(row(idle, 44), '── ◉ watching · 3m ago ─────────────────────', 'the model gives way, then the counts; the time stays');
+  assert.equal(row(idle, 20), '── ◉ watching ──────');
   assert.match(row({activity: {state: 'waiting'}}, 26), /^── \? waiting ─+$/);
-  assert.match(row({activity: {state: 'tool', tool: 'read', what: 'internal/queue/lease.go 1-40', since: now - 2000}}, 36), /^── ▖ reading lease\.go 1-40 2s ─+$/);
-  assert.match(row({activity: {state: 'tool', tool: 'read', what: 'internal/queue/lease.go 1-40', since: now - 2000}}, 24), /^── ▖ reading 2s ─+$/);
-  assert.match(row({connection: 'away'}, 30), /^── ⚠ reconnecting ─+$/);
-  assert.match(row({activity: {state: 'tool', tool: 'run', what: 'go test ./internal/queue -run TestLease', since: now - 2000}}, 52), /^── ▖ running 2s ─+/, 'a command too long: none, not a rewritten one');
-  assert.match(row({activity: {state: 'idle'}, role: 'scout'}, 24), /^── ◇ Scout ─+$/);
+  assert.match(row({activity: {state: 'tool', tool: 'read', what: 'internal/queue/lease.go 1-40', since: now - 4000}}, 36), /^── ▖ reading lease\.go 1-40 4s ─+$/);
+  assert.match(row({activity: {state: 'tool', tool: 'read', what: 'internal/queue/lease.go 1-40', since: now - 4000}}, 24), /^── ▖ reading 4s ─+$/);
+  assert.match(row({connection: 'away'}, 30), /^── ! reconnecting ─+$/);
+  assert.match(row({activity: {state: 'tool', tool: 'run', what: 'go test ./internal/queue -run TestLease', since: now - 4000}}, 52), /^── ▖ running 4s ─+/, 'a command too long: none, not a rewritten one');
+  assert.match(row({activity: {state: 'idle'}, role: 'scout'}, 24), /^── ◉ Scout ─+$/);
   for (const width of [24, 30, 36, 44]) {
     for (const view of [idle, {activity: {state: 'waiting'}}, {connection: 'away'}, {connection: 'connecting'}, {activity: {state: 'remark', what: 'edit_while_red', since: now}}, {activity: {state: 'idle'}, role: 'scout'}]) {
       assert.doesNotMatch(row(view, width), /[^\s─]…/, `${JSON.stringify(view)} at ${width}: shorter, not cut`);
@@ -450,18 +453,105 @@ test('the command menu: name, arguments and what it does in three columns; how m
   assert.match(files.lines.at(-1), /Enter inserts/);
 });
 
-test('the mascot keeps its three rows, however the intro wraps', () => {
-  for (const width of [44, 60, 80, 124, 200]) {
+test('the empty card: Pair\'s CRT head in four rows, however the words beside it wrap', () => {
+  const head = ['      ▗▖', '   ▗▛▀▀▀▀▜▖', '   ▐ ▀  ▀ ▌', '   ▝▙▄▄▄▄▟▘'];
+  for (const width of [24, 44, 49, 60, 80, 124, 200]) {
     const lines = plain(emptyLines(width));
-    assert.deepEqual(lines.slice(0, 3).map(line => line.slice(2, 6)), ['▗▄▄▖', '▐▘▝▌', '▝▀▀▘'], `${width} columns`);
+    assert.deepEqual(lines.slice(0, 4).map(line => line.slice(0, 11).trimEnd()), head, `${width} columns`);
+    assert.ok(lines.every(line => textWidth(line) <= width), `${width} columns: nothing wider than the pane`);
   }
+  assert.deepEqual(plain(emptyLines(64)).slice(0, 4), [
+    '      ▗▖',
+    '   ▗▛▀▀▀▀▜▖  Pair · your pair in the second chair',
+    '   ▐ ▀  ▀ ▌  It watches you work and speaks rarely: a line in',
+    '   ▝▙▄▄▄▄▟▘  Neovim, more here when you ask.',
+  ]);
+  assert.equal(plain(emptyLines(200))[3], '   ▝▙▄▄▄▄▟▘  when you ask.', 'the words end by column 80, so the chin keeps its words');
+  assert.deepEqual(plain(emptyLines(44)).slice(3, 6), ['   ▝▙▄▄▄▄▟▘', '   Pair · your pair in the second chair', '   It watches you work and speaks rarely: a'], 'too narrow for the title beside the head: the words go under it');
+  // The head's colours: the frame in the accent, the eyes green, the antenna magenta.
+  const styles = emptyLines(64).slice(0, 4).flatMap(line => line.filter(s => /[▗▖▛▀▜▐▌▝▙▄▟▘]/.test(s.text)).map(s => `${s.text}:${s.style}`));
+  assert.deepEqual(styles, ['▗▖:antenna', '▗▛▀▀▀▀▜▖:accent', '▐:accent', '▀:eyes', '▀:eyes', '▌:accent', '▝▙▄▄▄▄▟▘:accent']);
+  const painted = paintLine(emptyLines(64)[2], {color: true});
+  assert.match(painted, /\x1b\[32m\x1b\[1m▀/, 'the eyes green');
+  assert.match(paintLine(emptyLines(64)[0], {color: true}), /\x1b\[35m▗▖/, 'the antenna magenta');
+  assert.deepEqual(plain(emptyLines(64)).slice(5), [
+    '   Enter   ask anything',
+    '   /       commands · /drive hands it the keyboard',
+    '   @       a file, or @here for your selection',
+    '   Alt-↑   pick a message: copy, apply, jump, rate',
+    '   ?       every key',
+  ]);
+  assert.deepEqual(emptyLines(64)[6].filter(s => s.style === 'accent' && s.text.trim()).map(s => s.text), ['/drive'], 'a command in the accent');
+});
+
+test('one colour per role, from the site: the role in the header, the glyph in the status', () => {
+  const header = {project: 'hookd', level: 'normal'};
+  const role = (r, extra = {}) => headerLine({...header, role: r, ...extra}, 64).find(s => s.text === r || s.text === 'nav');
+  assert.equal(role('navigator').style, 'navigator');
+  assert.equal(role('scout').style, 'scout');
+  assert.equal(role('driver').style, 'driver');
+  assert.deepEqual(STYLES.navigator, ['blue', 'bold']);
+  assert.deepEqual(STYLES.scout, ['green', 'bold']);
+  assert.deepEqual(STYLES.driver, ['red', 'bold']);
+  assert.deepEqual(STYLES.watcher, ['yellow']);
+  assert.match(plain([headerLine({...header, role: 'driver', keep: true}, 64)])[0], /^── pair · hookd ─+ driver · keeps the wheel ──$/, 'the Driver that keeps the wheel says so');
+  assert.match(plain([headerLine({...header, role: 'navigator'}, 64)])[0], /^── pair · hookd ─+ navigator · normal ──$/);
+  assert.match(paintLine(headerLine({...header, role: 'scout'}, 64), {color: true}), /\x1b\[32m\x1b\[1mscout\x1b\[0m/);
+  const glyph = view => statusLine({activity: {state: 'idle'}, ...view}, 64).find(s => /[◉◆▖]/.test(s.text));
+  assert.deepEqual([glyph({}).text, glyph({}).style], ['◉ ', 'watcher'], 'the Watcher\'s ◉ in yellow');
+  assert.deepEqual([glyph({role: 'scout'}).text, glyph({role: 'scout'}).style], ['◉ ', 'watcher']);
+  assert.deepEqual([glyph({role: 'driver'}).text, glyph({role: 'driver'}).style], ['◆ ', 'driverGlyph'], 'the Driver\'s ◆ in red');
+  const thinking = statusLine({activity: {state: 'thinking'}}, 64);
+  assert.deepEqual(thinking.filter(s => s.text.trim() && s.style !== 'rule').map(s => s.style), ['accent', 'accentBold'], 'Pair at work: its own accent');
+});
+
+test('calm motion: what waits under the answer that streams, safe glyphs', () => {
+  assert.equal(heldText({remarks: 1}), '1 remark below');
+  assert.equal(heldText({notes: 2}), '2 notes below');
+  assert.equal(heldText({remarks: 1, notes: 1}), '1 remark and 1 note below');
+  assert.equal(heldText(null), '');
+  const now = at + 10_000;
+  const row = (view, width) => plain([statusLine({now, model: 'qwen3', activity: {state: 'thinking', since: at}, writing: true, ...view}, width)])[0];
+  assert.match(row({held: {remarks: 1}}, 64), /^── ▖ writing 10s · 1 remark below ─+ qwen3 ──$/);
+  assert.match(row({held: {remarks: 1}}, 40), /^── ▖ writing 10s · 1 remark below ─+$/, 'the model gives way first');
+  assert.match(row({held: {remarks: 1}}, 32), /^── ▖ writing · 1 remark below ─+$/, 'narrower: the seconds give way before what waits');
+  assert.match(row({held: {remarks: 2, notes: 1}}, 44), /^── ▖ writing · 2 remarks and 1 note below ─+$/);
+  assert.match(row({held: {remarks: 1}}, 24), /^── ▖ writing 10s ─+$/, 'too narrow for it: the status as without');
+  // Glyphs every font has, one column wide: no ⚠, no ⎿.
+  const away = statusLine({now, connection: 'away', away: {since: at}}, 64);
+  assert.deepEqual(away.filter(s => s.style === 'warn').map(s => s.text), ['! '], 'away: a yellow !');
+  assert.match(paintLine(away, {color: true}), /\x1b\[33m! /);
+  const down = plain([statusLine({now, model: 'qwen3', down: ['watcher'], activity: {state: 'idle'}}, 64)])[0];
+  assert.match(down, /─ ! watcher not answering ──$/, 'a model that does not answer: ! too');
+  assert.match(plain([statusLine({now, model: 'qwen3', down: ['watcher'], activity: {state: 'idle'}}, 30)])[0], /^── ◉ watching ─+$/, 'whole or not at all');
+  const tools = {kind: 'tool', at, tools: [{tool: 'read', what: 'a.go 1-4'}]};
+  assert.deepEqual(plain(bodyLines(tools, 40)), ['└ read a.go 1-4']);
+  const frames = [
+    renderFrame({entries: [tools], editor: new LineEditor(), activity: {state: 'idle'}, connection: 'away', away: {since: at}, now}, {width: 60, height: 10}),
+    renderFrame({entries: [], showEmpty: true, editor: new LineEditor(), activity: {state: 'idle'}}, {width: 60, height: 24}),
+  ];
+  for (const frame of frames) assert.doesNotMatch(frame.lines.join('\n'), /[⚠⎿]/);
+});
+
+test('code bars: a diff and a code block indent alike; ordered lists end their numbers in one column', () => {
+  const block = markdownLines('```go\nttl := cfg.Budget\n```', 40);
+  const fenced = markdownLines('```diff\n- return ttl\n+ return ttl + grace\n```', 40);
+  const suggestion = diffLines({old: ['return ttl'], new: ['return ttl + grace']}, 40);
+  assert.deepEqual(plain(block), ['│ ttl := cfg.Budget']);
+  assert.deepEqual(plain(fenced), ['│ - return ttl', '│ + return ttl + grace']);
+  assert.deepEqual(plain(suggestion), ['│ - return ttl', '│ + return ttl + grace'], 'the bar, a space, then the sign: as in a code block');
+  const list = plain(markdownLines(Array.from({length: 10}, (_, i) => `${i + 1}. step ${i + 1} of the retry that goes on`).join('\n'), 24));
+  assert.equal(list[0], ' 1. step 1 of the retry');
+  assert.equal(list[1], '    that goes on');
+  assert.equal(list.at(-2), '10. step 10 of the retry');
+  assert.equal(list.at(-1), '    that goes on', 'the hanging indent the same past 9');
 });
 
 test('reconnecting: how long the daemon has been away, how many times the pane tried, and that what you type is kept', () => {
   const now = at + 6000;
   const row = width => plain([statusLine({now, connection: 'away', away: {since: at, attempts: 3}}, width)])[0];
-  assert.match(row(80), /^── ⚠ the pair daemon went away · reconnecting 6s · attempt 3 ─+$/);
-  assert.match(row(40), /^── ⚠ reconnecting 6s · attempt 3 ─+$/);
-  assert.match(row(28), /^── ⚠ reconnecting 6s ─+$/);
+  assert.match(row(80), /^── ! the pair daemon went away · reconnecting 6s · attempt 3 ─+$/);
+  assert.match(row(40), /^── ! reconnecting 6s · attempt 3 ─+$/);
+  assert.match(row(28), /^── ! reconnecting 6s ─+$/);
   assert.match(plain([statusLine({now, connection: 'away', away: {since: at, attempts: 0}}, 80)])[0], /reconnecting 6s ─/, 'no attempt yet: no count');
 });

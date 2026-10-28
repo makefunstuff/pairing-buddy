@@ -152,7 +152,9 @@ test('in Scout, Pair runs tests in its own pane, asks before deleting and is ref
   const chat = client(config.socket, {type: 'hello', role: 'chat', cwd: project, herdr: {socket: herdrSocket, workspace: 'w1', pane: 'w1:p2'}});
   const toolResults = context => context.messages.filter(message => message.role === 'toolResult').map(message => message.content[0].text);
   try {
-    assert.equal((await chat.next(message => message.type === 'welcome')).role, 'navigator');
+    const welcome = await chat.next(message => message.type === 'welcome');
+    assert.equal(welcome.role, 'navigator');
+    assert.equal(welcome.keep, false, 'whether the Driver keeps the wheel, for the chat\'s header');
     chat.send({type: 'goal', text: 'fix reconnect'});
     chat.send({type: 'role', role: 'scout'});
     await chat.next(message => message.type === 'role' && message.role === 'scout');
