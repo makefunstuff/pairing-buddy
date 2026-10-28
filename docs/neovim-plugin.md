@@ -16,6 +16,7 @@ The keys exist only while there is something for them to do, and only where you 
 | `Alt-l` / `Alt-d` | In a Markdown note: open the code a mark names / log the decision on your line |
 | `Alt-?` | The one idea worth keeping behind Pair's words under your line; again, open its link to the docs |
 | `Alt-a` | Go to the agent whose news Pair relayed ([your other agents](agents.md)) |
+| `Alt-g` | Ask Pair for code ([/gen](gen.md)): at the cursor, or in Visual mode over the selection; while Pair's question waits, show it again |
 | any key | Take the wheel back while Pair drives |
 
 Each key is an option of `setup` (below); `false` turns one off, and the commands work either way. In the
@@ -39,6 +40,9 @@ require('pair').setup({
   sounds = false,      -- true: short sounds while you are away from Neovim (see [sounds](neovim.md#sounds-while-you-are-away))
   sound_volume = 0.5,  -- 0 to 1
   land = true,         -- false: the morning pick-up does not open an empty Neovim where you stopped
+  gen_key = '<M-g>',   -- asks Pair for code (/gen); false for none
+  gen_input = 'ui',    -- 'cmdline': the /gen request and its questions on Neovim's own prompt, not vim.ui's
+  gen_preview_lines = 30, -- a /gen block taller than this shows in a preview window
 })
 ```
 
@@ -63,11 +67,14 @@ require('pair').setup({
 | `sounds` | `false` | Short [sounds](neovim.md#sounds-while-you-are-away) for a green, a regression, a remark and the hand-back, only while Neovim does not have the focus |
 | `sound_volume` | `0.5` | Their volume, 0 to 1 |
 | `answers` | `true` | The first two lines of Pair's answer to a question you typed (`:Pair ask`, the chat) show under the line it was about, too ([what each thing looks like](neovim.md#what-each-thing-looks-like)) |
+| `gen_key` | `'<M-g>'` | Asks Pair for code ([gen.md](gen.md#asking)): a dialog for the request, in Normal mode at the cursor, in Visual mode over the selected lines. While a question of Pair's waits, shows it again. Mapped in Normal and Visual mode from the start |
+| `gen_input` | `'ui'` | Where the `/gen` request, its shape and Pair's questions are asked: `'ui'` through `vim.ui.input` and `vim.ui.select`, which snacks.nvim, dressing.nvim or noice.nvim show as floating dialogs (else Neovim's own prompt); `'cmdline'` always Neovim's own prompt and numbered list |
+| `gen_preview_lines` | `30` | A `/gen` block taller than this (or than its window) shows as one line in place and in a preview window under it, instead of as ghost lines |
 | `land` | `true` | The [morning pick-up](neovim.md#the-morning-pick-up-and-the-days-end) opens an empty Neovim (or a start screen) on the place the last session's debrief named |
 | `glyphs` | plain Unicode | Pair's marks (below) |
 
 Every key option takes `false` for none; the commands work either way. The keys are mapped only where you have no
-mapping of your own, and all but `listen_key` only while there is something for them to act on. Each says what it does
+mapping of your own, and all but `listen_key` and `gen_key` only while there is something for them to act on. Each says what it does
 until you have used it once (`M-j goes there`); the keys you have used are kept in `stdpath('state')/pair/keys.json`.
 The glyphs are plain Unicode, so they show in any font: `voice` `●`, `idea` `∴`, `mark` `▎`, `held` `•`, `away` `◌`, `wheel` `◎`, `listen` `◉`, `pass`
 `✓`, `fail` `✗`, `warn` `△` and `agents` `◇`, and in a note's margin `question` `?`, `contradiction` `≠`, `code` `→`,
@@ -96,6 +103,7 @@ to standard ones and does not fade.
 | `:Pair jump` | Go where Pair pointed last (same as `Alt-j`); `Ctrl-O` comes back. While Pair holds a thought, show it now |
 | `:Pair trail` | Show your searches since your last edit, as Pair saw them; `x` forgets them |
 | `:Pair runs` | The session's builds and runs, newest last, with the change before each and its numbers; `⏎` its output, `d` its change, `x` removes the hunt's debug lines ([exploration.md](exploration.md)) |
+| `:Pair gen [here] [what]` | Ask Pair for code ([gen.md](gen.md)): without words, in a dialog (same as `Alt-g`); with words, at once. With a range (`:'<,'>Pair gen`), over those lines, or in a note, the lines are the request. `:Pair gen +` opens the compose window for a longer request, `:Pair gen cancel` stops the request that runs or waits |
 | `:Pair accept` | Accept Pair's suggestion under the cursor, else the newest in the buffer (same as `Alt-y`); for a suggestion in an unasked remark, that rates the remark useful |
 | `:Pair dismiss` | Drop the same suggestion, and only that one; for a suggestion in an unasked remark, that rates the remark not useful |
 | `:Pair useful` | Pair's last unasked remark was useful (same as `Alt-u`) |
@@ -103,7 +111,7 @@ to standard ones and does not fade.
 | `:Pair why` | The idea worth keeping behind Pair's words under your line (same as `Alt-?`); again, it opens the link that came with it |
 | `:Pair open` | Open the place Pair asked to show while you were typing |
 | `:Pair agents` | Your other agents and board tasks, the ones that need you first; `⏎` goes to one ([agents.md](agents.md)) |
-| `:Pair today` | The [ledger](neovim.md#the-ledger): everything Pair did in this project today; `⏎` goes there or shows the output, `u` undoes one of its edits later |
+| `:Pair today` | The [ledger](neovim.md#the-ledger): everything Pair did in this project today; `⏎` goes there or shows the output, `u` undoes one of its edits later, or a whole `/gen` request |
 | `:Pair decide` | Log the decision on the cursor's line of a note in `decisions.md` next to it (same as `Alt-d`; [notes.md](notes.md#the-decision-log)) |
 | `:Pair tasks` | List the work in the current note as tasks; nothing is added until `y` ([notes.md](notes.md#tasks-only-when-you-ask)) |
 | `:Pair clear` | Remove Pair's points and words and the marks in a note's margin, and end the questions of `:Pair new` |
@@ -132,6 +140,7 @@ vim.o.statusline = "%f %m%=%{%v:lua.require'pair'.statusline()%}  %l:%c "
 | `● reading worker.go` | While Pair reads |
 | `⠹ pair · thinking` | While its model thinks |
 | `● pair · held thought · M-j` | While a remark waits for your next break |
+| `● pair · gen #4 · generating · 21s`, `● pair · gen #4 asks · M-g`, `● pair · gen #5 waits for the one before`, `● pair · gen #4 ready · M-y takes · :Pair dismiss` | While a [/gen request](gen.md) runs, waits for your answer or its turn, and while its code waits to be taken |
 | `● pair · 5 notes in the margin`, `◆ logged · docs/decisions.md` | In a note with [marks](notes.md), and for a moment after a decision is logged |
 | `● run 3 · exit 0 · 55 ms · avg probe 23.7 · same numbers as run 2` | For 15 minutes after a build or run: what it showed next to the one before, and once the hunt is over, `· 1 debug line from run 2 left · M-j` ([exploration.md](exploration.md)). A crash or a broken build shows with `✗` |
 | `⠹ go test ./...`, `✗ 1 failing · TestX`, `✓ go test ./... · 4 tests, 3 packages` | [Tests on save](tests-on-save.md); `(unsaved)` after the command for the run on the Driver's edit |

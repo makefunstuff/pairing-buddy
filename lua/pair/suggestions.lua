@@ -1,12 +1,13 @@
 -- Pair's suggestions: a few at once, in any of your buffers, each drawn as its own ghost diff (draw.suggestion) until
 -- you accept it, dismiss it or edit its lines. A new one replaces one it overlaps, and the oldest goes beyond MAX.
+-- A /gen piece (`gen`) is asked for: it does not count toward MAX, and it and the others never push each other out.
 -- Only the list: init.lua maps the keys and tells the daemon.
 local draw = require('pair.draw')
 
 local M = {}
 
 local MAX = 5
-local list = {} -- oldest first: {buf, ids, old, new, remark, insert, action, target}
+local list = {} -- oldest first: {buf, ids, old, new, remark, insert, action, target, gen, piece}
 
 --- The rows (0-based, end exclusive) under `suggestion` now, which may have moved since it was shown. A suggestion
 --- to insert lines is marked on the line they go under.
@@ -46,7 +47,7 @@ function M.remove(suggestion)
 end
 
 local function overlaps(a, b)
-  if a.buf ~= b.buf then return false end
+  if a.buf ~= b.buf or (a.gen ~= nil) ~= (b.gen ~= nil) then return false end
   local first, last = M.range(a)
   return first ~= nil and b.first < math.max(last, first + 1) and first < math.max(b.last, b.first + 1)
 end
@@ -54,12 +55,14 @@ end
 --- Adds `suggestion`, shown on rows `rows.first`..`rows.last` of `rows.buf` (0-based, end exclusive). Returns the
 --- ones it pushes out, for the caller to drop: those on the same lines, and the oldest beyond MAX.
 function M.add(suggestion, rows)
+  rows.gen = suggestion.gen
   local gone = vim.tbl_filter(function(other) return overlaps(other, rows) end, list)
   table.insert(list, suggestion)
-  local kept = #list - #gone
+  if suggestion.gen then return gone end
+  local kept = #vim.tbl_filter(function(other) return not other.gen end, list) - #gone
   for _, other in ipairs(list) do
     if kept <= MAX then break end
-    if not vim.tbl_contains(gone, other) then
+    if not other.gen and not vim.tbl_contains(gone, other) then
       table.insert(gone, other)
       kept = kept - 1
     end
@@ -100,7 +103,7 @@ end
 --- Whether one of them inserts the first slice of :Pair new, for the statusline.
 function M.inserting()
   for _, suggestion in ipairs(list) do
-    if suggestion.insert then return true end
+    if suggestion.insert and not suggestion.gen then return true end
   end
   return false
 end

@@ -5,7 +5,8 @@ A pair programmer for Neovim that knows when to speak.
 Pair is a Neovim plugin and a daemon that work next to you like a colleague in the second chair: it watches you code,
 says one short line under your cursor when it spots something, runs the tests you would skip, and takes the keyboard
 only when you hand it over. It is not code completion and not a chat sidebar, and it never writes your files: its
-edits land unsaved in your buffer as one undo step, and the disk changes only when you save.
+edits land unsaved in your buffer as one undo step, and the disk changes only when you save. When you ask it for
+code (`/gen`), it proposes it where you asked, and you take it with one key, also unsaved.
 
 **Docs: [makefunstuff.github.io/pairing-buddy](https://makefunstuff.github.io/pairing-buddy/)** (source in
 [`docs/`](docs/), built from [`site/`](site/)).
@@ -34,8 +35,9 @@ you think, and take the keyboard only when you hand it over. Pair aims for that:
   change is one key to take.
 - **It runs what you'd skip.** Save, and it runs the project's tests and tells you what your fix broke elsewhere.
 - **You stay in charge.** One role at a time: Navigator points and suggests, Scout also runs commands in its own pane,
-  and the Driver edits only when you hand over, while you watch. Any key takes the wheel back. Pair knows its own
-  edits from yours, so it never remarks on the code it wrote as if you had ([who wrote it](docs/gen.md)).
+  and the Driver edits only when you hand over, while you watch. Any key takes the wheel back. Ask it for code with
+  `/gen here` or `Alt-g`, and it lands where you asked, to take with one key and undo as one request. Pair knows
+  its own edits from yours, so it never remarks on the code it wrote as if you had ([/gen](docs/gen.md)).
 
 ## Quick start
 
@@ -77,7 +79,8 @@ your keys and logins).
 - [Getting started](docs/getting-started.md) and [install and daily use](docs/install.md)
 - [How it works](docs/how-it-works.md), [roles](docs/roles.md) and [workflows](docs/workflows.md)
 - [The chat pane](docs/chat.md): who speaks, what Pair is doing now, wide and narrow panes, its keys and commands
-- [Who wrote it](docs/gen.md): Pair's own edits carry their origin, the first step of `/gen`
+- [/gen](docs/gen.md): ask Pair for code at your cursor, take it with one key, undo the request as one; Pair's own
+  edits carry their origin
 - [Push-to-talk](docs/voice.md): ask aloud, heard by whisper.cpp on your CPU or an OpenRouter model, with answers
   read aloud when you are away
 - [Models and providers](docs/models.md): local servers, API keys, subscription logins, one model for both roles,

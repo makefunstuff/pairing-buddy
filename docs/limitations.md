@@ -42,6 +42,11 @@ stay herdr's:
   again to ask) never guesses ([voice.md](voice.md#4-the-key)).
   [#55](https://github.com/makefunstuff/pairing-buddy/issues/55)
 
+- **/gen builds only `here`** in this version: `file`, `scaffold` and `try` are guessed and named, and say they are
+  not built yet. A request knows your words, the place and the goal, not yet a pinned brief; taken code has no mark
+  of its own; and a daemon restart stops a running request and loses code it proposed that you did not take
+  ([gen.md](gen.md#limits)).
+
 - **Who wrote a line is known only for the session's last 20 edits**, at the line numbers they were sent with, and
   not after a daemon restart: an older edit of Pair's, or one whose lines moved, counts as yours again
   ([gen.md](gen.md#limits)).

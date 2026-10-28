@@ -38,7 +38,7 @@ import {ModelSlot} from './slot.mjs';
 import {openStore} from './store.mjs';
 import {Terminals} from './terminals.mjs';
 import {TmuxPanes, tmuxPane} from './tmux.mjs';
-import {ROLE_TOOLS, ROLES} from './tools.mjs';
+import {ALL_TOOLS, ROLES} from './tools.mjs';
 import {VERSION} from './version.mjs';
 import {createWatcher, momentOf} from './watcher.mjs';
 
@@ -148,11 +148,12 @@ export async function startDaemon(config, {
     ? new AgentBoard({board: config.board, pollMs: agentsPollMs, log, wanted: () => [...clients].some(client => client.session), onChange: change => { for (const relay of relays.values()) relay.hear(change); }})
     : null;
 
-  const sessionOfConversation = id => [...live.values()].find(session => session.conversationId === id);
+  // A session's own conversation, or one of its /gen requests' (see gen.mjs).
+  const sessionOfConversation = id => [...live.values()].find(session => session.owns(id));
   const hand = name => (conversationId, args) => {
     const session = sessionOfConversation(conversationId);
     if (!session) throw new Error('This pairing session has ended');
-    return session.useTool(name, args);
+    return session.useTool(name, args, conversationId);
   };
 
   let partnerAsked = false; // since the Watcher's last call: its next call may find the Partner's model loaded
@@ -172,8 +173,8 @@ export async function startDaemon(config, {
       thinking: config.models.partner.thinking,
       backgroundCompaction: !slot.exclusive,
       hands: {
-        ...Object.fromEntries(ROLE_TOOLS.driver.map(name => [name, hand(name)])), // the Driver has every tool
-        roleOf: conversationId => sessionOfConversation(conversationId)?.role ?? 'navigator',
+        ...Object.fromEntries(ALL_TOOLS.map(name => [name, hand(name)])),
+        roleOf: conversationId => sessionOfConversation(conversationId)?.roleOf(conversationId) ?? 'navigator',
       },
     });
     const scoreRemark = createWatcher({models: pairModels.models, model: pairModels.watcher, chooseModel: chooseWatcherModel});
@@ -289,6 +290,7 @@ export async function startDaemon(config, {
       session.typingPauseMs = config.typingPauseMs;
       session.autoTune = config.autoTune;
       session.setTestOnSave(testOnSaveOf(session.root, session.id));
+      session.gen.limits = config.gen.limits; // a request already running keeps the limits it started with
       Object.assign(margins.get(session.root) ?? {}, {typingPauseMs: config.typingPauseMs, taskCommand: config.taskCommand});
     }
     if (changed.includes('board')) {
@@ -402,6 +404,7 @@ export async function startDaemon(config, {
         typingPauseMs: config.typingPauseMs,
         testOnSave: testOnSaveOf(root, record.id),
         checkOutput: join(config.dataDir, 'runs', `${record.id}.check.out`), // the hand-over's check: writable in the sandbox too
+        genLimits: config.gen.limits,
         notify: (role, message) => notify(session, role, message),
         requestEditor: message => requestEditor(session, message),
         log: line => log(`[${basename(root)}] ${line}`),
@@ -599,6 +602,23 @@ export async function startDaemon(config, {
     return session.askTyped(message.text, picked, {question: client.role === 'editor', about});
   }
 
+  /**
+   * A /gen request (see gen.mjs). From Neovim it brings the cursor's `place` or the `selection`, and the `token` of
+   * the mark there; from the chat, the Neovim the user works in is asked for them.
+   */
+  function genFrom(client, session, message) {
+    const place = (where, keys) => (where && typeof where.file === 'string' && keys.every(key => Number.isInteger(where[key])) ? where : null);
+    return session.gen.request({
+      text: typeof message.text === 'string' ? message.text : '',
+      shape: typeof message.shape === 'string' ? message.shape : null,
+      here: message.here === true,
+      selection: place(message.selection, ['from', 'to']),
+      place: place(message.place, ['line']),
+      token: Number.isInteger(message.token) ? message.token : null,
+      from: client.role === 'editor' ? 'editor' : 'chat',
+    });
+  }
+
   /** The id of the `number`th last remark in the session's project, as /remarks lists them; null without a number. */
   function remarkNumbered(session, number) {
     if (!Number.isInteger(number) || number < 1) return null;
@@ -735,7 +755,12 @@ export async function startDaemon(config, {
     if (message.type === 'today') return sendMessage(client.socket, {type: 'ledger', ...session.today()});
     if (message.type === 'ledger_detail') return sendMessage(client.socket, {type: 'ledger_detail', ids: message.ids, detail: session.ledgerDetail(message.ids ?? [])});
     if (message.type === 'undo') return session.undo(message.action);
-    if (message.type === 'applied') return session.applied(message.action, message.before, message.after);
+    if (message.type === 'applied') return session.applied(message.action, message.before, message.after, {piece: message.piece, from: message.from, to: message.to});
+    if (message.type === 'gen') return genFrom(client, session, message);
+    if (message.type === 'gen_answer' && Number.isInteger(message.gen)) return session.gen.answer(message.gen, message.id, message.text);
+    if (message.type === 'gen_dropped' && Number.isInteger(message.action)) return session.gen.dropped(message.action, message.piece);
+    if (message.type === 'gen_cancel') return session.gen.cancel();
+    if (message.type === 'gen_list') return session.gen.list();
     if (message.type === 'trail') return sendMessage(client.socket, session.trail());
     if (message.type === 'forget_trail') return session.forgetTrail();
     if (message.type === 'runs') return session.runs().then(runs => sendMessage(client.socket, runs));
@@ -865,6 +890,7 @@ export async function startDaemon(config, {
       for (const client of clients) client.socket.destroy();
       await new Promise(resolve => server.close(resolve));
       await rebuilt;
+      for (const session of live.values()) session.gen.close(); // a request waiting for an answer would hold the Partner open
       await models.partner.close();
       store.close();
       owner.release();

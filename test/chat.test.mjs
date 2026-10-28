@@ -27,6 +27,11 @@ test('/scout and /navigate switch the role, /today lists what Pair did; other li
 
 test('/drive, "you take it" and "your turn" hand Pair the wheel; the words go along', () => {
   assert.deepEqual(parseInput('/drive'), {type: 'drive', text: ''});
+  assert.deepEqual(parseInput('/gen'), {type: 'gen_list'});
+  assert.deepEqual(parseInput('/gen cancel'), {type: 'gen_cancel'});
+  assert.deepEqual(parseInput('/gen here a list handler'), {type: 'gen', text: 'here a list handler'});
+  assert.deepEqual(parseInput('/gen here @here tidy these'), {type: 'gen', text: 'here tidy these', here: true});
+  assert.deepEqual(parseInput('/gen here a handler:\n- paging @here\n- newest first'), {type: 'gen', text: 'here a handler:\n- paging \n- newest first', here: true});
   assert.deepEqual(parseInput('/drive set the timeout to 30 s'), {type: 'drive', text: 'set the timeout to 30 s'});
   assert.deepEqual(parseInput('/drive! set the timeout to 30 s'), {type: 'drive', text: 'set the timeout to 30 s', keep: true}, 'and keep the wheel');
   assert.deepEqual(parseInput('You take it'), {type: 'drive', text: 'You take it'});

@@ -2,7 +2,9 @@
 // recall (the project's earlier sessions) and suggest, which only shows a change for the user to accept;
 // Scout adds search and run, which work only in Pair's own pane (herdr's or Neovim's). The Driver, which Pair is only while
 // the user hands it the wheel, also has edit (a few edits in the user's buffers, never saved) and type (into
-// the user's terminal, after a yes, without Enter). Nothing here can write a file or save a buffer. Each
+// the user's terminal, after a yes, without Enter). A /gen request runs in a conversation of its own with the gen
+// tool set: it reads, recalls and searches, proposes code the user takes with one key, and asks the user at most two
+// questions; it never edits or types (see gen.mjs). Nothing here can write a file or save a buffer. Each
 // conversation is offered only its role's tools, and the policy hook refuses any other name, so a model that
 // invents `bash` or `write` gets an error, not an effect.
 import {Type} from '@earendil-works/pi-ai';
@@ -18,7 +20,12 @@ export const ROLE_TOOLS = {
   navigator: NAVIGATOR_TOOLS,
   scout: [...NAVIGATOR_TOOLS, 'search', 'run'],
   driver: [...NAVIGATOR_TOOLS, 'search', 'run', 'edit', 'type'],
+  // A /gen request's own conversation: never stored as the session's role, never edit or type.
+  gen: ['say', 'read', 'recall', 'search', 'propose', 'ask'],
 };
+
+/** Every tool name of every role, once: what the daemon's hands carry out. */
+export const ALL_TOOLS = [...new Set(Object.values(ROLE_TOOLS).flat())];
 
 // What the model is told when it calls a tool its role does not have.
 const NEEDS_ROLE = {
@@ -26,6 +33,8 @@ const NEEDS_ROLE = {
   run: 'run needs the Scout role; the user can switch with /scout.',
   edit: 'edit works only while the user hands you the wheel; call suggest instead.',
   type: 'type works only while the user hands you the wheel; say the command instead.',
+  propose: 'propose works only in a /gen request; call suggest instead.',
+  ask: 'ask works only in a /gen request; ask your question in words instead.',
 };
 
 /** The `beforeTool` policy: a block reason for anything outside the tools of the conversation's role. */
@@ -79,6 +88,15 @@ If an answer needs a search or a test run, say so in one sentence: the user can 
   When your answer ends, the user has the wheel again, unless they let you keep it.
 - To put a command in the user's terminal, call type: they confirm it and press Enter themselves.
 - search and run work in your own pane, as for Scout.`,
+  gen: `Your role now: gen. The user asked you for code with /gen, and this conversation is that one request.
+- You never change the user's text. You call propose with the code, and the user takes it into their buffer with one key, or not.
+- First read the lines around the place, so your line numbers and indentation are right.
+- propose puts the complete new lines below line (insert: true), or in place of lines line..end_line (insert: false).
+  Write whole, working code in the style of the file around it; there is no limit on code, only on your words.
+- Only if the request is unclear and a wrong guess would cost the user, call ask with one short question and the answer
+  you would take: at most two questions per request. Otherwise decide yourself.
+- After propose, say in one or two sentences what you wrote, and name what you decided that the user did not say.
+- search works in your own pane, as for Scout. You cannot run commands: Pair checks the code once the user takes it.`,
 };
 
 const text = value => ({output: [{type: 'text', text: value}]});
@@ -110,6 +128,16 @@ const lineChange = (extra = {}) => Type.Object({
 });
 
 const changeOf = args => ({file: args.file, line: args.line, endLine: args.end_line ?? args.line, text: args.new_text});
+
+/** The arguments of propose: where the code goes, and the code. */
+const proposal = Type.Object({
+  file: Type.String({description: 'Path relative to the project root'}),
+  line: Type.Integer({minimum: 1, description: 'With insert: the line the code goes below. Else the first line it replaces'}),
+  end_line: Type.Optional(Type.Integer({minimum: 1, description: 'Without insert: the last line it replaces; default: line'})),
+  insert: Type.Boolean({description: 'true puts the code below line and replaces nothing; false replaces line..end_line'}),
+  text: Type.String({description: 'The complete new lines, with their indentation'}),
+  note: Type.String({description: 'A few words on what it is'}),
+});
 
 function tools(hands) {
   return [
@@ -193,6 +221,23 @@ function tools(hands) {
       description: 'Type one command line into the user\'s terminal, once they allow it. Enter is not pressed: the user runs it.',
       parameters: Type.Object({text: Type.String({description: 'One line, for example: npm test'})}),
       execute: async (args, api) => text(await hands.type(api.conversationId, {text: args.text})),
+    }),
+    defineTool({
+      name: 'propose',
+      description: 'Propose code for the user\'s /gen request: it shows in the editor as ghost lines, and the user takes it with one key or not. Nothing changes until they take it.',
+      parameters: proposal,
+      execute: async (args, api) => text(await hands.propose(api.conversationId, {
+        file: args.file, line: args.line, endLine: args.insert ? args.line : args.end_line ?? args.line, insert: args.insert === true, text: args.text, note: args.note,
+      })),
+    }),
+    defineTool({
+      name: 'ask',
+      description: 'Ask the user one short question about their /gen request, with the answer you would take; waits for their answer. At most two per request.',
+      parameters: Type.Object({
+        question: Type.String({description: 'One short question'}),
+        default: Type.String({description: 'The answer you would take, which the user can keep'}),
+      }),
+      execute: async (args, api) => text(await hands.ask(api.conversationId, {question: args.question, answer: args.default})),
     }),
   ];
 }
