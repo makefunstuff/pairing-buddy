@@ -17,8 +17,11 @@ Four rows of chrome, two of them rules with words in them; the rest is the conve
 
 - **The header, in the top rule**: `── pair · hookd · the session's goal ──── navigator · normal ──`. The project, the
   goal, and on the right Pair's [role](roles.md) and its [talk level](watcher.md) (`quiet`, `normal`, `chatty`), and
-  how many kinds of remark you muted. When the pane is narrow the goal is cut first, then left out (always under 52
-  columns), then the role is shortened (`nav`), then the muted count, the level and the role give way.
+  how many kinds of remark you muted. The role is in its colour from the website: `navigator` blue, `scout` green,
+  `driver` red. While Pair [keeps the wheel](driver.md#keeping-the-wheel) (`/drive!`), the header says
+  `driver · keeps the wheel` in place of the level. When the pane is narrow the goal is cut first, then left out
+  (always under 52 columns), then the role is shortened (`nav`), then the muted count, the level and the role give
+  way.
 - **The conversation**, newest at the bottom. Each message has a 7-column gutter with who speaks, the same in a wide
   pane and a narrow one:
 
@@ -27,7 +30,7 @@ Four rows of chrome, two of them rules with words in them; the rest is the conve
   | `you` | What you sent, on screen as soon as you press Enter |
   | `pair` | Pair's answer to a question; a `✎ suggested change` shows as a diff. Also what Pair asks you: the session's goal, its greeting with last time's note, and whether it may run or type a command |
   | `watch` | What Pair said unasked: the kind of moment and the file and line first, then its words |
-  | `⎿` | What Pair's tools did for your question: the files it read, the commands it ran, what it searched |
+  | `└` | What Pair's tools did for your question: the files it read, the commands it ran, what it searched |
   | `··` | Notes: the tests on save, a verdict noted, a level changed |
   | `!` | An error, in red, such as a model that does not answer, with what to check: its words are Markdown, so a command in it (`pair doctor`) is a code span, whole, to copy |
 
@@ -46,7 +49,7 @@ Four rows of chrome, two of them rules with words in them; the rest is the conve
          + useful  - noise  a apply  j jump  · Alt-↑ first
 
    you   why does the third retry get a 409 and not a 200?
-         ⎿ read internal/queue/lease.go 1-40 · searched AttemptTimeout
+         └ read internal/queue/lease.go 1-40 · searched AttemptTimeout
   ```
 
   A remark is one unit: what about, its words, its diff behind the same `│ ` bar as a code block, and last its
@@ -92,42 +95,83 @@ Four rows of chrome, two of them rules with words in them; the rest is the conve
   **In a narrow pane** (under 52 columns) the gutter stays, so a message spends no row on its name. What gives way,
   instead of being cut in the middle:
 
-  - the `⎿` line names files by their base name and counts the tools that do not fit: `⎿ read lease.go 1-40 · +1`;
+  - the `└` line names files by their base name and counts the tools that do not fit: `└ read lease.go 1-40 · +1`;
   - a remark's place is its file's base name: `regression · lease.go:18`;
   - the header drops the goal and shortens the role (`── pair · hookd ──── nav · normal ──`);
   - the status keeps its words whole and drops what it can: the model first, then the counts
-    (`── ◇ watching · 3m ago ──`), `? waiting`, `▖ reading lease.go 1-40 2s`, `⚠ reconnecting 6s`;
+    (`── ◉ watching · 3m ago ──`), `? waiting`, `▖ reading lease.go 1-40 4s`, `! reconnecting 6s`;
   - the footer says its keys short (`/ cmds · @ files · Alt-↑ pick · ? keys`);
   - the `@` menu cuts a path at its start, a folder at a time, so two files never look the same:
     `@…/retry/backoff.go`, `@…/backoff_test.go`.
 
-  ![A 44-column chat pane: the gutter kept, the suggestion's diff wrapped between tokens with a hanging indent, the ⎿ line by base name, nav in the header and the short footer](images/chat-narrow.png)
+  ![A 44-column chat pane: the gutter kept, the suggestion's diff wrapped between tokens with a hanging indent, the └ line by base name, nav in the header and the short footer](images/chat-narrow.png)
 
   ![The same pane 112 columns wide: the words end by column 80, the diff runs on, and each turn's time, duration and tokens on the right of what Pair said](images/chat-wide.png)
 - **The status, in the rule over what you type**: what Pair does now, as `── ▖ writing 6s ──── qwen3-coder-30b ──`.
   It names no keys (those are in the footer), and its word is in body text, so it ranks above the footer. The answer
-  streams into the conversation as the model writes it.
+  streams into the conversation as the model writes it. How long Pair has been at it shows once that is 3 seconds,
+  so a short turn does not tick. Its glyph has the colour of the part at work: the Watcher's `◉` yellow, the
+  Driver's `◆` red, Pair's own spinner and word in its accent.
 
   | Status | Means |
   | --- | --- |
-  | `◇ watching · looked at 12 moments, spoke 2 · 3m ago` | Idle. The Watcher looked at 12 moments this session and Pair spoke at 2: most moments are not worth a word |
+  | `◉ watching · looked at 12 moments, spoke 2 · 3m ago` | Idle. The Watcher looked at 12 moments this session and Pair spoke at 2: most moments are not worth a word |
   | `▖ thinking 4s` | Pair works on your question; `Esc` stops it |
   | `▖ writing 6s` | Its answer is arriving, word by word |
+  | `▖ writing 6s · 1 remark below` | A remark or a note came while the answer streams: it waits, and goes under the answer once that is done ([below](#calm-motion)) |
   | `▖ reading queue.go 1-40`, `running go test ./...` | One of its tools is at work, and on what |
-  | `▖ looking at regression` | Pair looks at a moment of its own accord; it may say nothing |
+  | `▖ looking at regression` | The Watcher looks at a moment of its own accord (its spinner yellow); it may say nothing |
   | `? waiting for your answer` | It asked to run or type a command |
-  | `◆ Pair drives` | Pair has the wheel ([Driver](driver.md)) |
-  | `⚠ the pair daemon went away · reconnecting 6s · attempt 4` | The daemon restarted: how long it has been away and how many times the pane tried, so a blip reads differently from a daemon that is gone. What you type is kept (the input says so); nothing sends until it is back, and the pane carries on then |
+  | `◆ Pair drives · any key in Neovim takes it back` | Pair has the wheel ([Driver](driver.md)) |
+  | `! the pair daemon went away · reconnecting 6s · attempt 4` | The daemon restarted (the `!` in yellow): how long it has been away and how many times the pane tried, so a blip reads differently from a daemon that is gone. What you type is kept (the input says so); nothing sends until it is back, and the pane carries on then |
 
   On the right: the Partner's model, how long its last answer took, and the tokens and cost of it when the provider
-  reports them; when you scrolled up, how many lines are below (and `End` in the footer goes back down). The right
+  reports them (`! watcher not answering` instead when a model does not answer); when you scrolled up, how many lines
+  are below (and `End` in the footer goes back down). The right
   side gives way first, from its end; then the status is said shorter ([narrow panes](#what-you-see)).
 
-  ![Right after a question: the file Pair reads is a ⎿ line under it, and the status in the rule says thinking](images/chat-working.png)
+  ![Right after a question: the file Pair reads is a └ line under it, and the status in the rule says thinking](images/chat-working.png)
 - **What you type**, after `›`, and under it **the keys that work now**: they change when Pair works, asks, or you
   pick a message. The footer holds keys only; a short note (copied, taken in Neovim) shows there for a moment.
 
 ![A remark on save: watch, regression, the file and line, the suggestion as a diff, and its action line: + useful, - noise, a apply, j jump](images/chat-remark.png)
+
+### The empty pane
+
+Before anything is said, the pane shows Pair's head, the CRT-headed robot of the website drawn in quadrant blocks
+(its frame in Pair's accent, two green eyes, a magenta antenna), with what Pair is beside it, and the keys to start
+with under it. The head is four rows whatever the words beside it do; in a pane too narrow for its name beside it,
+the words go under it.
+
+```
+      ▗▖
+   ▗▛▀▀▀▀▜▖  Pair · your pair in the second chair
+   ▐ ▀  ▀ ▌  It watches you work and speaks rarely: a line in
+   ▝▙▄▄▄▄▟▘  Neovim, more here when you ask.
+
+   Enter   ask anything
+   /       commands · /drive hands it the keyboard
+   @       a file, or @here for your selection
+   Alt-↑   pick a message: copy, apply, jump, rate
+   ?       every key
+```
+
+![The empty pane: Pair's head, what it is, the keys to start with, and Pair asking for the session's goal](images/chat-empty.png)
+
+### Calm motion
+
+The pane moves only where you are not reading:
+
+- **Nothing moves above the answer you read.** A remark or a note (the tests on save, another agent's news) that
+  comes while Pair's answer streams waits; the status says so (`▖ writing 6s · 1 remark below`, `2 notes below`), and
+  it goes under the answer once that is done, in the order it came. What you send yourself shows at once.
+- **A short turn does not tick**: the time Pair has worked shows from 3 seconds on.
+- **Glyphs every font has**, one column wide: `!` (yellow) for the daemon gone or a model that does not answer, not
+  `⚠`, which some fonts draw as a two-column emoji; `└` under a question for its tools, not `⎿`, which many fonts lack.
+- **A frame is one update** where the terminal can take it so: the pane asks the terminal about synchronized output
+  (DEC mode 2026) as it starts, and wraps each frame in it when the answer is yes (kitty, WezTerm, foot, Ghostty,
+  Alacritty, iTerm2 and tmux 3.4 among others), so a frame never shows half drawn. A terminal that does not answer
+  gets plain frames, as before.
 
 ## Talking to Pair
 
@@ -246,10 +290,12 @@ that light themes wash out:
 | Colour | Only for |
 | --- | --- |
 | Body text | Everything addressed to you: answers, questions, notes, the status word, the empty card, the help |
-| Pair's accent | Pair's name, `code` in its words, the prompt, the spinner, the bar of a picked message |
-| Yellow | The Watcher: the `watch` label and a remark's kind and place; the `?` of a question waiting for you; `y` and `n` (bold) in the footer while it waits |
-| Dim | Chrome: the rules, the time dividers and an answer's time in the margin, what a key in the footer does, the `⎿` tool lines, a fold, a link's address |
+| Pair's accent | Pair's name, `code` in its words, the prompt, the spinner and the word of what it does, the bar of a picked message, the frame of its head |
+| Yellow | The Watcher: the `watch` label, a remark's kind and place, the `◉` of the status and its spinner while it looks; the `?` of a question waiting for you; `y` and `n` (bold) in the footer while it waits; the `!` of a daemon gone or a model that does not answer |
+| Dim | Chrome: the rules, the time dividers and an answer's time in the margin, what a key in the footer does, the `└` tool lines, a fold, a link's address |
 | Green, red | `+` and `-` lines of a diff; the find match you are on, in green (bold and underlined too); an error, in red |
+| Blue, green, red (bold) | The role in the header, as on the website: `navigator` blue, `scout` green, `driver` red, and the Driver's `◆` in the status |
+| Green, magenta | The eyes and the antenna of Pair's head, on the empty pane |
 
 Light themes are where dim and yellow fade: against the background, dim is about 2 : 1 in Tokyo Night Day and
 Solarized Light, and yellow is 3.0 : 1 in Solarized Light and 1.7 : 1 in xterm's default light (body text wants
@@ -259,7 +305,8 @@ keys `y` and `n`, in bold, keep the yellow.
 ## The plain pane
 
 When the pane's input or output is no terminal (a pipe, a script), with `TERM=dumb`, or with `pair chat --plain`, it
-is the plain pane: lines as they come, a `navigator ›` prompt, one line per question, and `⎿` lines for the tools. It
+is the plain pane: lines as they come, a `navigator ›` prompt (the role in its colour, when there are colours), one
+line per question, and `└` lines for the tools. It
 takes the same commands but `/search`, `/copy` and `/clear`, which say they work in the full-screen pane only;
 there `?` and Enter asks about what Pair said last, as `/why` does. Nothing above about keys, picking, the menu, the
 rules or the status applies there: Pair's question ends in `[y/N]`, and the goal is said in the conversation.
