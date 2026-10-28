@@ -255,6 +255,19 @@ test('code and diffs wrap between tokens with a hanging indent, never inside a n
   assert.deepEqual(plain(codeLines('    callSomething(withAVeryLongArgumentName)', 24, 'text')), ['    callSomething(', '      withAVeryLongArgum', '      entName)'], 'the indent of the line and two more');
 });
 
+test('code wrapping keeps a flag with its =, kebab-case names, numbers and versions whole; a deep indent keeps half the line', () => {
+  const wrap = (text, width) => plain(codeLines(text, width, 'text', [{text: '│ ', style: 'rule'}]));
+  assert.deepEqual(wrap('--config=webpack.production.config.js', 30), ['│ --config=webpack.production', '│   .config.js']);
+  assert.deepEqual(wrap('go build --ldflags=-X=main.version=v1.2.3-rc.1 ./cmd', 30), ['│ go build', '│   --ldflags=-X=main.version=', '│   v1.2.3-rc.1 ./cmd']);
+  assert.deepEqual(wrap('<my-very-long-component-name-here-and-more />', 30), ['│ <my-very-long-component-', '│   name-here-and-more />'], 'a name longer than the line breaks after a dash');
+  assert.deepEqual(wrap('const pi = 3.14159; next', 20), ['│ const pi =', '│   3.14159; next']);
+  assert.equal(breakText('-count=1 more', 7), '-count', 'not between a flag and its =');
+  const deep = wrap(`${' '.repeat(24)}return someFunction(argumentOne, argumentTwo)`, 30);
+  assert.deepEqual(deep, ['│              return', '│              someFunction(', '│              argumentOne,', '│              argumentTwo)']);
+  assert.deepEqual(wrap(`${' '.repeat(12)}if (x) { callSomething(withAnArgument) }`, 30)[1], '│              callSomething(', 'the hanging indent kept');
+  for (const line of [...deep, ...wrap('--config=webpack.production.config.js', 30)]) assert.ok(textWidth(line) <= 30);
+});
+
 test('a code span wraps with the word before it, at its own spaces', () => {
   const lines = plain(wrapTokens(inlineTokens('Run `go test ./internal/queue -run TestLease -count=1` in my pane?'), 37));
   assert.deepEqual(lines, ['Run go test ./internal/queue -run', 'TestLease -count=1 in my pane?']);
@@ -264,6 +277,7 @@ test('a code span wraps with the word before it, at its own spaces', () => {
 test('a narrow pane: tool traces by their base names and a count, the remark\'s file by its name, the status shorter but whole', () => {
   assert.equal(baseNames('read internal/queue/lease.go 1-40'), 'read lease.go 1-40');
   assert.equal(baseNames('go test ./...'), 'go test ./...', 'nothing to shorten');
+  assert.equal(baseNames('go test ./internal/queue -run TestLease'), 'go test ./internal/queue -run TestLease', 'a command stays one you could run');
   const tools = {kind: 'tool', at, tools: [{tool: 'read', what: 'internal/queue/lease.go 1-40'}, {tool: 'search', what: 'AttemptTimeout'}]};
   assert.deepEqual(plain(bodyLines(tools, 80)), ['⎿ read internal/queue/lease.go 1-40 · searched AttemptTimeout'], 'whole where it fits');
   assert.deepEqual(plain(bodyLines(tools, 48)), ['⎿ read lease.go 1-40 · searched AttemptTimeout']);
@@ -280,8 +294,10 @@ test('a narrow pane: tool traces by their base names and a count, the remark\'s 
   assert.match(row({activity: {state: 'tool', tool: 'read', what: 'internal/queue/lease.go 1-40', since: now - 2000}}, 36), /^── ▖ reading lease\.go 1-40 2s ─+$/);
   assert.match(row({activity: {state: 'tool', tool: 'read', what: 'internal/queue/lease.go 1-40', since: now - 2000}}, 24), /^── ▖ reading 2s ─+$/);
   assert.match(row({connection: 'away'}, 30), /^── ⚠ reconnecting ─+$/);
+  assert.match(row({activity: {state: 'tool', tool: 'run', what: 'go test ./internal/queue -run TestLease', since: now - 2000}}, 52), /^── ▖ running 2s ─+/, 'a command too long: none, not a rewritten one');
+  assert.match(row({activity: {state: 'idle'}, role: 'scout'}, 24), /^── ◇ Scout ─+$/);
   for (const width of [24, 30, 36, 44]) {
-    for (const view of [idle, {activity: {state: 'waiting'}}, {connection: 'away'}, {connection: 'connecting'}, {activity: {state: 'remark', what: 'edit_while_red', since: now}}]) {
+    for (const view of [idle, {activity: {state: 'waiting'}}, {connection: 'away'}, {connection: 'connecting'}, {activity: {state: 'remark', what: 'edit_while_red', since: now}}, {activity: {state: 'idle'}, role: 'scout'}]) {
       assert.doesNotMatch(row(view, width), /[^\s─]…/, `${JSON.stringify(view)} at ${width}: shorter, not cut`);
     }
   }

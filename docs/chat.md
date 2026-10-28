@@ -70,8 +70,11 @@ Four rows of chrome, two of them rules with words in them; the rest is the conve
   table shows as written. A message longer than 18 lines folds to its first 12.
 
   Code blocks, diffs and the command of a question wrap between tokens, with a hanging indent: at a space first, else
-  before a dot or after an opening bracket or a slash, never inside a name or a flag (`cfg.AttemptTimeout`,
-  `-count=1`). A `code` span in a sentence wraps at its own spaces, so it starts on the line of the word before it.
+  before a dot or after an opening bracket, a slash or a value's `=`, never inside a name, a number or a flag
+  (`cfg.AttemptTimeout`, `my-component-name`, `v1.2.3-rc.1`, `--config=`). A name longer than the whole line breaks
+  after a dash in it; only a word with none is cut. A line indented deeper than half the pane shows at half of it, so
+  its words keep the other half. A `code` span in a sentence wraps at its own spaces, so it starts on the line of the
+  word before it.
 
   **In a wide pane** the words end by column 80, the measure that reads well; code blocks and diffs use the whole
   width. The margin on the right holds what a turn of Pair's took, on the first line of what it said in it (an answer,

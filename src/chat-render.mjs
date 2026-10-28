@@ -127,13 +127,17 @@ export function wrapTokens(tokens, width, first = [], rest = first) {
   return lines;
 }
 
-// Code: a name, a number, a flag with its value or a run of signs is one token; a line breaks between them, after
-// an opening sign or a slash and before a dot, never after a dot or before a closing sign or a comma.
-const TOKEN = /--?[A-Za-z][\w-]*(?:=[^\s,;)\]}]*)?|[\w$]+|[^\w\s]+/g;
-const breaksAfter = token => !/[.&*!@$#\\~-]$/.test(token);
+// Code: a name (kebab-case too), a number or version (3.14, v1.2.3-rc.1) or a run of signs is one token; a line
+// breaks between them, after an opening sign, a slash or a value's = and before a dot, never after a dot, a dash or <,
+// before a closing sign or a comma, or between a flag and its = (--config=).
+const TOKEN = /[\w$]+(?:(?:-[\w$]|\.\d)[\w$]*)*|[^\w\s]+/g;
 const breaksBefore = token => !/^[)\]},;:]/.test(token);
+const breaksAfter = (tokens, i) => !/[.&*!@$#\\~<-]$/.test(tokens[i]) && !(tokens[i] === '=' && /-$/.test(tokens[i - 2] ?? ''));
 
-/** The longest start of `text` (no spaces in it) that fits in `width` and ends between two tokens; cut where it must be if none does. */
+/**
+ * The longest start of `text` (no spaces in it) that fits in `width` and ends between two tokens. A single token
+ * longer than that breaks after a dash in it (my-long-|name); only a word without one is cut.
+ */
 export function breakText(text, width) {
   if (textWidth(text) <= width) return text;
   const tokens = text.match(TOKEN) ?? [text];
@@ -142,19 +146,25 @@ export function breakText(text, width) {
   for (let i = 0; i < tokens.length - 1; i++) {
     at += tokens[i];
     if (textWidth(at) > width) break;
-    if (breaksAfter(tokens[i]) && breaksBefore(tokens[i + 1])) best = at;
+    if (breaksAfter(tokens, i) && breaksBefore(tokens[i + 1])) best = at;
   }
-  return best || fitText(text, width) || [...text][0];
+  if (best) return best;
+  const fits = fitText(text, width);
+  const dash = fits.lastIndexOf('-', fits.length - 2) + 1;
+  return (dash > 1 ? fits.slice(0, dash) : fits) || [...text][0];
 }
 
 /**
  * One line of code in lines of `width`: the first after `prefix`, the others after `more` and the line's own indent
- * and two spaces more. It wraps at its spaces, and a token too long for a line is cut between its tokens.
+ * and two spaces more. It wraps at its spaces, and a token too long for a line is cut between its tokens. An indent
+ * deeper than half the line is shown at half the line, so the words keep the other half.
  */
 export function codeLines(text, width, style, prefix = [], more = prefix) {
   const expanded = text.replace(/\t/g, '    ');
-  const indent = /^ */.exec(expanded)[0];
-  const hang = textWidth(indent) + 2 + lineWidth(more) <= width / 2 ? [...more, seg(`${indent}  `, style)] : more;
+  const half = Math.floor(width / 2);
+  const indent = ' '.repeat(Math.min(/^ */.exec(expanded)[0].length, Math.max(0, half - lineWidth(prefix))));
+  const hanging = Math.min(indent.length + 2, Math.max(0, half - lineWidth(more)));
+  const hang = hanging ? [...more, seg(' '.repeat(hanging), style)] : more;
   const lines = [];
   let line = [...prefix, ...(indent ? [seg(indent, style)] : [])];
   let start = lineWidth(line);
@@ -164,7 +174,7 @@ export function codeLines(text, width, style, prefix = [], more = prefix) {
     line = [...hang];
     start = used = lineWidth(hang);
   };
-  for (const [, space, word] of expanded.slice(indent.length).matchAll(/(\s*)(\S+)/g)) {
+  for (const [, space, word] of expanded.trimStart().matchAll(/(\s*)(\S+)/g)) {
     if (used > start && used + textWidth(space) + textWidth(word) > width) next();
     if (used > start && space) {
       line.push(seg(space, style));
@@ -188,8 +198,11 @@ export function codeLines(text, width, style, prefix = [], more = prefix) {
   return lines;
 }
 
-/** A path's last part: internal/queue/lease.go:18 as lease.go:18, in a pane too narrow for the whole. */
-export const baseNames = text => text.replace(/(?:[\w.-]*\/)+([\w.-]*\w[\w.-]*)/g, '$1');
+/**
+ * A file's last part: internal/queue/lease.go:18 as lease.go:18, in a pane too narrow for the whole. Only names of
+ * files (with an extension) and not ./paths, so a command stays one you could run (go test ./internal/queue).
+ */
+export const baseNames = text => text.replace(/(?<![\w./-])(?:[\w-]+\/)+([\w-]*\w[\w-]*(?:\.\w+)+)(?![\w/])/g, '$1');
 
 /** `lines` without the indentation they all share (tabs as four spaces). */
 export function dedent(lines) {
@@ -558,6 +571,7 @@ export function statusLine(view, width) {
       [...watching, ...(looked || last ? [seg(`${looked}${last}`, 'dim')] : [])],
       ...(looked && last ? [[...watching, seg(last, 'dim')]] : []),
       ...(looked || last ? [watching] : []),
+      ...(role === 'scout' ? [[seg('◇ ', 'accent'), seg('Scout', 'text')]] : []),
     ];
   }
   const right = [];
