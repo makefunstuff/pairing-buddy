@@ -3,8 +3,8 @@
 // Scout adds search and run, which work only in Pair's own pane (herdr's or Neovim's). The Driver, which Pair is only while
 // the user hands it the wheel, also has edit (a few edits in the user's buffers, never saved) and type (into
 // the user's terminal, after a yes, without Enter). A /gen request runs in a conversation of its own with the gen
-// tool set: it reads, recalls and searches, proposes code the user takes with one key, and asks the user at most two
-// questions; it never edits or types (see gen.mjs). Nothing here can write a file or save a buffer. Each
+// tool set: it reads, recalls and searches, proposes code the user takes with one key, drafts new files the user
+// reviews as unsaved buffers, and asks the user at most two questions; it never edits or types (see gen.mjs). Nothing here can write a file or save a buffer. Each
 // conversation is offered only its role's tools, and the policy hook refuses any other name, so a model that
 // invents `bash` or `write` gets an error, not an effect.
 import {Type} from '@earendil-works/pi-ai';
@@ -21,7 +21,7 @@ export const ROLE_TOOLS = {
   scout: [...NAVIGATOR_TOOLS, 'search', 'run'],
   driver: [...NAVIGATOR_TOOLS, 'search', 'run', 'edit', 'type'],
   // A /gen request's own conversation: never stored as the session's role, never edit or type.
-  gen: ['say', 'read', 'recall', 'search', 'propose', 'ask'],
+  gen: ['say', 'read', 'recall', 'search', 'propose', 'draft', 'ask'],
 };
 
 /** Every tool name of every role, once: what the daemon's hands carry out. */
@@ -34,6 +34,7 @@ const NEEDS_ROLE = {
   edit: 'edit works only while the user hands you the wheel; call suggest instead.',
   type: 'type works only while the user hands you the wheel; say the command instead.',
   propose: 'propose works only in a /gen request; call suggest instead.',
+  draft: 'draft works only in a /gen request; describe the file in words instead.',
   ask: 'ask works only in a /gen request; ask your question in words instead.',
 };
 
@@ -95,7 +96,9 @@ If an answer needs a search or a test run, say so in one sentence: the user can 
   Write whole, working code in the style of the file around it; there is no limit on code, only on your words.
 - Only if the request is unclear and a wrong guess would cost the user, call ask with one short question and the answer
   you would take: at most two questions per request. Otherwise decide yourself.
-- After propose, say in one or two sentences what you wrote, and name what you decided that the user did not say.
+- In a /gen file request, call draft with each new file's path and whole text: the user reviews it as an unsaved
+  buffer and writes it with :w. draft makes new files only; for a change to a file that exists, call propose there.
+- After propose or draft, say in one or two sentences what you wrote, and name what you decided that the user did not say.
 - search works in your own pane, as for Scout. You cannot run commands: Pair checks the code once the user takes it.`,
 };
 
@@ -229,6 +232,16 @@ function tools(hands) {
       execute: async (args, api) => text(await hands.propose(api.conversationId, {
         file: args.file, line: args.line, endLine: args.insert ? args.line : args.end_line ?? args.line, insert: args.insert === true, text: args.text, note: args.note,
       })),
+    }),
+    defineTool({
+      name: 'draft',
+      description: 'Draft a new file for the user\'s /gen file request: it opens in the editor as an unsaved buffer to review, and reaches the disk only when the user writes it. Only for a file that does not exist; drafting the same path again replaces the draft.',
+      parameters: Type.Object({
+        path: Type.String({description: 'The new file\'s path relative to the project root; its folders may be new too'}),
+        text: Type.String({description: 'The whole file'}),
+        note: Type.String({description: 'A few words on what it is'}),
+      }),
+      execute: async (args, api) => text(await hands.draft(api.conversationId, {path: args.path, text: args.text, note: args.note})),
     }),
     defineTool({
       name: 'ask',

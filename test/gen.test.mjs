@@ -167,14 +167,14 @@ test('no remark nobody asked for starts while a request runs; the chat\'s questi
 
 test('a guessed shape is asked first, in the chat for a chat request: y takes the guess, a shape word another, n cancels', async () => {
   const {pair, of, said} = genSession([], {editor: async message => (message.type === 'gen_place' ? {file: 'math.js', line: 2} : null)});
-  const first = pair.gen.request({text: 'a migration for orders'});
+  const first = pair.gen.request({text: 'a sample LRU cache to try'});
   await new Promise(resolve => setImmediate(resolve));
   const confirm = of('confirm').at(-1);
-  assert.match(confirm.text, /^gen #1 · new files: "migration"\. Shape\? y: file, or type here, scaffold, try; n cancels\.$/);
-  assert.equal(confirm.hint, 'y: file · here, scaffold, try · n cancels');
+  assert.match(confirm.text, /^gen #1 · a sample to run: "sample"\. Shape\? y: try, or type here, file, scaffold; n cancels\.$/);
+  assert.equal(confirm.hint, 'y: try · here, file, scaffold · n cancels');
   pair.answer(confirm.id, true);
   await first;
-  assert.ok(said().includes('gen #1: /gen file (new files to review) is not built yet; this version has /gen here.'));
+  assert.ok(said().includes('gen #1: /gen try (a sample outside the project) is not built yet; this version has /gen here and /gen file.'));
   assert.equal(pair.today().rows.length, 0, 'a request that never ran is not booked');
 
   const second = pair.gen.request({text: 'a migration for orders'});
@@ -187,7 +187,7 @@ test('a guessed shape is asked first, in the chat for a chat request: y takes th
   await new Promise(resolve => setImmediate(resolve));
   pair.answer(of('confirm').at(-1).id, false, undefined, 'scaffold');
   await third;
-  assert.ok(said().includes('gen #3: /gen scaffold (many files, in Pair\'s copy) is not built yet; this version has /gen here.'), 'a shape word takes that shape');
+  assert.ok(said().includes('gen #3: /gen scaffold (many files, in Pair\'s copy) is not built yet; this version has /gen here and /gen file.'), 'a shape word takes that shape');
 
   // A shape typed is never asked; from the chat, the Neovim the user works in gives the place.
   const before = of('confirm').length;
@@ -204,7 +204,7 @@ test('from Neovim the shape question is a dialog there; one request runs at a ti
   await until(() => of('gen_ask').length);
   const ask = of('gen_ask').at(-1);
   assert.deepEqual({kind: ask.kind, title: ask.title, gen: ask.gen}, {kind: 'shape', title: 'gen #1 · at the cursor. Shape?', gen: 1});
-  assert.deepEqual(ask.choices.map(choice => [choice.shape, choice.guessed, choice.built]), [['here', true, true], ['file', false, false], ['scaffold', false, false], ['try', false, false]]);
+  assert.deepEqual(ask.choices.map(choice => [choice.shape, choice.guessed, choice.built]), [['here', true, true], ['file', false, true], ['scaffold', false, false], ['try', false, false]]);
   assert.equal(of('confirm').length, 0, 'not asked in the chat as well');
   pair.gen.answer(1, ask.id, 'here');
   await until(() => asked.length === 1);
@@ -471,4 +471,138 @@ test('/brief shows the brief, pins a note, leaves it out; a pin lasts into the n
   assert.equal(store.lastBrief(root), '');
   next.pair.state.goal = null;
   assert.equal(await next.pair.gen.pinBrief({}), 'The brief is empty: no goal, no board task, no note. /goal sets the goal; /brief <note> pins a note.');
+});
+
+// /gen file: new files as buffers to review in Neovim, taken by writing them.
+
+/** Neovim for a file request: it makes the buffers (kept in `made`), and deletes a file /undo takes back. */
+const filesEditor = (made, unwritten = []) => async message => {
+  if (message.type === 'gen_files') made.push(message);
+  if (message.type === 'gen_unwrite') unwritten.push(message);
+  return ['gen_files', 'gen_unwrite'].includes(message.type) ? {ok: true} : null;
+};
+
+const MIGRATION = 'ALTER TABLE orders ADD COLUMN status TEXT;\nCREATE INDEX orders_status ON orders(status);';
+const MATH_TEST = 'import {x} from \'./math.js\'\nconsole.assert(x === 1)';
+
+/** A file request's turn: two new files, three drafts refused, and a change to a file that exists. */
+const fileTurn = results => async (conversation, pair) => {
+  results.push(await tool(pair, conversation, 'draft', {path: 'db/migrations/0007_status.sql', text: 'old draft', note: 'migration'}));
+  results.push(await tool(pair, conversation, 'draft', {path: 'db/migrations/0007_status.sql', text: `${MIGRATION}\n`, note: 'migration'}));
+  results.push(await tool(pair, conversation, 'draft', {path: 'math.test.js', text: MATH_TEST, note: 'its test'}));
+  results.push(await tool(pair, conversation, 'draft', {path: 'math.js', text: 'x', note: 'n'}));
+  results.push(await tool(pair, conversation, 'draft', {path: '../outside.js', text: 'x', note: 'n'}));
+  results.push(await tool(pair, conversation, 'draft', {path: '.git/config', text: 'x', note: 'n'}));
+  results.push(await tool(pair, conversation, 'draft', {path: 'math.js/inner.js', text: 'x', note: 'n'}));
+  results.push(await tool(pair, conversation, 'propose', {file: 'other.js', line: 1, endLine: 1, insert: true, text: 'export {y}', note: 'export'}));
+  return 'A migration and its test; I guessed TEXT for the status.';
+};
+
+test('/gen file: drafts of new files go to Neovim as buffers to review, checked at their real paths; a change to a file you have is a suggestion', async () => {
+  const results = [];
+  const made = [];
+  const {root, pair, asked, of, said} = genSession([fileTurn(results)], {editor: filesEditor(made)});
+  const checked = [];
+  pair.checkGenerated = async (files, texts) => { checked.push({files, texts: Object.fromEntries(texts)}); return {label: 'npm test', mark: 'pass', text: '3 pass'}; };
+  await pair.gen.request({text: 'file a migration adding status to orders, and its test'});
+
+  assert.match(asked[0].input, /^\[gen\] gen #1, file\. The user asked: "a migration adding status to orders, and its test"\nWrite each new file with draft\(path, text\)/);
+  assert.equal(of('gen_place').length, 0, 'a file request needs no cursor');
+  assert.deepEqual(results, [
+    'Drafted db/migrations/0007_status.sql, 1 line. Once you are done, the user reviews it as an unsaved buffer and writes it to db/migrations/0007_status.sql, or not.',
+    'Drafted db/migrations/0007_status.sql anew, 2 lines. Once you are done, the user reviews it as an unsaved buffer and writes it to db/migrations/0007_status.sql, or not.',
+    'Drafted math.test.js, 2 lines. Once you are done, the user reviews it as an unsaved buffer and writes it to math.test.js, or not.',
+    'math.js exists already, and draft makes new files only. To change it, read it and call propose there: the user gets that as a suggestion.',
+    'Cannot draft ../outside.js: not a path inside the project.',
+    'Cannot draft .git/config: not a path inside the project.',
+    'Cannot draft math.js/inner.js: not a path inside the project.',
+    'Shown at other.js:1 as ghost lines, at the user\'s next pause in typing. They take it with one key, or not; nothing changes until then.',
+  ]);
+
+  const migration = join(root, 'db/migrations/0007_status.sql');
+  const [files] = made;
+  assert.deepEqual(files.files.map(({piece, file, name, text}) => ({piece, file, name, text})), [
+    {piece: 0, file: migration, name: 'db/migrations/0007_status.sql', text: MIGRATION},
+    {piece: 1, file: join(root, 'math.test.js'), name: 'math.test.js', text: MATH_TEST},
+  ]);
+  assert.equal(of('suggest').length, 1, 'only the change to other.js is a suggestion');
+  assert.deepEqual(checked, [{files: [migration, join(root, 'math.test.js')], texts: {[migration]: `${MIGRATION}\n`, [join(root, 'math.test.js')]: `${MATH_TEST}\n`}}]);
+  assert.ok(said().includes([
+    'gen #1 · file · 2 new files to review: db/migrations/0007_status.sql +2, math.test.js +2: A migration and its test; I guessed TEXT for the status.',
+    '1 change to files you have, as suggestions there: other.js:1',
+    '✓ `npm test` on the unsaved buffers: 3 pass',
+    'In Neovim, :w in one writes it to its path; :Pair gen list lists them.',
+  ].join('\n')));
+  assert.equal(of('gen').at(-1).state, 'ready');
+  let [row] = pair.today().rows;
+  assert.deepEqual([row.text, row.note], ['gen #1 · file · a migration adding status to orders, and its test', '2 files to review · 1 change']);
+
+  // :Pair gen list, and what a Neovim that connects gets back.
+  let [listed] = pair.gen.review().requests;
+  assert.deepEqual(listed.files.map(({name, lines, state, text}) => [name, lines, state, text]), [
+    ['db/migrations/0007_status.sql', 2, 'proposed', MIGRATION], ['math.test.js', 2, 'proposed', MATH_TEST],
+  ]);
+  assert.deepEqual(listed.check, {label: 'npm test', mark: 'pass', text: '3 pass'});
+  assert.deepEqual(listed.changes, [{name: 'other.js', line: 1, state: 'proposed'}]);
+  assert.deepEqual(pair.gen.reopen().map(message => [message.reopen, message.files.length]), [[true, 2]]);
+
+  // :w in one takes it, as you had it then; d drops the other.
+  pair.gen.fileTaken(row.id, 0, `${MIGRATION}\n-- mine\n`);
+  assert.ok(said().includes('gen #1: db/migrations/0007_status.sql written, taken; 1 more to review. /undo takes back the request.'));
+  pair.gen.dropped(row.id, 1);
+  assert.ok(said().includes('gen #1: math.test.js dropped.'));
+  [row] = pair.today().rows;
+  assert.equal(row.state, 'applied');
+  [listed] = pair.gen.review().requests;
+  assert.deepEqual(listed.files.map(({state, text}) => [state, text]), [['taken', undefined], ['dropped', undefined]], 'no text once it is not to review');
+  assert.deepEqual(pair.gen.reopen(), []);
+});
+
+test('/undo of a file request deletes a file written from it while it is as written; again makes it a buffer to review again', async () => {
+  const made = [];
+  const unwritten = [];
+  const {pair, of, said, root} = genSession([fileTurn([])], {editor: filesEditor(made, unwritten)});
+  await pair.gen.request({text: 'file a migration'});
+  const [row] = pair.today().rows;
+  pair.gen.fileTaken(row.id, 0, `${MIGRATION}\n`);
+  await pair.undoLast();
+  assert.deepEqual(unwritten.map(({file, text}) => ({file, text})), [{file: join(root, 'db/migrations/0007_status.sql'), text: `${MIGRATION}\n`}]);
+  assert.ok(of('gen_drop').some(message => message.gen === 1), 'what was not taken goes from Neovim');
+  assert.ok(said().includes('Undid gen #1: took back 1 piece, 1 file you wrote from it deleted.'));
+  assert.equal(pair.today().rows[0].state, 'undone');
+  assert.deepEqual(pair.store.action(row.id).detail.pieces.map(piece => piece.state), ['undone', 'dropped', 'dropped']);
+
+  await pair.undo(row.id);
+  assert.ok(said().includes('Made gen #1 again: 1 piece, 1 file to review again.'));
+  assert.deepEqual(made.at(-1).files.map(file => file.name), ['db/migrations/0007_status.sql']);
+});
+
+test('a file request outlives a daemon restart: its files to review go to Neovim again, and are taken or logged from the ledger', async () => {
+  const check = JSON.stringify([
+    {kind: 'contradicts', source: 'note', line: 3, quote: 'no BigInt', piece: 1, piece_line: 1, text: 'uses BigInt for the status'},
+    {kind: 'guessed', text: 'the status is TEXT'},
+  ]);
+  const made = [];
+  const first = genSession([fileTurn([])], {notes: NOTES, askModel: briefModel({check}).ask, editor: filesEditor(made)});
+  await first.pair.gen.request({text: 'file a migration'});
+  const [marks] = made.map(message => message.files[0].marks);
+  assert.deepEqual(marks, [{line: 1, text: '≠ brief "Numbers are plain: no BigInt." NOTES.md:3 · uses BigInt for the status'}], 'the ≠ brief line, in the buffer');
+  first.store.endSession(first.pair.id, null, NOON);
+
+  const after = genSession([], {store: first.store, root: first.root});
+  const [reopened] = after.pair.gen.reopen();
+  assert.deepEqual(reopened.files.map(file => [file.name, file.text]), [['db/migrations/0007_status.sql', MIGRATION], ['math.test.js', MATH_TEST]]);
+  assert.equal(reopened.files[0].marks.length, 1);
+  const [listed] = after.pair.gen.review().requests;
+  assert.deepEqual([listed.contradicts.length, listed.guessed], [1, ['the status is TEXT']]);
+
+  after.pair.gen.fileTaken(listed.action, 1, `${MATH_TEST}\n`);
+  assert.deepEqual(after.pair.gen.reopen()[0].files.map(file => file.name), ['db/migrations/0007_status.sql']);
+
+  // Alt-d on a ? guessed line logs it next to the brief's note, in the buffer, for the user to save.
+  await after.pair.gen.decide(listed.action, 0);
+  const logged = after.of('decision_log').at(-1);
+  assert.equal(logged.file, join(first.root, 'decisions.md'));
+  assert.match(logged.text, /## \d{4}-\d\d-\d\d · The status is TEXT\n\n- Status: decided\n- Where: db\/migrations\/0007_status\.sql:1\n- Asked: "gen #1: a migration"/);
+  assert.ok(after.said().includes('Logged in decisions.md: The status is TEXT. Save it to keep it.'));
 });

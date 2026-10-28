@@ -365,7 +365,7 @@ scripted.*
 | `suggested` | it suggested a change | `⏎ go`; once you accept it, `accepted · u undo` |
 | `typed` | the Driver's edit (`6 lines in backoff_test.go · one undo step`), or one line it typed into your terminal | `u undo`, for the edit |
 | `ran`, `searched` | a command in its pane, or the tests it ran on save or on the unsaved buffer, with `✓` or `✗`; the same run in a row is one line (`· 3 times`) | `⏎ output` |
-| `generated` | a [/gen request](gen.md), one line for all of it (`gen #3 · here · a list handler`), with what became of its code (`3 lines proposed`, `1 of 1 piece taken`, `1 dropped`), and `≠1` when its code goes against the [brief](gen.md#the-brief) | `u undo` the whole request, once it has code |
+| `generated` | a [/gen request](gen.md), one line for all of it (`gen #3 · here · a list handler`), with what became of its code (`3 lines proposed`, `1 of 1 piece taken`, `1 dropped`, `2 files to review`, `1 of 2 files taken`), and `≠1` when its code goes against the [brief](gen.md#the-brief) | `u undo` the whole request, once it has code |
 | `asked`, `refused` | what it asked before running or typing, and what its policy refused, with the reason | `you said no` |
 | `stayed quiet` | the moments it let pass: `3 moments under the bar`, held back by the budget, or `not asked, the server is slow` ([watcher.md](watcher.md#when-the-server-is-slow)) | `⏎ why` |
 
@@ -379,8 +379,9 @@ list's window (a command's output, why Pair stayed quiet, all it said; `q` comes
 buries it. In the ledger, `u` on a `typed` line takes that edit back whenever you like, after other edits too: the
 daemon kept the buffer's text before and after it, and Neovim merges the undo into the buffer as it is now. Your
 changes since stay; the line is struck through and says `undone · u again redoes`; `u` again makes the edit again.
-On a `generated` line, `u` takes back the whole request at once: what you took from it is undone, and what still
-shows goes ([gen.md](gen.md#one-undo-per-request)).
+On a `generated` line, `u` takes back the whole request at once: what you took from it is undone (a file of
+`/gen file` you wrote is deleted, while it is as you wrote it), and what still shows or waits for review goes
+([gen.md](gen.md#one-undo-per-request)).
 An accepted suggestion works the same way. If you changed the very lines Pair's edit touched, undoing it would undo
 yours too, so nothing changes and Pair says why. The undo is one undo step in that buffer, and unsaved, like the
 edit was: the disk changes when you `:w`.

@@ -38,6 +38,7 @@ export const COMMANDS = [
   ['/unmute', '[kind]', 'let them speak again (all of them)'],
   ['/gen', '', 'what /gen made here today'],
   ['/gen here', '<what>', 'ask Pair for code at your cursor in Neovim (@here: over the selection)'],
+  ['/gen file', '<what>', 'new files, as unsaved buffers to review in Neovim (:w in one takes it)'],
   ['/gen cancel', '', 'stop the /gen request that runs or waits'],
   ['/brief', '[note|off]', 'what /gen runs against: the goal, the board task and a note (NOTES.md); pin another, or none'],
   ['/undo', '', 'undo Pair\'s last change: an edit of the Driver\'s, a suggestion you took, a /gen request'],

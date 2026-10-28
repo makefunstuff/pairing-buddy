@@ -109,6 +109,7 @@ whatever the role:
 | `edit` | One change in your buffer, typed while you watch, one undo step | no | no | up to five per hand-over | no |
 | `type` | One line into your terminal, after your yes, without Enter | no | no | after a yes | no |
 | `propose` | Code where you asked, shown in place, which you take with one key | no | no | no | within `gen.limits` |
+| `draft` | A new file, for `/gen file`: a buffer to review in Neovim, which `:w` there writes | no | no | no | within `gen.limits`, new files only |
 | `ask` | One question to you, with the answer it would take | no | no | no | at most two |
 
 The lists are enforced in code: each conversation is offered only its role's tools, and a `beforeTool` policy
