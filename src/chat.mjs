@@ -369,7 +369,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
     last: {lines: [], transcript: {ranges: [], height: 0, total: 0}},
   };
   let nextId = 1;
-  let turnFrom = 1; // the first entry of Pair's turn now: what came after the last one
+  let turnFrom = 1; // the first entry of Pair's turn now: what came since it started
 
   const add = entry => {
     state.entries.push({id: nextId++, at: Date.now(), ...entry});
@@ -439,6 +439,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
         look.accent = message.color;
         break;
       case 'activity':
+        if (state.activity.state === 'idle' && message.state !== 'idle') turnFrom = nextId; // a turn starts
         state.activity = message;
         if (message.state === 'idle') dropPartial();
         break;
@@ -448,8 +449,8 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
       case 'turn': {
         if (message.asked) state.turn = message;
         dropPartial();
-        // What the turn took goes in the margin of what Pair said in it (a wide pane has room for it there).
-        const said = state.entries.findLast(entry => entry.id >= turnFrom && ['pair', 'watch'].includes(entry.kind));
+        // What the turn took goes in the margin of the first thing Pair said in it (a wide pane has room for it there).
+        const said = state.entries.find(entry => entry.id >= turnFrom && ['pair', 'watch'].includes(entry.kind));
         if (said && !message.cancelled) said.turn = {ms: message.ms, tokens: message.tokens};
         turnFrom = nextId;
         break;

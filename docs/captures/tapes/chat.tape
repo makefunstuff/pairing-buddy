@@ -40,6 +40,7 @@ Sleep 1.3s
 Screenshot out/chat-working.png
 Sleep 5.5s
 Screenshot out/chat-answer.png
+Sleep 1s
 Ctrl+f
 Sleep 300ms
 Type "outlive"

@@ -74,8 +74,8 @@ Four rows of chrome, two of them rules with words in them; the rest is the conve
   `-count=1`). A `code` span in a sentence wraps at its own spaces, so it starts on the line of the word before it.
 
   **In a wide pane** the words end by column 80, the measure that reads well; code blocks and diffs use the whole
-  width. The margin on the right holds what an answer took, on its first line: `21:19 · 6.4s · 3.4k tok` (the tokens
-  go first, then the duration, when there is less room).
+  width. The margin on the right holds what a turn of Pair's took, on the first line of what it said in it (an answer,
+  or a remark): `21:19 · 6.4s · 3.4k tok`. With less room the tokens go first, then the duration.
 
   **In a narrow pane** (under 52 columns) the gutter stays, so a message spends no row on its name. What gives way,
   instead of being cut in the middle:
@@ -89,17 +89,9 @@ Four rows of chrome, two of them rules with words in them; the rest is the conve
   - the `@` menu cuts a path at its start, a folder at a time, so two files never look the same:
     `@…/retry/backoff.go`, `@…/backoff_test.go`.
 
-  ```
-  ── pair · hookd ──────────── nav · normal ──
-                 ── 21:19 ──
-   watch regression · lease.go:18
-         the lease ends before the last
-         attempt does, so the third retry
-         finds the job taken and gets a 409.
-         │ - return &Lease{ttl: cfg.Budget}
-         │ + return &Lease{ttl: cfg.Budget +
-         │     cfg.AttemptTimeout}
-  ```
+  ![A 44-column chat pane: the gutter kept, the suggestion's diff wrapped between tokens with a hanging indent, the ⎿ line by base name, nav in the header and the short footer](images/chat-narrow.png)
+
+  ![The same pane 112 columns wide: the words end by column 80, the diff runs on, and each turn's time, duration and tokens on the right of what Pair said](images/chat-wide.png)
 - **The status, in the rule over what you type**: what Pair does now, as `── ▖ writing 6s ──── qwen3-coder-30b ──`.
   It names no keys (those are in the footer), and its word is in body text, so it ranks above the footer. The answer
   streams into the conversation as the model writes it.
