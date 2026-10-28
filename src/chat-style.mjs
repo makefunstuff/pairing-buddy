@@ -70,7 +70,8 @@ export const dim = (text, {color = true} = {}) => (color ? `${DIM}${text}${RESET
 
 // The full-screen pane (chat-render.mjs) builds its lines from segments, {text, style}, and paints them last. The
 // colours are the terminal's own 16, so its theme applies, and Pair's accent; no background fills: a selected
-// message has a bar in the accent, a search match is underlined, and the one you are on green as well.
+// message has a bar in the accent, a search match is underlined, and the one you are on green as well. Each role
+// has the site's colour for it: Navigator blue, Scout green, Driver red, the Watcher yellow; Pair's voice is the accent.
 
 const SGR = {
   plain: '',
@@ -117,6 +118,14 @@ export const STYLES = {
   found: ['under', 'bold', 'green'], // …and the match you are on
   bar: ['accent'],
   ok: ['green'],
+  // The site's colour for each part, the nearest of the terminal's 16: the role in the header, and the status glyph.
+  navigator: ['blue', 'bold'],
+  scout: ['green', 'bold'],
+  driver: ['red', 'bold'],
+  driverGlyph: ['red'],
+  watcher: ['yellow'], // the Watcher's ◉, orange on the site
+  eyes: ['green', 'bold'], // the head's eyes…
+  antenna: ['magenta'], // …and its antenna; the frame is the accent
 };
 
 /** The escape that starts `style` (see STYLES); '' for plain text or without colours. */

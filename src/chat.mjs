@@ -11,7 +11,7 @@ import {openHistory} from './chat-history.mjs';
 import {LineEditor} from './chat-input.mjs';
 import {renderFrame, searchText, shownTool, toolDone, transcriptLines} from './chat-render.mjs';
 import {KeyDecoder, Screen} from './chat-screen.mjs';
-import {dim, formatMessage} from './chat-style.mjs';
+import {dim, formatMessage, sgr} from './chat-style.mjs';
 import {LEVELS} from './config.mjs';
 import {ledgerText} from './ledger.mjs';
 import {readMessages, sendMessage} from './protocol.mjs';
@@ -206,7 +206,10 @@ function runPlainChat(socketPath, {input, output, exit, cwd, env}) {
   let first = null; // tomorrow's first step, which `e` edits, right after the debrief
   let listed = []; // the ids of the remarks /remarks showed last: what +2 and -2 rate
   const look = {accent: null, color: !!output.isTTY && !env.NO_COLOR}; // the accent: the editor's, once it sends it
-  const showRole = role => rl.setPrompt(`${role} › `);
+  const showRole = role => {
+    const ink = sgr(role, look); // the role in its colour, as in the full-screen pane's header
+    rl.setPrompt(`${ink ? `${ink}${role}\x1b[0m` : role} › `);
+  };
   const print = text => {
     clearLine(output, 0);
     cursorTo(output, 0);
@@ -259,7 +262,7 @@ function runPlainChat(socketPath, {input, output, exit, cwd, env}) {
     if (message.type === 'accent') look.accent = message.color;
     if (message.type === 'remark') print(dim('·· + useful  - noise', look));
     // What a question's tools did, one dim line each, as they happen.
-    if (message.type === 'tool' && shownTool(message.tool)) print(dim(`  ⎿ ${toolDone(message.tool, message.what)}`, look));
+    if (message.type === 'tool' && shownTool(message.tool)) print(dim(`  └ ${toolDone(message.tool, message.what)}`, look));
     // What you type is already on screen; your own lines come back only as history.
     const echo = message.sender === 'user' && !message.history;
     if (message.type === 'message' && !echo) say(message.sender, message.text);
@@ -357,6 +360,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
   const editor = new LineEditor();
   const state = {
     entries: [],
+    held: [], // what came unasked while an answer streams: it goes under the answer once that is done
     header: {project: basename(cwd), goal: null, role: null, level: null, muted: []},
     root: null,
     model: null,
@@ -393,13 +397,25 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
     state.entries.push({id: nextId++, at: Date.now(), ...entry});
     return state.entries.at(-1);
   };
-  const note = (text, kind = 'system') => add({kind, text});
+  const partialIndex = () => state.entries.findLastIndex(entry => entry.partial);
+  /**
+   * What Pair or the daemon says unasked (a remark, a note): while an answer streams it waits, and goes under the
+   * answer once that is done, so that nothing above the words you read moves (the status says what waits).
+   */
+  const arrive = entry => {
+    if (partialIndex() === -1) return add(entry);
+    state.held.push({at: Date.now(), ...entry});
+    return entry;
+  };
+  const flushHeld = () => {
+    if (partialIndex() === -1) for (const entry of state.held.splice(0)) add(entry);
+  };
+  const note = (text, kind = 'system') => arrive({kind, text});
   const flash = text => {
     state.flash = {text, until: Date.now() + FLASH_MS};
     setTimeout(render, FLASH_MS + 50).unref?.();
   };
   const busy = () => BUSY.has(state.activity.state);
-  const partialIndex = () => state.entries.findLastIndex(entry => entry.partial);
   const dropPartial = () => {
     const i = partialIndex();
     if (i !== -1) state.entries.splice(i, 1);
@@ -437,7 +453,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
         look.accent = message.accent ?? look.accent;
         state.connection = 'up';
         state.root = message.root;
-        state.header = {...state.header, project: basename(message.root), goal: message.goal ?? null, role: message.role, level: message.level, muted: message.muted ?? []};
+        state.header = {...state.header, project: basename(message.root), goal: message.goal ?? null, role: message.role, keep: Boolean(message.keep), level: message.level, muted: message.muted ?? []};
         state.model = message.model ?? null;
         state.down = Object.entries(message.models ?? {}).filter(([, why]) => why).map(([role]) => role);
         if (!reconnected) {
@@ -453,6 +469,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
         break;
       case 'role':
         state.header.role = message.role;
+        state.header.keep = Boolean(message.keep);
         break;
       case 'goal':
         state.header.goal = message.goal;
@@ -515,17 +532,17 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
         }
         break;
       case 'ledger':
-        add({kind: 'note', text: ledgerText(message).join('\n')});
+        arrive({kind: 'note', text: ledgerText(message).join('\n')});
         break;
       case 'agents':
         if (message.item) note(`◇ ${message.text}${message.more ? ` (+${message.more} more · /agents)` : ''}`);
         break;
       case 'agent_list':
-        add({kind: 'note', text: agentListLines(message).join('\n')});
+        arrive({kind: 'note', text: agentListLines(message).join('\n')});
         break;
       case 'remarks':
         state.listed = message.remarks.map(remark => remark.id);
-        add({kind: 'note', text: remarkLines(message.remarks).join('\n')});
+        arrive({kind: 'note', text: remarkLines(message.remarks).join('\n')});
         break;
       case 'message': {
         // The goal, said again: the header shows it. Only when Pair's question for it is still open (the goal was
@@ -548,10 +565,10 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
             state.entries[i] = {...partial, ...entry, partial: false};
             break;
           }
-          state.entries.splice(i, 0, {id: nextId++, ...entry});
-          break;
         }
-        add(entry);
+        // What you said shows at once; anything else waits while an answer streams.
+        if (entry.kind === 'you') add(entry);
+        else arrive(entry);
         break;
       }
       case 'applied': {
@@ -567,6 +584,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
       default:
         return;
     }
+    flushHeld(); // the answer is done (or there was none): what waited goes under it
     render();
   }
 
@@ -644,7 +662,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
       return entry ? copy(entry) : flash('Pair has said nothing to copy yet');
     }
     if (parsed.local === 'search') return openSearch(parsed.text);
-    note(`There is no ${parsed.command}: / lists the commands. "${text.trim()}" is still below to fix.`, 'error');
+    add({kind: 'error', text: `There is no ${parsed.command}: / lists the commands. "${text.trim()}" is still below to fix.`}); // what you did: at once
     editor.set(text);
   }
 
@@ -770,6 +788,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
   // Keys.
 
   function onKey(key) {
+    if (key.report) return screen.report(key.report);
     if (key.mouse) return onMouse(key);
     if (key.paste !== undefined) {
       if (state.mode === 'search') state.search += key.paste.replace(/\n/g, ' ');
@@ -956,7 +975,9 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
       connection: state.connection,
       away: state.connection === 'away' ? {since: state.awaySince, attempts: link.attempts} : null,
       turn: state.turn,
-      model: state.down.length ? `⚠ ${state.down.join(', ')} not answering` : state.model,
+      model: state.model,
+      down: state.down,
+      held: state.held.length ? {remarks: state.held.filter(entry => entry.kind === 'watch').length, notes: state.held.filter(entry => entry.kind !== 'watch').length} : null,
       role: state.header.role,
       now: Date.now(),
       frame: state.frame,
@@ -1022,7 +1043,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
   input.on('data', data => {
     for (const key of decoder.feed(typeof data === 'string' ? data : utf8.write(data))) {
       onKey(key);
-      if (!key.mouse && Date.now() - typingSent > 500 && state.connection === 'up') {
+      if (!key.mouse && !key.report && Date.now() - typingSent > 500 && state.connection === 'up') {
         typingSent = Date.now();
         link.send({type: 'event', event: {kind: 'typing'}});
       }

@@ -1137,7 +1137,10 @@ export class PairSession {
       if (!(await this.setRole('driver'))) return;
       this.handedFrom = from;
     }
-    if (keep && !this.keepWheel) this.message('system', KEEP_NOTE);
+    if (keep && !this.keepWheel) {
+      this.message('system', KEEP_NOTE);
+      this.notify('chat', {type: 'role', role: 'driver', keep: true}); // the chat's header says so
+    }
     this.keepWheel ||= keep;
     this.edits = 0;
     this.handback = null;

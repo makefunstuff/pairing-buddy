@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {LineEditor} from '../src/chat-input.mjs';
-import {clipboardSequence, KeyDecoder, Screen} from '../src/chat-screen.mjs';
+import {clipboardSequence, KeyDecoder, Screen, SYNC_QUERY} from '../src/chat-screen.mjs';
 import {openHistory} from '../src/chat-history.mjs';
 import {join} from 'node:path';
 import {scratch} from './temp.mjs';
@@ -112,4 +112,31 @@ test('the screen clears a line before it writes it, so a line as wide as the pan
   out = '';
   screen.draw(['── rule ──', 'other'], null);
   assert.equal(out, '\x1b[?25l\x1b[2;1H\x1b[0m\x1b[Kother\x1b[0m', 'only what changed');
+});
+
+test('synchronized output: the screen asks the terminal, and draws each frame as one update only where it answers yes', () => {
+  let out = '';
+  const screen = new Screen({write: data => { out += data; }});
+  screen.start();
+  assert.ok(out.endsWith(SYNC_QUERY), 'it asks (DECRQM for mode 2026)');
+  out = '';
+  screen.draw(['a'], null);
+  assert.doesNotMatch(out, /2026/, 'no answer yet: a plain frame');
+  const keys = new KeyDecoder();
+  const [report, after] = keys.feed('\x1b[?2026;2$yx');
+  assert.deepEqual(report, {report: {mode: 2026, value: 2}}, 'the answer is a report, not a key');
+  assert.equal(after.name, 'x', 'what comes after it is a key as before');
+  assert.deepEqual(keys.feed('\x1b[?2026;'), [], 'split across reads: it waits for the rest');
+  assert.deepEqual(keys.feed('0$y'), [{report: {mode: 2026, value: 0}}]);
+  screen.report(report.report);
+  out = '';
+  screen.draw(['b'], null);
+  assert.equal(out, '\x1b[?2026h\x1b[?25l\x1b[1;1H\x1b[0m\x1b[Kb\x1b[0m\x1b[?2026l', 'one update');
+  screen.report({mode: 2026, value: 0});
+  out = '';
+  screen.draw(['c'], null);
+  assert.doesNotMatch(out, /2026/, 'a terminal that does not know the mode: plain frames');
+  screen.report({mode: 2026, value: 4});
+  assert.equal(screen.sync, false, 'permanently off: plain frames');
+  screen.stop();
 });

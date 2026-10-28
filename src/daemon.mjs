@@ -556,7 +556,7 @@ export async function startDaemon(config, {
     client.session = await loadSession(await rootOf(message.cwd));
     const {session} = client;
     sendMessage(client.socket, {
-      type: 'welcome', root: session.root, goal: session.state.goal, level: session.budget.level, role: session.role, models: health.snapshot(),
+      type: 'welcome', root: session.root, goal: session.state.goal, level: session.budget.level, role: session.role, keep: session.keepWheel, models: health.snapshot(),
       accent: session.accent, model: sessionPartner.modelName(), muted: [...session.muted],
     });
     // The chat pane's status row starts from what Pair does now, and how much it looked at so far.

@@ -1,5 +1,5 @@
 # The chat pane's layouts: the chat scene's remark on save and question in a narrow pane (44 columns, as herdr's side
-# panes often are): the gutter stays, code wraps between its tokens, the header, the ⎿ line and the footer say less,
+# panes often are): the gutter stays, code wraps between its tokens, the header, the └ line and the footer say less,
 # and a remark names its file by its base name.
 # Then the same pane made wide (112 columns): the words end by column 80, the code runs on, and the answer's time,
 # duration and tokens sit in its margin.
