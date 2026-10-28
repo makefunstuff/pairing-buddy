@@ -42,6 +42,10 @@ stay herdr's:
   again to ask) never guesses ([voice.md](voice.md#4-the-key)).
   [#55](https://github.com/makefunstuff/pairing-buddy/issues/55)
 
+- **Who wrote a line is known only for the session's last 20 edits**, at the line numbers they were sent with, and
+  not after a daemon restart: an older edit of Pair's, or one whose lines moved, counts as yours again
+  ([gen.md](gen.md#limits)).
+
 ## The chat pane
 
 - **Copying needs OSC 52.** `c` and `/copy` hand the text to the terminal, which puts it on the clipboard only if it

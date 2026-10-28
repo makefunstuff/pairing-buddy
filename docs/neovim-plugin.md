@@ -46,7 +46,7 @@ require('pair').setup({
 | --- | --- | --- |
 | `auto_connect` | `false` | Connect to the daemon at startup (the lazy.nvim spec sets it). A Neovim without a screen (`nvim --headless`, an agent's or a script's) or one started in the temp folder does not, so it never starts a session; `:Pair start` connects it anyway |
 | `socket` | the daemon's default | The daemon's socket |
-| `debounce_ms` | `2000` | How long after you stop typing an edit is sent |
+| `debounce_ms` | `2000` | How long after you stop typing an edit is sent. Each edit says who made it, you or Pair ([gen.md](gen.md)); Pair's are sent at once |
 | `max_points` | `5` | Points kept at once |
 | `jump_key` | `'<M-j>'` | Goes where Pair pointed last, or shows a held thought; from one suggestion on to the next. Mapped in Normal mode while it points somewhere or holds a thought |
 | `accept_key` | `'<M-y>'` | Accepts the suggestion under the cursor, else the newest in the buffer. Mapped in Normal mode, only in a buffer with a suggestion and only while one shows. Avoid `<Tab>`: terminals send it for Ctrl-I, the jumplist's forward jump |

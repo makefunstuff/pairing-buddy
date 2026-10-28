@@ -1,5 +1,6 @@
 // The session state as a few short lines of text: what both models see instead of raw events.
 import {ago, commandLine, contextLines, RECENT_COMMANDS} from './context-card.mjs';
+import {byUser, originName} from './fold.mjs';
 import {runLines} from './run-log.mjs';
 import {readingSummary} from './run-output.mjs';
 import {testSummary} from './test-output.mjs';
@@ -27,7 +28,7 @@ export function describeState(state, now) {
   lines.push(`Goal: ${state.goal ?? '(not set)'}`);
   lines.push(...contextLines(state)); // the board, git and where the user has been: what the context card shows
   if (state.file) lines.push(currentFile(state));
-  const edits = state.edits.slice(-5).map(edit => `${edit.file}:${edit.from}-${edit.to} (${ago(now, edit.at)})`);
+  const edits = state.edits.slice(-5).map(edit => `${edit.file}:${edit.from}-${edit.to} (${ago(now, edit.at)}${byUser(edit) ? '' : `, by ${originName(edit.origin)}`})`);
   if (edits.length) lines.push(`Recent edits: ${edits.join('; ')}`);
   const diagnostics = Object.entries(state.diagnostics)
     .flatMap(([file, items]) => items.map(item => `${file}:${item.line} ${item.severity}: ${item.message}`))

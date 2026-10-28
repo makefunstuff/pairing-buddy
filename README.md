@@ -34,7 +34,8 @@ you think, and take the keyboard only when you hand it over. Pair aims for that:
   change is one key to take.
 - **It runs what you'd skip.** Save, and it runs the project's tests and tells you what your fix broke elsewhere.
 - **You stay in charge.** One role at a time: Navigator points and suggests, Scout also runs commands in its own pane,
-  and the Driver edits only when you hand over, while you watch. Any key takes the wheel back.
+  and the Driver edits only when you hand over, while you watch. Any key takes the wheel back. Pair knows its own
+  edits from yours, so it never remarks on the code it wrote as if you had ([who wrote it](docs/gen.md)).
 
 ## Quick start
 
@@ -76,6 +77,7 @@ your keys and logins).
 - [Getting started](docs/getting-started.md) and [install and daily use](docs/install.md)
 - [How it works](docs/how-it-works.md), [roles](docs/roles.md) and [workflows](docs/workflows.md)
 - [The chat pane](docs/chat.md): who speaks, what Pair is doing now, its keys and commands
+- [Who wrote it](docs/gen.md): Pair's own edits carry their origin, the first step of `/gen`
 - [Push-to-talk](docs/voice.md): ask aloud, heard by whisper.cpp on your CPU or an OpenRouter model, with answers
   read aloud when you are away
 - [Models and providers](docs/models.md): local servers, API keys, subscription logins, one model for both roles,

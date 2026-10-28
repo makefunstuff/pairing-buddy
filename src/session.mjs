@@ -12,7 +12,7 @@ import {debriefInput, firstPlace, heading, keptChanges, lessonLine, parseDebrief
 import {Delight, LONG_RED_MS} from './delight.mjs';
 import {describeState} from './describe.mjs';
 import {insideRoot, MAX_LINES, newProjectFile, numberedLines, projectFile, readProjectPath} from './files.mjs';
-import {failed, fold, initialState} from './fold.mjs';
+import {editOrigin, failed, fold, initialState} from './fold.mjs';
 import {decide} from './gate.mjs';
 import {gist} from './gist.mjs';
 import {gitCommitsSince, gitStatus} from './git.mjs';
@@ -385,8 +385,10 @@ export class PairSession {
       this.debugLines.edited(file, event.text ?? '', (runs.at(-1)?.n ?? 0) + 1).catch(error => this.log(`debug lines: ${error.message}`));
     }
     this.breakpoints.see(folded);
-    if (USER_EVENTS.has(event.kind)) this.usedAt = this.now();
-    if (WORK_EVENTS.has(event.kind)) this.worked = true;
+    // An edit Pair made for the user (see fold.mjs's editOrigin) is no sign that they are there.
+    const mine = event.kind !== 'edit' || editOrigin(event.origin) === 'user';
+    if (USER_EVENTS.has(event.kind) && mine) this.usedAt = this.now();
+    if (WORK_EVENTS.has(event.kind) && mine) this.worked = true;
     if (event.kind === 'save' && file && !file.startsWith('..')) this.testRuns?.saved(file);
     // A key at a shell prompt (herdr.mjs tells it from the pane's text) takes the wheel back, as one in Neovim does.
     if (event.kind === 'typing' && event.source === 'terminal' && this.role === 'driver') this.takeBack().catch(error => this.log(`take-back: ${error.message}`));

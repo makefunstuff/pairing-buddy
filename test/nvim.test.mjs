@@ -210,6 +210,65 @@ test('the wrong turn: Pair\'s words show under your line, the jump key goes to t
   }
 });
 
+test('edits carry their origin: a suggestion you take and the Driver\'s edit are Pair\'s, so only your own edit is a wrong turn', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
+  const {dataDir, watcher, partner, messages, remote, keys, send, lines, status, stop} = await pairInNvim('retries pass');
+  const ghosts = () => Number(remote(`luaeval("#vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('pair_suggest'), 0, -1, {})")`));
+  const answered = text => until(() => messages.some(message => message.text === text), `the answer "${text}"`);
+  const remarks = () => {
+    const store = openStore(join(dataDir, 'sessions.sqlite'));
+    try { return store.remarks(0); } finally { store.close(); }
+  };
+  const watched = []; // what the Watcher was asked to score
+  const score = value => context => { watched.push(context.messages.at(-1).content); return fauxAssistantMessage([fauxText(value)]); };
+  try {
+    watcher.setResponses([score('9'), ...Array.from({length: 10}, () => score('0'))]);
+    // The tests went red; the failure names worker.test.js, not a.js.
+    send({type: 'event', event: {kind: 'focus', target: 'terminal', pane: 'w1:p1'}});
+    send({type: 'event', event: {kind: 'command_end', pane: 'w1:p1', cmd: 'npm test', exit: 1,
+      output: '✖ retries five times (1.2ms)\n  worker.test.js:3: attempts = 4, want 5\nℹ tests 1\nℹ fail 1'}});
+    await sleep(200);
+
+    // A suggestion you take changes a.js, but it is Pair's code: no wrong turn.
+    partner.setResponses([
+      fauxAssistantMessage([fauxToolCall('suggest', {file: 'a.js', line: 2, new_text: 'const y = 20', note: 'twenty'})], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxText('Try 20.')]),
+    ]);
+    send({type: 'ask', text: 'what should y be?'});
+    await answered('Try 20.');
+    await until(() => ghosts() === 3, 'the ghost diff');
+    keys('<M-y>');
+    await until(() => lines()[1] === 'const y = 20', 'the accepted suggestion');
+
+    // The Driver's edit is Pair's too.
+    partner.setResponses([
+      fauxAssistantMessage([fauxToolCall('edit', {file: 'a.js', line: 1, new_text: 'const x = 100'})], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxText('Set x to 100.')]),
+    ]);
+    send({type: 'drive', text: 'your turn'});
+    await answered('Set x to 100.');
+    await until(() => status() === '● pair', 'Pair to hand back');
+    await sleep(3000); // past the debounce, the typing pause and a few ticks: time for a trigger to fire
+    assert.deepEqual(watched.filter(prompt => /edit_while_red/.test(prompt)), [], 'Pair\'s edits are no wrong turn of yours');
+    assert.deepEqual(remarks(), []);
+
+    // The session keeps who made each edit, and the Partner sees it.
+    let seen;
+    partner.setResponses([context => { seen = context.messages.findLast(message => message.role === 'user').content; return fauxAssistantMessage([fauxText('Both were mine.')]); }]);
+    send({type: 'ask', text: 'who changed what?'});
+    await answered('Both were mine.');
+    assert.match(seen, /Recent edits: a\.js:2-2 \([^)]*, by Pair\); a\.js:1-1 \([^)]*, by Pair\)/);
+    assert.match(seen, /Last keystroke: none yet/, 'and none of Pair\'s edits is a keystroke of yours');
+
+    // Your own edit in the same file is the wrong turn.
+    partner.setResponses([fauxAssistantMessage([fauxText('The failure is in worker.test.js, not here.')])]);
+    keys('3Gccconst z = 4<Esc>');
+    await until(() => remarks()[0]?.trigger === 'edit_while_red', 'the wrong turn on your own edit');
+    assert.match(watched.find(prompt => /edit_while_red/.test(prompt)), /the user is changing a\.js/);
+  } finally {
+    await stop();
+  }
+});
+
 test('a note that does not fit after its line goes under it, also when the window narrows; a strike starts at the code, not the indent', {skip: hasNvim ? false : 'nvim not installed', timeout: 30_000}, async () => {
   const {partner, messages, remote, keys, send, stop} = await pairInNvim('tidy up');
   const marks = namespace => JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('${namespace}'), 0, -1, {details = true}))")`));

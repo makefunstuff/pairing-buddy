@@ -1,6 +1,7 @@
 // The triggers of a Markdown note, where you think in prose: you wrote a question and stopped (the stall), or a new
 // section has left the note's title and the goal (the drift). Either way Pair asks, once, and never writes for you.
 // Pure, like triggers.mjs: the caller passes the clock and the keys already fired.
+import {userEdits} from './fold.mjs';
 import {ideaWords, isNote} from './note-rules.mjs';
 
 export const PROSE_KINDS = ['note_stall', 'note_drift'];
@@ -58,8 +59,9 @@ function lastQuestion(text) {
   return null;
 }
 
+// Only your own words: text Pair put into a note is no question you asked, nor a section you began.
 function stallTriggers(state, now) {
-  const edit = state.edits.at(-1);
+  const edit = userEdits(state).at(-1);
   if (!edit || !isNote(edit.file)) return [];
   const quiet = now - Math.max(state.lastKeyAt, state.lastEditAt);
   const question = lastQuestion(edit.text);
@@ -81,9 +83,10 @@ function stallTriggers(state, now) {
  * title or the goal; judged once per note and heading, a minute after it was begun, while the user is still in it.
  */
 function driftTriggers(state, now) {
-  const latest = state.edits.at(-1);
+  const mine = userEdits(state);
+  const latest = mine.at(-1);
   if (!latest || !isNote(latest.file)) return [];
-  const edits = state.edits.filter(edit => edit.file === latest.file);
+  const edits = mine.filter(edit => edit.file === latest.file);
   const begun = edits.findLastIndex(edit => edit.text.split('\n').some(line => HEADING.test(line)));
   if (begun < 0 || now - edits[begun].at < PROSE_TIMING.sectionMs) return [];
   const heading = edits[begun].text.split('\n').findLast(line => HEADING.test(line)).trim();

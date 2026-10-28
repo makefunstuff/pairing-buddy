@@ -59,6 +59,14 @@ half an hour; a call that failed, gave no number or had to wait for the Partner 
 - A smaller Watcher model than the Partner's is faster, but small models tend to judge drift badly (scoring it 0 or 1), and on a server that keeps one model loaded every swap costs far more than it saves. One mid-sized model for both roles is the tested setup.
 - Drift is checked once for each file you move into, right when you start editing it, and again on another branch or after a new goal (`/goal`), not once every ten minutes.
 
+## Code Pair wrote
+
+Each edit reaches the daemon with its origin: yours, or Pair's (the Driver's typing, a suggestion you took, an undo
+from `:Pair today`). The moments about code you wrote skip Pair's: `new_code_diagnostic` needs the newest edit near
+the error to be yours, `drift` and `edit_while_red` look at your own last edit, `new_warning` leaves out a warning on
+lines Pair edited last, and a note's stall and drift look only at your words. Pair's edits are no keystrokes either,
+so they never hold a remark back as typing. Editing Pair's lines makes them yours. See [gen.md](gen.md).
+
 ## The wrong turn
 
 `edit_while_red` is raised when the last test run (yours, or Scout's) failed in the last ten minutes, its output names source files, and you then edit a source file it does not name. A test file and the code it tests count as one name: `worker_test.go` and `worker.go`, `test/ws.test.ts` and `src/ws.ts`, `test_ws.py` and `ws.py`. It is raised once per run and file, and not at all once a newer run passed. It is judged before drift, since it is the more specific moment.
