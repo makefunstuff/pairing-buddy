@@ -400,24 +400,37 @@ export function bodyLines(entry, width, {continued = false, measure = width} = {
  * `current` (from 0) is the match you are on, green and bold too.
  */
 function highlight(line, query, count, current = -1) {
+  // The line's text as one: a match may run over several segments (two words, a word and a `code` span).
+  const text = line.map(s => s.text).join('');
+  const lower = text.toLowerCase();
   const needle = query.toLowerCase();
-  return line.flatMap(s => {
-    const lower = s.text.toLowerCase();
-    if (!lower.includes(needle)) return [s];
-    const parts = [];
-    let at = 0;
-    for (let i = lower.indexOf(needle); i !== -1; i = lower.indexOf(needle, at)) {
-      if (i > at) parts.push(seg(s.text.slice(at, i), s.style));
-      parts.push(seg(s.text.slice(i, i + needle.length), count.n === current ? 'found' : 'match'));
-      count.n += 1;
-      at = i + needle.length;
+  const found = []; // [start, end, style] of each match, in the line's text
+  for (let i = lower.indexOf(needle); i !== -1; i = lower.indexOf(needle, i + needle.length)) {
+    found.push([i, i + needle.length, count.n === current ? 'found' : 'match']);
+    count.n += 1;
+  }
+  if (!found.length || lower.length !== text.length) return line; // (a case change that changes the length: left as is)
+  const out = [];
+  let at = 0;
+  for (const s of line) {
+    const end = at + s.text.length;
+    let from = at;
+    for (const [start, stop, style] of found) {
+      if (stop <= from || start >= end) continue;
+      if (start > from) out.push(seg(text.slice(from, start), s.style));
+      out.push(seg(text.slice(Math.max(start, from), Math.min(stop, end)), style));
+      from = Math.min(stop, end);
     }
-    if (at < s.text.length) parts.push(seg(s.text.slice(at), s.style));
-    return parts;
-  });
+    if (from < end) out.push(seg(text.slice(from, end), s.style));
+    at = end;
+  }
+  return out;
 }
 
-/** The keys that work on a remark at once, as its last line shows them: rate it, take its suggestion, go to its line. */
+/** Whether `entry`'s text has `query` in it, its line breaks and runs of spaces as one space (a match over a wrap). */
+const spans = (entry, query) => searchText(entry).toLowerCase().replace(/\s+/g, ' ').includes(query.toLowerCase().replace(/\s+/g, ' ').trim());
+
+/** The keys that work on a remark once it is picked, as its last line shows them: rate it, take its suggestion, go to its line. */
 export function remarkKeys(entries, index) {
   const id = entries[index]?.meta?.remark;
   const group = entries.filter(entry => id && entry.meta?.remark === id);
@@ -428,17 +441,19 @@ export function remarkKeys(entries, index) {
 }
 
 /**
- * The action line under a remark, `width` wide: + useful  - noise  a apply  j jump  · Alt-↑ more, spaced like
- * buttons. Where it does not fit, the aside goes first, then the gaps narrow.
+ * The action line under a remark, `width` wide: + useful  - noise  a apply  j jump  · Alt-↑ first, spaced like
+ * buttons. The keys work once the remark is picked (a letter on an empty line is the start of a question), so until
+ * then the aside says how; `picked`, it goes. Where it does not fit, the gaps narrow, then the keys lose their words.
  */
-function actionLine(entries, index, width) {
+function actionLine(entries, index, width, picked) {
   const {apply, jump} = remarkKeys(entries, index);
   const keys = [['+', 'useful'], ['-', 'noise'], ...(apply ? [['a', 'apply']] : []), ...(jump ? [['j', 'jump']] : [])];
-  const line = (gap, aside) => [
-    ...keys.flatMap(([key, what], i) => [...(i ? [seg(gap)] : []), seg(key, 'bold'), seg(` ${what}`, 'dim')]),
-    ...(aside ? [seg('  · Alt-↑ more', 'dim')] : []),
+  const aside = picked ? [] : [seg('  · ', 'dim'), seg('Alt-↑', 'bold'), seg(' first', 'dim')];
+  const line = (gap, words) => [
+    ...keys.flatMap(([key, what], i) => [...(i ? [seg(gap)] : []), seg(key, 'bold'), ...(words ? [seg(` ${what}`, 'dim')] : [])]),
+    ...aside,
   ];
-  return [line('  ', true), line('  ', false), line(' ', false)].find(l => lineWidth(l) <= width) ?? clipLine(line(' ', false), width);
+  return [line('  ', true), line(' ', true), line(' ', false)].find(l => lineWidth(l) <= width) ?? clipLine(line(' ', false), width);
 }
 
 /** All the text of `entry`, as search and copy see it. */
@@ -516,6 +531,8 @@ export function transcriptLines(entries, width, {selected = -1, query = '', foun
         return lit;
       });
     }
+    // A match the lines do not show whole (it runs over a wrap, or over a line break) still finds its message, once.
+    if (query && !count.n && query.trim() && spans(entry, query)) count.n = 1;
     const folded = !entry.expanded && entry.kind !== 'tool' && body.length > FOLD_OVER && foundRow < FOLD_TO;
     if (folded) {
       const hidden = body.length - FOLD_TO;
@@ -523,7 +540,7 @@ export function transcriptLines(entries, width, {selected = -1, query = '', foun
       const folds = [`… ${hidden} more lines · ${how} shows all`, `… ${hidden} more lines · ${how.replace(' and ', ' ')}`, `… ${hidden} more · ${how.replace(' and ', ' ')}`];
       body = [...body.slice(0, FOLD_TO), [seg(folds.find(fold => textWidth(fold) <= bodyWidth) ?? folds.at(-1), 'dim')]];
     }
-    if (index === latestRemark && !entry.verdict) body.push(actionLine(entries, index, bodyWidth));
+    if (index === latestRemark && !entry.verdict) body.push(actionLine(entries, index, bodyWidth, index === selected));
     // A wide pane has room right of the words: what the turn took goes there, on its answer's first line.
     if (entry.turn && body.length && width > MEASURE) {
       const used = GUTTER + lineWidth(body[0]);
@@ -807,7 +824,6 @@ export function helpLines(commands, width) {
     ['  + - m', 'rate the remark useful or noise · mute its kind'],
     ['  f e', 'ask a follow-up about it · explain it'],
     ['  Enter', 'unfold a long message or the tool lines'],
-    ['+ - a j', 'on the last remark, at once: rate it, apply it, jump to it'],
     ['PgUp PgDn', 'scroll; the mouse wheel too · End: back down'],
     ['Ctrl-F', 'find in the conversation; ↑ ↓ go from match to match'],
     ['Alt-L', 'quiet → normal → chatty'],

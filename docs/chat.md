@@ -43,7 +43,7 @@ Four rows of chrome, two of them rules with words in them; the rest is the conve
          finds the job taken and gets a 409.
          │ - return &Lease{ttl: cfg.Budget}
          │ + return &Lease{ttl: cfg.Budget + cfg.AttemptTimeout}
-         + useful  - noise  a apply  j jump  · Alt-↑ more
+         + useful  - noise  a apply  j jump  · Alt-↑ first
 
    you   why does the third retry get a 409 and not a 200?
          ⎿ read internal/queue/lease.go 1-40 · searched AttemptTimeout
@@ -51,10 +51,11 @@ Four rows of chrome, two of them rules with words in them; the rest is the conve
 
   A remark is one unit: what about, its words, its diff behind the same `│ ` bar as a code block, and last its
   **action line**, the keys that work on it, spaced like buttons: `+` useful, `-` noise, `a` takes its suggestion,
-  `j` goes to its line (each only where it applies), and `Alt-↑` for the rest ([below](#acting-on-a-message)). These
-  keys act at once on an empty line, while the remark is the last thing said (a note after it, such as the tests on
-  save, does not count); once you rate it, or you or Pair say something after it, the line goes and the letters are
-  letters again.
+  `j` goes to its line (each only where it applies). They work once the remark is picked: the first `Alt-↑` picks
+  it (the aside says so), and the line drops the aside. On an empty line the letters stay letters, so a question that
+  starts with `a` or `-` is typed, never taken as a key. The line shows while the remark is the last thing said (a
+  note after it, such as the tests on save, does not count); once you rate it, or you or Pair say something after it,
+  the line goes.
 
   Before Pair runs or types a command it asks, as `pair`: the question in words, and the command under it behind a
   bar, whole (backticks in it too), to read and copy. `y` allows it, `n` or `Esc` declines (and drops what you had typed), or type an answer (the name of another
@@ -158,7 +159,7 @@ Anything you type that is not a command is a question for Pair; it is always ans
 
 ## Acting on a message
 
-**Alt-↑** picks the last message, and further presses go up (**Alt-↓** down; a click picks one too). A bar marks it,
+**Alt-↑** picks the last message (the last remark instead, while its [action line](#what-you-see) shows), and further presses go up (**Alt-↓** down; a click picks one too). A bar marks it,
 and the footer lists what you can do with it, with the message's time on the right:
 
 | Key | On the message |
@@ -173,9 +174,9 @@ and the footer lists what you can do with it, with the message's time on the rig
 | `Enter` | Unfold a long message, or the tool lines one per line |
 | `Esc` | Back to typing; any other key does that too |
 
-The last remark, while it is the last thing said, has these keys on its own [action line](#what-you-see), and `+`,
-`-`, `a` and `j` work on it without picking it. Typing `+` or `-` and Enter rates the last remark later too, and
-`/useful 2` or `/noise 2` an older one, as `+2` and `-2` do after `/remarks` (its list ends the action line).
+The last remark, while it is the last thing said, shows `+`, `-`, `a` and `j` on its own
+[action line](#what-you-see): `Alt-↑` then the key. Typing `+` or `-` and Enter rates the last remark too, and
+`/useful 2` or `/noise 2` an older one, as `+2` and `-2` do after `/remarks`.
 
 ![A message picked with Ctrl-F and Enter: the bar on its left, the match it was found by in green, and the keys that act on it in the footer](images/chat-select.png)
 
@@ -219,7 +220,6 @@ The last remark, while it is the last thing said, has these keys on its own [act
 | `Ctrl-C` | Stop the answer; else clear what you typed; twice on an empty line, close the pane |
 | `Ctrl-D` | Close the pane, on an empty line |
 | `y` `n` | While Pair asks: allow, decline; `Esc` declines too (for a `/gen` question: take the guess or the answer given, cancel or leave it to Pair) |
-| `+` `-` `a` `j` | On the last remark, on an empty line, while it is the last thing said: rate it, take its suggestion, go to its line |
 | `?` | The keys, on an empty line |
 
 Closing the pane leaves the session running; `pair` or `:Pair chat` opens it again, with the conversation so far.

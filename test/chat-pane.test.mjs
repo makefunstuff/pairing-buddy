@@ -448,44 +448,56 @@ const REMARK = {
   meta: {remark: 5, trigger: 'regression', place: {file: 'internal/queue/lease.go', line: 18}, suggestion: {action: 9, old: ['\treturn &Lease{ttl: cfg.Budget}'], new: ['\treturn &Lease{ttl: cfg.Budget + cfg.AttemptTimeout}']}},
 };
 
-test('a remark\'s action line: + - a j act at once on an empty line while it is the last thing said; then the line goes', {timeout: 20_000}, async () => {
+test('a remark\'s action line: a question that starts with a, j, + or - is typed; Alt-↑ picks the remark, and then its keys act', {timeout: 20_000}, async () => {
   const t = await standInPane();
   try {
     t.daemon.send({...REMARK, at: Date.now()});
-    await t.shows(/│ \+ return &Lease\{ttl: cfg\.Budget \+ cfg\.AttemptTimeout\}\n {7}\+ useful {2}- noise {2}a apply {2}j jump {2}· Alt-↑ more\n/);
-    await t.type('a');
-    assert.deepEqual(await t.sent('accept'), {type: 'accept', action: 9}, 'a takes its suggestion');
-    await t.type('j');
-    assert.deepEqual(await t.sent('go'), {type: 'go', file: 'internal/queue/lease.go', line: 18}, 'j goes to its line');
-    assert.match(t.text(), /^› Ask Pair anything/m, 'nothing typed');
+    await t.shows(/│ \+ return &Lease\{ttl: cfg\.Budget \+ cfg\.AttemptTimeout\}\n {7}\+ useful {2}- noise {2}a apply {2}j jump {2}· Alt-↑ first\n/);
+    for (const question of ['are you sure?', 'just why?', '-v flag?', '+1 on that']) {
+      await t.type(question);
+      assert.match(t.text(), new RegExp(`^› ${question.replace(/[?+]/g, '\\$&')}$`, 'm'), `${question}: typed whole`);
+      await t.type('\x15'); // Ctrl-U
+    }
+    assert.deepEqual(t.daemon.got.filter(m => ['accept', 'go', 'feedback'].includes(m.type)), [], 'nothing taken, no jump, no verdict');
+    assert.doesNotMatch(t.text(), /✗ noise|✓ useful/);
+
     t.daemon.send({type: 'message', sender: 'system', text: 'tests on save: 1 failed', at: Date.now()});
     await t.shows(/tests on save/);
-    assert.match(t.text(), /\+ useful {2}- noise/, 'a note after it: its keys still work');
+    await t.type('\x1b[1;3A'); // Alt-↑: the remark, not the note after it
+    await t.shows(/^▌ +\+ useful {2}- noise {2}a apply {2}j jump$/m);
+    assert.match(t.text(), /c copy · a apply · j jump · \+\/- rate/);
+    await t.type('a');
+    assert.deepEqual(await t.sent('accept'), {type: 'accept', action: 9}, 'picked: a takes its suggestion');
+    await t.type('j');
+    assert.deepEqual(await t.sent('go'), {type: 'go', file: 'internal/queue/lease.go', line: 18}, 'j goes to its line');
     await t.type('+');
     assert.deepEqual(await t.sent('feedback'), {type: 'feedback', useful: true, remark: 5});
     await t.shows(/regression · internal\/queue\/lease\.go:18 {2}✓ useful/);
     assert.doesNotMatch(t.text(), /\+ useful {2}-/, 'rated: the line goes');
-    await t.type('abc');
-    assert.match(t.text(), /^› abc/m, 'rated: a is a letter again');
 
     t.daemon.send({...REMARK, at: Date.now(), meta: {...REMARK.meta, remark: 6}});
-    await t.shows(/\+ useful {2}- noise {2}a apply/);
-    await t.type('\x15'); // Ctrl-U: an empty line
+    await t.shows(/a apply {2}j jump {2}· Alt-↑ first/);
     t.daemon.send({type: 'message', sender: 'pair', text: 'And another thing.', at: Date.now()});
     await t.shows(/And another thing\./);
-    assert.doesNotMatch(t.text(), /a apply/, 'Pair spoke since: the keys are no longer the remark\'s');
-    const accepts = t.daemon.got.filter(m => m.type === 'accept').length;
-    await t.type('a');
-    assert.equal(t.daemon.got.filter(m => m.type === 'accept').length, accepts, 'a is typed, not taken');
-    assert.match(t.text(), /^› a/m);
+    assert.doesNotMatch(t.text(), /a apply/, 'Pair spoke since: the line goes');
+    await t.type('\x1b'); // back to typing
+    await t.type('\x1b[1;3A');
+    assert.match(t.text(), /^▌pair +And another thing\./m, 'and Alt-↑ picks the newest message again');
+  } finally {
+    await t.close();
+  }
+});
 
-    t.daemon.send({...REMARK, at: Date.now(), meta: {...REMARK.meta, remark: 7}});
-    await t.shows(/a apply/);
-    await t.type('\x15');
-    t.daemon.send({type: 'remarks', remarks: [{id: 7, at: Date.now(), trigger: 'regression', text: 'x', outcome: 'waiting'}, {id: 6, at: Date.now(), trigger: 'regression', text: 'y', outcome: 'waiting'}]});
-    await t.shows(/\+2 or -2 rates the second last/);
-    await t.type('+2');
-    assert.match(t.text(), /^› \+2/m, 'after /remarks, + is typed: +2 rates the second last');
+test('find counts a phrase as one match, also over a code span', {timeout: 20_000}, async () => {
+  const t = await standInPane(80, 24);
+  try {
+    t.daemon.send({type: 'message', sender: 'pair', text: 'Run `pair doctor` to check the provider you set.', at: Date.now()});
+    await t.shows(/provider you set/);
+    for (const query of ['run pair', 'provider you set']) {
+      await t.type(`\x06${query}`);
+      await t.shows(/find: .* {2}1 of 1 · in 1 message$/m);
+      await t.type('\x1b');
+    }
   } finally {
     await t.close();
   }

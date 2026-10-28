@@ -9,7 +9,7 @@ import {clearLine, createInterface, cursorTo} from 'node:readline';
 import {agentListLines} from './agent-relay.mjs';
 import {openHistory} from './chat-history.mjs';
 import {LineEditor} from './chat-input.mjs';
-import {remarkKeys, renderFrame, searchText, shownTool, toolDone, transcriptLines} from './chat-render.mjs';
+import {renderFrame, searchText, shownTool, toolDone, transcriptLines} from './chat-render.mjs';
 import {KeyDecoder, Screen} from './chat-screen.mjs';
 import {dim, formatMessage} from './chat-style.mjs';
 import {LEVELS} from './config.mjs';
@@ -408,9 +408,9 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
   };
   const latestRemark = () => state.entries.findLastIndex(entry => entry.meta?.trigger && entry.kind === 'watch');
   /**
-   * The remark whose keys work at once (+ - a j on an empty line): the last one, unrated, while it is the last thing
-   * said (the pane's notes, such as the tests on save, may follow it, but not a list such as /remarks, whose +2 must
-   * type); -1 when there is none. Its last line shows those keys.
+   * The remark whose action line shows its keys: the last one, unrated, while it is the last thing said (the pane's
+   * notes, such as the tests on save, may follow it, but not a list such as /remarks); -1 when there is none. The
+   * first Alt-↑ picks it, so its keys are one key away.
    */
   const liveRemark = () => {
     const i = latestRemark();
@@ -697,7 +697,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
   function selectBy(by) {
     if (!state.entries.length) return;
     state.found = -1;
-    if (state.selected === -1) state.selected = state.entries.length - 1;
+    if (state.selected === -1) state.selected = by < 0 && liveRemark() !== -1 ? liveRemark() : state.entries.length - 1;
     else state.selected = Math.max(0, Math.min(state.entries.length - 1, state.selected + by));
     state.mode = 'select';
   }
@@ -729,23 +729,6 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
     } else if (name === 'e' && meta.remark) send({type: 'teach', remark: meta.remark});
     else if (name === 'enter') entry.expanded = !entry.expanded;
     else return false;
-    return true;
-  }
-
-  /** A key of the last remark's action line (+ - a j). True when it acted. */
-  function remarkKey(name) {
-    const i = liveRemark();
-    if (i === -1) return false;
-    const {meta} = state.entries[i];
-    const {apply, jump} = remarkKeys(state.entries, i);
-    if (name === '+' || name === '-') {
-      rated({useful: name === '+', remark: meta.remark});
-      send({type: 'feedback', useful: name === '+', remark: meta.remark});
-    } else if (name === 'a' && apply) send({type: 'accept', action: apply.meta.suggestion.action});
-    else if (name === 'j' && jump) {
-      const {file, line} = jump.meta.place;
-      if (send({type: 'go', file, line})) flash(`Neovim goes to ${file}:${line}; Ctrl-O comes back`);
-    } else return false;
     return true;
   }
 
@@ -844,8 +827,6 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
     // Pair asks: y or n on an empty line answers at once.
     if (state.confirming !== null && editor.empty && !ctrl && !meta && /^[yYnN]$/.test(name)) return answer(name);
     if (name === '?' && editor.empty && !ctrl && !meta) return openHelp();
-    // The keys on the last remark's action line act at once, on an empty line, while it is the last thing said.
-    if (editor.empty && !ctrl && !meta && state.confirming === null && ['+', '-', 'a', 'j'].includes(name) && remarkKey(name)) return;
     if (name === 'enter' && (meta || key.shift)) return editor.insert('\n');
     if (ctrl && name === 'j') return editor.insert('\n');
     if (name === 'enter') return submit();

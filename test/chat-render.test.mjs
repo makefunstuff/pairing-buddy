@@ -116,7 +116,7 @@ test('a long message folds to its start until it is opened, and says so; the las
   assert.equal(transcriptLines([{...long, expanded: true}], 60).ranges[0].folded, false);
   assert.equal(transcriptLines([{kind: 'pair', at, text: Array.from({length: 13}, (_, i) => `l${i}`).join('\n')}], 60).ranges[0].folded, false, '13 lines: not folded');
   const remark = {kind: 'watch', at, text: 'Off the goal.', meta: {remark: 1, trigger: 'drift'}};
-  assert.match(plain(transcriptLines([remark], 60, {latestRemark: 0}).lines).at(-1), /^ {7}\+ useful {2}- noise {2}· Alt-↑ more$/);
+  assert.match(plain(transcriptLines([remark], 60, {latestRemark: 0}).lines).at(-1), /^ {7}\+ useful {2}- noise {2}· Alt-↑ first$/);
   remark.verdict = 'noise';
   assert.doesNotMatch(plain(transcriptLines([remark], 60, {latestRemark: 0}).lines).join('\n'), /useful {2}-/);
 });
@@ -335,7 +335,7 @@ test('a wide pane: the words end by column 80, code and diffs use the width, and
   assert.match(plain(transcriptLines([answer], 100).lines)[1], /word {2,}14:05 · 6\.4s$/, 'less room: the tokens go first');
 });
 
-test('a remark is one unit: its last line has the keys that work on it, spaced like buttons, Alt-↑ as an aside', () => {
+test('a remark is one unit: its last line has the keys that work on it once picked, spaced like buttons, Alt-↑ as an aside', () => {
   const suggestion = {action: 4, old: ['return &Lease{ttl: cfg.Budget}'], new: ['return &Lease{ttl: cfg.Budget + cfg.AttemptTimeout}']};
   const remark = {kind: 'watch', at, text: 'internal/queue/lease.go:18 suggestion: the lease ends before the last attempt does', meta: {remark: 7, trigger: 'regression', place: {file: 'internal/queue/lease.go', line: 18}, suggestion}};
   const lines = plain(transcriptLines([remark], 80, {latestRemark: 0}).lines);
@@ -344,15 +344,15 @@ test('a remark is one unit: its last line has the keys that work on it, spaced l
     '       the lease ends before the last attempt does',
     '       │ - return &Lease{ttl: cfg.Budget}',
     '       │ + return &Lease{ttl: cfg.Budget + cfg.AttemptTimeout}',
-    '       + useful  - noise  a apply  j jump  · Alt-↑ more',
+    '       + useful  - noise  a apply  j jump  · Alt-↑ first',
   ], 'the diff has the code block\'s bar and space');
   const action = transcriptLines([remark], 80, {latestRemark: 0}).lines.at(-1);
-  assert.deepEqual(action.filter(s => s.style === 'bold').map(s => s.text), ['+', '-', 'a', 'j'], 'the keys bold');
-  assert.ok(action.filter(s => /Alt-↑|useful|noise|apply|jump/.test(s.text)).every(s => s.style === 'dim'), 'their words, and Alt-↑, dim');
-  assert.match(plain(transcriptLines([{...remark, applied: true}], 80, {latestRemark: 0}).lines).at(-1), /^ {7}\+ useful {2}- noise {2}j jump {2}· Alt-↑ more$/, 'taken: no a');
-  const narrow = plain(transcriptLines([remark], 44, {latestRemark: 0}).lines).at(-1);
-  assert.equal(narrow, '       + useful  - noise  a apply  j jump', 'a narrow pane: the aside goes first');
-  assert.equal(plain(transcriptLines([remark], 40, {latestRemark: 0}).lines).at(-1), '       + useful - noise a apply j jump');
+  assert.deepEqual(action.filter(s => s.style === 'bold').map(s => s.text), ['+', '-', 'a', 'j', 'Alt-↑'], 'the keys bold');
+  assert.ok(action.filter(s => /useful|noise|apply|jump|first/.test(s.text)).every(s => s.style === 'dim'), 'their words dim');
+  assert.match(plain(transcriptLines([{...remark, applied: true}], 80, {latestRemark: 0}).lines).at(-1), /^ {7}\+ useful {2}- noise {2}j jump {2}· Alt-↑ first$/, 'taken: no a');
+  assert.equal(plain(transcriptLines([remark], 80, {latestRemark: 0, selected: 0}).lines).at(-1).trimEnd(), '▌      + useful  - noise  a apply  j jump', 'picked: the keys work now, no aside');
+  assert.equal(plain(transcriptLines([remark], 54, {latestRemark: 0}).lines).at(-1), '       + useful - noise a apply j jump  · Alt-↑ first', 'narrower: the gaps first');
+  assert.equal(plain(transcriptLines([remark], 44, {latestRemark: 0}).lines).at(-1), '       + - a j  · Alt-↑ first', 'a narrow pane: the keys without words, the aside kept');
   const pieces = [{...remark, text: 'the lease ends early', meta: {...remark.meta, suggestion: undefined}}, {kind: 'watch', at, text: 'see the retry', meta: {remark: 7, trigger: 'regression'}}];
   assert.deepEqual(Object.keys(remarkKeys(pieces, 1)).filter(key => remarkKeys(pieces, 1)[key]), ['jump'], 'the keys of the whole remark, from its last part');
 });
@@ -378,6 +378,18 @@ test('ordered lists: the numbers are padded to the widest of their list, so 9. a
   assert.equal(lines[9], '10. step 10');
   assert.deepEqual(plain(markdownLines('1. one\n2. two\n\nWords.\n\n9. nine\n10. ten', 40)), ['1. one', '2. two', '', 'Words.', '', ' 9. nine', '10. ten'], 'each list its own width');
   assert.deepEqual(plain(markdownLines('8. a long item that wraps here\n9. b\n10. c', 20)).slice(0, 2), [' 8. a long item that', '    wraps here'], 'the hanging indent follows the padding');
+});
+
+test('find: a match of several words, or over a `code` span, is one match; one over a wrap still finds its message', () => {
+  const answer = {kind: 'pair', at, text: 'The lease ends too early: ttl is only the budget. Run `pair doctor` now.'};
+  const count = query => transcriptLines([answer], 80, {query}).ranges[0].matches;
+  for (const query of ['lease', 'the lease', 'lease ends', 'too early', 'run pair', 'pair doctor now', 'THE LEASE']) assert.equal(count(query), 1, query);
+  assert.equal(count('the'), 2);
+  assert.equal(count('nowhere'), 0);
+  const {lines} = transcriptLines([answer], 80, {query: 'run pair', selected: 0, found: 0});
+  assert.deepEqual(lines[1].filter(s => s.style === 'found').map(s => s.text), ['Run', ' ', 'pair'], 'lit over the word and the span');
+  const wrapped = transcriptLines([answer], 30, {query: 'only the budget'});
+  assert.equal(wrapped.ranges[0].matches, 1, 'over a wrap: the message is found');
 });
 
 test('find: every match underlined, the one you are on bold, underlined and green; a fold opens to show it', () => {
