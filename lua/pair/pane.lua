@@ -27,10 +27,12 @@ function M.id(buf) return ('nvim:%d:%d'):format(vim.fn.getpid(), buf) end
 
 --- Runs `cmd` in a new terminal buffer marked `mark`, in a window that `split` opens, and comes back to the window
 --- you were in unless `stay`. The buffer, or nil and why not.
-local function terminal(split, cmd, opts, mark, stay)
+local function terminal(split, cmd, opts, mark, stay, window)
   local back = vim.api.nvim_get_current_win()
   vim.cmd(split)
   local buf = vim.api.nvim_get_current_buf()
+  -- The window's own options before the job starts: the terminal gets its size from what is left of the window.
+  for name, value in pairs(window or {}) do vim.wo[name] = value end
   vim.b[buf][mark] = true -- before the job starts: its TermOpen is not one of your terminals opening
   local ok, job = pcall(vim.fn.jobstart, cmd, vim.tbl_extend('force', opts, {term = true}))
   if not stay then vim.api.nvim_set_current_win(back) end
@@ -127,7 +129,9 @@ function M.chat(socket)
     end
   end
   local env = {PAIR_SOCKET = socket, HERDR_ENV = '', HERDR_SOCKET_PATH = '', HERDR_PANE_ID = '', HERDR_WORKSPACE_ID = ''}
-  local buf, why = terminal('botright vertical ' .. CHAT_WIDTH .. 'new', {SCRIPT, 'chat'}, {cwd = vim.fn.getcwd(), env = env}, 'pair_chat', true)
+  -- The chat draws its own gutter and status: no numbers, signs or folds beside it.
+  local window = {number = false, relativenumber = false, signcolumn = 'no', foldcolumn = '0', spell = false}
+  local buf, why = terminal('botright vertical ' .. CHAT_WIDTH .. 'new', {SCRIPT, 'chat'}, {cwd = vim.fn.getcwd(), env = env}, 'pair_chat', true, window)
   if not buf then return vim.notify('Pair: the chat did not start: ' .. why, vim.log.levels.ERROR) end
   vim.cmd.startinsert()
 end

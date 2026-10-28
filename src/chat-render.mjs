@@ -24,6 +24,8 @@ const DOING = {
   point: 'pointing at', suggest: 'writing a suggestion for',
 };
 export const shownTool = tool => tool in DONE;
+/** A tool's line under the question: read queue.go 1-40. */
+export const toolDone = (tool, what) => `${DONE[tool] ?? tool} ${what}`;
 
 const pad = n => String(n).padStart(2, '0');
 /** HH:MM of `at`. */
@@ -61,37 +63,43 @@ export function inlineTokens(line, base = 'text', {markdown = true} = {}) {
 
 /**
  * Tokens as lines of segments at most `width` wide: the first line after `first`, the others after `rest` (both
- * lines of segments, such as a bullet and its hanging indent). A word longer than a line is cut where it must be.
+ * lines of segments, such as a bullet and its hanging indent). Tokens with no space between them (`code`, and the
+ * colon after it) wrap as one word; a word longer than a line is cut where it must be.
  */
 export function wrapTokens(tokens, width, first = [], rest = first) {
+  const words = [];
+  for (const token of tokens) {
+    if (words.length && !token.space) words.at(-1).parts.push(token);
+    else words.push({space: token.space.replace(/\n/g, ' '), parts: [token]});
+  }
   const lines = [];
   let line = [...first];
-  let used = lineWidth(first);
-  const start = () => {
+  let start = lineWidth(first);
+  let used = start;
+  const next = () => {
     lines.push(line);
     line = [...rest];
-    used = lineWidth(rest);
+    start = used = lineWidth(rest);
   };
-  const room = () => width - used;
-  for (const token of tokens) {
-    const space = used > lineWidth(lines.length ? rest : first) ? token.space.replace(/\n/g, ' ') : '';
-    const w = textWidth(token.text);
-    if (w + textWidth(space) > room() && used > lineWidth(lines.length ? rest : first)) start();
-    const lead = used > lineWidth(lines.length ? rest : first) ? space : '';
-    if (lead) {
-      line.push(seg(lead, token.style === 'code' ? 'text' : token.style));
-      used += textWidth(lead);
+  for (const word of words) {
+    const w = word.parts.reduce((sum, part) => sum + textWidth(part.text), 0);
+    if (used > start && used + textWidth(word.space) + w > width) next();
+    if (used > start && word.space) {
+      line.push(seg(word.space, word.parts[0].style === 'code' ? 'text' : word.parts[0].style));
+      used += textWidth(word.space);
     }
-    let text = token.text;
-    while (textWidth(text) > room()) {
-      const part = fitText(text, Math.max(1, room()));
-      line.push(seg(part, token.style));
-      text = text.slice(part.length);
-      start();
-    }
-    if (text) {
-      line.push(seg(text, token.style));
-      used += textWidth(text);
+    for (const part of word.parts) {
+      let text = part.text;
+      while (textWidth(text) > width - used) {
+        const piece = fitText(text, Math.max(1, width - used));
+        line.push(seg(piece, part.style));
+        text = text.slice(piece.length);
+        next();
+      }
+      if (text) {
+        line.push(seg(text, part.style));
+        used += textWidth(text);
+      }
     }
   }
   lines.push(line);
@@ -201,10 +209,10 @@ export function diffLines({old = [], new: added = []}, width) {
 // Messages.
 
 /** The lines of what `entry` says, `width` wide, without its gutter. */
-export function bodyLines(entry, width) {
+export function bodyLines(entry, width, {continued = false} = {}) {
   const {kind, text = '', meta = {}} = entry;
   if (kind === 'tool') {
-    const done = entry.tools.map(({tool, what}) => `${DONE[tool] ?? tool} ${what}`);
+    const done = entry.tools.map(({tool, what}) => toolDone(tool, what));
     if (entry.expanded) return done.flatMap(line => hardWrap(line, width, 'dim', [seg('⎿ ', 'dim')]));
     return [clipLine([seg('⎿ ', 'dim'), seg(done.join(' · '), 'dim')], width)];
   }
@@ -223,7 +231,7 @@ export function bodyLines(entry, width) {
   if (kind === 'error') return plainLines(text, width, 'error');
   // Pair's words: a remark says what about first; a suggestion shows as a diff under its first line.
   const lines = [];
-  if (meta.trigger) {
+  if (meta.trigger && !continued) {
     const head = [seg(meta.trigger.replace(/_/g, ' '), 'watchMeta')];
     if (meta.place) head.push(seg(` · ${meta.place.file}:${meta.place.line}`, 'watchMeta'));
     if (entry.verdict) head.push(seg(entry.verdict === 'useful' ? '  ✓ useful' : '  ✗ noise', entry.verdict === 'useful' ? 'ok' : 'dim'));
@@ -271,7 +279,7 @@ export const matches = (entry, query) => Boolean(query) && searchText(entry).toL
 
 /** All the text of `entry`, as search and copy see it. */
 export function searchText(entry) {
-  if (entry.kind === 'tool') return entry.tools.map(({tool, what}) => `${DONE[tool] ?? tool} ${what}`).join('\n');
+  if (entry.kind === 'tool') return entry.tools.map(({tool, what}) => toolDone(tool, what)).join('\n');
   const diff = entry.meta?.suggestion ? `\n${entry.meta.suggestion.new.join('\n')}` : '';
   return `${entry.text ?? ''}${diff}`;
 }
@@ -303,7 +311,8 @@ export function transcriptLines(entries, width, {selected = -1, query = '', late
     const label = LABELS[entry.kind] ?? '';
     const head = turn && label ? [seg(entry.at ? clock(entry.at) : '     ', 'dim'), seg(' '), seg(narrow ? label : label.padEnd(5), LABEL_STYLES[entry.kind])] : null;
     const bodyWidth = Math.max(8, narrow ? width - 3 : width - GUTTER - 1);
-    let body = bodyLines(entry, bodyWidth);
+    const continued = Boolean(entry.meta?.remark && entry.meta.remark === previous?.meta?.remark);
+    let body = bodyLines(entry, bodyWidth, {continued});
     if (!entry.expanded && entry.kind !== 'tool' && body.length > FOLD_OVER) {
       const hidden = body.length - FOLD_TO;
       body = [...body.slice(0, FOLD_TO), [seg(`… ${hidden} more lines · ${index === selected ? 'Enter' : 'Alt-↑ and Enter'} shows all`, 'dim')]];

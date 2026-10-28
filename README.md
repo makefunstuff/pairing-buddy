@@ -60,7 +60,8 @@ Add the plugin with lazy.nvim:
 ```
 
 Set your model in `~/.config/pairing-buddy/config.json` ([models](docs/models.md)), run `pair doctor` to check every
-part, then `pair` in the herdr pane next to Neovim (or `:Pair chat` in Neovim), and work.
+part, then `pair` in the herdr pane next to Neovim (or `:Pair chat` in Neovim), and work. In the
+[chat pane](docs/chat.md), `?` lists its keys and `/` its commands.
 [Getting started](docs/getting-started.md) walks through it. Optionally add the
 [shell hook](docs/cli.md#pair-shell-hook) (`eval "$(pair shell-hook bash)"`, or zsh, or fish) to your shell's rc file:
 Pair then gets every command you run, with its exit code, from the shell itself, and in zsh your typing too.
@@ -74,6 +75,7 @@ your keys and logins).
 
 - [Getting started](docs/getting-started.md) and [install and daily use](docs/install.md)
 - [How it works](docs/how-it-works.md), [roles](docs/roles.md) and [workflows](docs/workflows.md)
+- [The chat pane](docs/chat.md): who speaks, what Pair is doing now, its keys and commands
 - [Models and providers](docs/models.md): local servers, API keys, subscription logins, one model for both roles,
   and the optional [decision model](docs/decision.md)
 - Reference: [configuration](docs/config.md), [Neovim plugin](docs/neovim-plugin.md), [commands](docs/cli.md)

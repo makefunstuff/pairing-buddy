@@ -20,7 +20,7 @@ PLENARY=74b06c6c75e4eeb3108ec01852001636d85a932b # nvim-lua/plenary.nvim, MIT: T
 MINI=561751e839b99a4baca36b9d963166b66d2536a6 # echasnovski/mini.nvim, MIT: only mini.base16
 TOKYONIGHT=cdc07ac78467a233fd62c493de29a17e0cf2b2b6 # folke/tokyonight.nvim, Apache-2.0: the site's loops
 SCENES=("$@")
-[ ${#SCENES[@]} -gt 0 ] || SCENES=(wrong-turn tests-on-save hand-over take-back held-thought search-trail ledger context-card crash delight agents teach notes pickup debrief loop blank-page first-run hand-over-run no-herdr)
+[ ${#SCENES[@]} -gt 0 ] || SCENES=(wrong-turn tests-on-save hand-over take-back held-thought search-trail ledger context-card crash delight agents teach notes pickup debrief loop blank-page first-run hand-over-run no-herdr chat)
 mkdir -p "$HERE/out"
 if [ "${CAP_LOOK:-}" = site ]; then mkdir -p "$HERE/out/site"; export CAP_SCHEME=tokyonight; fi
 

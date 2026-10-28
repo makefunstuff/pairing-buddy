@@ -4,11 +4,12 @@
 import {execFile} from 'node:child_process';
 import {connect} from 'node:net';
 import {basename, join} from 'node:path';
+import {StringDecoder} from 'node:string_decoder';
 import {clearLine, createInterface, cursorTo} from 'node:readline';
 import {agentListLines} from './agent-relay.mjs';
 import {openHistory} from './chat-history.mjs';
 import {LineEditor} from './chat-input.mjs';
-import {renderFrame, searchText, shownTool} from './chat-render.mjs';
+import {renderFrame, searchText, shownTool, toolDone} from './chat-render.mjs';
 import {KeyDecoder, Screen} from './chat-screen.mjs';
 import {dim, formatMessage} from './chat-style.mjs';
 import {LEVELS} from './config.mjs';
@@ -243,7 +244,7 @@ function runPlainChat(socketPath, {input, output, exit, cwd, env}) {
     if (message.type === 'accent') look.accent = message.color;
     if (message.type === 'remark') print(dim('·· + useful  - noise', look));
     // What a question's tools did, one dim line each, as they happen.
-    if (message.type === 'tool' && shownTool(message.tool)) print(dim(`  ⎿ ${message.tool} ${message.what}`, look));
+    if (message.type === 'tool' && shownTool(message.tool)) print(dim(`  ⎿ ${toolDone(message.tool, message.what)}`, look));
     // What you type is already on screen; your own lines come back only as history.
     const echo = message.sender === 'user' && !message.history;
     if (message.type === 'message' && !echo) say(message.sender, message.text);
@@ -950,8 +951,9 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
 
   // Typing here counts as typing too, so Pair does not speak up in the middle of your question.
   let typingSent = 0;
+  const utf8 = new StringDecoder('utf8'); // a character split across two reads stays whole
   input.on('data', data => {
-    for (const key of decoder.feed(data.toString('utf8'))) {
+    for (const key of decoder.feed(typeof data === 'string' ? data : utf8.write(data))) {
       onKey(key);
       if (!key.mouse && Date.now() - typingSent > 500 && state.connection === 'up') {
         typingSent = Date.now();

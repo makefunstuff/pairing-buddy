@@ -10,7 +10,8 @@ const textOf = content => (typeof content === 'string' ? content : (content ?? [
 /**
  * Starts the server on 127.0.0.1 and a free port. `scene.watcher(prompt)` is the Watcher's answer; `scene.partner`
  * lists the Partner's turns as `{wait, say}` or `{wait, call: [name, args]}` (or `calls: [[name, args], ...]`),
- * each with an optional `when` regex the input must match. `scene.notes` answers a note's readings: `marks`, one
+ * each with an optional `when` regex the input must match; a `say` with `stream` (ms) comes a few words at a time,
+ * that long apart, as a model streams it. `scene.notes` answers a note's readings: `marks`, one
  * list per reading (the last again after them), and `tasks`, each after `wait`.
  * `log` hears each request. Resolves with `{baseUrl, close()}`.
  */
@@ -44,15 +45,17 @@ export async function startModelServer(scene, {log = () => {}} = {}) {
     await sleep(turn.wait ?? 0);
     const toolCalls = turn.call ? [turn.call] : turn.calls;
     log(`partner -> ${toolCalls ? toolCalls.map(([name]) => name).join(', ') : JSON.stringify(turn.say).slice(0, 80)}`);
-    return toolCalls ? {toolCalls} : {text: turn.say};
+    return toolCalls ? {toolCalls} : {text: turn.say, stream: turn.stream};
   }
 
   /** The answer as the chunks of a streamed chat completion. */
-  function chunks(model, {text, toolCalls}) {
+  function chunks(model, {text, toolCalls, stream}) {
     const id = `chatcmpl-capture-${++calls}`;
     const chunk = (delta, finish = null) => ({id, object: 'chat.completion.chunk', created: 0, model, choices: [{index: 0, delta, finish_reason: finish}]});
     const out = [chunk({role: 'assistant'})];
-    if (text) out.push(chunk({content: text}));
+    // Streamed: three words a chunk; else the whole text in one.
+    const parts = text && stream ? text.match(/(\S+\s*){1,3}/g) : text ? [text] : [];
+    for (const part of parts) out.push(chunk({content: part}));
     (toolCalls ?? []).forEach(([name, args], index) => out.push(chunk({tool_calls: [{
       index, id: `call_${calls}_${index}`, type: 'function', function: {name, arguments: JSON.stringify(args)},
     }]})));
@@ -80,7 +83,10 @@ export async function startModelServer(scene, {log = () => {}} = {}) {
       return response.end(JSON.stringify({id: 'chatcmpl-capture', object: 'chat.completion', created: 0, model: body.model, choices: [{index: 0, message, finish_reason: 'stop'}]}));
     }
     response.writeHead(200, {'content-type': 'text/event-stream', 'cache-control': 'no-cache'});
-    for (const chunk of chunks(body.model, reply)) response.write(`data: ${JSON.stringify(chunk)}\n\n`);
+    for (const chunk of chunks(body.model, reply)) {
+      response.write(`data: ${JSON.stringify(chunk)}\n\n`);
+      if (reply.stream && chunk.choices[0]?.delta?.content) await sleep(reply.stream);
+    }
     response.end('data: [DONE]\n\n');
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));

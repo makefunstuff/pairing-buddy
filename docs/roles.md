@@ -15,7 +15,7 @@ budget, reaches the Partner, and never while you type. Details in [The Watcher](
 
 ## The three roles
 
-Pair has one role at a time. It shows in the chat pane's prompt and in Neovim's statusline.
+Pair has one role at a time. It shows in the chat pane's header and in Neovim's statusline.
 
 ### Navigator (the default)
 

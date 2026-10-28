@@ -9,7 +9,9 @@ the chat right there, like `pair chat`.
 
 ## `pair chat`
 
-Runs the chat pane in this terminal, starting the daemon if needed. This is what `:Pair chat` runs in Neovim.
+Runs the [chat pane](chat.md) in this terminal, starting the daemon if needed. This is what `:Pair chat` runs in
+Neovim. `--plain` runs the [plain pane](chat.md#the-plain-pane), line by line, instead of the full-screen one; so does
+a pipe or `TERM=dumb`.
 
 ## `pair setup`
 
@@ -93,27 +95,42 @@ pair shell-hook fish | source    # fish, in config.fish
 
 ## Chat commands
 
-Typed in the chat pane. Anything that is not a command is a question for Pair, and a line that starts with "you
-take it" or "your turn" hands Pair the wheel.
+Typed in the chat pane; `/` there lists them as you type, and Tab completes. Anything that is not a command is a
+question for Pair (`@here` in it sends your selection in Neovim along), and a line that starts with "you take it" or
+"your turn" hands Pair the wheel. The pane's keys are in [the chat pane](chat.md#every-key).
 
 | Command | What it does |
 | --- | --- |
 | `/goal <text>` | Set the session goal |
-| `/level quiet\|normal\|chatty` | How often Pair speaks unasked, for this session |
+| `/level quiet\|normal\|chatty` | How often Pair speaks unasked, for this session (`Alt-L` cycles it) |
+| `/quiet`, `/normal`, `/chatty` | The same, shorter |
 | `/navigate`, `/scout` | Switch [role](roles.md) |
 | `/drive [what]` | Hand Pair the wheel for one change |
 | `/drive! [what]` | The same, and Pair keeps the wheel until you take it back |
+| `/cancel` | Stop the answer Pair is working on (`Esc` in the pane); while it drives, take the wheel back |
 | `+` or `/useful`, `-` or `/noise` | Your verdict on Pair's last unasked remark |
 | `/remarks` | The last nine remarks in the project; `+2` (or `/useful 2`) and `-3` (or `/noise 3`) rate an older one |
-| `?` or `/why` | The idea worth keeping behind what Pair said last |
+| `?` or `/why` | The idea worth keeping behind what Pair said last (in the full-screen pane, `?` on an empty line shows the keys: type `/why`) |
+| `/explain [n]` | The same; with `n`, about remark `n` of `/remarks` |
+| `/mute [kind]` | No more remarks of this kind (by default the last remark's: `drift`, `failed_command`, …) for the session |
+| `/unmute [kind]` | Let one kind, or all, speak again |
+| `/undo` | Undo Pair's last change of the day: an edit of the Driver's, or a suggestion you took; as `u` in `:Pair today` |
 | `/today` | What Pair did here today, as in `:Pair today` |
 | `/agents` | Your other agents and board tasks |
+| `/search <text>` | Find in the conversation (`Ctrl-F`) |
+| `/copy [n]` | Copy Pair's last message (or the `n`th last) to the clipboard |
+| `/clear` | Clear the pane; the session and its history stay |
 | `/first <step>` | Tomorrow's first step, as in `:Pair first` |
 | `/end` | End the session now, with its debrief |
+| `/help` | The keys and the commands |
 | `/quit` | Close the chat pane; the session goes on |
 
+An unknown command is named, and stays on the line to fix. `/search`, `/copy`, `/clear` and the keys work in the
+full-screen pane only.
+
 When Pair asks before running or typing a command, your next line is the answer: `y` or `yes` allows it, anything
-else declines. The Neovim commands are in the [Neovim plugin reference](neovim-plugin.md#commands).
+else declines; in the full-screen pane `y` or `n` on an empty line answers at once. The Neovim commands are in the
+[Neovim plugin reference](neovim-plugin.md#commands).
 
 ## Logs
 

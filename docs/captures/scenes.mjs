@@ -97,6 +97,21 @@ export const scenes = {
       {wait: 150, say: 'delivery passes now, queue doesn\'t: attempt 5 starts at 15s, the moment evt_42\'s lease runs out, so a second worker takes the job `queue.go:18`'},
     ],
   },
+  // The chat pane beside Neovim: the tests on save find the lease regression, and Pair's remark shows in the chat with
+  // its suggestion as a diff; you ask why in the chat, and the answer streams in under the file it read.
+  'chat': {
+    goal: 'retries reach the budget',
+    testOnSave: 'go test -json ./...',
+    watcher: score('regression'),
+    partner: [
+      {when: /TestNoDoubleDelivery/, wait: 300, call: ['read', {file: QUEUE_TEST, start_line: 24, end_line: 37}]},
+      {wait: 900, call: ['read', {file: QUEUE}]},
+      {wait: 900, call: ['suggest', {file: QUEUE, line: 18, new_text: '\treturn &Queue{ttl: cfg.Budget + cfg.AttemptTimeout, leased: map[string]time.Duration{}}', note: 'the lease has to outlive the last attempt'}]},
+      {wait: 150, say: 'delivery passes now, queue doesn\'t: attempt 5 starts at 15s, the moment evt_42\'s lease runs out, so a second worker takes the job `queue.go:18`'},
+      {when: /not 4/, wait: 700, call: ['read', {file: 'internal/delivery/worker.go', start_line: 28, end_line: 40}]},
+      {wait: 1600, stream: 70, say: 'Attempt 5 is the first to start **after the lease ends**:\n\n- the waits are 1s, 2s, 4s and 8s, so attempt 5 starts at `15s`\n- the lease is `cfg.Budget`, 15s too\n\nAttempt 4 starts at 7s, well inside it. The suggestion leases past the last attempt:\n\n```go\nttl: cfg.Budget + cfg.AttemptTimeout,\n```\n\nThen `TestNoDoubleDelivery` passes.'},
+    ],
+  },
   // 03: you hand over with :Pair drive; Pair types six table cases, tests the unsaved buffer and hands back.
   'hand-over': {
     goal: 'retries reach the budget',
