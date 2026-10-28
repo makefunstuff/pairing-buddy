@@ -210,7 +210,7 @@ test('without a test: the hand-over builds and runs the unsaved buffer with the 
   await pair.drive('you take it: make the keys spread over the table, avg probe stays under 2');
   assert.match(seen.input, /What the user expects to see: "avg probe stays under 2"\. After your edit, Pair runs `make -s run` \(the build and run the user ran last in their terminal\), once the user allows it,/);
   assert.deepEqual(sent.filter(message => message.type === 'confirm').map(message => message.text),
-    ['Pair wants to run `make -s run` on the unsaved buffer, in a scratch copy, to check its edit (make run runs a target that is not a test or build). Allow?']);
+    ['May I run `make -s run` on the unsaved buffer, in a scratch copy, to check my edit (make run runs a target that is not a test or build)?']);
   assert.equal(ran.length, 1);
   assert.match(ran[0], /\/trees\/[\da-f]{16}' && \(make -s run\) > /, 'in the scratch copy');
   assert.match(seen.reply, /It printed avg probe 1\.\d+, which meets it\./);

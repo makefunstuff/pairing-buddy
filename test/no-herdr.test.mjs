@@ -166,7 +166,7 @@ test('without herdr, the Driver types into the :terminal you used last, or anoth
   ]);
   chat.send({type: 'drive', text: 'type the command'});
   const question = await chat.next(message => message.type === 'confirm');
-  assert.match(question.text, new RegExp(`into your terminal \\(pane nvim:${first}\\), without pressing Enter\\. Allow\\? \\(y, or another terminal: nvim:${second}\\)`));
+  assert.match(question.text, new RegExp(`into your terminal \\(pane nvim:${first}\\), without pressing Enter\\? \\(y, or another terminal: nvim:${second}\\)`));
   chat.send({type: 'confirm', id: question.id, ok: true, text: 'y'});
   await chat.next(message => message.text === 'Typed.');
   assert.match(reply, /^Typed\./);
@@ -188,8 +188,8 @@ test(':Pair chat opens the chat in a terminal buffer, connected to the daemon ou
   await until(async () => (await status()).sessions[0]?.chats === 1, 'the chat in Neovim to connect');
   const chat = await until(() => lua('for _, buf in ipairs(vim.api.nvim_list_bufs()) do if vim.b[buf].pair_chat then return buf end end return false'), 'the chat buffer');
   const screen = () => lua(`return table.concat(vim.api.nvim_buf_get_lines(${chat}, 0, -1, false), "\\n")`);
-  // The full-screen pane: its header names the project, the goal and the role; the prompt waits below.
-  await until(() => /^ pair · \S+ · no herdr +navigator · normal/m.test(screen()) && /^› /m.test(screen()), 'the chat\'s header and prompt');
+  // The full-screen pane: its header, in the top rule, names the project, the goal and the role; the prompt waits below.
+  await until(() => /^── pair · \S+ · no herdr ─+ navigator( · normal)? ──$/m.test(screen()) && /^› /m.test(screen()), 'the chat\'s header and prompt');
   assert.equal((await status()).sessions[0].herdr, false, 'not a herdr chat pane');
 });
 
@@ -214,7 +214,7 @@ test('two Neovims with a :terminal in the same buffer: the question tells them a
   ]);
   chat.send({type: 'drive', text: 'type it'});
   const question = await chat.next(message => message.type === 'confirm');
-  assert.match(question.text, new RegExp(`\\(pane nvim:${pid}:${buf}\\), without pressing Enter\\. Allow\\? \\(y, or another terminal: nvim:${otherPid}:${buf}\\)$`));
+  assert.match(question.text, new RegExp(`\\(pane nvim:${pid}:${buf}\\), without pressing Enter\\? \\(y, or another terminal: nvim:${otherPid}:${buf}\\)$`));
   chat.send({type: 'confirm', id: question.id, ok: false, text: `nvim:${otherPid}:${buf}`});
   await chat.next(message => message.text === 'Typed there.');
   await until(() => /echo hi$/m.test(screen(other)), 'the text in the other Neovim\'s terminal');

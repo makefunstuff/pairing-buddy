@@ -80,7 +80,7 @@ After the Driver's last edit of a change, Pair runs one command once on the buff
 
 - A command that only runs a built program (`./probe`, `build/probe`) with no build before it is no check: in the copy it would run the old program and judge the old code. The model is told so, and you can name the build and run in backquotes. A script by its path (`./build.sh`) builds what it needs and counts.
 - What Scout's [command policy](scout.md#the-command-policy) refuses (`sudo`, `git push`, `curl`, ...) is never run for a check; the model is told why.
-- A command taken from your terminal that Scout would ask about (`make run`, `make install`, `./deploy.sh`, `python3 send_mail.py`) asks you first in the chat, as Scout does: ``Pair wants to run `make -s run` on the unsaved buffer, in a scratch copy, to check its edit (…). Allow?`` A yes holds for that command for the rest of the session; a no, or no answer within a minute, runs nothing. A command you named in the hand-over, or your command on save, is yours and runs without asking.
+- A command taken from your terminal that Scout would ask about (`make run`, `make install`, `./deploy.sh`, `python3 send_mail.py`) asks you first in the chat, as Scout does: ``May I run `make -s run` on the unsaved buffer, in a scratch copy, to check my edit (…)?`` A yes holds for that command for the rest of the session; a no, or no answer within a minute, runs nothing. A command you named in the hand-over, or your command on save, is yours and runs without asking.
 - Without any command, nothing runs and the model is told so.
 
 - **Go**: a command with `go test` in it gets `-overlay`: Go reads each unsaved file from its buffer's text, and nothing else changes. `go test -json ./...` runs as `go test -overlay <file> -json ./...`.
@@ -148,7 +148,7 @@ As Driver Pair also has `search` and `run` in its own pane (the same command pol
 
 `type(text)` puts one line into your terminal: the herdr or tmux pane you last looked at or ran a command in, or the `:terminal` buffer in Neovim you were in last ([without herdr](neovim.md#without-herdr)). It is only for the Driver:
 
-- It asks first in the chat: ``Pair wants to type `npm test` into your terminal (pane …), without pressing Enter. Allow? (y, or another terminal: …)`` `y` or `yes` allows it; the name of another of your terminals the question lists types it there instead; anything else, or no answer within a minute, declines.
+- It asks first in the chat: ``May I type `npm test` into your terminal (pane …), without pressing Enter? (y, or another terminal: …)`` `y` or `yes` allows it; the name of another of your terminals the question lists types it there instead; anything else, or no answer within a minute, declines.
 - It never presses Enter: running the line is up to you.
 - It takes one line of plain text. Enter, Ctrl-C and any other control character or escape sequence are refused, in the session and again where it is sent (herdr or Neovim).
 - What [Scout's command policy](scout.md#the-command-policy) refuses is refused here too (`git commit`, `git push`, `curl`, `sudo`, ...).

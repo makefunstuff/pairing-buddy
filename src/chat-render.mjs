@@ -1,16 +1,19 @@
-// What the full-screen chat pane draws, from its state: the header (where you pair, on what, in which role and at
-// which level), the conversation, the status row (what Pair does now), what you type, and a line of the keys that
-// work now. Each message has a gutter with its time and who speaks: you, pair (answers), watch (what Pair said
-// unasked), ·· (notes of the pane and the daemon), !! (errors); what Pair's tools did is a ⎿ line under the question.
-// Pair's words are Markdown: code blocks, `code`, **bold**, lists and headings show as such, a suggestion as a diff.
+// What the full-screen chat pane draws, from its state: the header in the top rule (where you pair, on what, in
+// which role and at which level), the conversation, the status in the rule under it (what Pair does now), what you
+// type, and a line of the keys that work now: four rows of chrome. Each message has a gutter with its time and who
+// speaks: you, pair (answers, and the questions Pair asks you), watch (what Pair said unasked), ·· (notes of the pane
+// and the daemon), !! (errors); what Pair's tools did is a ⎿ line under the question. Pair's words are Markdown: code
+// blocks, `code`, **bold**, lists and headings show as such, a suggestion as a diff.
+// Colour has one job each: yellow is the Watcher (its label, a remark's kind) and the ? of a question waiting for
+// you; dim is chrome only (rules, times, key descriptions, tool traces), never words addressed to you.
 // Everything here is pure: lines of segments in, lines of segments out (see chat-style.mjs), so it is tested as text.
 import {clipLine, fitText, lineWidth, paintLine, textWidth} from './chat-style.mjs';
 
 const seg = (text, style = 'text') => ({text, style});
 const blank = () => [];
 
-const LABELS = {you: 'you', pair: 'pair', watch: 'watch', system: '··', error: '!!', confirm: '?', note: '··'};
-const LABEL_STYLES = {you: 'you', pair: 'pair', watch: 'watch', system: 'dim', error: 'errorBold', confirm: 'warn', note: 'dim'};
+const LABELS = {you: 'you', pair: 'pair', watch: 'watch', system: '··', error: '!!', confirm: 'pair', note: '··'};
+const LABEL_STYLES = {you: 'you', pair: 'pair', watch: 'watch', system: 'dim', error: 'errorBold', confirm: 'pair', note: 'dim'};
 const NARROW = 52; // below this, the gutter goes above the words
 const GUTTER = 13; // the selection bar, HH:MM, a space, the name in five, a space
 const FOLD_OVER = 18; // a longer message folds to its start…
@@ -187,7 +190,7 @@ export function markdownLines(text, width, {base = 'text'} = {}) {
     }
     const quote = /^>\s?(.*)$/.exec(raw);
     if (quote) {
-      lines.push(...wrapTokens(inlineTokens(quote[1], 'dim'), width, [seg('▎ ', 'rule')]));
+      lines.push(...wrapTokens(inlineTokens(quote[1], 'italic'), width, [seg('▎ ', 'rule')]));
       continue;
     }
     lines.push(...wrapTokens(inlineTokens(raw.trim(), base), width));
@@ -222,17 +225,22 @@ export function bodyLines(entry, width, {continued = false} = {}) {
     return [clipLine([seg('⎿ ', 'dim'), seg(done.join(' · '), 'dim')], width)];
   }
   if (kind === 'confirm') {
-    const lines = wrapTokens(inlineTokens(text, 'warn'), width);
-    const answer = entry.answer === undefined ? [seg('y', 'bold'), seg(' allow · ', 'dim'), seg('n', 'bold'), seg(' decline', 'dim')]
-      : [seg(entry.answer ? 'you allowed it' : 'you declined', entry.answer ? 'ok' : 'dim')];
-    return [...lines, answer];
+    // Pair's question in body text; the command it asks about under it in a code bar, to read and copy whole: the
+    // session's own copy of it (a command may hold backticks itself), else the question's first `code`. The keys
+    // that answer are in the footer, once.
+    const command = entry.command ?? /`([^`]+)`/.exec(text)?.[1];
+    const words = command ? text.replace(`\`${command}\``, () => 'this') : text;
+    const lines = wrapTokens(inlineTokens(words, 'text'), width);
+    if (command) lines.push(...wrapTokens(inlineTokens(command, 'text', {markdown: false}), width, [seg('│ ', 'rule')]));
+    if (entry.answer !== undefined) lines.push([seg(entry.answer ? 'you allowed it' : 'you declined', entry.answer ? 'ok' : 'text')]);
+    return lines;
   }
-  if (kind === 'note') return text.split('\n').flatMap(line => hardWrap(line, width, 'dim'));
+  if (kind === 'note') return text.split('\n').flatMap(line => hardWrap(line, width, 'text'));
   if (kind === 'you') {
     const about = meta.about && entry.aboutText ? [[seg('↳ about: ', 'dim'), ...clipLine([seg(entry.aboutText, 'dim')], width - 9)]] : [];
     return [...about, ...plainLines(text, width)];
   }
-  if (kind === 'system') return plainLines(text, width, 'dim');
+  if (kind === 'system') return plainLines(text, width, 'text');
   if (kind === 'error') return plainLines(text, width, 'error');
   // Pair's words: a remark says what about first; a suggestion shows as a diff under its first line.
   const lines = [];
@@ -342,11 +350,29 @@ export function transcriptLines(entries, width, {selected = -1, query = '', late
 
 // The pane's other parts.
 
-/** The header: where you pair and on what, then the role and the level, on the right. */
+/**
+ * A rule with words in it, `width` wide: ── left ──────── right ──. When they do not fit, `left` is cut down to
+ * `keep` columns (all of it, unless said), then `right` gives way from its end, then `left` is cut further.
+ */
+export function ruleLine(left, right, width, {keep = lineWidth(left)} = {}) {
+  // '── ' left ' ─…─' then ' ' right ' ──': the words, and at least two dashes between them.
+  const tail = r => (r.length ? lineWidth(r) + 4 : 0);
+  const room = r => width - 3 - 1 - 2 - tail(r);
+  const r = [...right];
+  while (r.length && Math.min(keep, lineWidth(left)) > room(r)) r.pop();
+  if (r.length && r[0].text.startsWith(' · ')) r[0] = {...r[0], text: r[0].text.slice(3)};
+  const fitted = lineWidth(left) > room(r) ? clipLine(left, Math.max(1, room(r))) : left;
+  const dashes = Math.max(2, width - 3 - 1 - lineWidth(fitted) - tail(r));
+  const end = r.length ? [seg(' ', 'rule'), ...r, seg(' ──', 'rule')] : [];
+  return clipLine([seg('── ', 'rule'), ...fitted, seg(` ${'─'.repeat(dashes)}`, 'rule'), ...end], width);
+}
+
+/** The header, in the top rule: where you pair and on what, then the role and the level, on the right. */
 export function headerLine({project, goal, role, level, muted = []}, width) {
-  const right = [seg(role ?? '', 'dim'), seg(' · ', 'dim'), seg(level ?? '', 'dim'), ...(muted.length ? [seg(` · ${muted.length} muted`, 'dim')] : [])];
-  const left = [seg(' pair', 'accentBold'), ...(project ? [seg(` · ${project}`, 'bold')] : []), ...(goal ? [seg(` · ${goal}`, 'text')] : [])];
-  return spread(left, role ? [...right, seg(' ')] : [], width);
+  const right = role ? [seg(role, 'dim'), seg(` · ${level ?? ''}`, 'dim'), ...(muted.length ? [seg(` · ${muted.length} muted`, 'dim')] : [])] : [];
+  const where = [seg('pair', 'accentBold'), ...(project ? [seg(' · ', 'dim'), seg(project, 'bold')] : [])];
+  // The goal is cut first, to a few words, before the role and the level give way.
+  return ruleLine([...where, ...(goal ? [seg(' · ', 'dim'), seg(goal, 'text')] : [])], right, width, {keep: lineWidth(where) + (goal ? 12 : 0)});
 }
 
 /** `left` and `right` on one line `width` wide; `left` is cut first. */
@@ -366,46 +392,45 @@ function ago(at, now) {
 }
 
 /**
- * The status row: what Pair does now on the left (with a spinner while it works), and on the right the model, how
- * long its last answer took and what it cost, or that you scrolled up.
+ * The status, in the rule over the input: what Pair does now on the left, in body text (with a spinner while it
+ * works), and on the right the model, how long its last answer took and what it cost, or that you scrolled up. It
+ * names no keys: those are in the footer.
  */
 export function statusLine(view, width) {
-  const {activity = {state: 'idle'}, presence, connection = 'up', now = Date.now(), frame = 0, turn, model, scrolled = 0, role, keepWheel} = view;
+  const {activity = {state: 'idle'}, presence, connection = 'up', now = Date.now(), frame = 0, turn, model, scrolled = 0, role, keepWheel, writing} = view;
   const spin = SPINNER[frame % SPINNER.length];
-  const since = activity.since ? ` · ${duration(now - activity.since)}` : '';
+  const since = activity.since ? [seg(` ${duration(now - activity.since)}`, 'dim')] : [];
   let left;
-  if (connection === 'connecting') left = [seg('… connecting to the pair daemon', 'dim')];
-  else if (connection === 'away') left = [seg('⚠ the pair daemon went away · reconnecting', 'warn')];
-  else if (activity.state === 'thinking') left = [seg(`${spin} `, 'accent'), seg('thinking', 'accentBold'), seg(`${since} · `, 'dim'), seg('Esc', 'bold'), seg(' stops', 'dim')];
-  else if (activity.state === 'tool') left = [seg(`${spin} `, 'accent'), seg(`${DOING[activity.tool] ?? activity.tool} `, 'accentBold'), seg(activity.what ?? '', 'text'), seg(since, 'dim')];
-  else if (activity.state === 'remark') left = [seg(`${spin} `, 'dim'), seg(`looking at ${(activity.what ?? 'a moment').replace(/_/g, ' ')}`, 'dim'), seg(since, 'dim')];
-  else if (activity.state === 'waiting') left = [seg('? ', 'warn'), seg('Pair waits for your answer: ', 'warn'), seg('y', 'bold'), seg(' allow · ', 'dim'), seg('n', 'bold'), seg(' decline', 'dim')];
-  else if (role === 'driver') left = [seg('◆ ', 'accent'), seg(keepWheel ? 'Pair keeps the wheel · any key in Neovim takes it back' : 'Pair drives', 'accent')];
+  if (connection === 'connecting') left = [seg('… ', 'dim'), seg('connecting to the pair daemon', 'text')];
+  else if (connection === 'away') left = [seg('⚠ ', 'error'), seg('the pair daemon went away', 'text'), seg(' · reconnecting', 'dim')];
+  else if (activity.state === 'thinking') left = [seg(`${spin} `, 'accent'), seg(writing ? 'writing' : 'thinking', 'text'), ...since];
+  else if (activity.state === 'tool') left = [seg(`${spin} `, 'accent'), seg(`${DOING[activity.tool] ?? activity.tool} `, 'text'), seg(activity.what ?? '', 'text'), ...since];
+  else if (activity.state === 'remark') left = [seg(`${spin} `, 'accent'), seg(`looking at ${(activity.what ?? 'a moment').replace(/_/g, ' ')}`, 'text'), ...since];
+  else if (activity.state === 'waiting') left = [seg('? ', 'warn'), seg('waiting for your answer', 'text')];
+  else if (role === 'driver') left = [seg('◆ ', 'accent'), seg(keepWheel ? 'Pair keeps the wheel' : 'Pair drives', 'text')];
   else {
     const looked = presence?.looked ? ` · looked at ${presence.looked} moment${presence.looked === 1 ? '' : 's'}, spoke ${presence.spoke}` : '';
     const last = presence?.lastAt ? ` · ${ago(presence.lastAt, now)}` : '';
-    left = [seg('◇ ', 'accent'), seg(role === 'scout' ? 'watching, as Scout' : 'watching', 'dim'), seg(`${looked}${last}`, 'dim')];
+    left = [seg('◇ ', 'accent'), seg(role === 'scout' ? 'watching, as Scout' : 'watching', 'text'), ...(looked || last ? [seg(`${looked}${last}`, 'dim')] : [])];
   }
   const right = [];
-  if (connection !== 'up') return spread([seg(' '), ...left], [], width);
-  if (scrolled) right.push(seg(`↓ ${scrolled} line${scrolled === 1 ? '' : 's'} below · End`, 'warn'));
-  else {
-    if (model) right.push(seg(model, 'dim'));
-    if (turn?.ms) right.push(seg(`${model ? ' · ' : ''}${(turn.ms / 1000).toFixed(1)}s`, 'dim'));
-    if (turn?.tokens) right.push(seg(` · ${turn.tokens >= 1000 ? `${(turn.tokens / 1000).toFixed(1)}k` : turn.tokens} tok`, 'dim'));
-    if (turn?.cost) right.push(seg(` · $${turn.cost < 0.01 ? turn.cost.toFixed(4) : turn.cost.toFixed(2)}`, 'dim'));
+  if (connection === 'up') {
+    if (scrolled) right.push(seg(`↓ ${scrolled} line${scrolled === 1 ? '' : 's'} below`, 'text'));
+    else {
+      if (model) right.push(seg(model, 'dim'));
+      if (turn?.ms) right.push(seg(`${model ? ' · ' : ''}${(turn.ms / 1000).toFixed(1)}s`, 'dim'));
+      if (turn?.tokens) right.push(seg(` · ${turn.tokens >= 1000 ? `${(turn.tokens / 1000).toFixed(1)}k` : turn.tokens} tok`, 'dim'));
+      if (turn?.cost) right.push(seg(` · $${turn.cost < 0.01 ? turn.cost.toFixed(4) : turn.cost.toFixed(2)}`, 'dim'));
+    }
   }
   // What Pair does comes first: the right side gives way, from its end.
-  const head = [seg(' '), ...left];
-  while (right.length && lineWidth(head) + lineWidth(right) + 2 > width) right.pop();
-  if (right.length && right[0].text.startsWith(' · ')) right[0] = {...right[0], text: right[0].text.slice(3)};
-  return spread(head, right.length ? [...right, seg(' ')] : [], width);
+  return ruleLine(left, right, width);
 }
 
 /** The keys that work now, for the footer. */
 export function footerKeys(view) {
-  const {mode = 'idle', busy, editorEmpty = true, selectedEntry, confirming, about} = view;
-  const k = (keys, what) => [keys, what];
+  const {mode = 'idle', busy, editorEmpty = true, selectedEntry, confirming, about, scroll = 0} = view;
+  const k = (keys, what, style = 'bold') => [keys, what, style];
   if (mode === 'help') return [k('↑↓ PgUp PgDn', 'scroll'), k('any other key', 'closes this')];
   if (mode === 'search') return [k('type', 'to find'), k('↑↓', 'older/newer'), k('Enter', 'keep'), k('Esc', 'close')];
   if (mode === 'menu') return [k('↑↓', 'choose'), k('Tab', 'complete'), k('Enter', 'run'), k('Esc', 'close')];
@@ -418,9 +443,11 @@ export function footerKeys(view) {
     keys.push(k('Esc', 'back'));
     return keys;
   }
-  if (confirming && editorEmpty) return [k('y', 'allow'), k('n', 'decline'), k('or type', 'an answer')];
+  if (confirming && editorEmpty) return [k('y', 'allow', 'answer'), k('n', 'decline', 'answer'), k('Esc', 'decline')];
+  if (confirming) return [k('Enter', 'answers'), k('Esc', 'decline')];
   const keys = [];
   if (busy) keys.push(k('Esc', 'stop'));
+  if (scroll && editorEmpty) keys.push(k('End', 'latest'));
   if (about) keys.push(k('Esc', 'drop the follow-up'));
   if (editorEmpty) keys.push(k('/', 'commands'), k('@', 'files'), k('Alt-↑', 'messages'), k('?', 'keys'));
   else keys.push(k('Enter', 'send'), k('Alt-Enter', 'newline'), k('Tab', 'complete'));
@@ -430,8 +457,8 @@ export function footerKeys(view) {
 /** The footer: the keys of footerKeys, as many as fit. */
 export function footerLine(view, width) {
   const out = [seg(' ')];
-  for (const [keys, what] of footerKeys(view)) {
-    const part = [seg(keys, 'bold'), seg(` ${what}`, 'dim')];
+  for (const [keys, what, style] of footerKeys(view)) {
+    const part = [seg(keys, style), seg(` ${what}`, 'dim')];
     const sep = out.length > 1 ? [seg(' · ', 'dim')] : [];
     if (lineWidth(out) + lineWidth(sep) + lineWidth(part) > width) break;
     out.push(...sep, ...part);
@@ -457,10 +484,10 @@ function menuRule(kind, width) {
 
 /** What the pane shows before anything is said: what Pair does, and how to talk to it. */
 export function emptyLines(width) {
-  const text = (words, style = 'dim', first = [seg('  ')], rest = [seg('  ')]) => wrapTokens(inlineTokens(words, style, {markdown: false}), width, first, rest);
-  const key = (keys, words) => text(words, 'dim', [seg(`  ${keys.padEnd(7)}`, 'bold')], [seg(' '.repeat(9))]);
+  const text = (words, style = 'text', first = [seg('  ')], rest = [seg('  ')]) => wrapTokens(inlineTokens(words, style, {markdown: false}), width, first, rest);
+  const key = (keys, words) => text(words, 'text', [seg(`  ${keys.padEnd(7)}`, 'bold')], [seg(' '.repeat(9))]);
   const mascot = ['▗▄▄▖ ', '▐▘▝▌ ', '▝▀▀▘ '];
-  const intro = text('It watches you work and speaks rarely: a line in Neovim, more here when you ask.', 'dim', [seg('       ')], [seg('       ')]);
+  const intro = text('It watches you work and speaks rarely: a line in Neovim, more here when you ask.', 'text', [seg('       ')], [seg('       ')]);
   const top = [[seg('  '), seg(mascot[0], 'accent'), seg('Pair', 'accentBold'), seg(' · your pair in the second chair')], ...intro];
   top.forEach((line, i) => {
     if (i > 0 && i < mascot.length) line.splice(0, 1, seg('  '), seg(mascot[i], 'accent'));
@@ -495,27 +522,27 @@ export function helpLines(commands, width) {
     ['Ctrl-C', 'stop, or clear; twice on an empty line: close'],
   ];
   // The left column is 15 wide, with at least one space after what it names: a command too long for it goes without its arguments.
-  const two = (left, right, leftStyle = 'bold') => wrapTokens(inlineTokens(right, 'dim', {markdown: false}), width, [seg(`  ${left}`.padEnd(15), leftStyle)], [seg(' '.repeat(15))]);
+  const two = (left, right, leftStyle = 'bold') => wrapTokens(inlineTokens(right, 'text', {markdown: false}), width, [seg(`  ${left}`.padEnd(15), leftStyle)], [seg(' '.repeat(15))]);
   const label = (name, args) => (args && name.length + args.length + 1 <= 12 ? `${name} ${args}` : name);
   return [
     [seg(' Keys', 'accentBold')],
     ...keys.flatMap(([left, right]) => two(left, right)),
     blank(),
-    [seg(' Commands', 'accentBold'), seg(' · anything else is a question for Pair', 'dim')],
+    [seg(' Commands', 'accentBold'), seg(' · anything else is a question for Pair', 'text')],
     ...commands.flatMap(([name, args, what]) => two(label(name, args), what)),
   ].map(line => clipLine(line, width));
 }
 
 /**
- * The whole frame, `height` lines of `width`: header, conversation (or the empty card, or the help), menu, rule,
- * status, input and footer; painted with `look`. Returns {lines, cursor, transcript: {height, total, ranges}}.
+ * The whole frame, `height` lines of `width`: the header in its rule, conversation (or the empty card, or the help),
+ * menu, the status in its rule, input and footer; painted with `look`. Returns {lines, cursor, transcript: {height, total, ranges}}.
  */
 export function renderFrame(view, {width, height, look = {color: false}}) {
   if (width < 24 || height < 8) {
     const lines = Array.from({length: height}, (_, i) => (i === Math.floor(height / 2) ? paintLine(clipLine([seg(' Pair: too small', 'dim')], width), look) : ''));
     return {lines, cursor: null, transcript: {height: 0, total: 0, ranges: []}};
   }
-  const top = [headerLine(view.header ?? {}, width), rule(width)];
+  const top = [headerLine(view.header ?? {}, width)];
   // What you type: after the prompt, wrapped, at most six rows, the cursor's row in sight.
   const prompt = view.confirming ? 'y/N › ' : '› ';
   const inputWidth = width - textWidth(prompt) - 1;
@@ -523,13 +550,13 @@ export function renderFrame(view, {width, height, look = {color: false}}) {
   const shown = Math.min(6, layout.rows.length);
   const first = Math.max(0, Math.min(layout.row - shown + 1, layout.rows.length - shown));
   const input = layout.rows.slice(first, first + shown).map((row, i) => [
-    seg(i === 0 && first === 0 ? prompt : ' '.repeat(textWidth(prompt)), view.confirming ? 'warn' : 'accent'),
+    seg(i === 0 && first === 0 ? prompt : ' '.repeat(textWidth(prompt)), 'accent'),
     seg(row, 'text'),
   ]);
   if (view.editor.empty && view.placeholder) input[0].push(seg(view.placeholder, 'dim'));
   if (view.about) input.unshift(clipLine([seg('↳ ', 'accent'), seg('follow-up on: ', 'dim'), seg(view.about, 'text')], width));
   if (view.search !== undefined && view.mode === 'search') input.unshift([seg(' find: ', 'accent'), seg(view.search, 'bold'), seg(view.searchNote ? `  ${view.searchNote}` : '', 'dim')]);
-  const bottom = [rule(width), statusLine(view, width), ...input, footerLine(view, width)];
+  const bottom = [statusLine({...view, scrolled: view.mode === 'help' ? 0 : view.scroll ?? 0}, width), ...input, footerLine(view, width)];
   const menu = view.menu?.items?.length ? [menuRule(view.menu.kind, width), ...menuLines(view.menu.items, view.menu.chosen, width)] : [];
   const middle = Math.max(1, height - top.length - bottom.length - menu.length);
 

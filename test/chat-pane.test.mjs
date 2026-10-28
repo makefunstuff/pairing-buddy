@@ -3,6 +3,7 @@
 // frame as plain lines (no colours: the output is no terminal).
 import assert from 'node:assert/strict';
 import {realpathSync, writeFileSync} from 'node:fs';
+import {createServer} from 'node:net';
 import {join} from 'node:path';
 import {PassThrough} from 'node:stream';
 import {test} from 'node:test';
@@ -12,6 +13,7 @@ import {startChatPane} from '../src/chat.mjs';
 import {loadConfig} from '../src/config.mjs';
 import {startDaemon} from '../src/daemon.mjs';
 import {openPartner} from '../src/partner.mjs';
+import {readMessages, sendMessage} from '../src/protocol.mjs';
 import {ROLE_TOOLS} from '../src/tools.mjs';
 import {client} from './daemon-client.mjs';
 import {scratch} from './temp.mjs';
@@ -78,14 +80,17 @@ test('the empty pane says what Pair is and how to talk to it; the goal you type 
   const t = await setUp();
   try {
     await t.shows('What are we doing this session?');
+    assert.match(t.text(), /\d\d:\d\d pair  What are we doing this session\?/, 'Pair asks it, as pair, not as a note');
     assert.match(t.text(), /Pair · your pair in the second chair/);
     assert.match(t.text(), /\?      every key/);
     assert.match(t.text(), /› the session's goal, or "later"/, 'the input says what it waits for');
-    assert.match(t.text(), /^ pair · pair-pane-\w+ +navigator · normal $/m, 'the header: the project, the role, the level');
+    assert.match(t.text(), /^── pair · pair-pane-\w+ ─+ navigator · normal ──$/m, 'the header in the top rule: the project, the role, the level');
+    assert.equal(t.text().split('\n')[1].trim(), '', 'no second rule under it');
     await t.type('make the queue lease right\r');
     assert.match(t.text(), /\d\d:\d\d you   make the queue lease right/, 'what you sent shows before the daemon answers');
-    await t.shows('Goal: make the queue lease right');
-    await t.shows(/pair · pair-pane-\w+ · make the queue le/);
+    await t.shows(/── pair · pair-pane-\w+ · make the queue … ── navigator/);
+    await sleep(200);
+    assert.doesNotMatch(t.text(), /Goal: make/, 'the goal is in the header, not said again');
     assert.doesNotMatch(t.text(), /every key/, 'the card goes once you talk');
   } finally {
     await t.close();
@@ -108,7 +113,7 @@ test('a question: the tool lines, the answer in Markdown, and the model and time
     const frame = t.text();
     assert.match(frame, /• ttl is the budget/, 'a list, its code without backticks');
     assert.match(frame, /│ ttl: cfg\.Budget \+ cfg\.AttemptTimeout/, 'a code block, behind its bar');
-    assert.match(frame, /◇ watching +Faux Model · \d+\.\ds/, 'idle again, with the model and how long it took');
+    assert.match(frame, /── ◇ watching ─+ Faux Model · \d+\.\ds/, 'idle again, with the model and how long it took, in the rule');
   } finally {
     await t.close();
   }
@@ -140,19 +145,19 @@ test('typing: / opens the commands, Tab completes, Up brings back what you sent,
 
 test('the header follows the talk level: /quiet, /level and Alt-L, which goes on from the level now', {timeout: 20_000}, async () => {
   const t = await setUp();
-  const level = () => / navigator · (\w+) $/m.exec(t.text())?.[1];
+  const level = () => / navigator · (\w+) ──$/m.exec(t.text())?.[1];
   try {
     await t.shows('What are we doing');
     await t.type('later\r');
     await t.shows('No goal then.');
     await t.type('/quiet\r');
-    await t.shows(/ navigator · quiet $/m);
+    await t.shows(/ navigator · quiet ──$/m);
     for (const next of ['normal', 'chatty', 'quiet', 'normal']) {
       await t.type('\x1bl'); // Alt-L
-      await t.shows(new RegExp(` navigator · ${next} $`, 'm'), `the level ${next} after ${level()}`);
+      await t.shows(new RegExp(` navigator · ${next} ──$`, 'm'), `the level ${next} after ${level()}`);
     }
     await t.type('/level chatty\r');
-    await t.shows(/ navigator · chatty $/m);
+    await t.shows(/ navigator · chatty ──$/m);
   } finally {
     await t.close();
   }
@@ -184,9 +189,12 @@ test('Esc stops an answer while it streams; what streamed goes, and the pane say
     await t.type('later\r');
     t.partner.setResponses([fauxAssistantMessage([fauxText('This answer takes a long time to come, word by word, so that there is time to stop it.')])]);
     await t.type('tell me slowly\r');
-    await t.shows(/thinking · \d+s · Esc stops/);
+    await t.shows(/── ▖ thinking \d+s ─/);
+    assert.match(t.text(), /^ Esc stop · /m, 'the key is in the footer');
+    assert.doesNotMatch(t.text(), /thinking.*Esc/, 'the status names no keys');
     await t.shows('This answer');
     assert.match(t.text(), /▍/, 'the cursor of an answer still coming');
+    await t.shows(/── ▖ writing \d+s ─/, 'writing, once the words arrive');
     await t.type('\x1b');
     await t.shows('Stopped. Ask again, or ask something else.');
     await t.shows('◇ watching');
@@ -301,5 +309,89 @@ test('a streamed answer never loses its start: each text streamed is the start o
     } finally {
       await partner.close();
     }
+  }
+});
+
+/** A stand-in daemon on a scratch socket: it welcomes the pane, and keeps what the pane sends. */
+async function standIn(dir, welcome) {
+  const socket = join(dir, 'stand-in.sock');
+  const got = [];
+  const clients = [];
+  const server = createServer(client => {
+    clients.push(client);
+    readMessages(client, message => {
+      got.push(message);
+      if (message.type === 'hello') sendMessage(client, {type: 'welcome', root: dir, role: 'navigator', level: 'normal', model: 'qwen3', ...welcome});
+    });
+  });
+  await new Promise(resolve => server.listen(socket, resolve));
+  return {
+    socket, got,
+    send: message => clients.forEach(client => sendMessage(client, message)),
+    close: () => new Promise(resolve => { clients.forEach(client => client.destroy()); server.close(resolve); }),
+  };
+}
+
+test('Pair asks before it runs a command: its words in body text, the command behind a bar, the answer keys once; Esc declines', {timeout: 20_000}, async () => {
+  const dir = realpathSync(scratch('pair-pane-'));
+  const daemon = await standIn(dir, {goal: 'make the lease outlive the retry'});
+  const input = new PassThrough();
+  const pane = startChatPane(daemon.socket, {input, output: {isTTY: false, write: () => {}, on: () => {}}, size: () => ({width: 90, height: 16}), cwd: dir, env: {}, exit: () => {}});
+  const text = () => pane.frame().join('\n');
+  const shows = async pattern => {
+    for (let i = 0; i < 200 && !pattern.test(text()); i++) await sleep(25);
+    assert.match(text(), pattern);
+  };
+  try {
+    await shows(/── pair · pair-pane-\w+ · make the lease outlive the retry ─+ navigator · normal ──/);
+    daemon.send({type: 'message', sender: 'pair', text: 'Goal: make the lease outlive the retry', at: Date.now(), meta: {greeting: true, goal: 'set'}});
+    daemon.send({type: 'activity', state: 'waiting'});
+    daemon.send({type: 'confirm', id: 7, text: 'May I run `go test ./internal/queue -run TestLease -count=1` in my pane (go test runs code)?', command: 'go test ./internal/queue -run TestLease -count=1'});
+    await shows(/pair  May I run this in my pane \(go test runs code\)\?\n +│ go test \.\/internal\/queue -run TestLease -count=1/);
+    const frame = text();
+    assert.doesNotMatch(frame, /Goal: make/, 'the goal only once, in the header');
+    assert.match(frame, /── \? waiting for your answer ─+ qwen3 ──\ny\/N › or type an answer\n y allow · n decline · Esc decline$/);
+    assert.equal(frame.match(/decline/g).length, 2, 'the answer keys once, in the footer');
+    pane.key('logs');
+    await sleep(50);
+    pane.key('\x1b');
+    for (let i = 0; i < 100 && !daemon.got.some(m => m.type === 'confirm'); i++) await sleep(20);
+    assert.deepEqual(daemon.got.find(m => m.type === 'confirm'), {type: 'confirm', id: 7, ok: false, text: 'n'});
+    await shows(/you declined/);
+    assert.match(text(), /^› Ask Pair anything/m, 'what was typed is dropped, not sent later as a question');
+    daemon.send({type: 'activity', state: 'idle'});
+    const ticks = 'ls `pwd`/build && rm -rf out';
+    daemon.send({type: 'confirm', id: 8, text: `May I run \`${ticks}\` in my pane (it runs a command substitution)?`, command: ticks});
+    await shows(/May I run this in my pane \(it runs a command substitution\)\?\n +│ ls `pwd`\/build && rm -rf out/);
+  } finally {
+    pane.close();
+    await daemon.close();
+  }
+});
+
+test('a goal set elsewhere while Pair\'s question for it is open answers it on screen; one you typed is not said again', {timeout: 20_000}, async () => {
+  const dir = realpathSync(scratch('pair-pane-'));
+  const daemon = await standIn(dir, {});
+  const pane = startChatPane(daemon.socket, {input: new PassThrough(), output: {isTTY: false, write: () => {}, on: () => {}}, size: () => ({width: 90, height: 16}), cwd: dir, env: {}, exit: () => {}});
+  const text = () => pane.frame().join('\n');
+  const shows = async pattern => {
+    for (let i = 0; i < 200 && !pattern.test(text()); i++) await sleep(25);
+    assert.match(text(), pattern);
+  };
+  try {
+    await shows(/── pair · pair-pane-\w+ ─/);
+    daemon.send({type: 'message', sender: 'pair', text: 'What are we doing this session? Type the goal here, or "later".', at: Date.now(), meta: {greeting: true, goal: 'ask'}});
+    daemon.send({type: 'goal', goal: 'retries reach the budget'});
+    daemon.send({type: 'message', sender: 'system', text: 'Goal: retries reach the budget', at: Date.now(), meta: {goal: 'set'}});
+    await shows(/What are we doing this session\?[\s\S]*·· +Goal: retries reach the budget/);
+    daemon.send({type: 'message', sender: 'pair', text: 'What are we doing this session? Type the goal here, or "later".', at: Date.now(), meta: {greeting: true, goal: 'ask'}});
+    daemon.send({type: 'message', sender: 'user', text: 'make the lease right', at: Date.now(), history: true});
+    daemon.send({type: 'message', sender: 'system', text: 'Goal: make the lease right', at: Date.now(), meta: {goal: 'set'}});
+    await shows(/you +make the lease right/);
+    await sleep(100);
+    assert.doesNotMatch(text(), /Goal: make the lease right/, 'you typed it: the header has it');
+  } finally {
+    pane.close();
+    await daemon.close();
   }
 });

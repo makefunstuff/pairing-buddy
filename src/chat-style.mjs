@@ -108,7 +108,8 @@ export const STYLES = {
   system: ['dim'],
   error: ['red'],
   errorBold: ['red', 'bold'],
-  warn: ['yellow'],
+  warn: ['yellow'], // the ? of a question that waits for you
+  answer: ['yellow', 'bold'], // y and n, the keys that answer it
   add: ['green'],
   del: ['red'],
   hunk: ['cyan'],

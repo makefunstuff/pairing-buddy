@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {LineEditor} from '../src/chat-input.mjs';
-import {clipboardSequence, KeyDecoder} from '../src/chat-screen.mjs';
+import {clipboardSequence, KeyDecoder, Screen} from '../src/chat-screen.mjs';
 import {openHistory} from '../src/chat-history.mjs';
 import {join} from 'node:path';
 import {scratch} from './temp.mjs';
@@ -101,4 +101,15 @@ test('the history of what you sent is kept per project, the newest last, without
   assert.deepEqual(openHistory(file).of('/p'), ['a', 'c', 'd']);
   assert.deepEqual(openHistory(file).of('/q'), ['other']);
   assert.deepEqual(openHistory(join(file, 'nowhere')).of('/p'), [], 'none to read: empty');
+});
+
+test('the screen clears a line before it writes it, so a line as wide as the pane keeps its last column', () => {
+  let out = '';
+  const screen = new Screen({write: data => { out += data; }});
+  screen.draw(['── rule ──', 'short'], null);
+  // Erasing after a full-width line would erase the column the cursor waits on: its last character.
+  assert.equal(out, '\x1b[?25l\x1b[1;1H\x1b[0m\x1b[K── rule ──\x1b[0m\x1b[2;1H\x1b[0m\x1b[Kshort\x1b[0m');
+  out = '';
+  screen.draw(['── rule ──', 'other'], null);
+  assert.equal(out, '\x1b[?25l\x1b[2;1H\x1b[0m\x1b[Kother\x1b[0m', 'only what changed');
 });

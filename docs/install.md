@@ -135,7 +135,7 @@ when none has it (you are in the chat pane, or the browser), the one you were in
 as its LSP's diagnostics or a file it reloads while you are elsewhere, never make it the one. Pair reads a file from
 whichever Neovim has it loaded, the one you are in first.
 
-**Restarts.** If the daemon restarts, the chat pane's status row says so, the pane waits for it and carries on,
+**Restarts.** If the daemon restarts, the chat pane's status says so, the pane waits for it and carries on,
 without showing the history twice. Neovim reconnects by itself too ([neovim.md](neovim-plugin.md#setup)). If you had asked something the
 restart cut off, Pair finishes that answer and shows it marked as late, in the chat and in Neovim, also when they
 reconnect after it. A remark Pair was making unasked, or a hand-over, is dropped instead.
