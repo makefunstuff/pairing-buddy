@@ -16,6 +16,7 @@ local hints = require('pair.hints')
 local ledger = require('pair.ledger')
 local earcons = require('pair.earcons')
 local gen = require('pair.gen')
+local genfiles = require('pair.genfiles')
 local listen = require('pair.listen')
 local margin = require('pair.margin')
 local pane = require('pair.pane')
@@ -543,7 +544,8 @@ local function suggest(message)
   redraw_status()
 end
 
---- The daemon took back /gen request `message.gen` (/undo, or it was cancelled): its code still showing goes.
+--- The daemon took back /gen request `message.gen` (/undo, or it was cancelled): its code still showing goes, and
+--- so do its files still to review.
 local function gen_drop(message)
   for _, suggestion in ipairs(vim.list_slice(suggestions.all())) do
     if suggestion.gen == message.gen then
@@ -551,6 +553,7 @@ local function gen_drop(message)
       drop_suggestion(suggestion)
     end
   end
+  genfiles.drop_gen(message.gen)
 end
 
 --- Your edit of rows `first`..`last` answers what Pair said: its words go, and so does a point on those lines.
@@ -1100,6 +1103,13 @@ local handlers = {
   gen_drop = gen_drop,
   gen_place = gen_place,
   gen_where = function(message) send({type = 'reply', id = message.id, result = gen.where(message.gen) or vim.NIL}) end,
+  -- /gen file: the files to review as pair://gen/<n>/<path> buffers, the list, and /undo of a file you wrote.
+  gen_files = function(message)
+    local result = genfiles.on_files(message)
+    if message.id then send({type = 'reply', id = message.id, result = result}) end
+  end,
+  gen_review = genfiles.on_review,
+  gen_unwrite = function(message) send({type = 'reply', id = message.id, result = genfiles.unwrite(message)}) end,
   -- Without herdr: Pair's pane, your terminals and typing into one of them, all in this Neovim (pane.lua).
   pane = function(message) pane.request(message, function(result) send({type = 'reply', id = message.id, result = result}) end) end,
   terminals = function(message) send({type = 'reply', id = message.id, result = pane.listing()}) end,
@@ -1396,11 +1406,13 @@ local commands = {
   noise = function() feedback(false, state.remark) end,
   why = function() M.teach() end,
   agents = agents.request,
-  -- /gen: `:Pair gen` asks in a dialog, `:Pair gen [here] <what>` asks at once, `:Pair gen +` opens the compose
-  -- window; with a range, over those lines (in a note, the lines are the request). `:Pair gen cancel` stops it.
+  -- /gen: `:Pair gen` asks in a dialog, `:Pair gen [here|file] <what>` asks at once, `:Pair gen +` opens the compose
+  -- window; with a range, over those lines (in a note, the lines are the request). `:Pair gen cancel` stops it, and
+  -- `:Pair gen list` lists the files of /gen file requests to review.
   gen = function(arg, selection)
     if not M.connect() then return vim.notify('Pair: not connected, so no /gen yet; :Pair gen again once it is', vim.log.levels.WARN) end
     if arg == 'cancel' then return send({type = 'gen_cancel'}) end
+    if arg == 'list' then return genfiles.open() end
     local compose = arg == '+' or vim.startswith(arg, '+ ')
     gen.ask(compose and vim.trim(arg:sub(2)) or arg, selection, compose)
   end,
@@ -1483,7 +1495,9 @@ function M.setup(opts)
     typing = function() return now_ms() - typing_at < 1500 end,
     accept_key = function() return config.accept_key end,
     accept = function(suggestion) accept(suggestion) end,
+    files_status = genfiles.status,
   })
+  genfiles.setup({send = send, redraw_status = redraw_status, label = label, decide_key = config.decide_key})
   style.apply()
   local group = vim.api.nvim_create_augroup('pair', {clear = true})
   local function restyle()

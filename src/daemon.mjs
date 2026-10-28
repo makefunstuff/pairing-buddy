@@ -568,6 +568,8 @@ export async function startDaemon(config, {
     if (client.role === 'editor' && session.testsShown) sendMessage(client.socket, session.testsShown);
     if (client.role === 'editor' && session.runShown) sendMessage(client.socket, session.runShown);
     if (client.role === 'editor' && session.runLineShown) sendMessage(client.socket, session.runLineShown);
+    // The files of /gen file requests still to review, as buffers: a Neovim that restarted lost them.
+    if (client.role === 'editor') for (const files of session.gen.reopen()) sendMessage(client.socket, files);
     if (message.herdr?.socket) agents?.useHerdr(message.herdr.socket);
     const relayed = relays.get(session.root)?.last;
     if (client.role === 'editor' && relayed) sendMessage(client.socket, relayed);
@@ -768,6 +770,9 @@ export async function startDaemon(config, {
     if (message.type === 'gen') return genFrom(client, session, message);
     if (message.type === 'gen_answer' && Number.isInteger(message.gen)) return session.gen.answer(message.gen, message.id, message.text);
     if (message.type === 'gen_dropped' && Number.isInteger(message.action)) return session.gen.dropped(message.action, message.piece);
+    if (message.type === 'gen_written' && Number.isInteger(message.action)) return session.gen.fileTaken(message.action, message.piece, message.text);
+    if (message.type === 'gen_review') return sendMessage(client.socket, session.gen.review());
+    if (message.type === 'gen_decide' && Number.isInteger(message.action)) return session.gen.decide(message.action, message.guess);
     if (message.type === 'gen_cancel') return session.gen.cancel();
     if (message.type === 'gen_list') return session.gen.list();
     if (message.type === 'brief') return briefFrom(client, session, message);

@@ -22,6 +22,9 @@ export const gitCommitsSince = (root, since) => git(root, ['log', '-10', `--sinc
 /** The files git tracks in `root` whose path ends in `name` ("worker.go", "delivery/worker.go"), relative to it. */
 export const gitFilesNamed = (root, name) => git(root, ['ls-files', '--', `:(glob)**/${name}`])
   .then(out => out.split('\n').filter(Boolean), () => []);
+/** The files of `root` git knows or would add (tracked, and new ones it does not ignore), relative to it; null outside git. */
+export const gitFiles = root => git(root, ['ls-files', '--cached', '--others', '--exclude-standard'])
+  .then(out => [...new Set(out.split('\n').filter(Boolean))], () => null);
 
 /**
  * The names the repository of `root` goes by: the folder of its main checkout (also from one of its worktrees) and

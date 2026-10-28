@@ -14,7 +14,7 @@ M.ns = vim.api.nvim_create_namespace('pair_gen')
 
 local config = {input = 'ui', preview_lines = 30, key = '<M-g>'}
 -- What init.lua lends: send(message), redraw_status(), typing() (you typed a moment ago), project_path(buf),
--- accept(suggestion), label(key).
+-- accept(suggestion), label(key), files_status(n) (what genfiles.lua says of the files to review).
 local deps = {}
 local requests = {} -- n -> {state, since, shape, mark}: the requests the daemon told of
 local marks = {} -- token -> {token, buf, id, row, file, line, range}: where you asked, until the daemon numbers it
@@ -309,16 +309,22 @@ function M.status()
   local key = deps.label and deps.label(config.key)
   if waiting then return {text = ('gen #%d asks · %s'):format(waiting.gen, key or ':Pair gen')} end
   local request = current
-  if not request or not request.state then return nil end
+  if not request or not request.state then
+    local files = deps.files_status()
+    return files and {text = files} or nil
+  end
   if request.state == 'generating' or request.state == 'asks' then
     return {text = ('gen #%d · generating · %ds'):format(request.n, math.floor((vim.uv.now() - request.since) / 1000)), busy = true}
   end
   if request.state == 'queued' then return {text = ('gen #%d waits for the one before'):format(request.n)} end
   if request.state == 'asking' then return {text = ('gen #%d · asking'):format(request.n)} end
   if request.state == 'ready' then
+    local files = deps.files_status(request.n)
+    if files then return {text = files} end
     return {text = ('gen #%d ready · %s takes · :Pair dismiss'):format(request.n, deps.label(deps.accept_key()) or ':Pair accept')}
   end
-  return nil
+  local files = deps.files_status()
+  return files and {text = files} or nil
 end
 
 -- The preview: a block taller than gen_preview_lines, in a window of its own under the line it goes to.

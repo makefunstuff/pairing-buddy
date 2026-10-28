@@ -35,3 +35,22 @@ io.stdout:write(vim.json.encode(listed))`);
     {file: join(root, 'src/new.c'), text: 'int fresh;\n'},
   ]);
 });
+
+test('a /gen file waiting to be taken counts at its real path; another special buffer does not', {skip: hasNvim ? false : 'nvim not installed'}, () => {
+  const root = realpathSync(scratch('pair-buffers-'));
+  const script = join(root, 'list.lua');
+  writeFileSync(script, `
+local function special(name, lines, proposal)
+  local buf = vim.api.nvim_create_buf(true, false)
+  vim.api.nvim_buf_set_name(buf, name)
+  vim.bo[buf].buftype = 'acwrite'
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  vim.bo[buf].modified = true
+  if proposal then vim.b[buf].pair_gen = proposal end
+end
+special('pair://gen/4/db/new.sql', {'CREATE TABLE t (x INT);'}, {gen = 4, action = 1, piece = 0, file = '${join(root, 'db/new.sql')}'})
+special('pair://gen/compose', {'a request'})
+io.stdout:write(vim.json.encode(require('pair.buffers').unsaved('${root}')))`);
+  const listed = JSON.parse(execFileSync('nvim', ['--headless', '--clean', '-n', '--cmd', `set rtp+=${REPO} hidden`, '-l', script], {encoding: 'utf8'}));
+  assert.deepEqual(listed, [{file: join(root, 'db/new.sql'), text: 'CREATE TABLE t (x INT);\n'}]);
+});

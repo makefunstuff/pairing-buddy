@@ -1787,12 +1787,14 @@ export class PairSession {
   /**
    * Runs `command` on the unsaved buffers, in the scratch copy: every unsaved buffer of the project, and each of the
    * `edited` files as its buffer has it, so the check sees the whole change and what the user has not saved besides.
+   * `extra` (file -> text) are files no buffer may have yet: a /gen file request's new files.
    */
-  async runUnsaved(command, edited) {
+  async runUnsaved(command, edited, extra = new Map()) {
     const runs = command === this.testRuns?.command ? this.testRuns : new TestRuns({
       root: this.root, command, outputFile: this.checkOutput, pane: () => this.scout, report: run => this.testRun(run),
     });
     const texts = await this.unsavedBuffers();
+    for (const [file, text] of extra) if (!texts.has(file)) texts.set(file, text);
     for (const file of edited) if (!texts.has(file)) texts.set(file, await this.bufferText(file));
     return runs.unsaved(texts, edited);
   }
@@ -1800,11 +1802,12 @@ export class PairSession {
   /**
    * The check of code taken from a /gen request, on the unsaved buffers of `files`, with the command a hand-over's
    * check would use: `{label, mark, text}`, or null when nothing ran (no command, not allowed, or it could not start).
+   * `texts` are new files a buffer may not have yet, at their real paths.
    */
-  async checkGenerated(files) {
+  async checkGenerated(files, texts = new Map()) {
     const check = checkCommand({testCommand: this.testRuns?.command, runs: this.state.runs, root: this.root});
     if (!check.command || !(await this.checkAllowed(check))) return null;
-    const run = await this.runUnsaved(check.command, files).catch(error => ({state: 'error', error: error.message}));
+    const run = await this.runUnsaved(check.command, files, texts).catch(error => ({state: 'error', error: error.message}));
     if (run.state === 'error') return null;
     return {label: run.label, mark: isRed(run) ? 'fail' : 'pass', text: runText(run)};
   }

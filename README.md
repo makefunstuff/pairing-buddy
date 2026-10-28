@@ -6,7 +6,8 @@ Pair is a Neovim plugin and a daemon that work next to you like a colleague in t
 says one short line under your cursor when it spots something, runs the tests you would skip, and takes the keyboard
 only when you hand it over. It is not code completion and not a chat sidebar, and it never writes your files: its
 edits land unsaved in your buffer as one undo step, and the disk changes only when you save. When you ask it for
-code (`/gen`), it proposes it where you asked, and you take it with one key, also unsaved.
+code (`/gen`), it proposes it where you asked, and you take it with one key, also unsaved; new files it drafts are
+buffers to review, and one reaches the disk only when you `:w` it.
 
 **Docs: [makefunstuff.github.io/pairing-buddy](https://makefunstuff.github.io/pairing-buddy/)** (source in
 [`docs/`](docs/), built from [`site/`](site/)).
@@ -36,7 +37,8 @@ you think, and take the keyboard only when you hand it over. Pair aims for that:
 - **It runs what you'd skip.** Save, and it runs the project's tests and tells you what your fix broke elsewhere.
 - **You stay in charge.** One role at a time: Navigator points and suggests, Scout also runs commands in its own pane,
   and the Driver edits only when you hand over, while you watch. Any key takes the wheel back. Ask it for code with
-  `/gen here` or `Alt-g`, and it lands where you asked, to take with one key and undo as one request. Every request
+  `/gen here` or `Alt-g`, and it lands where you asked, to take with one key and undo as one request; `/gen file`
+  drafts new files as buffers you review, which reach the disk only when you `:w` one. Every request
   runs against your brief (the goal and `NOTES.md`, in your words, which Pair never edits): it asks before going
   against it, and says what its code guessed. Pair knows its own edits from yours, so it never remarks on the code it
   wrote as if you had ([/gen](docs/gen.md)).

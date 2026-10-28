@@ -68,7 +68,8 @@ lines Pair edited last, and a note's stall and drift look only at your words. Pa
 so they never hold a remark back as typing. Editing Pair's lines makes them yours. An edit of a file outside the
 project is dropped altogether: it raises no drift. While a [/gen request](gen.md) runs, no remark nobody asked for
 starts: what comes up waits for the request, as it waits while Pair answers you, and its check speaks for the code
-once you take it. See [gen.md](gen.md).
+once you take it. The new files of `/gen file` are no files of the project until you take them: the Watcher does not
+see edits in their `pair://gen/…` buffers. See [gen.md](gen.md).
 
 ## The wrong turn
 

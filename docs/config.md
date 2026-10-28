@@ -128,8 +128,8 @@ Each limit is a whole number above 0, and one you leave out keeps its default.
 
 | Limit | Default | Meaning |
 | --- | --- | --- |
-| `files` | `40` | Files a request may propose code in |
-| `lines` | `4000` | Lines of code it may propose, in all |
+| `files` | `40` | Files a request may propose code in or draft |
+| `lines` | `4000` | Lines of code it may propose or draft, in all |
 | `commands` | `8` | Searches it may run in Pair's pane |
 | `minutes` | `10` | How long its model may work; time a question waits for you does not count |
 

@@ -52,7 +52,8 @@ with the build and run you last ran. Any key you press takes the wheel back.
 
 `/gen here <what>` (or `Alt-g` in Neovim) asks Pair for code in any role. The request runs in a conversation of its
 own with the gen tools, and Pair stays in the role it has: it is a commission, not a fourth role. It proposes code
-where you asked, which you take with one key; it never edits or types. It runs against your
+where you asked, which you take with one key, or with `/gen file`, new files you review as buffers and take with
+`:w`; it never edits or types. It runs against your
 [brief](gen.md#the-brief) (the goal, the board task and a note), whatever the role. Details in [/gen](gen.md).
 
 ## Tools per role
@@ -65,7 +66,7 @@ where you asked, which you take with one key; it never edits or types. It runs a
 | `run` (in Pair's pane) | | yes | yes | |
 | `edit` (your buffer, unsaved) | | | yes | |
 | `type` (one line into your terminal, after your yes) | | | yes | |
-| `propose` (code where you asked, taken with one key), `ask` (at most two questions) | | | | yes |
+| `propose` (code where you asked, taken with one key), `draft` (a new file to review, `/gen file`), `ask` (at most two questions) | | | | yes |
 
 Each conversation is offered only its role's tools, and a policy in code refuses any other
 ([How it works](how-it-works.md#what-it-can-do)). Nothing in the daemon writes your files or saves buffers.
