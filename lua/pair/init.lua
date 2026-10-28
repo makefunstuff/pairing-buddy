@@ -514,7 +514,7 @@ local function suggest(message)
   local does = type(message.keyNote) == 'string' and message.keyNote or 'takes it'
   local key = config.accept_key and hints.label(label(config.accept_key), does)
   -- A block taller than gen_preview_lines is one line here, and the block in a preview window under it.
-  local preview = n and #new > config.gen_preview_lines
+  local preview = n and gen.too_tall(new, buf)
   local note = message.note
   if preview then
     note = ('%d lines: %s'):format(#new, (message.note:gsub('^gen #%d+ · ', '')))
@@ -1523,7 +1523,7 @@ function M.setup(opts)
   for _, mode in ipairs({'n', 'x'}) do
     if config.gen_key and config.gen_key ~= '' and vim.fn.maparg(config.gen_key, mode) == '' then
       vim.keymap.set(mode, config.gen_key, function()
-        if not M.connect() then return vim.notify('Pair: not connected, so no /gen yet') end
+        if not state.channel then return vim.notify('Pair: not connected, so no /gen yet; :Pair start connects') end
         local range
         if mode == 'x' then
           local from, to = vim.fn.line('v'), vim.fn.line('.')

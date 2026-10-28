@@ -69,7 +69,7 @@ require('pair').setup({
 | `answers` | `true` | The first two lines of Pair's answer to a question you typed (`:Pair ask`, the chat) show under the line it was about, too ([what each thing looks like](neovim.md#what-each-thing-looks-like)) |
 | `gen_key` | `'<M-g>'` | Asks Pair for code ([gen.md](gen.md#asking)): a dialog for the request, in Normal mode at the cursor, in Visual mode over the selected lines. While a question of Pair's waits, shows it again. Mapped in Normal and Visual mode from the start |
 | `gen_input` | `'ui'` | Where the `/gen` request, its shape and Pair's questions are asked: `'ui'` through `vim.ui.input` and `vim.ui.select`, which snacks.nvim, dressing.nvim or noice.nvim show as floating dialogs (else Neovim's own prompt); `'cmdline'` always Neovim's own prompt and numbered list |
-| `gen_preview_lines` | `30` | A `/gen` block taller than this shows as one line in place and in a preview window under it, instead of as ghost lines |
+| `gen_preview_lines` | `30` | A `/gen` block taller than this (or than its window) shows as one line in place and in a preview window under it, instead of as ghost lines |
 | `land` | `true` | The [morning pick-up](neovim.md#the-morning-pick-up-and-the-days-end) opens an empty Neovim (or a start screen) on the place the last session's debrief named |
 | `glyphs` | plain Unicode | Pair's marks (below) |
 

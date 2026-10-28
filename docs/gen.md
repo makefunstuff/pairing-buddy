@@ -103,14 +103,16 @@ meanwhile: `gen #2 · a list handler · M-y takes it`. Over a selection, the lin
 any suggestion. A proposal does not count toward the five suggestions that show at once, and neither pushes the
 other out.
 
-A block taller than `gen_preview_lines` (30 lines) is one line in place, `gen #6 · 84 lines: the routes table · M-y
+A block taller than `gen_preview_lines` (30 lines), or than the window it lands in, is one line in place, `gen #6 · 84 lines: the routes table · M-y
 takes · M-j preview`, and the block shows in a preview window under it, with the file's syntax, when that line is in
 view. `Alt-j` goes into the preview, to scroll; `q` closes it, and `Alt-y` there or in your buffer takes all of it.
+Neovim shows ghost lines at most a window less one at a time: in a 22-row window, 40 of them show as their first 21,
+and one `Ctrl-E` jumps to their last 21, so a taller block cannot be read in place.
 
 | You | What happens |
 | --- | --- |
 | `Alt-y`, `:Pair accept`, or `a` on it in the chat | The code goes into your buffer, unsaved, as one undo step. It is the request's code (`gen:#2`, below) until you edit it |
-| Edit those lines, or `:Pair dismiss` | It is dropped: the ledger says so, and there is nothing of it to undo |
+| `:Pair dismiss`, or over a selection, edit the lines it replaces | It is dropped: the ledger says so, and there is nothing of it to undo |
 | `/undo`, or `u` on the request in `:Pair today` | The whole request goes (below) |
 
 Once you take it, the code is checked on your unsaved buffer as after a [hand-over](driver.md#the-check-on-the-unsaved-buffer):

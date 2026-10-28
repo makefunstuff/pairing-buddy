@@ -280,7 +280,10 @@ export class Gen {
     }
     const lines = request.pieces.reduce((sum, piece) => sum + lineCount(piece.text), 0);
     this.book(request, {note: `${plural(lines, 'line')} proposed`});
-    if (!failure && !request.over) session.message('pair', `${n} · here · ${plural(lines, 'line')} at ${this.placeText(request.pieces[0])}${said ? `: ${said}` : ''}`, {gen: request.n});
+    // The chat shows the first piece as a diff, which `a` there takes in Neovim as Alt-y does.
+    const [first] = request.pieces;
+    const meta = {gen: request.n, place: {file: relative(this.root, first.file), line: first.line}, suggestion: {action: request.action, old: first.old, new: first.text.split('\n')}};
+    if (!failure && !request.over) session.message('pair', `${n} · here · ${plural(lines, 'line')} at ${this.placeText(first)}${said ? `: ${said}` : ''}`, meta);
     if (request.pieces.some(piece => piece.state === 'proposed')) this.setState(request, 'ready');
   }
 
@@ -334,7 +337,7 @@ export class Gen {
     const asking = session.confirm(text, choices ?? [], {
       free: kind === 'question', timeoutMs: null,
       hint: kind === 'shape' ? `y: ${choices[0]} · ${others} · n cancels` : `y keeps ${answer} · n leaves it to Pair · or your answer`,
-      said: result => (result === false ? (kind === 'shape' ? `gen #${request.n} cancelled.` : `gen #${request.n}: left to Pair.`) : null),
+      said: result => (result === false && kind === 'question' ? `gen #${request.n}: left to Pair.` : null), // a cancel says so itself
     });
     question.confirm = session.lastConfirmation;
     asking.then(result => this.answered(request, question.id, result === true ? (choices?.[0] ?? answer) : result || null));
@@ -415,7 +418,8 @@ export class Gen {
     if (!path) return `No file ${file} in the project`;
     if (path !== request.file) return `This request is /gen here in ${relative(this.root, request.file)}: propose there.`;
     if (endLine < line) return `end_line ${endLine} is before line ${line}`;
-    const count = (await session.bufferText(path)).split('\n').length;
+    const buffer = (await session.bufferText(path)).split('\n');
+    const count = buffer.length;
     if (line > count) return `Line ${line} is past the end of ${file}, which has ${count} lines. Read it first.`;
     const lines = lineCount(text);
     if (!lines) return 'propose needs the code: text has no lines.';
@@ -423,7 +427,8 @@ export class Gen {
     if (!request.files.has(path) && request.files.size >= request.limits.files) return `That is ${request.limits.files} files for this request (gen.limits.files).`;
     request.lines += lines;
     request.files.add(path);
-    const piece = {i: request.pieces.length, n: request.n, file: path, line, endLine, insert, text: text.replace(/\n$/, ''), note, state: 'proposed'};
+    const old = insert ? [] : buffer.slice(line - 1, endLine); // what the chat shows it replace
+    const piece = {i: request.pieces.length, n: request.n, file: path, line, endLine, insert, text: text.replace(/\n$/, ''), note, state: 'proposed', old};
     request.pieces.push(piece);
     this.book(request);
     this.due.push(piece);

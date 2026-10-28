@@ -167,6 +167,12 @@ test('/gen here with Neovim\'s own prompt: the request on the command line, the 
     await until(() => floats().length === 0, 'q to close it');
     keys('<M-y>');
     await until(() => lines().length === 43, 'all 40 lines taken');
+    // Below gen_preview_lines, a block taller than its window goes to the preview too: it could not be read in place.
+    const height = Number(remote('winheight(0)'));
+    const tall = count => remote(`luaeval("require('pair.gen').too_tall(vim.fn['repeat']({'x'}, ${count}), vim.api.nvim_get_current_buf()) and 1 or 0")`);
+    assert.ok(height < 30, `the headless window is ${height} rows`);
+    assert.equal(tall(height - 2), '0');
+    assert.equal(tall(height - 1), '1');
     assert.equal(lines()[1], 'const r0 = 0');
 
     // No shape word: the guess comes as Neovim's numbered list, answered with its number.
@@ -229,8 +235,12 @@ test('/gen here from the chat goes to your Neovim cursor and asks in the chat; a
     assert.deepEqual(asked(), [], 'no dialog in Neovim');
     await until(() => ghosts().length === 1, 'the ghost lines');
     assert.equal(ghosts()[0][0], 2, 'under the cursor\'s line');
-    keys('<M-y>');
+    // `a` on the request's line in the chat takes it in Neovim, as Alt-y does there.
+    const shown = messages.find(message => message.text === 'gen #1 · here · 1 line at a.js:3: v is 7.');
+    assert.deepEqual(shown.meta.suggestion.new, ['const v = 7']);
+    send({type: 'accept', action: shown.meta.suggestion.action});
     await until(() => lines()[3] === 'const v = 7', 'taken');
+    await until(() => messages.some(message => message.type === 'applied' && message.action === shown.meta.suggestion.action), 'the chat to hear it was taken');
 
     // From Neovim: the question is a dialog there, but not while you type.
     partner.setResponses([

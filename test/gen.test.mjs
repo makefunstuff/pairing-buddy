@@ -115,7 +115,8 @@ test('/gen here from Neovim: its own conversation, the code at the next pause, t
     via: 'editor', type: 'suggest', file: join(root, 'math.js'), line: 1, endLine: 1, insert: true, text: SUM,
     note: 'gen #1 · sum', action: undefined, piece: 0, gen: 1, origin: 'gen:#1', aim: true,
   });
-  assert.ok(said().includes('gen #1 · here · 3 lines at math.js:1: A sum of two numbers; I guessed plain numbers, no BigInt.'));
+  const line = sent.find(message => message.text === 'gen #1 · here · 3 lines at math.js:1: A sum of two numbers; I guessed plain numbers, no BigInt.');
+  assert.deepEqual(line.meta, {gen: 1, place: {file: 'math.js', line: 1}, suggestion: {action: suggestion.action, old: [], new: SUM.split('\n')}}, 'the chat shows it as a diff, which a takes');
   assert.equal(of('gen').at(-1).state, 'ready');
 
   let [row] = pair.today().rows;
@@ -177,7 +178,7 @@ test('a guessed shape is asked first, in the chat for a chat request: y takes th
   await new Promise(resolve => setImmediate(resolve));
   pair.answer(of('confirm').at(-1).id, false, undefined, 'n');
   await second;
-  assert.ok(said().includes('gen #2 cancelled.'));
+  assert.equal(said().filter(text => text === 'gen #2 cancelled.').length, 1, 'said once');
 
   const third = pair.gen.request({text: 'a migration for orders'});
   await new Promise(resolve => setImmediate(resolve));

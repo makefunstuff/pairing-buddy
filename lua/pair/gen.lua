@@ -277,8 +277,17 @@ end
 
 -- The preview: a block taller than gen_preview_lines, in a window of its own under the line it goes to.
 
-function M.too_tall(lines)
-  return #lines > config.preview_lines
+--- Whether `lines` go to the preview: taller than preview_lines, or than the window that shows `buf` (Neovim
+--- shows ghost lines at most a window less one at a time, and scrolls past the rest in one step).
+function M.too_tall(lines, buf)
+  local height = vim.o.lines
+  for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    if vim.api.nvim_win_get_buf(win) == buf and vim.api.nvim_win_get_config(win).relative == '' then
+      height = vim.api.nvim_win_get_height(win)
+      break
+    end
+  end
+  return #lines > config.preview_lines or #lines > height - 2
 end
 
 function M.close_preview(suggestion)
