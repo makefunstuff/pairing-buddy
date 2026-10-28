@@ -93,7 +93,7 @@ small one is enough. pi-ai's catalog has these (`pair auth models PROVIDER` list
 | --- | --- | --- |
 | `openrouter` | `typesafe/jev-1.14`, `typesafe/jev-1.13`, `~typesafe/jev-latest`, `cloudflare/clef`, `cloudflare/clef-flash`, and others | `OPENROUTER_API_KEY`, or `pair auth login openrouter` |
 | `typesafe` | `jev-latest` | `TYPESAFE_API_KEY` |
-| `cloudflare-workers-ai` | `typesafe/jev`, `@cf/cloudflare/clef`, `@cf/cloudflare/clef-flash` | `CLOUDFLARE_API_KEY` and `CLOUDFLARE_ACCOUNT_ID` |
+| `cloudflare-workers-ai` | `typesafe/jev`, `@cf/cloudflare/clef`, `@cf/cloudflare/clef-flash`, and others | `CLOUDFLARE_API_KEY` and `CLOUDFLARE_ACCOUNT_ID` |
 | `vercel-ai-gateway` | `typesafe-ai/jev`, and others | `AI_GATEWAY_API_KEY` |
 | `opencode` | `jev-1.13` | `OPENCODE_API_KEY` |
 | `openai` | `gpt-6-luna` (OpenAI's Decisions API; an API key, not a ChatGPT login) | `OPENAI_API_KEY` |

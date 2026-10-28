@@ -6,7 +6,7 @@ Every setting Pair reads, with its default. Which model to pick and how to log i
 ## The file
 
 Pair reads one file: `~/.config/pairing-buddy/config.json` (or the path in `$PAIR_CONFIG`; `$XDG_CONFIG_HOME` is
-respected). It is JSON with `//` and `/* */` comments. The first run of `pair setup`, `pair` or `pair daemon` writes it
+respected). It is JSON with `//` and `/* */` comments. The first run of `pair setup`, `pair`, `pair chat` or `pair daemon` writes it
 from [`config.example.json`](../config.example.json), which explains each field.
 
 The daemon takes a change as you save the file (also through a symlink), without a restart, and says in the chat pane
@@ -159,6 +159,6 @@ Change the level for a session with `/level` in the chat or `:Pair level` in Neo
 | --- | --- |
 | `PAIR_CONFIG` | The config file, in place of `~/.config/pairing-buddy/config.json` |
 | `PAIR_AUTH` | The logins and keys file, in place of `auth.json` next to the config |
-| `PAIR_SOCKET` | The daemon's socket, when the config sets none |
+| `PAIR_SOCKET` | The daemon's socket, when the config sets none; the Neovim plugin's too, when its `setup` sets no `socket` |
 | `XDG_CONFIG_HOME`, `XDG_STATE_HOME`, `XDG_RUNTIME_DIR` | Where the config, the data and the socket go by default |
 | `NO_COLOR` | The chat pane prints no colours |

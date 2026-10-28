@@ -82,7 +82,7 @@ pair auth logout anthropic  # also `pair logout anthropic`
   (or prints the link) and finishes on a local callback. On a machine without a browser, choose the copy-code or
   device-code login where the provider offers one. The token renews itself before it expires, under a lock, so the
   daemon, `pair doctor` and `pair auth` never renew it twice.
-- **API keys**: every provider takes one. The key is typed at a prompt that does not echo it, or piped in from a
+- **API keys**: every provider takes one, except `openai-codex`, which is a subscription login only. The key is typed at a prompt that does not echo it, or piped in from a
   password manager: `pass show deepseek | pair auth login deepseek` (one answer per line; input that ends before an
   answer fails with exit 1). A key for your own
   server: `pair auth login my-server` (any name pi-ai does not know), then `"auth": "my-server"` in its model entry.
@@ -96,7 +96,7 @@ pair auth logout anthropic  # also `pair logout anthropic`
 ### Before you use a subscription
 
 - **Terms.** Whether a subscription may be used from a tool like Pair is up to the provider, and terms change. An API
-  key is the route every provider supports. `pair auth login` shows the provider's line below before a subscription
+  key is the route almost every provider supports (`openai-codex` is the exception). `pair auth login` shows the provider's line below before a subscription
   login, and `pair doctor` warns when the Watcher runs on one. What the terms said in October 2026:
 
   | Login | What the provider's terms say | Read |
