@@ -64,7 +64,7 @@ test('testOnSave maps project folders, ~ included, to the command run on save', 
 
 test('the Partner thinks by default, remarks a little less; the Watcher never does', () => {
   const models = parseConfig({models: {watcher: {api: 'anthropic', model: 'w'}, partner: {api: 'anthropic', model: 'p'}}}).models;
-  assert.deepEqual(models.partner.thinking, {navigator: 'medium', scout: 'medium', driver: 'medium', remark: 'low'});
+  assert.deepEqual(models.partner.thinking, {navigator: 'medium', scout: 'medium', driver: 'medium', remark: 'low', gen: 'medium'});
   assert.equal(models.partner.reasoning, true);
   assert.equal(models.watcher.reasoning, false);
   assert.equal(models.watcher.thinking, undefined);
@@ -72,11 +72,22 @@ test('the Partner thinks by default, remarks a little less; the Watcher never do
 
 test('thinking is one level for every turn, or levels for some kinds; off is a choice', () => {
   const partner = thinking => parseConfig({models: {watcher: {api: 'anthropic', model: 'w'}, partner: {api: 'anthropic', model: 'p', thinking}}}).models.partner;
-  assert.deepEqual(partner('off').thinking, {navigator: 'off', scout: 'off', driver: 'off', remark: 'off'});
-  assert.deepEqual(partner({driver: 'high', remark: 'medium'}).thinking, {navigator: 'medium', scout: 'medium', driver: 'high', remark: 'medium'});
-  assert.throws(() => partner({answer: 'low'}), /thinking\.answer: the kinds are navigator, scout, driver, remark/);
+  assert.deepEqual(partner('off').thinking, {navigator: 'off', scout: 'off', driver: 'off', remark: 'off', gen: 'off'});
+  assert.deepEqual(partner({driver: 'high', remark: 'medium'}).thinking, {navigator: 'medium', scout: 'medium', driver: 'high', remark: 'medium', gen: 'medium'});
+  assert.throws(() => partner({answer: 'low'}), /thinking\.answer: the kinds are navigator, scout, driver, remark, gen/);
   assert.throws(() => partner('lots'), /"lots" is not one of off, minimal, low/);
   assert.throws(() => partner(['low']), /must be a level or map kinds to levels/);
+});
+
+test('gen.limits bound one /gen request: the defaults, a limit of its own, and what is not a limit', () => {
+  const gen = raw => parseConfig({gen: raw, models: {watcher: {api: 'anthropic', model: 'w'}, partner: {api: 'anthropic', model: 'p'}}}).gen;
+  assert.deepEqual(gen(undefined), {limits: {files: 40, lines: 4000, commands: 8, minutes: 10}});
+  assert.deepEqual(gen({limits: {lines: 500}}).limits, {files: 40, lines: 500, commands: 8, minutes: 10});
+  assert.throws(() => gen({limits: {tokens: 5}}), /gen\.limits\.tokens: the limits are files, lines, commands, minutes/);
+  assert.throws(() => gen({limits: {lines: 0}}), /gen\.limits\.lines must be a whole number above 0/);
+  assert.throws(() => gen({limits: {minutes: 1.5}}), /gen\.limits\.minutes must be a whole number/);
+  assert.throws(() => gen({scaffold: 'tree'}), /gen has no scaffold/);
+  assert.throws(() => gen([]), /gen must be an object/);
 });
 
 test('maxTokens has room for the most thinking a turn does, and the answer after it', () => {
@@ -101,7 +112,7 @@ test('one model for both roles: "model", or the Watcher "same as partner"; each 
   const same = parseConfig({models: {watcher: 'same as partner', partner: entry}}).models;
   assert.deepEqual(one, same);
   assert.equal(sameModel(one.watcher, one.partner), true);
-  assert.deepEqual(one.partner.thinking, {navigator: 'high', scout: 'high', driver: 'high', remark: 'high'});
+  assert.deepEqual(one.partner.thinking, {navigator: 'high', scout: 'high', driver: 'high', remark: 'high', gen: 'high'});
   assert.equal(one.partner.maxTokens, 2048 + 16384);
   assert.equal(one.watcher.reasoning, true, 'marked as a model that thinks, so its thinking is switched off');
   assert.equal(one.watcher.thinking, undefined);

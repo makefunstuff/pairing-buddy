@@ -540,7 +540,7 @@ test('the command menu shows seven of them and how many more; ↓ goes on past t
     await t.type('/');
     await t.shows(/╶─ commands · 7 of \d+ · type to narrow ─/);
     await t.shows(/^ {3}↓ \d+ more$/m);
-    assert.match(t.text(), /^ ▸ \/goal {6}<text> {15}set the session goal$/m);
+    assert.match(t.text(), /^ ▸ \/goal +<text> +set the session goal$/m);
     for (let i = 0; i < 8; i++) await t.type('\x1b[B');
     assert.match(t.text(), /^ ▸ \/drive! /m, 'the eighth, chosen, in sight');
     assert.match(t.text(), /^ {3}↑ 2 more · ↓ \d+ more$/m);

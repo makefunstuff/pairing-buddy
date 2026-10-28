@@ -114,7 +114,10 @@ question for Pair (`@here` in it sends your selection in Neovim along), and a li
 | `/explain [n]` | The same; with `n`, about remark `n` of `/remarks` |
 | `/mute [kind]` | No more remarks of this kind (by default the last remark's: `drift`, `failed_command`, …) for the session |
 | `/unmute [kind]` | Let one kind, or all, speak again |
-| `/undo` | Undo Pair's last change of the day: an edit of the Driver's, or a suggestion you took; as `u` in `:Pair today` |
+| `/gen here <what>` | Ask Pair for code at your cursor in Neovim; with `@here`, over the lines you selected there ([gen.md](gen.md)) |
+| `/gen` | Today's `/gen` requests in this project |
+| `/gen cancel` | Stop the `/gen` request that runs or waits |
+| `/undo` | Undo Pair's last change of the day: an edit of the Driver's, a suggestion you took, or a whole `/gen` request; as `u` in `:Pair today` |
 | `/today` | What Pair did here today, as in `:Pair today` |
 | `/agents` | Your other agents and board tasks |
 | `/search <text>` | Find in the conversation (`Ctrl-F`) |
@@ -129,7 +132,9 @@ An unknown command is named, and stays on the line to fix. `/search`, `/copy`, `
 full-screen pane only.
 
 When Pair asks before running or typing a command, your next line is the answer: `y` or `yes` allows it, anything
-else declines; in the full-screen pane `y` or `n` on an empty line answers at once. The Neovim commands are in the
+else declines; in the full-screen pane `y` or `n` on an empty line answers at once. A `/gen` question says what its
+answers do: `y` takes the guess or the answer given, `n` cancels or leaves it to Pair, a shape word or other words
+answer. The Neovim commands are in the
 [Neovim plugin reference](neovim-plugin.md#commands).
 
 ## Logs

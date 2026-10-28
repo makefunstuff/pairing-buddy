@@ -101,7 +101,7 @@ export default defineConfig({
         {text: 'Roles at a glance', link: '/roles'},
         {text: 'Scout', link: '/scout'},
         {text: 'Driver and suggestions', link: '/driver'},
-        {text: 'Who wrote it', link: '/gen'},
+        {text: '/gen: ask for code', link: '/gen'},
       ]},
       {text: 'Workflows', items: [
         {text: 'Workflows at a glance', link: '/workflows'},

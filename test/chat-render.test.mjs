@@ -2,7 +2,7 @@
 // speaks, folding, the status in its rule in each state, the keys of the footer, the colours each part is drawn
 // with, and the whole frame.
 import assert from 'node:assert/strict';
-import {test} from 'node:test';
+import {mock, test} from 'node:test';
 import {LineEditor} from '../src/chat-input.mjs';
 import {baseNames, bodyLines, breakText, codeLines, cutStart, dedent, diffLines, emptyLines, footerKeys, footerLine, headerLine, helpLines, markdownLines, menuLines, remarkKeys, renderFrame, statusLine, transcriptLines, wrapTokens, inlineTokens} from '../src/chat-render.mjs';
 import {COMMANDS} from '../src/chat.mjs';
@@ -10,6 +10,8 @@ import {paintLine, textWidth} from '../src/chat-style.mjs';
 
 const plain = lines => lines.map(line => line.map(seg => seg.text).join(''));
 const at = new Date(2026, 9, 28, 14, 5).getTime();
+// Today is the day of `at`, whatever the day the tests run: a divider says another day's name.
+mock.timers.enable({apis: ['Date'], now: at + 60 * 60_000});
 
 test('Markdown: headings, bold, `code`, lists with a hanging indent, quotes and fenced code', () => {
   const text = '# The cause\nThe **lease ends** in `queue.go:18` before the last attempt.\n\n- one item long enough to wrap\n2. two\n> a quote\n\n```go\nttl := cfg.Budget\n```\n\nAfter.';
@@ -415,9 +417,11 @@ test('the command menu: name, arguments and what it does in three columns; how m
   const items = COMMANDS.map(([name, args, what]) => ({label: name, args, detail: what, value: name}));
   const lines = plain(menuLines(items, 0, 80));
   assert.equal(lines.length, 8, 'seven, and the line of how many more');
-  assert.equal(lines[0].trimEnd(), ' ▸ /goal      <text>               set the session goal');
-  assert.equal(lines[1].trimEnd(), '   /level     quiet|normal|chatty  how often Pair speaks unasked');
-  assert.equal(lines[2].trimEnd(), '   /quiet                          speak unasked only when it matters');
+  const column = lines[0].indexOf('<text>');
+  assert.match(lines[0], /^ ▸ \/goal +<text> +set the session goal/);
+  assert.equal(lines[1].indexOf('quiet|normal|chatty'), column, 'the arguments in one column');
+  assert.equal(lines[1].indexOf('how often'), lines[0].indexOf('set the session'), 'what it does in another');
+  assert.equal(lines[2].indexOf('speak unasked'), lines[0].indexOf('set the session'), 'with or without arguments');
   assert.equal(lines[7], `   ↓ ${COMMANDS.length - 7} more`);
   const down = plain(menuLines(items, 9, 80));
   assert.match(down[6], /^ ▸ \/cancel/, 'the chosen one in sight, at the bottom');
@@ -425,7 +429,7 @@ test('the command menu: name, arguments and what it does in three columns; how m
   assert.equal(plain(menuLines(items, COMMANDS.length - 1, 80)).at(-1), `   ↑ ${COMMANDS.length - 7} more`);
   assert.equal(plain(menuLines(items.slice(0, 3), 0, 80)).length, 3, 'all of them: no more line');
   for (const line of plain(menuLines(items, 0, 44))) assert.ok(textWidth(line) <= 44, line);
-  assert.match(plain(menuLines(items, 0, 44))[1], /^ {3}\/level {5}quiet\|normal… {2}how often/, 'a narrow pane cuts the arguments, not the column');
+  assert.match(plain(menuLines(items, 0, 44))[1], /^ {3}\/level +quiet\|norm\w*… {2}how often/, 'a narrow pane cuts the arguments, not the column');
   const frame = renderFrame({entries: [], editor: new LineEditor(), selected: -1, activity: {state: 'idle'}, mode: 'menu', menu: {kind: 'command', items, chosen: 0}}, {width: 80, height: 20});
   assert.match(frame.lines.find(line => line.startsWith('╶─')), new RegExp(`^╶─ commands · 7 of ${COMMANDS.length} · type to narrow ─+$`));
   assert.match(frame.lines.at(-1), /Enter run/);

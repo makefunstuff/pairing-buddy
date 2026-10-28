@@ -350,12 +350,13 @@ export function bodyLines(entry, width, {continued = false, measure = width} = {
   if (kind === 'confirm') {
     // Pair's question in body text; the command it asks about under it in a code bar, to read and copy whole: the
     // session's own copy of it (a command may hold backticks itself), else the question's first `code`. The keys
-    // that answer are in the footer, once.
-    const command = entry.command ?? /`([^`]+)`/.exec(text)?.[1];
+    // that answer are in the footer, once. A /gen question has no command: its hint says what its answers do.
+    const command = entry.hint ? null : entry.command ?? /`([^`]+)`/.exec(text)?.[1];
     const question = command ? text.replace(`\`${command}\``, () => 'this') : text;
     const lines = wrapTokens(inlineTokens(question, 'text'), words);
     if (command) lines.push(...codeLines(command, width, 'text', [seg('│ ', 'rule')]));
-    if (entry.answer !== undefined) lines.push([seg(entry.answer ? 'you allowed it' : 'you declined', entry.answer ? 'ok' : 'text')]);
+    if (entry.hint && entry.answer === undefined) lines.push(...wrapTokens(inlineTokens(entry.hint, 'dim', {markdown: false}), words));
+    if (entry.answer !== undefined) lines.push([seg(entry.hint ? 'you answered' : entry.answer ? 'you allowed it' : 'you declined', entry.answer || entry.hint ? 'ok' : 'text')]);
     return lines;
   }
   if (kind === 'note') return text.split('\n').flatMap(line => codeLines(line, width, 'text'));
@@ -682,8 +683,8 @@ export function footerKeys(view) {
   }
   // Away, nothing sends: what you type waits in the input.
   if (connection === 'away') return editorEmpty ? [k('Ctrl-D', 'close'), k('?', 'keys')] : [k('Alt-Enter', 'newline'), k('Tab', 'complete')];
-  if (confirming && editorEmpty) return [k('y', 'allow', 'answer'), k('n', 'decline', 'answer'), k('Esc', 'decline')];
-  if (confirming) return [k('Enter', 'answers'), k('Esc', 'decline')];
+  if (confirming && editorEmpty) return view.confirmHint ? [k('y', 'yes', 'answer'), k('n', 'no', 'answer'), k('Esc', 'no')] : [k('y', 'allow', 'answer'), k('n', 'decline', 'answer'), k('Esc', 'decline')];
+  if (confirming) return [k('Enter', 'answers'), k('Esc', view.confirmHint ? 'no' : 'decline')];
   const keys = [];
   if (busy) keys.push(k('Esc', 'stop'));
   if (scroll && editorEmpty) keys.push(k('End', 'latest'));

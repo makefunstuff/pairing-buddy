@@ -47,14 +47,23 @@ with the build and run you last ran. Any key you press takes the wheel back.
 `:Pair drive!` (or `/drive!`) keeps the wheel for each request after it, until you take it back. Details in
 [Driver and suggestions](driver.md).
 
+## A /gen request is not a role
+
+`/gen here <what>` (or `Alt-g` in Neovim) asks Pair for code in any role. The request runs in a conversation of its
+own with the gen tools, and Pair stays in the role it has: it is a commission, not a fourth role. It proposes code
+where you asked, which you take with one key; it never edits or types. Details in [/gen](gen.md).
+
 ## Tools per role
 
-| Tool | <span class="role navigator">Navigator</span> | <span class="role scout">Scout</span> | <span class="role driver">Driver</span> |
-| --- | --- | --- | --- |
-| `say`, `point`, `open`, `read`, `recall`, `suggest` | yes | yes | yes |
-| `search`, `run` (in Pair's pane) | | yes | yes |
-| `edit` (your buffer, unsaved) | | | yes |
-| `type` (one line into your terminal, after your yes) | | | yes |
+| Tool | <span class="role navigator">Navigator</span> | <span class="role scout">Scout</span> | <span class="role driver">Driver</span> | A /gen request |
+| --- | --- | --- | --- | --- |
+| `say`, `read`, `recall` | yes | yes | yes | yes |
+| `point`, `open`, `suggest` | yes | yes | yes | |
+| `search` (in Pair's pane) | | yes | yes | yes |
+| `run` (in Pair's pane) | | yes | yes | |
+| `edit` (your buffer, unsaved) | | | yes | |
+| `type` (one line into your terminal, after your yes) | | | yes | |
+| `propose` (code where you asked, taken with one key), `ask` (at most two questions) | | | | yes |
 
 Each conversation is offered only its role's tools, and a policy in code refuses any other
 ([How it works](how-it-works.md#what-it-can-do)). Nothing in the daemon writes your files or saves buffers.

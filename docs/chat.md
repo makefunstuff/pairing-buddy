@@ -137,11 +137,11 @@ Anything you type that is not a command is a question for Pair; it is always ans
 - **Up** and **Down** move between the lines of what you type, and from the first or the last line through what you
   sent before in this project, kept across panes and restarts.
 - **/** opens the commands as you type, in three columns: the command, its arguments, what it does. It shows seven at a
-  time; its rule says how many of all (`commands · 7 of 27 · type to narrow`) and its last line how many more there
-  are (`↓ 20 more`); **↑** and **↓** go through all of them. **Tab** completes, **Enter** runs one that needs nothing
+  time; its rule says how many of all (`commands · 7 of 30 · type to narrow`) and its last line how many more there
+  are (`↓ 23 more`); **↑** and **↓** go through all of them. **Tab** completes, **Enter** runs one that needs nothing
   more. The [chat commands](cli.md#chat-commands) list them all.
 
-  ![The command menu: seven of 27 commands in three columns (name, arguments, what it does), the count in its rule and ↓ 20 more under it](images/chat-menu.png)
+  ![The command menu: seven of 30 commands in three columns (name, arguments, what it does), the count in its rule and ↓ 23 more under it](images/chat-menu.png)
 - **@** opens the project's files (from git): `@internal/queue/queue.go` names one in your question, for Pair to read;
   **Tab** or **Enter** inserts it (the footer says `Enter inserts`).
   **@here** sends the lines you selected last in Neovim with it, else the line you are on: the question names them
@@ -149,6 +149,10 @@ Anything you type that is not a command is a question for Pair; it is always ans
 - **Esc** (or **Ctrl-C**) stops the answer Pair is working on; `/cancel` too. You can type your next question while
   it works.
 - "you take it" or "your turn" hands Pair the wheel, as `/drive` does ([Driver](driver.md)).
+- `/gen here <what>` asks Pair for code at your cursor in Neovim, `@here` in it over the lines you selected there
+  ([/gen](gen.md)). When the request's shape is a guess, or Pair asks something about it, the question waits in the
+  chat with what its answers do: `y` takes the guess or the answer given, `n` cancels or leaves it to Pair, and
+  anything else you type is the answer.
 
 ![A question in the chat: the file Pair read for it under it, and its answer with a list and a code block](images/chat-answer.png)
 
@@ -214,7 +218,7 @@ The last remark, while it is the last thing said, has these keys on its own [act
 | `Ctrl-L` | Draw the pane again |
 | `Ctrl-C` | Stop the answer; else clear what you typed; twice on an empty line, close the pane |
 | `Ctrl-D` | Close the pane, on an empty line |
-| `y` `n` | While Pair asks: allow, decline; `Esc` declines too |
+| `y` `n` | While Pair asks: allow, decline; `Esc` declines too (for a `/gen` question: take the guess or the answer given, cancel or leave it to Pair) |
 | `+` `-` `a` `j` | On the last remark, on an empty line, while it is the last thing said: rate it, take its suggestion, go to its line |
 | `?` | The keys, on an empty line |
 
