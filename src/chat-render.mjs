@@ -223,8 +223,9 @@ export function bodyLines(entry, width, {continued = false} = {}) {
   }
   if (kind === 'confirm') {
     const lines = wrapTokens(inlineTokens(text, 'warn'), width);
-    const answer = entry.answer === undefined ? [seg('y', 'bold'), seg(' allow · ', 'dim'), seg('n', 'bold'), seg(' decline', 'dim')]
-      : [seg(entry.answer ? 'you allowed it' : 'you declined', entry.answer ? 'ok' : 'dim')];
+    // A question with a hint of its own (a /gen request's) says what its answers do, not allow and decline.
+    const answer = entry.answer === undefined ? (entry.hint ? [seg(entry.hint, 'dim')] : [seg('y', 'bold'), seg(' allow · ', 'dim'), seg('n', 'bold'), seg(' decline', 'dim')])
+      : [seg(entry.hint ? 'you answered' : entry.answer ? 'you allowed it' : 'you declined', entry.answer || entry.hint ? 'ok' : 'dim')];
     return [...lines, answer];
   }
   if (kind === 'note') return text.split('\n').flatMap(line => hardWrap(line, width, 'dim'));
@@ -379,7 +380,7 @@ export function statusLine(view, width) {
   else if (activity.state === 'thinking') left = [seg(`${spin} `, 'accent'), seg('thinking', 'accentBold'), seg(`${since} · `, 'dim'), seg('Esc', 'bold'), seg(' stops', 'dim')];
   else if (activity.state === 'tool') left = [seg(`${spin} `, 'accent'), seg(`${DOING[activity.tool] ?? activity.tool} `, 'accentBold'), seg(activity.what ?? '', 'text'), seg(since, 'dim')];
   else if (activity.state === 'remark') left = [seg(`${spin} `, 'dim'), seg(`looking at ${(activity.what ?? 'a moment').replace(/_/g, ' ')}`, 'dim'), seg(since, 'dim')];
-  else if (activity.state === 'waiting') left = [seg('? ', 'warn'), seg('Pair waits for your answer: ', 'warn'), seg('y', 'bold'), seg(' allow · ', 'dim'), seg('n', 'bold'), seg(' decline', 'dim')];
+  else if (activity.state === 'waiting') left = [seg('? ', 'warn'), seg('Pair waits for your answer: ', 'warn'), ...(activity.hint ? [seg(activity.hint, 'dim')] : [seg('y', 'bold'), seg(' allow · ', 'dim'), seg('n', 'bold'), seg(' decline', 'dim')])];
   else if (role === 'driver') left = [seg('◆ ', 'accent'), seg(keepWheel ? 'Pair keeps the wheel · any key in Neovim takes it back' : 'Pair drives', 'accent')];
   else {
     const looked = presence?.looked ? ` · looked at ${presence.looked} moment${presence.looked === 1 ? '' : 's'}, spoke ${presence.spoke}` : '';
@@ -418,7 +419,7 @@ export function footerKeys(view) {
     keys.push(k('Esc', 'back'));
     return keys;
   }
-  if (confirming && editorEmpty) return [k('y', 'allow'), k('n', 'decline'), k('or type', 'an answer')];
+  if (confirming && editorEmpty) return view.confirmHint ? [k('y', 'yes'), k('n', 'no'), k('or type', 'an answer')] : [k('y', 'allow'), k('n', 'decline'), k('or type', 'an answer')];
   const keys = [];
   if (busy) keys.push(k('Esc', 'stop'));
   if (about) keys.push(k('Esc', 'drop the follow-up'));

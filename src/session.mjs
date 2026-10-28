@@ -14,6 +14,7 @@ import {describeState} from './describe.mjs';
 import {insideRoot, MAX_LINES, newProjectFile, numberedLines, projectFile, readProjectPath} from './files.mjs';
 import {editOrigin, failed, fold, initialState} from './fold.mjs';
 import {decide} from './gate.mjs';
+import {Gen} from './gen.mjs';
 import {gist} from './gist.mjs';
 import {gitCommitsSince, gitStatus} from './git.mjs';
 import {Breakpoints, placeOf, stillTrue, urgent} from './held.mjs';
@@ -282,9 +283,10 @@ export class PairSession {
    * keeps it, with where to pick up (see pickup.mjs). With `autoTune`, the user's verdicts on past remarks tune the
    * budget (see tuning.mjs). `checkOutput` is where the hand-over's check writes its output and scratch copy when it
    * is not the command on save (see check.mjs): in the sandbox's writable runs folder. `decision()` is the decision
-   * model the gate asks (a decision.mjs DecisionModel), or null without one.
+   * model the gate asks (a decision.mjs DecisionModel), or null without one. `genLimits` are what one /gen request may
+   * do at most (the config's gen.limits, see gen.mjs).
    */
-  constructor({record, store, partner, score, pace = null, decision = () => null, typingPauseMs, notify, requestEditor, previousNote = null, lastSession = null, autoTune = false, health = {ok: () => true}, testOnSave = null, checkOutput = null, log = () => {}, now = Date.now}) {
+  constructor({record, store, partner, score, pace = null, decision = () => null, typingPauseMs, notify, requestEditor, previousNote = null, lastSession = null, autoTune = false, health = {ok: () => true}, testOnSave = null, checkOutput = null, genLimits, log = () => {}, now = Date.now}) {
     Object.assign(this, {record, store, partner, score, pace, decision, typingPauseMs, notify, requestEditor, previousNote, lastSession, autoTune, health, log, now});
     this.sorted = new Map(); // trigger key -> {at, sort}: what the decision model sorted it as lately
     this.told = new Map(); // trigger key -> what the decision model was told about it first, for the decisions log
@@ -361,6 +363,7 @@ export class PairSession {
     this.remarkTrigger = null; // the trigger kind of the running unasked turn
     this.lastRemarkTrigger = null; // the trigger kind of the last remark the user saw: what /mute alone mutes
     this.cancelled = false; // the user stopped the running answer (/cancel, Esc in the chat)
+    this.gen = new Gen({session: this, limits: genLimits}); // the /gen requests, each in a conversation of its own
   }
 
   /**
@@ -376,6 +379,16 @@ export class PairSession {
   get id() { return this.record.id; }
   get root() { return this.record.root; }
   get conversationId() { return this.record.conversation_id; }
+
+  /** Whether `conversationId` is this session's: its own, or one of its /gen requests'. */
+  owns(conversationId) {
+    return conversationId === this.conversationId || this.gen.owns(conversationId);
+  }
+
+  /** The role whose tools `conversationId` may use: a /gen request's is gen, never stored as the session's role. */
+  roleOf(conversationId) {
+    return this.gen.owns(conversationId) ? 'gen' : this.role;
+  }
 
   receive(event) {
     const file = event.file && isAbsolute(event.file) ? relative(this.root, event.file) : event.file;
@@ -577,6 +590,7 @@ export class PairSession {
   showDue() {
     if (this.thought && this.breakpoints.last(this.state, this.now()) >= this.thought.since) this.release();
     if (this.held.length && !this.typing()) this.held.splice(0).forEach(action => action());
+    this.gen.showDue();
   }
 
   /** Holds a finished remark that can wait: the editor shows a dot where it is about until it is due. */
@@ -608,8 +622,9 @@ export class PairSession {
     // While :Pair new asks its questions, the note they are in is no place for remarks.
     const triggers = detectTriggers(this.state, now, this.fired).filter(trigger => !this.blankPage?.covers(trigger) && !this.muted.has(trigger.kind));
     this.waits = new Map([...this.waits].filter(([key]) => triggers.some(trigger => trigger.key === key)));
-    // While the Partner is at work, what comes up waits for the model; how long goes with the remark it becomes.
-    if (this.busy) return triggers.forEach(trigger => this.waitFor(trigger, now));
+    // While the Partner is at work, what comes up waits for the model; how long goes with the remark it becomes. No
+    // remark nobody asked for starts while a /gen request runs either.
+    if (this.busy || this.gen.running) return triggers.forEach(trigger => this.waitFor(trigger, now));
     this.ticking = true;
     try {
       if (triggers.length && this.autoTune) {
@@ -1002,8 +1017,12 @@ export class PairSession {
     if (this.thinks) this.notify('editors', {type: 'thinking', on});
   }
 
-  /** Carries out one of the Partner's tools: the model waits for it meanwhile, and is not thinking. */
-  async useTool(name, args) {
+  /**
+   * Carries out one of the Partner's tools for `conversationId`: the model waits for it meanwhile, and is not thinking.
+   * A /gen request's tools are its own (see gen.mjs): they leave the session's turn as it is.
+   */
+  async useTool(name, args, conversationId = this.conversationId) {
+    if (this.gen.owns(conversationId)) return this.gen.tool(conversationId, name, args);
     this.showThinking(false);
     // The chat pane shows what the tool does: in its status row, and for a question asked, as a line in the answer.
     // A tool that asks first (run, type) gets its line once it ran, and none when the user said no.
@@ -1200,17 +1219,29 @@ export class PairSession {
   }
 
   /**
-   * Asks the user in the chat pane; resolves false without a chat pane, on no, or after a minute. An answer that is
-   * one of `choices` allows it too, there: it resolves with that choice.
+   * Asks the user in the chat pane; resolves false without a chat pane, on no, or after a minute (`timeoutMs`, null:
+   * no limit). An answer that is one of `choices` allows it too, there: it resolves with that choice; with `free`, any
+   * words but n do. `hint` is what the chat's input line says meanwhile, and `said(result)` the line the chat gets
+   * after the answer, instead of "Allowed." or "Not allowed." (null: none).
    */
-  confirm(text, choices = []) {
+  confirm(text, choices = [], {free = false, timeoutMs = CONFIRM_MS, hint = null, said = null} = {}) {
     const id = ++this.lastConfirmation;
-    if (!this.notify('chat', {type: 'confirm', id, text})) return Promise.resolve(false);
-    this.activity('waiting', {what: text});
+    if (!this.notify('chat', {type: 'confirm', id, text, ...(hint ? {hint} : {})})) return Promise.resolve(false);
+    this.activity('waiting', {what: text, ...(hint ? {hint} : {})});
     return new Promise(resolve => {
-      const timer = setTimeout(() => this.answer(id, false, 'No answer, so no.'), CONFIRM_MS);
-      this.confirmations.set(id, {choices, resolve: ok => { clearTimeout(timer); resolve(ok); }});
+      const timer = timeoutMs === null ? null : setTimeout(() => this.answer(id, false, 'No answer, so no.'), timeoutMs);
+      this.confirmations.set(id, {choices, free, said, resolve: ok => { clearTimeout(timer); resolve(ok); }});
     });
+  }
+
+  /** Takes back question `id` that nobody answered (its /gen request stopped): the chat puts it away, and it resolves false. */
+  withdraw(id) {
+    const waiting = this.confirmations.get(id);
+    if (!waiting) return;
+    this.confirmations.delete(id);
+    this.notify('chat', {type: 'confirmed', id});
+    if (!this.busy && this.activityNow.state === 'waiting') this.activity('idle');
+    waiting.resolve(false);
   }
 
   /** Asks the user whether Pair may do `what` with question `text`, and books their answer in the ledger. */
@@ -1225,11 +1256,16 @@ export class PairSession {
     const waiting = this.confirmations.get(id);
     if (!waiting) return;
     this.confirmations.delete(id);
-    const choice = !ok && waiting.choices.find(name => name.toLowerCase() === text.trim().toLowerCase());
+    const words = text.trim();
+    const choice = !ok && (waiting.choices.find(name => name.toLowerCase() === words.toLowerCase())
+      || (waiting.free && words && !/^no?$/i.test(words) && words));
     this.notify('chat', {type: 'confirmed', id});
     if (this.busy) this.working();
-    this.message('system', choice ? `Allowed, in ${choice}.` : note);
-    waiting.resolve(choice || ok);
+    else if (this.activityNow.state === 'waiting') this.activity('idle');
+    const result = choice || ok;
+    const line = waiting.said ? waiting.said(result) : choice ? `Allowed, in ${choice}.` : note;
+    if (line) this.message('system', line);
+    waiting.resolve(result);
   }
 
   /** What `:Pair trail` shows: the searches a trail remark would send, oldest first, and what the gate made of them. */
@@ -1257,6 +1293,7 @@ export class PairSession {
    * hasWork) gets none, also with `/end`: there is nothing to note, and the last debrief stays the one to pick up from.
    */
   async end() {
+    this.gen.close();
     await this.scout?.close();
     this.storeActive();
     await this.yieldRemark();
@@ -1361,6 +1398,7 @@ export class PairSession {
    */
   async undo(id) {
     const action = this.store.action(id);
+    if (action?.root === this.root && action.kind === 'generated') return this.gen.undo(action);
     const patch = action?.root === this.root ? action.detail?.patch : null;
     if (!patch) return;
     const undone = action.state === 'undone';
@@ -1376,10 +1414,15 @@ export class PairSession {
     this.message('system', `${undone ? 'Made Pair\'s change again' : 'Undid Pair\'s change'} in ${name}, unsaved.`);
   }
 
-  /** The user accepted Pair's suggestion `id`: from then on the ledger can undo it like the Driver's edit. */
-  applied(id, before, after) {
+  /**
+   * The user accepted Pair's suggestion `id`: from then on the ledger can undo it like the Driver's edit. For a /gen
+   * request, `piece` is the one taken, on the editor's lines `from`..`to`.
+   */
+  applied(id, before, after, {piece, from, to} = {}) {
     const action = this.store.action(id);
-    if (action?.root !== this.root || action.kind !== 'suggested' || !Array.isArray(before) || !Array.isArray(after)) return;
+    if (action?.root !== this.root || !Array.isArray(before) || !Array.isArray(after)) return;
+    if (action.kind === 'generated' && Number.isInteger(piece)) return this.gen.taken(id, piece, {before, after, from, to});
+    if (action.kind !== 'suggested') return;
     this.ledger.update(id, {state: 'applied', data: {undo: true}, detail: {patch: {file: action.data.place.file, before, after}}});
     this.notify('chat', {type: 'applied', action: id});
   }
@@ -1409,6 +1452,7 @@ export class PairSession {
    */
   async stop() {
     if (this.role === 'driver' && this.busy) return this.takeBack();
+    if (!this.busy && this.gen.running) return this.gen.cancel(this.gen.running.n);
     if (!this.busy) return this.message('system', 'Pair is not answering anything now.');
     if (this.unasked) return this.yieldRemark();
     this.cancelled = true;
@@ -1589,20 +1633,21 @@ export class PairSession {
 
   // Scout's tools: they work only in Pair's own pane, where the user sees each command typed and run.
 
-  async inPane(command) {
+  /** Runs `command` in Pair's pane. A /gen request (`gen`) may search in any role, within its own limits. */
+  async inPane(command, {gen = false} = {}) {
     // Also covers a turn that started as Scout when the user has switched back since: its pane is closed.
-    if (!['scout', 'driver'].includes(this.role)) throw new Error('Searching and running need the Scout role; the user can switch with /scout.');
+    if (!gen && !['scout', 'driver'].includes(this.role)) throw new Error('Searching and running need the Scout role; the user can switch with /scout.');
     if (!this.scout) throw new Error('Pair has no pane of its own: run `pair` inside herdr, or :Pair start in Neovim');
-    if (++this.paneUses > PANE_USES_PER_TURN) throw new Error(`That is ${PANE_USES_PER_TURN} commands for this question. Answer with what you found.`);
+    if (!gen && ++this.paneUses > PANE_USES_PER_TURN) throw new Error(`That is ${PANE_USES_PER_TURN} commands for this question. Answer with what you found.`);
     const result = await this.scout.run(command);
     this.receive({kind: 'scout_run', cmd: command, exit: result.exit, output: result.output});
     return result;
   }
 
-  async search({pattern, path = '.'}) {
+  async search({pattern, path = '.'}, {gen = false} = {}) {
     if (!(await insideRoot(this.root, path))) return `Cannot search ${path}: not inside the project`;
     // Always with a path: rg without one searches its stdin when that is not a terminal.
-    const result = await this.inPane(`rg --line-number --no-heading --color never --max-columns 200 --max-count 20 -- ${shellQuote(pattern)} ${shellQuote(path)}`);
+    const result = await this.inPane(`rg --line-number --no-heading --color never --max-columns 200 --max-count 20 -- ${shellQuote(pattern)} ${shellQuote(path)}`, {gen});
     const lines = result.output.split('\n');
     const found = result.exit === 0 ? `${lines.length} ${lines.length === 1 ? 'match' : 'matches'}` : result.exit === 1 ? 'no matches' : `exit ${result.exit}`;
     this.ledger.add('searched', `${pattern}${path === '.' ? '' : ` in ${path}`}`, {data: {note: found}, detail: {output: keptOutput(result.output)}});
@@ -1723,21 +1768,38 @@ export class PairSession {
     const {check, expect} = this.handOver ?? {check: checkCommand({testCommand: this.testRuns?.command, runs: this.state.runs, root: this.root}), expect: null};
     if (!check.command) return `${DONE}. Nothing ran on the unsaved buffer: ${check.none}. The file on disk changes only when the user saves, so do not run anything now.`;
     if (!(await this.checkAllowed(check))) return `${DONE}. The user did not allow \`${check.command}\` on the unsaved buffer, so nothing ran. Do not run it another way.`;
-    const runs = check.command === this.testRuns?.command ? this.testRuns : new TestRuns({
-      root: this.root, command: check.command, outputFile: this.checkOutput, pane: () => this.scout, report: run => this.testRun(run),
-    });
-    // Every unsaved buffer of the project, and every file this hand-over changed as its buffer has it: the check sees
-    // the whole change, and what the user has not saved besides.
-    const texts = await this.unsavedBuffers();
-    const edited = [...new Set(this.handback.changes.map(change => change.file))];
-    for (const file of edited) if (!texts.has(file)) texts.set(file, await this.bufferText(file));
-    const run = await runs.unsaved(texts, edited);
+    const run = await this.runUnsaved(check.command, [...new Set(this.handback.changes.map(change => change.file))]);
     if (run.state === 'error') return `${DONE}. \`${run.label}\` could not run on the unsaved buffer: ${run.error}.`;
     const verdict = this.checked(run);
     // The line printed for what the user expects, when the code judged it; else the Partner's ✓ or ✗ says it.
     Object.assign(this.handback, {tests: verdict.mark, check: expect && verdict.mark ? verdict.text : null});
     const said = checkReport(run, {expect, verdict, root: this.root});
     return run.picture ? {text: said, picture: run.picture} : said;
+  }
+
+  /**
+   * Runs `command` on the unsaved buffers, in the scratch copy: every unsaved buffer of the project, and each of the
+   * `edited` files as its buffer has it, so the check sees the whole change and what the user has not saved besides.
+   */
+  async runUnsaved(command, edited) {
+    const runs = command === this.testRuns?.command ? this.testRuns : new TestRuns({
+      root: this.root, command, outputFile: this.checkOutput, pane: () => this.scout, report: run => this.testRun(run),
+    });
+    const texts = await this.unsavedBuffers();
+    for (const file of edited) if (!texts.has(file)) texts.set(file, await this.bufferText(file));
+    return runs.unsaved(texts, edited);
+  }
+
+  /**
+   * The check of code taken from a /gen request, on the unsaved buffers of `files`, with the command a hand-over's
+   * check would use: `{label, mark, text}`, or null when nothing ran (no command, not allowed, or it could not start).
+   */
+  async checkGenerated(files) {
+    const check = checkCommand({testCommand: this.testRuns?.command, runs: this.state.runs, root: this.root});
+    if (!check.command || !(await this.checkAllowed(check))) return null;
+    const run = await this.runUnsaved(check.command, files).catch(error => ({state: 'error', error: error.message}));
+    if (run.state === 'error') return null;
+    return {label: run.label, mark: isRed(run) ? 'fail' : 'pass', text: runText(run)};
   }
 
   /**

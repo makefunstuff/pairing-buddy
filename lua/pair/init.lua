@@ -15,6 +15,7 @@ local blank = require('pair.new')
 local hints = require('pair.hints')
 local ledger = require('pair.ledger')
 local earcons = require('pair.earcons')
+local gen = require('pair.gen')
 local listen = require('pair.listen')
 local margin = require('pair.margin')
 local pane = require('pair.pane')
@@ -34,7 +35,7 @@ local ns = draw.ns
 -- Alt-j goes where Pair points. Alt-u and Alt-n rate Pair's last unasked remark: useful, or noise. Hold Alt-t to
 -- speak to Pair (push-to-talk, see listen.lua). Alt-a goes to the agent whose news Pair relayed. Alt-? asks for the
 -- idea behind Pair's words under your line, and then opens its link to the docs. In a note's margin, Alt-d logs a
--- decision and Alt-l opens the code a mark links to.
+-- decision and Alt-l opens the code a mark links to. Alt-g asks Pair for code (/gen, see gen.lua).
 local config = {
   socket = nil, debounce_ms = 2000, max_points = 5, motion = true, glyphs = {},
   accept_key = '<M-y>', jump_key = '<M-j>', useful_key = '<M-u>', noise_key = '<M-n>', listen_key = '<M-t>',
@@ -45,6 +46,9 @@ local config = {
   decide_key = '<M-d>', link_key = '<M-l>',
   teach_key = '<M-?>',
   agents_key = '<M-a>',
+  gen_key = '<M-g>', -- asks Pair for code, in Normal and Visual mode
+  gen_input = 'ui', -- or 'cmdline': the request and its questions always on Neovim's own prompt, not vim.ui's
+  gen_preview_lines = 30, -- a /gen block taller than this shows in a preview window
   land = true, -- the morning pick-up opens an empty Neovim where the last session stopped
   answers = true, -- the start of Pair's answer to a question you typed shows under the line it was about, too
 }
@@ -269,8 +273,11 @@ function M.jump()
   local col = target.col and math.min(target.col - 1, #vim.api.nvim_buf_get_lines(target.buf, row, row + 1, false)[1])
   vim.api.nvim_win_set_cursor(0, {row + 1, col or draw.column(target.buf, row, target.code)})
   vim.cmd('normal! zz')
+  -- A /gen block too tall for ghost lines: the jump goes into its preview, to scroll there.
+  local suggestion = target.suggestion
+  if suggestion and suggestion.preview then return gen.preview(suggestion, row, suggestion.line, true) end
   -- From one suggestion the jump key goes on to the next.
-  local next = target.suggestion and suggestions.after(target.suggestion)
+  local next = suggestion and suggestions.after(suggestion)
   if next then aim(next.target) end
 end
 
@@ -420,6 +427,11 @@ end
 
 local function drop_suggestion(suggestion)
   if not suggestions.remove(suggestion) then return end
+  gen.close_preview(suggestion)
+  -- A /gen piece you dismissed or edited away is dropped; one you took, or the daemon took back, is not.
+  if suggestion.gen and not suggestion.taken and not suggestion.quiet then
+    send({type = 'gen_dropped', action = suggestion.action, piece = suggestion.piece})
+  end
   local next = suggestions.all()[1]
   if state.target == suggestion.target then aim(next and next.target) end
   if config.accept_key and vim.api.nvim_buf_is_valid(suggestion.buf) and not suggestions.any_in(suggestion.buf) then
@@ -445,15 +457,19 @@ end
 local function accept(suggestion)
   local unchanged = suggestions.still(suggestion)
   local first, last = suggestions.range(suggestion)
+  suggestion.taken = unchanged
   drop_suggestion(suggestion)
   hints.used(label(config.accept_key))
   if not unchanged then return vim.notify('Pair: those lines changed, so the suggestion was dropped') end
   local before = vim.api.nvim_buf_get_lines(suggestion.buf, 0, -1, false)
   by_pair(suggestion.buf, suggestion.origin, function() vim.api.nvim_buf_set_lines(suggestion.buf, first, last, false, suggestion.new) end)
   if suggestion.remark then feedback(true, suggestion.remark, true) end
-  -- With the text before and after, the ledger can undo it later.
+  -- With the text before and after, the ledger can undo it later; a /gen piece also says which, and its lines.
   if suggestion.action then
-    send({type = 'applied', action = suggestion.action, before = before, after = vim.api.nvim_buf_get_lines(suggestion.buf, 0, -1, false)})
+    send({
+      type = 'applied', action = suggestion.action, before = before, after = vim.api.nvim_buf_get_lines(suggestion.buf, 0, -1, false),
+      piece = suggestion.piece, from = suggestion.gen and first + 1 or nil, to = suggestion.gen and first + math.max(#suggestion.new, 1) or nil,
+    })
   end
 end
 
@@ -480,6 +496,13 @@ end
 local function suggest(message)
   local buf = load(message.file)
   local count = vim.api.nvim_buf_line_count(buf)
+  -- A /gen piece lands where you asked, which moved with what you typed since.
+  local n = type(message.gen) == 'number' and message.gen or nil
+  if n then
+    local moved = gen.moved(n, buf)
+    message.line = math.max(1, math.min(message.line + moved, count))
+    message.endLine = message.endLine and math.max(message.line, math.min(message.endLine + moved, count))
+  end
   -- The daemon checked the line against the buffer; it may have shrunk since. A wrong line marks nothing.
   if message.line > count then return vim.notify('Pair: its suggestion is past the end of the buffer, so it was dropped') end
   local first = message.line - 1
@@ -490,22 +513,43 @@ local function suggest(message)
   local new = text_lines(message.text)
   local does = type(message.keyNote) == 'string' and message.keyNote or 'takes it'
   local key = config.accept_key and hints.label(label(config.accept_key), does)
+  -- A block taller than gen_preview_lines is one line here, and the block in a preview window under it.
+  local preview = n and #new > config.gen_preview_lines
+  local note = message.note
+  if preview then
+    note = ('%d lines: %s'):format(#new, (message.note:gsub('^gen #%d+ · ', '')))
+    note = ('gen #%d · %s'):format(n, note)
+    key = table.concat(vim.tbl_filter(function(part) return part ~= nil end, {label(config.accept_key) and (label(config.accept_key) .. ' takes'), label(config.jump_key) and (label(config.jump_key) .. ' preview')}), ' · ')
+  end
   if config.accept_key then
     vim.keymap.set('n', config.accept_key, M.accept, {buffer = buf, desc = 'Accept Pair\'s suggestion'})
   end
   -- JSON null arrives as vim.NIL: a suggestion in an answer to you is no remark.
   local remark = message.remark ~= vim.NIL and message.remark or nil
-  local ids = draw.suggestion(buf, first, old, new, message.note, key)
+  local ids = draw.suggestion(buf, first, old, preview and {} or new, note, key)
   local suggestion = {buf = buf, ids = ids, old = old, new = new, remark = remark, insert = message.insert == true, action = message.action}
   suggestion.origin = type(message.origin) == 'string' and message.origin or 'pair' -- whose code it is once taken
+  suggestion.gen, suggestion.piece, suggestion.preview = n, n and message.piece or nil, preview
+  suggestion.line = message.insert and message.line + 1 or message.line
   suggestion.target = {buf = buf, ns = draw.suggest_ns, id = ids[1], suggestion = suggestion}
   for _, gone in ipairs(suggestions.add(suggestion, rows)) do drop_suggestion(gone) end
   -- The jump key goes to the first suggestion of an answer: where the accept key works. The next press goes on to
   -- the next one.
   if message.aim ~= false or not (state.target and state.target.suggestion) then aim(suggestion.target) end
   map_keys('jump', {{config.jump_key, M.jump, 'Go where Pair points'}})
+  if preview then gen.preview(suggestion, message.insert and first or last, suggestion.line, false) end
   state.reading = nil
   redraw_status()
+end
+
+--- The daemon took back /gen request `message.gen` (/undo, or it was cancelled): its code still showing goes.
+local function gen_drop(message)
+  for _, suggestion in ipairs(vim.list_slice(suggestions.all())) do
+    if suggestion.gen == message.gen then
+      suggestion.quiet = true
+      drop_suggestion(suggestion)
+    end
+  end
 end
 
 --- Your edit of rows `first`..`last` answers what Pair said: its words go, and so does a point on those lines.
@@ -519,8 +563,10 @@ local function edited(buf, first, last)
 end
 
 local typing_sent = 0
+local typing_at = 0 -- when you last changed a buffer: a dialog of /gen never opens right then
 local function on_lines(_, buf, _, first, last, new_last)
   local origin = state.origins[buf] or 'user'
+  if origin == 'user' then typing_at = now_ms() end
   -- A change by someone else than the one before it: what came before goes first, as its own edit.
   if state.pending[buf] and state.pending[buf].origin ~= origin then flush(buf) end
   local pending = state.pending[buf] or {from = first + 1, to = new_last, origin = origin}
@@ -746,6 +792,11 @@ local function go(message)
   vim.cmd('normal! zz')
 end
 
+--- Where a /gen request from the chat goes: the cursor, or the selection, in the window you work in.
+local function gen_place(message)
+  send({type = 'reply', id = message.id, result = gen.place_for(message.gen, work_window(), message.selection == true)})
+end
+
 --- The lines `@here` in the chat asks about: the last visual selection in the buffer you work in, else your line.
 local function selection(message)
   local win = work_window()
@@ -897,7 +948,8 @@ end
 -- The ledger undoes one of Pair's edits, or makes it again: merged into the buffer as it is now.
 local function revert(message)
   local buf = load(message.file)
-  local why = by_pair(buf, 'pair', function() return merge.apply(buf, message.base, message.other) end)
+  local origin = type(message.origin) == 'string' and message.origin or 'pair' -- a /gen request's own: gen:#n
+  local why = by_pair(buf, origin, function() return merge.apply(buf, message.base, message.other) end)
   if vim.fn.bufwinid(buf) ~= -1 then vim.cmd.redraw() end -- a change made here shows only at the next event
   send({type = 'reply', id = message.id, result = why and {error = why} or {ok = true}})
 end
@@ -1041,6 +1093,10 @@ local handlers = {
     redraw_status()
   end,
   revert = revert,
+  gen = gen.on_state,
+  gen_ask = gen.on_ask,
+  gen_drop = gen_drop,
+  gen_place = gen_place,
   -- Without herdr: Pair's pane, your terminals and typing into one of them, all in this Neovim (pane.lua).
   pane = function(message) pane.request(message, function(result) send({type = 'reply', id = message.id, result = result}) end) end,
   terminals = function(message) send({type = 'reply', id = message.id, result = pane.listing()}) end,
@@ -1079,6 +1135,7 @@ local handlers = {
     forget_held()
     clear_points()
     clear_suggestions()
+    gen.reset()
     forget_words(false)
     blank.on_interview({done = true})
     margin.clear()
@@ -1177,6 +1234,7 @@ disconnected = function()
   state.thinking = false -- nor does any turn of its Partner
   listen.cancel(function() end) -- nor what you were saying
   spin()
+  gen.reset() -- a restarted daemon has stopped its /gen requests, and asks nothing
   if state.role == 'driver' then set_role('navigator') end -- a restarted daemon has ended the hand-over
   if blank.status() then -- nor does its :Pair new: an answer now would reach no one
     blank.on_interview({done = true})
@@ -1239,8 +1297,11 @@ local function status_parts()
   if state.reading and now_ms() < state.reading.till then
     return {glyph = g.voice, text = 'reading ' .. state.reading.name, hl = 'PairStatus', text_hl = 'PairStatusDim'}
   end
+  local generating = gen.status()
   if run and run.state == 'run' then
     return {glyph = style.spinner[spinner.frame], text = run.label, hl = 'PairStatus', text_hl = 'PairStatusDim'}
+  elseif generating then
+    return {glyph = g.voice, text = 'pair · ' .. generating.text, hl = 'PairStatus', text_hl = 'PairStatusDim'}
   elseif state.thinking then
     return {glyph = style.spinner[spinner.frame], text = 'pair · thinking', hl = 'PairStatus', text_hl = 'PairStatusDim'}
   elseif state.catching_up then
@@ -1332,6 +1393,14 @@ local commands = {
   noise = function() feedback(false, state.remark) end,
   why = function() M.teach() end,
   agents = agents.request,
+  -- /gen: `:Pair gen` asks in a dialog, `:Pair gen [here] <what>` asks at once, `:Pair gen +` opens the compose
+  -- window; with a range, over those lines (in a note, the lines are the request). `:Pair gen cancel` stops it.
+  gen = function(arg, selection)
+    if not M.connect() then return vim.notify('Pair: not connected, so no /gen yet; :Pair gen again once it is', vim.log.levels.WARN) end
+    if arg == 'cancel' then return send({type = 'gen_cancel'}) end
+    local compose = arg == '+' or vim.startswith(arg, '+ ')
+    gen.ask(compose and vim.trim(arg:sub(2)) or arg, selection, compose)
+  end,
   -- Your last edits belong to the session that ends: its debrief counts them, and the next one starts empty.
   ['end'] = function()
     flush_all()
@@ -1397,6 +1466,12 @@ function M.setup(opts)
   ledger.rate = feedback
   listen.setup({mode = config.listen_mode, hold_ms = config.listen_hold_ms, release_ms = config.listen_release_ms, silence_ms = config.listen_silence_ms})
   agents.setup({send = send, map_keys = map_keys, unmap_keys = unmap_keys, key_label = key_label, redraw_status = redraw_status}, config.agents_key)
+  gen.setup({input = config.gen_input, preview_lines = config.gen_preview_lines, key = config.gen_key}, {
+    send = send, redraw_status = redraw_status, project_path = project_path, label = label,
+    typing = function() return now_ms() - typing_at < 1500 end,
+    accept_key = function() return config.accept_key end,
+    accept = function(suggestion) accept(suggestion) end,
+  })
   style.apply()
   local group = vim.api.nvim_create_augroup('pair', {clear = true})
   local function restyle()
@@ -1444,6 +1519,21 @@ function M.setup(opts)
     earcons.focused = args.event == 'FocusGained'
     send({type = 'focus', on = earcons.focused})
   end})
+  -- Alt-g asks Pair for code (/gen), at the cursor or, in Visual mode, over the selected lines; only where it is free.
+  for _, mode in ipairs({'n', 'x'}) do
+    if config.gen_key and config.gen_key ~= '' and vim.fn.maparg(config.gen_key, mode) == '' then
+      vim.keymap.set(mode, config.gen_key, function()
+        if not M.connect() then return vim.notify('Pair: not connected, so no /gen yet') end
+        local range
+        if mode == 'x' then
+          local from, to = vim.fn.line('v'), vim.fn.line('.')
+          range = project_path(0) and {from = math.min(from, to), to = math.max(from, to)} or nil
+          vim.cmd('normal! \27') -- out of Visual mode first: the dialog takes the keys
+        end
+        gen.ask('', range, false)
+      end, {desc = 'Ask Pair for code (/gen)'})
+    end
+  end
   -- Push-to-talk, in Normal mode and, about the selected lines, in Visual mode; only where the key is free.
   for _, mode in ipairs({'n', 'x'}) do
     if config.listen_key and config.listen_key ~= '' and vim.fn.maparg(config.listen_key, mode) == '' then

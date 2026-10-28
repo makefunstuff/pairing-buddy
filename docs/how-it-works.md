@@ -55,8 +55,10 @@ A remark can come from one of these moments (its **trigger**):
 | `note_drift` | In a Markdown note, a new section shares no word with the note's title or the goal: one question, "is this still the … note?" |
 | `search_trail` | Three or more Telescope, snacks.picker or fzf-lua searches since your last edit, one of them closed with nothing opened, or repeated. The remark gets what fails now, so it can say where the thing is in the code's own word ([neovim.md](neovim.md#the-search-trail)) |
 
-The moments about code you wrote leave out the code Pair wrote for you: the Driver's edits, a suggestion you took
-and an undo from the ledger reach the daemon tagged as Pair's ([gen.md](gen.md)).
+The moments about code you wrote leave out the code Pair wrote for you: the Driver's edits, a suggestion you took,
+code you took from a `/gen` request and an undo from the ledger reach the daemon tagged as Pair's
+([gen.md](gen.md#who-wrote-it-edits-carry-their-origin)). While a `/gen` request runs, no remark nobody asked for
+starts.
 
 A failed test run counts as failed even without an exit code, and the remark names the failed tests and the first
 error. A direct question in the chat is always answered.
@@ -89,20 +91,23 @@ file it reads, the command it runs), with its answer streaming in under your que
 
 ## What it can do
 
-Each role has a fixed set of tools:
+Each role has a fixed set of tools, and so has a [/gen request](gen.md), which runs in a conversation of its own
+whatever the role:
 
-| Tool | What it does | Navigator | Scout | Driver |
-| --- | --- | --- | --- | --- |
-| `say` | A chat message | yes | yes | yes |
-| `point` | Mark lines in Neovim with a short note and the code it means; `Alt-j` goes there | yes | yes | yes |
-| `open` | Show a file in a split, asking first while you type | yes | yes | yes |
-| `read` | Read a file as the editor has it, or list a directory; Neovim shows where it reads | yes | yes | yes |
-| `recall` | Search the project's earlier sessions: their goals, notes and chats ([memory.md](memory.md#earlier-sessions)) | yes | yes | yes |
-| `suggest` | Show a change in place that you accept with one key or ignore | yes | yes | yes |
-| `search` | ripgrep, typed in Pair's own pane | no | yes | yes |
-| `run` | One command line in Pair's own pane, under the [command policy](scout.md#the-command-policy) | no | yes | yes |
-| `edit` | One change in your buffer, typed while you watch, one undo step | no | no | up to five per hand-over |
-| `type` | One line into your terminal, after your yes, without Enter | no | no | after a yes |
+| Tool | What it does | Navigator | Scout | Driver | /gen |
+| --- | --- | --- | --- | --- | --- |
+| `say` | A chat message | yes | yes | yes | yes, with its code |
+| `point` | Mark lines in Neovim with a short note and the code it means; `Alt-j` goes there | yes | yes | yes | no |
+| `open` | Show a file in a split, asking first while you type | yes | yes | yes | no |
+| `read` | Read a file as the editor has it, or list a directory; Neovim shows where it reads | yes | yes | yes | yes |
+| `recall` | Search the project's earlier sessions: their goals, notes and chats ([memory.md](memory.md#earlier-sessions)) | yes | yes | yes | yes |
+| `suggest` | Show a change in place that you accept with one key or ignore | yes | yes | yes | no |
+| `search` | ripgrep, typed in Pair's own pane | no | yes | yes | within `gen.limits` |
+| `run` | One command line in Pair's own pane, under the [command policy](scout.md#the-command-policy) | no | yes | yes | no |
+| `edit` | One change in your buffer, typed while you watch, one undo step | no | no | up to five per hand-over | no |
+| `type` | One line into your terminal, after your yes, without Enter | no | no | after a yes | no |
+| `propose` | Code where you asked, shown in place, which you take with one key | no | no | no | within `gen.limits` |
+| `ask` | One question to you, with the answer it would take | no | no | no | at most two |
 
 The lists are enforced in code: each conversation is offered only its role's tools, and a `beforeTool` policy
 refuses any other name ([driver.md](driver.md#the-policy-in-code)). Nothing in the daemon writes your files or saves

@@ -38,6 +38,9 @@
   // are put in as whole words, never through a shell. Without it, the tasks are copied as a Markdown checklist.
   // "taskCommand": ["gh", "issue", "create", "--title", "{title}", "--body", "{description}"],
 
+  // What one /gen request may do at most (see docs/gen.md); they stop a model that loops. These are the defaults.
+  // "gen": {"limits": {"files": 40, "lines": 4000, "commands": 8, "minutes": 10}},
+
   // Pair's own pane, where Scout's commands and the tests on save run (see docs/scout.md#pairs-pane): your rc file
   // for its aliases, functions and PATH (true is ~/.bashrc), and the bubblewrap sandbox: "auto" where bwrap works,
   // true always, false never; inside it only the project and `writable` keep what is written, and no network unless allowed.
@@ -53,7 +56,7 @@
     // "contextWindow": 32768,              // Pair asks the server what it serves; set it where the server does not say (32768 then)
     // How much the Partner thinks, by kind of turn (these are the defaults), or one level for all; "off" switches
     // it off. Levels: off, minimal, low, medium, high, xhigh. A remark comes a few seconds later; that is fine.
-    // "thinking": {"navigator": "medium", "scout": "medium", "driver": "medium", "remark": "low"},
+    // "thinking": {"navigator": "medium", "scout": "medium", "driver": "medium", "remark": "low", "gen": "medium"},
     // "reasoning": false,                  // for a model that cannot think: Pair then sends it no thinking level
     // How the server takes thinking: its chat template's switch, and the level as reasoning_effort or a budget
     // (without that, every level is just "on"). `pair doctor --thinking` finds it and prints the line:

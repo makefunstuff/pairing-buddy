@@ -60,9 +60,9 @@ function checkSource(name, entry) {
 
 const THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'];
 
-// How much the Partner thinks for each kind of turn: an answer as Navigator, as Scout or as Driver, and a remark
-// nobody asked for. A remark may come a few seconds later; a wrong one costs the user more than the wait.
-export const THINKING_DEFAULTS = {navigator: 'medium', scout: 'medium', driver: 'medium', remark: 'low'};
+// How much the Partner thinks for each kind of turn: an answer as Navigator, as Scout or as Driver, a remark
+// nobody asked for, and a /gen request. A remark may come a few seconds later; a wrong one costs the user more than the wait.
+export const THINKING_DEFAULTS = {navigator: 'medium', scout: 'medium', driver: 'medium', remark: 'low', gen: 'medium'};
 
 export const ANSWER_TOKENS = 2048; // the Partner's words and tool calls, on top of its thinking
 // A model entry's window when neither the config nor the model's server or catalog says: local servers are often
@@ -261,6 +261,22 @@ function testCommands(raw = {}) {
   }));
 }
 
+// What one /gen request may do at most: they stop a model that loops, they are no review budget (see gen.mjs).
+export const GEN_LIMITS = {files: 40, lines: 4000, commands: 8, minutes: 10};
+
+/** `gen`: `{limits}`, each limit a whole number above zero; the rest of a limit is its default. */
+function genConfig(raw = {}) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('config: gen must be an object, for example {"limits": {"lines": 2000}}');
+  const {limits = {}, ...rest} = raw;
+  if (Object.keys(rest).length) throw new Error(`config: gen has no ${Object.keys(rest).join(', ')} (only limits)`);
+  if (!limits || typeof limits !== 'object' || Array.isArray(limits)) throw new Error('config: gen.limits must be an object');
+  for (const [name, value] of Object.entries(limits)) {
+    if (!(name in GEN_LIMITS)) throw new Error(`config: gen.limits.${name}: the limits are ${Object.keys(GEN_LIMITS).join(', ')}`);
+    if (!Number.isInteger(value) || value < 1) throw new Error(`config: gen.limits.${name} must be a whole number above 0`);
+  }
+  return {limits: {...GEN_LIMITS, ...limits}};
+}
+
 /** `taskCommand`: the command, as words, that :Pair tasks runs for each task, with {title} and {description} in them. */
 function taskCommand(raw) {
   if (raw === undefined || raw === null) return null;
@@ -314,6 +330,7 @@ export function parseConfig(raw, {windows = {}} = {}) {
     scoutPane: scoutPaneConfig(raw.scoutPane), // Pair's pane: your rc file and the sandbox (see scout-shell.mjs)
     voice: voiceConfig(raw.voice), // push-to-talk; null when off (see voice.mjs)
     taskCommand: taskCommand(raw.taskCommand),
+    gen: genConfig(raw.gen), // what one /gen request may do at most (see gen.mjs)
     board: boardCommand(raw.board),
     windows, // as found (see context-window.mjs), so a reload can keep one a server cannot tell then
     agents: raw.agents ?? true, // relays your other agents' news (see agents.mjs)

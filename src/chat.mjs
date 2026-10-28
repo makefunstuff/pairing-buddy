@@ -36,7 +36,10 @@ export const COMMANDS = [
   ['/noise', '[n]', 'it was not (or -); a remark you never see counts as not useful too'],
   ['/mute', '[kind]', 'no more remarks of this kind (the last remark\'s) this session'],
   ['/unmute', '[kind]', 'let them speak again (all of them)'],
-  ['/undo', '', 'undo Pair\'s last change: an edit of the Driver\'s, a suggestion you took'],
+  ['/gen', '', 'what /gen made here today'],
+  ['/gen here', '<what>', 'ask Pair for code at your cursor in Neovim (@here: over the selection)'],
+  ['/gen cancel', '', 'stop the /gen request that runs or waits'],
+  ['/undo', '', 'undo Pair\'s last change: an edit of the Driver\'s, a suggestion you took, a /gen request'],
   ['/today', '', 'what Pair did here today'],
   ['/agents', '', 'your other agents and board tasks, the ones that need you first'],
   ['/search', '<text>', 'find in the conversation (Ctrl-F)'],
@@ -78,6 +81,13 @@ export function parseInput(line) {
   if (command === '/agents') return {type: 'agents'};
   if (command === '/cancel') return {type: 'cancel'};
   if (command === '/undo') return {type: 'undo_last'};
+  if (command === '/gen' && !arg) return {type: 'gen_list'};
+  if (command === '/gen' && arg === 'cancel') return {type: 'gen_cancel'};
+  if (command === '/gen') {
+    // A request may take several lines (Alt-Enter): they go as typed.
+    const request = text.slice(command.length).trim();
+    return HERE.test(request) ? {type: 'gen', text: request.replace(/(^|\s)@here\b[ \t]*/, '$1').trim(), here: true} : {type: 'gen', text: request};
+  }
   if (command === '/mute') return arg ? {type: 'mute', trigger: arg} : {type: 'mute'};
   if (command === '/unmute') return arg ? {type: 'unmute', trigger: arg} : {type: 'unmute'};
   // +2, -3, /useful 2: a verdict on an older remark, by its number in /remarks.
@@ -226,7 +236,7 @@ function runPlainChat(socketPath, {input, output, exit, cwd, env}) {
     }
     if (message.type === 'confirm') {
       confirming = message.id;
-      say('pair', `${message.text} [y/N]`);
+      say('pair', `${message.text} [${message.hint ?? 'y/N'}]`);
     }
     if (message.type === 'confirmed' && message.id === confirming) confirming = null; // answered, or timed out
     if (message.type === 'first' && message.step) {
@@ -359,6 +369,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
     menuChosen: 0,
     menuClosedFor: null, // the text the menu was closed for with Esc
     confirming: null, // the id of the question Pair asks
+    confirmHint: null, // what its answers do, when the question says (a /gen request's)
     first: null, // tomorrow's first step, which `e` edits right after the debrief
     listed: [], // the ids of the remarks /remarks showed last
     about: null, // the remark a follow-up is about: {id, text}
@@ -459,7 +470,8 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
       }
       case 'confirm':
         state.confirming = message.id;
-        add({kind: 'confirm', text: message.text, confirm: message.id});
+        state.confirmHint = message.hint ?? null;
+        add({kind: 'confirm', text: message.text, confirm: message.id, hint: message.hint});
         break;
       case 'confirmed': {
         if (message.id === state.confirming) state.confirming = null;
@@ -901,12 +913,13 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
       now: Date.now(),
       frame: state.frame,
       confirming: state.confirming !== null,
+      confirmHint: state.confirming !== null ? state.confirmHint : null,
       about: state.about?.text,
       busy: busy(),
       editorEmpty: editor.empty,
       selectedEntry: selectedEntry && {...selectedEntry, folded: !selectedEntry.expanded && selectedEntry.kind !== 'tool' && state.last.transcript.ranges[state.selected] && (state.last.transcript.ranges[state.selected].end - state.last.transcript.ranges[state.selected].start) > 13},
       showEmpty: !state.entries.some(entry => ['you', 'pair', 'watch', 'tool', 'confirm'].includes(entry.kind)),
-      placeholder: state.confirming !== null ? 'y allows it, n declines'
+      placeholder: state.confirming !== null ? state.confirmHint ?? 'y allows it, n declines'
         : goalAsked ? 'the session\'s goal, or "later"'
           : busy() ? 'Pair is answering · type ahead' : 'Ask Pair anything · / for commands',
     };

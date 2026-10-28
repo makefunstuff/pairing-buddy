@@ -68,6 +68,10 @@ Anything you type that is not a command is a question for Pair; it is always ans
 - **Esc** (or **Ctrl-C**) stops the answer Pair is working on; `/cancel` too. You can type your next question while
   it works.
 - "you take it" or "your turn" hands Pair the wheel, as `/drive` does ([Driver](driver.md)).
+- `/gen here <what>` asks Pair for code at your cursor in Neovim, `@here` in it over the lines you selected there
+  ([/gen](gen.md)). When the request's shape is a guess, or Pair asks something about it, the question waits in the
+  chat with what its answers do: `y` takes the guess or the answer given, `n` cancels or leaves it to Pair, and
+  anything else you type is the answer.
 
 ![A question in the chat: the file Pair read for it under it, and its answer with a list and a code block](images/chat-answer.png)
 
@@ -126,7 +130,7 @@ The last remark you have not rated shows `+ useful · - noise` under it; typing 
 | `Ctrl-L` | Draw the pane again |
 | `Ctrl-C` | Stop the answer; else clear what you typed; twice on an empty line, close the pane |
 | `Ctrl-D` | Close the pane, on an empty line |
-| `y` `n` | While Pair asks: allow, decline |
+| `y` `n` | While Pair asks: allow, decline (for a `/gen` question: take the guess or the answer given, cancel or leave it to Pair) |
 | `?` | The keys, on an empty line |
 
 Closing the pane leaves the session running; `pair` or `:Pair chat` opens it again, with the conversation so far.

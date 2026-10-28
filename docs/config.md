@@ -14,7 +14,8 @@ and Neovim what it reloaded. It checks the new config as at start: one with an e
 why while the daemon keeps the config it runs. Run `pair doctor` after a change to check the models.
 
 - **At once**: the typing pause, `autoTune`, `keepWarm`, `watcherPace`, the `decision` model, `testOnSave`, `voice`,
-  `taskCommand` and `board`, in open sessions too.
+  `taskCommand`, `gen` and `board`, in open sessions too (a `/gen` request already running keeps the limits it
+  started with).
 - **Between turns**: new `model` or `models` entries (and their thinking levels). An answer under way finishes on
   the old model; the next one is the new model's, in the same conversation.
 - **For new sessions**: `level` and `sessionRoots`. An open session keeps its own level; `/level` changes it.
@@ -38,6 +39,7 @@ why while the daemon keeps the config it runs. Run `pair doctor` after a change 
 | `voice` | off | Push-to-talk with whisper.cpp or OpenRouter ([below](#voice), [voice.md](voice.md)) |
 | `scoutPane` | see [below](#scoutpane) | Pair's own pane: your rc file and the sandbox ([scout.md](scout.md#pairs-pane)) |
 | `taskCommand` | none | What `:Pair tasks` runs for each task you say yes to, as a list of words with `{title}` and `{description}`, never through a shell, for example `["gh", "issue", "create", "--title", "{title}", "--body", "{description}"]`. Without it, the tasks are copied as a checklist ([notes.md](notes.md#tasks-only-when-you-ask)) |
+| `gen` | see [below](#gen) | What one `/gen` request may do at most ([gen.md](gen.md)) |
 | `board` | `"herdr-projects"` | The herdr work board's command: the goal and the [context card](neovim.md#what-it-knows-the-context-card) read the board task of your branch. `null` turns it off |
 | `socket` | `$PAIR_SOCKET`, else `$XDG_RUNTIME_DIR/pairing-buddy.sock`, else `/tmp/pairing-buddy-<uid>.sock` | The daemon's socket path |
 | `dataDir` | `$XDG_STATE_HOME/pairing-buddy` (`~/.local/state/pairing-buddy`) | Where Pair keeps its data ([data.md](data.md)) |
@@ -66,7 +68,7 @@ A model entry says where its requests go in one of two ways:
 | `maxTokens` | 2048 plus the most thinking (10240 with the default levels), at most a third of `contextWindow` | The Partner's longest answer, its thinking included. The Watcher always answers with one number |
 | `images` | `false` | Whether a model at a `baseUrl` reads images. Only then does the Driver get the picture a run writes in [the hand-over's check](driver.md#the-check-on-the-unsaved-buffer); otherwise it is told the picture's name. A provider's model has it from pi-ai's catalog |
 | `reasoning` | Partner `true`, Watcher `false` | Whether Pair sets the model's thinking. Set `false` on the Partner for a model that cannot think. On the Watcher, set `true` for a model that thinks by default, so Pair can switch its thinking off (with one `model` for both roles it is on already). A provider's model has it from pi-ai's catalog, whatever the role |
-| `thinking` | `{"navigator": "medium", "scout": "medium", "driver": "medium", "remark": "low"}` | The Partner only: how much it thinks, `off`, `minimal`, `low`, `medium`, `high` or `xhigh`. One level for every turn, or levels by kind of turn: `navigator` (answers to your questions), `scout`, `driver` and `remark` (what it says unasked). On an OpenAI-compatible server a level is sent only as its `compat` says (`pair doctor --thinking` finds it); without that it only switches thinking on |
+| `thinking` | `{"navigator": "medium", "scout": "medium", "driver": "medium", "remark": "low", "gen": "medium"}` | The Partner only: how much it thinks, `off`, `minimal`, `low`, `medium`, `high` or `xhigh`. One level for every turn, or levels by kind of turn: `navigator` (answers to your questions), `scout`, `driver`, `remark` (what it says unasked) and `gen` (a [/gen request](gen.md)). On an OpenAI-compatible server a level is sent only as its `compat` says (`pair doctor --thinking` finds it); without that it only switches thinking on |
 | `samplingParams` | | Extra sampling fields sent with each request to an OpenAI-compatible server, for example `{"temperature": 0.3}` when the server's default is high. The Partner's only: the Watcher always runs at temperature 0 |
 | `compat` | | OpenAI-compatibility flags passed to pi-ai (see its "OpenAI Compatibility Settings"): for example `thinkingFormat` and `chatTemplateKwargs` for a model whose chat template has a thinking switch, `supportsReasoningEffort: true` for a server that takes the thinking level as `reasoning_effort`, or `thinkingTokenBudgetField` for one that takes a token budget. `pair doctor --thinking` tries them on your server and prints the block to paste |
 | `thinkingLevelMap` | | For an OpenAI-compatible server: the server's own name for a thinking level, or `null` for one it does not have, for example `{"minimal": "low", "xhigh": "high"}` |
@@ -110,6 +112,24 @@ Maps a project's folder to the command Pair runs in its pane when you save a sou
 | `sandbox` | `"auto"` | The bubblewrap sandbox: `"auto"` where `bwrap` works, `true` always (the pane fails to open without it), `false` never ([the sandbox](scout.md#the-sandbox)) |
 | `network` | `false` | Whether commands in the sandbox reach the network |
 | `writable` | `[]` | Folders that keep what is written in the sandbox, besides the project |
+
+## `gen`
+
+```jsonc
+"gen": {"limits": {"files": 40, "lines": 4000, "commands": 8, "minutes": 10}}
+```
+
+What one [/gen request](gen.md) may do at most. They stop a model that loops; they are no review budget. Each limit
+is a whole number above 0, and one you leave out keeps its default.
+
+| Limit | Default | Meaning |
+| --- | --- | --- |
+| `files` | `40` | Files a request may propose code in |
+| `lines` | `4000` | Lines of code it may propose, in all |
+| `commands` | `8` | Searches it may run in Pair's pane |
+| `minutes` | `10` | How long its model may work; time a question waits for you does not count |
+
+A change takes effect for the next request; one already running keeps the limits it started with.
 
 ## `voice`
 
