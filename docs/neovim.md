@@ -365,7 +365,7 @@ scripted.*
 | `suggested` | it suggested a change | `⏎ go`; once you accept it, `accepted · u undo` |
 | `typed` | the Driver's edit (`6 lines in backoff_test.go · one undo step`), or one line it typed into your terminal | `u undo`, for the edit |
 | `ran`, `searched` | a command in its pane, or the tests it ran on save or on the unsaved buffer, with `✓` or `✗`; the same run in a row is one line (`· 3 times`) | `⏎ output` |
-| `generated` | a [/gen request](gen.md), one line for all of it (`gen #3 · here · a list handler`), with what became of its code (`3 lines proposed`, `1 of 1 piece taken`, `1 dropped`) | `u undo` the whole request, once it has code |
+| `generated` | a [/gen request](gen.md), one line for all of it (`gen #3 · here · a list handler`), with what became of its code (`3 lines proposed`, `1 of 1 piece taken`, `1 dropped`), and `≠1` when its code goes against the [brief](gen.md#the-brief) | `u undo` the whole request, once it has code |
 | `asked`, `refused` | what it asked before running or typing, and what its policy refused, with the reason | `you said no` |
 | `stayed quiet` | the moments it let pass: `3 moments under the bar`, held back by the budget, or `not asked, the server is slow` ([watcher.md](watcher.md#when-the-server-is-slow)) | `⏎ why` |
 

@@ -51,7 +51,8 @@ with the build and run you last ran. Any key you press takes the wheel back.
 
 `/gen here <what>` (or `Alt-g` in Neovim) asks Pair for code in any role. The request runs in a conversation of its
 own with the gen tools, and Pair stays in the role it has: it is a commission, not a fourth role. It proposes code
-where you asked, which you take with one key; it never edits or types. Details in [/gen](gen.md).
+where you asked, which you take with one key; it never edits or types. It runs against your
+[brief](gen.md#the-brief) (the goal, the board task and a note), whatever the role. Details in [/gen](gen.md).
 
 ## Tools per role
 

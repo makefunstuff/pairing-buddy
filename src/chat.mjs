@@ -39,6 +39,7 @@ export const COMMANDS = [
   ['/gen', '', 'what /gen made here today'],
   ['/gen here', '<what>', 'ask Pair for code at your cursor in Neovim (@here: over the selection)'],
   ['/gen cancel', '', 'stop the /gen request that runs or waits'],
+  ['/brief', '[note|off]', 'what /gen runs against: the goal, the board task and a note (NOTES.md); pin another, or none'],
   ['/undo', '', 'undo Pair\'s last change: an edit of the Driver\'s, a suggestion you took, a /gen request'],
   ['/today', '', 'what Pair did here today'],
   ['/agents', '', 'your other agents and board tasks, the ones that need you first'],
@@ -83,6 +84,7 @@ export function parseInput(line) {
   if (command === '/undo') return {type: 'undo_last'};
   if (command === '/gen' && !arg) return {type: 'gen_list'};
   if (command === '/gen' && arg === 'cancel') return {type: 'gen_cancel'};
+  if (command === '/brief') return !arg ? {type: 'brief'} : arg === 'off' ? {type: 'brief', off: true} : {type: 'brief', file: arg};
   if (command === '/gen') {
     // A request may take several lines (Alt-Enter): they go as typed.
     const request = text.slice(command.length).trim();

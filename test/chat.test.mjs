@@ -32,6 +32,9 @@ test('/drive, "you take it" and "your turn" hand Pair the wheel; the words go al
   assert.deepEqual(parseInput('/gen here a list handler'), {type: 'gen', text: 'here a list handler'});
   assert.deepEqual(parseInput('/gen here @here tidy these'), {type: 'gen', text: 'here tidy these', here: true});
   assert.deepEqual(parseInput('/gen here a handler:\n- paging @here\n- newest first'), {type: 'gen', text: 'here a handler:\n- paging \n- newest first', here: true});
+  assert.deepEqual(parseInput('/brief'), {type: 'brief'});
+  assert.deepEqual(parseInput('/brief off'), {type: 'brief', off: true});
+  assert.deepEqual(parseInput('/brief docs/orders.md'), {type: 'brief', file: 'docs/orders.md'});
   assert.deepEqual(parseInput('/drive set the timeout to 30 s'), {type: 'drive', text: 'set the timeout to 30 s'});
   assert.deepEqual(parseInput('/drive! set the timeout to 30 s'), {type: 'drive', text: 'set the timeout to 30 s', keep: true}, 'and keep the wheel');
   assert.deepEqual(parseInput('You take it'), {type: 'drive', text: 'You take it'});

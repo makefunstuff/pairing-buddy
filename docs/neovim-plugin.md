@@ -104,6 +104,7 @@ to standard ones and does not fade.
 | `:Pair trail` | Show your searches since your last edit, as Pair saw them; `x` forgets them |
 | `:Pair runs` | The session's builds and runs, newest last, with the change before each and its numbers; `⏎` its output, `d` its change, `x` removes the hunt's debug lines ([exploration.md](exploration.md)) |
 | `:Pair gen [here] [what]` | Ask Pair for code ([gen.md](gen.md)): without words, in a dialog (same as `Alt-g`); with words, at once. With a range (`:'<,'>Pair gen`), over those lines, or in a note, the lines are the request. `:Pair gen +` opens the compose window for a longer request, `:Pair gen cancel` stops the request that runs or waits |
+| `:Pair brief [path\|off]` | The [brief](gen.md#the-brief) `/gen` runs against: in a Markdown buffer, pin that note; with a path, pin that note; `off`, leave the note out; elsewhere, say what the brief is |
 | `:Pair accept` | Accept Pair's suggestion under the cursor, else the newest in the buffer (same as `Alt-y`); for a suggestion in an unasked remark, that rates the remark useful |
 | `:Pair dismiss` | Drop the same suggestion, and only that one; for a suggestion in an unasked remark, that rates the remark not useful |
 | `:Pair useful` | Pair's last unasked remark was useful (same as `Alt-u`) |
