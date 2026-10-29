@@ -1,6 +1,6 @@
 {
- "length": 762.756,
- "poster": 297.01,
+ "length": 1475.102,
+ "poster": 418.08,
  "chapters": [
   {
    "at": 0,
@@ -18,39 +18,59 @@
    "clock": "2:44"
   },
   {
-   "at": 259.08,
+   "at": 256.55,
+   "title": "The chat pane",
+   "clock": "4:16"
+  },
+  {
+   "at": 380.15,
    "title": "Exploring code",
-   "clock": "4:19"
+   "clock": "6:20"
   },
   {
-   "at": 319.84,
+   "at": 440.51,
    "title": "Tests",
-   "clock": "5:19"
+   "clock": "7:20"
   },
   {
-   "at": 402.56,
+   "at": 522.85,
    "title": "Notes and the blank page",
-   "clock": "6:42"
+   "clock": "8:42"
   },
   {
-   "at": 552.736,
+   "at": 671.419,
    "title": "The hand-over",
-   "clock": "9:12"
+   "clock": "11:11"
   },
   {
-   "at": 650.706,
+   "at": 771.979,
+   "title": "Asking for code",
+   "clock": "12:51"
+  },
+  {
+   "at": 1089.572,
+   "title": "The board",
+   "clock": "18:09"
+  },
+  {
+   "at": 1301.732,
+   "title": "Several worktrees",
+   "clock": "21:41"
+  },
+  {
+   "at": 1334.962,
    "title": "Voice",
-   "clock": "10:50"
+   "clock": "22:14"
   },
   {
-   "at": 696.206,
+   "at": 1400.152,
    "title": "With or without herdr",
-   "clock": "11:36"
+   "clock": "23:20"
   },
   {
-   "at": 732.266,
+   "at": 1435.652,
    "title": "The keys to remember",
-   "clock": "12:12"
+   "clock": "23:55"
   }
  ],
  "scenes": {
@@ -60,14 +80,30 @@
   "doctor": 109.73,
   "roles": 167.4,
   "scout": 208.25,
-  "wrong-turn": 261.68,
-  "tests": 322.44,
-  "notes": 405.16,
-  "blank-page": 470.603,
-  "hand-over": 555.336,
-  "take-back": 611.476,
-  "voice": 653.306,
-  "herdr": 698.806,
-  "keys": 732.266
+  "chat-remark": 259.15,
+  "chat-ask": 312.58,
+  "chat-keys": 348.6,
+  "wrong-turn": 382.75,
+  "tests": 443.11,
+  "notes": 525.45,
+  "blank-page": 592.293,
+  "hand-over": 674.019,
+  "take-back": 732.429,
+  "gen-shapes": 774.579,
+  "gen-here": 807.259,
+  "gen-brief": 871.682,
+  "gen-file": 921.182,
+  "gen-try": 982.752,
+  "gen-scaffold": 1035.972,
+  "board-handoff": 1092.172,
+  "board-news": 1139.952,
+  "board-review": 1191.902,
+  "overlap": 1231.292,
+  "brief-sync": 1269.862,
+  "worktrees": 1304.332,
+  "voice": 1337.562,
+  "openrouter": 1382.862,
+  "herdr": 1402.752,
+  "keys": 1435.652
  }
 }

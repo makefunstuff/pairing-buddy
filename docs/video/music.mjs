@@ -32,11 +32,11 @@ for await (const part of response.body.pipeThrough(new TextDecoderStream())) {
   }
 }
 if (!chunks.length) throw new Error('no audio in the answer');
-// Lyria's takes run about three minutes: the film's bed is the take five times (about fifteen minutes), each joined
-// to the next with an 8 s crossfade.
+// Lyria's takes run about three minutes: the film's bed is the take nine times (about 27 minutes), each joined to the
+// next with an 8 s crossfade.
 const take = `${here}audio/take.${format}`;
 writeFileSync(take, Buffer.concat(chunks));
-const TIMES = 5;
+const TIMES = 9;
 const fades = Array.from({length: TIMES - 1}, (_, i) => `${i ? `[m${i}]` : '[0]'}[${i + 1}]acrossfade=d=8:c1=tri:c2=tri${i === TIMES - 2 ? '' : `[m${i + 1}]`}`).join(';');
 execFileSync('ffmpeg', ['-v', 'error', '-y', ...Array.from({length: TIMES}, () => ['-i', take]).flat(), '-filter_complex', fades, '-b:a', '96k', `${here}audio/music.tmp.mp3`]);
 renameSync(`${here}audio/music.tmp.mp3`, `${here}audio/music.mp3`);

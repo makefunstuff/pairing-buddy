@@ -20,7 +20,7 @@ Type "x"
 Sleep 1s
 Type ":w"
 Enter
-Wait+Screen@150s /suggestion:/
+Wait+Screen@150s /M-j goes/
 Sleep 7s
 Screenshot out/t-regression.png
 Alt+j
@@ -32,6 +32,7 @@ Sleep 2.5s
 Screenshot out/t-taken.png
 Type ":w"
 Enter
-Sleep 9s
+Wait+Screen@30s /pass/
+Sleep 6s
 Screenshot out/t-green.png
 Sleep 2s

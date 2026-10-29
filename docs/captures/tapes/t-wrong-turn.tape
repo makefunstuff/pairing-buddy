@@ -30,7 +30,7 @@ Type "20Gf("
 Sleep 600ms
 Type "da(aattempt"
 Escape
-Wait+Screen@90s /M-j/
+Wait+Screen@90s /worker\.go:3[56]/
 Sleep 8s
 Screenshot out/t-remark.png
 Alt+j

@@ -1,7 +1,6 @@
 #!/bin/bash
 # finish.sh [tutorial render] [short render]: from the HyperFrames renders (default renders/final.mp4 and
-# renders/short.mp4), the files people watch: renders/pairing-buddy-tutorial.mp4 (1080p) and its copy under 10 MB
-# for the README (renders/pairing-buddy-tutorial-readme.mp4),
+# renders/short.mp4), the files people watch: renders/pairing-buddy-tutorial.mp4 (1080p),
 # the site's 720p hero.mp4, hero.webm and hero-poster.jpg with its captions and chapters (hero.vtt,
 # hero-chapters.vtt), and renders/pairing-buddy-short.mp4, the cut for social media. The sound is normalised to
 # -16 LUFS; metadata is dropped.
@@ -21,13 +20,6 @@ ffmpeg -v error -y -i "$in" -i "$mix" -map 0:v -map 1:a -map_metadata -1 -vf sca
   -c:v libx264 -preset veryslow -crf 28 -tune animation -pix_fmt yuv420p -c:a aac -b:a 96k -movflags +faststart "$site/hero.mp4"
 ffmpeg -v error -y -i "$in" -i "$mix" -map 0:v -map 1:a -map_metadata -1 -vf scale=1280:720:flags=lanczos \
   -c:v libvpx-vp9 -b:v 0 -crf 44 -row-mt 1 -cpu-used 2 -c:a libopus -b:a 80k "$site/hero.webm"
-# The README's copy: the same 1080p in two passes at a fixed bitrate, so that it fits GitHub's 10 MB upload limit
-# (12:43 at 74 kbps of video and 16 kbps of mono voice is about 9.5 MB).
-pass=$(mktemp)
-ffmpeg -v error -y -i "$out" -c:v libx264 -preset veryslow -tune animation -b:v 74k -pass 1 -passlogfile "$pass" -an -f mp4 /dev/null
-ffmpeg -v error -y -i "$out" -c:v libx264 -preset veryslow -tune animation -b:v 74k -pass 2 -passlogfile "$pass" -pix_fmt yuv420p \
-  -c:a aac -ac 1 -b:a 16k -map_metadata -1 -metadata title="pairing-buddy: the tutorial" -movflags +faststart renders/pairing-buddy-tutorial-readme.mp4
-rm -f "$pass" "$pass"-0.log "$pass"-0.log.mbtree
 # The poster: Pair's words under your line, in the wrong-turn scene (chapters.json has the time).
 poster=$(node -p "require('./chapters.json').poster")
 ffmpeg -v error -y -ss "$poster" -i "$out" -frames:v 1 -vf scale=1280:720 -q:v 3 "$site/hero-poster.jpg"

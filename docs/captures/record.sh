@@ -19,6 +19,9 @@ TELESCOPE=40aedd8a68c78a656a10a8d62d80c54af59420fb # nvim-telescope/telescope.nv
 PLENARY=74b06c6c75e4eeb3108ec01852001636d85a932b # nvim-lua/plenary.nvim, MIT: Telescope needs it
 MINI=561751e839b99a4baca36b9d963166b66d2536a6 # echasnovski/mini.nvim, MIT: only mini.base16
 TOKYONIGHT=cdc07ac78467a233fd62c493de29a17e0cf2b2b6 # folke/tokyonight.nvim, Apache-2.0: the site's loops
+# Nothing of the session you record from reaches a scene: not the herdr (or the board) you may run this in. The
+# no-herdr scenes have no herdr at all, the others its stand-in.
+for v in $(compgen -e); do case $v in HERDR_*|SHEPHERDR_*|AGENT_BROWSER_*|TERM_PROGRAM*) unset "$v" ;; esac; done
 SCENES=("$@")
 [ ${#SCENES[@]} -gt 0 ] || SCENES=(wrong-turn tests-on-save hand-over take-back held-thought search-trail ledger context-card crash delight agents teach notes pickup debrief loop blank-page first-run hand-over-run no-herdr chat chat-layout gen-here gen-file gen-try gen-scaffold gen-board review brief-sync doctor worktrees roles)
 mkdir -p "$HERE/out"

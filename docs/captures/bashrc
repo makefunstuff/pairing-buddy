@@ -1,4 +1,5 @@
 # The :terminal's shell in the captures: a short prompt, no history file, and Pair's shell hook.
 HISTFILE=
 PS1='\W $ '
+export NODE_NO_WARNINGS=1 # no ExperimentalWarning from the hook in the shells on screen
 eval "$(node "$CAP_REPO/bin/pair.mjs" shell-hook bash)"

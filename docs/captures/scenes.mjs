@@ -520,3 +520,111 @@ Object.assign(scenes, {
     ],
   },
 });
+// The tutorial's new scenes (t-*, with a real model; only their setup is here).
+
+// The brief of the /gen scenes, committed with the project: NOTES.md at its root, in the user's words.
+const BRIEF = `# hookd: retries
+
+- A failed delivery waits Base, then twice as long each time, up to Max.
+- All waits of one webhook stay inside its Budget.
+- Logs go through log/slog, never fmt.Printf.
+- Only the standard library: no new dependencies.
+- Every exported function has a table test.
+`;
+
+// /gen in the chat: code at the cursor, new files, a sample and a scaffold, against NOTES.md and the goal.
+scenes.gen = {
+  goal: 'retries reach the budget',
+  testOnSave: 'go test -json ./...',
+  setup(project) {
+    fixed(project);
+    writeFileSync(join(project, 'NOTES.md'), BRIEF);
+  },
+  watcher: score(),
+  partner: [],
+};
+for (const name of ['t-gen-here', 't-gen-file', 't-gen-try', 't-gen-scaffold']) scenes[name] = scenes.gen;
+
+// The board, Shepherdr (board.mjs stands in), for hookd: a dead-letter task ready to merge, its branch committed
+// with its reviewer's facts; one at work; and /gen board hands a new one over. While you type, HKD-22 is ready.
+const task22 = (n, title, status, sub, more = {}) => ({id: `HKD-${n}`, title, status, sub, place: 'p:here:hookd', branch: `work/${n}-${title.toLowerCase().replace(/[^a-z]+/g, '-').replace(/-$/, '')}`, ...more});
+const PARK = `package delivery
+
+import "time"
+
+// DeadLetter is a webhook that ran out of attempts or budget, kept to look at and replay.
+type DeadLetter struct {
+	ID       string
+	Attempts int
+	Reason   string
+	At       time.Time
+}
+
+// Park keeps a failed delivery as a dead letter.
+func Park(letters []DeadLetter, id string, attempts int, err error, now time.Time) []DeadLetter {
+	return append(letters, DeadLetter{ID: id, Attempts: attempts, Reason: err.Error(), At: now})
+}
+`;
+const PARK_TEST = `package delivery
+
+import (
+	"errors"
+	"testing"
+	"time"
+)
+
+func TestPark(t *testing.T) {
+	got := Park(nil, "evt_42", 5, errors.New("503"), time.Unix(0, 0))
+	if len(got) != 1 || got[0].Attempts != 5 || got[0].Reason != "503" {
+		t.Fatalf("Park = %+v", got)
+	}
+}
+`;
+const READY = task22(22, 'Park dead letters', 'work', 'Writing the tests', {
+  work: {'internal/delivery/deadletter.go': PARK, 'internal/delivery/deadletter_test.go': PARK_TEST},
+  said: 'Failed webhooks are parked as dead letters, with a test.',
+  facts: 'PR #31 · commit 4e1c9a2 · checks passed (go test ./...) · review: 1 round, 1 minor left (Reason keeps only the last error) · not proven: replay',
+  desc: 'Park webhooks that run out of attempts or budget as dead letters, to look at and replay.',
+});
+scenes['t-board'] = {
+  goal: 'retries reach the budget',
+  testOnSave: 'go test -json ./...',
+  setup(project) {
+    fixed(project);
+    writeFileSync(join(project, 'NOTES.md'), BRIEF);
+  },
+  watcher: score(),
+  partner: [],
+  agents: {
+    key: 'HKD',
+    tasks: [READY, task22(23, 'Admin page for dead letters', 'work', 'Reading the queue')],
+    herdr: [],
+    later(herdr, show) {
+      show(this.tasks.map(t => (t.id === 'HKD-22' ? {...t, status: 'ready', sub: 'Ready to merge'} : t)));
+    },
+  },
+};
+
+// Overlap and /brief sync: you work on HKD-7's branch (its brief on the board is older than NOTES.md), and HKD-8's
+// agent, in its own worktree, has changed worker.go's budget check on its branch.
+const OWN = task22(7, 'Retries reach the budget', 'work', 'Tracing attempt 5', {
+  noWorktree: true,
+  desc: 'Retries reach the budget.\n\n> A failed delivery waits Base, then twice as long each time, up to Max. (NOTES.md:3)\n> All waits of one webhook stay inside its Budget. (NOTES.md:4)',
+});
+scenes['t-overlap'] = {
+  goal: 'retries reach the budget',
+  testOnSave: 'go test -json ./...',
+  branch: OWN.branch,
+  setup(project) {
+    writeFileSync(join(project, 'NOTES.md'), BRIEF);
+  },
+  watcher: score(),
+  partner: [],
+  agents: {
+    key: 'HKD',
+    tasks: [OWN, task22(8, 'Budget per receiver', 'work', 'Changing the budget check', {
+      work: {'internal/delivery/worker.go': text => text.replace('if elapsed+wait >= cfg.Budget {', 'if elapsed+wait >= cfg.budgetFor(receiver) {')},
+    })],
+    herdr: [],
+  },
+};
