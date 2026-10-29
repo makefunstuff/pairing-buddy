@@ -25,10 +25,10 @@ import {mkdir, readdir, readFile, realpath, stat, utimes, writeFile} from 'node:
 import {dirname, isAbsolute, join, normalize, relative, sep} from 'node:path';
 import {promisify} from 'node:util';
 import {
-  briefEmpty, briefLine, briefText, CHECK_PROMPT, checkInput, CONFLICT_PROMPT, conflictInput, exceptionKey, parseCheck,
-  handoffBrief, parseConflict, quotePlace, readBrief,
+  briefEmpty, briefLine, briefSync, briefText, CHECK_PROMPT, checkInput, CONFLICT_PROMPT, conflictInput, exceptionKey, parseCheck,
+  handoffBrief, inSync, parseConflict, quotePlace, readBrief, syncLines, syncTell,
 } from './brief.mjs';
-import {Board, boardTitle, commandLine} from './board.mjs';
+import {Board, boardTitle, commandLine, stateWords} from './board.mjs';
 import {checkCommand} from './check.mjs';
 import {commandPolicy} from './command-policy.mjs';
 import {GEN_BRIEF, GEN_KEEP_TRIES, GEN_LIMITS, GEN_SCAFFOLD} from './config.mjs';
@@ -39,7 +39,7 @@ import {
   changedIn, daysLeft, expireTries, filesIn, freshFolder, linesOf, makeCopy, makeWorktree, noLinks, pathIn, placeHunks, projectFolder,
   removeCopy, removeWorktree, scaffoldFolder, sizeOf, textOf, tryFolder, tryLine, triesIn, trySandboxed,
 } from './gen-tree.mjs';
-import {gitFiles} from './git.mjs';
+import {gitFiles, gitForkDay} from './git.mjs';
 import {DETAIL_KEPT_MS, keptOutput, notYoursLine, startOfDay} from './ledger.mjs';
 import {markId, parseMarkId, takenMarks, tally, writtenMarks} from './owning.mjs';
 import {Reviews} from './review.mjs';
@@ -140,6 +140,19 @@ const lineCount = text => (text === '' ? 0 : text.replace(/\n$/, '').split('\n')
 const answerOf = text => (text && !SILENT.test(text) ? text.trim() : '');
 const ranMark = ran => (ran.exit === 0 && !ran.timedOut ? '✓' : '✗');
 const ranText = ran => `${ranMark(ran)} \`${ran.command}\`${ran.timedOut ? ' (stopped: it ran too long)' : ran.exit ? ` exit ${ran.exit}` : ''}`;
+/**
+ * What /brief sync's tell does to a task in `status`, as its pick says it: {does, then}, `waiting` when its agent waits
+ * for a go (the message then says it is none). Null for a done task: there is no agent to tell.
+ */
+export function syncPick(id, status) {
+  if (status === 'done') return null;
+  if (['todo', 'queued'].includes(status)) return {waiting: true, does: `tell ${id}: its agent waits for a go, and the message says it is none`, then: `${id} waits for a go: the message says this is none.`};
+  if (status === 'off') return {does: `tell ${id}: its agent is stopped, and a message starts it again`, then: `${id}'s agent is stopped: a message starts it again.`};
+  if (['work', 'merging'].includes(status)) return {does: `tell ${id}: its agent is at work, so this goes as a message, not a new brief`, then: `${id}'s agent is at work: this goes as a message, not a new brief.`};
+  if (['need', 'ready', 'idle'].includes(status)) return {does: `tell ${id}: its agent waits for you, and takes this in as a message, not a new brief`, then: `${id}'s agent waits for you (${stateWords(status)}): this goes as a message, not a new brief.`};
+  return {does: `tell ${id}: a message to its agent (${stateWords(status) || 'its state is not known'})`, then: `${id} is ${stateWords(status) || 'in a state Pair does not know'}: this goes to its agent as a message.`};
+}
+
 const tail = (text, chars) => (text.length > chars ? `…${text.slice(-chars)}` : text);
 
 export class Gen {
@@ -404,6 +417,52 @@ export class Gen {
     if (briefEmpty(brief)) return 'The brief is empty: no goal, no board task, no note. /goal sets the goal; /brief <note> pins a note.';
     const how = brief.note && !brief.note.pinned ? ` (${brief.note.file} by default, gen.brief)` : '';
     return `The brief: ${line}${how}. /brief <note> pins another note; /brief off leaves the note out.`;
+  }
+
+  /**
+   * /brief sync and :Pair brief sync: how the brief differs from the brief its board task (the branch's) has on the
+   * board, with the decisions logged since that it does not have, and one offer: tell its agent (a running one gets a
+   * message, not a new brief; one that waits for a go is told this is no go), or copy the command. Shepherdr has no
+   * describe, so a tell is all there is. Nothing goes to the board but on that pick. `from` is where it was asked
+   * ('editor' or 'chat'): the offer goes there. Resolves with what the chat was told last, null when Neovim has the pick.
+   */
+  async syncBrief({from = 'chat'} = {}) {
+    const session = this.session;
+    const say = text => (session.message('system', text), text);
+    const own = session.state.board?.task;
+    if (!this.board) return say('There is no board to sync with ("board": null in the config).');
+    if (!own) return say('No board task on this branch: /brief sync compares the brief with the brief of the task whose number your branch has.');
+    const board = new Board(this.board);
+    let task;
+    try {
+      task = await board.show(own.id);
+    } catch (error) {
+      return say(`/brief sync: the board did not show ${own.id}: ${error.message.split('\n')[0]}`);
+    }
+    const brief = await readBrief({root: this.root, pin: this.pin, fallback: this.briefName, goal: session.state.goal, task, read: path => session.bufferText(path)});
+    const log = await session.bufferText(join(brief.note ? dirname(brief.note.path) : this.root, LOG_NAME)).catch(() => '');
+    // The task's brief was written no earlier than the day its branch left the base: older decisions it had to hand.
+    const sync = briefSync(brief, typeof log === 'string' ? log : '', {since: await gitForkDay(this.root)});
+    const head = `/brief sync: ${briefLine(brief)}`;
+    if (inSync(sync)) return say(`${head}. ${task.id}'s brief has all of it${brief.note ? '' : ' (there is no note to compare: /brief <note> pins one)'}.`);
+    const lines = syncLines(brief, sync);
+    const said = `${head}. ${task.id}'s brief on the board lacks:\n${lines.join('\n')}`;
+    const pick = syncPick(task.id, task.status);
+    if (!pick) return say(`${said}\n${task.id} is done, so there is no agent to tell.`);
+    const text = syncTell(brief, sync, {waiting: Boolean(pick.waiting)});
+    const command = commandLine(board.tellWords(task.id, text));
+    const {does} = pick;
+    if (from === 'editor' && session.notify('editor', {type: 'brief_sync', task: task.id, title: head, lines, text, command, does})) {
+      session.message('system', `${said}\nPick in Neovim: ${does}, or copy the command.`);
+      return null; // Neovim shows the lines with its pick
+    }
+    const answer = await session.confirm(`${said}\n${pick.then}`, ['c'], {
+      command, copy: true, keys: ['c'], timeoutMs: null, said: () => null, hint: `y tell ${task.id} · c copy the command · n leave it`,
+    });
+    if (answer === 'c') return say(`Nothing told. The command, to run yourself: ${command}`);
+    if (answer !== true) return say(`Nothing told: ${task.id}'s brief stays as it is.`);
+    const done = await this.reviews.boardDo({task: task.id, verb: 'tell', text, run: true});
+    return say(done.error ? `Nothing sent to the board: ${done.error}.` : done.said);
   }
 
   /**

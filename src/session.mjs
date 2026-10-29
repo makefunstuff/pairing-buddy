@@ -84,6 +84,10 @@ const CHECKS = {
     + 'short sentences what is now true and why this change did it where the earlier runs\' changes did not, with the numbers '
     + 'before and after. If it got worse, point at what in the change made it worse. If nothing in the earlier runs makes it '
     + 'worth a word (it is the plain result of a first try), answer exactly SILENT.',
+  overlap: 'Another agent, a board task, changes the same lines on its own branch while the user changes them here. Do not review '
+    + 'either change. Say in one or two short sentences which task also changes these lines and, from the lines it writes there, '
+    + 'what its change does, and that whichever is merged second meets a conflict: the user may want to wait for it, or tell it. '
+    + 'Point at the user\'s lines.',
   ...PROSE_CHECKS,
 };
 

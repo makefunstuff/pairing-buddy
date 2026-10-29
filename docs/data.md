@@ -27,7 +27,9 @@ daemon's memory only, for the session.
 Nothing is written to your repository. The work board (Shepherdr) is read, and written to only when you pick it:
 [`/gen board`](gen.md#gen-board-a-task-for-the-board) adds one task, with its brief shown to you first, as the pick you
 chose says (add only, or add and delegate), and a task's [review](gen.md#reviewing-a-board-task-pair-review) tells its
-agent what you wrote, asks it to merge (a tell), or archives the task, each on the pick that names it. Nothing leaves your machine
+agent what you wrote, asks it to merge (a tell), or archives the task, each on the pick that names it, and
+[`/brief sync`](gen.md#keeping-the-task-in-step-brief-sync) tells the branch's task what changed in the brief, on its
+pick too. What the board's working tasks change is read with git, never changed. Nothing leaves your machine
 except the requests to the model endpoints you configured (OpenRouter's voice too, when you set it), `gh pr view` for the
 [context card](neovim.md#what-it-knows-the-context-card) when `gh` is installed and, for a login, to the provider's
 sign-in service. Those requests carry your code: the Watcher gets each moment's text (your edits, a command's

@@ -1,12 +1,13 @@
 // Finds the moments where a remark might help. Pure: the caller passes the clock and the keys already fired.
 import {byUser, errorSignature, failed, failureLine, generatedAt, madeIn, pairMade, userEdits} from './fold.mjs';
+import {touched} from './overlap.mjs';
 import {PROSE_KINDS, proseTriggers} from './prose-triggers.mjs';
 import {moveText, runsDetail} from './run-log.mjs';
 import {readingSummary} from './run-output.mjs';
 import {isSourceFile, testSummary} from './test-output.mjs';
 import {currentTrail, lost, TRAIL, trailLines} from './trail.mjs';
 
-export const TRIGGER_KINDS = ['failed_command', 'repeated_error', 'new_code_diagnostic', 'stall', 'drift', 'edit_while_red', 'regression', 'search_trail', 'crash', 'new_warning', 'same_result', 'number_moved', ...PROSE_KINDS];
+export const TRIGGER_KINDS = ['failed_command', 'repeated_error', 'new_code_diagnostic', 'stall', 'drift', 'edit_while_red', 'regression', 'search_trail', 'crash', 'new_warning', 'same_result', 'number_moved', 'overlap', ...PROSE_KINDS];
 
 export const TIMING = {
   lookGraceMs: 4_000, // a failure gets this long to be noticed before Pair counts it as missed
@@ -217,6 +218,35 @@ function loopTriggers(state, now) {
   }];
 }
 
+const span = range => (range.from === range.to ? `${range.from}` : `${range.from}-${range.to}`);
+
+/**
+ * The overlap: the user edits lines that a working board task's branch changes too (see overlap.mjs), so whichever of
+ * the two merges second meets a conflict there. Raised once per task and change of its branch, for the user's own
+ * recent edits; Pair's are not theirs.
+ */
+function overlapTriggers(state, now) {
+  if (!state.tasks?.length) return [];
+  const found = [];
+  for (const edit of userEdits(state).filter(each => now - each.at <= TIMING.recentMs).reverse()) {
+    for (const task of state.tasks) {
+      const ranges = touched(task.files.find(each => each.file === edit.file)?.ranges ?? [], edit.from, edit.to);
+      if (!ranges.length) continue;
+      const key = `overlap:${task.id}:${edit.file}:${ranges[0].from}`;
+      if (found.some(trigger => trigger.key === key)) continue;
+      const writes = ranges.flatMap(range => range.added).slice(0, 4);
+      found.push({
+        kind: 'overlap', key, file: edit.file, line: edit.from, task: {id: task.id, title: task.title, branch: task.branch},
+        ranges: ranges.map(({from, to}) => ({from, to})), edited: {from: edit.from, to: edit.to},
+        detail: `The user edits ${edit.file}:${span(edit)}. Board task ${task.id} ("${task.title}"), whose agent is at work on branch ${task.branch}, `
+          + `also changes ${edit.file}:${ranges.map(span).join(', ')} on its branch${writes.length ? `, where it writes:\n${writes.map(line => `  ${line}`).join('\n')}` : ' (it removes lines there)'}\n`
+          + 'Whichever of the two is merged second meets a conflict on these lines.',
+      });
+    }
+  }
+  return found;
+}
+
 /** What fails now, in one line: a red test run, else a failed command, both while recent; null when nothing does. */
 export function failingNow(state, now) {
   const {tests} = state;
@@ -259,6 +289,6 @@ export function detectTriggers(state, now, fired = new Set()) {
   // A run in the user's terminal is the terminal's: a hidden terminal sends none. Pair's own runs on save are Pair's.
   const runs = hidden('terminal') && state.run?.by === 'you' ? {crashes: [], warnings: []} : {crashes: crashTriggers(state, now), warnings: warningTriggers(state, now)};
   const loop = hidden('terminal') && state.runs.at(-1)?.by === 'you' ? [] : loopTriggers(state, now);
-  return [...runs.crashes, ...commands, ...diagnosticTriggers(state), ...regressionTriggers(state, now), ...redTriggers(state, now), ...runs.warnings, ...loop, ...driftTriggers(state, now), ...trail, ...proseTriggers(state, now)]
+  return [...runs.crashes, ...commands, ...diagnosticTriggers(state), ...regressionTriggers(state, now), ...redTriggers(state, now), ...runs.warnings, ...loop, ...overlapTriggers(state, now), ...driftTriggers(state, now), ...trail, ...proseTriggers(state, now)]
     .filter(trigger => !fired.has(trigger.key));
 }

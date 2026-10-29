@@ -41,7 +41,14 @@ the work board.
   a hunk and then the rest of a file kept into a buffer as it is now, a new file kept, a deleted one refused, origin
   `board:<id>` and the marks, `/undo` taking it back; tell, merge (a tell) and archive copied or run only on the pick,
   never `shepherdr merge`; in a headless Neovim, `:Pair review`, the list, `Enter`'s diff, `k` on a hunk, `A`, `a`,
-  `t` and `Alt-r`.
+  `t` and `Alt-r`. What the working tasks change ([test/overlap.test.mjs](../test/overlap.test.mjs)): a `git diff -U0`
+  parsed into files and the base's lines, the tasks at work of the space read in real worktrees (uncommitted work
+  too, the branch's own task, waiting ones and other spaces left out, git and the board only read), and the overlap
+  moment on your own edit only, once per change. `/brief sync` with the fake board: the lines the task's brief lacks,
+  those it quotes that the note dropped, the decisions not in it; `y` tells (no go for a task that waits), `c` copies,
+  `n` and a done task send nothing. In a headless Neovim ([test/overlap-nvim.test.mjs](../test/overlap-nvim.test.mjs)):
+  the winbar note on a file a task changes and its going when the task is done, the overlap remark through the gate
+  with scripted models, and `:Pair brief sync`'s pick telling or copying.
 - **The daemon end to end** with scripted models; several projects and Neovims at once; Neovim and the chat pane
   reconnecting after a daemon restart; a question the restart cut off answered late, a remark dropped; a saved config
   taken without a restart (a new model between turns, one with an error refused).

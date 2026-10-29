@@ -11,12 +11,15 @@ const WHERE = /^- Where: (.+?):(\d+)(?: \((.*)\))?$/;
 const DECIDED = '- Status: decided';
 const SAME_THING = 0.5; // how much two decisions in one section must share to be about the same thing
 
-/** The log's entries: `{title, file, section, decided, status}`, `status` being the 0-based index of its status line. */
+/**
+ * The log's entries: `{date, title, file, section, decided, status}`, `status` being the 0-based index of its status
+ * line.
+ */
 export function entries(log) {
   const found = [];
   log.split('\n').forEach((text, index) => {
     const heading = ENTRY.exec(text);
-    if (heading) return found.push({title: heading[2], file: null, section: null, decided: false, status: null});
+    if (heading) return found.push({date: heading[1], title: heading[2], file: null, section: null, decided: false, status: null});
     const entry = found.at(-1);
     if (!entry) return;
     const where = WHERE.exec(text);

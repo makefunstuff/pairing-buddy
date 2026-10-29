@@ -51,6 +51,7 @@ A remark can come from one of these moments (its **trigger**):
 | `new_warning` | A build printed a warning in a file you edited that no build before it printed; Pair speaks only for a bug ([builds.md](builds.md)) |
 | `same_result` | You changed the code and ran it again, and it printed the same numbers: Pair says why the change did nothing ([exploration.md](exploration.md)) |
 | `number_moved` | A change of the code moved a number the run prints, most worth a word at the end of a hunt ([exploration.md](exploration.md)) |
+| `overlap` | You edit lines that the branch of a board task at work also changes: whichever is merged second meets a conflict ([agents.md](agents.md#tasks-working-on-your-files)) |
 | `note_stall` | In a Markdown note, you wrote a question and then nothing for 90 s: one question back, never the answer ([notes.md](notes.md#what-the-triggers-mean-in-prose)) |
 | `note_drift` | In a Markdown note, a new section shares no word with the note's title or the goal: one question, "is this still the … note?" |
 | `search_trail` | Three or more Telescope, snacks.picker or fzf-lua searches since your last edit, one of them closed with nothing opened, or repeated. The remark gets what fails now, so it can say where the thing is in the code's own word ([neovim.md](neovim.md#the-search-trail)) |
