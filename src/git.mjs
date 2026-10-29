@@ -75,13 +75,18 @@ export async function gitBranchDiff(root, base, branch, maxBytes = 4 << 20) {
 }
 
 /**
- * What a task's branch changes, as `git diff -U0` (changed lines, no context): in its `worktree` against where it left
- * `base`, its commits and the changes its agent has not committed yet; without one, `base...branch`. Read only.
+ * What a task's branch changes, as `git diff -U0` (changed lines, no context), against where it left `base`: the
+ * newest commit it shares with the local base branch or origin's, whichever is further on, so a local main behind
+ * origin's brings in no work merged since. In its `worktree`, the changes its agent has not committed yet count too.
+ * Read only.
  */
 export async function gitTaskDiff(root, base, branch, {worktree = null, maxBytes = 4 << 20} = {}) {
   const diff = ['diff', '--no-color', '--no-ext-diff', '--no-renames', '--src-prefix=a/', '--dst-prefix=b/', '-U0'];
   const options = {timeout: 10_000, maxBuffer: maxBytes};
-  if (!worktree) return (await run('git', ['-C', root, ...diff, `${base}...${branch}`], options)).stdout;
-  const left = (await run('git', ['-C', worktree, 'merge-base', base, 'HEAD'], options)).stdout.trim();
-  return (await run('git', ['-C', worktree, ...diff, left], options)).stdout;
+  const known = ref => run('git', ['-C', root, 'rev-parse', '--verify', '--quiet', `${ref}^{commit}`], options).then(() => ref, () => null);
+  const bases = (await Promise.all([base, `origin/${base}`].map(known))).filter(Boolean);
+  if (!bases.length) throw new Error(`no ${base} branch to compare with`);
+  // With several commits after the first, merge-base takes the newest that is an ancestor of all their merge.
+  const left = (await run('git', ['-C', root, 'merge-base', branch, ...bases], options)).stdout.trim();
+  return (await run('git', ['-C', worktree ?? root, ...diff, left, ...(worktree ? [] : [branch])], options)).stdout;
 }

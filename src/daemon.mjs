@@ -163,9 +163,10 @@ export async function startDaemon(config, {
    */
   function readTaskChanges(session) {
     if (changesReads.has(session) || !clientsOf(session, 'editor').length) return changesReads.get(session);
-    const reading = taskChanges.read({root: session.root, space: session.state.board?.space ?? null, own: session.state.board?.task?.id ?? null})
+    const {board, branch} = session.state;
+    const reading = taskChanges.read({root: session.root, space: board?.space ?? null, own: board?.task?.id ?? null, branch})
       .then(tasks => {
-        if (!tasks || !live.has(session.root)) return;
+        if (!tasks || live.get(session.root) !== session) return; // the board did not answer, or the session ended
         session.receive({kind: 'task_changes', tasks});
         const shown = {type: 'task_files', files: taskFiles(tasks, session.root)};
         if (JSON.stringify(shown) === JSON.stringify(session.taskFilesShown ?? {type: 'task_files', files: []})) return;

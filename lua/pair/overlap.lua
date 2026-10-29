@@ -10,7 +10,9 @@ local M = {}
 
 local deps = {} -- what init.lua lends: send, and `winbar` (false: no winbar note)
 local files = {} -- absolute path -> the tasks that change it: {{id, title, branch}, …}
-local ours = {} -- window -> the winbar it shows of ours, so another one of yours is never taken away
+-- Every note says so and ends so: such a winbar is ours, also one Neovim brought back with its buffer or copied to a
+-- split.
+local SAYS, TAIL = ' changing this file', ' · :Pair agents '
 local group = vim.api.nvim_create_augroup('pair_overlap', {clear = true})
 local MAX_BRANCH = 40
 
@@ -26,34 +28,29 @@ local function note(tasks)
   if #tasks == 1 then
     local task = tasks[1]
     local branch = present(task.branch) and (' · ' .. cut(task.branch, MAX_BRANCH)) or ''
-    return (' %s %s is changing this file%s · :Pair agents '):format(style.glyphs.agents, task.id, branch)
+    return (' %s %s is%s%s%s'):format(style.glyphs.agents, task.id, SAYS, branch, TAIL)
   end
   local ids = {}
   for _, task in ipairs(tasks) do table.insert(ids, task.id) end
-  return (' %s %s and %s are changing this file · :Pair agents '):format(style.glyphs.agents, table.concat(ids, ', ', 1, #ids - 1), ids[#ids])
+  return (' %s %s and %s are%s%s'):format(style.glyphs.agents, table.concat(ids, ', ', 1, #ids - 1), ids[#ids], SAYS, TAIL)
 end
+
+local function ours(text) return text:find(SAYS, 1, true) ~= nil and text:sub(-#TAIL) == TAIL end
 
 --- The winbar of window `win` for the buffer it shows: the note when a task changes its file, else none of ours.
 local function show(win)
-  if not vim.api.nvim_win_is_valid(win) then
-    ours[win] = nil
-    return
-  end
+  if not vim.api.nvim_win_is_valid(win) then return end
   local buf = vim.api.nvim_win_get_buf(win)
   local name = vim.bo[buf].buftype == '' and vim.api.nvim_buf_get_name(buf) or ''
   local tasks = deps.winbar ~= false and name ~= '' and files[vim.fn.resolve(name)] or nil
   local current = vim.wo[win].winbar
   if tasks then
     -- A winbar of the window's own (a /gen try, your config's) stays: the note goes only where there is none, or ours.
-    if current ~= '' and current ~= ours[win] then return end
+    if current ~= '' and not ours(current) then return end
     local text = note(tasks):gsub('%%', '%%%%')
-    ours[win] = text
-    vim.api.nvim_win_call(win, function() vim.api.nvim_set_option_value('winbar', text, {scope = 'local'}) end)
-  elseif ours[win] then
-    if current == ours[win] then
-      vim.api.nvim_win_call(win, function() vim.api.nvim_set_option_value('winbar', '', {scope = 'local'}) end)
-    end
-    ours[win] = nil
+    if text ~= current then vim.api.nvim_win_call(win, function() vim.api.nvim_set_option_value('winbar', text, {scope = 'local'}) end) end
+  elseif ours(current) then
+    vim.api.nvim_win_call(win, function() vim.api.nvim_set_option_value('winbar', '', {scope = 'local'}) end)
   end
 end
 
@@ -64,9 +61,8 @@ end
 function M.setup(lent)
   deps = lent
   vim.api.nvim_create_autocmd({'BufWinEnter', 'WinEnter', 'BufFilePost'}, {group = group, callback = function()
-    if next(files) or next(ours) then show(vim.api.nvim_get_current_win()) end
+    show(vim.api.nvim_get_current_win())
   end})
-  vim.api.nvim_create_autocmd('WinClosed', {group = group, callback = function(args) ours[tonumber(args.match)] = nil end})
 end
 
 --- The daemon's task_files: each file a working task changes, with the tasks.

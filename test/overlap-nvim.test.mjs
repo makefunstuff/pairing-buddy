@@ -114,6 +114,16 @@ test('a file a working task changes says so in the winbar; your edit on its line
     keys(':close<CR>');
     await until(() => remote('bufname()') === 'a.js', 'back in a.js');
     assert.equal(remote('&l:winbar'), note);
+    // Another file in the same window, and back: Neovim brings the note back with the buffer, and it is still Pair's.
+    keys(':e b.js<CR>');
+    await until(() => remote('bufname()') === 'b.js', 'b.js in the same window');
+    assert.equal(remote('&l:winbar'), '');
+    keys(':e a.js<CR>');
+    await until(() => remote('bufname()') === 'a.js', 'a.js again');
+    assert.equal(remote('&l:winbar'), note);
+    keys(':split<CR>');
+    await until(() => remote('winnr("$")') === '2', 'a split of it');
+    assert.equal(remote('&l:winbar'), note);
     assert.ok(fake.calls().every(args => ['list', 'show'].includes(args[1]) || args[0] === 'space'), 'the board is only read');
 
     // Your edit on line 2, which SHO-71 changes too, then a save: the overlap, at your break.

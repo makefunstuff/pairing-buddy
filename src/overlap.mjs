@@ -50,13 +50,15 @@ export function parseTaskDiff(text) {
   const files = [];
   let file = null;
   let range = null;
+  let header = false; // between `diff --git` and its first hunk: a `--- ` there names the file, in a hunk it is a line
   for (const line of text.split('\n')) {
     if (line.startsWith('diff --git ')) {
       file = null;
       range = null;
+      header = true;
       continue;
     }
-    if (/^(?:\+\+\+|---) /.test(line)) {
+    if (header && /^(?:\+\+\+|---) /.test(line)) {
       const path = diffPath(line.slice(4));
       if (path && !files.some(each => each.file === path)) {
         if (files.length >= MAX_FILES) break;
@@ -66,6 +68,7 @@ export function parseTaskDiff(text) {
       continue;
     }
     const hunk = /^@@ -(\d+)(?:,(\d+))? \+\d+(?:,\d+)? @@/.exec(line);
+    if (hunk) header = false;
     if (hunk && file) {
       const start = Number(hunk[1]);
       const count = hunk[2] === undefined ? 1 : Number(hunk[2]);
@@ -108,11 +111,11 @@ export class TaskChanges {
   }
 
   /**
-   * The working tasks of `space` other than `own` (the task of the branch you are on), each {id, title, branch, files}
+   * The working tasks of `space` other than `own` (the task of the branch you are on, `here`), each {id, title, branch, files}
    * where `files` are [{file, ranges}] relative to the session's `root` and inside it. [] without a board, a space or
    * a base branch; null when the board cannot be read now (the last answer stands).
    */
-  async read({root, space, own = null}) {
+  async read({root, space, own = null, branch: here = null}) {
     const board = this.shepherdr;
     if (!board || !space) return [];
     let tasks;
@@ -132,7 +135,8 @@ export class TaskChanges {
     for (const task of tasks) {
       if (!this.branches.get(task.id)) this.branches.set(task.id, await board.show(task.id).then(shown => shown.branch, () => null));
       const branch = this.branches.get(task.id);
-      if (!branch) continue; // its agent has not made one yet
+      // Its agent has not made one yet; or it is the branch you are on, or its worktree is where you work: your own.
+      if (!branch || branch === here || [root, top].includes(worktrees.get(branch))) continue;
       const diff = await gitTaskDiff(top, base, branch, {worktree: worktrees.get(branch) ?? null}).catch(error => {
         this.log(`overlap: ${task.id}'s branch ${branch}: ${error.message.split('\n')[0]}`);
         return '';

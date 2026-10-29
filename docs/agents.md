@@ -119,10 +119,11 @@ what they change and says so where you work:
 **What it reads.** Every 30 seconds while a Neovim is connected to the session: the tasks of the repository's space
 that are at work (Shepherdr's `work` and `merging`; a task that waits for a go has changed nothing yet), each one's
 branch from `shepherdr task show <id> --json` (asked once), and what the branch changes with git, read only: `git
-diff -U0` in its worktree against where the branch left the base branch, so changes its agent has not committed
-count too, or `git diff -U0 <base>...<branch>` when it has no worktree on this machine. The lines are the base's,
-the lines your checkout has unless you changed them. The task of the branch you are on is left out, and so are other
-machines' tasks.
+diff -U0` against where the branch left the base branch (the newest commit it shares with your local base branch or
+origin's, whichever is further on, so work merged since is not counted as the task's), in its worktree when it has
+one on this machine, so changes its agent has not committed count too. The lines are the base's, the lines your
+checkout has unless you changed them. Your own work is left out: the task of the branch you are on, any task whose
+branch that is, and the task whose worktree you work in. So are other machines' tasks.
 
 ## Where it reads
 

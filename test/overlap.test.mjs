@@ -50,8 +50,10 @@ test('a branch\'s diff: its files and the lines of the base it changes, with wha
   assert.equal(diffPath('a/my file.js\t'), 'my file.js', 'a name with a space has a tab after it');
   assert.equal(diffPath('"b/\\303\\274n\\303\\257 \\"q\\".js"'), 'ünï "q".js', 'a quoted name, unquoted');
   assert.equal(diffPath('/dev/null'), null);
-  assert.deepEqual(parseTaskDiff('--- a/x y.js\t\n+++ b/x y.js\t\n@@ -2 +2 @@\n-b\n\\ No newline at end of file\n+c\n\\ No newline at end of file\n'),
+  assert.deepEqual(parseTaskDiff('diff --git a/x y.js b/x y.js\n--- a/x y.js\t\n+++ b/x y.js\t\n@@ -2 +2 @@\n-b\n\\ No newline at end of file\n+c\n\\ No newline at end of file\n'),
     [{file: 'x y.js', ranges: [{from: 2, to: 2, added: ['c']}]}], 'no newline at the end is no line');
+  assert.deepEqual(parseTaskDiff('diff --git a/m.lua b/m.lua\n--- a/m.lua\n+++ b/m.lua\n@@ -3 +2,0 @@\n--- the old comment\n@@ -40,2 +39,2 @@\n-a\n-b\n+++x\n+y\n'),
+    [{file: 'm.lua', ranges: [{from: 3, to: 3, added: []}, {from: 40, to: 41, added: ['++x', 'y']}]}], 'in a hunk, a removed `-- comment` is a line, not a file');
   const ranges = parseTaskDiff(DIFF)[0].ranges;
   assert.deepEqual(touched(ranges, 5, 5).map(range => range.from), [3], 'the line next to a change touches it');
   assert.deepEqual(touched(ranges, 6, 8), [], 'lines between the changes do not');
@@ -92,7 +94,7 @@ const SPACE = root => ({name: 'shop', key: 'SHO', path: root});
 const TASK = (n, status, more = {}) => ({id: `SHO-${n}`, title: `Task ${n}`, status, place: 'p:here:shop', ...more});
 
 test('the working tasks of the repo\'s space: their branches\' files and lines, uncommitted work in a worktree too; read only', async () => {
-  const {home, root} = repo();
+  const {home, root, worktree} = repo();
   mkdirSync(join(home, 'board'));
   const fake = fakeShepherdr(join(home, 'board'), {spaces: [SPACE(root)], tasks: [
     TASK(7, 'work', {branch: 'work/7-fold'}),
@@ -116,6 +118,18 @@ test('the working tasks of the repo\'s space: their branches\' files and lines, 
   const shows = calls.filter(args => args[1] === 'show').length;
   await changes.read({root, space: 'shop', own: 'SHO-10'});
   assert.equal(fake.calls().filter(args => args[1] === 'show').length - shows, 1, 'a branch once known is not asked again; one not made yet is');
+
+  // Your own work is no task's: the branch you are on, or a task's worktree you work in.
+  assert.deepEqual((await changes.read({root, space: 'shop', branch: 'work/8-two'})).map(task => task.id), ['SHO-7', 'SHO-10']);
+  assert.deepEqual((await changes.read({root: worktree, space: 'shop'})).map(task => task.id), ['SHO-8', 'SHO-10'], 'its number not found in the branch: its worktree says it');
+
+  // A local main behind origin's: what was merged since is no task's change.
+  const ahead = git(root, 'rev-parse', 'work/8-two').trim();
+  git(root, 'update-ref', 'refs/remotes/origin/main', ahead);
+  git(root, 'branch', '-q', 'work/12-later', ahead);
+  fake.set({spaces: [SPACE(root)], tasks: [TASK(12, 'work', {branch: 'work/12-later'})]});
+  assert.deepEqual((await changes.read({root, space: 'shop'}))[0].files, [], 'branched from origin\'s main, it changes nothing yet');
+  fake.set({spaces: [SPACE(root)], tasks: [TASK(7, 'work', {branch: 'work/7-fold'}), TASK(8, 'merging', {branch: 'work/8-two'}), TASK(10, 'work', {branch: 'work/10-own'})]});
 
   // A session in a folder of the repo sees that folder's files, by its own paths.
   mkdirSync(join(root, 'sub'));
