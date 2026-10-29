@@ -112,6 +112,7 @@ test('/gen here with a popup input: the request, the shape guessed and shown, th
       'file      new files to review',
       'scaffold  many files, in Pair\'s copy',
       'try       a sample outside the project',
+      'board     a task for the board, for later',
     ]);
 
     // It lands under the line you asked on, which your typing moved down one, once you pause.

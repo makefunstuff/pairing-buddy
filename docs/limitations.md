@@ -54,6 +54,22 @@ stay herdr's:
   not after a daemon restart: an older edit of Pair's, or one whose lines moved, counts as yours again
   ([gen.md](gen.md#limits)).
 
+## The board
+
+- **Shepherdr only.** The board is read through `shepherdr` (Shepherdr 2); herdr-projects 1.x, the board before it, is
+  not read any more.
+- **A task's report is found by the words of `shepherdr artifact list` and `artifact show`**, which have no JSON: the
+  list names the space an artifact is kept in, not the task, so Pair asks the space's newest 20 who made them (`by
+  BDY-7 agent`). A report older than those 20, or a change of those lines' format in Shepherdr, hides it (the pull
+  request still opens).
+- **The diff is against the branch the repository merges into** (origin's default, else `main`), not the commit the
+  task started from, and only for a task whose repository is on this machine.
+- **Another machine's tasks** (Shepherdr lists them too) are only their line: `o`, `d` and `t` open nothing of
+  theirs.
+- **In Neovim's statusline only `Alt-o`** opens what a task left behind; `Alt-d` and `Alt-t` are Pair's own keys
+  (a decision, listening), so the diff and the terminal are in `:Pair agents` and on the chat pane's line.
+- **`/gen board` adds for later only**, and does not let you edit the brief before it adds it.
+
 ## The chat pane
 
 - **Copying needs OSC 52.** `c` and `/copy` hand the text to the terminal, which puts it on the clipboard only if it

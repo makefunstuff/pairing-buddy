@@ -25,9 +25,10 @@ import {mkdir, readdir, readFile, realpath, stat, utimes, writeFile} from 'node:
 import {dirname, isAbsolute, join, normalize, relative, sep} from 'node:path';
 import {promisify} from 'node:util';
 import {
-  briefEmpty, briefLine, briefText, CHECK_PROMPT, checkInput, CONFLICT_PROMPT, conflictInput, exceptionKey, parseCheck,
+  boardBrief, briefEmpty, briefLine, briefText, CHECK_PROMPT, checkInput, CONFLICT_PROMPT, conflictInput, exceptionKey, parseCheck,
   parseConflict, quotePlace, readBrief,
 } from './brief.mjs';
+import {Board, boardTitle, commandLine} from './board.mjs';
 import {checkCommand} from './check.mjs';
 import {commandPolicy} from './command-policy.mjs';
 import {GEN_BRIEF, GEN_KEEP_TRIES, GEN_LIMITS, GEN_SCAFFOLD} from './config.mjs';
@@ -44,7 +45,7 @@ import {runText} from './session.mjs';
 import {parseTestOutput} from './test-output.mjs';
 import {runLabel} from './test-runs.mjs';
 
-export const SHAPES = ['here', 'file', 'scaffold', 'try'];
+export const SHAPES = ['here', 'file', 'scaffold', 'try', 'board'];
 const BUILT = new Set(SHAPES);
 /** What each shape makes, as the shape question lists it. */
 export const SHAPE_WHAT = {
@@ -52,6 +53,7 @@ export const SHAPE_WHAT = {
   file: 'new files to review',
   scaffold: 'many files, in Pair\'s copy',
   try: 'a sample outside the project',
+  board: 'a task for the board, for later',
 };
 
 const QUESTIONS = 2; // the model may ask the user this many questions per request
@@ -127,9 +129,10 @@ export class Gen {
    * of the Partner's model outside any conversation, for the brief's checks; without it, they are not made. `dir` is
    * /gen's folder in Pair's data folder (gen-tree.mjs), where the tries and the scaffold copies go: `keepTries` days,
    * run in the sandbox as `sandbox` (scoutPane.sandbox) says, with the network only when `network`. `scaffold` is
-   * where a scaffold goes without --branch or --copy: 'tree' (Pair's copy) or 'worktree'.
+   * where a scaffold goes without --branch or --copy: 'tree' (Pair's copy) or 'worktree'. `board` is the board's
+   * command (the config's board), which /gen board composes a task for; null for none.
    */
-  constructor({session, limits = GEN_LIMITS, brief = GEN_BRIEF, ask = null, dir, keepTries = GEN_KEEP_TRIES, network = false, sandbox = 'auto', scaffold = GEN_SCAFFOLD}) {
+  constructor({session, limits = GEN_LIMITS, brief = GEN_BRIEF, ask = null, dir, keepTries = GEN_KEEP_TRIES, network = false, sandbox = 'auto', scaffold = GEN_SCAFFOLD, board = null}) {
     this.session = session;
     this.limits = limits;
     this.briefName = brief;
@@ -137,7 +140,7 @@ export class Gen {
     // Its real path, so the names of a try's files, which pathIn gives as real paths, are relative to their folder.
     this.dir = (() => { try { return realpathSync(dir); } catch { return dir; } })();
     this.folder = projectFolder(this.dir, session.root); // this project's
-    Object.assign(this, {keepTries, network, sandbox, scaffold});
+    Object.assign(this, {keepTries, network, sandbox, scaffold, board});
     const pinned = session.record.brief ?? session.store.lastBrief?.(session.root) ?? null;
     this.pin = pinned === '' ? false : pinned; // the note the user pinned, false for none, null for gen.brief's
     this.toldBrief = false; // the chat said once that a request runs against gen.brief's note
@@ -219,6 +222,7 @@ export class Gen {
       if (!shape) return this.end(request, 'cancelled', `gen #${request.n} cancelled.`);
       request.shape = shape;
     }
+    if (request.shape === 'board') return this.toBoard(request);
     if (request.shape === 'here' && !(await this.placeOf(request))) return;
     if (!(await this.against(request))) return;
     if (this.running) {
@@ -227,6 +231,34 @@ export class Gen {
       return session.message('system', `gen #${request.n} waits for gen #${this.running.n}.`);
     }
     return this.run(request);
+  }
+
+  /**
+   * /gen board: the request as a task for the board (Shepherdr), its command composed for you to read. y adds it for
+   * later (add only: its agent reads the brief and waits for your go), c copies the command, n or Esc adds nothing.
+   * Nothing is added without that pick, and nothing is ever delegated, merged or set from here.
+   */
+  async toBoard(request) {
+    const session = this.session;
+    const n = `gen #${request.n}`;
+    if (!this.board) return this.end(request, 'cancelled', `${n}: there is no board to add it to ("board": null in the config).`);
+    const brief = await this.brief();
+    request.brief = brief;
+    const board = new Board(this.board);
+    const words = board.addWords({title: boardTitle(request.words), brief: boardBrief(request.words, brief), space: session.state.board?.space ?? null});
+    const line = commandLine(words);
+    const choice = await this.question(request, {kind: 'board', title: `${n} · a task for the board: "${boardTitle(request.words)}"`, command: line});
+    if (request.state === 'cancelled') return;
+    if (choice === 'c') return this.end(request, 'done', `${n}: nothing added. The command, to run yourself: ${line}`);
+    if (choice !== 'y') return this.end(request, 'cancelled', `${n} cancelled: nothing added to the board.`);
+    try {
+      const {id, said} = await board.add(words, {cwd: this.root});
+      if (!id) return this.end(request, 'done', `${n}: the board answered: ${said}`); // added, as far as it says
+      session.ledger.add('board', `${n} → board ${id}: ${boardTitle(request.words)}`, {data: {gen: request.n, task: id, later: true}});
+      return this.end(request, 'done', `${n} → board ${id} · added, for later: its agent reads the brief and waits for your go (${commandLine(board.tellWords(id, 'go'))}).`);
+    } catch (error) {
+      return this.end(request, 'failed', `${n}: the board did not add it: ${error.message.split('\n')[0]}`);
+    }
   }
 
   /**
@@ -857,27 +889,29 @@ export class Gen {
    * given, or null when they leave it to Pair; 'brief', about a `conflict` with the brief at `place`, with y (as
    * asked), n (follow the brief) or e (open the brief there).
    */
-  async question(request, {kind, title, guess = null, answer = '', conflict = null, place = null}) {
+  async question(request, {kind, title, guess = null, answer = '', conflict = null, place = null, command = null}) {
     const session = this.session;
     const id = ++this.asked;
     const choices = kind === 'shape' ? [guess, ...SHAPES.filter(shape => shape !== guess)]
-      : kind === 'brief' ? ['n', 'y', ...(conflict.source === 'note' ? ['e'] : [])] : null;
-    const waiting = new Promise(resolve => { request.question = {id, kind, title, choices, answer, conflict, place, resolve}; });
+      : kind === 'brief' ? ['n', 'y', ...(conflict.source === 'note' ? ['e'] : [])] : kind === 'board' ? ['y', 'c'] : null;
+    const waiting = new Promise(resolve => { request.question = {id, kind, title, choices, answer, conflict, place, command, resolve}; });
     const options = kind === 'shape' ? choices.map(shape => ({shape, what: SHAPE_WHAT[shape], built: BUILT.has(shape), guessed: shape === guess}))
       : kind === 'brief' ? choices.map(key => ({
         key,
         what: {n: `follow the brief: ${conflict.says}`, y: `as asked: ${conflict.asked}`, e: `open ${place}`}[key],
         ...(key === 'e' ? {file: request.brief.note.path, line: conflict.line} : {}),
-      })) : undefined;
+      }))
+      : kind === 'board' ? [{key: 'y', what: 'add it, for later (add only: its agent waits for your go)'}, {key: 'c', what: 'copy the command, add nothing'}] : undefined;
     const asked = request.from === 'editor' && session.notify('editor', {
       type: 'gen_ask', gen: request.n, id, kind, title, answer, choices: options,
-      ...(conflict ? {quote: conflict.text, place} : {}),
+      ...(conflict ? {quote: conflict.text, place} : {}), ...(command ? {command} : {}),
     });
     request.question.where = asked ? 'editor' : 'chat'; // the chat's status says where it waits
     if (request.state === 'generating') this.pause(request);
     this.setState(request, request.state === 'generating' ? 'asks' : 'asking');
     if (asked) {
       if (kind === 'question') session.message('system', `${title} (default: ${answer || 'none'}; answer in Neovim)`);
+      if (kind === 'board') session.message('system', `${title}: \`${command}\` (answer in Neovim)`);
       if (kind === 'brief') session.message('system', `${title}: "${conflict.text}" ${place}. ${conflict.asked} anyway? (answer in Neovim)`);
     } else {
       this.inChat(request, request.question);
@@ -898,6 +932,15 @@ export class Gen {
   inChat(request, question) {
     const session = this.session;
     const {kind, title, choices, answer} = question;
+    if (kind === 'board') {
+      const asking = session.confirm(`${title}. Add it for later?`, ['c'], {
+        command: question.command, copy: true, timeoutMs: null, gen: request.n, said: () => null,
+        hint: 'y adds it, for later (add only) · c copies the command · n adds nothing',
+      });
+      question.confirm = session.lastConfirmation;
+      asking.then(result => this.answered(request, question.id, result === true ? 'y' : result === 'c' ? 'c' : 'n'));
+      return;
+    }
     if (kind === 'brief') {
       const {conflict, place} = question;
       const open = choices.includes('e') ? ` · e open ${place}` : '';
@@ -930,7 +973,7 @@ export class Gen {
     const question = request.question;
     if (!question || question.id !== id) return;
     if (question.kind === 'shape') return question.resolve(SHAPES.includes(text) ? text : null);
-    if (question.kind === 'brief') return question.resolve(question.choices.includes(text) ? text : null);
+    if (question.kind === 'brief' || question.kind === 'board') return question.resolve(question.choices.includes(text) ? text : null);
     question.resolve(text === null ? null : text.trim() || question.answer || null);
   }
 

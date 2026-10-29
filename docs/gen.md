@@ -1,5 +1,5 @@
 ---
-description: "/gen: ask Pair for code at your cursor, as new files, a sample to run or a scaffold. Take it with one key; it is marked ┊ until you make it yours."
+description: "/gen: ask Pair for code at your cursor, as new files, a sample or a scaffold, or hand it to the board. Take it with one key; ┊ marks it until it is yours."
 ---
 
 # /gen: ask Pair for code
@@ -19,10 +19,11 @@ A request never changes your text by itself, so it is not the Driver: the Driver
 five edits, while a request makes proposals you review, and is held by size limits instead
 ([driver.md](driver.md#the-driver-and-gen)).
 
-There are four shapes: `here`, code at your cursor; `file`, [new files](#new-files-gen-file) you review as buffers
-and take with `:w`; `try`, [a sample](#samples-gen-try-and-keep) to read and run in a folder of its own outside the
-project, which `/keep` moves in; and `scaffold`, [many files and their wiring](#many-files-gen-scaffold), built and
-run in a copy of the project in Pair's data folder, which you keep a file at a time.
+There are four shapes of code: `here`, code at your cursor; `file`, [new files](#new-files-gen-file) you review as
+buffers and take with `:w`; `try`, [a sample](#samples-gen-try-and-keep) to read and run in a folder of its own
+outside the project, which `/keep` moves in; and `scaffold`, [many files and their wiring](#many-files-gen-scaffold),
+built and run in a copy of the project in Pair's data folder, which you keep a file at a time. A fifth, `board`, writes
+no code: it [hands the request to the board](#gen-board-a-task-for-the-board) as a task, on your pick.
 
 ## Asking
 
@@ -33,10 +34,10 @@ run in a copy of the project in Pair's data folder, which you keep a file at a t
   [snacks.nvim](https://github.com/folke/snacks.nvim)'s input, dressing.nvim or noice.nvim, shows them as floating
   dialogs. Without one, Neovim's own prompt on the command line asks, sent on Enter, and the shape is a numbered
   list. `gen_input = 'cmdline'` always uses Neovim's own ([neovim-plugin.md](neovim-plugin.md#setup)).
-- `Tab` completes the shape word, the first word: `here`, `file`, `scaffold`, `try`.
+- `Tab` completes the shape word, the first word: `here`, `file`, `scaffold`, `try`, `board`.
 - `Esc` asks nothing. An empty `Enter` opens the compose window, for a request longer than one line: a small
   Markdown window where `:w` or `Ctrl-S` sends it, and `:q` drops it. `:Pair gen +` opens it at once.
-- `:Pair gen [here|file|try|scaffold] <what>` asks without the dialog. `:Pair gen cancel` stops the request that
+- `:Pair gen [here|file|try|scaffold|board] <what>` asks without the dialog. `:Pair gen cancel` stops the request that
   runs or waits, and `:Pair gen list` lists the files of `/gen file` requests to review and of scaffolds to keep
   ([below](#the-review-list-pair-gen-list)). `:Pair gen run`, `:Pair gen tries` and `:Pair keep [path]` are for tries
   ([below](#samples-gen-try-and-keep)); `:Pair keep` and `:Pair gen drop` for scaffolds too
@@ -50,7 +51,8 @@ over the lines you selected there last. `/gen file <what>` asks for new files, w
 review. `/gen try <what>` asks for a sample, which opens in that Neovim in a split; `/gen run` runs the newest
 again, `/gen tries` lists the try folders, and `/keep [path]` moves the newest try's file into the project.
 `/gen scaffold <what>` (`/gen scaffold --branch <what>` for a git worktree) asks for a scaffold; `/keep <path>` keeps
-a file of it, and `/gen drop` deletes its copy. `/gen` alone lists today's requests (and how much code you took is
+a file of it, and `/gen drop` deletes its copy. `/gen board <what>` composes a task for the board
+([below](#gen-board-a-task-for-the-board)). `/gen` alone lists today's requests (and how much code you took is
 [not yours yet](#owning-generated-code)), and `/gen cancel` stops the one
 that runs or waits. `/cancel`, and `Esc` or `Ctrl-C` in the full-screen pane, stop a request too, when Pair answers nothing else. Typing `/gen` and a space
 lists the shapes first, then what else `/gen` does; `Tab` completes one. What a request makes comes back as a
@@ -64,11 +66,12 @@ lists the shapes first, then what else `/gen` does; `Tab` completes one. What a 
 | `file` | New files to review, as unsaved buffers: a migration, a module, a config file, a test file | `:w` in one |
 | `scaffold` | Many files and their wiring, built and run in a copy of the project in Pair's data folder: an admin page wired into the router, a service with its tests | `k` per file in `:Pair gen list`, or `/keep <path>` |
 | `try` | A sample to read and run, in a folder of its own outside the project: an LRU in 30 lines, how a library's API feels | `/keep [path]`, if you want it |
+| `board` | No code: a task for the board (Shepherdr), its command composed for you to read | `y` adds it for later, `c` copies the command ([below](#gen-board-a-task-for-the-board)) |
 
 When the request does not start with a shape word, a cheap rule guesses one from it, never the model: a selection in
 code is `here`; then words like "here", "below this" or "this function" mean `here`; "scaffold", "wired into", "an
 app" mean `scaffold`; "sample", "example", "to try" mean `try`; a file name or "migration", "test file", "new file"
-mean `file`; anything else is `here`. A guess is always shown first, and goes only once you confirm it, so `scaffold`
+mean `file`; anything else is `here`. `board` is never guessed: it is in the list for you to pick. A guess is always shown first, and goes only once you confirm it, so `scaffold`
 is never picked silently. A shape you typed is not asked about, and neither is `--branch` or `--copy` at the start of
 the request: they say where a scaffold goes, so they make one.
 
@@ -82,6 +85,7 @@ gen #1 · new files: "migration". Shape?
 2: here      at the cursor, over a selection
 3: scaffold  many files, in Pair's copy
 4: try       a sample outside the project
+5: board     a task for the board, for later
 Number, Enter takes 1 (Esc cancels):
 ```
 
@@ -191,7 +195,7 @@ The brief is your idea in your own words. Every request runs against it, and Pai
 writes your notes. It is made of:
 
 - **the session goal**, as `/goal` set it or as the session took it from the board task or the branch;
-- **the board task** of the branch, its number and title, when the [board](herdr.md) has one;
+- **the board task** of the branch, its number and title, when the [board](agents.md#where-it-reads) has one;
 - **one note**: the one you pinned, else `NOTES.md` at the project root when it exists (the config's
   [`gen.brief`](config.md#gen)). The note goes as your buffer has it, unsaved changes and all, its first 300 lines.
 
@@ -200,7 +204,7 @@ The first request that runs against `NOTES.md` without your pinning it says so o
 
 | You | What it does |
 | --- | --- |
-| `/brief`, or `:Pair brief` outside a note | Says what the brief is now: `The brief: NOTES.md + goal "orders API" + board task shop/12` |
+| `/brief`, or `:Pair brief` outside a note | Says what the brief is now: `The brief: NOTES.md + goal "orders API" + board task SHO-12` |
 | `/brief docs/orders.md`, `:Pair brief docs/orders.md`, or `:Pair brief` in a Markdown buffer | Pins that note as the brief's note |
 | `/brief off`, `:Pair brief off` | Leaves the note out: the brief is the goal and the board task. `/brief <note>` pins one again |
 
@@ -571,6 +575,42 @@ copies are deleted when the daemon starts and whenever a try or a scaffold start
 branch of your repository, and only `x` (or git) removes it. `/gen cancel` on a running scaffold deletes its copy, and
 a scaffold that made nothing leaves none.
 
+## /gen board: a task for the board
+
+Some requests are too big for `/gen`, or are long work you would rather review later than watch: many packages, an
+install and the network, something to run while you are away. `/gen board <what>` (or `board` in the shape question,
+or `:Pair gen board <what>`) hands such a request to the board, [Shepherdr](agents.md#where-it-reads), as a task. No
+model runs: Pair composes the board's command and shows it to you whole.
+
+```
+gen   #9 · a task for the board: "the whole billing module:…". Add it for later?
+      │ shepherdr task add 'the whole billing module:…' --brief='the whole billing module: invoices, PDF export, …
+      │ From the brief (NOTES.md + goal "billing"):
+      │ …' --space=shop --later
+      y adds it, for later (add only) · c copies the command · n adds nothing
+```
+
+- **The title** is your request cut to 32 characters at a word, the most the board takes.
+- **The brief** is your request in your words, then the brief it would run against, quoted: the goal, the branch's
+  board task, and the note's first 80 lines. The task's agent works in a git worktree and sees only committed files,
+  so the note goes in the brief, unsaved changes and all. It goes as one word, `--brief='…'`, so a request that starts
+  with `--` stays the brief: the board would read `--brief` followed by such a word as a flag without its value.
+- **`--space`** is the repository's space on the board, and the command runs in the project, so the board finds the
+  space by its folder too.
+- **`--later`**: add only. Shepherdr starts a new task's agent at once; with `--later` the agent reads the brief and
+  waits for your go (`shepherdr task tell <id> go`, which the chat gives you).
+
+| Answer | What happens |
+| --- | --- |
+| `y` | Pair runs the command once, as a list of words (never a shell), and says what the board made: `gen #9 → board SHO-80 · added, for later: its agent reads the brief and waits for your go (shepherdr task tell SHO-80 go).` The ledger books it (`board`) |
+| `c` | In the full-screen pane, the command goes to the clipboard (OSC 52); in Neovim, to the `"` and `+` registers. Nothing is added, and the chat gives the command again, to run yourself |
+| `n`, `Esc` | Nothing is added |
+
+In Neovim the question is a `vim.ui.select` dialog with the command in its prompt; `Esc` leaves it waiting, as for any
+`/gen` question. Pair adds a task only on that pick, and only for later: it never delegates (starts the agent), tells,
+merges, stops or sets anything on the board by itself. Without a board (`"board": null`), `/gen board` says so; when
+the board refuses (Shepherdr not running, a space it does not know), the chat says what the board said.
+
 ## One undo per request
 
 The ledger books a request as one line: `generated  gen #3 · here · a list handler with paging`, with a note that
@@ -701,6 +741,9 @@ Pair does not commit, and nothing of this reaches git: owning is about your read
 
 ## Limits
 
+- `/gen board` adds for later only: a task that should start at once needs its go (`shepherdr task tell <id> go`), and
+  one that should plan first or research only says so in your words, which go into its brief. It does not edit the
+  brief before it adds it; copy the command (`c`) to change it.
 - `scaffold` keeps one file at a time; there is no key that keeps them all. Files a scaffold deletes are not
   proposed: only new and changed files are.
 - A scaffold's copy has your unsaved buffers, but a `--branch` worktree starts from `HEAD`, without your uncommitted

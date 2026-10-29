@@ -12,8 +12,9 @@ description: "Install Pair: what it needs, the daemon and the Neovim plugin, a c
   output, Scout's pane below the chat. Without it all of Pair still works inside Neovim
   ([neovim.md](neovim.md#without-herdr)).
 - For Scout: `bash` and [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg`); optionally [bubblewrap](https://github.com/containers/bubblewrap) (`bwrap`), to run Pair's commands in [a sandbox](scout.md#the-sandbox)
-- Optional, for the [context card](neovim.md#what-it-knows-the-context-card) and the goal: herdr's work board
-  (`herdr-projects`) and GitHub's `gh` for the pull request
+- Optional, for the [context card](neovim.md#what-it-knows-the-context-card), the goal and
+  [your other agents](agents.md): the work board, [Shepherdr](https://github.com/eliasstravik/shepherdr) (`shepherdr`
+  on the daemon's PATH), and GitHub's `gh` for the pull request
 - A model: any OpenAI-compatible local server (for example llama.cpp or Ollama), an Anthropic-compatible API, or any
   provider [pi-ai](https://www.npmjs.com/package/@earendil-works/pi-ai) supports, with an API key or a subscription
   login ([models.md](models.md)).
@@ -87,7 +88,7 @@ looks at, and the usual fixes, are in [Troubleshooting](troubleshooting.md).
    if it is not running).
 2. Neovim is connected already with `auto_connect`; otherwise run `:Pair start` there.
 3. Pair shows the note of the last session in this project, if there was one ("Last time: …"), and the goal: the
-   title of the herdr work board's task for this branch, else the words of the branch name. Only without either does
+   title of the work board's (Shepherdr's) task for this branch, else the words of the branch name. Only without either does
    it ask; type the goal, or `later` to skip it (`/goal <text>` sets one any time).
 4. Work as usual. Pair stays quiet unless a remark clears the bar. Tell it whether a remark helped: `+` or `-` in the
    chat, `Alt-u` or `Alt-n` in Neovim.

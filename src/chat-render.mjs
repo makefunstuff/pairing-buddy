@@ -353,8 +353,9 @@ export function bodyLines(entry, width, {continued = false, measure = width} = {
   if (kind === 'confirm') {
     // Pair's question in body text; the command it asks about under it in a code bar, to read and copy whole: the
     // session's own copy of it (a command may hold backticks itself), else the question's first `code`. The keys
-    // that answer are in the footer, once. A /gen question has no command: its hint says what its answers do.
-    const command = entry.hint ? null : entry.command ?? /`([^`]+)`/.exec(text)?.[1];
+    // that answer are in the footer, once. A /gen question has a hint, which says what its answers do, and no
+    // command, but /gen board's: the board's command it composed, to read and copy.
+    const command = entry.hint && !entry.copy ? null : entry.command ?? /`([^`]+)`/.exec(text)?.[1];
     const question = command ? text.replace(`\`${command}\``, () => 'this') : text;
     const lines = wrapTokens(inlineTokens(question, 'text'), words);
     if (command) lines.push(...codeLines(command, width, 'text', [seg('│ ', 'rule')]));
@@ -476,13 +477,27 @@ export function cardKeys(card) {
   return [['k', 'k'], ['enter', 'Enter'], ['d', 'd'], ['u', 'u']].filter(([key]) => keys[key]).map(([key, shown]) => [key, shown, keys[key]]);
 }
 
+/** What a relayed line's keys reach of its `item`: its report or pull request, its branch's diff, its worktree. */
+export function relayKeys(item) {
+  return {key: item.key, title: item.kind === 'task' ? item.id : item.title, live: true, open: item.kind === 'task', diff: Boolean(item.branch), term: Boolean(item.where)};
+}
+
+/**
+ * The keys of a relayed line (see relayKeys), in the order its action line shows them: [key, shown, what]; none once
+ * the line is answered or newer news took its place.
+ */
+export function relayActions(entry) {
+  const agent = entry?.meta?.agent;
+  if (!agent?.live) return [];
+  return [['o', agent.open, 'open'], ['d', agent.diff, 'diff'], ['t', agent.term, 'terminal']].filter(([, on]) => on).map(([key, , what]) => [key, key, what]);
+}
+
 /**
  * The action line under a gen card, `width` wide: k keep one   Enter open the list   d drop all   u undo   · Alt-↑
  * picks. As for a remark, the keys work once the card is picked; where it does not fit, the gaps narrow, then the
- * keys lose their words.
+ * keys lose their words. A relayed line's keys show the same way: o open   d diff   t terminal.
  */
-function cardLine(entry, width, picked) {
-  const keys = cardKeys(entry.card);
+function cardLine(entry, width, picked, keys = cardKeys(entry.card)) {
   const aside = picked ? [] : [seg('   · ', 'dim'), seg('Alt-↑', 'bold'), seg(' picks', 'dim')];
   const line = (gap, words, how = aside) => [
     ...keys.flatMap(([, shown, what], i) => [...(i ? [seg(gap)] : []), seg(shown, 'bold'), ...(words ? [seg(` ${what}`, 'dim')] : [])]),
@@ -531,9 +546,9 @@ function turnMeta(entry, room) {
  * the match you are on). `selected` is the index of the
  * selected message, `query` what search looks for and `found` the match you are on, by its number in the selected
  * message (a fold opens to show it); `latestRemark` the index of the remark whose action line the pane shows, and
- * `latestCard` that of the gen card; `now` today, for the day of a divider.
+ * `latestCard` that of the gen card, `latestRelay` that of the agent relay's line; `now` today, for the day of a divider.
  */
-export function transcriptLines(entries, width, {selected = -1, query = '', found = -1, latestRemark = -1, latestCard = -1, now = Date.now()} = {}) {
+export function transcriptLines(entries, width, {selected = -1, query = '', found = -1, latestRemark = -1, latestCard = -1, latestRelay = -1, now = Date.now()} = {}) {
   const lines = [];
   const ranges = [];
   const bodyWidth = Math.max(8, width - GUTTER);
@@ -581,6 +596,7 @@ export function transcriptLines(entries, width, {selected = -1, query = '', foun
     }
     if (index === latestRemark && !entry.verdict) body.push(actionLine(entries, index, bodyWidth, index === selected));
     if (index === latestCard && cardKeys(entry.card).length) body.push(blank(), cardLine(entry, bodyWidth, index === selected));
+    if (index === latestRelay && relayActions(entry).length) body.push(cardLine(entry, bodyWidth, index === selected, relayActions(entry)));
     // A wide pane has room right of the words: what the turn took goes there, on its answer's first line.
     if (entry.turn && body.length && width > MEASURE) {
       const used = GUTTER + lineWidth(body[0]);
@@ -629,18 +645,30 @@ function fittedRule(variants, width) {
 const SHORT_ROLES = {navigator: 'nav'};
 const ROLE_STYLES = ['navigator', 'scout', 'driver']; // each in its colour (see chat-style.mjs)
 
+/** The board's counts for the header: `board 3 working · 1 needs you`, the ones that need you in the accent; [] for none. */
+export function boardSegments(board) {
+  if (!board || (!board.working && !board.needs)) return [];
+  const parts = [...(board.working ? [seg(`${board.working} working`, 'dim')] : []), ...(board.needs ? [seg(`${board.needs} need${board.needs === 1 ? 's' : ''} you`, 'accent')] : [])];
+  return [seg('board ', 'dim'), ...parts.flatMap((part, i) => (i ? [seg(' · ', 'dim'), part] : [part]))];
+}
+
 /**
- * The header, in the top rule: where you pair and on what, then the role, in its colour, and the level (the Driver
- * that keeps the wheel says so instead), on the right. The goal is cut first, to a few words, then left out (always
- * in a narrow pane), then the role is shortened (nav), and the muted kinds, the level and the role give way.
+ * The header, in the top rule: where you pair and on what, then the board's counts for the repo, the role, in its
+ * colour, and the level (the Driver that keeps the wheel says so instead), on the right. The goal is cut first, to a
+ * few words; then the board's counts give way, the goal is left out (always in a narrow pane), the role is shortened
+ * (nav), and the muted kinds, the level and the role give way.
  */
-export function headerLine({project, goal, role, level, muted = [], keep = false}, width) {
+export function headerLine({project, goal, role, level, muted = [], keep = false, board = null}, width) {
   const where = [seg('pair', 'accentBold'), ...(project ? [seg(' · ', 'dim'), seg(project, 'bold')] : [])];
   const second = role === 'driver' && keep ? 'keeps the wheel' : level ?? '';
   const right = (name, parts = 3) => (role ? [seg(name, ROLE_STYLES.includes(role) ? role : 'dim'), seg(` · ${second}`, 'text'), ...(muted.length ? [seg(` · ${muted.length} muted`, 'dim')] : [])].slice(0, parts) : []);
+  const counts = boardSegments(board);
+  const withBoard = parts => (counts.length ? [...counts, ...(parts.length ? [seg(' · ', 'dim'), ...parts] : [])] : parts);
   const short = SHORT_ROLES[role] ?? role;
   const variants = [
+    ...(goal && width >= NARROW && counts.length ? [[[...where, seg(' · ', 'dim'), seg(goal, 'text')], withBoard(right(role)), lineWidth(where) + 12]] : []),
     ...(goal && width >= NARROW ? [[[...where, seg(' · ', 'dim'), seg(goal, 'text')], right(role), lineWidth(where) + 12]] : []),
+    ...(width >= NARROW && counts.length ? [[where, withBoard(right(role))]] : []),
     ...(width >= NARROW ? [[where, right(role)]] : []),
     [where, right(short)], [where, right(short, 2)], [where, right(short, 1)], [where, []],
   ];
@@ -810,6 +838,9 @@ export function footerKeys(view) {
     if (selectedEntry.meta?.place) keys.push(k('j', 'jump'));
     keys.push(k('Esc', 'back'));
     return keys;
+  }
+  if (mode === 'select' && relayActions(selectedEntry).length) {
+    return [k('c', 'copy'), ...relayActions(selectedEntry).map(([, shown, what]) => k(shown, what)), k('Esc', 'back')];
   }
   if (mode === 'select' && selectedEntry) {
     const keys = [k('c', 'copy')];
@@ -1029,7 +1060,7 @@ export function renderFrame(view, {width, height, look = {color: false}}) {
     const help = helpLines(view.commands ?? [], width);
     body = help.slice(view.helpScroll ?? 0, (view.helpScroll ?? 0) + middle);
   } else {
-    const {lines, ranges} = transcriptLines(view.entries, width, {selected: view.selected, query: view.mode === 'search' ? view.search : view.query, found: view.found, latestRemark: view.latestRemark, latestCard: view.latestCard, now: view.now});
+    const {lines, ranges} = transcriptLines(view.entries, width, {selected: view.selected, query: view.mode === 'search' ? view.search : view.query, found: view.found, latestRemark: view.latestRemark, latestCard: view.latestCard, latestRelay: view.latestRelay, now: view.now});
     const card = view.showEmpty ? [blank(), ...emptyLines(width), blank()] : [];
     const all = [...card, ...lines];
     const offset = card.length;

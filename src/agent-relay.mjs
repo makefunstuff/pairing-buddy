@@ -7,22 +7,26 @@ import {STATUSES} from './agents.mjs';
 const NAME_WIDTH = 24; // of the name column in the list
 // A line that asks nothing of you (done, failed) goes by itself after this long; one that needs you stays.
 export const SETTLED_LINE_MS = 2 * 60_000;
-const ASKS = new Set(['needs', 'approve']);
+const ASKS = new Set(['needs', 'ready']);
 
-const SAID = {needs: 'needs you', approve: 'ready to approve', failed: 'failed', done: 'done', working: 'working', waiting: 'waiting'};
+const SAID = {needs: 'needs you', ready: 'ready to merge', failed: 'failed', done: 'done', working: 'working', waiting: 'waiting'};
 
-/** How an item is named in one line: `#19` for a task of this project's repo, `website/3` for another's. */
-export function itemName(item, project) {
+/**
+ * How an item is named in one line: `#19` for a task of this project's repo (its space or folder is one of `repos`,
+ * the names the repo goes by), `WEB-3` for another's.
+ */
+export function itemName(item, repos) {
   if (item.kind !== 'task') return item.title;
-  const [repo, number] = item.id.split('/');
-  return repo === project ? `#${number}` : item.id;
+  const ours = [repos].flat().some(name => name && (name === item.space || name === item.repo));
+  const number = item.id.match(/-(\d+)$/)?.[1];
+  return ours && number ? `#${number}` : item.id;
 }
 
 /** The one line for `item`: who, what it means for you, and its question or title. */
-export function newsLine(item, project) {
+export function newsLine(item, repos) {
   const said = item.kind === 'agent' && item.status === 'done' ? 'finished' : SAID[item.status];
   const about = item.status === 'needs' && item.note ? item.note : item.kind === 'task' ? item.title : '';
-  return `${itemName(item, project)} ${said}${about ? `: ${about}` : ''}`;
+  return `${itemName(item, repos)} ${said}${about ? `: ${about}` : ''}`;
 }
 
 /** The words for an item's status: a herdr agent that is done is waiting for its next prompt. */
@@ -48,11 +52,11 @@ export class AgentRelay {
   /**
    * `root` is the session's project; news about the board task whose worktree it is stays out. `send(message)`
    * reaches the session's chat and editors. `breakpoint()` is when the user last came to a natural end, and
-   * `wait()` says the news must wait anyway: they type, or Pair is busy (a turn, the wheel).
+   * `wait()` says the news must wait anyway: they type, or Pair is busy (a turn, the wheel). `repos` are the names
+   * the project's repo goes by (repoNames), for the `#19` of its own tasks.
    */
-  constructor({root, send, breakpoint, wait = () => false, now = Date.now}) {
-    Object.assign(this, {root, send, breakpoint, wait, now});
-    this.project = basename(root);
+  constructor({root, repos = [basename(root)], send, breakpoint, wait = () => false, now = Date.now}) {
+    Object.assign(this, {root, repos, send, breakpoint, wait, now});
     this.pending = new Map(); // key -> item, news not shown yet
     this.since = null; // when the oldest of it came: the breakpoint after that shows it
     this.shown = null; // the item on the line now
@@ -83,7 +87,7 @@ export class AgentRelay {
     this.since = null;
     this.shown = first;
     this.shownAt = this.now();
-    this.last = {type: 'agents', item: first, text: newsLine(first, this.project), more: rest.length};
+    this.last = {type: 'agents', item: first, text: newsLine(first, this.repos), more: rest.length};
     this.send(this.last);
   }
 

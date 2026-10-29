@@ -10,7 +10,8 @@ description: "How Pair is tested: model-free tests with scripted models and fake
 npm test
 ```
 
-Runs every test that needs no model, in under a minute, with scripted models and fakes of herdr and the providers.
+Runs every test that needs no model, in under a minute, with scripted models and fakes of herdr, the providers and
+the work board.
 
 - **The core.** Event folding, the triggers, the budget and speak gate, the tool policy per role (also with
   file-writing tools installed by mistake, and an edit after the wheel was taken back), the command policy, and the
@@ -28,6 +29,11 @@ Runs every test that needs no model, in under a minute, with scripted models and
   in your own `:terminal`, seen running and with its output, and with the bash hook its exit code. In a real tmux
   server with a client attached: focus, typing, a command seen running with its output, the Driver's text, the
   shell's foreground command by `/proc` and by `ps`, and the daemon watching the tmux session of a chat pane.
+- **The board** against a fake `shepherdr` ([test/fake-shepherdr.mjs](../test/fake-shepherdr.mjs)), never your
+  own Shepherdr: its spaces, tasks, a task in full and its report read through the adapter; the context card's task
+  and the chat header's counts; the relay's news, a task's worktree found by its branch in a real git repo, and what
+  it left behind (report and pull request, its branch's diff, its worktree); `/gen board`'s command, added only on
+  `y`, for later, and nothing else written; in a headless Neovim, `Alt-o`, and `d` and `t` in `:Pair agents`.
 - **The daemon end to end** with scripted models; several projects and Neovims at once; Neovim and the chat pane
   reconnecting after a daemon restart; a question the restart cut off answered late, a remark dropped; a saved config
   taken without a restart (a new model between turns, one with an error refused).

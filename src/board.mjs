@@ -1,19 +1,136 @@
-// The herdr work board (herdr-projects): the task a project's branch belongs to, and how the repo's other tasks are
-// doing. Read with its own command, `list --json`; Pair never changes the board.
+// The work board, Shepherdr, behind one small adapter: what Pair reads of it (its spaces, their tasks, a task's
+// branch, pull request and report) and the few command lines it composes for you. Every call is the board's own
+// command with a list of words, never a shell. Pair reads the board by itself; it writes to it only when you pick a
+// choice that names what it does (/gen board's y adds a task for later), and it never merges, stops or sets anything.
 import {execFile} from 'node:child_process';
-import {promisify} from 'node:util';
+import {basename} from 'node:path';
 
-const run = promisify(execFile);
+export const BOARD = 'shepherdr';
+export const TITLE_MAX = 32; // the board refuses a longer title: it fits one line on a phone
+const TIMEOUT_MS = 5000;
+const ADD_TIMEOUT_MS = 60_000;
+const REPORTS_LOOKED_AT = 20; // of a space's newest artifacts, this many are asked who made them // an add is never cut short: one that went through but answered late would be made twice
 
-/** The board's tasks: [{id: "repo/12", state, title, msg, pr?}], or null when the board cannot be read. */
-export async function boardTasks(command) {
-  try {
-    const {stdout} = await run(command, ['list', '--json'], {timeout: 3000});
-    const tasks = JSON.parse(stdout);
-    return Array.isArray(tasks) ? tasks : null;
-  } catch {
+/**
+ * Runs the board's `command` with `args`: its output, or an error whose message is what it said (the board writes its
+ * refusals to stdout). `code` ENOENT means the command is not installed.
+ */
+export function boardRun(command, args, {cwd, timeoutMs = TIMEOUT_MS} = {}) {
+  return new Promise((resolve, reject) => execFile(command, args, {cwd, timeout: timeoutMs, maxBuffer: 64 << 20}, (error, stdout, stderr) => {
+    if (!error) return resolve(stdout);
+    const said = `${stdout ?? ''}`.trim() || `${stderr ?? ''}`.trim();
+    reject(Object.assign(new Error(said || error.message), {code: error.code}));
+  }));
+}
+
+/** The space a task's place names: `p:<machine>:pairing-buddy` is pairing-buddy. */
+const spaceOf = place => (typeof place === 'string' && place.startsWith('p:') ? place.split(':').slice(2).join(':') : null);
+
+/** A task as Pair keeps it: {id, title, status, sub, machine}, and from `task show` also {space, branch, pr, desc}. */
+function taskOf(raw) {
+  const task = {id: raw.id, title: raw.title ?? raw.name ?? raw.id, status: raw.status, sub: raw.sub ?? '', machine: raw.machine ?? null};
+  if ('place' in raw || 'branch' in raw) {
+    Object.assign(task, {space: spaceOf(raw.place), branch: raw.branch ?? null, pr: raw.pr?.url ?? null, outcome: raw.outcome ?? null});
+  }
+  return task;
+}
+
+/** The lines of `space list`: `name  KEY  /path  github:o/r`, the home space `~  (home space)  /path`. */
+export function parseSpaces(text) {
+  return text.split('\n').map(line => line.split(/\s{2,}/)).filter(cols => cols.length >= 3 && cols[1] !== '(home space)')
+    .map(([name, key, path, github]) => ({name, key, path, github: github?.replace(/^github:/, '') ?? null}));
+}
+
+/** The ids in `artifact list`'s lines (`a12  v2  Research report  · pairing-buddy · 2h`), newest first. */
+export const artifactIds = text => text.split('\n').map(line => /^(\S+)\s{2}v\d+\s{2}/.exec(line)?.[1]).filter(Boolean);
+
+/**
+ * Whether `artifact show`'s text says task `id`'s agent or reviewer made it: its first line ends `by BDY-7 agent.`, and
+ * each version names who made it (`  v1  2h  BDY-7 agent`). The list cannot say: it names the space a task's artifact
+ * is kept in, not the task.
+ */
+export function madeBy(text, id) {
+  const name = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?:^|\\s)${name} (?:agent|reviewer)(?=[\\s.]|$)`, 'm').test(text);
+}
+
+export class Board {
+  /** `command` is the board's command (`shepherdr`, or a path). */
+  constructor(command = BOARD, {timeoutMs = TIMEOUT_MS} = {}) {
+    Object.assign(this, {command, timeoutMs});
+  }
+
+  run(args, {cwd} = {}) {
+    return boardRun(this.command, args, {cwd, timeoutMs: this.timeoutMs});
+  }
+
+  /** The board's open tasks (not archived), of every space or of `space`. */
+  async tasks({space = null} = {}) {
+    const listed = JSON.parse(await this.run(['task', 'list', ...(space ? ['--space', space] : []), '--json']));
+    if (!Array.isArray(listed)) throw new Error('task list --json is not a list');
+    return listed.filter(task => !task.archived).map(taskOf);
+  }
+
+  /** One task, with its space, branch and pull request. */
+  async show(id) {
+    return taskOf(JSON.parse(await this.run(['task', 'show', id, '--json'])));
+  }
+
+  /** The spaces: [{name, key, path, github}], the home space left out (it holds no repo). */
+  async spaces() {
+    return parseSpaces(await this.run(['space', 'list']));
+  }
+
+  /**
+   * The file of task `id`'s report: the newest artifact its agent or reviewer made, among the newest of its `space`
+   * (a task's artifacts are kept in its space); null when it made none.
+   */
+  async report(id, {space = null} = {}) {
+    const ids = artifactIds(await this.run(['artifact', 'list', ...(space ? [`--space=${space}`] : [])]));
+    for (const artifact of ids.slice(0, REPORTS_LOOKED_AT)) {
+      const shown = await this.run(['artifact', 'show', artifact]);
+      if (madeBy(shown, id)) return shown.match(/^HTML: (.+)$/m)?.[1].trim() ?? null;
+    }
     return null;
   }
+
+  /**
+   * The words that add a task: `title` (cut to TITLE_MAX), `brief`, in `space`. `later`, its agent reads the brief and
+   * waits for a go (add only); without, it starts at once (add and delegate). Each option is one word, `--brief=…`:
+   * the board reads `--brief` followed by a word that starts with `--` as a flag without its value.
+   */
+  addWords({title, brief, space = null, later = true}) {
+    return [this.command, 'task', 'add', boardTitle(title), `--brief=${brief}`, ...(space ? [`--space=${space}`] : []), ...(later ? ['--later'] : [])];
+  }
+
+  /** The words that tell task `id` something, which is also the go for a task that waits. */
+  tellWords(id, text) {
+    return [this.command, 'task', 'tell', id, text];
+  }
+
+  /** Runs `words` (from addWords): the id of the task it added, and what the board said. */
+  async add(words, {cwd} = {}) {
+    const said = (await boardRun(this.command, words.slice(1), {cwd, timeoutMs: ADD_TIMEOUT_MS})).trim();
+    return {id: said.match(/^Added ([\w:-]+):/)?.[1] ?? null, said};
+  }
+}
+
+/** A title the board takes: one line, at most TITLE_MAX characters, cut at a word; no leading dash, which reads as a flag. */
+export function boardTitle(text) {
+  const line = text.replace(/\s+/g, ' ').trim().replace(/^-+\s*/, '');
+  if (line.length <= TITLE_MAX) return line;
+  const cut = line.slice(0, TITLE_MAX - 1);
+  const words = /\s/.test(line[TITLE_MAX - 1]) ? cut : cut.replace(/\s+\S*$/, ''); // a word cut in two goes
+  return `${words.trimEnd() || cut}…`;
+}
+
+/** `words` as one line to read and paste in a shell: each word quoted where it has to be, `--brief='…'` after its `=`. */
+export function commandLine(words) {
+  const quote = word => (/^[\w./:=@%+,-]*$/.test(word) && word ? word : `'${word.replace(/'/g, `'\\''`)}'`);
+  return words.map(word => {
+    const option = /^(--[\w-]+=)([\s\S]*)$/.exec(word);
+    return option ? `${option[1]}${quote(option[2])}` : quote(word);
+  }).join(' ');
 }
 
 /** The task number a branch is named for: 25 in `work/25-context-card` or `25-fix`; null for `main` or `release/2.0`. */
@@ -22,27 +139,43 @@ export function branchNumber(branch) {
   return number ? Number(number) : null;
 }
 
+/** The number of a board task: 82 in BDY-82. */
+export const taskNumber = id => Number(id?.match(/-(\d+)$/)?.[1] ?? NaN);
+
 /**
- * The board as it concerns a project: `task`, the one whose number its branch has, in a repo of one of `repos`
- * (a number alone would match another repo's task of the same number), and the repo's other tasks that are working
- * and that wait for the user. Null without a board.
+ * The space of a project, of the board's `spaces`: the one whose folder is the repo's main checkout, else the one
+ * named as the repo is (`repos`, from repoNames). Null when the board does not know the repo.
  */
-export function boardContext(tasks, {repos, branch}) {
-  if (!tasks) return null;
+export function spaceFor(spaces, {repos = [], checkout = null}) {
+  return spaces.find(space => checkout && space.path === checkout)
+    ?? spaces.find(space => repos.includes(space.name) || repos.includes(basename(space.path)))
+    ?? null;
+}
+
+// A task's status in words, as the context card and the chat's header say it.
+const STATE = {need: 'needs you', ready: 'ready to merge', merging: 'merging', work: 'working', queued: 'queued', todo: 'to do', done: 'done', idle: 'idle', off: 'stopped'};
+export const stateWords = status => STATE[status] ?? status ?? '';
+
+/**
+ * The board as it concerns a project: `task`, the one of its space whose number its branch has, and the space's other
+ * tasks that are working and that wait for you. Null without a board, or when the board does not know the repo.
+ */
+export function boardContext(tasks, {space, branch}) {
+  if (!tasks || !space) return null;
   const number = branchNumber(branch);
-  const repoOf = task => task.id.slice(0, task.id.lastIndexOf('/'));
-  const task = number === null ? null : tasks.find(each => repos.some(repo => each.id === `${repo}/${number}`)) ?? null;
-  const others = tasks.filter(each => each !== task && repos.includes(repoOf(each)));
+  const task = number === null ? null : tasks.find(each => taskNumber(each.id) === number) ?? null;
+  const others = tasks.filter(each => each !== task);
   const brief = each => ({id: each.id, title: each.title});
   return {
-    task: task && {id: task.id, title: task.title, state: task.state, msg: task.msg ?? '', pr: task.pr ?? null},
-    working: others.filter(each => each.state === 'working').length,
-    waiting: others.filter(each => each.state === 'blocked').map(brief),
+    space,
+    task: task && {id: task.id, title: task.title, state: stateWords(task.status), msg: task.sub ?? '', pr: task.pr ?? null},
+    working: others.filter(each => ['work', 'merging'].includes(each.status)).length,
+    waiting: others.filter(each => each.status === 'need').map(brief),
   };
 }
 
 /**
  * Whether a command line is the board launching one of its agents (the board typed it, not the user): the agent
- * gets an option naming a file in one of the board's task folders, as in `claude --settings ~/.herdr-projects/data/tasks/…`.
+ * gets an option naming a file of the board's own, as in `claude --settings ~/.shepherdr/…/hooks/x.settings.json`.
  */
-export const boardLaunch = cmd => /(?:^|\s)--[\w-]+[= ]\S*\.herdr-projects\/data\/tasks\//.test(cmd);
+export const boardLaunch = cmd => /(?:^|\s)--[\w-]+[= ]\S*(?:\.shepherdr\/\S*(?:hooks|prompts)\/|\.herdr-projects\/data\/tasks\/)/.test(cmd);

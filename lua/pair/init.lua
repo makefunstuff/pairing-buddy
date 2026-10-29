@@ -49,6 +49,7 @@ local config = {
   decide_key = '<M-d>', link_key = '<M-l>',
   teach_key = '<M-?>',
   agents_key = '<M-a>',
+  agents_open_key = '<M-o>', -- on the relayed line of a board task: opens its report or pull request
   gen_key = '<M-g>', -- asks Pair for code, in Normal and Visual mode
   gen_input = 'ui', -- or 'cmdline': the request and its questions always on Neovim's own prompt, not vim.ui's
   gen_preview_lines = 30, -- a /gen block taller than this shows in a preview window
@@ -1163,6 +1164,7 @@ local handlers = {
   tasks = function(message) tasks.show(message, send) end,
   agents = agents.on_relay,
   agent_list = agents.on_list,
+  agent_link = agents.on_link,
   thinking = function(message)
     state.thinking = message.on
     spin()
@@ -1539,7 +1541,7 @@ function M.setup(opts)
   ledger.send = send
   ledger.rate = feedback
   listen.setup({mode = config.listen_mode, hold_ms = config.listen_hold_ms, release_ms = config.listen_release_ms, silence_ms = config.listen_silence_ms})
-  agents.setup({send = send, map_keys = map_keys, unmap_keys = unmap_keys, key_label = key_label, redraw_status = redraw_status}, config.agents_key)
+  agents.setup({send = send, map_keys = map_keys, unmap_keys = unmap_keys, key_label = key_label, redraw_status = redraw_status}, config.agents_key, config.agents_open_key)
   gen.setup({input = config.gen_input, preview_lines = config.gen_preview_lines, key = config.gen_key}, {
     send = send, redraw_status = redraw_status, project_path = project_path, label = label,
     typing = function() return now_ms() - typing_at < 1500 end,

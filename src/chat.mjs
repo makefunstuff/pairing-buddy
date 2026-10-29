@@ -9,7 +9,7 @@ import {clearLine, createInterface, cursorTo} from 'node:readline';
 import {agentListLines} from './agent-relay.mjs';
 import {openHistory} from './chat-history.mjs';
 import {LineEditor} from './chat-input.mjs';
-import {cardKeys, genStatus, renderFrame, searchText, shownTool, toolDone, transcriptLines} from './chat-render.mjs';
+import {cardKeys, genStatus, relayActions, relayKeys, renderFrame, searchText, shownTool, toolDone, transcriptLines} from './chat-render.mjs';
 import {KeyDecoder, Screen} from './chat-screen.mjs';
 import {dim, formatMessage, sgr} from './chat-style.mjs';
 import {LEVELS} from './config.mjs';
@@ -41,6 +41,7 @@ export const COMMANDS = [
   ['/gen file', '<what>', 'new files, as unsaved buffers to review in Neovim (:w in one takes it)'],
   ['/gen try', '<what>', 'a sample to read and run, in a folder outside the project, opened in a split in Neovim'],
   ['/gen scaffold', '[--branch] <what>', 'many files and their wiring, built in a copy of the project (--branch: a git worktree); you keep a file at a time'],
+  ['/gen board', '<what>', 'a task for the board (Shepherdr): y adds it for later (add only), c copies its command'],
   ['/gen run', '', 'run the newest /gen try again, in Pair\'s pane, in the sandbox'],
   ['/gen tries', '', 'the /gen try folders still kept, and when each goes (gen.keepTries)'],
   ['/gen drop', '', 'delete the newest /gen scaffold\'s copy; what you did not keep of it is dropped'],
@@ -257,7 +258,9 @@ function runPlainChat(socketPath, {input, output, exit, cwd, env}) {
     }
     if (message.type === 'confirm') {
       confirming = message.id;
-      say(message.gen ? 'gen' : 'pair', `${message.gen ? genText(message.text) : message.text} [${message.hint ?? 'y/N'}]`);
+      // /gen board's command, whole: here c answers, and Pair says it again to copy by hand.
+      const command = message.copy && message.command ? `\n${message.command}` : '';
+      say(message.gen ? 'gen' : 'pair', `${message.gen ? genText(message.text) : message.text}${command} [${message.hint ?? 'y/N'}]`);
     }
     if (message.type === 'confirmed' && message.id === confirming) confirming = null; // answered, or timed out
     if (message.type === 'first' && message.step) {
@@ -467,6 +470,15 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
     if (i === -1 || !cardKeys(state.entries[i].card).length) return -1;
     return state.entries.slice(i + 1).every(entry => ['system', 'error', 'note'].includes(entry.kind)) ? i : -1;
   };
+  /**
+   * The relayed line whose action line shows the keys for what its task left behind: the last one, while it is not
+   * answered and it is the last thing said, the pane's notes aside; -1 when there is none.
+   */
+  const liveRelay = () => {
+    const i = state.entries.findLastIndex(entry => entry.meta?.agent);
+    if (i === -1 || !state.entries[i].meta.agent.live || !relayActions(state.entries[i]).length) return -1;
+    return state.entries.slice(i + 1).every(entry => ['system', 'error', 'note'].includes(entry.kind)) ? i : -1;
+  };
   /** The card of request `n` on its messages: their keys follow it. */
   const showCard = card => {
     state.cards.set(card.gen, card);
@@ -494,7 +506,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
         for (const entry of state.entries) delete entry.card;
         state.connection = 'up';
         state.root = message.root;
-        state.header = {...state.header, project: basename(message.root), goal: message.goal ?? null, role: message.role, keep: Boolean(message.keep), level: message.level, muted: message.muted ?? []};
+        state.header = {...state.header, project: basename(message.root), goal: message.goal ?? null, role: message.role, keep: Boolean(message.keep), level: message.level, muted: message.muted ?? [], board: message.board ?? null};
         state.model = message.model ?? null;
         state.down = Object.entries(message.models ?? {}).filter(([, why]) => why).map(([role]) => role);
         if (!reconnected) {
@@ -520,6 +532,9 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
         break;
       case 'muted':
         state.header.muted = message.kinds ?? [];
+        break;
+      case 'board':
+        state.header.board = message.board ?? null;
         break;
       case 'accent':
         look.accent = message.color;
@@ -560,7 +575,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
         state.confirmHint = message.hint ?? null;
         add({
           kind: 'confirm', text: message.gen ? genText(message.text) : message.text, confirm: message.id,
-          ...(message.command ? {command: message.command} : {}), ...(message.hint ? {hint: message.hint} : {}), ...(message.gen ? {gen: message.gen} : {}),
+          ...(message.command ? {command: message.command} : {}), ...(message.copy ? {copy: true} : {}), ...(message.hint ? {hint: message.hint} : {}), ...(message.gen ? {gen: message.gen} : {}),
         });
         break;
       case 'confirmed': {
@@ -579,7 +594,9 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
         arrive({kind: 'note', text: ledgerText(message).join('\n')});
         break;
       case 'agents':
-        if (message.item) note(`◇ ${message.text}${message.more ? ` (+${message.more} more · /agents)` : ''}`);
+        // The relayed line, with the keys for what its task left behind; it loses them once it is answered.
+        for (const entry of [...state.entries, ...state.held]) if (entry.meta?.agent) entry.meta.agent.live = false;
+        if (message.item) arrive({kind: 'note', text: `◇ ${message.text}${message.more ? ` (+${message.more} more · /agents)` : ''}`, meta: {agent: relayKeys(message.item)}});
         break;
       case 'agent_list':
         arrive({kind: 'note', text: agentListLines(message).join('\n')});
@@ -768,7 +785,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
   function selectBy(by) {
     if (!state.entries.length) return;
     state.found = -1;
-    const live = Math.max(liveRemark(), liveCard()); // the action line's message, when there is one
+    const live = Math.max(liveRemark(), liveCard(), liveRelay()); // the action line's message, when there is one
     if (state.selected === -1) state.selected = by < 0 && live !== -1 ? live : state.entries.length - 1;
     else state.selected = Math.max(0, Math.min(state.entries.length - 1, state.selected + by));
     state.mode = 'select';
@@ -787,6 +804,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
     const {meta = {}} = entry;
     const name = key.name;
     if (entry.kind === 'gen' && cardKeys(entry.card).some(([one]) => one === name)) return cardAct(entry, name);
+    if (relayActions(entry).some(([one]) => one === name)) return relayAct(entry, name);
     if (name === 'c') copy(entry);
     else if (name === 'a' && meta.suggestion) {
       send({type: 'accept', action: meta.suggestion.action}); // Neovim says when it took it (applied)
@@ -828,6 +846,14 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
       if (send({type: 'gen_open', action: card.action, what: 'next'})) flash(`${n}: the next file to review opens in Neovim; :w there takes it`);
     } else if (card.shape === 'try') send({type: 'keep', path: '', gen: card.gen});
     else keepOne(card);
+    return true;
+  }
+
+  /** o, d or t on a relayed line: Neovim opens its task's report or pull request, its branch's diff, a terminal in its worktree. */
+  function relayAct(entry, name) {
+    const {key, title} = entry.meta.agent;
+    const what = {o: 'open', d: 'diff', t: 'term'}[name];
+    if (send({type: 'agent_link', key, what})) flash({o: `${title}: its report or pull request opens`, d: `${title}: its branch's diff opens in Neovim`, t: `${title}: a terminal in its worktree opens in Neovim`}[name]);
     return true;
   }
 
@@ -944,8 +970,14 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
       if (state.about) state.about = null;
       return;
     }
-    // Pair asks: y or n on an empty line answers at once.
+    // Pair asks: y or n on an empty line answers at once; c, where the question offers it, copies its command first.
     if (state.confirming !== null && editor.empty && !ctrl && !meta && /^[yYnN]$/.test(name)) return answer(name);
+    const asking = state.confirming !== null && state.entries.find(e => e.confirm === state.confirming);
+    if (asking?.copy && editor.empty && !ctrl && !meta && name === 'c') {
+      screen.copy(asking.command);
+      flash('Copied, through the terminal\'s clipboard (OSC 52)');
+      return answer('c');
+    }
     if (name === '?' && editor.empty && !ctrl && !meta) return openHelp();
     if (name === 'enter' && (meta || key.shift)) return editor.insert('\n');
     if (ctrl && name === 'j') return editor.insert('\n');
@@ -1060,6 +1092,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
       selected: state.selected,
       latestRemark: liveRemark(),
       latestCard: liveCard(),
+      latestRelay: liveRelay(),
       gen: genStatus([...state.cards.values()]),
       scroll: state.scroll,
       editor,

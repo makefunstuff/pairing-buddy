@@ -288,9 +288,10 @@ export class PairSession {
    * is one answer of the Partner's model outside any conversation, which checks a /gen request against its brief.
    * `genDir` is /gen's folder in Pair's data folder, where the tries go (see gen-tree.mjs): `genKeepTries` days, run
    * in the sandbox as `genSandbox` (scoutPane.sandbox) says, with the network when `genNetwork`; a scaffold goes
-   * where `genScaffold` says ('tree', Pair's copy, or 'worktree').
+   * where `genScaffold` says ('tree', Pair's copy, or 'worktree'); /gen board composes a task for `genBoard`, the
+   * board's command.
    */
-  constructor({record, store, partner, score, pace = null, decision = () => null, typingPauseMs, notify, requestEditor, previousNote = null, lastSession = null, autoTune = false, health = {ok: () => true}, testOnSave = null, checkOutput = null, genLimits, genBrief, genDir = null, genKeepTries, genNetwork = false, genSandbox = 'auto', genScaffold, askModel = null, log = () => {}, now = Date.now}) {
+  constructor({record, store, partner, score, pace = null, decision = () => null, typingPauseMs, notify, requestEditor, previousNote = null, lastSession = null, autoTune = false, health = {ok: () => true}, testOnSave = null, checkOutput = null, genLimits, genBrief, genDir = null, genKeepTries, genNetwork = false, genSandbox = 'auto', genScaffold, genBoard = null, askModel = null, log = () => {}, now = Date.now}) {
     Object.assign(this, {record, store, partner, score, pace, decision, typingPauseMs, notify, requestEditor, previousNote, lastSession, autoTune, health, log, now});
     this.sorted = new Map(); // trigger key -> {at, sort}: what the decision model sorted it as lately
     this.told = new Map(); // trigger key -> what the decision model was told about it first, for the decisions log
@@ -368,7 +369,7 @@ export class PairSession {
     this.lastRemarkTrigger = null; // the trigger kind of the last remark the user saw: what /mute alone mutes
     this.cancelled = false; // the user stopped the running answer (/cancel, Esc in the chat)
     this.gen = new Gen({
-      session: this, limits: genLimits, brief: genBrief, ask: askModel, keepTries: genKeepTries, network: genNetwork, sandbox: genSandbox, scaffold: genScaffold,
+      session: this, limits: genLimits, brief: genBrief, ask: askModel, keepTries: genKeepTries, network: genNetwork, sandbox: genSandbox, scaffold: genScaffold, board: genBoard,
       dir: genDir ?? join(tmpdir(), `pair-gen-${process.pid}`),
     }); // the /gen requests, each in a conversation of its own
   }
@@ -1235,10 +1236,11 @@ export class PairSession {
    * after the answer, instead of "Allowed." or "Not allowed." (null: none). `command` is the command it asks about,
    * which the full pane shows whole under the question; `gen`, the /gen request that asks (the pane's gen speaker).
    */
-  confirm(text, choices = [], {command = null, free = false, timeoutMs = CONFIRM_MS, hint = null, said = null, gen = null} = {}) {
+  confirm(text, choices = [], {command = null, copy = false, free = false, timeoutMs = CONFIRM_MS, hint = null, said = null, gen = null} = {}) {
     const id = ++this.lastConfirmation;
-    // The command goes as it is too: the full pane shows it whole under the question, backticks and all.
-    if (!this.notify('chat', {type: 'confirm', id, text, ...(command ? {command} : {}), ...(hint ? {hint} : {}), ...(gen ? {gen} : {})})) return Promise.resolve(false);
+    // The command goes as it is too: the full pane shows it whole under the question, backticks and all. `copy`: c
+    // there copies it, and answers c.
+    if (!this.notify('chat', {type: 'confirm', id, text, ...(command ? {command} : {}), ...(copy ? {copy} : {}), ...(hint ? {hint} : {}), ...(gen ? {gen} : {})})) return Promise.resolve(false);
     this.activity('waiting', {what: text});
     return new Promise(resolve => {
       const timer = timeoutMs === null ? null : setTimeout(() => this.answer(id, false, 'No answer, so no.'), timeoutMs);

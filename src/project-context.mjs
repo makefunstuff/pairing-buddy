@@ -1,11 +1,12 @@
 // Reads what a project's context card shows of git and the board, as a `context` event for the session state.
+// The board (Shepherdr) is read through board.mjs: the space of the repo, its tasks, and the branch's own task in full.
 // A pull request is asked of GitHub's `gh` at most every few minutes per branch, and only when the board does not
 // already name one; offline or without `gh`, the card leaves it out.
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
-import {boardContext, boardTasks} from './board.mjs';
+import {Board, boardContext, spaceFor} from './board.mjs';
 import {DEFAULT_BRANCHES} from './context-card.mjs';
-import {gitBranch, gitLastCommit, gitStatus, repoNames} from './git.mjs';
+import {gitBranch, gitCheckout, gitLastCommit, gitStatus, repoNames} from './git.mjs';
 
 const run = promisify(execFile);
 const PR_EVERY_MS = 5 * 60_000;
@@ -27,9 +28,27 @@ const prOfUrl = url => {
   return number ? `#${number}` : url;
 };
 
+/**
+ * The board as it concerns the project at `root` (see boardContext), with its own task's pull request; null without a
+ * board, outside git, or when the board does not know the repo or cannot be read.
+ */
+async function readBoard(board, root, {repos, branch}) {
+  if (!board || !repos.length) return null; // a folder outside git has no board task
+  try {
+    const space = spaceFor(await board.spaces(), {repos, checkout: await gitCheckout(root)});
+    if (!space) return null;
+    const context = boardContext(await board.tasks({space: space.name}), {space: space.name, branch});
+    if (context.task) context.task.pr = (await board.show(context.task.id).catch(() => null))?.pr ?? null;
+    return context;
+  } catch {
+    return null;
+  }
+}
+
 /** `board` is the board's command, or null for none. */
 export function projectContext({board = null, now = Date.now} = {}) {
   const prs = new Map(); // `${root}\n${branch}` -> {pr, at}
+  const shepherdr = board ? new Board(board) : null;
 
   async function prOf(root, branch) {
     if (!branch || DEFAULT_BRANCHES.has(branch)) return null;
@@ -44,8 +63,7 @@ export function projectContext({board = null, now = Date.now} = {}) {
   return async function read(root) {
     const branch = await gitBranch(root);
     const [last, status, repos] = await Promise.all([gitLastCommit(root), gitStatus(root), repoNames(root)]);
-    const tasks = board && repos.length ? await boardTasks(board) : null; // a folder outside git has no board task
-    const boardNow = boardContext(tasks, {repos, branch});
+    const boardNow = await readBoard(shepherdr, root, {repos, branch});
     const pr = boardNow?.task?.pr ? prOfUrl(boardNow.task.pr) : await prOf(root, branch);
     return {
       kind: 'context',

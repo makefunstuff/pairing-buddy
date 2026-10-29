@@ -15,13 +15,16 @@ session.
 
 Four rows of chrome, two of them rules with words in them; the rest is the conversation. From the top:
 
-- **The header, in the top rule**: `── pair · hookd · the session's goal ──── navigator · normal ──`. The project, the
-  goal, and on the right Pair's [role](roles.md) and its [talk level](watcher.md) (`quiet`, `normal`, `chatty`), and
-  how many kinds of remark you muted. The role is in its colour from the website: `navigator` blue, `scout` green,
-  `driver` red. While Pair [keeps the wheel](driver.md#keeping-the-wheel) (`/drive!`), the header says
-  `driver · keeps the wheel` in place of the level. When the pane is narrow the goal is cut first, then left out
-  (always under 52 columns), then the role is shortened (`nav`), then the muted count, the level and the role give
-  way.
+- **The header, in the top rule**: `── pair · hookd · the session's goal ── board 3 working · 1 needs you · navigator · normal ──`.
+  The project, the goal, and on the right the [board](agents.md)'s counts for the repository's other tasks (how many
+  work, how many need you, in the accent; nothing when there is no board, the board does not know the repository, or
+  there is nothing to count), Pair's [role](roles.md) and its [talk level](watcher.md) (`quiet`, `normal`, `chatty`),
+  and how many kinds of remark you muted. The counts follow the board, read about once a minute. The role is in its
+  colour from the website: `navigator` blue, `scout` green, `driver` red. While Pair
+  [keeps the wheel](driver.md#keeping-the-wheel) (`/drive!`), the header says `driver · keeps the wheel` in place of
+  the level. When the pane is narrow the goal is cut first, to a few words; then the board's counts give way, the goal
+  is left out (always under 52 columns), the role is shortened (`nav`), then the muted count, the level and the role
+  give way.
 - **The conversation**, newest at the bottom. Each message has a 7-column gutter with who speaks, the same in a wide
   pane and a narrow one:
 
@@ -32,7 +35,7 @@ Four rows of chrome, two of them rules with words in them; the rest is the conve
   | `watch` | What Pair said unasked: the kind of moment and the file and line first, then its words |
   | `gen` | What a [/gen](gen.md) request made, in magenta, as a card with its keys ([below](#the-gen-card)), and what the request asks you |
   | `└` | What Pair's tools did for your question: the files it read, the commands it ran, what it searched |
-  | `··` | Notes: the tests on save, a verdict noted, a level changed |
+  | `··` | Notes: the tests on save, a verdict noted, a level changed, another agent's news (`◇ #80 ready to merge: …`, with `o open   d diff   t terminal` while it is the newest: [agents.md](agents.md#what-you-see)) |
   | `!` | An error, in red, such as a model that does not answer, with what to check: its words are Markdown, so a command in it (`pair doctor`) is a code span, whole, to copy |
 
   The time is not on each message: a dim `── 21:19 ──` in the middle of the pane says it at the start, and again
@@ -72,6 +75,10 @@ Four rows of chrome, two of them rules with words in them; the rest is the conve
   y/N › or type an answer
    y allow · n decline · Esc decline
   ```
+
+  [`/gen board`](gen.md#gen-board-a-task-for-the-board) asks the same way, as `gen`, with the board's command under
+  its question: `y` adds the task for later, `c` copies the command to the clipboard (and adds nothing), `n` adds
+  nothing.
 
   The goal you type, or the one Pair took from the board or the branch, is in the header; the conversation does not
   say it again. Only a goal set elsewhere (`:Pair goal`) while Pair's question for it is open shows as a `··` note
@@ -245,7 +252,7 @@ Anything you type that is not a command is a question for Pair; it is always ans
 
 ## Acting on a message
 
-**Alt-↑** picks the last message (the last remark or [gen card](#the-gen-card) instead, while its action line shows), and further presses go up (**Alt-↓** down; a click picks one too). A bar marks it,
+**Alt-↑** picks the last message (the last remark, [gen card](#the-gen-card) or relayed line of another agent instead, while its action line shows), and further presses go up (**Alt-↓** down; a click picks one too). A bar marks it,
 and the footer lists what you can do with it, with the message's time on the right:
 
 | Key | On the message |
@@ -259,6 +266,7 @@ and the footer lists what you can do with it, with the message's time on the rig
 | `e` | The idea behind the remark, as `/why` |
 | `Enter` | Unfold a long message, or the tool lines one per line; on a gen card, open it in Neovim |
 | `k` `d` `u` | On a [gen card](#the-gen-card): keep, drop (twice), undo |
+| `o` `d` `t` | On another agent's relayed line: open its task's report or pull request, its branch's diff (read only), a terminal in its worktree, in Neovim ([agents.md](agents.md#what-a-task-left-behind)) |
 | `Esc` | Back to typing; any other key does that too |
 
 The last remark, while it is the last thing said, shows `+`, `-`, `a` and `j` on its own

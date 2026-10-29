@@ -69,7 +69,7 @@ end
 --- Tab in the request dialog: the shape words, as the first word.
 function M.complete(lead, line)
   if line:sub(1, #line - #lead):find('%S') then return {} end
-  return vim.tbl_filter(function(shape) return vim.startswith(shape, lead) end, {'here', 'file', 'scaffold', 'try'})
+  return vim.tbl_filter(function(shape) return vim.startswith(shape, lead) end, {'here', 'file', 'scaffold', 'try', 'board'})
 end
 _G.PairGenComplete = M.complete
 
@@ -230,6 +230,19 @@ function M.show(message)
   if message.kind == 'shape' then
     return select(message.choices or {}, {prompt = message.title, format_item = shape_line, kind = 'pair_gen_shape'}, function(choice)
       if choice and waiting == message then answer(message, choice.shape) end
+    end)
+  end
+  if message.kind == 'board' then
+    -- /gen board: y adds the task for later (add only), c copies its command and adds nothing.
+    local title = ('%s: %s'):format(message.title, message.command or '')
+    return select(message.choices or {}, {prompt = title, format_item = brief_line, kind = 'pair_gen_board'}, function(choice)
+      if not choice or waiting ~= message then return end
+      if choice.key == 'c' then
+        vim.fn.setreg('"', message.command)
+        pcall(vim.fn.setreg, '+', message.command)
+        vim.notify('Pair: the command is in the " and + registers')
+      end
+      answer(message, choice.key)
     end)
   end
   if message.kind == 'brief' then
