@@ -37,6 +37,7 @@ export function initialState({root = null, goal = null} = {}) {
     // editor (with the searches above), the sources they hid, and how many of the board's agent launches were left out of the commands.
     git: null,
     board: null,
+    tasks: [], // the board's working tasks of this repo and what their branches change: {id, title, branch, files} (see overlap.mjs)
     buffers: [],
     jumps: [],
     hidden: [],
@@ -289,6 +290,9 @@ const handlers = {
   branch: (state, event) => ({...state, branch: event.name}),
 
   context: (state, event) => ({...state, branch: event.branch ?? state.branch, git: event.git, board: event.board}),
+
+  // The files and lines the repo's working board tasks change on their branches, as last read (see overlap.mjs).
+  task_changes: (state, event) => ({...state, tasks: Array.isArray(event.tasks) ? event.tasks : []}),
 
   // The editor's listed buffers, most recent first, and its jumplist, newest first: absolute paths.
   places: (state, event) => ({...state, buffers: (event.buffers ?? []).slice(0, KEEP.places), jumps: (event.jumps ?? []).slice(0, KEEP.places)}),

@@ -201,7 +201,8 @@ The brief is your idea in your own words. Every request runs against it, and Pai
 writes your notes. It is made of:
 
 - **the session goal**, as `/goal` set it or as the session took it from the board task or the branch;
-- **the board task** of the branch, its number and title, when the [board](agents.md#where-it-reads) has one;
+- **the board task** of the branch, its number and title, and the brief it has on the board (its first 80 lines), when
+  the [board](agents.md#where-it-reads) has one;
 - **one note**: the one you pinned, else `NOTES.md` at the project root when it exists (the config's
   [`gen.brief`](config.md#gen)). The note goes as your buffer has it, unsaved changes and all, its first 300 lines.
 
@@ -213,9 +214,52 @@ The first request that runs against `NOTES.md` without your pinning it says so o
 | `/brief`, or `:Pair brief` outside a note | Says what the brief is now: `The brief: NOTES.md + goal "orders API" + board task SHO-12` |
 | `/brief docs/orders.md`, `:Pair brief docs/orders.md`, or `:Pair brief` in a Markdown buffer | Pins that note as the brief's note |
 | `/brief off`, `:Pair brief off` | Leaves the note out: the brief is the goal and the board task. `/brief <note>` pins one again |
+| `/brief sync`, `:Pair brief sync` | On a board task's branch: how the brief differs from the task's brief on the board, and one offer ([below](#keeping-the-task-in-step-brief-sync)) |
 
 A pin lasts into the next sessions of the project, until you change it. A request reads the brief when it starts, so
 a change to the note counts from the next request on.
+
+### Keeping the task in step: /brief sync
+
+On a board task's branch, the task's brief on the board is part of the brief, read by itself. The other way, from
+your brief to the task, goes only when you ask: `/brief sync` (or `:Pair brief sync`) reads the task's brief again
+(`shepherdr task show <id> --json`) and says what it lacks:
+
+```text
+/brief sync: NOTES.md + goal "orders API" + board task SHO-74 with its brief. SHO-74's brief on the board lacks:
++ Statuses: new, paid, shipped. (NOTES.md:11)
+- Statuses: new, paid. (no longer in NOTES.md)
++ decided 2026-10-28: Admin is read-only for now
+SHO-74's agent is at work: this goes as a message, not a new brief.
+  y tell SHO-74 · c copy the command · n leave it
+```
+
+- **`+` a line of the note** the task's brief does not have, with its `file:line`. Headings, fenced code blocks (their
+  fences too), a table's rule row and lines with fewer than three letters or digits are left out; a line counts as
+  there when the task's brief has its words, whatever the case and the quotes.
+- **`-` a line the task's brief quotes from the note** (as [`/gen board`](#gen-board-a-task-for-the-board) quotes
+  them, `> words (NOTES.md:4)`) that the note no longer has.
+- **`+ decided`**: a decision of the [decision log](notes.md#the-decision-log) next to the note (`decisions.md`) that is decided, not
+  superseded, and not in the task's brief, logged on or after the day the task's branch left the base branch (the
+  date of the commit it shares with your local `main` or origin's, whichever is further on): its brief was written no
+  earlier, so these are the decisions logged since. Without git to tell that day, every decision the brief lacks is
+  listed, as `+ decided 2026-10-28, not in its brief`, and the message says `Decided, and not in your brief`.
+
+Shepherdr has no way to replace a task's brief, and changing the instructions under a running agent would be unsafe
+anyway, so the one offer is a message to its agent, `shepherdr task tell <id> "…"`, with what changed: what the note
+says now, what it no longer says, and what was decided since. Its words depend on the task:
+
+| The task | `y` sends |
+| --- | --- |
+| at work or merging | the message: its agent takes it in as it goes |
+| needing you, ready to merge or idle | the message: its agent waits for you, and takes it in as a message, not a new brief |
+| waiting for a go (To do, Queued) | the message, which ends `This is no go: keep waiting for mine.`: it does not start the agent |
+| stopped | the message, and the pick says so: a message to a stopped task starts its agent again |
+| done | nothing is offered: there is no agent to tell |
+
+`c` copies the command and sends nothing; `n` (or `Esc`) leaves the task's brief as it is. From Neovim the lines show
+as a message and the offer is a `vim.ui.select` of the same three. The tell is booked in `:Pair today` as `told
+SHO-74: …`. Off a board task's branch, or with nothing missing, `/brief sync` says so and offers nothing.
 
 ### When the request contradicts the brief
 

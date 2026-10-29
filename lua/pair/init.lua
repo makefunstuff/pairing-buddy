@@ -16,6 +16,7 @@ local hints = require('pair.hints')
 local ledger = require('pair.ledger')
 local earcons = require('pair.earcons')
 local gen = require('pair.gen')
+local overlap = require('pair.overlap')
 local genfiles = require('pair.genfiles')
 local gentry = require('pair.gentry')
 local listen = require('pair.listen')
@@ -57,6 +58,7 @@ local config = {
   try_run_key = '<LocalLeader>r', -- in a /gen try's sample: runs it again in Pair's pane; in a scaffold's copy: checks it
   land = true, -- the morning pick-up opens an empty Neovim where the last session stopped
   answers = true, -- the start of Pair's answer to a question you typed shows under the line it was about, too
+  board_winbar = true, -- a window whose file a working board task also changes says so in its winbar
 }
 local state = {
   channel = nil, partial = '', attached = {}, pending = {}, open_request = nil, level = nil, role = nil,
@@ -1206,6 +1208,9 @@ local handlers = {
   decision_log = margin.log,
   tasks = function(message) tasks.show(message, send) end,
   agents = agents.on_relay,
+  -- The files the board's working tasks change: a note in the winbar of each window that shows one (overlap.lua).
+  task_files = overlap.on_files,
+  brief_sync = overlap.on_sync,
   agent_list = agents.on_list,
   agent_link = agents.on_link,
   thinking = function(message)
@@ -1226,6 +1231,7 @@ local handlers = {
     unmap_feedback()
   end,
   welcome = function(message)
+    overlap.clear() -- the session's own come next
     state.level = message.level
     set_models(message.models)
     set_role(message.role)
@@ -1317,6 +1323,7 @@ disconnected = function()
   listen.cancel(function() end) -- nor what you were saying
   spin()
   gen.reset() -- a restarted daemon has stopped its /gen requests, and asks nothing
+  overlap.clear() -- and reads the board's tasks again once one is back
   if state.role == 'driver' then set_role('navigator') end -- a restarted daemon has ended the hand-over
   if blank.status() then -- nor does its :Pair new: an answer now would reach no one
     blank.on_interview({done = true})
@@ -1520,10 +1527,11 @@ local commands = {
     send({type = 'gen_own', all = true})
   end,
   -- The brief /gen runs against: `:Pair brief` in a note pins it (elsewhere shows the brief), `:Pair brief <path>`
-  -- pins that note, `:Pair brief off` leaves the note out.
+  -- pins that note, `:Pair brief off` leaves the note out, `:Pair brief sync` compares it with its board task's brief.
   brief = function(arg)
     if not M.connect() then return vim.notify('Pair: not connected; :Pair brief again once it is', vim.log.levels.WARN) end
     if arg == 'off' then return send({type = 'brief', off = true}) end
+    if arg == 'sync' then return send({type = 'brief', sync = true}) end
     if arg ~= '' then return send({type = 'brief', file = vim.fn.fnamemodify(vim.fn.expand(arg), ':p')}) end
     local file = vim.bo.filetype == 'markdown' and project_path(0)
     send(file and {type = 'brief', file = file} or {type = 'brief'})
@@ -1603,6 +1611,7 @@ function M.setup(opts)
   genfiles.setup({send = send, redraw_status = redraw_status, label = label, decide_key = config.decide_key, work_window = work_window})
   owning.setup({send = send, event = event, redraw_status = redraw_status, connected = function() return state.channel ~= nil end})
   gentry.setup({send = send, run_key = config.try_run_key})
+  overlap.setup({send = send, winbar = config.board_winbar})
   style.apply()
   local group = vim.api.nvim_create_augroup('pair', {clear = true})
   local function restyle()

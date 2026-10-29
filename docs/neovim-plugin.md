@@ -47,6 +47,7 @@ require('pair').setup({
   gen_input = 'ui',    -- 'cmdline': the /gen request and its questions on Neovim's own prompt, not vim.ui's
   gen_preview_lines = 30, -- a /gen block taller than this shows in a preview window
   try_run_key = '<LocalLeader>r', -- in a /gen try's sample: runs it again; in a scaffold's copy: checks it again
+  board_winbar = true, -- false: no winbar note on a file a board task at work also changes
 })
 ```
 
@@ -67,6 +68,7 @@ require('pair').setup({
 | `agents_key` | `'<M-a>'` | Goes to the agent whose news Pair relayed, or puts the line away when it has no pane ([agents.md](agents.md)). Mapped in Normal mode while such a line shows |
 | `agents_open_key` | `'<M-o>'` | Opens the report or pull request of the board task whose news Pair relayed ([agents.md](agents.md#what-a-task-left-behind)). Mapped in Normal mode while a board task's line shows; `false` for none |
 | `agents_review_key` | `'<M-r>'` | Opens the branch of the board task whose news Pair relayed as a [review](gen.md#reviewing-a-board-task-pair-review). Mapped in Normal mode while the line of a task ready to merge shows; `false` for none |
+| `board_winbar` | `true` | A window whose file the branch of a board task at work also changes says so in its winbar, `◇ SHO-71 is changing this file · <branch> · :Pair agents`, unless it has a winbar of its own ([agents.md](agents.md#tasks-working-on-your-files)) |
 | `motion` | `true` | Fades, the glow of a green, and the trail behind the gaze; without it the gaze still steps line by line |
 | `decide_key`, `link_key` | `'<M-d>'`, `'<M-l>'` | In a note's margin: log the decision on your line, open the code a mark names. Mapped in Normal mode only in a note with such a mark ([notes.md](notes.md)), and `decide_key` also in [`:Pair gen list`](gen.md#the-review-list-pair-gen-list), where it logs a `? guessed` line as a decision |
 | `searches` | `true` | Read your Telescope, snacks.picker and fzf-lua searches for the [search trail](neovim.md#the-search-trail) |
@@ -117,7 +119,7 @@ to standard ones and does not fade.
 | `:Pair gen tries` | The project's `/gen try` folders still kept, with the days each has left; the one you pick opens in a split |
 | `:Pair keep [path]` | Move the `/gen try` file you are in (else the newest try's main file) into the project at `path` (else at its path in the try's folder), as a `pair://gen/<n>/<path>` buffer to review that `:w` takes; only a new file. In a file of a scaffold's copy, keep that file (with a path: the scaffold's file at that path) |
 | `:Pair own [path]`, `:'<,'>Pair own`, `:Pair own!` | Make the code you took from `/gen` yours ([gen.md](gen.md#owning-generated-code)): all of it in this buffer's file (or in `path`), that on the lines, or all of it in the project. Its `┊` marks go |
-| `:Pair brief [path\|off]` | The [brief](gen.md#the-brief) `/gen` runs against: in a Markdown buffer, pin that note; with a path, pin that note; `off`, leave the note out; elsewhere, say what the brief is |
+| `:Pair brief [path\|off\|sync]` | The [brief](gen.md#the-brief) `/gen` runs against: in a Markdown buffer, pin that note; with a path, pin that note; `off`, leave the note out; elsewhere, say what the brief is. `sync`, on a board task's branch: what the task's brief on the board lacks, then a pick: tell its agent, copy the command, or nothing ([gen.md](gen.md#keeping-the-task-in-step-brief-sync)) |
 | `:Pair accept` | Accept Pair's suggestion under the cursor, else the newest in the buffer (same as `Alt-y`); for a suggestion in an unasked remark, that rates the remark useful |
 | `:Pair dismiss` | Drop the same suggestion, and only that one; for a suggestion in an unasked remark, that rates the remark not useful |
 | `:Pair useful` | Pair's last unasked remark was useful (same as `Alt-u`) |

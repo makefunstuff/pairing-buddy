@@ -1,5 +1,5 @@
 ---
-description: "When another agent needs you, is ready to merge or is done, Pair says so in one line at your next pause, with keys to go there and open what it left."
+description: "Pair tells you in one line, at your next pause, when another agent needs you or is done, and marks the files a board task also changes."
 ---
 
 # Your other agents, in one place
@@ -93,13 +93,46 @@ machine (a task that is done went with its merge), or a task of another machine,
 From the chat pane, the Neovim of the session opens it; with none connected, the chat gives the links or the folder
 instead.
 
+## Tasks working on your files
+
+The board's tasks work in their own worktrees, so nothing stops one from changing the file you have open. Pair reads
+what they change and says so where you work:
+
+```text
+ ◇ SHO-71 is changing this file · work/71-fold-footer · :Pair agents
+905   if (folded && rows > 13) {
+906     footer.push(['Enter', 'unfold']);
+```
+
+- **The winbar note.** A window whose file the branch of a working task also changes says so in its winbar: the
+  task, its branch, and `:Pair agents` to go to it. Two tasks are named by their ids. The note goes when the task
+  stops changing the file (it was merged, stopped or archived) or the window shows another file. A window that has a
+  winbar of its own (a `/gen` try's, or one your config sets) keeps it, and gets no note. `board_winbar = false` in
+  the plugin's setup turns the note off ([neovim-plugin.md](neovim-plugin.md#setup)).
+- **The overlap remark.** When you edit lines that a task's branch also changes (or the line next to them), that is
+  the `overlap` moment. It goes through the [speak gate](watcher.md) like any other: the Watcher scores it, and a
+  remark waits for your next breakpoint. The Partner reads which task it is and the lines the task writes there, and
+  says what its change does and that whichever of the two is merged second meets a conflict. It is raised once per
+  task and change of its branch, only for your own edits (Pair's, and code you kept from a `/gen` or a review, are
+  not yours), and dropped while held if the task stops changing the file.
+
+**What it reads.** Every 30 seconds while a Neovim is connected to the session: the tasks of the repository's space
+that are at work (Shepherdr's `work` and `merging`; a task that waits for a go has changed nothing yet), each one's
+branch from `shepherdr task show <id> --json` (asked once), and what the branch changes with git, read only: `git
+diff -U0` against where the branch left the base branch (the newest commit it shares with your local base branch or
+origin's, whichever is further on, so work merged since is not counted as the task's), in its worktree when it has
+one on this machine, so changes its agent has not committed count too. The lines are the base's, the lines your
+checkout has unless you changed them. Your own work is left out: the task of the branch you are on, any task whose
+branch that is, and the task whose worktree you work in. So are other machines' tasks.
+
 ## Where it reads
 
 Pair reads by itself and writes nothing to the board: it never adds, tells, stops, merges or sets a task on its own.
 The writes there go through [`/gen board`](gen.md#gen-board-a-task-for-the-board), a task added on a pick that
-names what it does (add only, add and delegate, delegate with a plan first, or delegate for research only), and a task's [review](gen.md#reviewing-a-board-task-pair-review),
-where a tell, "merge it" told to its agent or archive run on the pick that names them. Pair never runs `shepherdr
-merge`.
+names what it does (add only, add and delegate, delegate with a plan first, or delegate for research only), a task's
+[review](gen.md#reviewing-a-board-task-pair-review), where a tell, "merge it" told to its agent or archive run on the
+pick that names them, and [`/brief sync`](gen.md#keeping-the-task-in-step-brief-sync), whose tell runs only on its pick
+too. Pair never runs `shepherdr merge`.
 
 - **herdr's agents**: `agent.list` over herdr's socket, which Pair knows from the chat pane, or from Neovim when it
   runs in herdr. Every agent herdr recognises, in any workspace.
@@ -111,7 +144,8 @@ merge`.
   there. A task's own agents (the agent and its reviewer, in the task's worktree) show as the task, not twice.
 - A session opened in a task's own worktree leaves that task out: it does not tell an agent about itself.
 
-Both are read every 5 seconds while a Neovim or chat pane is connected, and not at all otherwise. A source that fails
+Both are read every 5 seconds while a Neovim or chat pane is connected, and not at all otherwise. What the working
+tasks change is read every 30 seconds ([above](#tasks-working-on-your-files)). A source that fails
 (no board installed, Shepherdr not running, herdr closed) is logged once and keeps what it last answered (nothing,
 for a board that is not installed), so the other source is still read and relayed.
 
@@ -125,8 +159,9 @@ On by default. In `~/.config/pairing-buddy/config.json`:
 "board": "/path/to/shepherdr"         // the board's command, when it is not on the daemon's PATH
 ```
 
-The board is the one the context card, the goal, the chat's header, `/gen board` and `:Pair review` use (`board`,
-default `shepherdr`). herdr-projects 1.x (the board before Shepherdr) is not read any more.
+The board is the one the context card, the goal, the brief, the chat's header, `/gen board`, `:Pair review`, the
+winbar note, the overlap remark and `/brief sync` use (`board`, default `shepherdr`). `"agents": false` stops the relay
+only: the winbar note and the overlap remark go with `"board": null`. herdr-projects 1.x (the board before Shepherdr) is not read any more.
 
 In Neovim, `agents_key = '<M-a>'`, `agents_open_key = '<M-o>'` and `agents_review_key = '<M-r>'` in `setup()` change
 the keys (`false` for none; each is mapped only while a line shows, `Alt-r` only on a task ready to merge, and only

@@ -56,11 +56,13 @@ you think, and take the keyboard only when you hand it over. Pair aims for that:
   A request too big for `/gen`'s limits is offered to the board. When a task is ready, `:Pair review <id>` (or
   `Alt-r` on its line) opens its branch as a review: what its reviewer said, `≠ brief` on the branch, each file's
   diff, and `k` to keep a file or a hunk in yours, unsaved; tell, merge (a tell to its agent) and archive only on
-  your pick.
+  your pick. On a task's branch its brief on the board is part of yours, and `/brief sync` tells its agent, on your
+  pick, what changed in your brief since.
 - **Your other agents, in one line.** When a board task or another agent needs you, is ready to merge or is done,
   Pair says so at your next pause, never while you type; `o`, `d` and `t` open what a task left behind (its report or
-  pull request, its branch's diff, a terminal in its worktree), and the chat's header counts the repo's tasks
-  ([your other agents](docs/agents.md)).
+  pull request, its branch's diff, a terminal in its worktree), and the chat's header counts the repo's tasks. A file
+  a working task also changes says so in its winbar, and when you edit lines its branch changes, Pair tells you at
+  your next pause ([your other agents](docs/agents.md)).
 
 ## Quick start
 
@@ -102,8 +104,9 @@ your keys and logins).
 - [Getting started](docs/getting-started.md) and [install and daily use](docs/install.md)
 - [How it works](docs/how-it-works.md), [roles](docs/roles.md) and [workflows](docs/workflows.md)
 - [The chat pane](docs/chat.md): who speaks, what Pair is doing now, wide and narrow panes, a remark's own keys, the gen card, find, calm motion, role colours, its keys and commands
-- [Your other agents](docs/agents.md): the board's tasks and herdr's agents in one line at your next pause, and what a
-  task left behind (report or pull request, its branch's diff, its worktree) one key away
+- [Your other agents](docs/agents.md): the board's tasks and herdr's agents in one line at your next pause, what a
+  task left behind (report or pull request, its branch's diff, its worktree) one key away, and the files a working
+  task also changes
 - [/gen](docs/gen.md): ask Pair for code at your cursor, as new files to review, as a sample to run outside the
   project, or as a scaffold built in a copy of it, against your brief; take it with one key, `:w`, `/keep` or `k` per
   file, undo the request as one; Pair's own edits carry their origin, and taken code is marked `┊` until you own it;

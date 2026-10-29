@@ -1,5 +1,6 @@
 // Reads what a project's context card shows of git and the board, as a `context` event for the session state.
-// The board (Shepherdr) is read through board.mjs: the space of the repo, its tasks, and the branch's own task in full.
+// The board (Shepherdr) is read through board.mjs: the space of the repo, its tasks, and the branch's own task in full
+// (its pull request, its status, and its brief on the board, which is part of the brief /gen runs against).
 // A pull request is asked of GitHub's `gh` at most every few minutes per branch, and only when the board does not
 // already name one; offline or without `gh`, the card leaves it out.
 import {execFile} from 'node:child_process';
@@ -29,7 +30,7 @@ const prOfUrl = url => {
 };
 
 /**
- * The board as it concerns the project at `root` (see boardContext), with its own task's pull request; null without a
+ * The board as it concerns the project at `root` (see boardContext), with its own task's pull request, status and brief; null without a
  * board, outside git, or when the board does not know the repo or cannot be read.
  */
 async function readBoard(board, root, {repos, branch}) {
@@ -38,7 +39,10 @@ async function readBoard(board, root, {repos, branch}) {
     const space = spaceFor(await board.spaces(), {repos, checkout: await gitCheckout(root)});
     if (!space) return null;
     const context = boardContext(await board.tasks({space: space.name}), {space: space.name, branch});
-    if (context.task) context.task.pr = (await board.show(context.task.id).catch(() => null))?.pr ?? null;
+    if (context.task) {
+      const shown = await board.show(context.task.id).catch(() => null);
+      Object.assign(context.task, {pr: shown?.pr ?? null, brief: shown?.brief ?? null, status: shown?.status ?? null});
+    }
     return context;
   } catch {
     return null;

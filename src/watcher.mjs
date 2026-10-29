@@ -17,6 +17,7 @@ Answer with one number.`;
 // A regression: whether hearing of it now saves time, since the user has not run the tests that found it.
 // The search trail: whether the user is going in circles, with what fails now, which says what they are after.
 // A crash: whether hearing where and why saves a hunt. A new warning: whether it is a bug, not just untidy.
+// The overlap: whether hearing that another agent's task changes the same lines saves a conflict later.
 // The exploration loop: whether a change that did nothing, or a number that moved, has a reason worth a sentence.
 const WHAT_HAPPENED = {
   drift: (trigger, state) => `The user now edits ${trigger.file}.${trigger.gist ? ` What the file is about: ${trigger.gist}` : ''}\n`
@@ -37,6 +38,8 @@ const WHAT_HAPPENED = {
   number_moved: trigger => `${trigger.detail}\n`
     + 'Score how much one sentence on what is now true would help: 0 for the plain result of a first try, 10 when it ends a hunt '
     + '(earlier changes did not move the numbers and this one did, so why this one worked is worth knowing) or when it got much worse.',
+  overlap: trigger => `The user edits ${trigger.file}:${trigger.edited.from}-${trigger.edited.to}, and another agent's board task (${trigger.task.id}) changes ${trigger.ranges.map(range => `${range.from}-${range.to}`).join(', ')} of that file on its own branch, at the same time.\n`
+    + 'Score how much hearing it now would save them a conflict later: 0 for a one-line touch-up next to its change, 10 if both rewrite the same code.',
   ...PROSE_WATCH,
 };
 

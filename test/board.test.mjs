@@ -140,14 +140,14 @@ test('the context card\'s board: the space of the repo, the branch\'s task with 
   const board = fakeShepherdr(join(dir), {
     spaces: [{name: 'shop', key: 'SHO', path: repo}],
     tasks: [
-      {id: 'SHO-7', title: 'Read every run', status: 'work', sub: 'Reading', place: 'p:here:shop', branch: 'work/7-read-every-run', pr: {number: 3, url: 'https://github.com/o/shop/pull/3'}},
+      {id: 'SHO-7', title: 'Read every run', status: 'work', sub: 'Reading', place: 'p:here:shop', branch: 'work/7-read-every-run', pr: {number: 3, url: 'https://github.com/o/shop/pull/3'}, desc: 'Read every run.'},
       {id: 'SHO-8', title: 'Search trail', status: 'need', sub: 'Which file?', place: 'p:here:shop'},
       {id: 'SHO-9', title: 'Third', status: 'work', place: 'p:here:shop'},
     ],
   });
   const event = await projectContext({board: board.command})(repo);
   assert.deepEqual(event.board, {
-    space: 'shop', task: {id: 'SHO-7', title: 'Read every run', state: 'working', msg: 'Reading', pr: 'https://github.com/o/shop/pull/3'},
+    space: 'shop', task: {id: 'SHO-7', title: 'Read every run', state: 'working', msg: 'Reading', pr: 'https://github.com/o/shop/pull/3', brief: 'Read every run.', status: 'work'},
     working: 1, waiting: [{id: 'SHO-8', title: 'Search trail'}],
   });
   assert.equal(event.git.pr, '#3', 'the board names the pull request: gh is not asked');

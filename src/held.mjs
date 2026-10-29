@@ -39,7 +39,7 @@ export class Breakpoints {
 
 /**
  * Whether what `trigger` saw still holds in `state`: the error is still in the code, the user is still in the
- * file that drifted, no edit since the searches of a trail. A held thought about what is gone is dropped.
+ * file that drifted, no edit since the searches of a trail, the board task still changes the file. A held thought about what is gone is dropped.
  */
 export function stillTrue(trigger, state) {
   if (trigger.kind === 'new_code_diagnostic') {
@@ -48,6 +48,8 @@ export function stillTrue(trigger, state) {
   }
   if (trigger.kind === 'drift') return userEdits(state).at(-1)?.file === trigger.file;
   if (trigger.kind === 'search_trail') return state.lastEditAt < trigger.searches[0].at; // an edit since: you found it
+  // The task still changes that file: one that was merged, stopped or archived meanwhile is no news.
+  if (trigger.kind === 'overlap') return (state.tasks ?? []).some(task => task.id === trigger.task.id && task.files.some(each => each.file === trigger.file));
   return true;
 }
 

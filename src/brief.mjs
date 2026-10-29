@@ -1,5 +1,5 @@
 // The brief: the user's idea in their own words, which every /gen request runs against. It is the session goal, the
-// board task of the branch, and one note: the one the user pinned (/brief, :Pair brief), else the config's gen.brief
+// board task of the branch with its brief on the board, and one note: the one the user pinned (/brief, :Pair brief), else the config's gen.brief
 // (NOTES.md) when the project has it. Pair reads it and never writes it, as it never writes a note.
 //
 // Before a request generates, the model is asked whether the request contradicts the brief; after, whether the code
@@ -7,6 +7,7 @@
 // as note-reading.mjs keeps marks: a contradiction quotes a real line of the brief, and the code's names a real line
 // of what was proposed.
 import {relative} from 'node:path';
+import {entries} from './decision-log.mjs';
 import {projectFile} from './files.mjs';
 import {jsonList} from './note-reading.mjs';
 
@@ -17,13 +18,15 @@ const QUOTE_CHARS = 120;
 const SIDE_CHARS = 60;
 const TEXT_CHARS = 160;
 const SOURCES = ['note', 'goal', 'task'];
+const TASK_BRIEF_LINES = 80; // of the board task's brief, the model reads this many
 
 const plain = text => text.toLowerCase().replace(/[`*_"“”'‘’]/g, '').replace(/\s+/g, ' ').trim();
 const shorten = (text, max) => (text.length <= max ? text : `${text.slice(0, max - 1).replace(/\s+\S*$/, '')}…`);
 const words = value => (typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '');
 
 /**
- * The brief of a session: `{goal, task, note}`, `note` being `{file, path, lines, pinned}` or null. `pin` is the note the
+ * The brief of a session: `{goal, task, note}`, `task` being `{id, title, brief}` (`brief`, what the board keeps as
+ * its brief, or null) and `note` `{file, path, lines, pinned}` or null. `pin` is the note the
  * user pinned (a path in the project), false when they left the note out (/brief off), null when they did neither:
  * then `fallback` (the config's gen.brief) is used when the project has it. `read(path)` gives a file's text as the
  * editor has it.
@@ -36,7 +39,8 @@ export async function readBrief({root, pin = null, fallback = 'NOTES.md', goal =
     const text = await read(path).catch(() => null);
     if (typeof text === 'string') note = {file: relative(root, path), path, lines: text.replace(/\n$/, '').split('\n'), pinned: Boolean(pin)};
   }
-  return {goal: goal || null, task: task?.id ? {id: task.id, title: task.title ?? ''} : null, note};
+  const told = typeof task?.brief === 'string' && task.brief.trim() ? task.brief.trim() : null;
+  return {goal: goal || null, task: task?.id ? {id: task.id, title: task.title ?? '', brief: told} : null, note};
 }
 
 /** Whether the brief says anything: a request runs against nothing without it. */
@@ -47,15 +51,18 @@ export function briefLine(brief) {
   const parts = [];
   if (brief.note) parts.push(`${brief.note.file}${brief.note.pinned ? ' (pinned)' : ''}`);
   if (brief.goal) parts.push(`goal "${shorten(brief.goal, SIDE_CHARS)}"`);
-  if (brief.task) parts.push(`board task ${brief.task.id}`);
+  if (brief.task) parts.push(`board task ${brief.task.id}${brief.task.brief ? ' with its brief' : ''}`);
   return parts.join(' + ') || 'nothing yet';
 }
 
-/** The brief as the model reads it: the goal, the task, and the note with its lines numbered. */
+/** The lines of the board task's brief the model reads. */
+const taskLines = task => task.brief.split('\n').slice(0, TASK_BRIEF_LINES);
+
+/** The brief as the model reads it: the goal, the task with its brief on the board, and the note with its lines numbered. */
 export function briefText(brief) {
   const parts = ['The brief: the user\'s own idea in their words. Follow it; never edit it.'];
   if (brief.goal) parts.push(`Goal: ${brief.goal}`);
-  if (brief.task) parts.push(`Board task ${brief.task.id}: ${brief.task.title}`);
+  if (brief.task) parts.push(`Board task ${brief.task.id}: ${brief.task.title}${brief.task.brief ? `\nIts brief on the board:\n${taskLines(brief.task).join('\n')}` : ''}`);
   if (brief.note) {
     const shown = brief.note.lines.slice(0, BRIEF_LINES).map((line, i) => `${i + 1}: ${line}`);
     const cut = brief.note.lines.length > BRIEF_LINES ? `\n(${brief.note.lines.length - BRIEF_LINES} more lines not shown)` : '';
@@ -115,7 +122,11 @@ export function findQuote(brief, source, line, quote) {
   const wanted = plain(words(quote));
   if (wanted.length < 3) return null;
   if (source === 'goal') return brief.goal && plain(brief.goal).includes(wanted) ? {source, line: null, text: brief.goal} : null;
-  if (source === 'task') return brief.task && plain(brief.task.title).includes(wanted) ? {source, line: null, text: brief.task.title} : null;
+  if (source === 'task') {
+    if (!brief.task) return null;
+    const text = [brief.task.title, ...(brief.task.brief ? taskLines(brief.task) : [])].find(each => plain(each).includes(wanted));
+    return text ? {source, line: null, text: text.trim()} : null;
+  }
   const lines = brief.note?.lines.slice(0, BRIEF_LINES) ?? [];
   const at = Number.isInteger(line) && plain(lines[line - 1] ?? '').includes(wanted) ? line - 1 : lines.findIndex(each => plain(each).includes(wanted));
   return at < 0 ? null : {source: 'note', line: at + 1, text: lines[at].trim()};
@@ -210,4 +221,83 @@ export function parseCheck(answer, brief, pieces, exceptions = new Set()) {
     contradicts.push({...found, piece: Number(item.piece) - 1, pieceLine: at, file: piece.file, fileLine, why: shorten(why, TEXT_CHARS)});
   }
   return {contradicts, guessed};
+}
+
+const SYNC_SHOWN = 12; // of each kind, /brief sync lists this many
+const SYNC_MIN_CHARS = 3; // a line with fewer letters and digits says nothing to compare
+// A line of the note worth comparing: words, not a heading's marks, a rule or a table's rule row alone.
+const bare = text => plain(text.replace(/^\s*(?:#+|[-*+>]|\d+[.)])\s+/, '').replace(/^\s*(?:#+|[-*_=]{3,}|\|?[\s:|-]*-[\s:|-]*\|?)\s*$/, ''));
+const FENCE = /^\s*(`{3,}|~{3,})/;
+
+/** The note's lines that say something, numbered: no headings, and nothing of a fenced block, its fences included. */
+function saying(lines) {
+  const kept = [];
+  let fence = null;
+  lines.forEach((text, i) => {
+    const opens = FENCE.exec(text)?.[1];
+    if (fence) {
+      if (opens && opens[0] === fence[0] && opens.length >= fence.length) fence = null;
+      return;
+    }
+    if (opens) {
+      fence = opens;
+      return;
+    }
+    const line = text.trim();
+    if (!/^#/.test(line) && (bare(line).match(/[\p{L}\p{N}]/gu) ?? []).length >= SYNC_MIN_CHARS) kept.push({line: i + 1, text: line});
+  });
+  return kept;
+}
+// handoffBrief's quotes: `> words (NOTES.md:4)`.
+const QUOTE = /^> (.+) \(([^()\s]+):(\d+)\)$/;
+
+/**
+ * How the brief differs from its board task's brief (`brief.task.brief`), for /brief sync: `added`, the note's lines
+ * the task's brief does not have ({line, text}), its headings, fenced blocks and table rules left out; `gone`, the
+ * lines it quotes from the note that the note no longer has; `decided`, the decisions of the log `log` (decisions.md's
+ * text) it does not have ({date, title}), logged on `since` (YYYY-MM-DD: the day the task's branch left the base
+ * branch, before which its brief cannot have been written) or later; without `since`, every one it lacks. Null
+ * without a board task.
+ */
+export function briefSync(brief, log = '', {since = null} = {}) {
+  if (!brief.task) return null;
+  const told = plain(brief.task.brief ?? '');
+  const has = text => text.length >= SYNC_MIN_CHARS && told.includes(text);
+  const added = !brief.note ? [] : saying(brief.note.lines).filter(each => !has(bare(each.text)));
+  const kept = new Set((brief.note?.lines ?? []).map(bare));
+  const gone = !brief.note ? [] : (brief.task.brief ?? '').split('\n').map(line => QUOTE.exec(line.trim()))
+    .filter(quote => quote && quote[2] === brief.note.file && !kept.has(bare(quote[1]))).map(quote => quote[1]);
+  const decided = entries(log).filter(entry => entry.decided && !has(plain(entry.title)) && (!since || entry.date >= since))
+    .map(({date, title}) => ({date, title}));
+  return {since, added: added.slice(0, SYNC_SHOWN), gone: gone.slice(0, SYNC_SHOWN), decided: decided.slice(0, SYNC_SHOWN),
+    more: Math.max(0, added.length - SYNC_SHOWN) + Math.max(0, gone.length - SYNC_SHOWN) + Math.max(0, decided.length - SYNC_SHOWN)};
+}
+
+/** Whether /brief sync found nothing to say. */
+export const inSync = sync => !sync.added.length && !sync.gone.length && !sync.decided.length;
+
+/** What /brief sync found, as lines: + what the task's brief lacks, - what it has that the brief no longer says. */
+export function syncLines(brief, sync) {
+  const file = brief.note?.file;
+  return [
+    ...sync.added.map(each => `+ ${shorten(each.text, TEXT_CHARS)} (${file}:${each.line})`),
+    ...sync.gone.map(text => `- ${shorten(text, TEXT_CHARS)} (no longer in ${file})`),
+    ...sync.decided.map(each => `+ decided ${each.date}${sync.since ? '' : ', not in its brief'}: ${shorten(each.title, TEXT_CHARS)}`),
+    ...(sync.more ? [`(and ${sync.more} more)`] : []),
+  ];
+}
+
+/**
+ * What /brief sync tells task `brief.task.id`'s agent: what changed in the brief since its brief was written. `waiting`,
+ * its agent waits for a go, and this is none.
+ */
+export function syncTell(brief, sync, {waiting = false} = {}) {
+  const file = brief.note?.file;
+  const parts = [`The brief in Pair${file ? ` (${file})` : ''} changed since your brief was written. Take this in:`];
+  if (sync.added.length) parts.push(`It says now:\n${sync.added.map(each => `- ${each.text} (${file}:${each.line})`).join('\n')}`);
+  if (sync.gone.length) parts.push(`It no longer says:\n${sync.gone.map(text => `- ${text}`).join('\n')}`);
+  const decided = sync.since ? `Decided since your branch left the base branch on ${sync.since} (decisions.md)` : 'Decided, and not in your brief (decisions.md)';
+  if (sync.decided.length) parts.push(`${decided}:\n${sync.decided.map(each => `- ${each.date}: ${each.title}`).join('\n')}`);
+  if (waiting) parts.push('This is no go: keep waiting for mine.');
+  return parts.join('\n\n');
 }

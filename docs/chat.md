@@ -218,8 +218,8 @@ Anything you type that is not a command is a question for Pair; it is always ans
 - **Up** and **Down** move between the lines of what you type, and from the first or the last line through what you
   sent before in this project, kept across panes and restarts.
 - **/** opens the commands as you type, in three columns: the command, its arguments, what it does. It shows seven at a
-  time; its rule says how many of all (`commands · 7 of 40 · type to narrow`) and its last line how many more there
-  are (`↓ 33 more`); **↑** and **↓** go through all of them. **Tab** completes, **Enter** runs one that needs nothing
+  time; its rule says how many of all (`commands · 7 of 41 · type to narrow`) and its last line how many more there
+  are (`↓ 34 more`); **↑** and **↓** go through all of them. **Tab** completes, **Enter** runs one that needs nothing
   more. The [chat commands](cli.md#chat-commands) list them all. After `/gen` and a space, the menu lists its shapes
   first (`here`, `file`, `try`, `scaffold`, `board`), then what else `/gen` does. After `k` on a scaffold's card, `/keep ` waits
   on the line with that scaffold's files left to keep (`Enter keeps`); a `/keep` you type yourself has no menu.
@@ -245,7 +245,9 @@ Anything you type that is not a command is a question for Pair; it is always ans
   chat with what its answers do: `y` takes the guess or the answer given, `n` cancels or leaves it to Pair, and
   anything else you type is the answer. A request that contradicts its [brief](gen.md#the-brief) asks first: `y` as
   asked, `n` follows the brief, `e` opens the note at that line. `/brief` says what the brief is, `/brief <note>`
-  pins a note, `/brief off` leaves it out. `/gen` alone lists today's requests, and then how much of the code you took
+  pins a note, `/brief off` leaves it out, and `/brief sync`, on a board task's branch, says what the task's brief on
+  the board lacks and asks: `y` tells its agent, `c` copies the command, `n` leaves it
+  ([gen.md](gen.md#keeping-the-task-in-step-brief-sync)). `/gen` alone lists today's requests, and then how much of the code you took
   is [not yours yet](gen.md#owning-generated-code) (`┊ not yours yet: 2 files · 31 lines`); `/today` ends with
   the same line.
 
