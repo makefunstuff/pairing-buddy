@@ -30,7 +30,7 @@ local leaving = false -- Neovim quits: its buffers go, and nothing is dropped
 local quiet = {} -- buf -> true: a buffer Pair itself takes away (taken, dropped, undone), which drops nothing more
 local skipped = nil -- the proposals a :wa skipped, said once it is done
 local view = {buf = nil, win = nil, from = nil, rows = {}, requests = {}, focus = nil}
-local diff = {buf = nil, message = nil} -- a review's file diff that is open: its buffer, and what the daemon sent
+local diffs = {} -- buf -> what the daemon sent of a review's file diff open in it: each buffer's keys act on its own
 
 local group = vim.api.nvim_create_augroup('pair_gen_files', {clear = true})
 
@@ -790,9 +790,11 @@ end
 --- The daemon's review_diff: a file of a review as a diff, in a split above the list (or where you work).
 function M.on_diff(message)
   if present(message.error) then return vim.notify('Pair: ' .. message.error) end
-  if diff.buf and vim.api.nvim_buf_is_valid(diff.buf) and diff.message and diff.message.action == message.action and diff.message.piece == message.piece then
-    diff.message = message
-    return draw_diff(diff.buf, message)
+  for buf, shown in pairs(diffs) do
+    if vim.api.nvim_buf_is_valid(buf) and shown.action == message.action and shown.piece == message.piece then
+      diffs[buf] = message
+      return draw_diff(buf, message)
+    end
   end
   local win = work_window()
   if win then vim.api.nvim_set_current_win(win) end
@@ -801,7 +803,7 @@ function M.on_diff(message)
   vim.bo[buf].buftype, vim.bo[buf].bufhidden, vim.bo[buf].swapfile = 'nofile', 'wipe', false
   pcall(vim.api.nvim_buf_set_name, buf, ('pair://board/%s/%s'):format(message.task, message.name))
   vim.bo[buf].filetype = 'diff'
-  diff.buf, diff.message = buf, message
+  diffs[buf] = message
   draw_diff(buf, message)
   vim.wo.winbar = (' %s · read only · k keeps the change · K the file · t tells · q closes'):format(message.title):gsub('%%', '%%%%')
   local function map(key, run, desc) vim.keymap.set('n', key, run, {buffer = buf, nowait = true, desc = desc}) end
@@ -810,23 +812,21 @@ function M.on_diff(message)
     if valid_win() then vim.api.nvim_set_current_win(view.win) end
   end, 'Close the diff, back to the list')
   map('k', function()
-    local hunk = hunk_here(diff.message)
+    local shown = diffs[buf]
+    local hunk = hunk_here(shown)
     if not hunk then return vim.notify('Pair: put the cursor on a change to keep it; K keeps the whole file') end
     if hunk.kept then return vim.notify('Pair: that change is kept already') end
-    deps.send({type = 'review_keep', action = diff.message.action, piece = diff.message.piece, hunk = hunk.k})
+    deps.send({type = 'review_keep', action = shown.action, piece = shown.piece, hunk = hunk.k})
   end, 'Keep this change in your file, unsaved')
-  map('K', function() deps.send({type = 'review_keep', action = diff.message.action, piece = diff.message.piece}) end, 'Keep the whole file, unsaved')
-  map('t', function()
-    local request = {task = diff.message.task}
-    tell(request, place_here(diff.message))
-  end, 'Tell the task\'s agent about this line')
-  vim.api.nvim_create_autocmd('BufWipeout', {group = group, buffer = buf, callback = function() if diff.buf == buf then diff.buf, diff.message = nil, nil end end})
+  map('K', function() deps.send({type = 'review_keep', action = diffs[buf].action, piece = diffs[buf].piece}) end, 'Keep the whole file, unsaved')
+  map('t', function() tell({task = diffs[buf].task}, place_here(diffs[buf])) end, 'Tell the task\'s agent about this line')
+  vim.api.nvim_create_autocmd('BufWipeout', {group = group, buffer = buf, callback = function() diffs[buf] = nil end})
 end
 
---- Asks the daemon for the open diff again: something of it was kept.
+--- Asks the daemon for the open diffs again: something of them was kept, or taken back.
 function M.refresh_diff()
-  if diff.buf and vim.api.nvim_buf_is_valid(diff.buf) and diff.message then
-    deps.send({type = 'review_diff', action = diff.message.action, piece = diff.message.piece})
+  for buf, shown in pairs(diffs) do
+    if vim.api.nvim_buf_is_valid(buf) then deps.send({type = 'review_diff', action = shown.action, piece = shown.piece}) end
   end
 end
 

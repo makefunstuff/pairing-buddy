@@ -727,10 +727,14 @@ the rest, the bigger changes first. `+` is a file the branch adds, `~` one it ch
 its text, so your edits since stay. A file the branch adds becomes a buffer at its path, not written until you `:w`.
 Kept code is Pair's edit of origin [`board:SHO-80`](#who-wrote-it-edits-carry-their-origin), marked `┊` as [not
 yours yet](#owning-generated-code) until you edit it or `:Pair own` it, and the ledger books the review as one line
-(`review SHO-80 · Billing module`) that `/undo` and `u` in `:Pair today` take back as one. A change on lines you
+(`review SHO-80 · Billing module`) that `/undo` and `u` in `:Pair today` take back as one. For `/undo` it counts as
+changed when you last kept from it, so a review opened days ago and kept from now is the change it takes back. A change on lines you
 changed since is not kept, and the chat says so (`git show work/80-billing:billing/invoice.js` has it). Pair keeps no
 file the branch deletes, and deletes none of yours; a file that is not text is not kept either (`git checkout <branch>
 -- <file>` takes it).
+
+Keeps of one review run one after the other, so a key pressed twice keeps a change once. Each diff window's keys act
+on its own file.
 
 **Then the branch.** Once you kept pieces of it, merging the whole branch would bring them in twice. Pair says so
 when you keep the first one, in the list too, and offers `archive SHO-80` with `A`. The review stays as you left it:

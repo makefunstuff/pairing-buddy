@@ -135,6 +135,19 @@ export class Reviews {
   constructor(gen) {
     this.gen = gen;
     this.pending = new Map(); // ledger entry -> its ≠ brief check, while it runs
+    this.locks = new Map(); // ledger entry -> the last change of it booked or waiting: keeps and the check, one at a time
+  }
+
+  /**
+   * Runs `change()` once the changes of review `action` before it are done: each reads the entry as the last left it
+   * and books it whole, so two keeps (or a keep and the ≠ check) never place a hunk twice or drop the other's pieces.
+   */
+  locked(action, change) {
+    const done = (this.locks.get(action) ?? Promise.resolve()).then(change);
+    const settled = done.catch(() => {});
+    this.locks.set(action, settled);
+    settled.then(() => { if (this.locks.get(action) === settled) this.locks.delete(action); });
+    return done;
   }
 
   get session() { return this.gen.session; }
@@ -280,9 +293,14 @@ export class Reviews {
     } catch (error) {
       return this.session.log(`review ${task.id}: checking against the brief failed: ${error.message}`);
     }
+    for (const item of check.contradicts) item.place = quotePlace(brief, item);
+    await this.locked(action, () => this.bookCheck(action, task, check, since));
+  }
+
+  /** Books what the ≠ brief `check` of review `action` found: its lines, and its files first. */
+  bookCheck(action, task, check, since) {
     const now = this.found(action);
     if (!now || since !== now.entry.data.since) return;
-    for (const item of check.contradicts) item.place = quotePlace(brief, item);
     const debrief = [
       ...check.contradicts.map(item => `≠ brief "${item.text}" ${item.place} · ${relative(this.root, item.file)}:${item.fileLine} ${item.why}`),
       ...check.guessed.map(text => `? guessed ${text}`),
@@ -341,7 +359,11 @@ export class Reviews {
    * board:<id>, which /undo takes back. A hunk on lines they changed since is left out, and said. A file the branch
    * deletes is not deleted: Pair deletes no file of the user's.
    */
-  async keep(action, i, hunk = null) {
+  keep(action, i, hunk = null) {
+    return this.locked(action, () => this.keepNow(action, i, hunk));
+  }
+
+  async keepNow(action, i, hunk) {
     const session = this.session;
     const found = this.found(action);
     const target = found?.pieces.find(one => one.kind === 'branch' && one.i === i);
@@ -382,8 +404,11 @@ export class Reviews {
         failure = reply?.error ?? 'no Neovim is connected to keep it in';
         break;
       }
-      reply.kept.forEach((one, j) => {
+      // Neovim applied them from the bottom up: a piece's lines move with what the pieces above it added or removed.
+      const shift = j => reply.kept.reduce((sum, other, m) => sum + (placed.hunks[m]?.line < placed.hunks[j]?.line && other ? other.after.length - other.before.length : 0), 0);
+      reply.kept.forEach((applied, j) => {
         const shape = placed.hunks[j] ?? placed.hunks[0];
+        const one = {...applied, from: applied.from + shift(j), to: applied.to + shift(j)};
         const piece = {
           i: found.pieces.length, kind: 'hunk', file: target.file, line: shape.line, endLine: shape.endLine, insert: shape.insert, text: shape.text, old: shape.old,
           note: `${name} · ${k + 1} of ${hunks.length}`, source: i, hunk: k, state: 'taken',
@@ -395,10 +420,12 @@ export class Reviews {
       kept.add(k);
     }
     if (!made.length) return this.said(`${task}: ${name}: nothing kept${failure ? `: ${failure}` : skipped ? `: you changed ${skipped === 1 ? 'those lines' : 'the lines of each change'} since; git show ${branch}:${name} has it` : ''}.`);
+    const stopped = failure ? ` The rest was not kept: ${failure}.` : '';
     const warned = Boolean(found.entry.data.warned);
     const keptFiles = found.pieces.filter(one => one.kind === 'branch' && this.keptHunks(found, one.i).size).length;
     const files = found.pieces.filter(one => one.kind === 'branch').length;
-    this.gen.rebook(action, found, {note: `${keptFiles} of ${plural(files, 'file')} kept`, undo: true, warned: true});
+    // changedAt: /undo takes back the newest change, and a review opened days ago may be kept from today.
+    this.gen.rebook(action, found, {note: `${keptFiles} of ${plural(files, 'file')} kept`, undo: true, warned: true, changedAt: session.now()});
     session.ledger.update(action, {state: 'applied'});
     this.gen.sendMarks(action, task, made);
     session.notify('editors', {type: 'gen_kept', task});
@@ -406,7 +433,7 @@ export class Reviews {
     const left = hunks.length - kept.size;
     const whole = left ? ` ${plural(left, 'change')} of it not kept${skipped ? ` (${skipped} on lines you changed since)` : ''}.` : '';
     const twice = warned ? '' : ` You kept pieces of ${task}: merging its whole branch now would bring them in twice. A in the list offers archive ${task}, to run or copy.`;
-    return this.said(`${task}: ${name}: ${plural(made.length, 'change')}, ${plural(lines, 'line')}, kept unsaved in yours, marked ┊ as not yours yet. /undo takes them back.${whole}${twice}`);
+    return this.said(`${task}: ${name}: ${plural(made.length, 'change')}, ${plural(lines, 'line')}, kept unsaved in yours, marked ┊ as not yours yet. /undo takes them back.${whole}${stopped}${twice}`);
   }
 
   /**

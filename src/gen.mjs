@@ -1830,6 +1830,7 @@ export class Gen {
     session.ledger.update(action.id, {state, data: {undo: true, ...tally(booked)}, detail: {...(action.detail ?? {}), pieces: booked}});
     this.sendCard(action.id);
     if (unmarked.length) session.notify('editors', {type: 'gen_unmark', ids: unmarked});
+    if (action.data.shape === 'review') session.notify('editors', {type: 'gen_kept', task: action.data.task}); // its list and diff show it
     if (undone) this.sendMarks(action.id, markOf(action.data), taken.filter(piece => piece.state === 'taken'));
     if (again.length) {
       if (request) this.setState(request, 'ready');

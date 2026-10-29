@@ -836,12 +836,20 @@ test(':Pair review: a board task\'s branch in the list, the reviewer on top; Ent
     await until(() => buffer().name.endsWith('pair://board/SHO-80/a.js'), 'the diff');
     assert.deepEqual(buffer().lines, ['@@ -1,3 +1,3 @@', ' const x = 1', '-const y = 2', '+const y = 20', ' const z = 3']);
     assert.equal(remote('&readonly'), '1');
+    // A second diff open beside it: each diff's keys act on its own file.
+    keys(':call win_gotoid(bufwinid("pair://gen/list"))<CR>:call search("+ lib/b")<CR><CR>');
+    await until(() => buffer().name.endsWith('pair://board/SHO-80/lib/b.js'), 'the second diff');
+    keys(':call win_gotoid(bufwinid("pair://board/SHO-80/a.js"))<CR>');
+    await until(() => buffer().name.endsWith('pair://board/SHO-80/a.js'), 'back in the first diff');
     keys('3Gk');
     await until(() => a().lines[1] === 'const y = 20', 'the change kept in a.js');
     assert.equal(a().modified, true, 'unsaved');
     await until(() => a().marks > 0, 'marked ┊');
     assert.equal(readFileSync(join(project, 'a.js'), 'utf8'), 'const x = 1\nconst y = 2\nconst z = 3\n', 'nothing written');
     await said(/^SHO-80: a\.js: 1 change, 1 line, kept unsaved in yours, marked ┊ as not yours yet\. \/undo takes them back\. You kept pieces of SHO-80: merging its whole branch now would bring them in twice\./);
+    assert.equal(remote('bufloaded("lib/b.js")'), '0', 'not the other diff\'s file');
+    keys(':call win_gotoid(bufwinid("pair://board/SHO-80/lib/b.js"))<CR>:close<CR>:call win_gotoid(bufwinid("pair://board/SHO-80/a.js"))<CR>');
+    await until(() => buffer().name.endsWith('pair://board/SHO-80/a.js'), 'the first diff again');
     keys('q');
     await until(() => buffer().lines.some(line => line.startsWith('  you kept pieces of SHO-80: merging its whole branch would bring them in twice')), 'the list says so');
     // A: archive, on a pick that names it; c copies the command and runs nothing.
@@ -860,7 +868,7 @@ test(':Pair review: a board task\'s branch in the list, the reviewer on top; Ent
     await until(() => board.calls().some(call => call.join(' ') === 'task tell SHO-80 cap the retries'), 'the tell');
     assert.ok(!board.calls().some(([verb, sub]) => verb === 'merge' || sub === 'archive'), 'never shepherdr merge; archive only copied');
     // k on a new file in a folder you do not have: a buffer at its path, unsaved; its :w makes the folder.
-    keys(':call search("lib/b")<CR>k');
+    keys(':call search("+ lib/b")<CR>k');
     await until(() => remote('bufloaded("lib/b.js")') === '1', 'lib/b.js kept as a buffer');
     assert.equal(remote('getbufline("lib/b.js", 1)[0]'), 'export const b = 1');
     assert.ok(!existsSync(join(project, 'lib/b.js')), 'unsaved');

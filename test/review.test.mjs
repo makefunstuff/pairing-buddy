@@ -15,6 +15,8 @@ import {openStore} from '../src/store.mjs';
 import {fakeShepherdr} from './fake-shepherdr.mjs';
 import {scratch} from './temp.mjs';
 
+const until = async check => { for (let i = 0; i < 200 && !check(); i++) await new Promise(resolve => setTimeout(resolve, 10)); };
+
 const NOON = new Date(2026, 9, 29, 12, 0).getTime();
 const FACTS = 'PR #104 · commit 1a2b3c4 · checks passed (npm test, GitHub) · review: 1 round, 2 minor left (retries without a cap in billing/webhook.js:3; docs miss the PDF setting) · not proven: real Stripe';
 const NOTES = '# Shop\n\nMoney in integer cents, never floats.\nThe invoice lives in billing/invoice.js.\n';
@@ -61,13 +63,13 @@ const TASK = {
  * A session in `root` with the fake board, `askModel` for the brief's check, and an editor whose buffers are a map
  * (file -> text): it reads them, keeps hunks in them as the plugin does, and books every request it gets.
  */
-function reviewSession(root, {board, askModel = null, buffers = new Map()} = {}) {
+function reviewSession(root, {board, askModel = null, buffers = new Map(), clock = {now: NOON}} = {}) {
   const store = openStore(':memory:');
   const sent = [];
   const editor = [];
   const linesOf = text => (text === '' ? [] : text.replace(/\n$/, '').split('\n'));
   const pair = new PairSession({
-    record: store.createSession({root, conversationId: 'main', goal: 'billing', level: 'normal', at: NOON}),
+    record: store.createSession({root, conversationId: 'main', goal: 'billing', level: 'normal', at: clock.now}),
     store,
     partner: {thinkingOf: () => 'off', createConversation: async () => 'c', setRole: async () => {}, ask: async () => 'SILENT', stop: async () => {}},
     score: async () => ({value: 9, reason: 'test'}),
@@ -96,7 +98,7 @@ function reviewSession(root, {board, askModel = null, buffers = new Map()} = {})
       if (message.type === 'revert') return {ok: true};
       return null;
     },
-    now: () => NOON,
+    now: () => clock.now,
   });
   const of = type => sent.filter(message => message.type === type);
   const said = () => sent.filter(message => message.type === 'message').map(message => message.text);
@@ -285,4 +287,50 @@ test('t, a and A: a tell, merge as a tell to its agent, and archive, each copied
   assert.ok(!board.calls().some(([verb]) => verb === 'merge'), 'Pair never runs shepherdr merge');
   assert.deepEqual(store.actions(root, 0).filter(row => row.kind === 'board').map(row => row.text), ['told SHO-80: cap the retries', 'told SHO-80 to merge it', 'archived SHO-80']);
   assert.equal(pair.gen.review().requests[0].archived, true);
+});
+
+test('two keeps at once, and a keep while the ≠ check books: each change lands once, and nothing booked is lost', async () => {
+  const {root} = repo();
+  const board = shop(root);
+  let answer;
+  const askModel = () => new Promise(resolve => { answer = resolve; });
+  const {pair, buffers} = reviewSession(root, {board: board.command, askModel});
+  await pair.gen.reviews.open('SHO-80');
+  const {requests: [review]} = pair.gen.review();
+  const invoice = review.branch_files.find(file => file.name === 'billing/invoice.js');
+  const file = join(root, 'billing/invoice.js');
+  // k twice quickly, and K with k on its second hunk: one keep after the other.
+  await Promise.all([pair.gen.reviews.keep(review.action, invoice.piece), pair.gen.reviews.keep(review.action, invoice.piece), pair.gen.reviews.keep(review.action, invoice.piece, 1)]);
+  assert.equal(buffers.get(file), INVOICE_80, 'each change once');
+  const hunks = pair.store.action(review.action).detail.pieces.filter(piece => piece.kind === 'hunk');
+  assert.deepEqual(hunks.map(piece => piece.hunk), [0, 1], 'both booked, each once');
+  // The check books after the keeps, from the entry as they left it.
+  const [action] = [...pair.gen.reviews.pending.keys()];
+  await until(() => answer);
+  answer(JSON.stringify([{kind: 'contradicts', source: 'note', line: 3, quote: 'Money in integer cents, never floats.', piece: 1, piece_line: 1, text: 'floats'}]));
+  await pair.gen.reviews.pending.get(action);
+  const after = pair.gen.review().requests[0];
+  assert.equal(after.contradicts.length, 1, 'the check is booked');
+  assert.equal(after.branch_files.find(each => each.name === 'billing/invoice.js').kept, 2, 'and the keeps stay');
+});
+
+test('/undo takes back the newest keep of a review opened days ago, after another change of Pair\'s', async () => {
+  const {root} = repo();
+  const board = shop(root);
+  // Opened three days ago, and again today with no new commit: the same review. Pair changed something else since.
+  const clock = {now: NOON - 3 * 24 * 60 * 60_000};
+  const {pair, editor, of, said} = reviewSession(root, {board: board.command, clock});
+  await pair.gen.reviews.open('SHO-80');
+  clock.now = NOON - 60_000;
+  pair.ledger.add('typed', 'other edit', {data: {undo: true}, detail: {patch: {file: join(root, 'cmd/main.js'), before: ['a'], after: ['b']}}});
+  clock.now = NOON;
+  await pair.gen.reviews.open('SHO-80');
+  const {requests: [review]} = pair.gen.review();
+  const main = pair.gen.review().requests[0].branch_files.find(file => file.name === 'cmd/main.js');
+  await pair.gen.reviews.keep(review.action, main.piece);
+  const kept = of('gen_kept').length;
+  await pair.undoLast();
+  assert.match(said().at(-1), /^Undid SHO-80: took back 1 piece/);
+  assert.equal(editor.filter(message => message.type === 'revert').at(-1).origin, 'board:SHO-80');
+  assert.ok(of('gen_kept').length > kept, 'the list and its diff are told, to show it is to keep again');
 });
