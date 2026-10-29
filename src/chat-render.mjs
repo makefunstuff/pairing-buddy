@@ -879,8 +879,13 @@ export function helpLines(commands, width) {
     ['Alt-M', 'mouse on or off (off: select text with it)'],
     ['Ctrl-C', 'stop, or clear; twice on an empty line: close'],
   ];
-  // The left column is 15 wide, with at least one space after what it names: a command too long for it goes without its arguments.
-  const two = (left, right, leftStyle = 'bold') => wrapTokens(inlineTokens(right, 'text', {markdown: false}), width, [seg(`  ${left}`.padEnd(15), leftStyle)], [seg(' '.repeat(15))]);
+  // The left column is 15 wide, with at least one space after what it names: a command too long for it goes without
+  // its arguments, and a name too long even so on a line of its own, with its words under it.
+  const two = (left, right, leftStyle = 'bold') => {
+    const words = inlineTokens(right, 'text', {markdown: false});
+    if (`  ${left}`.length >= 15) return [[seg(`  ${left}`, leftStyle)], ...wrapTokens(words, width, [seg(' '.repeat(15))], [seg(' '.repeat(15))])];
+    return wrapTokens(words, width, [seg(`  ${left}`.padEnd(15), leftStyle)], [seg(' '.repeat(15))]);
+  };
   const label = (name, args) => (args && name.length + args.length + 1 <= 12 ? `${name} ${args}` : name);
   return [
     [seg(' Keys', 'accentBold')],

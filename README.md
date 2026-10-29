@@ -9,7 +9,8 @@ edits land unsaved in your buffer as one undo step, and the disk changes only wh
 code (`/gen`), it proposes it where you asked, and you take it with one key, also unsaved; new files it drafts are
 buffers to review, and one reaches the disk only when you `:w` it. A sample you ask for to try out (`/gen try`) is
 written and run in a folder of Pair's own, outside your project, and `/keep` brings it in as one more buffer to
-review.
+review. A scaffold of many files (`/gen scaffold`) is built and run in a copy of your project in Pair's data folder,
+and you keep it a file at a time: a new file as a buffer to review, a change to one of yours as suggestions in it.
 
 **Docs: [makefunstuff.github.io/pairing-buddy](https://makefunstuff.github.io/pairing-buddy/)** (source in
 [`docs/`](docs/), built from [`site/`](site/)).
@@ -42,7 +43,8 @@ you think, and take the keyboard only when you hand it over. Pair aims for that:
   `/gen here` or `Alt-g`, and it lands where you asked, to take with one key and undo as one request; `/gen file`
   drafts new files as buffers you review, which reach the disk only when you `:w` one; `/gen try` writes a sample in
   a folder outside the project and runs it in a sandbox, for you to read, change and run again, and `/keep` moves it
-  in. Every request
+  in; `/gen scaffold` builds many files and their wiring in a copy of the project, runs and checks them there, and
+  you keep what you want of it a file at a time. Every request
   runs against your brief (the goal and `NOTES.md`, in your words, which Pair never edits): it asks before going
   against it, and says what its code guessed. Pair knows its own edits from yours, so it never remarks on the code it
   wrote as if you had ([/gen](docs/gen.md)).
@@ -87,9 +89,9 @@ your keys and logins).
 - [Getting started](docs/getting-started.md) and [install and daily use](docs/install.md)
 - [How it works](docs/how-it-works.md), [roles](docs/roles.md) and [workflows](docs/workflows.md)
 - [The chat pane](docs/chat.md): who speaks, what Pair is doing now, wide and narrow panes, a remark's own keys, find, calm motion, role colours, its keys and commands
-- [/gen](docs/gen.md): ask Pair for code at your cursor, as new files to review, or as a sample to run outside the
-  project, against your brief; take it with one key, `:w` or `/keep`, undo the request as one; Pair's own edits carry
-  their origin
+- [/gen](docs/gen.md): ask Pair for code at your cursor, as new files to review, as a sample to run outside the
+  project, or as a scaffold built in a copy of it, against your brief; take it with one key, `:w`, `/keep` or `k` per
+  file, undo the request as one; Pair's own edits carry their origin
 - [Push-to-talk](docs/voice.md): ask aloud, heard by whisper.cpp on your CPU or an OpenRouter model, with answers
   read aloud when you are away
 - [Models and providers](docs/models.md): local servers, API keys, subscription logins, one model for both roles,

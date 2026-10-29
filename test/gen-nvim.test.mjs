@@ -110,7 +110,7 @@ test('/gen here with a popup input: the request, the shape guessed and shown, th
     assert.deepEqual(shape.items, [
       'here      at the cursor, over a selection  (guessed)',
       'file      new files to review',
-      'scaffold  many files, in Pair\'s copy  (not built yet)',
+      'scaffold  many files, in Pair\'s copy',
       'try       a sample outside the project',
     ]);
 
@@ -562,6 +562,72 @@ test('/gen try: the sample in a split outside the project; the run key writes an
     assert.equal(remote('&winbar'), 'try · gen #9 · outside the project · :Pair gen run runs it · :Pair keep moves it in');
   } finally {
     clearInterval(yes);
+    await stop();
+  }
+});
+
+test('/gen scaffold: built in Pair\'s copy; :Pair gen list opens a file of it with its winbar, k keeps a new file as a buffer and a change as suggestions in yours, x deletes the copy', {skip, timeout: 60_000}, async () => {
+  const {project, partner, keys, remote, said, answer, asked, ghosts, status, stop} = await genInNvim('admin', {stub: true});
+  const listed = () => JSON.parse(remote(`luaeval("vim.json.encode(vim.api.nvim_buf_get_lines(vim.fn.bufnr('pair://gen/list'), 0, -1, false))")`));
+  const lines = () => JSON.parse(remote('json_encode(getbufline(bufnr("a.js"), 1, "$"))'));
+  try {
+    partner.setResponses([
+      fauxAssistantMessage([fauxToolCall('write', {path: 'admin.js', text: 'export const admin = 1\n'})], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxToolCall('propose', {file: 'a.js', line: 3, insert: true, text: 'const w = 4\n', note: 'w'})], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxText('An admin module, wired into a.js.')]),
+    ]);
+    keys(':Pair gen scaffold an admin module<CR>');
+    await said(/^gen #1 · scaffold · 2 files, 1 of yours changed · \d+s: An admin module, wired into a\.js\.\nin Pair's copy \S+\/gen\/\S+\/1\n/);
+    assert.equal(existsSync(join(project, 'admin.js')), false, 'nothing in the project');
+    assert.deepEqual(lines(), ['const x = 1', 'const y = 2', 'const z = 3']);
+    const ready = () => /gen #1 · scaffold · :Pair gen list keeps it/.test(status());
+    ready.last = status;
+    await until(ready, 'the statusline');
+
+    // The list: the copy's files, what each is, and the keys.
+    keys(':Pair gen list<CR>');
+    await until(() => listed().some(line => line.includes('admin.js')), 'the list');
+    const list = listed();
+    assert.match(list[0], /^gen #1 · scaffold · an admin module · \d\d:\d\d$/);
+    assert.match(list[1], /^ {2}copy \S+\/1 · 0 of 2 kept/);
+    assert.ok(list.some(line => /◌ \+ admin\.js\s+\+1\s+⏎ open {2}k keep {2}d drop/.test(line)), list.join('\n'));
+    assert.ok(list.some(line => /◌ ~ a\.js\s+\+1 -0\s+⏎ diff {2}k as suggestions {2}d drop/.test(line)), list.join('\n'));
+    assert.ok(list.includes('  t terminal in the copy · r run the check again · x delete the copy'));
+    assert.match(list.at(-1), /k keep · d drop/);
+
+    // Enter opens the new file of the copy, which says what it is.
+    await until(() => /admin\.js/.test(remote('getline(".")')), 'the cursor on admin.js');
+    keys('<CR>');
+    await until(() => /\/gen\/[^/]+\/1\/admin\.js$/.test(remote('bufname()')), 'the copy\'s file');
+    assert.equal(remote('&winbar'), 'scaffold · gen #1 · Pair\'s copy, not your file · \\r checks it · :Pair keep keeps it');
+
+    // k on it: a buffer to review in the project; :w takes it.
+    keys(':Pair gen list<CR>');
+    await until(() => remote('bufname()') === 'pair://gen/list' && /admin\.js/.test(remote('getline(".")')), 'back in the list');
+    keys('k');
+    await said('gen #1: admin.js opened, unsaved, generated. :w takes it.');
+    await until(() => remote('luaeval("vim.fn.bufnr(\'pair://gen/1/admin.js\')")') !== '-1', 'its buffer');
+
+    // k on the change: a suggestion in a.js, which Alt-y takes.
+    keys(':Pair gen list<CR>');
+    await until(() => remote('bufname()') === 'pair://gen/list' && /a\.js/.test(remote('getline(".")')), 'the cursor on a.js, the next to keep');
+    keys('k');
+    await said('gen #1: a.js: 1 change, shown there as suggestions; Alt-y (:Pair accept) takes each.');
+    keys(':q<CR>:only<CR>:buffer a.js<CR>');
+    await until(() => remote('bufname()') === 'a.js' && ghosts().length === 1, 'the ghost lines');
+    keys('3G<M-y>');
+    await until(() => lines().length === 4, 'taken');
+    assert.deepEqual(lines(), ['const x = 1', 'const y = 2', 'const z = 3', 'const w = 4']);
+
+    // x deletes the copy, after a yes.
+    keys(':Pair gen list<CR>');
+    await until(() => remote('bufname()') === 'pair://gen/list' && listed().some(line => /2 of 2 kept/.test(line)), 'both kept');
+    answer('y');
+    keys('x');
+    await said('gen #1: its copy is deleted. 2 files kept from it stay.');
+    assert.match(asked().at(-1).prompt, /^Delete gen #1's copy\?$/);
+    await until(() => listed().some(line => /copy deleted · 2 of 2 kept/.test(line)), 'the list again');
+  } finally {
     await stop();
   }
 });

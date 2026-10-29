@@ -8,6 +8,7 @@
 // The copy stays between runs, one per project: each run copies only the files that changed since the last (as
 // reflinks where the file system has them) and puts back the ones a buffer replaced, so a build in the copy (make,
 // cargo, tsc) builds only what changed, as it would in the project.
+// A /gen scaffold request makes its own copy the same way (see gen-tree.mjs), and the model writes in it.
 import {execFile} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {constants} from 'node:fs';
@@ -47,7 +48,7 @@ async function walk(root, dir = '', found = []) {
 }
 
 /** The files to copy from `root` and the dependency folders to link, relative to it. */
-async function projectFiles(root) {
+export async function projectFiles(root) {
   const known = await gitList(root, ['--cached', '--others', '--exclude-standard']);
   const ignored = known ? await gitList(root, ['--others', '--ignored', '--exclude-standard', '--directory']) : await walk(root);
   const files = [...(known ?? []), ...ignored.filter(path => !path.endsWith('/'))];
@@ -57,7 +58,7 @@ async function projectFiles(root) {
 }
 
 /** Links dependency folder `from` at `to`; node_modules package by package, without its caches. */
-async function linkDependencies(from, to) {
+export async function linkDependencies(from, to) {
   if (basename(from) !== 'node_modules') return symlink(from, to);
   await mkdir(to, {recursive: true});
   for (const entry of await readdir(from)) {
@@ -65,7 +66,8 @@ async function linkDependencies(from, to) {
   }
 }
 
-const stamp = info => info && `${info.mtimeMs}:${info.size}`;
+/** What the manifest keeps of a file to see that it changed: its time and size. */
+export const stamp = info => info && `${info.mtimeMs}:${info.size}`;
 const statOf = path => stat(path).catch(() => null);
 
 /** Runs `work` on each of `items`, COPIES_AT_ONCE at a time. */
@@ -81,7 +83,7 @@ async function eachAtOnce(items, work) {
  * has, so only files changed on either side are written again. Returns the files of `texts` it left out: those
  * outside the project, or in a dependency folder, which a write would put into the project through the link.
  */
-async function syncTree(root, tree, texts) {
+export async function syncTree(root, tree, texts) {
   const manifestFile = `${tree}.json`;
   const manifest = JSON.parse(await readFile(manifestFile, 'utf8').catch(() => '{}'));
   const before = manifest.files ?? {};

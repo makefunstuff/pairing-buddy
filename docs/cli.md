@@ -117,9 +117,11 @@ question for Pair (`@here` in it sends your selection in Neovim along), and a li
 | `/gen here <what>` | Ask Pair for code at your cursor in Neovim; with `@here`, over the lines you selected there ([gen.md](gen.md)) |
 | `/gen file <what>` | Ask Pair for new files: they open in Neovim as buffers to review, and `:w` in one writes it to its path ([gen.md](gen.md#new-files-gen-file)) |
 | `/gen try <what>` | Ask Pair for a sample to read and run, in a folder of its own outside the project, run there in the sandbox; it opens in Neovim in a split ([gen.md](gen.md#samples-gen-try-and-keep)) |
+| `/gen scaffold [--branch] <what>` | Ask Pair for many files and their wiring, built and run in a copy of the project in Pair's data folder (`--branch`: a git worktree on a branch `gen/<n>`); you keep a file at a time ([gen.md](gen.md#many-files-gen-scaffold)) |
 | `/gen run` | Run the newest `/gen try` again, in Pair's pane, in its sandbox |
 | `/gen tries` | The project's `/gen try` folders still kept, and when each goes (`gen.keepTries`) |
-| `/keep [path]` | Move the newest `/gen try`'s main file into the project at `path`, as a buffer to review in Neovim that `:w` takes |
+| `/keep [path]` | Move the newest `/gen try`'s main file into the project at `path`, as a buffer to review in Neovim that `:w` takes. When the newest is a scaffold, keep its file at `path`: a new file as a buffer to review, a change as suggestions in yours |
+| `/gen drop` | Delete the newest `/gen scaffold`'s copy (or worktree); what you did not keep of it is dropped |
 | `/gen` | Today's `/gen` requests in this project |
 | `/gen cancel` | Stop the `/gen` request that runs or waits |
 | `/brief [note\|off]` | What `/gen` runs against: the goal, the board task and a note (`NOTES.md` by default); with a note, pin it; `off` leaves the note out ([gen.md](gen.md#the-brief)) |

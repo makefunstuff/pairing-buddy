@@ -116,7 +116,7 @@ Maps a project's folder to the command Pair runs in its pane when you save a sou
 ## `gen`
 
 ```jsonc
-"gen": {"limits": {"files": 40, "lines": 4000, "commands": 8, "minutes": 10}, "brief": "NOTES.md", "keepTries": 7, "network": false}
+"gen": {"limits": {"files": 40, "lines": 4000, "commands": 8, "minutes": 10}, "brief": "NOTES.md", "keepTries": 7, "network": false, "scaffold": "tree"}
 ```
 
 `brief` is the note a request's [brief](gen.md#the-brief) has when you pinned none: a path in the project, used when
@@ -128,18 +128,25 @@ Each limit is a whole number above 0, and one you leave out keeps its default.
 
 | Limit | Default | Meaning |
 | --- | --- | --- |
-| `files` | `40` | Files a request may propose code in, draft, or write in a try's folder |
-| `lines` | `4000` | Lines of code it may propose, draft or write, in all |
-| `commands` | `8` | Searches it may run in Pair's pane, and a try's runs |
+| `files` | `40` | Files a request may propose code in, draft, or write in a try's folder or a scaffold's copy |
+| `lines` | `4000` | Lines of code it may propose, draft or write, in all; of a change a scaffold makes to a file, the lines it adds |
+| `commands` | `8` | Searches it may run in Pair's pane, and the runs of a try or a scaffold |
 | `minutes` | `10` | How long its model may work; time a question waits for you does not count |
 
 A change takes effect for the next request; one already running keeps the limits it started with.
 
 `keepTries` is how many days a [/gen try](gen.md#samples-gen-try-and-keep)'s folder (in `dataDir/gen/`) stays after
-anything in it last changed or it last ran: a whole number above 0. Older folders are deleted when the daemon starts and whenever a
-new try starts. `network` lets a try's runs reach the network, to install what a sample needs; off, its sandbox has
-none. A try's sandbox follows `scoutPane.sandbox`: without bubblewrap, a try's command runs in its folder unsandboxed
-and asks first, as Scout's would.
+anything in it last changed or it last ran, and a [/gen scaffold](gen.md#many-files-gen-scaffold)'s copy after it was
+last used: a whole number above 0. Older folders are deleted when the daemon starts and whenever a new try or scaffold
+starts; a scaffold's git worktree never is. `network` lets the runs of a try or a scaffold reach the network, to
+install what they need; off, their sandbox has none, and a scaffold lists its installs for you instead of running
+them. Their sandbox follows `scoutPane.sandbox`: without bubblewrap, a command runs in the folder unsandboxed and asks
+first, as Scout's would.
+
+`scaffold` is where a `/gen scaffold` is built: `"tree"`, a copy of the project in Pair's data folder (no branch, no
+change to your repository, deleted with one key), or `"worktree"`, a git worktree on a new branch `gen/<n>`, which you
+can commit as it is. `--branch` and `--copy` in the request choose for one request
+([gen.md](gen.md#in-a-git-worktree---branch)).
 
 ## `voice`
 

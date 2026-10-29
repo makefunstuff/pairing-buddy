@@ -321,6 +321,7 @@ function M.status()
   if request.state == 'ready' then
     local files = deps.files_status(request.n)
     if files then return {text = files} end
+    if request.shape == 'scaffold' then return {text = ('gen #%d · scaffold · :Pair gen list keeps it'):format(request.n)} end
     return {text = ('gen #%d ready · %s takes · :Pair dismiss'):format(request.n, deps.label(deps.accept_key()) or ':Pair accept')}
   end
   local files = deps.files_status()

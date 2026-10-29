@@ -162,11 +162,11 @@ Both write code for you, under two different contracts:
 
 | | Driver | [/gen](gen.md) |
 | --- | --- | --- |
-| How you ask | Hand over the wheel: `:Pair drive`, "your turn" | `/gen here <what>`, `/gen file <what>`, `/gen try <what>`, `Alt-g`, `:Pair gen` |
-| What it does | Types its change into your buffer while you watch | Proposes code at the place you asked, or new files as buffers to review, or a sample in a folder outside the project; you take it with one key, `:w` or `/keep`, or not |
+| How you ask | Hand over the wheel: `:Pair drive`, "your turn" | `/gen here <what>`, `/gen file <what>`, `/gen try <what>`, `/gen scaffold <what>`, `Alt-g`, `:Pair gen` |
+| What it does | Types its change into your buffer while you watch | Proposes code at the place you asked, or new files as buffers to review, or a sample in a folder outside the project, or many files built in a copy of the project; you take it with one key, `:w`, `/keep` or `k`, or not |
 | Held to | Five edits per hand-over, small enough to watch | Size limits (`gen.limits`): files, lines, searches, minutes |
 | Its role | The Driver, until it hands back | None: a conversation of its own, and Pair keeps its role |
-| Checked | On the unsaved buffer after its last edit | On the unsaved buffer once you take the code; new files once they are drafted; a try by its own run, in its folder |
+| Checked | On the unsaved buffer after its last edit | On the unsaved buffer once you take the code; new files once they are drafted; a try by its own run, in its folder; a scaffold in its copy, once it is built |
 | Undone | `u` per edit; `u` in `:Pair today` per edit | `/undo`, or `u` in `:Pair today`: the whole request at once |
 
 ## The policy in code
@@ -176,9 +176,9 @@ Both write code for you, under two different contracts:
 | `say`, `read`, `recall` | yes | yes | yes | yes |
 | `point`, `open`, `suggest` | yes | yes | yes | no |
 | `search` | no | yes | yes | yes |
-| `run` | no | yes | yes | in a try's folder only |
+| `run` | no | yes | yes | in a try's folder or a scaffold's copy only |
 | `edit` | no | no | up to five per hand-over | no |
 | `type` | no | no | after a yes, without Enter | no |
-| `propose`, `draft`, `write`, `ask` | no | no | no | yes (`write` in a try's folder only) |
+| `propose`, `draft`, `write`, `ask` | no | no | no | yes (`write` in a try's folder or a scaffold's copy only) |
 
 Each conversation is offered only its role's tools, and the `beforeTool` hook refuses any other name (`src/tools.mjs`). The session checks again that Pair still has the wheel when the edit or the typing happens (`src/session.mjs`), and the Neovim plugin refuses an edit once you have pressed a key, and undoes one you stop halfway (`lua/pair/init.lua`, `lua/pair/drive.lua`). The Driver role is never stored: a hand-over is stored as Navigator, so a daemon restart during one brings back Navigator.

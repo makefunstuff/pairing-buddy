@@ -4,6 +4,8 @@
 -- last command in Pair's pane, in the sandbox. Its edits never reach the Watcher: the daemon drops edits outside the
 -- project. `:Pair keep [path]` moves the file into the project as a buffer to review (genfiles.lua), which :w takes.
 -- `:Pair gen tries` lists the try folders still kept, to open one.
+-- A file of a /gen scaffold's copy of the project (gen/<project>/<n>/, opened from :Pair gen list) is marked the same
+-- way: its winbar says it is Pair's copy, the run key there checks the copy again, and `:Pair keep` in it keeps it.
 local M = {}
 
 -- What init.lua lends: send(message), run_key (the run key, '' for none).
@@ -33,8 +35,19 @@ local function try_of(buf)
   end
 end
 
+--- The scaffold whose copy holds the buffer `buf`, as {gen, dir, scaffold = true}, or nil.
+local function scaffold_of(buf)
+  local name = vim.api.nvim_buf_get_name(buf)
+  local dir, n = name:match('^(.*/gen/[^/]+%-%x%x%x%x%x%x%x%x/(%d+))/')
+  if dir then return {gen = tonumber(n), dir = dir, scaffold = true} end
+end
+
 local function winbar(try, mapped)
   local key = mapped and shown(deps.run_key)
+  if try.scaffold then
+    local check = key and (' · %s checks it'):format(key) or ''
+    return ((' scaffold · gen #%d · Pair\'s copy, not your file%s · :Pair keep keeps it '):format(try.gen, check):gsub('%%', '%%%%'))
+  end
   local run = key and (' · %s runs it'):format(key) or ' · :Pair gen run runs it'
   return ((' try · gen #%d · outside the project%s · :Pair keep moves it in '):format(try.gen, run):gsub('%%', '%%%%'))
 end
@@ -46,7 +59,7 @@ local function mark(buf, try)
   -- Only where you have no mapping of your own, as Pair's other keys; the winbar names the key only when it is Pair's.
   local mapped = deps.run_key and deps.run_key ~= '' and vim.fn.maparg(deps.run_key, 'n') == ''
   if mapped then
-    vim.keymap.set('n', deps.run_key, function() M.run(buf) end, {buffer = buf, desc = 'Run Pair\'s /gen try again'})
+    vim.keymap.set('n', deps.run_key, function() M.run(buf) end, {buffer = buf, desc = try.scaffold and 'Check Pair\'s /gen scaffold copy again' or 'Run Pair\'s /gen try again'})
   end
   -- Like :setlocal, for this buffer in the window: another buffer there keeps the window's own winbar.
   vim.api.nvim_create_autocmd('BufWinEnter', {group = group, buffer = buf, callback = function()
@@ -77,6 +90,11 @@ end
 --- the try of `buf` (else the newest) runs again in Pair's pane.
 function M.run(buf)
   buf = buf or vim.api.nvim_get_current_buf()
+  local copy = scaffold_of(buf)
+  if copy then
+    if vim.bo[buf].modified then vim.api.nvim_buf_call(buf, function() vim.cmd('silent update') end) end
+    return deps.send({type = 'gen_try_run', gen = copy.gen, file = vim.api.nvim_buf_get_name(buf)})
+  end
   local try = try_of(buf)
   if try then
     for _, other in ipairs(vim.api.nvim_list_bufs()) do
@@ -92,12 +110,26 @@ end
 --- to review; without a path, at its path in the try's folder.
 function M.keep(path)
   local buf = vim.api.nvim_get_current_buf()
-  local try = try_of(buf)
+  local try = scaffold_of(buf) or try_of(buf)
   deps.send({type = 'keep', path = path or '', file = try and vim.api.nvim_buf_get_name(buf) or nil, gen = try and try.gen or nil})
 end
 
 --- Whether `buf` is a try's sample.
 function M.is_try(buf) return try_of(buf) ~= nil end
+
+--- The daemon's gen_scaffold: a scaffold is done, in its copy; :Pair gen list keeps its files.
+function M.on_scaffold(message)
+  vim.notify(('Pair · gen #%d · scaffold: %d file%s in Pair\'s copy · :Pair gen list keeps them'):format(message.gen, message.files, message.files == 1 and '' or 's'))
+end
+
+--- The daemon's gen_copy_gone: a scaffold's copy is deleted; the buffers of its files go, unless you changed them.
+function M.on_copy_gone(message)
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.startswith(vim.api.nvim_buf_get_name(buf), message.dir .. '/') and not vim.bo[buf].modified then
+      pcall(vim.api.nvim_buf_delete, buf, {})
+    end
+  end
+end
 
 --- The daemon's gen_tries, for :Pair gen tries: pick one, and its main file opens in a split.
 function M.on_tries(message)
@@ -119,7 +151,7 @@ function M.setup(lent)
   deps = lent
   -- A try's file opened another way (:e, a restart) is one too.
   vim.api.nvim_create_autocmd('BufReadPost', {group = group, callback = function(args)
-    local try = try_of(args.buf)
+    local try = scaffold_of(args.buf) or try_of(args.buf)
     if try then mark(args.buf, try) end
   end})
 end

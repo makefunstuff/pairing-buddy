@@ -265,18 +265,22 @@ function testCommands(raw = {}) {
 export const GEN_LIMITS = {files: 40, lines: 4000, commands: 8, minutes: 10};
 // The note a /gen brief has when the user pinned none, when the project has it (see brief.mjs).
 export const GEN_BRIEF = 'NOTES.md';
-// Days a /gen try folder stays once it last changed (see gen-tree.mjs).
+// Days a /gen try folder stays once it last changed, and a scaffold's copy once it was last used (see gen-tree.mjs).
 export const GEN_KEEP_TRIES = 7;
+// Where a /gen scaffold goes without --branch or --copy: 'tree', a copy in Pair's data folder; or 'worktree'.
+export const GEN_SCAFFOLD = 'tree';
 
 /**
- * `gen`: `{limits, brief, keepTries, network}`, each limit a whole number above zero, the rest of a limit its
- * default; `brief` a path in the project, or null for a brief of the goal and the board task only; `keepTries` the
- * days a try folder stays; `network` whether a try's runs reach the network.
+ * `gen`: `{limits, brief, keepTries, network, scaffold}`, each limit a whole number above zero, the rest of a limit
+ * its default; `brief` a path in the project, or null for a brief of the goal and the board task only; `keepTries`
+ * the days a try folder or a scaffold's copy stays; `network` whether the runs of a try or a scaffold reach the
+ * network; `scaffold` where a scaffold goes, 'tree' or 'worktree'.
  */
 function genConfig(raw = {}) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('config: gen must be an object, for example {"limits": {"lines": 2000}}');
-  const {limits = {}, brief = GEN_BRIEF, keepTries = GEN_KEEP_TRIES, network = false, ...rest} = raw;
-  if (Object.keys(rest).length) throw new Error(`config: gen has no ${Object.keys(rest).join(', ')} (only limits, brief, keepTries and network)`);
+  const {limits = {}, brief = GEN_BRIEF, keepTries = GEN_KEEP_TRIES, network = false, scaffold = GEN_SCAFFOLD, ...rest} = raw;
+  if (Object.keys(rest).length) throw new Error(`config: gen has no ${Object.keys(rest).join(', ')} (only limits, brief, keepTries, network and scaffold)`);
+  if (!['tree', 'worktree'].includes(scaffold)) throw new Error('config: gen.scaffold must be "tree" (a copy in Pair\'s data folder) or "worktree" (a git worktree on a branch gen/<n>)');
   if (!Number.isInteger(keepTries) || keepTries < 1) throw new Error('config: gen.keepTries must be a whole number of days above 0');
   if (typeof network !== 'boolean') throw new Error('config: gen.network must be true or false');
   if (brief !== null && (typeof brief !== 'string' || !brief.trim() || isAbsolute(brief))) throw new Error('config: gen.brief must be a path in the project, like "NOTES.md", or null');
@@ -285,7 +289,7 @@ function genConfig(raw = {}) {
     if (!(name in GEN_LIMITS)) throw new Error(`config: gen.limits.${name}: the limits are ${Object.keys(GEN_LIMITS).join(', ')}`);
     if (!Number.isInteger(value) || value < 1) throw new Error(`config: gen.limits.${name} must be a whole number above 0`);
   }
-  return {limits: {...GEN_LIMITS, ...limits}, brief, keepTries, network};
+  return {limits: {...GEN_LIMITS, ...limits}, brief, keepTries, network, scaffold};
 }
 
 /** `taskCommand`: the command, as words, that :Pair tasks runs for each task, with {title} and {description} in them. */

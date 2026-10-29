@@ -52,7 +52,7 @@ test('the policy blocks every tool outside the role', () => {
     assert.match(toolPolicy({name: 'propose'}, role).block, /only in a \/gen request; call suggest instead/);
     assert.match(toolPolicy({name: 'ask'}, role).block, /only in a \/gen request/);
     assert.match(toolPolicy({name: 'draft'}, role).block, /only in a \/gen request/);
-    assert.match(toolPolicy({name: 'write'}, role).block, /only in a \/gen try request/);
+    assert.match(toolPolicy({name: 'write'}, role).block, /only in a \/gen try or scaffold request/);
   }
   for (const name of ['edit', 'type', 'suggest', 'point']) assert.ok(toolPolicy({name}, 'gen').block, `gen has no ${name}`);
   for (const name of ['bash', 'save', 'Say', 'read_file', 'Edit']) {
