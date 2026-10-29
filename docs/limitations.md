@@ -68,7 +68,8 @@ stay herdr's:
   theirs.
 - **In Neovim's statusline only `Alt-o`** opens what a task left behind; `Alt-d` and `Alt-t` are Pair's own keys
   (a decision, listening), so the diff and the terminal are in `:Pair agents` and on the chat pane's line.
-- **`/gen board` adds for later only**, and does not let you edit the brief before it adds it.
+- **`/gen board`'s task is edited only in Neovim** (`pair://board/new`); in the chat pane, copy the command (`c`) to
+  change it. `/gen board #n` hands on only a request of the running daemon.
 
 ## The chat pane
 

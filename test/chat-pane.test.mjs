@@ -825,12 +825,18 @@ test('the board in the pane: its counts in the header; a relayed task\'s line ha
     for (let i = 0; i < 20 && /o open {3}d diff/.test(t.text()); i++) await sleep(25);
     assert.doesNotMatch(t.text(), /o open {3}d diff/);
 
-    const command = "shepherdr task add 'CSV export' --brief 'CSV export' --space shop --later";
-    t.daemon.send({type: 'confirm', id: 9, gen: 5, text: 'gen #5 · a task for the board: "CSV export". Add it for later?', command, copy: true, hint: 'y adds it, for later (add only) · c copies the command · n adds nothing'});
-    await t.shows(/a task for the board: "CSV export"\. Add it for later\?\n +│ shepherdr task add 'CSV export'/);
+    const command = "shepherdr task add 'CSV export' --brief='CSV export' --space=shop --later";
+    const hint = 'y add only (its agent waits for your go) · d add and delegate · p delegate, plan first · r delegate, research only · c copy the command · n nothing';
+    t.daemon.send({type: 'confirm', id: 9, gen: 5, text: 'gen #5 · a task for the board: "CSV export". How should Pair add it?', command, copy: true, keys: ['d', 'p', 'r', 'c'], hint});
+    await t.shows(/a task for the board: "CSV export"\. How should Pair add it\?\n +│ shepherdr task add 'CSV export'/);
     await t.type('c');
     assert.deepEqual(await t.sent('confirm'), {type: 'confirm', id: 9, ok: false, text: 'c'});
     assert.match(t.text(), /Copied, through the terminal's clipboard/);
+    // A hand-off's other picks answer with one key too.
+    t.daemon.send({type: 'confirm', id: 10, gen: 6, text: 'gen #6 · a task for the board: "PDF". How should Pair add it?', command, copy: true, keys: ['d', 'p', 'r', 'c'], hint});
+    await t.shows(/"PDF"\. How should Pair add it\?/);
+    await t.type('d');
+    assert.deepEqual(await t.sent('confirm'), {type: 'confirm', id: 10, ok: false, text: 'd'});
   } finally {
     await t.close();
   }

@@ -133,7 +133,8 @@ Each limit is a whole number above 0, and one you leave out keeps its default.
 | `commands` | `8` | Searches it may run in Pair's pane, and the runs of a try or a scaffold |
 | `minutes` | `10` | How long its model may work; time a question waits for you does not count |
 
-A change takes effect for the next request; one already running keeps the limits it started with.
+A change takes effect for the next request; one already running keeps the limits it started with. A request that
+runs into `files`, `lines` or `minutes` is offered to the board when it ends ([`/gen board #n`](gen.md#a-request-too-big-for-gen)).
 
 `keepTries` is how many days a [/gen try](gen.md#samples-gen-try-and-keep)'s folder (in `dataDir/gen/`) stays after
 anything in it last changed or it last ran, and a [/gen scaffold](gen.md#many-files-gen-scaffold)'s copy after it was

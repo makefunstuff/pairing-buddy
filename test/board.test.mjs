@@ -3,7 +3,7 @@ import {execFileSync} from 'node:child_process';
 import {mkdirSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {test} from 'node:test';
-import {artifactIds, Board, boardContext, boardLaunch, boardTitle, branchNumber, commandLine, madeBy, parseSpaces, spaceFor} from '../src/board.mjs';
+import {artifactIds, Board, boardContext, boardLaunch, boardTitle, branchNumber, commandLine, madeBy, parseSpaces, PICKS, spaceFor} from '../src/board.mjs';
 import {projectContext} from '../src/project-context.mjs';
 import {fakeShepherdr} from './fake-shepherdr.mjs';
 import {scratch} from './temp.mjs';
@@ -77,6 +77,16 @@ test('a command line is the words as a shell reads them, each quoted where it ha
   assert.deepEqual(words, ['shepherdr', 'task', 'add', 'CSV export', '--brief=b', '--space=shop', '--later'], 'add only: for later; each option one word');
   assert.deepEqual(new Board('shepherdr').addWords({title: 't', brief: 'b', later: false}), ['shepherdr', 'task', 'add', 't', '--brief=b']);
   assert.deepEqual(new Board('shepherdr').tellWords('BDY-7', 'go'), ['shepherdr', 'task', 'tell', 'BDY-7', 'go']);
+});
+
+test('a hand-off\'s pick: add only waits for a go; delegate starts; plan first and research only say so in the brief', () => {
+  const board = new Board('shepherdr');
+  const words = pick => board.handoffWords({title: 'CSV export', brief: 'b', space: 'shop', pick});
+  assert.deepEqual(words('add'), ['shepherdr', 'task', 'add', 'CSV export', '--brief=b', '--space=shop', '--later']);
+  assert.deepEqual(words('delegate'), ['shepherdr', 'task', 'add', 'CSV export', '--brief=b', '--space=shop']);
+  assert.deepEqual(words('plan'), ['shepherdr', 'task', 'add', 'CSV export', `--brief=b\n\n${PICKS.plan.says}`, '--space=shop']);
+  assert.deepEqual(words('research'), ['shepherdr', 'task', 'add', 'CSV export', `--brief=b\n\n${PICKS.research.says}`, '--space=shop']);
+  assert.deepEqual(Object.keys(PICKS), ['add', 'delegate', 'plan', 'research'], 'no pick merges, stops or sets anything');
 });
 
 test('the board is read through its command: spaces, tasks of a space, a task in full, its report; add for later', async () => {

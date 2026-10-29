@@ -1,7 +1,8 @@
 // The work board, Shepherdr, behind one small adapter: what Pair reads of it (its spaces, their tasks, a task's
 // branch, pull request and report) and the few command lines it composes for you. Every call is the board's own
 // command with a list of words, never a shell. Pair reads the board by itself; it writes to it only when you pick a
-// choice that names what it does (/gen board's y adds a task for later), and it never merges, stops or sets anything.
+// choice that names what it does (/gen board's picks: add only, or add and delegate, with a plan first or for research
+// only), and it never merges, stops or sets anything.
 import {execFile} from 'node:child_process';
 import {basename} from 'node:path';
 
@@ -34,6 +35,17 @@ function taskOf(raw) {
   }
   return task;
 }
+
+/**
+ * What each pick of a hand-off does: whether the task's agent waits for a go (`later`: add only) or starts at once
+ * (delegate), and what the brief then says in its own words. Pair adds only the pick the user named.
+ */
+export const PICKS = {
+  add: {later: true},
+  delegate: {later: false},
+  plan: {later: false, says: 'Plan first: before you change any code, write your plan and wait for my go.'},
+  research: {later: false, says: 'Research only: find out, and write it up as a report (an artifact). Change no code and open no pull request.'},
+};
 
 /** The lines of `space list`: `name  KEY  /path  github:o/r`, the home space `~  (home space)  /path`. */
 export function parseSpaces(text) {
@@ -101,6 +113,15 @@ export class Board {
    */
   addWords({title, brief, space = null, later = true}) {
     return [this.command, 'task', 'add', boardTitle(title), `--brief=${brief}`, ...(space ? [`--space=${space}`] : []), ...(later ? ['--later'] : [])];
+  }
+
+  /**
+   * The words that hand a task to the board as `pick` (one of PICKS) says: add only, add and delegate, delegate with a
+   * plan first, or delegate for research only. The board has no flag for a plan or research: the brief says it.
+   */
+  handoffWords({title, brief, space = null, pick}) {
+    const {later, says = null} = PICKS[pick];
+    return this.addWords({title, brief: says ? `${brief}\n\n${says}` : brief, space, later});
   }
 
   /** The words that tell task `id` something, which is also the go for a task that waits. */

@@ -64,24 +64,46 @@ export function briefText(brief) {
   return parts.join('\n');
 }
 
-const BOARD_NOTE_LINES = 80; // a board task's brief quotes this many lines of the note
+const QUOTED_LINES = 40; // a committed note: a board task's brief quotes this many of its lines; its agent reads the rest
+const COPIED_LINES = BRIEF_LINES; // a note with changes not committed: copied whole, up to this many lines
 
 /**
- * A board task's brief, from a /gen board request and the brief it runs against: the request in the user's words, then
- * the goal, the branch's board task and the note, quoted, since the task's agent sees only what is committed.
+ * A board task's brief, from a request and the brief it runs against: the request in the user's words; the goal, the
+ * branch's board task and the note's lines, quoted with file:line (a committed note in part, since the task's agent
+ * reads it in its worktree; one with changes not committed (`uncommitted`) whole, since the agent would not see them);
+ * the project's `files` the request names; `test`, the command Pair runs on save; and when Pair already tried it as
+ * gen #n (`from`), what its check `found` against the brief and what it `guessed`, as open questions.
  */
-export function boardBrief(request, brief) {
-  const parts = [request.trim()];
-  const from = [];
-  if (brief.goal) from.push(`Goal: ${brief.goal}`);
-  if (brief.task) from.push(`Board task ${brief.task.id}: ${brief.task.title}`);
+export function handoffBrief({words, brief, files = [], test = null, found = [], guessed = [], uncommitted = false, from = null}) {
+  const parts = [words.trim()];
+  const quoted = [];
+  if (brief.goal) quoted.push(`Goal: ${brief.goal}`);
+  if (brief.task) quoted.push(`Board task ${brief.task.id}: ${brief.task.title}`);
   if (brief.note) {
-    const lines = brief.note.lines.slice(0, BOARD_NOTE_LINES);
-    const cut = brief.note.lines.length > lines.length ? `\n> (${brief.note.lines.length - lines.length} more lines in ${brief.note.file})` : '';
-    from.push(`${brief.note.file}:\n${lines.map(line => `> ${line}`.trimEnd()).join('\n')}${cut}`);
+    const {file} = brief.note;
+    if (uncommitted) {
+      // The agent's only copy: every line as it is, blank lines and indents too, in a fence longer than any in the note.
+      const copied = brief.note.lines.slice(0, COPIED_LINES);
+      const fence = '`'.repeat(Math.max(3, ...copied.map(line => (line.match(/`+/g) ?? []).reduce((most, run) => Math.max(most, run.length + 1), 0))));
+      const cut = brief.note.lines.length > copied.length ? ` (lines 1-${copied.length} of ${brief.note.lines.length})` : '';
+      quoted.push(`${file} has changes that are not committed, so your worktree does not have them. It is copied here as it is now${cut}:`, fence, ...copied, fence);
+    } else {
+      const lines = brief.note.lines.map((text, i) => ({text: text.trim(), line: i + 1})).filter(each => each.text);
+      const shown = lines.slice(0, QUOTED_LINES);
+      quoted.push(...shown.map(each => `> ${each.text} (${file}:${each.line})`));
+      if (lines.length > shown.length) quoted.push(`(the rest is in ${file}, in your worktree)`);
+    }
   }
-  if (from.length) parts.push(`From the brief (${briefLine(brief)}):\n${from.join('\n')}`);
-  parts.push('Asked from Pair with /gen board.');
+  const what = [
+    brief.note && `${brief.note.file}${brief.note.pinned ? ', pinned' : ''}, ${uncommitted ? 'not committed' : 'committed'}`,
+    brief.goal && 'the goal', brief.task && `board task ${brief.task.id}`,
+  ].filter(Boolean).join(' + ');
+  if (quoted.length) parts.push(`From the brief (${what}):\n${quoted.join('\n')}`);
+  if (files.length) parts.push(`Files it names: ${files.join(', ')}`);
+  if (test) parts.push(`Tests: \`${test}\` (Pair runs it on save: testOnSave)`);
+  if (found.length) parts.push(`What ${from}'s check found against the brief:\n${found.map(line => `- ${line}`).join('\n')}`);
+  if (guessed.length) parts.push(`Open questions: ${from} guessed these, which neither the brief nor the request says. Settle them, or ask:\n${guessed.map(text => `- ${text}`).join('\n')}`);
+  parts.push(from ? `Handed to the board from Pair (${from}).` : 'Asked from Pair with /gen board.');
   return parts.join('\n\n');
 }
 
