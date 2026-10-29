@@ -51,8 +51,8 @@ over the lines you selected there last. `/gen file <what>` asks for new files, w
 review. `/gen try <what>` asks for a sample, which opens in that Neovim in a split; `/gen run` runs the newest
 again, `/gen tries` lists the try folders, and `/keep [path]` moves the newest try's file into the project.
 `/gen scaffold <what>` (`/gen scaffold --branch <what>` for a git worktree) asks for a scaffold; `/keep <path>` keeps
-a file of it, and `/gen drop` deletes its copy. `/gen board <what>` composes a task for the board
-([below](#gen-board-a-task-for-the-board)). `/gen` alone lists today's requests (and how much code you took is
+a file of it, and `/gen drop` deletes its copy. `/gen board <what>` hands a task to the board, and
+`/gen board #n` a request too big for `/gen` ([below](#gen-board-a-task-for-the-board)). `/gen` alone lists today's requests (and how much code you took is
 [not yours yet](#owning-generated-code)), and `/gen cancel` stops the one
 that runs or waits. `/cancel`, and `Esc` or `Ctrl-C` in the full-screen pane, stop a request too, when Pair answers nothing else. Typing `/gen` and a space
 lists the shapes first, then what else `/gen` does; `Tab` completes one. What a request makes comes back as a
@@ -66,7 +66,7 @@ lists the shapes first, then what else `/gen` does; `Tab` completes one. What a 
 | `file` | New files to review, as unsaved buffers: a migration, a module, a config file, a test file | `:w` in one |
 | `scaffold` | Many files and their wiring, built and run in a copy of the project in Pair's data folder: an admin page wired into the router, a service with its tests | `k` per file in `:Pair gen list`, or `/keep <path>` |
 | `try` | A sample to read and run, in a folder of its own outside the project: an LRU in 30 lines, how a library's API feels | `/keep [path]`, if you want it |
-| `board` | No code: a task for the board (Shepherdr), its command composed for you to read | `y` adds it for later, `c` copies the command ([below](#gen-board-a-task-for-the-board)) |
+| `board` | No code: a task for the board (Shepherdr), its brief written from yours for you to read and edit | `y` add only, `d` add and delegate, `p` plan first, `r` research only, `c` copy ([below](#gen-board-a-task-for-the-board)) |
 
 When the request does not start with a shape word, a cheap rule guesses one from it, never the model: a selection in
 code is `here`; then words like "here", "below this" or "this function" mean `here`; "scaffold", "wired into", "an
@@ -580,36 +580,96 @@ a scaffold that made nothing leaves none.
 Some requests are too big for `/gen`, or are long work you would rather review later than watch: many packages, an
 install and the network, something to run while you are away. `/gen board <what>` (or `board` in the shape question,
 or `:Pair gen board <what>`) hands such a request to the board, [Shepherdr](agents.md#where-it-reads), as a task. No
-model runs: Pair composes the board's command and shows it to you whole.
+model runs: Pair writes the task from your brief, shows it to you before anything is added, and adds it only as you
+pick.
+
+### A request too big for /gen
+
+A request that runs into [`gen.limits`](config.md#gen) (its files, its lines, or its minutes) ends as usual, with what
+it made so far, and then the chat offers the board:
 
 ```
-gen   #9 · a task for the board: "the whole billing module:…". Add it for later?
+··    gen #9 is bigger than gen's limits (it went past gen.limits.files). /gen board #9 hands it to the board, with
+      its brief and what it found.
+```
+
+In Neovim, the same offer is a notification (`:Pair gen board #9`). It is only an offer: nothing is added until you
+ask. `/gen board #9` hands on request #9 of this daemon with its own words, the files it proposed, and what its check
+found.
+
+### The task's brief
+
+The task's title is your request cut to 32 characters at a word, the most the board takes. Its brief is built from
+the [brief](#the-brief) the request would run against:
+
+- **The request** in your words.
+- **The brief's lines**, quoted with `file:line`: the goal, the branch's board task, and the note's lines, as
+  `> Money in integer cents, never floats. (NOTES.md:9)`. A committed note is quoted up to 40 lines, since the task's
+  agent can read the rest in its worktree.
+- **The files it names**: the project's files your request names (`src/billing.go`), and those the request it hands
+  on proposed.
+- **The tests**: your [`testOnSave`](tests-on-save.md) command, ``Tests: `go test ./...` ``.
+- **What the check found**, when it hands on a request that ran: its `≠ brief` lines, and its `? guessed` items as
+  **open questions** for the agent to settle or ask about.
+
+**A note that is not committed.** The task's agent works in a git worktree, which has only what is committed. When the
+brief's note has changes that are not committed (unsaved in Neovim, changed on disk, or not in git at all), Pair warns
+you, and copies the note whole into the brief, as it is now (up to 300 lines):
+
+```
+··    gen #9: NOTES.md has changes that are not committed: the task's agent works in a git worktree and would not see
+      them, so they are copied into its brief.
+```
+
+### Edit it, then pick
+
+In Neovim the task opens in a compose window, `pair://board/new`: its title on the first line, its brief under it.
+Edit what you like. `:w` (or `Ctrl-S`) takes it as written and asks how to add it, in a `vim.ui.select` dialog; `:q`
+drops it and adds nothing. `Esc` in the dialog leaves it waiting, edits and all: the gen key (`Alt-g`) opens it again.
+
+```
+╭─ board task · edit, then :w · :q drops ─────────────╮
+│ the whole billing module:…                           │
+│                                                      │
+│ the whole billing module: invoices, PDF export, …    │
+│                                                      │
+│ From the brief (NOTES.md, committed + the goal):     │
+│ Goal: billing                                        │
+│ > Money in integer cents, never floats. (NOTES.md:9) │
+│ Tests: `go test ./...` (Pair runs it on save: …)     │
+╰──────────────────────────────────────────────────────╯
+```
+
+In the chat the task cannot be edited: the question shows the command whole, brief and all, and each pick is one
+key. Ask from Neovim (`:Pair gen board …`) to edit it first, or copy the command (`c`) and change it yourself.
+
+```
+gen   #9 · a task for the board: "the whole billing module:…". How should Pair add it?
       │ shepherdr task add 'the whole billing module:…' --brief='the whole billing module: invoices, PDF export, …
-      │ From the brief (NOTES.md + goal "billing"):
+      │ From the brief (NOTES.md, committed + the goal):
       │ …' --space=shop --later
-      y adds it, for later (add only) · c copies the command · n adds nothing
+      y add only (its agent waits for your go) · d add and delegate · p delegate, plan first · r delegate, research
+      only · c copy the command · n nothing
 ```
 
-- **The title** is your request cut to 32 characters at a word, the most the board takes.
-- **The brief** is your request in your words, then the brief it would run against, quoted: the goal, the branch's
-  board task, and the note's first 80 lines. The task's agent works in a git worktree and sees only committed files,
-  so the note goes in the brief, unsaved changes and all. It goes as one word, `--brief='…'`, so a request that starts
-  with `--` stays the brief: the board would read `--brief` followed by such a word as a flag without its value.
-- **`--space`** is the repository's space on the board, and the command runs in the project, so the board finds the
-  space by its folder too.
-- **`--later`**: add only. Shepherdr starts a new task's agent at once; with `--later` the agent reads the brief and
-  waits for your go (`shepherdr task tell <id> go`, which the chat gives you).
+| Pick | What Pair runs | What the board does |
+| --- | --- | --- |
+| `y` add only | `shepherdr task add '<title>' --brief='…' --space=<space> --later` | Adds it; its agent reads the brief and waits for your go (`shepherdr task tell <id> go`, which the chat gives you) |
+| `d` add and delegate | the same, without `--later` | Adds it, and its agent starts on the brief now |
+| `p` add, delegate, plan first | `d`'s, with `Plan first: before you change any code, write your plan and wait for my go.` at the end of the brief | Its agent starts, writes its plan, and waits for your go |
+| `r` add, delegate, research only | `d`'s, with `Research only: find out, and write it up as a report (an artifact). Change no code and open no pull request.` at the end of the brief | Its agent starts, and makes a report, not code |
+| `c` copy the command | nothing | The add-only command goes to the clipboard (OSC 52) in the full-screen pane, or to the `"` and `+` registers in Neovim, with your edits. The chat gives it again, to run yourself |
+| `n`, `Esc`, `:q` | nothing | Nothing is added |
 
-| Answer | What happens |
-| --- | --- |
-| `y` | Pair runs the command once, as a list of words (never a shell), and says what the board made: `gen #9 → board SHO-80 · added, for later: its agent reads the brief and waits for your go (shepherdr task tell SHO-80 go).` The ledger books it (`board`) |
-| `c` | In the full-screen pane, the command goes to the clipboard (OSC 52); in Neovim, to the `"` and `+` registers. Nothing is added, and the chat gives the command again, to run yourself |
-| `n`, `Esc` | Nothing is added |
+Shepherdr has no flag for a plan first or research only: the brief says it in its own words, which the board's agent
+follows. Pair runs the command once, as a list of words (never a shell), each option one word (`--brief='…'`), so a
+brief that starts with `--` stays the brief. `--space` is the repository's space on the board, and the command runs in
+the project. The chat says what the board made, `gen #9 → board SHO-80 · added and delegated: its agent starts on the
+brief now.`, and the ledger books it (`board`).
 
-In Neovim the question is a `vim.ui.select` dialog with the command in its prompt; `Esc` leaves it waiting, as for any
-`/gen` question. Pair adds a task only on that pick, and only for later: it never delegates (starts the agent), tells,
-merges, stops or sets anything on the board by itself. Without a board (`"board": null`), `/gen board` says so; when
-the board refuses (Shepherdr not running, a space it does not know), the chat says what the board said.
+Pair adds a task only on a pick that names what it does, and adds it only (for later) unless the pick names delegate.
+It never tells, merges, stops or sets anything on the board by itself. Without a board (`"board": null`), `/gen board`
+says so; when the board refuses (Shepherdr not running, a space it does not know), the chat says what the board said.
 
 ## One undo per request
 
@@ -741,9 +801,9 @@ Pair does not commit, and nothing of this reaches git: owning is about your read
 
 ## Limits
 
-- `/gen board` adds for later only: a task that should start at once needs its go (`shepherdr task tell <id> go`), and
-  one that should plan first or research only says so in your words, which go into its brief. It does not edit the
-  brief before it adds it; copy the command (`c`) to change it.
+- `/gen board`'s task is edited only in Neovim (`pair://board/new`); in the chat, copy the command (`c`) to change it.
+  `/gen board #n` hands on only a request of the running daemon: one from before a restart is gone. A task's brief
+  quotes the note, not the decisions logged since.
 - `scaffold` keeps one file at a time; there is no key that keeps them all. Files a scaffold deletes are not
   proposed: only new and changed files are.
 - A scaffold's copy has your unsaved buffers, but a `--branch` worktree starts from `HEAD`, without your uncommitted

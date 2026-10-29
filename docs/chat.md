@@ -77,8 +77,9 @@ Four rows of chrome, two of them rules with words in them; the rest is the conve
   ```
 
   [`/gen board`](gen.md#gen-board-a-task-for-the-board) asks the same way, as `gen`, with the board's command under
-  its question: `y` adds the task for later, `c` copies the command to the clipboard (and adds nothing), `n` adds
-  nothing.
+  its question, and each pick is one key: `y` adds the task for later (add only), `d` adds and delegates it, `p`
+  delegates it with a plan first, `r` for research only, `c` copies the command to the clipboard (and adds nothing),
+  `n` adds nothing.
 
   The goal you type, or the one Pair took from the board or the branch, is in the header; the conversation does not
   say it again. Only a goal set elsewhere (`:Pair goal`) while Pair's question for it is open shows as a `··` note

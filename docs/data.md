@@ -25,7 +25,8 @@ The [run log](exploration.md) (each build's and run's output and the lines you t
 daemon's memory only, for the session.
 
 Nothing is written to your repository. The work board (Shepherdr) is read, and written to only when you pick it:
-[`/gen board`](gen.md#gen-board-a-task-for-the-board)'s `y` adds one task for later, with the brief shown to you. Nothing leaves your machine
+[`/gen board`](gen.md#gen-board-a-task-for-the-board) adds one task, with its brief shown to you first, as the pick you
+chose says (add only, or add and delegate). Nothing leaves your machine
 except the requests to the model endpoints you configured (OpenRouter's voice too, when you set it), `gh pr view` for the
 [context card](neovim.md#what-it-knows-the-context-card) when `gh` is installed and, for a login, to the provider's
 sign-in service. Those requests carry your code: the Watcher gets each moment's text (your edits, a command's

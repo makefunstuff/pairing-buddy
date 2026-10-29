@@ -7,6 +7,7 @@ import {join} from 'node:path';
 import {test} from 'node:test';
 import {fauxAssistantMessage, fauxText, fauxToolCall} from '@earendil-works/pi-ai';
 import {CHECK_PROMPT, CONFLICT_PROMPT} from '../src/brief.mjs';
+import {fakeShepherdr} from './fake-shepherdr.mjs';
 import {hasNvim, pairInNvim, sleep, until} from './nvim-harness.mjs';
 import {scratch} from './temp.mjs';
 
@@ -44,8 +45,8 @@ const virtLines = marks => marks.filter(([, , , details]) => details.virt_lines)
  * Partner's model answers the brief's checks with `brief(kind, content)` ('conflict' or 'check'; [] by default), apart
  * from the turns a test scripts with `partner.setResponses`, which come in their order.
  */
-async function genInNvim(goal, {stub = false, brief = () => '[]', notes = null, runs = false} = {}) {
-  const pair = await pairInNvim(goal, {runs});
+async function genInNvim(goal, {stub = false, brief = () => '[]', notes = null, runs = false, board = null} = {}) {
+  const pair = await pairInNvim(goal, {runs, board});
   const {remote, messages, send, watcher} = pair;
   if (notes !== null) writeFileSync(join(pair.project, 'NOTES.md'), notes);
   const turns = [];
@@ -393,6 +394,55 @@ test('the brief in Neovim: :Pair brief pins the note, a request against it asks 
 
 /** The pair://gen/<n>/… buffers in Neovim: name, buftype, modified, whether a window shows it, and its lines. */
 const proposals = remote => JSON.parse(remote(`luaeval("vim.json.encode(vim.tbl_map(function(b) return {name = vim.api.nvim_buf_get_name(b), buftype = vim.bo[b].buftype, modified = vim.bo[b].modified, shown = vim.fn.bufwinid(b) ~= -1, lines = vim.api.nvim_buf_get_lines(b, 0, -1, false)} end, vim.tbl_filter(function(b) return vim.api.nvim_buf_is_loaded(b) and vim.api.nvim_buf_get_name(b):find('^pair://gen/%d') ~= nil end, vim.api.nvim_list_bufs())))")`));
+
+test('/gen board in Neovim: the task in pair://board/new, edited and written with :w, then the pick; :q adds nothing; c copies the command', {skip, timeout: 40_000}, async () => {
+  const board = fakeShepherdr(scratch('pair-board-'), {spaces: [{name: 'shop', key: 'SHO', path: '/src/shop'}], tasks: []});
+  const {keys, remote, asked, answer, said, stop} = await genInNvim('add helpers', {stub: true, board: board.command, notes: '# Shop\n\nMoney in integer cents.\n'});
+  const buffer = () => JSON.parse(remote('luaeval("vim.json.encode({name = vim.api.nvim_buf_get_name(0), lines = vim.api.nvim_buf_get_lines(0, 0, -1, false), float = vim.api.nvim_win_get_config(0).relative ~= \'\'})")'));
+  const notified = () => JSON.parse(remote('luaeval("vim.json.encode(_G.notified)")'));
+  try {
+    answer('d');
+    keys(':Pair gen board a CSV export of the orders<CR>');
+    await until(() => buffer().name === 'pair://board/new', 'the compose buffer');
+    const {lines, float} = buffer();
+    assert.ok(float, 'a float over your work');
+    assert.deepEqual(lines.slice(0, 4), ['a CSV export of the orders', '', 'a CSV export of the orders', '']);
+    assert.ok(lines.includes('> Money in integer cents. (NOTES.md:3)'), 'the brief\'s lines with file:line');
+    await until(() => notified().some(text => /NOTES\.md has changes that are not committed/.test(text)), 'the warning');
+    keys('ggccCSV export, daily totals<Esc>:w<CR>');
+    await until(() => board.calls().length === 1, 'the add');
+    const [, , title, brief, ...rest] = board.calls()[0];
+    assert.equal(title, 'CSV export, daily totals', 'the title as you wrote it');
+    assert.match(brief, /^--brief=a CSV export of the orders\n\nFrom the brief/);
+    assert.deepEqual(rest, [], 'd: delegated, so no --later');
+    const pick = asked().at(-1);
+    assert.equal(pick.prompt, 'gen #1 · a task for the board: "a CSV export of the orders" · how?');
+    assert.deepEqual(pick.items, [
+      'add only: its agent reads the brief and waits for your go',
+      'add and delegate: its agent starts now',
+      'add, delegate, plan first: its agent writes a plan and waits',
+      'add, delegate, research only: a report, no code',
+      'copy the command, add nothing',
+    ]);
+    await said(/^gen #1 → board SHO-90 · added and delegated: its agent starts on the brief now\.$/);
+    assert.notEqual(buffer().name, 'pair://board/new', 'the compose window closed');
+
+    keys(':Pair gen board a second one<CR>');
+    await until(() => buffer().name === 'pair://board/new', 'the compose buffer again');
+    keys(':q<CR>');
+    await said('gen #2 cancelled: nothing added to the board.');
+
+    answer('c');
+    keys(':Pair gen board a third one<CR>');
+    await until(() => buffer().name === 'pair://board/new', 'the third compose buffer');
+    keys(':w<CR>');
+    await said(/^gen #3: nothing added\. The command, to run yourself: /);
+    await until(() => /task add 'a third one' --brief=/.test(remote('getreg(\'"\')')), 'the command in the register');
+    assert.equal(board.calls().length, 1, 'only the d added');
+  } finally {
+    await stop();
+  }
+});
 
 test('/gen file: pair:// buffers to review; :wa skips them, quitting warns, :w takes one, the list drops another, /undo deletes the file; they come back after a restart', {skip, timeout: 60_000}, async () => {
   const {project, partner, keys, remote, status, said, send, asked, answer, restartDaemon, stop} = await genInNvim('orders', {stub: true});

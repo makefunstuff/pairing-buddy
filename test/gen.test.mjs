@@ -208,57 +208,156 @@ test('a guessed shape is asked first, in the chat for a chat request: y takes th
   assert.equal(pair.today().rows.filter(row => row.label === 'generated').at(-1).place.line, 2);
 });
 
-test('/gen board composes a task for the board: y adds it for later, c copies it, n adds nothing; no model runs', async () => {
-  const board = fakeShepherdr(scratch('pair-board-'), {spaces: [{name: 'shop', key: 'SHO', path: '/src/shop'}], tasks: []});
-  const {pair, of, said, asked} = genSession([], {board: board.command, notes: 'Money in integer cents, never floats.\n'});
+/** Makes `root` a git repo with its files committed. */
+async function commitAll(root) {
+  const git = (...args) => new Promise((resolve, reject) => execFile('git', args, {cwd: root}, (error, stdout) => (error ? reject(error) : resolve(stdout.trim()))));
+  await git('init', '-q');
+  await git('-c', 'user.email=t@t', '-c', 'user.name=t', 'add', '.');
+  await git('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'start');
+}
+
+const SHOP = {spaces: [{name: 'shop', key: 'SHO', path: '/src/shop'}], tasks: []};
+const SHOP_NOTES = '# Shop\n\nMoney in integer cents, never floats.\nSQLite, one file next to the binary.\n';
+
+test('/gen board builds the task\'s brief from the brief, to read before anything is added; y adds only, for later; no model runs', async () => {
+  const board = fakeShepherdr(scratch('pair-board-'), SHOP);
+  const {root, pair, of, said, asked} = genSession([], {board: board.command, notes: SHOP_NOTES});
+  await commitAll(root);
+  pair.testRuns = {command: 'node --test'};
   pair.receive({kind: 'context', branch: 'main', git: {}, board: {space: 'shop', task: null, working: 0, waiting: []}});
-  const request = 'board a CSV export of the orders, one line per day with the totals';
-  const first = pair.gen.request({text: request});
+  const first = pair.gen.request({text: 'board a CSV export of the orders next to math.js, one line per day with the totals'});
   await until(() => of('confirm').length);
   const confirm = of('confirm').at(-1);
-  assert.equal(confirm.text, 'gen #1 · a task for the board: "a CSV export of the orders, one…". Add it for later?');
+  assert.equal(confirm.text, 'gen #1 · a task for the board: "a CSV export of the orders next…". How should Pair add it?');
   assert.equal(confirm.copy, true, 'c copies its command in the chat');
-  assert.match(confirm.command, /shepherdr task add 'a CSV export of the orders, one…' --brief='a CSV export of the orders, one line per day with the totals\n\nFrom the brief/);
-  assert.match(confirm.command, / --space=shop --later$/, 'add only: its agent waits for a go');
+  assert.deepEqual(confirm.keys, ['d', 'p', 'r', 'c'], 'the full pane answers each with one key, as y and n');
+  assert.match(confirm.hint, /^y add only .* d add and delegate · p delegate, plan first · r delegate, research only · c copy the command · n nothing$/);
+  assert.match(confirm.command, / --space=shop --later$/, 'the command to copy adds only: its agent waits for a go');
+  assert.ok(!said().some(text => /not committed/.test(text)), 'a committed note: no warning');
   assert.deepEqual(board.calls(), [], 'nothing is added before the pick');
   pair.answer(confirm.id, true);
   await first;
   const [verb, sub, title, brief, ...rest] = board.calls().at(-1);
-  assert.deepEqual([verb, sub, title, ...rest], ['task', 'add', 'a CSV export of the orders, one…', '--space=shop', '--later']);
+  assert.deepEqual([verb, sub, title, ...rest], ['task', 'add', 'a CSV export of the orders next…', '--space=shop', '--later']);
   assert.equal(brief, '--brief=' + [
-    'a CSV export of the orders, one line per day with the totals',
-    'From the brief (NOTES.md + goal "add helpers"):\nGoal: add helpers\nNOTES.md:\n> Money in integer cents, never floats.',
+    'a CSV export of the orders next to math.js, one line per day with the totals',
+    'From the brief (NOTES.md, committed + the goal):\nGoal: add helpers\n> # Shop (NOTES.md:1)\n> Money in integer cents, never floats. (NOTES.md:3)\n> SQLite, one file next to the binary. (NOTES.md:4)',
+    'Files it names: math.js',
+    'Tests: `node --test` (Pair runs it on save: testOnSave)',
     'Asked from Pair with /gen board.',
-  ].join('\n\n'), 'the request in your words, and the brief quoted: the task\'s agent sees only what is committed');
+  ].join('\n\n'), 'the request in your words, the brief\'s lines with file:line, the files it names and the tests');
   assert.match(said().at(-1), /^gen #1 → board SHO-90 · added, for later: its agent reads the brief and waits for your go \(.*shepherdr task tell SHO-90 go\)\.$/);
   assert.deepEqual(asked, [], 'no model was asked');
-  assert.deepEqual(pair.today().rows.filter(row => row.label === 'board').map(row => row.text), ['gen #1 → board SHO-90: a CSV export of the orders, one…']);
+  assert.deepEqual(pair.today().rows.filter(row => row.label === 'board').map(row => row.text), ['gen #1 → board SHO-90: a CSV export of the orders next…']);
+  assert.equal(board.state().tasks.at(-1).status, 'todo', 'added for later');
+});
 
-  const second = pair.gen.request({text: 'board a second one'});
+test('a hand-off\'s picks: d delegates, p plans first, r researches only, c copies, n adds nothing; never a tell, merge or set', async () => {
+  const board = fakeShepherdr(scratch('pair-board-'), SHOP);
+  const {root, pair, of, said} = genSession([], {board: board.command, notes: SHOP_NOTES});
+  await commitAll(root);
+  pair.receive({kind: 'context', branch: 'main', git: {}, board: {space: 'shop', task: null, working: 0, waiting: []}});
+  const pick = async (words, key) => {
+    const asking = pair.gen.request({text: `board ${words}`});
+    const before = of('confirm').length;
+    await until(() => of('confirm').length > before);
+    pair.answer(of('confirm').at(-1).id, false, undefined, key);
+    await asking;
+    return said().at(-1);
+  };
+  assert.match(await pick('a CSV export', 'd'), /^gen #1 → board SHO-90 · added and delegated: its agent starts on the brief now\.$/);
+  assert.match(await pick('an invoice PDF', 'p'), /^gen #2 → board SHO-91 · added and delegated, plan first: its agent writes its plan and waits for your go\.$/);
+  assert.match(await pick('which PDF library', 'r'), /^gen #3 → board SHO-92 · added and delegated, research only: a report, no code\.$/);
+  assert.match(await pick('a fourth one', 'c'), /^gen #4: nothing added\. The command, to run yourself: .*shepherdr task add 'a fourth one' [\s\S]* --later$/);
+  assert.equal(await pick('a fifth one', 'n'), 'gen #5 cancelled: nothing added to the board.');
+  const adds = board.calls().filter(([verb, sub]) => verb === 'task' && sub === 'add');
+  assert.equal(adds.length, 3, 'only d, p and r added');
+  assert.ok(adds.every(words => !words.includes('--later')), 'each of them named delegate: its agent starts at once');
+  assert.match(adds[1].find(word => word.startsWith('--brief=')), /\n\nPlan first: before you change any code, write your plan and wait for my go\.$/);
+  assert.match(adds[2].find(word => word.startsWith('--brief=')), /\n\nResearch only: find out, and write it up as a report \(an artifact\)\. Change no code and open no pull request\.$/);
+  assert.deepEqual(board.state().tasks.map(task => task.status), ['work', 'work', 'work']);
+  assert.ok(board.calls().every(([verb, sub]) => `${verb} ${sub}` === 'task add'), 'nothing but adds: no tell, no merge, no set');
+});
+
+test('a brief note with changes not committed: Pair warns, and copies it whole into the task\'s brief', async () => {
+  const board = fakeShepherdr(scratch('pair-board-'), SHOP);
+  const {root, pair, of, said} = genSession([], {board: board.command, notes: SHOP_NOTES});
+  await commitAll(root);
+  writeFileSync(join(root, 'NOTES.md'), `${SHOP_NOTES}Statuses: new, paid, shipped.\n`);
+  const asking = pair.gen.request({text: 'board a CSV export'});
+  await until(() => of('confirm').length);
+  assert.equal(said().at(-1), 'gen #1: NOTES.md has changes that are not committed: the task\'s agent works in a git worktree and would not see them, so they are copied into its brief.');
+  pair.answer(of('confirm').at(-1).id, true);
+  await asking;
+  const brief = board.calls().at(-1).find(word => word.startsWith('--brief='));
+  assert.match(brief, /From the brief \(NOTES\.md, not committed \+ the goal\):\nGoal: add helpers\nNOTES\.md has changes that are not committed, so your worktree does not have them\. It is copied here as it is now:\n> # Shop \(NOTES\.md:1\)\n.*\n.*\n> Statuses: new, paid, shipped\. \(NOTES\.md:5\)\n/);
+
+  // Unsaved in the editor counts too: the brief is the note as the editor has it.
+  await commitAll(root);
+  pair.bufferText = async path => (path.endsWith('NOTES.md') ? `${SHOP_NOTES}Admin is read-only.\n` : readFileSync(path, 'utf8'));
+  const second = pair.gen.request({text: 'board an admin page'});
   await until(() => of('confirm').length === 2);
-  pair.answer(of('confirm').at(-1).id, false, undefined, 'c');
-  await second;
-  assert.match(said().at(-1), /^gen #2: nothing added\. The command, to run yourself: .*shepherdr task add 'a second one'/);
-  const third = pair.gen.request({text: 'board a third one'});
-  await until(() => of('confirm').length === 3);
+  assert.match(said().at(-1), /^gen #2: NOTES\.md has changes that are not committed/);
   pair.answer(of('confirm').at(-1).id, false, undefined, 'n');
-  await third;
-  assert.equal(said().at(-1), 'gen #3 cancelled: nothing added to the board.');
-  assert.equal(board.calls().filter(([verb, sub]) => verb === 'task' && sub === 'add').length, 1, 'only the y added');
-  assert.ok(board.calls().every(([verb, sub]) => `${verb} ${sub}` === 'task add'), 'nothing but the one add: no tell, no merge, no set');
+  await second;
+});
 
-  // The shape question offers it too; from Neovim, the question is a dialog there that names the command.
-  const fourth = pair.gen.request({text: 'billing module', from: 'editor', place: {file: 'math.js', line: 1}});
+test('from Neovim, the task is the compose buffer\'s: what you edit there is what is added, and c copies that', async () => {
+  const board = fakeShepherdr(scratch('pair-board-'), SHOP);
+  const {root, pair, of, said} = genSession([], {board: board.command, notes: SHOP_NOTES});
+  pair.receive({kind: 'context', branch: 'main', git: {}, board: {space: 'shop', task: null, working: 0, waiting: []}});
+  const first = pair.gen.request({text: 'board billing module', from: 'editor', place: {file: join(root, 'math.js'), line: 1}});
   await until(() => of('gen_ask').length);
-  pair.gen.answer(4, of('gen_ask').at(-1).id, 'board');
-  await until(() => of('gen_ask').length === 2);
   const ask = of('gen_ask').at(-1);
   assert.equal(ask.kind, 'board');
-  assert.deepEqual(ask.choices.map(choice => choice.key), ['y', 'c']);
-  assert.match(ask.command, /task add 'billing module'/);
-  pair.gen.answer(4, ask.id, 'y');
-  await fourth;
-  assert.match(said().at(-1), /^gen #4 → board SHO-91 · added, for later/);
+  assert.deepEqual(ask.choices.map(choice => choice.key), ['y', 'd', 'p', 'r', 'c']);
+  assert.equal(ask.choices[1].what, 'add and delegate: its agent starts now');
+  assert.equal(ask.task.title, 'billing module');
+  assert.match(ask.task.brief, /^billing module\n\nFrom the brief \(NOTES\.md, not committed \+ the goal\)/, 'not a git repo: nothing is committed');
+  assert.match(ask.warning, /^NOTES\.md has changes that are not committed/);
+  assert.equal(of('confirm').length, 0, 'asked in Neovim, not in the chat');
+  assert.match(said().at(-1), /^gen #1 · a task for the board: "billing module": edit its brief in Neovim \(pair:\/\/board\/new\), then pick how to add it\.$/);
+  pair.gen.answer(1, ask.id, 'd', {title: 'Billing: invoices and PDF', brief: 'Invoices and a PDF export.\n\nMoney in cents.'});
+  await first;
+  assert.deepEqual(board.calls().at(-1), ['task', 'add', 'Billing: invoices and PDF', '--brief=Invoices and a PDF export.\n\nMoney in cents.', '--space=shop']);
+
+  const second = pair.gen.request({text: 'board a second one', from: 'editor', place: {file: join(root, 'math.js'), line: 1}});
+  await until(() => of('gen_ask').length === 2);
+  pair.gen.answer(2, of('gen_ask').at(-1).id, 'c', {title: 'Edited', brief: 'As edited.'});
+  await second;
+  assert.equal(of('gen_copy').at(-1).text, "shepherdr task add Edited --brief='As edited.' --space=shop --later".replace('shepherdr', board.command));
+  assert.equal(board.calls().length, 1, 'c added nothing');
+});
+
+test('a request that runs into gen.limits is offered to the board; /gen board #n hands it on with what it found', async () => {
+  const board = fakeShepherdr(scratch('pair-board-'), SHOP);
+  const results = [];
+  const {root, pair, said} = genSession([async (conversation, pair) => {
+    results.push(await tool(pair, conversation, 'draft', {path: 'billing/invoice.js', text: 'export const amount = 1.5'}));
+    results.push(await tool(pair, conversation, 'draft', {path: 'billing/pdf.js', text: 'export const pdf = 1'}));
+    return 'Invoices only: the rest is past the limit.';
+  }], {board: board.command, notes: SHOP_NOTES, limits: {files: 1, lines: 100, commands: 8, minutes: 10}, askModel: async system => (system === CHECK_PROMPT
+    ? JSON.stringify([{kind: 'contradicts', source: 'note', line: 3, quote: 'Money in integer cents', piece: 1, piece_line: 1, text: 'the amount is a float'}, {kind: 'guessed', text: 'which PDF library to use'}])
+    : '[]')});
+  await pair.gen.request({text: 'file the billing module: invoices, PDF export and webhooks'});
+  assert.equal(results[1], 'That is 1 files for this request (gen.limits.files).');
+  assert.equal(said().at(-1), 'gen #1 is bigger than gen\'s limits (it went past gen.limits.files). /gen board #1 hands it to the board, with its brief and what it found.');
+  assert.deepEqual(board.calls(), [], 'only offered');
+
+  const handing = pair.gen.request({text: 'board #1'});
+  await until(() => pair.gen.requests.get(2)?.question);
+  pair.gen.answer(2, pair.gen.requests.get(2).question.id, 'y');
+  await handing;
+  const [, , title, brief] = board.calls().at(-1);
+  assert.equal(title, 'the billing module: invoices,…');
+  assert.equal(brief.split('\n\n')[0], '--brief=the billing module: invoices, PDF export and webhooks', 'the words of gen #1');
+  assert.match(brief, /\n\nFiles it names: billing\/invoice\.js\n\n/);
+  assert.match(brief, /\n\nWhat gen #1's check found against the brief:\n- ≠ brief "Money in integer cents, never floats\." NOTES\.md:3 · billing\/invoice\.js:1 the amount is a float\n\n/);
+  assert.match(brief, /\n\nOpen questions: gen #1 guessed these, which neither the brief nor the request says\. Settle them, or ask:\n- which PDF library to use\n\nHanded to the board from Pair \(gen #1\)\.$/);
+  assert.match(said().at(-1), /^gen #2 \(gen #1\) → board SHO-90 · added, for later/);
+
+  await pair.gen.request({text: 'board #7'});
+  assert.equal(said().at(-1), 'gen #3: there is no gen #7 since the daemon started, to hand to the board.');
 });
 
 test('/gen board without a board says so, and a board that refuses says why', async () => {

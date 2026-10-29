@@ -50,8 +50,10 @@ you think, and take the keyboard only when you hand it over. Pair aims for that:
   wrote as if you had. Code you took stays marked `┊` until you edit it or `:Pair own` it, and `:Pair today` and
   `pair stats` say how much of it is not yours yet ([/gen](docs/gen.md)). In the chat pane, what a request made is a
   card with its keys: `k` keep, `Enter` open it in Neovim, `d` drop, `u` undo. A request too big to watch goes to
-  your work board, [Shepherdr](https://github.com/eliasstravik/shepherdr), with `/gen board`: Pair composes the task,
-  shows you its command, and adds it for later only on your `y`.
+  your work board, [Shepherdr](https://github.com/eliasstravik/shepherdr), with `/gen board`: Pair writes the task's
+  brief from yours (your words, the note's lines with `file:line`, the files, the tests, the open questions), lets you
+  edit it, and adds it only as you pick: add only, add and delegate, plan first, research only, or copy the command.
+  A request too big for `/gen`'s limits is offered to the board.
 - **Your other agents, in one line.** When a board task or another agent needs you, is ready to merge or is done,
   Pair says so at your next pause, never while you type; `o`, `d` and `t` open what a task left behind (its report or
   pull request, its branch's diff, a terminal in its worktree), and the chat's header counts the repo's tasks
@@ -102,7 +104,7 @@ your keys and logins).
 - [/gen](docs/gen.md): ask Pair for code at your cursor, as new files to review, as a sample to run outside the
   project, or as a scaffold built in a copy of it, against your brief; take it with one key, `:w`, `/keep` or `k` per
   file, undo the request as one; Pair's own edits carry their origin, and taken code is marked `┊` until you own it;
-  `/gen board` hands a request to the board as a task
+  `/gen board` hands a request to the board as a task, its brief built from yours
 - [Push-to-talk](docs/voice.md): ask aloud, heard by whisper.cpp on your CPU or an OpenRouter model, with answers
   read aloud when you are away
 - [Models and providers](docs/models.md): local servers, API keys, subscription logins, one model for both roles,

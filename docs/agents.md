@@ -92,7 +92,8 @@ instead.
 ## Where it reads
 
 Pair reads by itself and writes nothing to the board: it never adds, tells, stops, merges or sets a task on its own.
-The one write there is goes through [`/gen board`](gen.md#gen-board-a-task-for-the-board), on your pick.
+The one write there is goes through [`/gen board`](gen.md#gen-board-a-task-for-the-board): a task added, on a pick
+that names what it does (add only, or add and delegate).
 
 - **herdr's agents**: `agent.list` over herdr's socket, which Pair knows from the chat pane, or from Neovim when it
   runs in herdr. Every agent herdr recognises, in any workspace.

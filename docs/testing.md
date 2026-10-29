@@ -32,8 +32,11 @@ the work board.
 - **The board** against a fake `shepherdr` ([test/fake-shepherdr.mjs](../test/fake-shepherdr.mjs)), never your
   own Shepherdr: its spaces, tasks, a task in full and its report read through the adapter; the context card's task
   and the chat header's counts; the relay's news, a task's worktree found by its branch in a real git repo, and what
-  it left behind (report and pull request, its branch's diff, its worktree); `/gen board`'s command, added only on
-  `y`, for later, and nothing else written; in a headless Neovim, `Alt-o`, and `d` and `t` in `:Pair agents`.
+  it left behind (report and pull request, its branch's diff, its worktree); `/gen board`'s brief built from yours
+  (the note's lines with `file:line`, the files, the tests, a check's open questions, a note not committed copied
+  whole), added only on a pick (add only, delegate, plan first, research only) and nothing else written, and a request
+  past `gen.limits` offered to it; in a headless Neovim, the task edited in `pair://board/new` and `:q` dropping it,
+  `Alt-o`, and `d` and `t` in `:Pair agents`.
 - **The daemon end to end** with scripted models; several projects and Neovims at once; Neovim and the chat pane
   reconnecting after a daemon restart; a question the restart cut off answered late, a remark dropped; a saved config
   taken without a restart (a new model between turns, one with an error refused).
