@@ -407,13 +407,20 @@ test('/gen board in Neovim: the task in pair://board/new, edited and written wit
     const {lines, float} = buffer();
     assert.ok(float, 'a float over your work');
     assert.deepEqual(lines.slice(0, 4), ['a CSV export of the orders', '', 'a CSV export of the orders', '']);
-    assert.ok(lines.includes('> Money in integer cents. (NOTES.md:3)'), 'the brief\'s lines with file:line');
+    assert.ok(lines.includes('Money in integer cents.'), 'not committed: the note copied as it is');
     await until(() => notified().some(text => /NOTES\.md has changes that are not committed/.test(text)), 'the warning');
+    // The gen key while you write goes back to this window: never a second one, and your edits stay.
+    keys('Goedits I typed<Esc><M-g>');
+    await sleep(200);
+    const open = JSON.parse(remote('luaeval("vim.json.encode(vim.tbl_map(function(b) return vim.api.nvim_buf_get_name(b) end, vim.tbl_filter(vim.api.nvim_buf_is_loaded, vim.api.nvim_list_bufs())))")'));
+    assert.equal(open.filter(name => name.startsWith('pair://board/new') || name === '').length, 1, `one compose buffer: ${open}`);
+    assert.equal(buffer().name, 'pair://board/new');
+    assert.equal(buffer().lines.at(-1), 'edits I typed');
     keys('ggccCSV export, daily totals<Esc>:w<CR>');
     await until(() => board.calls().length === 1, 'the add');
     const [, , title, brief, ...rest] = board.calls()[0];
     assert.equal(title, 'CSV export, daily totals', 'the title as you wrote it');
-    assert.match(brief, /^--brief=a CSV export of the orders\n\nFrom the brief/);
+    assert.match(brief, /^--brief=a CSV export of the orders\n\nFrom the brief[\s\S]*\nedits I typed$/);
     assert.deepEqual(rest, [], 'd: delegated, so no --later');
     const pick = asked().at(-1);
     assert.equal(pick.prompt, 'gen #1 · a task for the board: "a CSV export of the orders" · how?');

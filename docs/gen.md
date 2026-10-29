@@ -614,7 +614,8 @@ the [brief](#the-brief) the request would run against:
 
 **A note that is not committed.** The task's agent works in a git worktree, which has only what is committed. When the
 brief's note has changes that are not committed (unsaved in Neovim, changed on disk, or not in git at all), Pair warns
-you, and copies the note whole into the brief, as it is now (up to 300 lines):
+you, and copies the note whole into the brief, as it is now: every line as it is, blank lines and indentation too,
+in a fenced block (its first 300 lines, and the brief says when there are more), in place of the quoted lines:
 
 ```
 ··    gen #9: NOTES.md has changes that are not committed: the task's agent works in a git worktree and would not see
@@ -626,6 +627,8 @@ you, and copies the note whole into the brief, as it is now (up to 300 lines):
 In Neovim the task opens in a compose window, `pair://board/new`: its title on the first line, its brief under it.
 Edit what you like. `:w` (or `Ctrl-S`) takes it as written and asks how to add it, in a `vim.ui.select` dialog; `:q`
 drops it and adds nothing. `Esc` in the dialog leaves it waiting, edits and all: the gen key (`Alt-g`) opens it again.
+The gen key while the window is open goes back to it; there is only ever one. A title or a brief you emptied is not
+filled in again: `:w` says it is empty, and nothing is added.
 
 ```
 ╭─ board task · edit, then :w · :q drops ─────────────╮

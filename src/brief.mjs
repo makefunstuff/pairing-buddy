@@ -81,11 +81,18 @@ export function handoffBrief({words, brief, files = [], test = null, found = [],
   if (brief.task) quoted.push(`Board task ${brief.task.id}: ${brief.task.title}`);
   if (brief.note) {
     const {file} = brief.note;
-    const lines = brief.note.lines.map((text, i) => ({text: text.trim(), line: i + 1})).filter(each => each.text);
-    const shown = lines.slice(0, uncommitted ? COPIED_LINES : QUOTED_LINES);
-    if (uncommitted) quoted.push(`${file} has changes that are not committed, so your worktree does not have them. It is copied here as it is now:`);
-    quoted.push(...shown.map(each => `> ${each.text} (${file}:${each.line})`));
-    if (lines.length > shown.length) quoted.push(uncommitted ? `(${lines.length - shown.length} more lines, not copied)` : `(the rest is in ${file}, in your worktree)`);
+    if (uncommitted) {
+      // The agent's only copy: every line as it is, blank lines and indents too, in a fence longer than any in the note.
+      const copied = brief.note.lines.slice(0, COPIED_LINES);
+      const fence = '`'.repeat(Math.max(3, ...copied.map(line => (line.match(/`+/g) ?? []).reduce((most, run) => Math.max(most, run.length + 1), 0))));
+      const cut = brief.note.lines.length > copied.length ? ` (lines 1-${copied.length} of ${brief.note.lines.length})` : '';
+      quoted.push(`${file} has changes that are not committed, so your worktree does not have them. It is copied here as it is now${cut}:`, fence, ...copied, fence);
+    } else {
+      const lines = brief.note.lines.map((text, i) => ({text: text.trim(), line: i + 1})).filter(each => each.text);
+      const shown = lines.slice(0, QUOTED_LINES);
+      quoted.push(...shown.map(each => `> ${each.text} (${file}:${each.line})`));
+      if (lines.length > shown.length) quoted.push(`(the rest is in ${file}, in your worktree)`);
+    }
   }
   const what = [
     brief.note && `${brief.note.file}${brief.note.pinned ? ', pinned' : ''}, ${uncommitted ? 'not committed' : 'committed'}`,

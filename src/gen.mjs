@@ -278,7 +278,8 @@ export class Gen {
     const choice = await this.question(request, {kind: 'board', title: `${n} · a task for the board: "${task.title}"`, command: line(task), task, warning});
     if (request.state === 'cancelled') return;
     const edit = request.edited;
-    const final = edit ? {title: boardTitle(edit.title) || task.title, brief: edit.brief.trim() || task.brief} : task;
+    if (edit && (!boardTitle(edit.title) || !edit.brief.trim())) return this.end(request, 'cancelled', `${n} cancelled: the task you wrote has no ${boardTitle(edit.title) ? 'brief' : 'title'}, so nothing was added.`);
+    const final = edit ? {title: boardTitle(edit.title), brief: edit.brief.trim()} : task;
     if (choice === 'c') {
       const text = line(final);
       if (request.from === 'editor') session.notify('editor', {type: 'gen_copy', gen: request.n, text});

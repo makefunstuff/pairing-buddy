@@ -238,6 +238,8 @@ local function pick(message)
 end
 
 function M.compose_task(message)
+  -- Open already (the gen key while you write in it): back to it, edits and all, never a second one.
+  if message.win and vim.api.nvim_win_is_valid(message.win) then return vim.api.nvim_set_current_win(message.win) end
   local task = message.edited or message.task or {title = '', brief = ''}
   local buf = vim.api.nvim_create_buf(false, true)
   pcall(vim.api.nvim_buf_set_name, buf, 'pair://board/new')
@@ -255,6 +257,7 @@ function M.compose_task(message)
     border = 'rounded', style = 'minimal', title = ' board task · edit, then :w · :q drops ', title_pos = 'center',
   })
   vim.wo[win].wrap = true
+  message.win = win
   if message.warning then vim.notify('Pair: ' .. message.warning, vim.log.levels.WARN) end
   local written = false
   local function go()
@@ -263,7 +266,9 @@ function M.compose_task(message)
     while text[first] and vim.trim(text[first]) == '' do first = first + 1 end
     local title = vim.trim(text[first] or '')
     if title == '' then return vim.notify('Pair: the first line is the task\'s title; :q drops it') end
-    message.edited = {title = title, brief = vim.trim(table.concat(vim.list_slice(text, first + 1), '\n'))}
+    local brief = vim.trim(table.concat(vim.list_slice(text, first + 1), '\n'))
+    if brief == '' then return vim.notify('Pair: the brief under the title is empty; :q drops the task') end
+    message.edited = {title = title, brief = brief}
     written = true
     vim.cmd('stopinsert')
     pcall(vim.api.nvim_win_close, win, true)
@@ -272,6 +277,7 @@ function M.compose_task(message)
   vim.api.nvim_create_autocmd('BufWriteCmd', {buffer = buf, callback = go})
   vim.api.nvim_create_autocmd({'TextChanged', 'TextChangedI'}, {buffer = buf, callback = function() vim.bo[buf].modified = false end})
   vim.api.nvim_create_autocmd('BufWipeout', {buffer = buf, once = true, callback = function()
+    message.win = nil
     if not written and waiting == message then vim.schedule(function() answer(message, 'n') end) end -- :q drops it
   end})
   for _, mode in ipairs({'n', 'i'}) do vim.keymap.set(mode, '<C-s>', go, {buffer = buf, desc = 'Take the board task as written'}) end

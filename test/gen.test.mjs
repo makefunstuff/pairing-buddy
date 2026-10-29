@@ -283,14 +283,19 @@ test('a brief note with changes not committed: Pair warns, and copies it whole i
   const board = fakeShepherdr(scratch('pair-board-'), SHOP);
   const {root, pair, of, said} = genSession([], {board: board.command, notes: SHOP_NOTES});
   await commitAll(root);
-  writeFileSync(join(root, 'NOTES.md'), `${SHOP_NOTES}Statuses: new, paid, shipped.\n`);
+  writeFileSync(join(root, 'NOTES.md'), `${SHOP_NOTES}Statuses: new, paid, shipped.\n\n    const cents = 100 // \`\`\`\n- lists\n  - nested\n`);
   const asking = pair.gen.request({text: 'board a CSV export'});
   await until(() => of('confirm').length);
   assert.equal(said().at(-1), 'gen #1: NOTES.md has changes that are not committed: the task\'s agent works in a git worktree and would not see them, so they are copied into its brief.');
   pair.answer(of('confirm').at(-1).id, true);
   await asking;
   const brief = board.calls().at(-1).find(word => word.startsWith('--brief='));
-  assert.match(brief, /From the brief \(NOTES\.md, not committed \+ the goal\):\nGoal: add helpers\nNOTES\.md has changes that are not committed, so your worktree does not have them\. It is copied here as it is now:\n> # Shop \(NOTES\.md:1\)\n.*\n.*\n> Statuses: new, paid, shipped\. \(NOTES\.md:5\)\n/);
+  assert.ok(brief.includes([
+    'From the brief (NOTES.md, not committed + the goal):\nGoal: add helpers',
+    'NOTES.md has changes that are not committed, so your worktree does not have them. It is copied here as it is now:',
+    '````', '# Shop', '', 'Money in integer cents, never floats.', 'SQLite, one file next to the binary.', 'Statuses: new, paid, shipped.', '',
+    '    const cents = 100 // ```', '- lists', '  - nested', '````',
+  ].join('\n')), `the note whole, blank lines and indents kept, in a fence longer than its own: ${brief}`);
 
   // Unsaved in the editor counts too: the brief is the note as the editor has it.
   await commitAll(root);
@@ -325,6 +330,11 @@ test('from Neovim, the task is the compose buffer\'s: what you edit there is wha
   await until(() => of('gen_ask').length === 2);
   pair.gen.answer(2, of('gen_ask').at(-1).id, 'c', {title: 'Edited', brief: 'As edited.'});
   await second;
+  const emptied = pair.gen.request({text: 'board a third one', from: 'editor', place: {file: join(root, 'math.js'), line: 1}});
+  await until(() => of('gen_ask').length === 3);
+  pair.gen.answer(3, of('gen_ask').at(-1).id, 'y', {title: 'T', brief: ' '});
+  await emptied;
+  assert.equal(said().at(-1), 'gen #3 cancelled: the task you wrote has no brief, so nothing was added.', 'Pair\'s own brief is not put back');
   assert.equal(of('gen_copy').at(-1).text, "shepherdr task add Edited --brief='As edited.' --space=shop --later".replace('shepherdr', board.command));
   assert.equal(board.calls().length, 1, 'c added nothing');
 });
