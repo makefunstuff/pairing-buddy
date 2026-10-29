@@ -51,6 +51,7 @@ export const COMMANDS = [
   ['/undo', '', 'undo Pair\'s last change: an edit of the Driver\'s, a suggestion you took, a /gen request'],
   ['/today', '', 'what Pair did here today'],
   ['/agents', '', 'your other agents and board tasks, the ones that need you first'],
+  ['/review', '<id>', 'a board task\'s branch as a review in Neovim\'s :Pair gen list: what its reviewer said, ≠ brief, keep pieces'],
   ['/search', '<text>', 'find in the conversation (Ctrl-F)'],
   ['/copy', '[n]', 'copy Pair\'s last answer (or the nth last) to the clipboard'],
   ['/clear', '', 'clear the pane; the session and its history stay'],
@@ -96,6 +97,7 @@ export function parseInput(line) {
   if (command === '/gen' && arg === 'tries') return {type: 'gen_tries'};
   if (command === '/gen' && arg === 'drop') return {type: 'gen_copy_delete'};
   if (command === '/keep') return {type: 'keep', path: arg};
+  if (command === '/review') return {type: 'review', task: arg};
   if (command === '/brief') return !arg ? {type: 'brief'} : arg === 'off' ? {type: 'brief', off: true} : {type: 'brief', file: arg};
   if (command === '/gen') {
     // A request may take several lines (Alt-Enter): they go as typed.

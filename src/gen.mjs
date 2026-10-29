@@ -33,6 +33,7 @@ import {checkCommand} from './check.mjs';
 import {commandPolicy} from './command-policy.mjs';
 import {GEN_BRIEF, GEN_KEEP_TRIES, GEN_LIMITS, GEN_SCAFFOLD} from './config.mjs';
 import {logDecision, LOG_NAME} from './decision-log.mjs';
+import {madeIn} from './fold.mjs';
 import {draftPath, numberedLines, projectFile} from './files.mjs';
 import {
   changedIn, daysLeft, expireTries, filesIn, freshFolder, linesOf, makeCopy, makeWorktree, noLinks, pathIn, placeHunks, projectFolder,
@@ -41,6 +42,7 @@ import {
 import {gitFiles} from './git.mjs';
 import {DETAIL_KEPT_MS, keptOutput, notYoursLine, startOfDay} from './ledger.mjs';
 import {markId, parseMarkId, takenMarks, tally, writtenMarks} from './owning.mjs';
+import {Reviews} from './review.mjs';
 import {runText} from './session.mjs';
 import {parseTestOutput} from './test-output.mjs';
 import {runLabel} from './test-runs.mjs';
@@ -85,6 +87,13 @@ const CHECKED_LINES = 300; // the brief's check after a scaffold reads this many
 const FLAG = /^--(branch|copy)(?=\s|$)\s*/; // /gen scaffold --branch: in a git worktree; --copy: in Pair's copy
 // What installs a package: in a copy without the network it is listed for the user, not run.
 const INSTALL = /(^|[\s;&|(])(npm (i|install|add|ci)|pnpm (i|install|add)|yarn( add| install|\s*$)|bun (i|install|add)|pip3? install|uv (add|pip install|sync)|poetry (add|install)|go (get|mod download)|cargo (add|install|fetch)|gem install|bundle( install)?\s*$|composer (require|install))\b/;
+
+/** What a ledger entry of /gen is called: `gen #3`, or the board task a review is of, `BDY-80`. */
+const nameOf = data => (data?.task && data.shape === 'review' ? data.task : `gen #${data?.gen}`);
+/** And whose code is taken from it: gen:#3, board:BDY-80 (see fold.mjs). */
+const originOf = data => (data?.task && data.shape === 'review' ? `board:${data.task}` : `gen:#${data?.gen}`);
+/** What its marks say they come from: the request's number, or the task's id. */
+const markOf = data => (data?.task && data.shape === 'review' ? data.task : data?.gen);
 
 /** Of a try's files, the one that opens: the longest, the sample itself rather than its go.mod or package.json. */
 const mainFile = files => files.reduce((best, piece) => (!best || lineCount(piece.text) > lineCount(best.text) ? piece : best), null);
@@ -164,6 +173,7 @@ export class Gen {
     this.due = []; // pieces ready, waiting for the user's next pause in typing
     this.asked = 0; // questions asked, for their ids
     this.last = null; // the highest request number so far, read from the ledger once
+    this.reviews = new Reviews(this); // board tasks' branches as reviews (review.mjs), in the same list and ledger
   }
 
   get root() { return this.session.root; }
@@ -1745,9 +1755,9 @@ export class Gen {
     this.rebook(action, found, {note: `${taken} of ${plural(files.length, 'file')} taken`, undo: true});
     this.session.ledger.update(action, {state: 'applied'});
     this.session.notify('chat', {type: 'applied', action});
-    this.sendMarks(action, found.entry.data.gen, [piece]);
+    this.sendMarks(action, markOf(found.entry.data), [piece]);
     const left = files.filter(one => one.state === 'proposed').length;
-    this.session.message('system', `gen #${found.entry.data.gen}: ${relative(this.root, piece.file)} written, taken${left ? `; ${left} more to review` : ''}. /undo takes back the request.`);
+    this.session.message('system', `${nameOf(found.entry.data)}: ${relative(this.root, piece.file)} written, taken${left ? `; ${left} more to review` : ''}. /undo takes back the request.`);
     this.settle(found);
   }
 
@@ -1778,17 +1788,18 @@ export class Gen {
   async undo(action) {
     const session = this.session;
     const n = action.data.gen;
-    const request = this.requests.get(n)?.action === action.id ? this.requests.get(n) : null;
+    const name = nameOf(action.data);
+    const request = Number.isInteger(n) && this.requests.get(n)?.action === action.id ? this.requests.get(n) : null;
     const pieces = request?.pieces ?? action.detail?.pieces ?? [];
     const undone = action.state === 'undone';
     if (!undone && request) this.stop(request, 'undone');
-    else if (!undone) session.notify('editors', {type: 'gen_drop', gen: n});
+    else if (!undone && Number.isInteger(n)) session.notify('editors', {type: 'gen_drop', gen: n});
     const taken = pieces.filter(piece => piece.patch && (undone ? piece.state === 'undone' : piece.state === 'taken'));
     const failed = [];
     const unmarked = []; // the marks of what was taken back: no code of Pair's to own any more
     for (const piece of undone ? taken : [...taken].reverse()) {
       const [base, other] = undone ? [piece.patch.before, piece.patch.after] : [piece.patch.after, piece.patch.before];
-      const reply = await session.requestEditor({type: 'revert', file: piece.file, base, other, origin: `gen:#${n}`}).catch(error => ({error: error.message}));
+      const reply = await session.requestEditor({type: 'revert', file: piece.file, base, other, origin: originOf(action.data)}).catch(error => ({error: error.message}));
       if (reply?.error) failed.push(`${relative(this.root, piece.file)}: ${reply.error}`);
       else {
         if (!undone) unmarked.push(...this.unmark(action.id, piece));
@@ -1809,7 +1820,8 @@ export class Gen {
         unmarked.push(...this.unmark(action.id, piece));
       }
     }
-    for (const piece of pieces) if (!undone && piece.state === 'proposed') piece.state = 'dropped';
+    // A review's files stay to keep: only what was kept of them goes.
+    for (const piece of pieces) if (!undone && piece.state === 'proposed' && piece.kind !== 'branch') piece.state = 'dropped';
     const again = undone ? files : [];
     const back = taken.length + files.length - failed.length;
     const left = pieces.filter(piece => piece.state === (undone ? 'undone' : 'taken')).length;
@@ -1818,15 +1830,15 @@ export class Gen {
     session.ledger.update(action.id, {state, data: {undo: true, ...tally(booked)}, detail: {...(action.detail ?? {}), pieces: booked}});
     this.sendCard(action.id);
     if (unmarked.length) session.notify('editors', {type: 'gen_unmark', ids: unmarked});
-    if (undone) this.sendMarks(action.id, n, taken.filter(piece => piece.state === 'taken'));
+    if (undone) this.sendMarks(action.id, markOf(action.data), taken.filter(piece => piece.state === 'taken'));
     if (again.length) {
       if (request) this.setState(request, 'ready');
       await this.showFiles(action.id, n, again);
     }
     const deleted = files.filter(piece => piece.state === 'undone').length;
-    const what = undone ? `Made gen #${n} again: ${plural(back, 'piece')}`
-      : back ? `Undid gen #${n}: took back ${plural(back, 'piece')}`
-        : taken.length + files.length ? `Could not undo gen #${n}` : `Undid gen #${n}: nothing was taken`;
+    const what = undone ? `Made ${name} again: ${plural(back, 'piece')}`
+      : back ? `Undid ${name}: took back ${plural(back, 'piece')}`
+        : taken.length + files.length ? `Could not undo ${name}` : `Undid ${name}: nothing was taken`;
     const how = undone ? [taken.length ? 'unsaved' : '', again.length ? `${plural(again.length, 'file')} to review again` : ''].filter(Boolean).join('; ')
       : [back - deleted ? 'unsaved' : '', deleted ? `${plural(deleted, 'file')} you wrote from it deleted` : ''].filter(Boolean).join('; ');
     session.message('system', `${what}${how ? `, ${how}` : ''}.${failed.length ? ` Not changed: ${failed.join('; ')}.` : ''}`);
@@ -1856,7 +1868,7 @@ export class Gen {
   marked() {
     return this.session.store.actions(this.root, this.session.now() - DETAIL_KEPT_MS)
       .filter(row => row.kind === 'generated' && row.data?.counts?.lines.generated > 0)
-      .map(row => ({...this.piecesOf(row.id), action: row.id, n: row.data.gen}));
+      .map(row => ({...this.piecesOf(row.id), action: row.id, n: markOf(row.data)}));
   }
 
   /** Every mark still Pair's in the project (in `file`, with one): what a Neovim that connects marks. */
@@ -1930,10 +1942,11 @@ export class Gen {
   notYours() {
     const files = new Map();
     for (const mark of this.allMarks()) {
-      const file = files.get(mark.file) ?? {file: mark.file, name: relative(this.root, mark.file), lines: 0, line: mark.line, gens: []};
+      const file = files.get(mark.file) ?? {file: mark.file, name: relative(this.root, mark.file), lines: 0, line: mark.line, gens: [], from: []};
       file.lines += mark.text.length;
       file.line = Math.min(file.line, mark.line);
       if (!file.gens.includes(mark.gen)) file.gens.push(mark.gen);
+      if (!file.from.includes(madeIn(mark.gen))) file.from.push(madeIn(mark.gen)); // gen #3, BDY-80
       files.set(mark.file, file);
     }
     const list = [...files.values()].sort((a, b) => a.name.localeCompare(b.name));
@@ -1950,7 +1963,7 @@ export class Gen {
   card(action, live = null) {
     const found = action ? this.piecesOf(action) : null;
     const entry = found?.entry;
-    if (action && entry?.kind !== 'generated') return null;
+    if (action && (entry?.kind !== 'generated' || entry.data?.shape === 'review')) return null; // a review has its list
     const request = live ?? found?.request ?? null;
     const n = entry?.data?.gen ?? request.n;
     const shape = entry?.data?.shape ?? request?.shape ?? null;
@@ -2056,13 +2069,15 @@ export class Gen {
 
   /**
    * The file requests of the last REVIEW_DAYS days, newest first, as :Pair gen list shows them: each file, with its
-   * text while it is still to review, so Neovim can open it again after either of them restarted.
+   * text while it is still to review, so Neovim can open it again after either of them restarted. A board task's
+   * review is among them (see review.mjs).
    */
   review() {
     const {store} = this.session;
-    const rows = store.actions(this.root, this.session.now() - REVIEW_DAYS * DAY).filter(row => row.kind === 'generated' && ['file', 'try', 'scaffold'].includes(row.data?.shape));
+    const rows = store.actions(this.root, this.session.now() - REVIEW_DAYS * DAY).filter(row => row.kind === 'generated' && ['file', 'try', 'scaffold', 'review'].includes(row.data?.shape));
     const requests = rows.reverse().map(row => {
       const entry = store.action(row.id);
+      if (row.data.shape === 'review') return this.reviews.row(row, entry);
       const pieces = entry.detail?.pieces ?? [];
       if (row.data.shape === 'try' && !pieces.some(piece => piece.kind === 'file')) return null; // a try with nothing kept
       if (row.data.shape === 'scaffold' && !pieces.some(piece => piece.kind === 'tree')) return null; // nothing made

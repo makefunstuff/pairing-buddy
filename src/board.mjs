@@ -2,12 +2,14 @@
 // branch, pull request and report) and the few command lines it composes for you. Every call is the board's own
 // command with a list of words, never a shell. Pair reads the board by itself; it writes to it only when you pick a
 // choice that names what it does (/gen board's picks: add only, or add and delegate, with a plan first or for research
-// only), and it never merges, stops or sets anything.
+// only; in a task's review, a tell, "merge it" told to its agent, or archive), and it never merges, stops or sets
+// anything.
 import {execFile} from 'node:child_process';
 import {basename} from 'node:path';
 
 export const BOARD = 'shepherdr';
-export const TITLE_MAX = 32; // the board refuses a longer title: it fits one line on a phone
+export const TITLE_MAX = 32;
+export const MERGE_IT = 'merge it'; // what a review's merge pick tells the task's agent // the board refuses a longer title: it fits one line on a phone
 const TIMEOUT_MS = 5000;
 const ADD_TIMEOUT_MS = 60_000;
 const REPORTS_LOOKED_AT = 20; // of a space's newest artifacts, this many are asked who made them // an add is never cut short: one that went through but answered late would be made twice
@@ -27,11 +29,19 @@ export function boardRun(command, args, {cwd, timeoutMs = TIMEOUT_MS} = {}) {
 /** The space a task's place names: `p:<machine>:pairing-buddy` is pairing-buddy. */
 const spaceOf = place => (typeof place === 'string' && place.startsWith('p:') ? place.split(':').slice(2).join(':') : null);
 
-/** A task as Pair keeps it: {id, title, status, sub, machine}, and from `task show` also {space, branch, pr, desc}. */
+/**
+ * A task as Pair keeps it: {id, title, status, sub, machine}, and from `task show` also {space, branch, pr, outcome,
+ * said, facts, brief}: what its agent said when it reported ready, its facts line (PR · commit · checks · review · not
+ * proven), and its brief (`desc`, "No brief yet." for none).
+ */
 function taskOf(raw) {
   const task = {id: raw.id, title: raw.title ?? raw.name ?? raw.id, status: raw.status, sub: raw.sub ?? '', machine: raw.machine ?? null};
   if ('place' in raw || 'branch' in raw) {
-    Object.assign(task, {space: spaceOf(raw.place), branch: raw.branch ?? null, pr: raw.pr?.url ?? null, outcome: raw.outcome ?? null});
+    const text = value => (typeof value === 'string' && value.trim() ? value.trim() : null);
+    Object.assign(task, {
+      space: spaceOf(raw.place), branch: raw.branch ?? null, pr: raw.pr?.url ?? null, outcome: raw.outcome ?? null,
+      said: text(raw.said), facts: text(raw.facts), brief: raw.desc === 'No brief yet.' ? null : text(raw.desc),
+    });
   }
   return task;
 }
@@ -127,6 +137,19 @@ export class Board {
   /** The words that tell task `id` something, which is also the go for a task that waits. */
   tellWords(id, text) {
     return [this.command, 'task', 'tell', id, text];
+  }
+
+  /**
+   * The words that ask task `id`'s agent to merge it. Shepherdr has no approve: a task merges when its brief or the
+   * owner says so, so this is a tell, and Pair never runs `shepherdr merge` itself.
+   */
+  mergeWords(id) {
+    return this.tellWords(id, MERGE_IT);
+  }
+
+  /** The words that archive task `id`: out of every list, its record kept (a running agent is stopped first). */
+  archiveWords(id) {
+    return [this.command, 'task', 'archive', id];
   }
 
   /** Runs `words` (from addWords): the id of the task it added, and what the board said. */

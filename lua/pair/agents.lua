@@ -2,7 +2,8 @@
 -- done) at your next breakpoint, as one line after Pair's own in the statusline, with the keys that go there.
 -- Nothing opens and nothing takes your cursor until you ask: the key, or `:Pair agents` and Enter on a line, brings the
 -- agent's herdr pane to the front; o, d and t open what a board task left behind (its report or pull request, its
--- branch's diff, a terminal in its worktree). All of it is read only: nothing here changes the board.
+-- branch's diff, a terminal in its worktree); r, and Alt-r on the line of a task ready to merge, opens its branch as a
+-- review (genfiles.lua). All of it is read only: nothing here changes the board.
 local style = require('pair.style')
 local hints = require('pair.hints')
 
@@ -14,6 +15,7 @@ local NAME_WIDTH = 24 -- of the name column in the list
 local host -- what init.lua lends: send, map_keys, unmap_keys, key_label, redraw_status
 local key = '<M-a>'
 local open_key = '<M-o>'
+local review_key = '<M-r>'
 local line = nil -- the relayed line: {item, text, more}
 
 -- What each status looks like: the ones that need you in the accent, a failure in red, done quietly green.
@@ -59,12 +61,28 @@ function M.open()
   ask_link(line.item, 'open')
 end
 
+--- The relayed task ready to merge: its branch as a review in :Pair gen list.
+function M.review()
+  if not (line and line.item.kind == 'task') then return end
+  hints.used(host.key_label('agents', review_key))
+  host.send({type = 'review', task = line.item.id})
+end
+
+--- The id of the task the relayed line is about, or nil: what :Pair review alone reviews.
+function M.relayed_task()
+  return line and line.item.kind == 'task' and line.item.id or nil
+end
+
+--- Whether the relayed line is a board task's, ready to merge: Alt-r reviews it.
+local function reviewable() return line and line.item.kind == 'task' and line.item.status == 'ready' end
+
 --- The daemon relays one line, or takes it back (`item` null) once it is answered or no longer true.
 function M.on_relay(message)
   line = message.item ~= vim.NIL and message.item and {item = message.item, text = message.text, more = message.more or 0} or nil
   if line then
     local keys = {{key, M.go, 'Go to the agent Pair told you about'}}
     if line.item.kind == 'task' then table.insert(keys, {open_key, M.open, 'Open the report or pull request of the task Pair told you about'}) end
+    if reviewable() then table.insert(keys, {review_key, M.review, 'Review the branch of the task Pair told you about'}) end
     host.map_keys('agents', keys)
   else
     host.unmap_keys('agents')
@@ -82,6 +100,8 @@ function M.status_parts()
   if go_label then table.insert(labels, go_label) end
   local open_label = line.item.kind == 'task' and host.key_label('agents', open_key)
   if open_label then table.insert(labels, hints.label(open_label, 'opens')) end
+  local review_label = reviewable() and host.key_label('agents', review_key)
+  if review_label then table.insert(labels, hints.label(review_label, 'reviews')) end
   if #labels > 0 then text = text .. '  ' .. table.concat(labels, ' · ') end
   local look = LOOKS[line.item.status] or LOOKS.done
   return {glyph = style.glyphs.agents, text = text, hl = look[2], text_hl = 'PairStatusDim'}
@@ -163,7 +183,7 @@ local function show_list(items)
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
   vim.bo[buf].modifiable = false
   vim.wo.number, vim.wo.relativenumber, vim.wo.signcolumn, vim.wo.cursorline = false, false, 'no', true
-  if #items > 0 then vim.wo.winbar = ' Enter goes · o report or PR · d diff · t terminal · q closes' end
+  if #items > 0 then vim.wo.winbar = ' Enter goes · o report or PR · d diff · t terminal · r review · q closes' end
   for i, mark in ipairs(marks) do
     local look = LOOKS[mark.item.status] or LOOKS.done
     vim.api.nvim_buf_set_extmark(buf, list_ns, i - 1, 2, {end_col = 2 + mark.status, hl_group = look[2] == 'PairStatus' and 'PairAccent' or look[2]})
@@ -192,6 +212,13 @@ local function show_list(items)
   link('open', 'Open the report or pull request of this task')
   link('diff', 'Show the diff of this task\'s branch, read only')
   link('term', 'Open a terminal in this task\'s worktree')
+  vim.keymap.set('n', 'r', function()
+    local mark = here()
+    if not mark then return end
+    if mark.item.kind ~= 'task' then return vim.notify('Pair: ' .. mark.item.name .. ' is an agent of your own, with no branch of a task to review') end
+    vim.cmd.close()
+    host.send({type = 'review', task = mark.item.id})
+  end, {buffer = buf, desc = 'Review this task\'s branch'})
 end
 
 function M.on_list(message)
@@ -208,12 +235,14 @@ function M.clear()
   host.unmap_keys('agents')
 end
 
---- `lent` is what init.lua shares; `agents_key` the key that goes to the relayed agent and `open_key` the one that
---- opens its task's report or pull request, each false for none.
-function M.setup(lent, agents_key, agents_open_key)
+--- `lent` is what init.lua shares; `agents_key` the key that goes to the relayed agent, `open_key` the one that
+--- opens its task's report or pull request and `agents_review_key` the one that reviews a task ready to merge, each
+--- false for none.
+function M.setup(lent, agents_key, agents_open_key, agents_review_key)
   host = lent
   if agents_key ~= nil then key = agents_key end -- false: no key
   if agents_open_key ~= nil then open_key = agents_open_key end
+  if agents_review_key ~= nil then review_key = agents_review_key end
 end
 
 return M

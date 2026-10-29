@@ -47,13 +47,19 @@ export function initialState({root = null, goal = null} = {}) {
 
 const keepLast = (list, item, max) => [...list, item].slice(-max);
 
-// Who made an edit: the user, Pair (the Driver's typing, an accepted suggestion, an undo from the ledger), or a
-// /gen request by its number. An editor that sends no origin, or one this daemon does not know, sends the user's.
-const ORIGIN = /^(user|pair|gen:#\d+)$/;
+// Who made an edit: the user, Pair (the Driver's typing, an accepted suggestion, an undo from the ledger), a /gen
+// request by its number, or a board task whose pieces the user kept in a review (board:BDY-80). An editor that sends
+// no origin, or one this daemon does not know, sends the user's.
+const ORIGIN = /^(user|pair|gen:#\d+|board:[\w:-]{1,40})$/;
 export const editOrigin = origin => (ORIGIN.test(origin ?? '') ? origin : 'user');
 
-/** An origin in words: "the user", "Pair", "Pair (gen #3)". */
-export const originName = origin => (origin === 'pair' ? 'Pair' : origin?.startsWith('gen:') ? `Pair (gen ${origin.slice(4)})` : 'the user');
+/** Where code not the user's yet came from, as a mark names it: a request's number (gen #3), or a board task's id. */
+export const madeIn = gen => (Number.isInteger(gen) ? `gen #${gen}` : gen);
+const MADE_IN = gen => Number.isInteger(gen) || (typeof gen === 'string' && /^[\w:-]{1,40}$/.test(gen));
+
+/** An origin in words: "the user", "Pair", "Pair (gen #3)", "Pair (board BDY-80)". */
+export const originName = origin => (origin === 'pair' ? 'Pair' : origin?.startsWith('gen:') ? `Pair (gen ${origin.slice(4)})`
+  : origin?.startsWith('board:') ? `Pair (board ${origin.slice(6)})` : 'the user');
 
 /** Whether the user made `edit` themselves, not Pair for them. */
 export const byUser = edit => (edit.origin ?? 'user') === 'user';
@@ -200,10 +206,10 @@ const handlers = {
 
   enter: (state, event) => ({...state, file: event.file}),
 
-  // Where Neovim marks code taken from a /gen request that is not the user's yet, in one file, as it is now.
+  // Where Neovim marks code taken from a /gen request (or kept from a board task) that is not the user's yet, in one file, as it is now.
   generated: (state, event) => {
     const ranges = (event.marks ?? []).filter(mark => Number.isInteger(mark?.from) && Number.isInteger(mark.to))
-      .map(({from, to, gen}) => ({from, to, gen: Number.isInteger(gen) ? gen : null}));
+      .map(({from, to, gen}) => ({from, to, gen: MADE_IN(gen) ? gen : null}));
     const {[event.file]: _, ...others} = state.generated ?? {};
     return {...state, generated: ranges.length ? {...others, [event.file]: ranges} : others};
   },

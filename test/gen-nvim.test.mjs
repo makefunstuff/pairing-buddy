@@ -2,6 +2,7 @@
 // vim.ui.input and vim.ui.select (as snacks.nvim, dressing.nvim and noice.nvim do), once with Neovim's own prompt
 // on the command line, driven by keys. Skips without nvim.
 import assert from 'node:assert/strict';
+import {execFileSync} from 'node:child_process';
 import {existsSync, readFileSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {test} from 'node:test';
@@ -794,6 +795,73 @@ test('the gen card\'s keys from the chat: k opens the next file to review in the
     await until(() => remote('bufname()') === 'pair://gen/1/db/0007_status.sql', 'the file to review, opened');
     send({type: 'gen_open', action: card.action});
     await until(() => remote('bufname()') === 'pair://gen/list', ':Pair gen list');
+  } finally {
+    await stop();
+  }
+});
+
+test(':Pair review: a board task\'s branch in the list, the reviewer on top; Enter shows a diff, k keeps a hunk unsaved and ┊; a, A and t only on a pick; Alt-r', {skip, timeout: 60_000}, async () => {
+  const facts = 'PR #12 · commit 1a2b3c4 · checks passed (npm test) · review: 1 round, 1 minor left (b.js has no test) · not proven: Safari';
+  const board = fakeShepherdr(scratch('pair-board-'), {spaces: [{name: 'shop', key: 'SHO', path: '/src/shop'}], tasks: [
+    {id: 'SHO-80', title: 'Totals in cents', status: 'ready', place: 'p:here:shop', branch: 'work/80-cents', pr: {number: 12, url: 'https://github.com/o/shop/pull/12'}, said: 'y is 20 now.', facts},
+  ]});
+  const {project, keys, remote, asked, answer, said, stop} = await genInNvim('add helpers', {stub: true, board: board.command});
+  const git = (...args) => execFileSync('git', ['-C', project, '-c', 'user.email=t@t', '-c', 'user.name=t', ...args], {stdio: 'pipe'});
+  const buffer = () => JSON.parse(remote('luaeval("vim.json.encode({name = vim.api.nvim_buf_get_name(0), lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)})")'));
+  const a = () => JSON.parse(remote('luaeval("vim.json.encode({lines = vim.api.nvim_buf_get_lines(vim.fn.bufnr(\'a.js\'), 0, -1, false), modified = vim.bo[vim.fn.bufnr(\'a.js\')].modified, marks = #vim.api.nvim_buf_get_extmarks(vim.fn.bufnr(\'a.js\'), vim.api.nvim_create_namespace(\'pair_generated\'), 0, -1, {})})")'));
+  try {
+    git('init', '-q', '-b', 'main');
+    git('add', 'a.js');
+    git('commit', '-q', '-m', 'a');
+    git('checkout', '-q', '-b', 'work/80-cents');
+    writeFileSync(join(project, 'a.js'), 'const x = 1\nconst y = 20\nconst z = 3\n');
+    writeFileSync(join(project, 'b.js'), 'export const b = 1\n');
+    git('add', '.');
+    git('commit', '-q', '-m', 'cents');
+    git('checkout', '-q', 'main');
+    keys(':Pair review SHO-80<CR>');
+    await until(() => buffer().name.endsWith('pair://gen/list') && buffer().lines.some(line => line.startsWith('SHO-80 · Totals in cents')), 'the review in the list');
+    const {lines} = buffer();
+    assert.ok(lines.includes('  reviewer  review: 1 round, 1 minor left (b.js has no test) · checks passed (npm test) · PR #12'), lines.join('\n'));
+    assert.ok(lines.includes('  agent     y is 20 now.'));
+    assert.ok(lines.includes('  · not proven: Safari'));
+    assert.ok(lines.some(line => /^  ◌ ~ a\.js +\+1 -1 +⏎ diff  k keep  t tell$/.test(line)), lines.join('\n'));
+    assert.ok(lines.some(line => /^  ◌ \+ b\.js ! +\+1 +⏎ diff/.test(line)), 'the reviewer names b.js');
+    assert.match(remote('getline(".")'), /b\.js/, 'the cursor on its first file: the one the reviewer names');
+    await said(/^review SHO-80 · Totals in cents · work\/80-cents · 2 files/);
+    // Enter: the diff, read only; k on its change keeps it in a.js, unsaved, as code not yours yet.
+    keys('j<CR>');
+    await until(() => buffer().name.endsWith('pair://board/SHO-80/a.js'), 'the diff');
+    assert.deepEqual(buffer().lines, ['@@ -1,3 +1,3 @@', ' const x = 1', '-const y = 2', '+const y = 20', ' const z = 3']);
+    assert.equal(remote('&readonly'), '1');
+    keys('3Gk');
+    await until(() => a().lines[1] === 'const y = 20', 'the change kept in a.js');
+    assert.equal(a().modified, true, 'unsaved');
+    await until(() => a().marks > 0, 'marked ┊');
+    assert.equal(readFileSync(join(project, 'a.js'), 'utf8'), 'const x = 1\nconst y = 2\nconst z = 3\n', 'nothing written');
+    await said(/^SHO-80: a\.js: 1 change, 1 line, kept unsaved in yours, marked ┊ as not yours yet\. \/undo takes them back\. You kept pieces of SHO-80: merging its whole branch now would bring them in twice\./);
+    keys('q');
+    await until(() => buffer().lines.some(line => line.startsWith('  you kept pieces of SHO-80: merging its whole branch would bring them in twice')), 'the list says so');
+    // A: archive, on a pick that names it; c copies the command and runs nothing.
+    answer('c');
+    keys('A');
+    await until(() => /task archive SHO-80$/.test(remote('getreg(\'"\')')), 'the archive command copied');
+    assert.equal(asked().at(-1).prompt, 'Archive SHO-80? You kept pieces of it: merging its whole branch would bring them in twice.');
+    assert.deepEqual(asked().at(-1).items, ['archive SHO-80: out of every list, its record kept', 'copy the command, run nothing', 'nothing']);
+    // a: merge, which Shepherdr has as a tell to its agent; t: a tell of yours. Each runs on its y.
+    answer('y');
+    keys('a');
+    await until(() => board.calls().some(call => call.join(' ') === 'task tell SHO-80 merge it'), 'merge it told');
+    assert.equal(asked().at(-1).items[0], 'tell SHO-80 "merge it": its agent merges the branch');
+    answer('cap the retries', 'y');
+    keys('t');
+    await until(() => board.calls().some(call => call.join(' ') === 'task tell SHO-80 cap the retries'), 'the tell');
+    assert.ok(!board.calls().some(([verb, sub]) => verb === 'merge' || sub === 'archive'), 'never shepherdr merge; archive only copied');
+    // Alt-r on a relayed line of a task ready to merge reviews it: the same review, as you left it.
+    remote('luaeval("require(\'pair.agents\').on_relay({item = {kind = \'task\', id = \'SHO-80\', key = \'task:SHO-80\', status = \'ready\'}, text = \'#80 ready to merge: Totals in cents\'}) or 0")');
+    assert.match(remote('luaeval("require(\'pair\').status()")'), /M-r reviews/);
+    keys('<C-w>k<M-r>');
+    await said(/^review SHO-80 · .* · as you left it/);
   } finally {
     await stop();
   }

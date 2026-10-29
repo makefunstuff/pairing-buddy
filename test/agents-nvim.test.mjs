@@ -124,14 +124,14 @@ test('another agent\'s news waits for your save, shows as one line in the status
 
     keys('<Esc>:w<CR>'); // a breakpoint
     const line = await until(() => (status().includes('◇') ? status() : null), 'the relayed line');
-    assert.equal(line, `● pair  ◇ #7 ready to merge: Read every run +1  M-a · M-o opens`);
+    assert.equal(line, `● pair  ◇ #7 ready to merge: Read every run +1  M-a · M-o opens · M-r reviews`);
     const relayed = await until(() => messages.find(message => message.type === 'agents'), 'the chat\'s copy of the line');
     assert.equal(relayed.text, '#7 ready to merge: Read every run');
     assert.equal(relayed.more, 1, 'the notes agent waits in the list: one line at a time');
 
     keys('<M-o>');
     await until(() => remote('get(g:, "pair_opened", "")') === pr.url, 'Alt-o to open its pull request');
-    assert.match(status(), /M-a · M-o$/, 'used once, the key needs no words');
+    assert.match(status(), /M-a · M-o · M-r reviews$/, 'used once, the key needs no words');
 
     keys('<M-a>');
     await until(() => herdr.focused.length, 'the agent\'s pane to come to the front');
@@ -146,7 +146,7 @@ test('another agent\'s news waits for your save, shows as one line in the status
       'idle pi in notes notes',
       'working #8 Search trail · Reading the docs',
     ], 'what needs you first, what is done next, what still works last');
-    assert.equal(remote('&l:winbar'), 'Enter goes · o report or PR · d diff · t terminal · q closes');
+    assert.equal(remote('&l:winbar'), 'Enter goes · o report or PR · d diff · t terminal · r review · q closes');
     keys('1Gd');
     await until(() => remote('bufname()') === 'pair://agents/REP-7/diff', 'd: the diff of its branch');
     assert.deepEqual(JSON.parse(remote('json_encode([&l:filetype, &l:modifiable, &l:readonly])')), ['diff', 0, 1], 'read only');

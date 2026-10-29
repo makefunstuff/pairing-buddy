@@ -109,6 +109,7 @@ test('the board is read through its command: spaces, tasks of a space, a task in
   assert.deepEqual((await shepherdr.tasks({space: 'shop'})).map(task => task.id), ['SHO-7']);
   assert.deepEqual(await shepherdr.show('SHO-7'), {
     id: 'SHO-7', title: 'Read every run', status: 'ready', sub: '', machine: null, space: 'shop', branch: 'work/7-read', pr: 'https://github.com/o/shop/pull/12', outcome: null,
+    said: null, facts: null, brief: null,
   });
   assert.equal(await shepherdr.report('SHO-7', {space: 'shop'}), '/data/a1/1.html');
   assert.equal(await shepherdr.report('SHO-7', {space: 'web'}), null, 'kept in its own space');
