@@ -132,6 +132,7 @@ question for Pair (`@here` in it sends your selection in Neovim along), and a li
 | `/undo` | Undo Pair's last change of the day: an edit of the Driver's, a suggestion you took, or a whole `/gen` request; as `u` in `:Pair today` |
 | `/today` | What Pair did here today, as in `:Pair today` |
 | `/agents` | Your other agents and board tasks; a relayed line, picked with `Alt-↑`, opens what its task left behind with `o`, `d` and `t` ([agents.md](agents.md)) |
+| `/review <id>` | A board task's branch as a review in Neovim's `:Pair gen list`, and here what its agent and reviewer said; you keep its pieces in Neovim ([gen.md](gen.md#reviewing-a-board-task-pair-review)) |
 | `/search <text>` | Find in the conversation (`Ctrl-F`) |
 | `/copy [n]` | Copy Pair's last message (or the `n`th last) to the clipboard |
 | `/clear` | Clear the pane; the session and its history stay |

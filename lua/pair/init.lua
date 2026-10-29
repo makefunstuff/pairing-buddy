@@ -972,6 +972,11 @@ local function board_keep(message)
   local ok, result = pcall(function()
     local buf = load(message.file)
     vim.bo[buf].buflisted = true
+    -- A new file in a folder you do not have yet: its first :w makes the folder.
+    local folder = vim.fn.fnamemodify(message.file, ':h')
+    if vim.fn.isdirectory(folder) == 0 then
+      vim.api.nvim_create_autocmd('BufWritePre', {buffer = buf, once = true, callback = function() vim.fn.mkdir(folder, 'p') end})
+    end
     local origin = type(message.origin) == 'string' and message.origin or 'pair'
     local hunks = type(message.hunks) == 'table' and message.hunks or {}
     local order = {}

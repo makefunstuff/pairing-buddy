@@ -3,7 +3,7 @@
 // on the command line, driven by keys. Skips without nvim.
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {existsSync, readFileSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {fauxAssistantMessage, fauxText, fauxToolCall} from '@earendil-works/pi-ai';
@@ -801,7 +801,7 @@ test('the gen card\'s keys from the chat: k opens the next file to review in the
 });
 
 test(':Pair review: a board task\'s branch in the list, the reviewer on top; Enter shows a diff, k keeps a hunk unsaved and ┊; a, A and t only on a pick; Alt-r', {skip, timeout: 60_000}, async () => {
-  const facts = 'PR #12 · commit 1a2b3c4 · checks passed (npm test) · review: 1 round, 1 minor left (b.js has no test) · not proven: Safari';
+  const facts = 'PR #12 · commit 1a2b3c4 · checks passed (npm test) · review: 1 round, 1 minor left (lib/b.js has no test) · not proven: Safari';
   const board = fakeShepherdr(scratch('pair-board-'), {spaces: [{name: 'shop', key: 'SHO', path: '/src/shop'}], tasks: [
     {id: 'SHO-80', title: 'Totals in cents', status: 'ready', place: 'p:here:shop', branch: 'work/80-cents', pr: {number: 12, url: 'https://github.com/o/shop/pull/12'}, said: 'y is 20 now.', facts},
   ]});
@@ -815,19 +815,21 @@ test(':Pair review: a board task\'s branch in the list, the reviewer on top; Ent
     git('commit', '-q', '-m', 'a');
     git('checkout', '-q', '-b', 'work/80-cents');
     writeFileSync(join(project, 'a.js'), 'const x = 1\nconst y = 20\nconst z = 3\n');
-    writeFileSync(join(project, 'b.js'), 'export const b = 1\n');
+    mkdirSync(join(project, 'lib'));
+    writeFileSync(join(project, 'lib/b.js'), 'export const b = 1\n');
     git('add', '.');
     git('commit', '-q', '-m', 'cents');
     git('checkout', '-q', 'main');
+    assert.ok(!existsSync(join(project, 'lib')), 'on main, no lib/ yet');
     keys(':Pair review SHO-80<CR>');
     await until(() => buffer().name.endsWith('pair://gen/list') && buffer().lines.some(line => line.startsWith('SHO-80 · Totals in cents')), 'the review in the list');
     const {lines} = buffer();
-    assert.ok(lines.includes('  reviewer  review: 1 round, 1 minor left (b.js has no test) · checks passed (npm test) · PR #12'), lines.join('\n'));
+    assert.ok(lines.includes('  reviewer  review: 1 round, 1 minor left (lib/b.js has no test) · checks passed (npm test) · PR #12'), lines.join('\n'));
     assert.ok(lines.includes('  agent     y is 20 now.'));
     assert.ok(lines.includes('  · not proven: Safari'));
     assert.ok(lines.some(line => /^  ◌ ~ a\.js +\+1 -1 +⏎ diff  k keep  t tell$/.test(line)), lines.join('\n'));
-    assert.ok(lines.some(line => /^  ◌ \+ b\.js ! +\+1 +⏎ diff/.test(line)), 'the reviewer names b.js');
-    assert.match(remote('getline(".")'), /b\.js/, 'the cursor on its first file: the one the reviewer names');
+    assert.ok(lines.some(line => /^  ◌ \+ lib\/b\.js ! +\+1 +⏎ diff/.test(line)), 'the reviewer names lib/b.js');
+    assert.match(remote('getline(".")'), /lib\/b\.js/, 'the cursor on its first file: the one the reviewer names');
     await said(/^review SHO-80 · Totals in cents · work\/80-cents · 2 files/);
     // Enter: the diff, read only; k on its change keeps it in a.js, unsaved, as code not yours yet.
     keys('j<CR>');
@@ -857,6 +859,14 @@ test(':Pair review: a board task\'s branch in the list, the reviewer on top; Ent
     keys('t');
     await until(() => board.calls().some(call => call.join(' ') === 'task tell SHO-80 cap the retries'), 'the tell');
     assert.ok(!board.calls().some(([verb, sub]) => verb === 'merge' || sub === 'archive'), 'never shepherdr merge; archive only copied');
+    // k on a new file in a folder you do not have: a buffer at its path, unsaved; its :w makes the folder.
+    keys(':call search("lib/b")<CR>k');
+    await until(() => remote('bufloaded("lib/b.js")') === '1', 'lib/b.js kept as a buffer');
+    assert.equal(remote('getbufline("lib/b.js", 1)[0]'), 'export const b = 1');
+    assert.ok(!existsSync(join(project, 'lib/b.js')), 'unsaved');
+    keys(':b lib/b.js<CR>:w<CR>');
+    await until(() => existsSync(join(project, 'lib/b.js')), ':w writes it, folder and all');
+    keys(':Pair gen list<CR>');
     // Alt-r on a relayed line of a task ready to merge reviews it: the same review, as you left it.
     remote('luaeval("require(\'pair.agents\').on_relay({item = {kind = \'task\', id = \'SHO-80\', key = \'task:SHO-80\', status = \'ready\'}, text = \'#80 ready to merge: Totals in cents\'}) or 0")');
     assert.match(remote('luaeval("require(\'pair\').status()")'), /M-r reviews/);

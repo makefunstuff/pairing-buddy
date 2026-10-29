@@ -64,6 +64,7 @@ require('pair').setup({
 | `teach_key` | `'<M-?>'` | Asks for the idea behind Pair's words under your line, then opens its link ([the idea behind it](neovim.md#the-idea-behind-it)). Mapped in Normal mode while they show |
 | `agents_key` | `'<M-a>'` | Goes to the agent whose news Pair relayed, or puts the line away when it has no pane ([agents.md](agents.md)). Mapped in Normal mode while such a line shows |
 | `agents_open_key` | `'<M-o>'` | Opens the report or pull request of the board task whose news Pair relayed ([agents.md](agents.md#what-a-task-left-behind)). Mapped in Normal mode while a board task's line shows; `false` for none |
+| `agents_review_key` | `'<M-r>'` | Opens the branch of the board task whose news Pair relayed as a [review](gen.md#reviewing-a-board-task-pair-review). Mapped in Normal mode while the line of a task ready to merge shows; `false` for none |
 | `motion` | `true` | Fades, the glow of a green, and the trail behind the gaze; without it the gaze still steps line by line |
 | `decide_key`, `link_key` | `'<M-d>'`, `'<M-l>'` | In a note's margin: log the decision on your line, open the code a mark names. Mapped in Normal mode only in a note with such a mark ([notes.md](notes.md)), and `decide_key` also in [`:Pair gen list`](gen.md#the-review-list-pair-gen-list), where it logs a `? guessed` line as a decision |
 | `searches` | `true` | Read your Telescope, snacks.picker and fzf-lua searches for the [search trail](neovim.md#the-search-trail) |
@@ -121,7 +122,8 @@ to standard ones and does not fade.
 | `:Pair noise` | It was not (same as `Alt-n`) |
 | `:Pair why` | The idea worth keeping behind Pair's words under your line (same as `Alt-?`); again, it opens the link that came with it |
 | `:Pair open` | Open the place Pair asked to show while you were typing |
-| `:Pair agents` | Your other agents and board tasks, the ones that need you first; `⏎` goes to one, `o` opens a task's report or pull request, `d` its branch's diff (read only), `t` a terminal in its worktree ([agents.md](agents.md#what-a-task-left-behind)) |
+| `:Pair agents` | Your other agents and board tasks, the ones that need you first; `⏎` goes to one, `o` opens a task's report or pull request, `d` its branch's diff (read only), `t` a terminal in its worktree ([agents.md](agents.md#what-a-task-left-behind)), `r` its branch as a review |
+| `:Pair review [id]` | A board task's branch as a review in `:Pair gen list` (same as `Alt-r` on a relayed line of a task ready to merge): what its reviewer said on top, `≠ brief` on the branch, `⏎` a file's diff, `k` keeps a file or a hunk in yours, unsaved; `t` tell, `a` merge and `A` archive only on a pick ([gen.md](gen.md#reviewing-a-board-task-pair-review)). Without an id, the relayed task |
 | `:Pair today` | The [ledger](neovim.md#the-ledger): everything Pair did in this project today; `⏎` goes there or shows the output, `u` undoes one of its edits later, or a whole `/gen` request. Its last line, `┊ not yours yet: 4 files · 211 lines`, is the code you took from `/gen` that is [not yours yet](gen.md#owning-generated-code): `⏎` there goes to it, `o` makes one file's yours, `O` all of it |
 | `:Pair decide` | Log the decision on the cursor's line of a note in `decisions.md` next to it (same as `Alt-d`; [notes.md](notes.md#the-decision-log)) |
 | `:Pair tasks` | List the work in the current note as tasks; nothing is added until `y` ([notes.md](notes.md#tasks-only-when-you-ask)) |

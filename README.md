@@ -53,7 +53,10 @@ you think, and take the keyboard only when you hand it over. Pair aims for that:
   your work board, [Shepherdr](https://github.com/eliasstravik/shepherdr), with `/gen board`: Pair writes the task's
   brief from yours (your words, the note's lines with `file:line`, the files, the tests, the open questions), lets you
   edit it, and adds it only as you pick: add only, add and delegate, plan first, research only, or copy the command.
-  A request too big for `/gen`'s limits is offered to the board.
+  A request too big for `/gen`'s limits is offered to the board. When a task is ready, `:Pair review <id>` (or
+  `Alt-r` on its line) opens its branch as a review: what its reviewer said, `≠ brief` on the branch, each file's
+  diff, and `k` to keep a file or a hunk in yours, unsaved; tell, merge (a tell to its agent) and archive only on
+  your pick.
 - **Your other agents, in one line.** When a board task or another agent needs you, is ready to merge or is done,
   Pair says so at your next pause, never while you type; `o`, `d` and `t` open what a task left behind (its report or
   pull request, its branch's diff, a terminal in its worktree), and the chat's header counts the repo's tasks
@@ -104,7 +107,8 @@ your keys and logins).
 - [/gen](docs/gen.md): ask Pair for code at your cursor, as new files to review, as a sample to run outside the
   project, or as a scaffold built in a copy of it, against your brief; take it with one key, `:w`, `/keep` or `k` per
   file, undo the request as one; Pair's own edits carry their origin, and taken code is marked `┊` until you own it;
-  `/gen board` hands a request to the board as a task, its brief built from yours
+  `/gen board` hands a request to the board as a task, its brief built from yours, and `:Pair review` opens a task's
+  branch as a review to keep pieces of
 - [Push-to-talk](docs/voice.md): ask aloud, heard by whisper.cpp on your CPU or an OpenRouter model, with answers
   read aloud when you are away
 - [Models and providers](docs/models.md): local servers, API keys, subscription logins, one model for both roles,

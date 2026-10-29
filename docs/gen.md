@@ -332,7 +332,8 @@ says `gen #4 · 2 to review · :Pair gen list`, and the chat's status `gen #4: 2
 
 ### The review list: :Pair gen list
 
-`:Pair gen list` opens the file requests of the last seven days in a split at the bottom, newest first:
+`:Pair gen list` opens the file requests of the last seven days in a split at the bottom, newest first, and the
+[reviews of board tasks](#reviewing-a-board-task-pair-review) among them:
 
 ```
 gen #4 · file · a migration adding status to orders, and its test · 14:02
@@ -671,8 +672,83 @@ the project. The chat says what the board made, `gen #9 → board SHO-80 · adde
 brief now.`, and the ledger books it (`board`).
 
 Pair adds a task only on a pick that names what it does, and adds it only (for later) unless the pick names delegate.
-It never tells, merges, stops or sets anything on the board by itself. Without a board (`"board": null`), `/gen board`
-says so; when the board refuses (Shepherdr not running, a space it does not know), the chat says what the board said.
+`/gen board` never tells, merges, stops or sets anything on the board; once the task is done, its
+[review](#reviewing-a-board-task-pair-review) can tell its agent something, on your pick. Without a board
+(`"board": null`), `/gen board` says so; when the board refuses (Shepherdr not running, a space it does not know), the
+chat says what the board said.
+
+## Reviewing a board task: :Pair review
+
+A board task that is done is a big proposal: a branch of commits its agent made and its reviewer checked. `:Pair
+review SHO-80` (or `/review SHO-80` in the chat, `Alt-r` on a relayed line of a task ready to merge, `r` on a task in
+[`:Pair agents`](agents.md)) opens its branch in the [review list](#the-review-list-pair-gen-list), where you read it a
+file at a time and keep the pieces you want, in your own checkout. `:Pair review` alone reviews the task of the
+relayed line.
+
+```
+SHO-80 · Billing module · work/80-billing · 4 files · 14:20
+  reviewer  review: 1 round, 2 minor left (retries without a cap in billing/webhook.js:3; …) · checks passed (npm test) · PR #104
+  agent     Invoices and webhooks, with tests.
+  · not proven: real Stripe
+  ≠ brief "Money in integer cents, never floats." NOTES.md:3 · billing/invoice.js:2 sums in a float
+  ◌ ~ billing/invoice.js ≠1     +3 -3    ⏎ diff  k keep  t tell
+  ◌ + billing/webhook.js !      +3       ⏎ diff  k keep  t tell
+  ◌ ~ cmd/main.js               +1 -1    ⏎ diff  k keep  t tell
+  ◌ - old.txt                   +0 -1    deleted on the branch · ⏎ diff
+  o PR · t tell its agent · a merge (asks) · A archive (asks)
+```
+
+**On top, what the board says of it.** Shepherdr keeps a task's review in its *facts*, the line its agent writes when
+it reports ready (`PR #104 · commit 1a2b3c4 · checks passed (…) · review: 1 round, 2 minor left (…) · not proven: …`,
+read with `shepherdr task show <id> --json`). The `reviewer` line is its review and checks parts, with the pull
+request's number; `agent` is what the agent said when it was ready; each other part (what it decided, follow-ups,
+what is not proven, a failure it put first) is a `·` line. A task without facts shows `no review in its facts`.
+
+**≠ brief on the branch.** The [brief's check](#the-debrief--brief-and--guessed) runs on the branch, after the list
+opens (`≠ brief: checking…` until it is done): the goal, the reviewed task and your note against the branch's files,
+the first 20 of them in the list's order, 300 lines each. What holds up is listed as for a request, `≠1` marks its
+file, and the chat gets it too. Without a brief, or without the Partner's model, there is no check.
+
+**The files in the order the brief makes them matter**: those `≠ brief` found against it first, then those the task's
+brief (Shepherdr's) or your note names, in the order they are named, then those the reviewer's facts name (`!`), then
+the rest, the bigger changes first. `+` is a file the branch adds, `~` one it changes, `-` one it deletes.
+
+| Key | What it does |
+| --- | --- |
+| `Enter` | The file's diff, read only, in a split (`pair://board/SHO-80/billing/invoice.js`): each change with three lines around it, and whether it is kept |
+| `k` | Keeps the whole file in yours (see below). In the diff, `k` keeps the change under the cursor, `K` the whole file, `t` tells about that line, `q` goes back to the list |
+| `t` | Tells the task's agent something: you write it (`billing/webhook.js: ` is there already, from the file you are on), then pick |
+| `a` | Merge: asks the task's agent to merge it, on a pick |
+| `A` | Archive the task, on a pick |
+| `o` | Opens its pull request |
+| `u` | Takes back all you kept of it ([one undo](#one-undo-per-request)) |
+
+**Keeping a piece.** What the branch changes goes into your buffer as it is now, unsaved: a hunk at a time, placed by
+its text, so your edits since stay. A file the branch adds becomes a buffer at its path, not written until you `:w`.
+Kept code is Pair's edit of origin [`board:SHO-80`](#who-wrote-it-edits-carry-their-origin), marked `┊` as [not
+yours yet](#owning-generated-code) until you edit it or `:Pair own` it, and the ledger books the review as one line
+(`review SHO-80 · Billing module`) that `/undo` and `u` in `:Pair today` take back as one. A change on lines you
+changed since is not kept, and the chat says so (`git show work/80-billing:billing/invoice.js` has it). Pair keeps no
+file the branch deletes, and deletes none of yours; a file that is not text is not kept either (`git checkout <branch>
+-- <file>` takes it).
+
+**Then the branch.** Once you kept pieces of it, merging the whole branch would bring them in twice. Pair says so
+when you keep the first one, in the list too, and offers `archive SHO-80` with `A`. The review stays as you left it:
+opened again while the branch has no new commit, it is the same review; after a new commit it is a new one.
+
+**Each board command on a pick that names it.** `t`, `a` and `A` ask first, in a `vim.ui.select` dialog, and each
+offers to copy the command (to the `"` and `+` registers) instead:
+
+| Pick | What Pair runs |
+| --- | --- |
+| `t`: tell SHO-80 | `shepherdr task tell SHO-80 '<what you wrote>'` |
+| `a`: tell SHO-80 "merge it" | `shepherdr task tell SHO-80 'merge it'`: Shepherdr has no approve, a task merges when its brief or you say so, so its agent is told, and merges it |
+| `A`: archive SHO-80 | `shepherdr task archive SHO-80`: out of every list, its record kept; a running agent is stopped first |
+
+Pair never runs `shepherdr merge`, and never tells, archives, stops or sets anything without your pick. The branch is
+read from git in this repository (`git diff <merge base>...<branch>`, `git show`) and never changed. The chat books
+each command (`board`: `told SHO-80 to merge it`). A task whose branch is not in this repository, one with no branch
+yet, or no board (`"board": null`) has no review, and Pair says why.
 
 ## One undo per request
 
@@ -691,6 +767,9 @@ last thing Pair changed today, and for a request that is all of it:
   with their buffers.
 - of a scaffold, the hunks you took from it are undone like code taken from `here`, and the files of its copy you did
   not keep are dropped. The copy itself stays until you delete it or it expires.
+- of a [board task's review](#reviewing-a-board-task-pair-review), what you kept is taken back out of your buffers
+  (`Undid SHO-80: took back 3 pieces`), and its files are there to keep again. A file the branch added stays as a
+  buffer at its path, emptied.
 
 `u` on the request in [`:Pair today`](neovim.md#the-ledger) does the same for any request of the day, and `u` again
 makes what you took again: code goes back into your buffers, and a file deleted by the undo comes back as a buffer
@@ -710,6 +789,7 @@ Every edit the Neovim plugin sends to the daemon has an `origin`:
 | `user` | You: your typing, your `u`, a formatter or plugin you ran |
 | `pair` | Pair, for you: the Driver's typing (also the undo of an edit you stopped halfway), a suggestion you took (`Alt-y`, `:Pair accept`, `a` in the chat pane, the slice of `:Pair new`), and an undo or redo from `:Pair today` |
 | `gen:#n` | A `/gen` request, by its number: the code you took from it, and its undo or redo from `/undo` or `:Pair today` |
+| `board:<id>` | A board task, by its id (`board:SHO-80`): the code you kept from its [review](#reviewing-a-board-task-pair-review), and its undo or redo |
 
 The plugin never sends your edits and Pair's as one: edits of yours still waiting for the debounce (`debounce_ms`)
 are sent before Pair changes the buffer, and Pair's change is sent as soon as it is in. An edit without an origin
@@ -807,6 +887,11 @@ Pair does not commit, and nothing of this reaches git: owning is about your read
 - `/gen board`'s task is edited only in Neovim (`pair://board/new`); in the chat, copy the command (`c`) to change it.
   `/gen board #n` hands on only a request of the running daemon: one from before a restart is gone. A task's brief
   quotes the note, not the decisions logged since.
+- A board task's review is read and kept in Neovim; the chat's `/review` opens it there, and with no Neovim says what
+  the reviewer said. Its verdict is the words of the task's facts line, as its agent wrote them: Pair reads no
+  findings of the reviewer that are not in it. The diff is against the commit the branch left the base at, and only
+  of what is committed on the branch. Files it renames show as one deleted and one added. Pair keeps no deleted file
+  and no file that is not text, and lists at most 300 files of a branch.
 - `scaffold` keeps one file at a time; there is no key that keeps them all. Files a scaffold deletes are not
   proposed: only new and changed files are.
 - A scaffold's copy has your unsaved buffers, but a `--branch` worktree starts from `HEAD`, without your uncommitted
