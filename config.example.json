@@ -10,7 +10,7 @@
   // While you work, Pair asks the Watcher's model for one token every 4 min, so a server that unloads idle
   // models (many do after 5 min) still has it loaded when a remark needs scoring. false turns it off; with an
   // "anthropic" or a "provider" Watcher it is off unless set.
-  "keepWarm": true,
+  // "keepWarm": false,
 
   // While the Watcher's calls take 1.5 s or more, Pair asks it about fewer kinds of moment: the ones you can see on
   // your screen go first, the ones you cannot (a failure you missed, a crash) never. false asks about every kind.
@@ -86,7 +86,7 @@
   // remark now, so fewer moments go to the Watcher. Without it the Watcher's score and the bar decide; down or slower
   // than "timeoutMs", Pair goes by them at once (see docs/decision.md). `pair auth models openrouter` lists them.
   // "decision": {"provider": "openrouter", "model": "typesafe/jev-1.14", "timeoutMs": 1500},
-  // Or a gateway: {"api": "openai" (OpenAI's Decisions API) or "system-one", "baseUrl": "...", "model": "..."}
+  // Or a gateway: {"api": "openai" (OpenAI's Decisions API), "system-one" or "llama-cpp", "baseUrl": "...", "model": "..."}
 
   // Push-to-talk: hold Alt-t in Neovim and ask aloud. whisper.cpp writes it down on the CPU (see docs/voice.md).
   // "voice": {

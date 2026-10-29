@@ -92,7 +92,7 @@ eval "$(pair shell-hook bash)"   # or zsh, in your rc file
 pair shell-hook fish | source    # fish, in config.fish
 ```
 
-`pair report --start|--exit N|--ready [--cmd TEXT] [--shell PID] ...` is what the hook runs; you never need to.
+`pair report --start|--exit N|--ready [--cmd TEXT] [--shell PID] [--n N] [--keys]` is what the hook runs; you never need to.
 
 ## Chat commands
 

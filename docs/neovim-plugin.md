@@ -13,9 +13,11 @@ The keys exist only while there is something for them to do, and only where you 
 | `Alt-y` | Take Pair's suggested change, as your own edit |
 | `Alt-t` (hold, or tap twice) | Ask aloud: [push-to-talk](voice.md), when voice is set up |
 | `Alt-u` / `Alt-n` | Tell Pair its last remark was useful / noise |
-| `Alt-l` / `Alt-d` | In a Markdown note: open the code a mark names / log the decision on your line |
+| `Alt-l` / `Alt-d` | In a Markdown note: open the code a mark names / log the decision on your line. In `:Pair gen list`, `Alt-d` logs a `? guessed` line as a decision |
 | `Alt-?` | The one idea worth keeping behind Pair's words under your line; again, open its link to the docs |
 | `Alt-a` | Go to the agent whose news Pair relayed ([your other agents](agents.md)) |
+| `Alt-o` | On a relayed board task's line: open its report or pull request ([your other agents](agents.md#what-a-task-left-behind)) |
+| `Alt-r` | On the relayed line of a board task ready to merge: open its branch as a [review](gen.md#reviewing-a-board-task-pair-review) |
 | `Alt-g` | Ask Pair for code ([/gen](gen.md)): at the cursor, or in Visual mode over the selection; while Pair's question waits, show it again |
 | `\r` (`<LocalLeader>r`) | In a [/gen try](gen.md#samples-gen-try-and-keep)'s sample: write it and run it again in Pair's pane. In a file of a [/gen scaffold](gen.md#many-files-gen-scaffold)'s copy: write it and check the copy again |
 | any key | Take the wheel back while Pair drives |
@@ -123,8 +125,8 @@ to standard ones and does not fade.
 | `:Pair why` | The idea worth keeping behind Pair's words under your line (same as `Alt-?`); again, it opens the link that came with it |
 | `:Pair open` | Open the place Pair asked to show while you were typing |
 | `:Pair agents` | Your other agents and board tasks, the ones that need you first; `⏎` goes to one, `o` opens a task's report or pull request, `d` its branch's diff (read only), `t` a terminal in its worktree ([agents.md](agents.md#what-a-task-left-behind)), `r` its branch as a review |
-| `:Pair review [id]` | A board task's branch as a review in `:Pair gen list` (same as `Alt-r` on a relayed line of a task ready to merge): what its reviewer said on top, `≠ brief` on the branch, `⏎` a file's diff, `k` keeps a file or a hunk in yours, unsaved; `t` tell, `a` merge and `A` archive only on a pick ([gen.md](gen.md#reviewing-a-board-task-pair-review)). Without an id, the relayed task |
-| `:Pair today` | The [ledger](neovim.md#the-ledger): everything Pair did in this project today; `⏎` goes there or shows the output, `u` undoes one of its edits later, or a whole `/gen` request. Its last line, `┊ not yours yet: 4 files · 211 lines`, is the code you took from `/gen` that is [not yours yet](gen.md#owning-generated-code): `⏎` there goes to it, `o` makes one file's yours, `O` all of it |
+| `:Pair review [id]` | A board task's branch as a review in `:Pair gen list` (same as `Alt-r` on a relayed line of a task ready to merge): what its reviewer said on top, `≠ brief` on the branch, `⏎` a file's diff, `k` keeps a file in yours, unsaved; in the diff, `k` keeps the change under the cursor and `K` the whole file, `t` tells the task's agent about the line; `o` opens the task's pull request; `t` tell, `a` merge and `A` archive only on a pick ([gen.md](gen.md#reviewing-a-board-task-pair-review)). Without an id, the relayed task |
+| `:Pair today` | The [ledger](neovim.md#the-ledger): everything Pair did in this project today; `⏎` goes there or shows the output, `u` undoes one of its edits later, or a whole `/gen` request; `+`/`-` rate a remark useful or noise; `q` closes. Its last line, `┊ not yours yet: 4 files · 211 lines`, is the code you took from `/gen` that is [not yours yet](gen.md#owning-generated-code): `⏎` there goes to it, `o` makes one file's yours, `O` all of it |
 | `:Pair decide` | Log the decision on the cursor's line of a note in `decisions.md` next to it (same as `Alt-d`; [notes.md](notes.md#the-decision-log)) |
 | `:Pair tasks` | List the work in the current note as tasks; nothing is added until `y` ([notes.md](notes.md#tasks-only-when-you-ask)) |
 | `:Pair clear` | Remove Pair's points and words and the marks in a note's margin, and end the questions of `:Pair new` |

@@ -60,7 +60,7 @@ Then add the plugin to your lazy.nvim specs:
 
 With `auto_connect`, every Neovim connects to the daemon at startup. Without a plugin manager:
 `vim.opt.rtp:append('/path/to/pairing-buddy')` and `require('pair').setup({auto_connect = true})` in your config.
-The plugin's options are in [neovim.md](neovim-plugin.md#setup).
+The plugin's options are in [neovim-plugin.md](neovim-plugin.md#setup).
 
 **Upgrading.** Run `npm install -g github:makefunstuff/pairing-buddy` and `pair setup` again, also after upgrading
 Node.js: the service names the Node.js binary it runs, and setup rewrites it and restarts the daemon.
@@ -137,7 +137,7 @@ as its LSP's diagnostics or a file it reloads while you are elsewhere, never mak
 whichever Neovim has it loaded, the one you are in first.
 
 **Restarts.** If the daemon restarts, the chat pane's status says so, the pane waits for it and carries on,
-without showing the history twice. Neovim reconnects by itself too ([neovim.md](neovim-plugin.md#setup)). If you had asked something the
+without showing the history twice. Neovim reconnects by itself too ([neovim-plugin.md](neovim-plugin.md#setup)). If you had asked something the
 restart cut off, Pair finishes that answer and shows it marked as late, in the chat and in Neovim, also when they
 reconnect after it. A remark Pair was making unasked, or a hand-over, is dropped instead.
 

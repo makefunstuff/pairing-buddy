@@ -10,7 +10,7 @@ description: "How Pair is tested: model-free tests with scripted models and fake
 npm test
 ```
 
-Runs every test that needs no model, in under a minute, with scripted models and fakes of herdr, the providers and
+Runs every test that needs no model, in a minute or two, with scripted models and fakes of herdr, the providers and
 the work board.
 
 - **The core.** Event folding, the triggers, the budget and speak gate, the tool policy per role (also with

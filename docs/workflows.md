@@ -43,7 +43,7 @@ No tests? Builds and runs are read the same way, and you can [hand over without 
 
 Give Pair the keyboard for one change with `:Pair drive <what>`, `/drive <what>` or "you take it" in the chat. The
 statusline says `pair has the wheel · any key takes it back`; Pair types the edit into your buffer while you watch,
-checks the unsaved buffer with your tests, and hands back. One `u` undoes it all.
+checks the unsaved buffer with your tests, and hands back. `u` undoes each edit.
 
 Without a test, say what you expect to see: `you take it: make the ids spread over the table, avg probe stays under
 2`. Pair builds and runs your unsaved buffer in a scratch copy with your own last command, and hands back with the

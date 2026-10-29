@@ -43,7 +43,7 @@ only the project is writable. Switch with `/scout` or `:Pair scout`. Details in 
 
 Takes the keyboard for one change when you hand it over: `:Pair drive <what>`, `/drive <what>`, or "you take it" /
 "your turn" in the chat. It types the change into your buffer while you watch, a line at a time, up to five edits,
-as one undo step, and never saves. Before it hands back, it checks your unsaved buffer with the project's tests, or
+each one undo step, and never saves. Before it hands back, it checks your unsaved buffer with the project's tests, or
 with the build and run you last ran. Any key you press takes the wheel back.
 
 `:Pair drive!` (or `/drive!`) keeps the wheel for each request after it, until you take it back. Details in

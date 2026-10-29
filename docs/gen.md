@@ -144,8 +144,14 @@ it.
        in Pair's copy …/gen/shop-1a2b3c4d/7 · ran ✓ `go build ./...` · ✓ `go test ./...`
        check ✓ `go test ./...`: 47 tests, 6 packages
        │ + internal/admin/orders.go       +118
+       │ + internal/admin/orders_test.go  +76
+       │ + internal/admin/status.go       +41
+       │ + internal/admin/status_test.go  +38
+       │ + web/admin/orders.html          +64
+       │ + web/admin/order.html           +52
        │ ~ cmd/shop/main.go               +3 -1
-       │ … 5 more
+       │ ~ internal/orders/repo.go        +12 -0
+       │ … 1 more
        ≠ brief "Admin is read-only for now." NOTES.md:17 · internal/admin/orders.go:64 …
        ? guessed html/template, no JS
 
@@ -494,9 +500,13 @@ in Pair's copy /home/you/.local/state/pairing-buddy/gen/shop-1a2b3c4d/7 · ran �
 check ✓ `go test ./...`: 47 tests, 6 packages
 │ + internal/admin/orders.go       +118
 │ + internal/admin/orders_test.go  +76
+│ + internal/admin/status.go       +41
+│ + internal/admin/status_test.go  +38
+│ + web/admin/orders.html          +64
+│ + web/admin/order.html           +52
 │ ~ cmd/shop/main.go               +3 -1
 │ ~ internal/orders/repo.go        +12 -0
-│ … 5 more
+│ … 1 more
 ≠ brief "Admin is read-only for now." NOTES.md:17 · internal/admin/orders.go:64 the page changes the status
 ? guessed html/template, no JS
 not run: `npm install htmx.org`: the copy has no network (gen.network), so install it yourself once you keep the files
@@ -940,8 +950,8 @@ Pair does not commit, and nothing of this reaches git: owning is about your read
   only when the brief says something.
 - A brief line you chose to go against is remembered for the session (also across a daemon restart, from the
   ledger); the next session asks again.
-- `? guessed` lines are words in the chat and the ledger. Only `:Pair gen list`, for a `file` request, logs one as a
-  decision (`Alt-d`).
+- `? guessed` lines are words in the chat and the ledger. Only `:Pair gen list` logs one as a decision (`Alt-d`),
+  for a `file` request, a scaffold, or a try with a kept file.
 - A request lives in the daemon's memory. A daemon restart stops one that runs, and code it proposed at your cursor
   that you did not take is gone; the ledger line stays, and what you took can still be undone from it. New files
   to review are not gone: the ledger keeps them ([above](#after-a-restart)).
