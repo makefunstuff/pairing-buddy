@@ -3,10 +3,10 @@
 // that points at them, and a chat client, as the chat pane would be. Writes `ready` when Neovim may start.
 // usage: node stage.mjs <scene> <scratch dir under /tmp/paircap.*>
 import {execFileSync, spawn} from 'node:child_process';
-import {cpSync, existsSync, mkdirSync, openSync, readFileSync, utimesSync, writeFileSync} from 'node:fs';
+import {cpSync, existsSync, mkdirSync, openSync, readFileSync, symlinkSync, utimesSync, writeFileSync} from 'node:fs';
 import {homedir} from 'node:os';
 import {connect} from 'node:net';
-import {basename, join} from 'node:path';
+import {basename, dirname, join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {readMessages, sendMessage} from '../../src/protocol.mjs';
 import {openStore} from '../../src/store.mjs';
@@ -52,12 +52,23 @@ if (scene.blank) {
 // tasks, each on a branch in a worktree of its own) and herdr's agents, `worktree:<n>` in their cwd being task n's.
 // Scenes without them read no board at all, never yours.
 const board = join(dir, 'board');
-const showBoard = tasks => writeFileSync(join(board, 'state.json'), JSON.stringify({spaces: [{name: basename(project), key: 'HSH', path: project}], tasks}));
+// A task's `work` (file -> its text, or a function of the text it had) is committed on its branch, as its agent would
+// have; a task with `noWorktree` is the branch the scene itself is on.
+const key = scene.agents?.key ?? scene.agents?.tasks[0]?.id.split('-')[0] ?? 'HSH';
+const showBoard = tasks => writeFileSync(join(board, 'state.json'), JSON.stringify({spaces: [{name: basename(project), key, path: project}], tasks}));
 const worktreeOf = n => join(dir, 'work', `${basename(project)}-${n}`);
 if (scene.agents) {
   mkdirSync(board);
-  for (const task of scene.agents.tasks) {
-    execFileSync('git', ['worktree', 'add', '-q', '-b', task.branch, worktreeOf(task.id.split('-')[1])], {cwd: project, stdio: 'ignore'});
+  for (const task of scene.agents.tasks.filter(each => !each.noWorktree)) {
+    const tree = worktreeOf(task.id.split('-')[1]);
+    execFileSync('git', ['worktree', 'add', '-q', '-b', task.branch, tree], {cwd: project, stdio: 'ignore'});
+    if (!task.work) continue;
+    for (const [file, text] of Object.entries(task.work)) {
+      mkdirSync(dirname(join(tree, file)), {recursive: true});
+      writeFileSync(join(tree, file), typeof text === 'function' ? text(readFileSync(join(tree, file), 'utf8')) : text);
+    }
+    execFileSync('git', ['add', '-A'], {cwd: tree});
+    execFileSync('git', ['-c', 'user.name=agent', '-c', 'user.email=agent@example.com', 'commit', '-qm', task.title], {cwd: tree});
   }
   for (const agent of scene.agents.herdr) agent.cwd = agent.cwd.replace(/^worktree:(\d+)$/, (_, n) => worktreeOf(n));
   showBoard(scene.agents.tasks);
@@ -120,14 +131,17 @@ writeFileSync(join(dir, 'config.json'), JSON.stringify({
   keepWarm: false,
   ...(scene.testOnSave ? {testOnSave: {[project]: scene.testOnSave}} : {}),
   ...voice(),
-  // the stand-in board, or none: not yours
-  board: scene.board || scene.agents ? join(HERE, 'board.mjs') : null,
+  // the stand-in board, or none: not yours. It is `shepherdr` on the daemon's PATH, so the commands Pair shows read as
+  // the board's own.
+  board: scene.board || scene.agents ? 'shepherdr' : null,
   agents: Boolean(scene.agents),
   ...(LIVE ? {model: live} : {models: {watcher: model('watcher'), partner: model('partner')}}),
 }, null, 2));
 const out = openSync(join(dir, 'daemon.log'), 'a');
+mkdirSync(join(dir, 'bin'));
+symlinkSync(join(HERE, 'board.mjs'), join(dir, 'bin', 'shepherdr'));
 const daemon = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', PAIR, 'daemon'], {
-  env: {...process.env, PAIR_CONFIG: join(dir, 'config.json'), ...(scene.agents ? {CAP_BOARD: join(board, 'state.json')} : {}), TZ: zone(scene.clock)}, stdio: ['ignore', out, out],
+  env: {...process.env, PATH: `${join(dir, 'bin')}:${process.env.PATH}`, PAIR_CONFIG: join(dir, 'config.json'), ...(scene.agents ? {CAP_BOARD: join(board, 'state.json')} : {}), TZ: zone(scene.clock)}, stdio: ['ignore', out, out],
 });
 while (!existsSync(socket)) await sleep(50);
 

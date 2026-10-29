@@ -384,3 +384,139 @@ export const scenes = {
 // The chat pane's layouts (chat-layout): the same remark and question as the chat scene, in a narrow pane, then the
 // pane made wide.
 scenes['chat-layout'] = scenes.chat;
+
+// The tutorials' scenes (docs/tutorials): /gen in its shapes, the board and its review, the brief kept in step.
+const RELEASE = '\n// Release ends job id\'s lease, so the next Lease of it succeeds at once.\nfunc (q *Queue) Release(id string) {\n\tdelete(q.leased, id)\n}';
+const NOTES = '# hookd\n\nWebhooks go out at least once, never twice at the same time.\n\n- A job is leased to one worker; the lease outlives the last attempt.\n- Standard library only: no new modules.\n- Tests run with `go test ./...`.\n';
+// The project with its morning's fixes in, Release in the queue and a short NOTES.md: the brief /gen runs against.
+function released(project) {
+  fixed(project);
+  writeFileSync(join(project, QUEUE), `${readFileSync(join(project, QUEUE), 'utf8')}${RELEASE}\n`);
+  writeFileSync(join(project, 'NOTES.md'), NOTES);
+}
+const LRU = 'package main\n\nimport (\n\t"container/list"\n\t"fmt"\n)\n\n// recent keeps the last n job ids seen; Seen says whether id was among them.\ntype recent struct {\n\tn     int\n\torder *list.List\n\tat    map[string]*list.Element\n}\n\nfunc newRecent(n int) *recent {\n\treturn &recent{n: n, order: list.New(), at: map[string]*list.Element{}}\n}\n\nfunc (r *recent) Seen(id string) bool {\n\tif e, ok := r.at[id]; ok {\n\t\tr.order.MoveToFront(e)\n\t\treturn true\n\t}\n\tr.at[id] = r.order.PushFront(id)\n\tif r.order.Len() > r.n {\n\t\tdelete(r.at, r.order.Remove(r.order.Back()).(string))\n\t}\n\treturn false\n}\n\nfunc main() {\n\tr := newRecent(2)\n\tfor _, id := range []string{"evt_1", "evt_2", "evt_1", "evt_3", "evt_2"} {\n\t\tfmt.Println(id, r.Seen(id))\n\t}\n}\n';
+const HEALTH = 'package health\n\nimport (\n\t"fmt"\n\t"net/http"\n)\n\n// Lener is what the handler reads: how many jobs are leased now.\ntype Lener interface{ Len() int }\n\n// Handler answers /healthz with 200 and the number of leased jobs.\nfunc Handler(q Lener) http.HandlerFunc {\n\treturn func(w http.ResponseWriter, r *http.Request) {\n\t\tfmt.Fprintf(w, "ok %d leased\\n", q.Len())\n\t}\n}\n';
+const HEALTH_TEST = 'package health\n\nimport (\n\t"net/http/httptest"\n\t"testing"\n)\n\ntype two struct{}\n\nfunc (two) Len() int { return 2 }\n\nfunc TestHandler(t *testing.T) {\n\trec := httptest.NewRecorder()\n\tHandler(two{})(rec, httptest.NewRequest("GET", "/healthz", nil))\n\tif got := rec.Body.String(); got != "ok 2 leased\\n" {\n\t\tt.Fatalf("got %q", got)\n\t}\n}\n';
+const MAIN = 'package main\n\nimport (\n\t"log"\n\t"net/http"\n\t"time"\n\n\t"example.com/hookd/internal/delivery"\n\t"example.com/hookd/internal/health"\n\t"example.com/hookd/internal/queue"\n)\n\nfunc main() {\n\tq := queue.New(delivery.Config{MaxAttempts: 5, Budget: 15 * time.Second, AttemptTimeout: 2 * time.Second})\n\thttp.Handle("/healthz", health.Handler(q))\n\tlog.Fatal(http.ListenAndServe(":8080", nil))\n}\n';
+const LEN = '\n// Len says how many jobs are leased now.\nfunc (q *Queue) Len() int { return len(q.leased) }';
+const LEASE_TEST = 'package queue\n\nimport (\n\t"testing"\n\t"time"\n\n\t"example.com/hookd/internal/delivery"\n)\n\n// A released job is free at once, long before its lease would run out.\nfunc TestReleaseFreesTheJob(t *testing.T) {\n\tq := New(delivery.Config{Budget: 15 * time.Second, AttemptTimeout: 2 * time.Second})\n\tif !q.Lease("evt_7", 0) {\n\t\tt.Fatal("first lease refused")\n\t}\n\tq.Release("evt_7")\n\tif !q.Lease("evt_7", time.Second) {\n\t\tt.Fatal("a released job was still leased")\n\t}\n}\n';
+
+// The board of the review and the brief's sync: hookd's space, its tasks on branches in worktrees the stage makes.
+const hkd = (n, title, status, sub, more) => ({id: `HKD-${n}`, title, status, sub, place: 'p:here:hookd', branch: `work/${n}-${title.toLowerCase().replace(/\W+/g, '-')}`, ...more});
+const PARKED = 'package delivery\n\n// Parked holds the webhooks that ran out of attempts or budget, newest last.\ntype Parked struct{ IDs []string }\n\n// Park keeps id for a replay later.\nfunc (p *Parked) Park(id string) { p.IDs = append(p.IDs, id) }\n';
+
+Object.assign(scenes, {
+  // /gen here: Alt-g in queue.go asks for Release; the code shows under the cursor, and Alt-y takes it, marked ┊.
+  'gen-here': {
+    goal: 'release a lease early',
+    setup(project) { fixed(project); writeFileSync(join(project, 'NOTES.md'), NOTES); },
+    watcher: score(),
+    partner: [
+      {when: /Release/, wait: 900, call: ['read', {file: QUEUE}]},
+      {wait: 1600, call: ['propose', {file: QUEUE, line: 28, insert: true, text: RELEASE, note: 'Release'}]},
+      {wait: 300, say: 'Release deletes the lease, so the next Lease of that job succeeds at once.'},
+    ],
+    checks: [[{kind: 'guessed', text: 'releasing a job with no lease does nothing'}]],
+  },
+  // /gen file: a test file from the chat; it opens in Neovim as a buffer to review, :Pair gen list lists it, :w takes it.
+  'gen-file': {
+    goal: 'release a lease early',
+    testOnSave: 'go test -json ./...',
+    setup: released,
+    watcher: score(),
+    partner: [
+      {when: /released job/, wait: 900, call: ['read', {file: QUEUE}]},
+      {wait: 1800, call: ['draft', {path: 'internal/queue/release_test.go', text: LEASE_TEST, note: 'a test for Release'}]},
+      {wait: 300, say: 'One test: a job leased at 0s, released, is leased again at 1s, well inside its 17s lease.'},
+    ],
+    checks: [[{kind: 'guessed', text: 'the test leases again at 1s, not at 0s'}]],
+  },
+  // /gen try: a sample outside the project, run in Pair's pane; it opens in a split, and /keep moves it in.
+  'gen-try': {
+    goal: 'skip duplicate webhooks',
+    setup(project) { fixed(project); writeFileSync(join(project, 'NOTES.md'), NOTES); },
+    watcher: score(),
+    partner: [
+      {when: /recent job ids/, wait: 1200, call: ['write', {path: 'main.go', text: LRU}]},
+      {wait: 900, call: ['run', {command: 'go run main.go'}]},
+      {wait: 600, say: 'An LRU of the last n ids on container/list: evt_1 is seen again, and evt_2 had been pushed out by evt_3.'},
+    ],
+    checks: [[{kind: 'guessed', text: 'a seen id moves to the front, so it stays longer'}]],
+  },
+  // /gen scaffold: a /healthz endpoint built and tested in Pair's copy; :Pair gen list keeps it a file at a time.
+  'gen-scaffold': {
+    goal: 'a health check',
+    testOnSave: 'go test -json ./...',
+    setup: released,
+    watcher: score(),
+    partner: [
+      {when: /healthz/, wait: 900, call: ['read', {file: QUEUE}]},
+      {wait: 1200, calls: [['write', {path: 'internal/health/health.go', text: HEALTH}], ['write', {path: 'internal/health/health_test.go', text: HEALTH_TEST}], ['write', {path: 'cmd/hookd/main.go', text: MAIN}]]},
+      {wait: 900, call: ['propose', {file: QUEUE, line: 33, insert: true, text: LEN, note: 'Len'}]},
+      {wait: 600, call: ['run', {command: 'go build ./... && go test ./internal/health/'}]},
+      {wait: 600, say: 'A /healthz endpoint in internal/health, served by a new cmd/hookd, and Len on the queue for it.'},
+    ],
+    checks: [[{kind: 'guessed', text: 'the server listens on :8080'}, {kind: 'guessed', text: 'the health line counts leased jobs only'}]],
+  },
+  // /gen board: the task's brief opens to edit in Neovim; :w asks how to add it, and the board adds it.
+  'gen-board': {
+    goal: 'dead letters for webhooks',
+    testOnSave: 'go test -json ./...',
+    setup: released,
+    watcher: score(),
+    partner: [],
+    agents: {key: 'HKD', tasks: [], herdr: []},
+  },
+  // :Pair review: a task ready to merge, its branch's files in the review list; Enter shows a diff, k keeps a file.
+  review: {
+    goal: 'dead letters for webhooks',
+    setup: released,
+    watcher: score(),
+    partner: [],
+    checks: [[]],
+    agents: {
+      tasks: [hkd(31, 'Park dead letters', 'ready', 'Ready to merge', {
+        said: 'Failed webhooks are parked after the last attempt, with a test.',
+        facts: 'PR #12 · commit 4f2a9c1 · checks passed (go test ./...) · review: 1 round, 1 minor left (Park keeps ids in memory only) · not proven: a restart',
+        desc: 'Park a webhook that runs out of attempts or budget, for a replay later.',
+        work: {
+          'internal/delivery/parked.go': PARKED,
+          'internal/delivery/worker.go': text => text.replace('\t\tif attempt == cfg.MaxAttempts {\n\t\t\treturn attempt, err', '\t\tif attempt == cfg.MaxAttempts {\n\t\t\t// the caller parks it\n\t\t\treturn attempt, err'),
+        },
+      })],
+      herdr: [],
+    },
+  },
+  // /brief sync on a task's branch: the note says more than the task's brief on the board, and one offer to tell it.
+  'brief-sync': {
+    goal: 'dead letters for webhooks',
+    branch: 'work/31-park-dead-letters',
+    setup(project) {
+      fixed(project);
+      writeFileSync(join(project, 'NOTES.md'), `${NOTES}- A parked webhook keeps its id, so a replay is no new event.\n`);
+    },
+    watcher: score(),
+    partner: [],
+    agents: {
+      tasks: [hkd(31, 'Park dead letters', 'work', 'Writing the test', {
+        desc: 'Park a webhook that runs out of attempts or budget, for a replay later.\n\n> Webhooks go out at least once, never twice at the same time. (NOTES.md:3)\n> A job is leased to one worker; the lease outlives the last attempt. (NOTES.md:5)',
+        noWorktree: true,
+      })],
+      herdr: [],
+    },
+  },
+  // pair doctor and the first chat, for the first ten minutes.
+  doctor: {goal: 'retries reach the budget', watcher: score(), partner: []},
+  // Two worktrees of one repository: the second gets its own session, named after its folder and its branch.
+  worktrees: {goal: 'retries reach the budget', watcher: score(), partner: []},
+  // The roles: /scout in the chat, and a question it answers with a command in Pair's pane.
+  roles: {
+    goal: 'retries reach the budget',
+    watcher: score(),
+    partner: [
+      {when: /delivery test/, wait: 900, call: ['run', {command: 'go test ./internal/delivery/'}]},
+      {wait: 900, call: ['read', {file: 'internal/delivery/worker.go', start_line: 28, end_line: 40}]},
+      {wait: 300, say: 'it stops after 4 attempts: attempt 5 would start at exactly 15s, and `worker.go:35` gives up on `>=`.'},
+    ],
+  },
+});

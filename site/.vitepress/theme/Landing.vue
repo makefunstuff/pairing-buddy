@@ -85,6 +85,16 @@ const install = [
   {icon: 'doctor', title: 'Check it, and pair', code: 'pair doctor', text: 'One line per part, with the fix when something is wrong. Then run <code>pair</code> next to Neovim in herdr, or <code>:Pair chat</code> in Neovim.'},
 ];
 
+// A few of docs/tutorials/, each a task in a few minutes; the section links to all of them.
+const tutorials = [
+  {page: 'first-ten-minutes', title: 'The first ten minutes', text: 'Install, pair doctor, and your first session on a project.'},
+  {page: 'chat-pane', title: 'The chat pane and its keys', text: 'Ask, run a command, and act on what Pair said.'},
+  {page: 'roles-and-hand-over', title: 'Roles and handing over', text: 'Let Scout run commands, hand over the keyboard, take it back.'},
+  {page: 'gen-here-and-file', title: 'Asking for code', text: '/gen here at your cursor, /gen file for new files to review.'},
+  {page: 'board', title: 'Hand a task to the board', text: '/gen board, then :Pair review to keep the pieces you want.'},
+  {page: 'worktrees', title: 'Several worktrees', text: 'Two pieces of work in one repository, a session each.'},
+];
+
 const copied = ref(-1);
 async function copy(i) {
   try { await navigator.clipboard.writeText(install[i].code); copied.value = i; } catch { copied.value = -1; }
@@ -283,6 +293,21 @@ onBeforeUnmount(() => { near?.disconnect(); seen?.disconnect(); });
       </div>
     </section>
 
+    <section class="tutorials" aria-labelledby="tutorials-h">
+      <div class="wrap wide">
+        <p class="kicker">Tutorials</p>
+        <h2 id="tutorials-h">Learn it one task at a time</h2>
+        <p class="sub">Short how-tos, a few minutes each, step by step with the exact keys and commands.</p>
+        <ul class="providers tuts">
+          <li v-for="t in tutorials" :key="t.page" class="card">
+            <h3><a :href="withBase(`/tutorials/${t.page}.html`)">{{ t.title }}</a></h3>
+            <p>{{ t.text }}</p>
+          </li>
+        </ul>
+        <p class="more"><a :href="withBase('/tutorials/')">All the tutorials →</a></p>
+      </div>
+    </section>
+
     <section class="closing" aria-labelledby="closing-h">
       <div class="wrap">
         <div class="band">
@@ -422,6 +447,12 @@ p :deep(code), .note { font-family: var(--vp-font-family-mono); font-size: .86em
 /* models */
 .providers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin-top: 34px; }
 .provider p { font-size: 16px; }
+.tuts { list-style: none; padding: 0; }
+.tuts .card { margin: 0; }
+.tuts h3 { margin: 0 0 8px; }
+.tuts h3 a { color: var(--vp-c-brand-1); text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: .25em; }
+.tuts h3 a:hover { background: var(--px-yellow); color: var(--px-black); }
+.tuts p { font-size: 16px; margin: 0; }
 
 /* install */
 .install { list-style: none; padding: 0; margin: 36px 0 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 34px; }

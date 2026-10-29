@@ -80,7 +80,8 @@ export default defineConfig({
     logo: {src: '/favicon.svg', alt: ''},
     nav: [
       {text: 'Get started', link: '/getting-started'},
-      {text: 'Docs', link: '/how-it-works', activeMatch: '^/(?!$|getting-started)'},
+      {text: 'Tutorials', link: '/tutorials/', activeMatch: '^/tutorials/'},
+      {text: 'Docs', link: '/how-it-works', activeMatch: '^/(?!$|getting-started|tutorials/)'},
       {text: RELEASE, items: [
         {text: 'Changelog', link: `${REPO}/blob/main/CHANGELOG.md`},
         {text: 'Known limitations', link: '/limitations'},
@@ -94,6 +95,20 @@ export default defineConfig({
         {text: 'Install and daily use', link: '/install'},
         {text: 'How it works', link: '/how-it-works'},
         {text: 'The chat pane', link: '/chat'},
+      ]},
+      {text: 'Tutorials', collapsed: true, items: [
+        {text: 'All tutorials', link: '/tutorials/'},
+        {text: 'The first ten minutes', link: '/tutorials/first-ten-minutes'},
+        {text: 'The chat pane and its keys', link: '/tutorials/chat-pane'},
+        {text: 'Roles and handing over', link: '/tutorials/roles-and-hand-over'},
+        {text: 'Tests on save', link: '/tutorials/tests-on-save'},
+        {text: 'Notes and the blank page', link: '/tutorials/notes-and-blank-page'},
+        {text: '/gen here and /gen file', link: '/tutorials/gen-here-and-file'},
+        {text: '/gen try and /keep', link: '/tutorials/gen-try'},
+        {text: '/gen scaffold', link: '/tutorials/gen-scaffold'},
+        {text: 'The board and its review', link: '/tutorials/board'},
+        {text: 'Several worktrees', link: '/tutorials/worktrees'},
+        {text: 'Voice', link: '/tutorials/voice'},
       ]},
       {text: 'Models', items: [
         {text: 'Models and providers', link: '/models'},

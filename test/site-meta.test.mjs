@@ -32,7 +32,8 @@ test('a long description is cut at a sentence end, or at a word with …', () =>
 
 test('every docs page has a description of its own that fits the previews', () => {
   const seen = new Map();
-  for (const file of readdirSync(docs).filter(f => f.endsWith('.md') && f !== 'index.md')) {
+  const pages = [...readdirSync(docs), ...readdirSync(new URL('tutorials/', docs)).map(f => `tutorials/${f}`)];
+  for (const file of pages.filter(f => f.endsWith('.md') && f !== 'index.md')) {
     const md = readFileSync(new URL(file, docs), 'utf8');
     const description = md.match(/^---\n[\s\S]*?^description: "(.*)"$/m)?.[1] ?? describe(md);
     assert.ok(description.length >= 40, `${file}: "${description}" is too thin for a preview`);

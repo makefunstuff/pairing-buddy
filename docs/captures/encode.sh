@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Turns the recordings in out/ into the docs' GIFs and stills, and those in out/site/ (record.sh with CAP_LOOK=site)
 # into the front page's loops and posters. ./encode.sh site does only the loops; with no argument, the loops are
-# encoded too when out/site/ is there. Needs FFmpeg (with libvpx-vp9, libx264 and libwebp).
+# encoded too when out/site/ is there. ./encode.sh tutorials does only the tutorials' clip and stills (docs/tutorials).
+# Needs FFmpeg (with libvpx-vp9, libx264 and libwebp).
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 OUT=$HERE/out
@@ -30,6 +31,14 @@ gif() { # 1000x600, 15 fps, one palette for the whole clip
   ff -i "$OUT/$1.mp4" -vf "fps=15,scale=1000:600:flags=lanczos,split[a][b];[a]palettegen=max_colors=128:stats_mode=diff[p];[b][p]paletteuse=dither=none:diff_mode=rectangle" "$IMAGES/$1.gif"
 }
 
+# The tutorials (docs/tutorials): one clip, /gen here, and their stills; pair doctor's without the line it was typed on.
+tutorials() {
+  gif gen-here
+  for name in gen-ask gen-here gen-taken gen-list gen-review gen-try gen-keep gen-scaffold-list gen-scaffold-kept board-compose board-pick board-added review review-diff brief-sync worktrees role-scout role-answer; do cp "$OUT/$name.png" "$IMAGES/$name.png"; done
+  ff -i "$OUT/doctor.png" -vf crop=1400:232:0:23 "$IMAGES/doctor.png"
+}
+if [ "${1:-}" = tutorials ]; then tutorials; exit 0; fi
+
 for name in wrong-turn tests-on-save hand-over take-back held-thought ledger context-card crash delight agents teach notes pickup debrief loop hand-over-run chat; do gif "$name"; done
 # The ledger's stills from its video: the list before u (5.6 s) and after it (8.5 s), see tapes/ledger.tape.
 frame() { ff -ss "$2" -i "$OUT/$1.mp4" -frames:v 1 "$IMAGES/$3.png"; }
@@ -52,3 +61,5 @@ ls -l "$IMAGES"/*.gif
 # The search trail: the README's GIF and the docs' stills.
 gif search-trail
 for name in trail-cue trail-panel trail-jump; do cp "$OUT/$name.png" "$IMAGES/$name.png"; done
+# The tutorials' clip and stills.
+tutorials

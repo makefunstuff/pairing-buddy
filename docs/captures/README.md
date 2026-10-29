@@ -9,8 +9,8 @@ recording comes out the same each time; the tutorial video's scenes use a real m
   trigger it is asked about. The Partner's turns (tool calls or words, each after its own pause) come in order
   from [scenes.mjs](scenes.mjs), and so do its readings of a note: the marks, and the tasks. The tools those calls reach are real: they read the files, check the line and the
   code they point at, and type the edit.
-- **The board:** [board.mjs](board.mjs) stands in for the work board's command, Shepherdr's `shepherdr`, answering
-  only what Pair reads: in the context-card scene (which also fetches Telescope and plenary at pinned commits for its
+- **The board:** [board.mjs](board.mjs) stands in for the work board's command, Shepherdr's `shepherdr` (on the
+  daemon's PATH by that name), answering only what Pair reads, and a `task add` or `task tell`: in the context-card scene (which also fetches Telescope and plenary at pinned commits for its
   searches) with fixed tasks, and in the agents scene from a state file the stage changes as the scene goes on, its
   tasks on branches in worktrees the stage makes.
 - **The day so far:** the pick-up scene starts from yesterday's session (its debrief and where to pick up), and the
@@ -73,6 +73,16 @@ recording comes out the same each time; the tutorial video's scenes use a real m
 | [chat](tapes/chat.tape) | the chat pane: a remark on save with its diff and action line, a question asked there, the status in the rule while Pair reads, the answer streaming in, `Ctrl-F` on its matches (↑ to the one before, Enter picks its message), the command menu, and `?` |
 | [chat-layout](tapes/chat-layout.tape) | the chat scene in a 44-column pane (the gutter kept, code wrapped between tokens, the header, `└` line and footer shorter), then the same pane 112 columns wide (the words by column 80, an answer's meta in its margin) |
 | [no-herdr](tapes/no-herdr.tape) | without herdr: `:Pair chat` opens the chat in Neovim, and Scout's pane is a `:terminal` along the bottom, sandboxed |
+| [gen-here](tapes/gen-here.tape) | the tutorials' `/gen here`: `Alt-g`, the code as ghost lines and a gen card, `Alt-y` takes it, marked `┊` |
+| [gen-file](tapes/gen-file.tape) | `/gen file` from the chat: `:Pair gen list`, the buffer to review, `:w` takes it |
+| [gen-try](tapes/gen-try.tape) | `/gen try`: a sample written and run outside the project, in a split; `:Pair keep` moves it in |
+| [gen-scaffold](tapes/gen-scaffold.tape) | `/gen scaffold`: built and tested in Pair's copy; `:Pair gen list`, `k` on a change shows it as a suggestion |
+| [gen-board](tapes/gen-board.tape) | `:Pair gen board`: the task's brief to edit, `:w`, the pick, and the board's answer |
+| [review](tapes/review.tape) | `:Pair review` of a task ready to merge: its list and a file's diff |
+| [brief-sync](tapes/brief-sync.tape) | `/brief sync` on a task's branch, and `y` tells its agent |
+| [doctor](tapes/doctor.tape) | `pair doctor` with the scene's daemon and models |
+| [worktrees](tapes/worktrees.tape) | a second worktree with its own Neovim and chat: a session of its own |
+| [roles](tapes/roles.tape) | `/scout`, and a question Scout answers with `go test` in its pane |
 
 ## The tutorial's scenes
 
@@ -108,6 +118,11 @@ npm ci                                  # in the repo root
 docs/captures/record.sh                 # all the scenes into docs/captures/out/, or name some
 docs/captures/encode.sh                 # out/ -> docs/images/ (and out/site/, if recorded, -> site/public/media/)
 ```
+
+The [tutorials](../tutorials/)' scenes (the tapes from gen-here to roles in the table) record and encode on their own:
+`docs/captures/record.sh gen-here gen-file gen-try gen-scaffold gen-board review brief-sync doctor worktrees roles`,
+then `docs/captures/encode.sh tutorials`. Their task's work is committed on its branch by the stage (`work` in
+[scenes.mjs](scenes.mjs)), and a /gen request's brief checks are answered by the scene's `checks`.
 
 The front page's three loops are the first three scenes again, in tokyonight with a larger font, at the size the site
 shows them ([tapes/head-site.tape](tapes/head-site.tape)). They go to `out/site/`, and `encode.sh` fast-forwards

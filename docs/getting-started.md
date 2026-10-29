@@ -2,7 +2,8 @@
 
 From nothing to your first session in about five minutes. Each step links to the page with the details. To have
 your AI coding agent do the setup, point it at
-[INSTALL.md](https://github.com/makefunstuff/pairing-buddy/blob/main/INSTALL.md).
+[INSTALL.md](https://github.com/makefunstuff/pairing-buddy/blob/main/INSTALL.md). For the same steps as a tutorial,
+with pictures of what you should see, read [the first ten minutes](tutorials/first-ten-minutes.md).
 
 ## What you need
 
@@ -95,6 +96,7 @@ a short note the next session starts from. `:Pair end` ends it at once, with a d
 
 ## Next
 
+- [Tutorials](tutorials/index.md): one task at a time, a few minutes each.
 - [How it works](how-it-works.md): what Pair sees and when it speaks.
 - [Roles](roles.md): the Watcher, the Partner, and Navigator, Scout and Driver.
 - [Workflows](workflows.md): exploring code, tests, notes, handing over, voice.

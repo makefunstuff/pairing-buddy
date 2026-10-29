@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Stands in for the work board's command, Shepherdr's `shepherdr`, in the scenes: the verbs Pair reads (space list,
-// task list --json, task show --json, artifact list). With CAP_BOARD naming a state file ({spaces, tasks}, which the
+// task list --json, task show --json, artifact list), and task add and task tell. With CAP_BOARD naming a state file ({spaces, tasks}, which the
 // stage writes and changes as a scene goes on), it answers from that; without, it is the context-card scene's board:
 // hookd's tasks, and another space's task with the same number, which the card must not take for this branch's.
 import {readFileSync} from 'node:fs';
@@ -27,6 +27,9 @@ if (verb === 'task' && sub === 'show') {
   if (!task) { console.log(`No task ${id}`); process.exit(1); }
   say(JSON.stringify({...task, name: task.title}));
 }
+// What Pair runs on your pick (the tutorials' scenes): an add answers as Shepherdr does, a tell is taken.
+if (verb === 'task' && sub === 'add') say(`Added ${state.spaces[0]?.key ?? 'HKD'}-32: ${id}`);
+if (verb === 'task' && sub === 'tell') say(`Told ${id}.`);
 if (verb === 'artifact' && sub === 'list') say('No artifacts here yet.');
 console.log(`the stand-in board answers only what Pair reads, not: ${args.join(' ')}`);
 process.exit(2);
