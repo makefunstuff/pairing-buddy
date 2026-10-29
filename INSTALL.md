@@ -210,7 +210,7 @@ not work (some containers forbid user namespaces); `pair doctor` tells, and Pair
 command -v pair && npm ls -g pairing-buddy
 ```
 
-Expected: a path ending in `/bin/pair`, and a tree ending in `pairing-buddy@0.10.0` (or a newer version). If so, skip to step 5 (to upgrade, see [Upgrade](#upgrade)).
+Expected: a path ending in `/bin/pair`, and a tree ending in `pairing-buddy@0.11.0` (or a newer version). If so, skip to step 5 (to upgrade, see [Upgrade](#upgrade)).
 
 **Do:**
 
@@ -262,7 +262,7 @@ The `Models:` line names the example's model until step 6.
 | --- | --- | --- |
 | systemd | `systemctl --user is-enabled pairing-buddy.service; systemctl --user is-active pairing-buddy.service` | `enabled` and `active` |
 | launchd | `launchctl print gui/$(id -u)/io.github.makefunstuff.pairing-buddy \| grep 'state ='` | `state = running` |
-| none | `pair doctor 2>&1 \| grep -E '^[^ ]+ (service\|daemon) '` | `! service  no systemd or launchd here: …` and `✓ daemon   version 0.10.0, …` |
+| none | `pair doctor 2>&1 \| grep -E '^[^ ]+ (service\|daemon) '` | `! service  no systemd or launchd here: …` and `✓ daemon   version 0.11.0, …` |
 
 If it fails:
 

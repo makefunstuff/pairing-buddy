@@ -131,7 +131,9 @@ that keep that are the easiest to take.
 4. Write a clear title and say what changed, why, and how you tested it (which live stack, if any). Link the issue.
 5. Fill in the checklist in the pull request template.
 
-Small fixes (typos, a broken link) can go straight to a pull request.
+Small fixes (typos, a broken link) can go straight to a pull request. A change a user would notice also gets a line
+under `## [Unreleased]` in [CHANGELOG.md](CHANGELOG.md); [Releasing](docs/releasing.md) says how a release is cut
+from it.
 
 ## How the project is built, and AI agents
 

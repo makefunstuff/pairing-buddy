@@ -51,5 +51,6 @@ keep your files yours fit best.
 
 Branch from `main`, keep a pull request to one change, add tests, and run `npm test`. Update the docs in the same pull
 request: these pages in `docs/`, the README and `config.example.json`, for anything you add, remove or change. The
-pull request template has the checklist. Files from elsewhere (a font, a vendored script) go in
+pull request template has the checklist. A change a user would notice gets a line under `## [Unreleased]` in the
+[changelog](../CHANGELOG.md); [Releasing](releasing.md) says how a release is cut. Files from elsewhere (a font, a vendored script) go in
 [THIRD_PARTY_NOTICES.md](https://github.com/makefunstuff/pairing-buddy/blob/main/THIRD_PARTY_NOTICES.md) with their licence.

@@ -22,7 +22,7 @@ Chapters: 0:00 what Pair is · 0:59 setup and `pair doctor` · 2:44 the roles ·
 notes and the blank page · 9:12 the hand-over · 10:50 voice · 11:36 with or without herdr · 12:12 the keys to
 remember. Its script and how to render it again are in [docs/video](docs/video/).*
 
-Version 0.10.
+Version 0.11 ([changelog](CHANGELOG.md)).
 
 ## Why
 
@@ -119,7 +119,8 @@ your keys and logins).
 - Reference: [configuration](docs/config.md), [Neovim plugin](docs/neovim-plugin.md), [commands](docs/cli.md)
 - [Troubleshooting](docs/troubleshooting.md) and [known limitations](docs/limitations.md)
 - [Data and privacy](docs/data.md), [tests](docs/testing.md)
-- [Contributing](CONTRIBUTING.md), also [on the site](docs/contributing.md)
+- [Contributing](CONTRIBUTING.md), also [on the site](docs/contributing.md), [releasing](docs/releasing.md) and the
+  [changelog](CHANGELOG.md)
 
 The site is [VitePress](https://vitepress.dev): `cd site && npm ci && npm run dev` previews it, and the
 [Pages workflow](.github/workflows/pages.yml) builds and deploys it on every push to main. Its look is pixel art:

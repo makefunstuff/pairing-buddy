@@ -150,5 +150,6 @@ cyan, and with `NO_COLOR` set it prints no colours.
 - `pair auth` logs in to model providers and lists what is set ([models.md](models.md#logins-and-keys)).
 - `pair stats` shows how often Pair spoke unasked and what you made of it ([memory.md](memory.md#pair-stats)).
 - `pair daemon` runs the daemon in the foreground; `pair supervise` too, restarting it when it fails.
+- `pair --version` prints the version of this install; the daemon's log names its own when it starts.
 - The daemon's log goes to the journal under systemd (`journalctl --user -u pairing-buddy`), to
   `~/Library/Logs/pairing-buddy.log` under launchd, and to `daemon.log` in the data directory when `pair` started it.

@@ -9,7 +9,7 @@ Start with `pair doctor`. It checks every part, one line each, and names the fix
 ```
 ✓ config   ~/.config/pairing-buddy/config.json
 ✓ service  starts at login, running
-✓ daemon   version 0.10.0, up 42 min, 2 sessions
+✓ daemon   version 0.11.0, up 42 min, 2 sessions
 ✓ plugin   your Neovim config loads it
 ✓ neovim   2 connected, in shop, blog
 ✓ herdr    answers in 3 ms, 4 panes in this workspace

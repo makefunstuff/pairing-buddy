@@ -70,6 +70,12 @@ pair stats --project DIR # only the project DIR belongs to
 
 Stops and removes the service. The config and the data stay.
 
+## `pair --version`
+
+Prints the version of this install, `pair 0.11.0`; `pair version` and `pair -v` do too. The daemon logs its own when it
+starts (`pair daemon 0.11.0 listening on …`), and `pair doctor` says when the running daemon is another version. What
+changed in each one is in the [changelog](../CHANGELOG.md).
+
 ## `pair daemon` and `pair supervise`
 
 `pair daemon` runs the daemon in the foreground. `pair supervise` does too, and restarts it 2 s after it crashes,
