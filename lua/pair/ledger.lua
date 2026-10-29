@@ -2,7 +2,8 @@
 -- first, in a split at the bottom: the time, what it did in the accent, what it did it to, and on the right the key
 -- that acts on it. <CR> goes where an entry points, or opens what it holds (a command's output, why Pair stayed
 -- quiet, all it said); `u` undoes an edit of Pair's, also after your later edits, and `u` again makes it again; `+`
--- and `-` rate a remark; `q` closes. The list follows along while it is open.
+-- and `-` rate a remark; `q` closes. The list follows along while it is open. Its last line says how much code you
+-- took from /gen is not yours yet (┊ in the sign column): <CR> there goes to it, `o` owns one file of it, `O` all.
 local style = require('pair.style')
 
 local M = {}
@@ -19,6 +20,8 @@ M.rate = function() end
 local view = {
   buf = nil, win = nil, -- the list, and the window showing it or what an entry opens to
   rows = {}, summary = '',
+  generated = nil, -- the code taken from /gen not yours yet: {files = {{file, name, lines, line, gens}}, lines}
+  generated_line = nil, -- its line in the list
   from = nil, -- the window you opened the list from: where <CR> goes to a place
   refresh = nil, -- the timer that asks for the list again after a change
   opened = false, -- the list was just opened: its cursor goes to the newest entry
@@ -104,6 +107,16 @@ local function render()
     lines = {'Pair has done nothing here today.'}
     table.insert(marks, {0, 0, {end_col = #lines[1], hl_group = 'PairKey'}})
   end
+  view.generated_line = nil
+  local generated = view.generated
+  if generated and (generated.lines or 0) > 0 then
+    local files = #generated.files
+    local line = ('%s not yours yet: %d file%s · %d line%s'):format(style.glyphs.generated, files, files == 1 and '' or 's', generated.lines, generated.lines == 1 and '' or 's')
+    table.insert(lines, line)
+    view.generated_line = #lines
+    table.insert(marks, {#lines - 1, 0, {end_col = #style.glyphs.generated, hl_group = 'PairGenerated'}})
+    table.insert(marks, {#lines - 1, 0, {virt_text = {{'o owns one · O owns all · ⏎ goes there', 'PairKey'}}, virt_text_pos = 'right_align'}})
+  end
   set_lines(buf, lines)
   vim.api.nvim_buf_clear_namespace(buf, M.ns, 0, -1)
   for _, mark in ipairs(marks) do vim.api.nvim_buf_set_extmark(buf, M.ns, mark[1], mark[2], mark[3]) end
@@ -131,8 +144,35 @@ local function show_list()
   vim.wo[view.win].statusline = statusline('today', view.summary)
 end
 
+--- Whether the cursor is on the line of code not yours yet.
+local function on_generated()
+  return view.generated_line and valid_win() and vim.api.nvim_win_get_buf(view.win) == view.buf
+    and vim.api.nvim_win_get_cursor(view.win)[1] == view.generated_line
+end
+
+--- Picks one of the files with code not yours yet (the only one, without asking), then `run(file)`.
+local function pick_generated(prompt, run)
+  local files = view.generated and view.generated.files or {}
+  if #files == 1 then return run(files[1]) end
+  vim.ui.select(files, {
+    prompt = prompt,
+    format_item = function(file)
+      local gens = table.concat(vim.tbl_map(function(n) return 'gen #' .. n end, file.gens or {}), ', ')
+      return ('%s · %d line%s · %s'):format(file.name, file.lines, file.lines == 1 and '' or 's', gens)
+    end,
+  }, function(file) if file then run(file) end end)
+end
+
+--- `o` and `O` on the line of code not yours yet: one file of it is yours, or all of it.
+local function own(all)
+  if not on_generated() then return end
+  if all then return M.send({type = 'gen_own', all = true}) end
+  pick_generated('Make yours', function(file) M.send({type = 'gen_own', file = file.file}) end)
+end
+
 --- <CR> on a row: go where it points, or open what it holds.
 local function act()
+  if on_generated() then return pick_generated('Go to code not yours yet', go) end
   local row = current_row()
   if not row then return end
   local opens = row.kind == 'quiet' or ((row.kind == 'ran' or row.kind == 'searched') and row.more)
@@ -160,6 +200,8 @@ local function list_buffer()
   map('u', undo, 'Undo Pair\'s edit, or make it again')
   map('+', function() rate(true) end, 'Pair\'s remark was useful')
   map('-', function() rate(false) end, 'Pair\'s remark was noise')
+  map('o', function() own(false) end, 'Make the generated code of one file yours')
+  map('O', function() own(true) end, 'Make all generated code yours')
   map('q', function() M.close() end, 'Close the ledger')
   -- Each line is cut to the window's width.
   vim.api.nvim_create_autocmd({'WinResized', 'VimResized'}, {group = vim.api.nvim_create_augroup('pair_ledger', {clear = true}), callback = function()
@@ -198,6 +240,7 @@ function M.show(message)
   if not (view.buf and vim.api.nvim_buf_is_valid(view.buf)) then return end
   local at = current_row()
   view.rows, view.summary = message.rows or {}, message.summary or ''
+  view.generated = type(message.generated) == 'table' and message.generated or nil
   render()
   if not valid_win() then return end
   if vim.api.nvim_win_get_buf(view.win) == view.buf then vim.wo[view.win].statusline = statusline('today', view.summary) end
@@ -207,7 +250,7 @@ function M.show(message)
   end
   view.opened = false
   -- A list that grew past its window gets the room it needs, up to MAX_HEIGHT.
-  local height = math.min(MAX_HEIGHT, math.max(3, #view.rows))
+  local height = math.min(MAX_HEIGHT, math.max(3, #view.rows + (view.generated_line and 1 or 0)))
   if vim.api.nvim_win_get_height(view.win) < height then pcall(vim.api.nvim_win_set_height, view.win, height) end
   -- On the label, where the eye reads what Pair did.
   if vim.api.nvim_win_get_buf(view.win) == view.buf then pcall(vim.api.nvim_win_set_cursor, view.win, {math.max(line, 1), 7}) end

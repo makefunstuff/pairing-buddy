@@ -40,7 +40,7 @@ const USAGE = `usage:
   pair auth logout PROVIDER   remove that login or key (also \`pair logout PROVIDER\`)
   pair auth list              every provider and whether a login or key is set (never the secrets)
   pair auth models PROVIDER   the models a provider offers, for a model entry's "model"
-  pair stats [--days N]   remarks per hour, useful vs dismissed, per trigger, the tuning, and how the decision model did (default: 7 days)
+  pair stats [--days N]   remarks per hour, useful vs dismissed, per trigger, the tuning, how the decision model did, and what /gen made and you own (default: 7 days)
   pair stats --project [DIR]   the same for one project: the one DIR (default: this folder) belongs to
   pair uninstall    stop and remove the service (the config and data stay)
   pair daemon       run the daemon in the foreground
@@ -238,7 +238,8 @@ async function stats(args) {
     const remarks = store.remarks(now - Math.max(window, WINDOW_MS));
     const activeMs = root ? store.projectActiveMs(root, now - window) : store.activeMs(now - window);
     const decisions = store.decisions(now - window); // what the decision model judged, if there is one
-    console.log(statsReport({remarks, activeMs, now, days, level: config.level, autoTune: config.autoTune, root, decisions}).join('\n'));
+    const generated = store.generated(now - window); // the /gen requests, and how much of their code became yours
+    console.log(statsReport({remarks, activeMs, now, days, level: config.level, autoTune: config.autoTune, root, decisions, generated}).join('\n'));
   } finally {
     store.close();
   }

@@ -56,7 +56,8 @@ Logins and keys for model providers, kept in `auth.json` next to the config, rea
 
 How often Pair spoke unasked, how much of it was useful, per trigger, and how the tuning moved
 ([memory.md](memory.md#pair-stats)). With a decision model, also what it sorted, the Watcher calls it saved, and its
-remarks next to the rules' ([decision.md](decision.md#pair-doctor-and-pair-stats)).
+remarks next to the rules' ([decision.md](decision.md#pair-doctor-and-pair-stats)). With `/gen` requests in the
+window, also what they made and how much of it [became yours](gen.md#owning-generated-code).
 
 ```sh
 pair stats               # the last 7 days, every project

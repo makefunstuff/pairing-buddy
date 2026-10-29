@@ -1,5 +1,5 @@
 ---
-description: "/gen: ask Pair for code at your cursor, as new files, as a sample to run, or as a scaffold built in a copy of the project. Take it with one key, :w or k."
+description: "/gen: ask Pair for code at your cursor, as new files, a sample to run or a scaffold. Take it with one key; it is marked ┊ until you make it yours."
 ---
 
 # /gen: ask Pair for code
@@ -8,6 +8,8 @@ Pair writes code when you ask for it, and only then. `/gen here a list handler w
 is a request: it gets a number, `gen #3`, runs in a conversation of its own, and hands you a proposal at the place
 you asked. You take it with one key, or not. Taken code lands in your buffer unsaved, as one undo step: as with
 everything Pair does, the disk changes only when you save. `/undo` takes back everything a request gave you, as one.
+Code you took is [marked `┊`](#owning-generated-code) in the sign column until you edit it or say `:Pair own`: it is
+not yours yet, and `:Pair today` and `pair stats` say how much of it there is.
 
 Every request runs against [the brief](#the-brief): your goal, your board task and a note of yours, `NOTES.md` by
 default. Pair reads it and never writes it. When your request contradicts it, Pair asks one question first; when its
@@ -48,7 +50,8 @@ over the lines you selected there last. `/gen file <what>` asks for new files, w
 review. `/gen try <what>` asks for a sample, which opens in that Neovim in a split; `/gen run` runs the newest
 again, `/gen tries` lists the try folders, and `/keep [path]` moves the newest try's file into the project.
 `/gen scaffold <what>` (`/gen scaffold --branch <what>` for a git worktree) asks for a scaffold; `/keep <path>` keeps
-a file of it, and `/gen drop` deletes its copy. `/gen` alone lists today's requests, and `/gen cancel` stops the one
+a file of it, and `/gen drop` deletes its copy. `/gen` alone lists today's requests (and how much code you took is
+[not yours yet](#owning-generated-code)), and `/gen cancel` stops the one
 that runs or waits. `/cancel` stops a running request too, when Pair answers nothing else.
 
 ## The shape
@@ -213,7 +216,7 @@ and one `Ctrl-E` jumps to their last 21, so a taller block cannot be read in pla
 
 | You | What happens |
 | --- | --- |
-| `Alt-y`, `:Pair accept`, or `a` on it in the chat | The code goes into your buffer, unsaved, as one undo step. It is the request's code (`gen:#2`, below) until you edit it |
+| `Alt-y`, `:Pair accept`, or `a` on it in the chat | The code goes into your buffer, unsaved, as one undo step, marked `┊` ([below](#owning-generated-code)). It is the request's code (`gen:#2`, below) until you edit it |
 | `:Pair dismiss`, or over a selection, edit the lines it replaces | It is dropped: the ledger says so, and there is nothing of it to undo |
 | `/undo`, or `u` on the request in `:Pair today` | The whole request goes (below) |
 
@@ -570,7 +573,65 @@ whoever made it. It raises no
 ### Making Pair's lines yours
 
 Lines Pair wrote become yours when you edit them: the newest edit of a line decides. An edit of yours elsewhere in
-the file leaves Pair's lines Pair's.
+the file leaves Pair's lines Pair's. Code you took from a request goes further: it stays marked until you own it
+(below).
+
+## Owning generated code
+
+Code you took from a request is not yours yet. Taking it is one key, and reading it is the part that makes it yours,
+so Pair keeps track of what you took and have not touched since, and says how much of it there is.
+
+```
+ 41
+┊42 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
+┊43     limit := queryInt(r, "limit", 50)
+┊44     after := queryInt(r, "after", 0)
+┊45     rows, err := h.repo.ListAfter(r.Context(), after, limit)
+┊..
+┊53 }
+ 54 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
+────────────────────────────────────────────────────────────
+● pair · ┊ 12 generated
+```
+
+| State | Where | How it looks | Ends when |
+| --- | --- | --- | --- |
+| Proposed | ghost lines, a `pair://gen` buffer, a try's folder, a scaffold's copy | as each shape shows it | taken, dropped, undone |
+| Taken | your buffer, saved or not | a thin `┊` in the sign column on each line (`PairGenerated`, a dim accent), and `┊ 12 generated` in the statusline for the buffer you are in | you edit a part of it, or `:Pair own` |
+| Owned | your code | nothing | for good; the ledger still knows where it came from |
+
+- **Part by part.** Taken code is marked in parts: its runs of lines between blank lines, a function or a block of
+  statements. Changing a line of a part yourself (typing, a formatter you run, your `u`) makes that part yours, and
+  only that one. Lines you add above, below or between parts move the marks and own nothing. Pair's own changes (the
+  Driver, another request) leave a part Pair's.
+- **`:Pair own`.** `:Pair own` makes all the generated code of the buffer's file yours, `:'<,'>Pair own` the parts on
+  those lines, `:Pair own <path>` that file's, and `:Pair own!` all of it in the project. Pair says how many lines are
+  yours now.
+- **Which code.** Code taken with `Alt-y` from `here`, the hunks of a scaffold's changes to your files, and the files
+  of `/gen file` (and those kept from a try or a scaffold) once `:w` writes them. A part you changed in its buffer
+  before `:w` is yours already.
+- **Gone.** A part whose lines you delete, or that is no longer there when the file is read again, is gone: neither
+  yours nor Pair's. `/undo` of the request takes its marks with its code, and again brings them back.
+- **Found again.** Marks are extmarks, so a buffer read again (`:e`, Neovim restarted) loses them. The daemon keeps
+  each part's text and the line it was last seen on (Neovim tells it when you save), and finds the part again by its
+  text within 20 lines, as the [marks in a note's margin](notes.md) are found. A Neovim that connects gets the marks
+  of every file, and shows them as it opens the file.
+
+While a part is not yours, the Watcher says nothing about it: an error the language server finds in it is no
+`new_code_diagnostic`, and a new compiler warning on its lines is no `new_warning`. The request's own check said its
+result once, when you took it. Your first edit of the part ends that: an error in it after is an ordinary moment. A
+`regression` still speaks, and says that a file it names has code from `gen #3` you have not made your own yet.
+
+### What is not yours yet
+
+- **`:Pair today`** ends with one line, `┊ not yours yet: 4 files · 211 lines`: `⏎` there goes to it (after
+  picking a file, when there are several), `o` owns the code of one file, `O` all of it. `/today` in the chat ends
+  with the same line.
+- **`/gen`** in the chat lists today's requests, and then the same line.
+- **`pair stats`** counts the requests per shape, the pieces taken and dropped, and the lines taken by what became of
+  them: yours (and what share), not yours yet, gone ([cli.md](cli.md#pair-stats)).
+
+Pair does not commit, and nothing of this reaches git: owning is about your reading of the code, not its history.
 
 ## Limits
 
@@ -586,7 +647,16 @@ the file leaves Pair's lines Pair's.
 - `/gen file` makes new files only. A change to a file you have is a suggestion in it, never a buffer to review.
 - A buffer to review is no file yet: no language server attaches to it, and Pair's Watcher does not see your edits in
   it. Once taken, it is an ordinary file.
-- A file you took is yours from then on: Pair does not mark it as generated, and `:Pair own` does not exist yet.
+- A part of generated code is owned whole: a one-character fix of a 40-line function makes all 40 lines yours. A
+  block with no blank lines is one part.
+- Marks stay for seven days after the request (the ledger keeps a request's detail that long); code taken earlier
+  and still not yours is no longer marked or counted.
+- A part not found by its text within 20 lines of where it was last seen, when a file is read again, is gone: a
+  file changed outside Neovim (a `git checkout`, another editor) can lose its marks. So can a second Neovim that
+  opens the file while the first has the code taken but not saved.
+- Positions reach the daemon with your edits (`debounce_ms`), and are kept with the ledger when you save; after a
+  crash of Neovim, marks are found from where you last saved.
+- `:Pair own` and the marks are Neovim's; the chat shows what is not yours yet, and `:Pair own` is the way to own it.
 - Files to review go to one Neovim, the one you work in; a second Neovim on the project gets them when it connects.
 - Changes you make in a buffer to review live only in that Neovim: after a Neovim restart the buffer comes back as the
   request drafted it.
@@ -606,8 +676,6 @@ the file leaves Pair's lines Pair's.
   ledger); the next session asks again.
 - `? guessed` lines are words in the chat and the ledger. Only `:Pair gen list`, for a `file` request, logs one as a
   decision (`Alt-d`).
-- Taken code carries no mark of its own in the sign column, and `:Pair own` does not exist yet: it stays the
-  request's until you edit its lines, as far as its origin can be followed ([above](#who-wrote-it-edits-carry-their-origin)).
 - A request lives in the daemon's memory. A daemon restart stops one that runs, and code it proposed at your cursor
   that you did not take is gone; the ledger line stays, and what you took can still be undone from it. New files
   to review are not gone: the ledger keeps them ([above](#after-a-restart)).

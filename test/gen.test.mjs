@@ -8,11 +8,15 @@ import {basename, join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {test} from 'node:test';
 import {CHECK_PROMPT, CONFLICT_PROMPT} from '../src/brief.mjs';
+import {fold, generatedAt, initialState} from '../src/fold.mjs';
 import {guessShape, parseGen} from '../src/gen.mjs';
 import {expireTries, placeHunks, projectFolder, tryLine} from '../src/gen-tree.mjs';
+import {findPart, parseMarkId, partsOf, writtenMarks} from '../src/owning.mjs';
 import {sandboxWorks} from '../src/sandbox.mjs';
 import {PairSession} from '../src/session.mjs';
+import {genLines, statsReport} from '../src/stats.mjs';
 import {openStore} from '../src/store.mjs';
+import {detectTriggers} from '../src/triggers.mjs';
 import {scratch} from './temp.mjs';
 
 const NOON = new Date(2026, 9, 28, 12, 0).getTime();
@@ -1077,4 +1081,163 @@ test('a scaffold\'s change lands on an empty file too; the base is the project\'
   // /undo drops the suggestions not taken: the file keeps again.
   await pair.undoLast();
   assert.equal(await pair.gen.keep({path: 'other.js'}), 'gen #1: other.js: 1 change, shown there as suggestions; Alt-y (:Pair accept) takes each.');
+});
+
+const HANDLER = 'function list(rows) {\n  return rows.slice(0, 50)\n}\n\nfunction get(rows, id) {\n  return rows.find(row => row.id === id)\n}';
+
+test('the parts of generated code: runs of lines between blank lines, found again by their text within 20 lines', () => {
+  assert.deepEqual(partsOf(HANDLER, 10), [
+    {line: 10, text: ['function list(rows) {', '  return rows.slice(0, 50)', '}']},
+    {line: 14, text: ['function get(rows, id) {', '  return rows.find(row => row.id === id)', '}']},
+  ]);
+  assert.deepEqual(partsOf('', 1), []);
+  assert.deepEqual(partsOf('\n  \nx\n', 3), [{line: 5, text: ['x']}]);
+  const part = {text: ['a', 'b']};
+  const lines = ['x', 'a', 'b', ...Array(30).fill('y'), 'a', 'b'];
+  assert.equal(findPart(lines, part, 2), 2);
+  assert.equal(findPart(lines, part, 12), 2, 'ten lines off');
+  assert.equal(findPart(lines, part, 30), 34, 'the nearest');
+  assert.equal(findPart(['a', 'c'], part, 1), null, 'changed: gone');
+  assert.equal(findPart([...Array(25).fill('y'), 'a', 'b'], part, 1), null, 'more than 20 lines away');
+  // A file written from a buffer to review: what the user changed there is theirs already.
+  const marks = writtenMarks(HANDLER, HANDLER.replace('50', '100'), NOON);
+  assert.deepEqual(marks.map(({k, line, state, how}) => [k, line, state, how]), [[0, 1, 'owned', 'review'], [1, 5, 'generated', undefined]]);
+  assert.deepEqual(parseMarkId('7.0.2'), {action: 7, piece: 0, k: 2});
+  assert.equal(parseMarkId('7.x'), null);
+});
+
+test('owning: code taken is marked ┊ part by part until you edit a part or own it; the Watcher says nothing about it meanwhile', async () => {
+  const {root, pair, store, clock, of, said, sent} = genSession([async (conversation, pair) => {
+    await tool(pair, conversation, 'propose', {file: 'math.js', line: 1, insert: true, text: HANDLER, note: 'two handlers'});
+    return 'Two handlers.';
+  }]);
+  const file = join(root, 'math.js');
+  await pair.gen.request({text: 'here two handlers', place: {file, line: 1}, from: 'editor'});
+  clock.now += 2500;
+  await pair.tick();
+  const [suggestion] = of('suggest');
+  const before = ['const x = 1', '', 'export {x}', ''];
+  const after = ['const x = 1', ...HANDLER.split('\n'), '', 'export {x}', ''];
+  await pair.applied(suggestion.action, before, after, {piece: 0, from: 2, to: 8});
+
+  // Taken: each part goes to Neovim, with its text to find it by.
+  const [marked] = of('gen_marks');
+  const id = k => `${suggestion.action}.0.${k}`;
+  assert.deepEqual(marked.marks, [
+    {id: id(0), gen: 1, file, line: 2, text: ['function list(rows) {', '  return rows.slice(0, 50)', '}']},
+    {id: id(1), gen: 1, file, line: 6, text: ['function get(rows, id) {', '  return rows.find(row => row.id === id)', '}']},
+  ]);
+  assert.equal(marked.via, 'editors');
+  assert.deepEqual(pair.today().generated, {files: [{file, name: 'math.js', lines: 6, line: 2, gens: [1]}], lines: 6});
+  pair.gen.list();
+  assert.match(said().at(-1), /\n┊ not yours yet: 1 file · 6 lines · :Pair own in Neovim makes it yours, :Pair today lists it$/);
+
+  // Neovim says where the parts are; an error in them, just after Pair wrote them, is no remark of the Watcher's.
+  pair.receive({kind: 'generated', file, marks: [{id: id(0), gen: 1, from: 2, to: 4}, {id: id(1), gen: 1, from: 6, to: 8}]});
+  assert.deepEqual(pair.state.generated['math.js'], [{from: 2, to: 4, gen: 1}, {from: 6, to: 8, gen: 1}]);
+  pair.receive({kind: 'edit', file, from: 1, to: 1, text: 'const x = 1', origin: 'user'});
+  pair.receive({kind: 'diagnostics', file, items: [{line: 2, severity: 'error', message: 'list is unused'}]});
+  pair.receive({kind: 'cursor', file, line: 30});
+  clock.now += 1000;
+  assert.deepEqual(detectTriggers(pair.state, clock.now).filter(trigger => trigger.kind === 'new_code_diagnostic'), []);
+  // The same error outside them is the user's code: it speaks.
+  pair.receive({kind: 'generated', file, marks: []});
+  assert.equal(pair.state.generated['math.js'], undefined);
+  assert.equal(detectTriggers(pair.state, clock.now).filter(trigger => trigger.kind === 'new_code_diagnostic').length, 1);
+
+  // Saved: Neovim keeps where they are with the ledger, so a buffer loaded again finds them there.
+  pair.gen.moved([{id: id(1), line: 9, text: ['function get(rows, id) {', '  return rows.find(row => row.id === id)', '}']}, {id: 'nonsense', line: 1}]);
+  assert.equal(store.action(suggestion.action).detail.pieces[0].marks[1].line, 9);
+
+  // Editing a part makes it yours, silently; the other stays Pair's.
+  const before1 = said().length;
+  pair.gen.own([id(0)], 'edit');
+  assert.equal(said().length, before1, 'an edit says nothing');
+  assert.deepEqual(sent.at(-1), {via: 'editors', type: 'gen_unmark', ids: [id(0)]});
+  assert.deepEqual(pair.gen.allMarks().map(mark => [mark.id, mark.line]), [[id(1), 9]]);
+  let {data} = store.action(suggestion.action);
+  assert.deepEqual(data.counts, {taken: 1, dropped: 0, lines: {taken: 6, owned: 3, gone: 0, generated: 3}});
+
+  // A daemon restart: a new session on the store marks what is not yours yet again.
+  const again = new PairSession({
+    record: store.createSession({root, conversationId: 'main', goal: 'add helpers', level: 'normal', at: clock.now}), store,
+    partner: {thinkingOf: () => 'off'}, score: async () => ({value: 0}), typingPauseMs: 2000, notify: () => 1, requestEditor: async () => null, now: () => clock.now,
+  });
+  assert.deepEqual(again.gen.allMarks().map(mark => mark.id), [id(1)]);
+
+  // :Pair own in the file: the rest is yours, and Pair says how much.
+  pair.gen.ownAll(file);
+  assert.equal(said().at(-1), '3 lines of generated code are yours now.');
+  pair.gen.ownAll();
+  assert.equal(said().at(-1), 'No generated code there that is not yours already.');
+  ({data} = store.action(suggestion.action));
+  assert.deepEqual(data.counts.lines, {taken: 6, owned: 6, gone: 0, generated: 0});
+  assert.deepEqual(pair.today().generated, {files: [], lines: 0});
+  assert.ok(sent.every(message => message.type !== 'remark'));
+});
+
+test('owning: /undo takes the marks back and again brings them; deleted lines are gone; a file written is marked, its changed parts yours', async () => {
+  const made = [];
+  const {root, pair, store, clock, of} = genSession([async (conversation, pair) => {
+    await tool(pair, conversation, 'propose', {file: 'math.js', line: 1, insert: true, text: HANDLER, note: 'two handlers'});
+    return 'Two.';
+  }, fileTurn([])], {editor: filesEditor(made)});
+  const file = join(root, 'math.js');
+  await pair.gen.request({text: 'here two handlers', place: {file, line: 1}, from: 'editor'});
+  clock.now += 2500;
+  await pair.tick();
+  const [suggestion] = of('suggest');
+  await pair.applied(suggestion.action, ['a'], ['a', ...HANDLER.split('\n')], {piece: 0, from: 2, to: 8});
+  const id = k => `${suggestion.action}.0.${k}`;
+
+  await pair.undoLast();
+  assert.deepEqual(of('gen_unmark').at(-1).ids, [id(0), id(1)]);
+  assert.deepEqual(pair.gen.allMarks(), []);
+  assert.equal(store.action(suggestion.action).detail.pieces[0].marks, undefined);
+  await pair.undo(suggestion.action);
+  assert.deepEqual(of('gen_marks').at(-1).marks.map(mark => [mark.id, mark.line]), [[id(0), 2], [id(1), 6]]);
+
+  // Lines deleted (or no longer there when the buffer was read again): gone, neither yours nor Pair's.
+  pair.gen.gone([id(1)]);
+  assert.deepEqual(store.action(suggestion.action).data.counts.lines, {taken: 6, owned: 0, gone: 3, generated: 3});
+
+  // A file request: :w writes the buffer as the user had it; the part they changed there is theirs.
+  clock.now += 1000;
+  await pair.gen.request({text: 'file a migration adding status to orders, and its test'});
+  const row = pair.today().rows.at(-1);
+  const migration = join(root, 'db/migrations/0007_status.sql');
+  pair.gen.fileTaken(row.id, 1, `${MATH_TEST.replace('x === 1', 'x === 2')}\n`);
+  assert.deepEqual(pair.gen.allMarks().filter(mark => mark.file !== file), []);
+  pair.gen.fileTaken(row.id, 0, `-- mine\n${MIGRATION}\n`);
+  assert.deepEqual(of('gen_marks').at(-1).marks, [{id: `${row.id}.0.0`, gen: 2, file: migration, line: 2, text: MIGRATION.split('\n')}]);
+  assert.deepEqual(store.action(row.id).data.counts, {taken: 2, dropped: 0, lines: {taken: 4, owned: 2, gone: 0, generated: 2}});
+  assert.deepEqual(pair.today().generated.files.map(({name, lines}) => [name, lines]), [['db/migrations/0007_status.sql', 2], ['math.js', 3]]);
+});
+
+test('owning: a warning or a regression in generated code not yours yet; pair stats counts what was taken and owned', () => {
+  let state = fold(initialState({root: '/p'}), {kind: 'generated', file: 'a.js', marks: [{id: '1.0.0', gen: 3, from: 5, to: 9}, {from: 'x'}]});
+  assert.deepEqual(state.generated, {'a.js': [{from: 5, to: 9, gen: 3}]});
+  assert.equal(generatedAt(state, 'a.js', 5), 3);
+  assert.equal(generatedAt(state, 'a.js', 10), null);
+  state = {...state, run: {cmd: 'tsc', by: 'you', at: 100, newWarnings: [{file: 'a.js', line: 6, message: 'unused'}]}};
+  assert.deepEqual(detectTriggers(state, 200).filter(trigger => trigger.kind === 'new_warning'), []);
+  state = {...state, tests: {cmd: 'npm test', at: 100, saved: 'a.js', newly: ['sums'], files: ['a.test.js'], failedCount: 1, passed: 0, failed: ['sums']}};
+  const [regression] = detectTriggers(state, 200).filter(trigger => trigger.kind === 'regression');
+  assert.match(regression.detail, / a\.js has code the user took from gen #3 and has not made their own yet\.$/);
+
+  const counts = (taken, owned, generated, gone = 0) => ({taken: 1, dropped: 1, lines: {taken, owned, generated, gone}});
+  const generated = [
+    {at: NOON, root: '/p', data: {shape: 'here', counts: counts(10, 4, 6)}},
+    {at: NOON, root: '/p', data: {shape: 'here', counts: counts(2, 2, 0)}},
+    {at: NOON, root: '/q', data: {shape: 'file', counts: counts(8, 0, 4, 4)}},
+    {at: NOON, root: '/p', data: {shape: 'try'}}, // made before the counts were booked
+  ];
+  assert.deepEqual(genLines(generated), [
+    '',
+    '/gen: 4 requests (here 2 · file 1 · try 1); pieces taken 3 · dropped 3',
+    '  20 lines taken: yours 6 (30%) · not yours yet 10 · gone 4',
+  ]);
+  assert.deepEqual(genLines([]), []);
+  const report = statsReport({remarks: [], activeMs: 0, now: NOON + 1000, days: 7, level: 'normal', autoTune: false, root: '/p', generated});
+  assert.ok(report.includes('/gen: 3 requests (here 2 · try 1); pieces taken 2 · dropped 2'));
 });

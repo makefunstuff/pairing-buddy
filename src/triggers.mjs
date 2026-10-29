@@ -1,5 +1,5 @@
 // Finds the moments where a remark might help. Pure: the caller passes the clock and the keys already fired.
-import {byUser, errorSignature, failed, failureLine, pairMade, userEdits} from './fold.mjs';
+import {byUser, errorSignature, failed, failureLine, generatedAt, pairMade, userEdits} from './fold.mjs';
 import {PROSE_KINDS, proseTriggers} from './prose-triggers.mjs';
 import {moveText, runsDetail} from './run-log.mjs';
 import {readingSummary} from './run-output.mjs';
@@ -65,6 +65,7 @@ function diagnosticTriggers(state) {
   for (const [file, items] of Object.entries(state.diagnostics)) {
     for (const diagnostic of items) {
       if (diagnostic.severity !== 'error' || !causedByEdit(state, file, diagnostic) || !movedOn(state, file, diagnostic)) continue;
+      if (generatedAt(state, file, diagnostic.line)) continue; // generated code not the user's yet: its request's check spoke
       found.push({
         kind: 'new_code_diagnostic',
         key: `diag:${file}:${diagnostic.line}:${diagnostic.message}`,
@@ -120,6 +121,13 @@ function redTriggers(state, now) {
   }];
 }
 
+/** Which /gen requests' code, not the user's yet, is in `files`: a regression says where the failing code came from. */
+function generatedText(state, files) {
+  const marked = [...new Set(files)].filter(file => state.generated?.[file]?.length);
+  const gens = [...new Set(marked.flatMap(file => state.generated[file].map(range => range.gen)).filter(Boolean))];
+  return marked.length ? ` ${marked.join(', ')} ${marked.length === 1 ? 'has' : 'have'} code the user took from ${gens.map(n => `gen #${n}`).join(', ') || '/gen'} and has not made their own yet.` : '';
+}
+
 /**
  * A regression: the tests Pair ran when the user saved fail where its run before did not. Raised once per run;
  * a run that is still red with the same failures is no news (the statusline says it), and the session's first run
@@ -133,7 +141,7 @@ function regressionTriggers(state, now) {
     kind: 'regression',
     key: `regression:${tests.at}`,
     detail: `Pair ran \`${tests.cmd}\` when the user saved ${tests.saved}. Now failing, and not in Pair's run before: ${newly}. ${testSummary(tests)}`
-      + `${tests.files.length ? ` The failure names ${tests.files.slice(0, 4).join(', ')}.` : ''}`,
+      + `${tests.files.length ? ` The failure names ${tests.files.slice(0, 4).join(', ')}.` : ''}${generatedText(state, [tests.saved, ...tests.files])}`,
     file: tests.saved,
     newly: tests.newly,
   }];
@@ -167,7 +175,7 @@ function crashTriggers(state, now) {
  */
 function warningTriggers(state, now) {
   const {run} = state;
-  const warnings = (run?.newWarnings ?? []).filter(warning => !pairMade(state, warning.file, warning.line));
+  const warnings = (run?.newWarnings ?? []).filter(warning => !pairMade(state, warning.file, warning.line) && !generatedAt(state, warning.file, warning.line));
   if (!warnings.length || now - run.at > TIMING.recentMs) return [];
   const shown = warnings.slice(0, 3).map(warning => `${warning.file}:${warning.line}: ${warning.message}`).join('; ');
   return [{

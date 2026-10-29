@@ -72,7 +72,10 @@ once you take it. The new files of `/gen file` are no files of the project until
 see edits in their `pair://gen/…` buffers. Nor does it see a `/gen try`'s sample or a `/gen scaffold`'s copy: their
 folders are outside the project, so your edits there are dropped with the rest. A file you keep from a scaffold is a
 buffer to review until you take it, and a change you keep shows as suggestions, so the Watcher sees that code only
-once you take it, as Pair's (`gen:#n`). See [gen.md](gen.md).
+once you take it, as Pair's (`gen:#n`). Code you took stays [not yours](gen.md#owning-generated-code) (marked `┊`)
+until you edit a part of it or `:Pair own` it, and meanwhile `new_code_diagnostic` and `new_warning` skip its lines,
+whoever edited near them; a `regression` names the request whose code is not yours yet in a file it names. See
+[gen.md](gen.md).
 
 ## The wrong turn
 

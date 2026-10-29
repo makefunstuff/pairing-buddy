@@ -375,6 +375,11 @@ The last one shows that the gate works: Pair noticed, judged, and chose not to t
 list's window (a command's output, why Pair stayed quiet, all it said; `q` comes back). `+` and `-` rate a remark.
 `q` closes the list. While it is open, it follows along.
 
+**What is not yours yet.** When code you took from `/gen` is still marked `┊`, the list ends with
+`┊ not yours yet: 4 files · 211 lines`, from any day of the last week. `⏎` on it goes to that code (you pick the
+file when there are several), `o` makes one file's of it yours, and `O` all of it
+([gen.md](gen.md#owning-generated-code)).
+
 **`u` undoes Pair's edit, later.** In the buffer, Pair's edit is one undo step, but only until your next edit
 buries it. In the ledger, `u` on a `typed` line takes that edit back whenever you like, after other edits too: the
 daemon kept the buffer's text before and after it, and Neovim merges the undo into the buffer as it is now. Your

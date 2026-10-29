@@ -230,7 +230,8 @@ test('/gen here with Neovim\'s own prompt: the request on the command line, the 
     assert.ok(messages.some(message => message.text === '/gen a sum\nof two numbers'), 'both lines are the request');
     assert.equal(floats().length, 0, 'the compose window closed');
     assert.equal(readFileSync(join(project, 'a.js'), 'utf8'), 'const x = 1\nconst y = 2\nconst z = 3\n', 'nothing was saved');
-    await until(() => status() === '● pair', 'the statusline to settle');
+    // The 40 lines taken are not yours yet: the statusline counts them.
+    await until(() => status() === '● pair · ┊ 40 generated', 'the statusline to settle');
   } finally {
     await stop();
   }
@@ -627,6 +628,75 @@ test('/gen scaffold: built in Pair\'s copy; :Pair gen list opens a file of it wi
     await said('gen #1: its copy is deleted. 2 files kept from it stay.');
     assert.match(asked().at(-1).prompt, /^Delete gen #1's copy\?$/);
     await until(() => listed().some(line => /copy deleted · 2 of 2 kept/.test(line)), 'the list again');
+  } finally {
+    await stop();
+  }
+});
+
+const HANDLERS = 'function list(rows) {\n  return rows.slice(0, 50)\n}\n\nfunction get(rows, id) {\n  return rows.find(row => row.id === id)\n}';
+
+test('owning in Neovim: ┊ on the lines taken, part by part; your edit makes a part yours; found again after :e; :Pair today, :Pair own; lines gone', {skip, timeout: 40_000}, async () => {
+  const {project, partner, keys, remote, lines, status, ghosts, said, today, messages, stop} = await genInNvim('handlers');
+  // The ┊ marks in the current buffer: [first row, last row], and their sign.
+  const marks = () => JSON.parse(remote(`luaeval("vim.json.encode(vim.tbl_map(function(m) return {m[2], m[4].end_row, m[4].sign_text} end, vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('pair_generated'), 0, -1, {details = true})))")`))
+    .sort((a, b) => a[0] - b[0]);
+  const rows = () => JSON.stringify(marks().map(([first, last]) => [first, last]));
+  try {
+    partner.setResponses([
+      fauxAssistantMessage([fauxToolCall('propose', {file: 'a.js', line: 1, insert: true, text: HANDLERS, note: 'handlers'})], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxText('Two handlers.')]),
+    ]);
+    keys(':Pair gen here two handlers<CR>');
+    await said(/^gen #1 · here · 7 lines at a\.js:1/);
+    await until(() => ghosts().length === 1, 'the ghost lines');
+    keys('<M-y>');
+    await until(() => lines().length === 10, 'the handlers taken');
+    // Each part between blank lines is marked on its own, with a thin ┊.
+    await until(() => rows() === '[[1,3],[5,7]]', 'the marks');
+    assert.equal(marks()[0][2], '┊ ');
+    await until(() => status() === '● pair · ┊ 6 generated', 'the statusline');
+
+    // Typing above them moves them; it is no edit of theirs.
+    keys('ggOconst top = 0<Esc>');
+    await until(() => rows() === '[[2,4],[6,8]]', 'the marks moved');
+    // A line of the first part changed by you: that part is yours, the other still Pair's.
+    keys('4GA // fifty<Esc>');
+    await until(() => rows() === '[[6,8]]', 'the first part yours');
+    assert.equal(status(), '● pair · ┊ 3 generated');
+    assert.equal((await today()).find(row => row.kind === 'generated').counts.lines.owned, 3, 'the ledger knows');
+
+    // Saved and read again: found again by its text.
+    keys(':w<CR>:e!<CR>');
+    await sleep(300);
+    await until(() => rows() === '[[6,8]]', 'found again after :e!');
+
+    // :Pair today ends with what is not yours yet; :Pair own makes the file's yours.
+    keys(':Pair today<CR>');
+    await until(() => /^┊ not yours yet: 1 file · 3 lines$/.test(remote('getline("$")')), 'the line in :Pair today');
+    keys('q');
+    await until(() => remote('bufname()').endsWith('a.js'), 'back in a.js');
+    keys(':Pair own<CR>');
+    await said('3 lines of generated code are yours now.');
+    await until(() => rows() === '[]', 'no marks left');
+    assert.equal(status(), '● pair');
+
+    // Code taken that changed while it was not loaded is gone, neither yours nor Pair's.
+    partner.setResponses([
+      fauxAssistantMessage([fauxToolCall('propose', {file: 'a.js', line: 1, insert: true, text: 'const w = 4', note: 'w'})], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxText('A w.')]),
+    ]);
+    keys('gg:Pair gen here a w<CR>');
+    await said(/^gen #2 · here · 1 line at a\.js:1/);
+    await until(() => ghosts().length === 1, 'the ghost line');
+    keys('<M-y>');
+    await until(() => rows() === '[[1,1]]', 'its mark');
+    keys(':w<CR>');
+    await sleep(200);
+    writeFileSync(join(project, 'a.js'), readFileSync(join(project, 'a.js'), 'utf8').replace('const w = 4', 'const w = 5'));
+    keys(':e!<CR>');
+    await until(() => rows() === '[]', 'gone');
+    await until(async () => (await today()).find(row => row.text === 'gen #2 · here · a w')?.counts.lines.gone === 1, 'gone in the ledger');
+    assert.equal(messages.filter(message => message.type === 'ledger').at(-1).generated.lines, 0);
   } finally {
     await stop();
   }

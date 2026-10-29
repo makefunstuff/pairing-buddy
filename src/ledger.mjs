@@ -159,13 +159,21 @@ function chatState(row) {
   return '';
 }
 
-/** Today's ledger as lines for the chat pane. */
-export function ledgerText({rows, summary}) {
-  if (!rows.length) return ['Pair has done nothing here today.'];
+/** "┊ not yours yet: 2 files · 31 lines", for what owning.mjs says is not the user's yet; null when there is none. */
+export function notYoursLine(generated) {
+  if (!generated?.lines) return null;
+  return `┊ not yours yet: ${plural(generated.files.length, 'file')} · ${plural(generated.lines, 'line')}`;
+}
+
+/** Today's ledger as lines for the chat pane, with the generated code that is not the user's yet. */
+export function ledgerText({rows, summary, generated = null}) {
+  const notYours = notYoursLine(generated);
+  const own = notYours && `${notYours} · :Pair own in Neovim makes it yours`;
+  if (!rows.length) return ['Pair has done nothing here today.', ...(own ? [own] : [])];
   const width = Math.max(...rows.map(row => row.label.length));
   const lines = rows.map(row => {
     const state = chatState(row);
     return [row.time, row.label.padEnd(width), row.text, row.note && `· ${row.note}`, state && `(${state})`].filter(Boolean).join('  ');
   });
-  return [...lines, `${summary} · :Pair today in Neovim goes there, shows output and undoes edits`];
+  return [...lines, ...(own ? [own] : []), `${summary} · :Pair today in Neovim goes there, shows output and undoes edits`];
 }
