@@ -651,7 +651,8 @@ Pair does not commit, and nothing of this reaches git: owning is about your read
 - A part of generated code is owned whole: a one-character fix of a 40-line function makes all 40 lines yours. A
   block with no blank lines is one part.
 - Marks stay for seven days after the request (the ledger keeps a request's detail that long); code taken earlier
-  and still not yours is no longer marked or counted.
+  and still not yours is no longer marked, nor counted in `:Pair today`, `/today` or `/gen`. `pair stats` still counts
+  it as not yours yet over a window longer than that.
 - A part not found by its text within 20 lines of where it was last seen, when a file is read again, is gone: a
   file changed outside Neovim (a `git checkout`, another editor) can lose its marks. So can a second Neovim that
   opens the file while the first has the code taken but not saved.

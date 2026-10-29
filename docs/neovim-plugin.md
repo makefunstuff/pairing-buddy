@@ -121,7 +121,7 @@ to standard ones and does not fade.
 | `:Pair why` | The idea worth keeping behind Pair's words under your line (same as `Alt-?`); again, it opens the link that came with it |
 | `:Pair open` | Open the place Pair asked to show while you were typing |
 | `:Pair agents` | Your other agents and board tasks, the ones that need you first; `⏎` goes to one ([agents.md](agents.md)) |
-| `:Pair today` | The [ledger](neovim.md#the-ledger): everything Pair did in this project today; `⏎` goes there or shows the output, `u` undoes one of its edits later, or a whole `/gen` request |
+| `:Pair today` | The [ledger](neovim.md#the-ledger): everything Pair did in this project today; `⏎` goes there or shows the output, `u` undoes one of its edits later, or a whole `/gen` request. Its last line, `┊ not yours yet: 4 files · 211 lines`, is the code you took from `/gen` that is [not yours yet](gen.md#owning-generated-code): `⏎` there goes to it, `o` makes one file's yours, `O` all of it |
 | `:Pair decide` | Log the decision on the cursor's line of a note in `decisions.md` next to it (same as `Alt-d`; [notes.md](notes.md#the-decision-log)) |
 | `:Pair tasks` | List the work in the current note as tasks; nothing is added until `y` ([notes.md](notes.md#tasks-only-when-you-ask)) |
 | `:Pair clear` | Remove Pair's points and words and the marks in a note's margin, and end the questions of `:Pair new` |
