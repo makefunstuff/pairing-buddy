@@ -20,6 +20,7 @@ export function initialState({root = null, goal = null} = {}) {
     lastEditAt: 0,
     lastLookAt: 0, // when the user last moved the cursor or scrolled: reading counts as active time too
     edits: [],
+    generated: {}, // code taken from a /gen request that is not the user's yet, by file: {from, to, gen} where Neovim marks it (see owning.mjs)
     diagnostics: {},
     commands: [],
     errors: {},
@@ -59,6 +60,14 @@ export const byUser = edit => (edit.origin ?? 'user') === 'user';
 
 /** The user's own edits, oldest first: what the triggers about code you wrote look at. */
 export const userEdits = state => state.edits.filter(byUser);
+
+/**
+ * The /gen request whose code on line `line` of `file` is not the user's yet (Neovim marks it ┊), or null: no remark
+ * is about it until the user edits it or owns it.
+ */
+export function generatedAt(state, file, line) {
+  return (state.generated?.[file] ?? []).find(range => line >= range.from && line <= range.to)?.gen ?? null;
+}
 
 /**
  * Whether line `line` of `file` is Pair's: the newest kept edit that touched it (or the line next to it) was made
@@ -190,6 +199,14 @@ const handlers = {
   },
 
   enter: (state, event) => ({...state, file: event.file}),
+
+  // Where Neovim marks code taken from a /gen request that is not the user's yet, in one file, as it is now.
+  generated: (state, event) => {
+    const ranges = (event.marks ?? []).filter(mark => Number.isInteger(mark?.from) && Number.isInteger(mark.to))
+      .map(({from, to, gen}) => ({from, to, gen: Number.isInteger(gen) ? gen : null}));
+    const {[event.file]: _, ...others} = state.generated ?? {};
+    return {...state, generated: ranges.length ? {...others, [event.file]: ranges} : others};
+  },
 
   // A cursor that stays where it was (Neovim reports it again after any pause) is no sign of reading.
   cursor: (state, event) => ({

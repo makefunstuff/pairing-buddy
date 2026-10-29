@@ -57,7 +57,9 @@ A remark can come from one of these moments (its **trigger**):
 
 The moments about code you wrote leave out the code Pair wrote for you: the Driver's edits, a suggestion you took,
 code you took from a `/gen` request and an undo from the ledger reach the daemon tagged as Pair's
-([gen.md](gen.md#who-wrote-it-edits-carry-their-origin)). While a `/gen` request runs, no remark nobody asked for
+([gen.md](gen.md#who-wrote-it-edits-carry-their-origin)). Code you took from a request stays
+[not yours](gen.md#owning-generated-code) until you edit it or `:Pair own` it: an error or a new warning on its lines
+is no moment until then. While a `/gen` request runs, no remark nobody asked for
 starts. A request's [brief](gen.md#the-brief) is checked twice by the Partner's model outside any conversation, as a
 note is read: whether the request contradicts it, and after, whether the code does and what it guessed. Each answer is
 JSON, and only what holds up in code is kept: a quote that is words of the brief, a place that is a line of the code.

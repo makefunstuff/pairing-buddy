@@ -1,5 +1,5 @@
 // `pair stats`: how often Pair spoke unasked and what the user made of it, per trigger, and the tuning that follows,
-// for all projects or, with --project, for one.
+// and what /gen made and how much of it became the user's, for all projects or, with --project, for one.
 import {basename} from 'node:path';
 import {Budget, BUDGETS} from './budget.mjs';
 import {SURE} from './decision.mjs';
@@ -94,11 +94,32 @@ export function decisionLines(decisions, remarks, now) {
 }
 
 /**
+ * What /gen made (see gen.mjs and owning.mjs), from the `generated` requests of the shown days: how many of each
+ * shape, the pieces taken and dropped, and the lines taken by what became of them: made the user's own (edited, or
+ * :Pair own), not the user's yet, or gone. Empty without a request.
+ */
+export function genLines(generated) {
+  if (!generated.length) return [];
+  const shapes = Object.entries(Object.groupBy(generated, request => request.data.shape ?? 'here')).map(([shape, list]) => [list.length, shape]);
+  const sum = pick => generated.reduce((total, request) => total + (pick(request.data.counts) ?? 0), 0);
+  const taken = sum(counts => counts?.lines.taken);
+  const owned = sum(counts => counts?.lines.owned);
+  const lines = [
+    '',
+    `/gen: ${plural(generated.length, 'request')} (${counted(shapes.map(([n, shape]) => [n, shape]))}); pieces taken ${sum(counts => counts?.taken)} · dropped ${sum(counts => counts?.dropped)}`,
+  ];
+  if (taken) {
+    lines.push(`  ${plural(taken, 'line')} taken: yours ${owned} (${percent(owned / taken)}) · not yours yet ${sum(counts => counts?.lines.generated)} · gone ${sum(counts => counts?.lines.gone)}`);
+  }
+  return lines;
+}
+
+/**
  * The stats view as lines of text. `remarks` are the stored remarks (newest first) of at least the tuning
  * window, `activeMs` the active time in the last `days`, `level` and `autoTune` the config's. With `root`, the
  * remarks and the tuning are that project's, and `activeMs` should be too.
  */
-export function statsReport({remarks, activeMs, now, days, level, autoTune, root = null, decisions = []}) {
+export function statsReport({remarks, activeMs, now, days, level, autoTune, root = null, decisions = [], generated = []}) {
   const recent = remarks.filter(remark => now - remark.at <= days * DAY && (!root || remark.root === root));
   const hours = activeMs / HOUR;
   const total = tally(recent, now);
@@ -126,5 +147,6 @@ export function statsReport({remarks, activeMs, now, days, level, autoTune, root
   else lines.push('Tuning follows your verdicts of the last 30 days: a trigger needs 5 of them to move its bar, the budget 10. Each project tunes on its own verdicts once it has as many (pair stats --project).');
   const judged = decisions.filter(decision => now - decision.at <= days * DAY && (!root || decision.root === root));
   lines.push(...decisionLines(judged, recent, now));
+  lines.push(...genLines(generated.filter(request => now - request.at <= days * DAY && (!root || request.root === root))));
   return lines;
 }

@@ -1396,8 +1396,9 @@ export class PairSession {
 
   // The ledger (see ledger.mjs): today's list, what an entry opens to, and Pair's edits undone or done again.
 
+  /** Today's ledger, and the code taken from /gen requests that is not the user's yet (see owning.mjs). */
   today() {
-    return today(this.store, this.root, this.now());
+    return {...today(this.store, this.root, this.now()), generated: this.gen.notYours()};
   }
 
   ledgerDetail(ids) {

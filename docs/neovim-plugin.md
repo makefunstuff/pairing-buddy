@@ -80,7 +80,7 @@ Every key option takes `false` for none; the commands work either way. The keys 
 mapping of your own, and all but `listen_key` and `gen_key` only while there is something for them to act on. Each says what it does
 until you have used it once (`M-j goes there`); the keys you have used are kept in `stdpath('state')/pair/keys.json`.
 The glyphs are plain Unicode, so they show in any font: `voice` `●`, `idea` `∴`, `mark` `▎`, `held` `•`, `away` `◌`, `wheel` `◎`, `listen` `◉`, `pass`
-`✓`, `fail` `✗`, `warn` `△` and `agents` `◇`, and in a note's margin `question` `?`, `contradiction` `≠`, `code` `→`,
+`✓`, `fail` `✗`, `warn` `△`, `agents` `◇` and `generated` `┊` (code you took from `/gen` that is not yours yet), and in a note's margin `question` `?`, `contradiction` `≠`, `code` `→`,
 `decision` `◆` and `repeat` `≈`. The spinner is braille, `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`.
 
 Once connected, the plugin stays connected: when the daemon restarts (an upgrade, `systemctl --user restart`, a
@@ -112,6 +112,7 @@ to standard ones and does not fade.
 | `:Pair gen run` | Run the [/gen try](gen.md#samples-gen-try-and-keep) you are in (else the newest) again, in Pair's pane, after writing its changed buffers (same as `\r` in it) |
 | `:Pair gen tries` | The project's `/gen try` folders still kept, with the days each has left; the one you pick opens in a split |
 | `:Pair keep [path]` | Move the `/gen try` file you are in (else the newest try's main file) into the project at `path` (else at its path in the try's folder), as a `pair://gen/<n>/<path>` buffer to review that `:w` takes; only a new file. In a file of a scaffold's copy, keep that file (with a path: the scaffold's file at that path) |
+| `:Pair own [path]`, `:'<,'>Pair own`, `:Pair own!` | Make the code you took from `/gen` yours ([gen.md](gen.md#owning-generated-code)): all of it in this buffer's file (or in `path`), that on the lines, or all of it in the project. Its `┊` marks go |
 | `:Pair brief [path\|off]` | The [brief](gen.md#the-brief) `/gen` runs against: in a Markdown buffer, pin that note; with a path, pin that note; `off`, leave the note out; elsewhere, say what the brief is |
 | `:Pair accept` | Accept Pair's suggestion under the cursor, else the newest in the buffer (same as `Alt-y`); for a suggestion in an unasked remark, that rates the remark useful |
 | `:Pair dismiss` | Drop the same suggestion, and only that one; for a suggestion in an unasked remark, that rates the remark not useful |
@@ -120,7 +121,7 @@ to standard ones and does not fade.
 | `:Pair why` | The idea worth keeping behind Pair's words under your line (same as `Alt-?`); again, it opens the link that came with it |
 | `:Pair open` | Open the place Pair asked to show while you were typing |
 | `:Pair agents` | Your other agents and board tasks, the ones that need you first; `⏎` goes to one ([agents.md](agents.md)) |
-| `:Pair today` | The [ledger](neovim.md#the-ledger): everything Pair did in this project today; `⏎` goes there or shows the output, `u` undoes one of its edits later, or a whole `/gen` request |
+| `:Pair today` | The [ledger](neovim.md#the-ledger): everything Pair did in this project today; `⏎` goes there or shows the output, `u` undoes one of its edits later, or a whole `/gen` request. Its last line, `┊ not yours yet: 4 files · 211 lines`, is the code you took from `/gen` that is [not yours yet](gen.md#owning-generated-code): `⏎` there goes to it, `o` makes one file's yours, `O` all of it |
 | `:Pair decide` | Log the decision on the cursor's line of a note in `decisions.md` next to it (same as `Alt-d`; [notes.md](notes.md#the-decision-log)) |
 | `:Pair tasks` | List the work in the current note as tasks; nothing is added until `y` ([notes.md](notes.md#tasks-only-when-you-ask)) |
 | `:Pair clear` | Remove Pair's points and words and the marks in a note's margin, and end the questions of `:Pair new` |
@@ -151,6 +152,7 @@ vim.o.statusline = "%f %m%=%{%v:lua.require'pair'.statusline()%}  %l:%c "
 | `● pair · held thought · M-j` | While a remark waits for your next break |
 | `● pair · gen #4 · generating · 21s`, `● pair · gen #4 asks · M-g`, `● pair · gen #5 waits for the one before`, `● pair · gen #4 ready · M-y takes · :Pair dismiss` | While a [/gen request](gen.md) runs, waits for your answer or its turn, and while its code waits to be taken |
 | `● pair · gen #4 · 2 to review · :Pair gen list`, `● pair · gen · 3 to review · :Pair gen list` | While new files of [/gen file](gen.md#new-files-gen-file) wait as buffers to review: of one request, or of several |
+| `● pair · ┊ 12 generated` | In a buffer with code you took from `/gen` that is [not yours yet](gen.md#owning-generated-code): how many of its lines |
 | `● pair · 5 notes in the margin`, `◆ logged · docs/decisions.md` | In a note with [marks](notes.md), and for a moment after a decision is logged |
 | `● run 3 · exit 0 · 55 ms · avg probe 23.7 · same numbers as run 2` | For 15 minutes after a build or run: what it showed next to the one before, and once the hunt is over, `· 1 debug line from run 2 left · M-j` ([exploration.md](exploration.md)). A crash or a broken build shows with `✗` |
 | `⠹ go test ./...`, `✗ 1 failing · TestX`, `✓ go test ./... · 4 tests, 3 packages` | [Tests on save](tests-on-save.md); `(unsaved)` after the command for the run on the Driver's edit |
@@ -169,6 +171,7 @@ vim.o.statusline = "%f %m%=%{%v:lua.require'pair'.statusline()%}  %l:%c "
 | `PairCode` | `code` in its words | the accent |
 | `PairKey` | the key after its words | between background and foreground |
 | `PairSign` | `▎` and `•` in the sign column | the accent |
+| `PairGenerated` | `┊` in the sign column, on code you took from `/gen` that is not yours yet | the accent, faded toward the background |
 | `PairPoint` | a line Pair points at | the background, faintly toward the accent |
 | `PairSpan` | the code it means there, underlined | the background toward the accent |
 | `PairGaze` | a line number it reads | the accent, bold |

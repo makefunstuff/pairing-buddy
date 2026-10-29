@@ -160,3 +160,11 @@ Tuning follows your verdicts of the last 30 days: a trigger needs 5 of them to m
 - **Decision model**: with a [decision model](decision.md) in the config, a last section says what it sorted the
   moments as, how many Watcher calls that saved, and how its remarks fared next to the rules' remarks, which is how
   you tell whether it does better than the bar ([decision.md](decision.md#pair-doctor-and-pair-stats)).
+- **/gen**: with [/gen requests](gen.md) in the window, a last section counts them per shape, the pieces taken and
+  dropped, and the lines taken by what became of them: made yours (edited, or `:Pair own`), with their share, not
+  yours yet, and gone ([gen.md](gen.md#owning-generated-code)). Code taken and never owned is the number to watch:
+
+  ```
+  /gen: 6 requests (here 3 · file 2 · scaffold 1); pieces taken 5 · dropped 2
+    240 lines taken: yours 120 (50%) · not yours yet 100 · gone 20
+  ```

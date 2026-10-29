@@ -45,7 +45,7 @@ stay herdr's:
 - **/gen**: a try's or a scaffold's runs need bubblewrap for their own sandbox (without it they run in their folder
   after a yes) and have no network unless `gen.network` is on, so a scaffold lists its installs instead of running
   them; `/keep` keeps one file at a time, a scaffold one file at a time too, and a file it deletes is not proposed; a
-  `--branch` worktree starts from `HEAD`, without your uncommitted changes. Taken code has no mark of its own; the brief's checks cost one more answer of the Partner's model
+  `--branch` worktree starts from `HEAD`, without your uncommitted changes. Taken code is owned a part (the lines between blank lines) at a time, its `┊` marks last a week, and a part changed outside Neovim is lost; the brief's checks cost one more answer of the Partner's model
   each, before and after a request; `? guessed` lines are logged as decisions only from `:Pair gen list`; a daemon
   restart stops a running request and loses code it proposed at your cursor that you did not take (new files to
   review are kept); and a buffer to review gets no language server until you take it ([gen.md](gen.md#limits)).

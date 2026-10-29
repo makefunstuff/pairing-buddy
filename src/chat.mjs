@@ -36,7 +36,7 @@ export const COMMANDS = [
   ['/noise', '[n]', 'it was not (or -); a remark you never see counts as not useful too'],
   ['/mute', '[kind]', 'no more remarks of this kind (the last remark\'s) this session'],
   ['/unmute', '[kind]', 'let them speak again (all of them)'],
-  ['/gen', '', 'what /gen made here today'],
+  ['/gen', '', 'what /gen made here today, and what is not yours yet'],
   ['/gen here', '<what>', 'ask Pair for code at your cursor in Neovim (@here: over the selection)'],
   ['/gen file', '<what>', 'new files, as unsaved buffers to review in Neovim (:w in one takes it)'],
   ['/gen try', '<what>', 'a sample to read and run, in a folder outside the project, opened in a split in Neovim'],

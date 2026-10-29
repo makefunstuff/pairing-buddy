@@ -20,6 +20,7 @@ local genfiles = require('pair.genfiles')
 local gentry = require('pair.gentry')
 local listen = require('pair.listen')
 local margin = require('pair.margin')
+local owning = require('pair.owning')
 local pane = require('pair.pane')
 local merge = require('pair.merge')
 local places = require('pair.places')
@@ -127,6 +128,7 @@ local function flush(buf)
   local last = math.min(pending.to, vim.api.nvim_buf_line_count(buf))
   local lines = vim.api.nvim_buf_get_lines(buf, pending.from - 1, math.min(last, pending.from + 39), false)
   event({kind = 'edit', file = file, from = pending.from, to = last, text = table.concat(lines, '\n'), origin = pending.origin})
+  owning.report(buf) -- where the code not yours yet is now
   local cursor = vim.api.nvim_win_get_cursor(0)
   event({kind = 'cursor', file = file, line = cursor[1], col = cursor[2]})
 end
@@ -580,6 +582,7 @@ local function on_lines(_, buf, _, first, last, new_last)
   pending.to = math.max(pending.to, new_last)
   pending.timer = pending.timer or vim.uv.new_timer()
   state.pending[buf] = pending
+  owning.changed(buf, origin) -- generated code you change is yours
   pending.timer:start(config.debounce_ms, 0, vim.schedule_wrap(function()
     if state.pending[buf] ~= pending then return end -- flushed already (see flush_all)
     pending.timer:close()
@@ -1103,6 +1106,9 @@ local handlers = {
   gen_ask = gen.on_ask,
   gen_debrief = gen.on_debrief,
   gen_drop = gen_drop,
+  -- Code taken from /gen that is not yours yet: ┊ on its lines, until you edit them or :Pair own them.
+  gen_marks = owning.on_marks,
+  gen_unmark = owning.on_unmark,
   gen_place = gen_place,
   gen_where = function(message) send({type = 'reply', id = message.id, result = gen.where(message.gen) or vim.NIL}) end,
   -- /gen file: the files to review as pair://gen/<n>/<path> buffers, the list, and /undo of a file you wrote.
@@ -1357,6 +1363,8 @@ local function status_parts()
   if state.held then table.insert(parts, 'held thought · ' .. (key_label('jump', config.jump_key) or ':Pair jump')) end
   local notes = margin.status()
   if notes then table.insert(parts, notes) end
+  local generated = owning.status()
+  if generated then table.insert(parts, generated) end
   local lit = state.words or state.held or (line and (line.kind == 'same' or line.kind == 'moved'))
   if line and (line.kind == 'crash' or line.kind == 'error') then
     return {glyph = g.fail, text = table.concat(parts, ' · '), hl = 'PairFail', text_hl = 'PairStatusDim'}
@@ -1442,6 +1450,19 @@ local commands = {
     if not M.connect() then return vim.notify('Pair: not connected; :Pair keep again once it is', vim.log.levels.WARN) end
     gentry.keep(arg)
   end,
+  -- Generated code you took becomes yours: `:Pair own` all of it in this file, `:'<,'>Pair own` that of the lines,
+  -- `:Pair own <path>` that of a file, `:Pair own!` all of it in the project.
+  own = function(arg, selection)
+    if not M.connect() then return vim.notify('Pair: not connected; :Pair own again once it is', vim.log.levels.WARN) end
+    if selection then return send({type = 'gen_own', ids = owning.ids_in(vim.api.nvim_get_current_buf(), selection.from, selection.to)}) end
+    local file = arg ~= '' and vim.fn.fnamemodify(vim.fn.expand(arg), ':p') or project_path(0)
+    if not file then return vim.notify('Pair: :Pair own works in a file of the project; :Pair own! owns all of it') end
+    send({type = 'gen_own', file = file})
+  end,
+  ['own!'] = function()
+    if not M.connect() then return vim.notify('Pair: not connected; :Pair own! again once it is', vim.log.levels.WARN) end
+    send({type = 'gen_own', all = true})
+  end,
   -- The brief /gen runs against: `:Pair brief` in a note pins it (elsewhere shows the brief), `:Pair brief <path>`
   -- pins that note, `:Pair brief off` leaves the note out.
   brief = function(arg)
@@ -1524,6 +1545,7 @@ function M.setup(opts)
     files_status = genfiles.status,
   })
   genfiles.setup({send = send, redraw_status = redraw_status, label = label, decide_key = config.decide_key})
+  owning.setup({send = send, event = event, redraw_status = redraw_status, connected = function() return state.channel ~= nil end})
   gentry.setup({send = send, run_key = config.try_run_key})
   style.apply()
   local group = vim.api.nvim_create_augroup('pair', {clear = true})
@@ -1603,12 +1625,17 @@ function M.setup(opts)
   vim.api.nvim_create_autocmd('BufWritePost', {group = group, callback = function(args)
     local file = state.channel and project_path(args.buf)
     if file then event({kind = 'save', file = file}) end
+    owning.keep(args.buf) -- where its generated code is, as saved
   end})
-  -- A file you open after a run shows its results too.
+  -- A file you open after a run shows its results too, and its generated code not yours yet, found by its text.
   vim.api.nvim_create_autocmd('BufReadPost', {group = group, callback = function(args)
     show_tests(args.buf)
     show_places(args.buf)
+    owning.read(args.buf)
   end})
+  -- Before a buffer is read again (:e) or goes, where its generated code is now is kept.
+  vim.api.nvim_create_autocmd('BufReadPre', {group = group, callback = function(args) owning.keep(args.buf) end})
+  vim.api.nvim_create_autocmd('BufUnload', {group = group, callback = function(args) owning.unload(args.buf) end})
   -- CursorHold never fires in Visual mode, so a selection is sent once it stops changing.
   local selection_timer = vim.uv.new_timer()
   vim.api.nvim_create_autocmd({'CursorMoved', 'ModeChanged'}, {group = group, callback = function()

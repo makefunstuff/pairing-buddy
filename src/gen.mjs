@@ -1,7 +1,8 @@
 // /gen: the user asks Pair for code. Each request has a number (gen #3), a shape, a conversation of its own on the
 // Partner's model with the gen tool set (see tools.mjs), its pieces and its limits. A request never edits the user's
 // text: it proposes, and the user takes a proposal into their buffer, unsaved, with one key. Code taken from a request
-// is Pair's (origin gen:#n, see fold.mjs) until the user edits it. The ledger books a request as one line with its
+// is Pair's (origin gen:#n, see fold.mjs) until the user edits it, and marked ┊ in Neovim, part by part, until they
+// edit a part or own it (see owning.mjs). The ledger books a request as one line with its
 // pieces, and /undo takes back all of it: what was taken goes, what was not is dropped.
 //
 // Every request runs against the brief (see brief.mjs): the goal, the board task and a note, NOTES.md by default.
@@ -37,7 +38,8 @@ import {
   removeCopy, removeWorktree, scaffoldFolder, sizeOf, textOf, tryFolder, tryLine, triesIn, trySandboxed,
 } from './gen-tree.mjs';
 import {gitFiles} from './git.mjs';
-import {keptOutput, startOfDay} from './ledger.mjs';
+import {DETAIL_KEPT_MS, keptOutput, notYoursLine, startOfDay} from './ledger.mjs';
+import {markId, parseMarkId, takenMarks, tally, writtenMarks} from './owning.mjs';
 import {runText} from './session.mjs';
 import {parseTestOutput} from './test-output.mjs';
 import {runLabel} from './test-runs.mjs';
@@ -820,11 +822,11 @@ export class Gen {
   book(request, data = {}) {
     if (!request.action) return;
     // A scaffold's file keeps its text in its copy, not in the ledger; a change keeps what it was changed from.
-    const pieces = request.pieces.map(({i, kind, file, line, endLine, insert, text, note, state, patch, from, to, written, source, tree, base, added, removed, old}) => (kind === 'tree'
+    const pieces = request.pieces.map(({i, kind, file, line, endLine, insert, text, note, state, patch, from, to, written, source, tree, base, added, removed, old, marks}) => (kind === 'tree'
       ? {i, kind, file, tree, line, endLine, base, added, removed, note, state}
-      : {i, kind, file, line, endLine, insert, text, note, state, patch, from, to, written, source, ...(kind === 'hunk' ? {old} : {})}));
+      : {i, kind, file, line, endLine, insert, text, note, state, patch, from, to, written, source, ...(kind === 'hunk' ? {old} : {}), ...(marks ? {marks} : {})}));
     const check = request.check ? {contradicts: request.check.contradicts, guessed: request.check.guessed, debrief: request.debrief ?? []} : {};
-    this.session.ledger.update(request.action, {data, detail: {words: request.words, pieces, ...check}});
+    this.session.ledger.update(request.action, {data: {...data, ...tally(pieces)}, detail: {words: request.words, pieces, ...check}});
   }
 
   /**
@@ -841,7 +843,7 @@ export class Gen {
   /** Books `data` on ledger entry `action` with its pieces as they are now. */
   rebook(action, {entry, request, pieces}, data) {
     if (request) return this.book(request, data);
-    this.session.ledger.update(action, {data, detail: {...(entry.detail ?? {}), pieces}});
+    this.session.ledger.update(action, {data: {...data, ...tally(pieces)}, detail: {...(entry.detail ?? {}), pieces}});
   }
 
   /**
@@ -1567,13 +1569,14 @@ export class Gen {
     const request = this.requests.get(n);
     const piece = request?.pieces[i] ?? entry?.detail?.pieces?.[i];
     if (!piece || piece.state === 'taken') return;
-    Object.assign(piece, {state: 'taken', patch: {file: piece.file, before, after}, from, to});
+    // Its lines are marked as generated, part by part, until the user makes them theirs (see owning.mjs).
+    Object.assign(piece, {state: 'taken', patch: {file: piece.file, before, after}, from, to, marks: takenMarks(piece.text, from ?? piece.line)});
     const pieces = request?.pieces ?? entry.detail.pieces;
     const taken = pieces.filter(one => one.state === 'taken').length;
-    if (request) this.book(request, {note: `${taken} of ${plural(pieces.length, 'piece')} taken`, undo: true});
-    else session.ledger.update(action, {data: {note: `${taken} of ${plural(pieces.length, 'piece')} taken`, undo: true}, detail: {...entry.detail, pieces}});
+    this.rebook(action, {entry, request, pieces}, {note: `${taken} of ${plural(pieces.length, 'piece')} taken`, undo: true});
     session.ledger.update(action, {state: 'applied'});
     session.notify('chat', {type: 'applied', action});
+    this.sendMarks(action, n, [piece]);
     if (request && !pieces.some(one => one.state === 'proposed') && ['ready', 'done'].includes(request.state)) this.setState(request, 'done');
     // Checked on the unsaved buffer as after a hand-over; the result shows once, under the lines taken.
     const check = await session.checkGenerated([piece.file]);
@@ -1595,11 +1598,13 @@ export class Gen {
     if (!piece || piece.kind !== 'file' || piece.state !== 'proposed') return;
     piece.state = 'taken';
     piece.written = typeof text === 'string' ? text : `${piece.text}\n`;
+    piece.marks = writtenMarks(piece.text, piece.written, this.session.now());
     const files = found.pieces.filter(one => one.kind === 'file');
     const taken = files.filter(one => one.state === 'taken').length;
     this.rebook(action, found, {note: `${taken} of ${plural(files.length, 'file')} taken`, undo: true});
     this.session.ledger.update(action, {state: 'applied'});
     this.session.notify('chat', {type: 'applied', action});
+    this.sendMarks(action, found.entry.data.gen, [piece]);
     const left = files.filter(one => one.state === 'proposed').length;
     this.session.message('system', `gen #${found.entry.data.gen}: ${relative(this.root, piece.file)} written, taken${left ? `; ${left} more to review` : ''}. /undo takes back the request.`);
     this.settle(found);
@@ -1639,11 +1644,16 @@ export class Gen {
     else if (!undone) session.notify('editors', {type: 'gen_drop', gen: n});
     const taken = pieces.filter(piece => piece.patch && (undone ? piece.state === 'undone' : piece.state === 'taken'));
     const failed = [];
+    const unmarked = []; // the marks of what was taken back: no code of Pair's to own any more
     for (const piece of undone ? taken : [...taken].reverse()) {
       const [base, other] = undone ? [piece.patch.before, piece.patch.after] : [piece.patch.after, piece.patch.before];
       const reply = await session.requestEditor({type: 'revert', file: piece.file, base, other, origin: `gen:#${n}`}).catch(error => ({error: error.message}));
       if (reply?.error) failed.push(`${relative(this.root, piece.file)}: ${reply.error}`);
-      else piece.state = undone ? 'taken' : 'undone';
+      else {
+        if (!undone) unmarked.push(...this.unmark(action.id, piece));
+        else piece.marks ??= takenMarks(piece.text, piece.from ?? piece.line);
+        piece.state = undone ? 'taken' : 'undone';
+      }
     }
     const files = pieces.filter(piece => piece.kind === 'file' && piece.state === (undone ? 'undone' : 'taken'));
     for (const piece of files) {
@@ -1653,14 +1663,20 @@ export class Gen {
       }
       const reply = await session.requestEditor({type: 'gen_unwrite', file: piece.file, text: piece.written}).catch(error => ({error: error.message}));
       if (reply?.error) failed.push(`${relative(this.root, piece.file)}: ${reply.error}`);
-      else piece.state = 'undone';
+      else {
+        piece.state = 'undone';
+        unmarked.push(...this.unmark(action.id, piece));
+      }
     }
     for (const piece of pieces) if (!undone && piece.state === 'proposed') piece.state = 'dropped';
     const again = undone ? files : [];
     const back = taken.length + files.length - failed.length;
     const left = pieces.filter(piece => piece.state === (undone ? 'undone' : 'taken')).length;
     const state = undone ? (back ? 'applied' : 'undone') : left ? 'applied' : 'undone';
-    session.ledger.update(action.id, {state, data: {undo: true}, detail: {...(action.detail ?? {}), pieces: pieces.map(({n: _n, ...piece}) => piece)}});
+    const booked = pieces.map(({n: _n, ...piece}) => piece);
+    session.ledger.update(action.id, {state, data: {undo: true, ...tally(booked)}, detail: {...(action.detail ?? {}), pieces: booked}});
+    if (unmarked.length) session.notify('editors', {type: 'gen_unmark', ids: unmarked});
+    if (undone) this.sendMarks(action.id, n, taken.filter(piece => piece.state === 'taken'));
     if (again.length) {
       if (request) this.setState(request, 'ready');
       await this.showFiles(action.id, n, again);
@@ -1672,6 +1688,114 @@ export class Gen {
     const how = undone ? [taken.length ? 'unsaved' : '', again.length ? `${plural(again.length, 'file')} to review again` : ''].filter(Boolean).join('; ')
       : [back - deleted ? 'unsaved' : '', deleted ? `${plural(deleted, 'file')} you wrote from it deleted` : ''].filter(Boolean).join('; ');
     session.message('system', `${what}${how ? `, ${how}` : ''}.${failed.length ? ` Not changed: ${failed.join('; ')}.` : ''}`);
+  }
+
+  /** The marks of `pieces` of ledger entry `action` (request #n) that are still Pair's go to Neovim: ┊ on their lines. */
+  sendMarks(action, n, pieces) {
+    const marks = pieces.flatMap(piece => this.marksOf(action, n, piece));
+    if (marks.length) this.session.notify('editors', {type: 'gen_marks', marks});
+  }
+
+  /** The marks of `piece` still Pair's, as Neovim gets them: {id, gen, file, line, text}. */
+  marksOf(action, n, piece) {
+    return (piece.marks ?? []).filter(mark => mark.state === 'generated')
+      .map(mark => ({id: markId(action, piece.i, mark.k), gen: n, file: piece.file, line: mark.line, text: mark.text}));
+  }
+
+  /**
+   * `piece` was taken back: its marks go from Neovim, and stay in the ledger as they were, so taking it again marks
+   * what was Pair's again, and what was the user's stays theirs. Returns the ids of those that were still Pair's.
+   */
+  unmark(action, piece) {
+    return this.marksOf(action, 0, piece).map(mark => mark.id);
+  }
+
+  /** The requests of the last DETAIL_KEPT_MS with code taken that is not the user's yet: {action, n, entry, request, pieces}. */
+  marked() {
+    return this.session.store.actions(this.root, this.session.now() - DETAIL_KEPT_MS)
+      .filter(row => row.kind === 'generated' && row.data?.counts?.lines.generated > 0)
+      .map(row => ({...this.piecesOf(row.id), action: row.id, n: row.data.gen}));
+  }
+
+  /** Every mark still Pair's in the project (in `file`, with one): what a Neovim that connects marks. */
+  allMarks(file = null) {
+    return this.marked().flatMap(({action, n, pieces}) => pieces
+      .filter(piece => piece.state === 'taken' && (!file || piece.file === file))
+      .flatMap(piece => this.marksOf(action, n, piece)));
+  }
+
+  /**
+   * Changes the marks `ids` with `change(mark, id)`, which returns false when it changed nothing; each request's are
+   * booked once. Returns the ids of those it changed.
+   */
+  changeMarks(ids, change) {
+    const changed = [];
+    const byAction = Map.groupBy(ids.map(id => ({id, ...parseMarkId(id)})).filter(one => one.action !== undefined), one => one.action);
+    for (const [action, marks] of byAction) {
+      const found = this.piecesOf(action);
+      if (found.entry?.kind !== 'generated' || found.entry.root !== this.root) continue;
+      for (const {id, piece, k} of marks) {
+        const mark = found.pieces[piece]?.state === 'taken' && found.pieces[piece].marks?.find(one => one.k === k);
+        if (mark && change(mark, id) !== false) changed.push(id);
+      }
+      if (marks.some(({id}) => changed.includes(id))) this.rebook(action, found, {});
+    }
+    return changed;
+  }
+
+  /**
+   * The user made the marks `ids` theirs: by editing their lines (`how` 'edit', which goes unsaid), or with
+   * :Pair own ('own'). Every Neovim takes their ┊ away. Returns how many lines are theirs now.
+   */
+  own(ids, how = 'own') {
+    let lines = 0;
+    const owned = this.changeMarks(ids, mark => {
+      if (mark.state !== 'generated') return false;
+      Object.assign(mark, {state: 'owned', how, at: this.session.now()});
+      lines += mark.text.length;
+    });
+    if (owned.length) this.session.notify('editors', {type: 'gen_unmark', ids: owned});
+    if (how === 'own') this.session.message('system', lines ? `${plural(lines, 'line')} of generated code ${lines === 1 ? 'is' : 'are'} yours now.` : 'No generated code there that is not yours already.');
+    return lines;
+  }
+
+  /** :Pair own! (or O in :Pair today), and :Pair own in a file Neovim has no marks in: all of it (of `file`) is the user's. */
+  ownAll(file = null) {
+    return this.own(this.allMarks(file).map(mark => mark.id), 'own');
+  }
+
+  /** The lines of marks `ids` are gone: deleted, or no longer found by their text. Neither the user's nor Pair's. */
+  gone(ids) {
+    const gone = this.changeMarks(ids, mark => (mark.state === 'generated' ? void Object.assign(mark, {state: 'gone'}) : false));
+    if (gone.length) this.session.notify('editors', {type: 'gen_unmark', ids: gone});
+  }
+
+  /**
+   * Where Neovim sees marks now, as a buffer is saved or unloaded: {id, line, text}. The ledger keeps it, so a buffer
+   * loaded again finds them there by their text.
+   */
+  moved(marks) {
+    const at = new Map(marks.filter(mark => Number.isInteger(mark?.line)).map(mark => [mark.id, mark]));
+    this.changeMarks([...at.keys()], (mark, id) => {
+      const {line, text} = at.get(id);
+      const lines = Array.isArray(text) && text.every(one => typeof one === 'string') ? text : mark.text;
+      if (mark.state !== 'generated' || (line === mark.line && lines.join('\n') === mark.text.join('\n'))) return false;
+      Object.assign(mark, {line, text: lines});
+    });
+  }
+
+  /** What Pair's own marks list shows: taken code not the user's yet, per file, with where its first part starts. */
+  notYours() {
+    const files = new Map();
+    for (const mark of this.allMarks()) {
+      const file = files.get(mark.file) ?? {file: mark.file, name: relative(this.root, mark.file), lines: 0, line: mark.line, gens: []};
+      file.lines += mark.text.length;
+      file.line = Math.min(file.line, mark.line);
+      if (!file.gens.includes(mark.gen)) file.gens.push(mark.gen);
+      files.set(mark.file, file);
+    }
+    const list = [...files.values()].sort((a, b) => a.name.localeCompare(b.name));
+    return {files: list, lines: list.reduce((sum, file) => sum + file.lines, 0)};
   }
 
   /**
@@ -1750,12 +1874,15 @@ export class Gen {
     session.message('system', `Logged in ${name}: ${decision}. Save it to keep it.`);
   }
 
-  /** What /gen alone shows: today's requests in this project, one line each. */
+  /** What /gen alone shows: today's requests in this project, one line each, and what is not the user's yet. */
   list() {
     const rows = this.session.store.actions(this.root, startOfDay(this.session.now())).filter(action => action.kind === 'generated');
+    const notYours = notYoursLine(this.notYours());
+    const own = notYours ? `\n${notYours} · :Pair own in Neovim makes it yours, :Pair today lists it` : '';
+    if (!rows.length && own) return this.session.message('system', `No /gen requests here today.${own}`);
     if (!rows.length) return this.session.message('system', 'No /gen requests here today. /gen here <what> asks for code at your cursor in Neovim; /gen file <what> for new files; /gen try <what> for a sample to run; /gen scaffold <what> for many files, built in a copy.');
     const lines = rows.map(row => `${new Date(row.at).toTimeString().slice(0, 5)}  ${row.text}${row.data?.note ? ` · ${row.data.note}` : ''}${row.state === 'undone' ? ' (undone)' : ''}`);
-    this.session.message('system', `${lines.join('\n')}\n/undo takes back the last one; u in :Pair today any of them.`);
+    this.session.message('system', `${lines.join('\n')}\n/undo takes back the last one; u in :Pair today any of them.${own}`);
   }
 
   /** The session ends: nothing runs or waits any more. */

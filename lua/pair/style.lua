@@ -22,6 +22,7 @@ M.glyphs = {
   code = '→', -- a claim that depends on code: the link goes there
   decision = '◆', -- a decision worth logging, and the log
   ['repeat'] = '≈', -- a paragraph that says again what an earlier one said
+  generated = '┊', -- in the sign column: code you took from /gen that is not yours yet
 }
 
 -- The statusline while Pair runs your tests or thinks.
@@ -192,6 +193,7 @@ local function palette()
     PairCode = {fg = accent}, -- `code` in its words
     PairKey = {fg = dim}, -- the key that acts on what it says
     PairSign = {fg = accent},
+    PairGenerated = {fg = readable(M.mix(bg, accent, 0.5), bg, accent, 1.6)}, -- ┊ on generated code: thin, dim accent
     PairPoint = {bg = M.mix(bg, accent, 0.07)}, -- a line it points at
     PairSpan = {bg = M.mix(bg, accent, 0.16), sp = accent, underline = true}, -- the code it means there
     PairGaze = {fg = accent, bold = true}, -- line numbers where it reads
@@ -220,7 +222,7 @@ end
 -- Without 'termguicolors' there are no colours to derive from: plain links.
 local LINKS = {
   PairAccent = 'DiagnosticHint', PairNote = 'DiagnosticHint', PairCode = 'Special', PairKey = 'Comment',
-  PairSign = 'DiagnosticHint', PairPoint = 'CursorLine', PairSpan = 'Visual', PairGaze = 'DiagnosticHint',
+  PairSign = 'DiagnosticHint', PairGenerated = 'Comment', PairPoint = 'CursorLine', PairSpan = 'Visual', PairGaze = 'DiagnosticHint',
   PairGazeLine = 'CursorLine', PairSuggestDelete = 'Comment', PairSuggestAdd = 'DiffAdd', PairCursor = 'Cursor',
   PairStatus = 'StatusLine', PairStatusDim = 'StatusLine', PairStatusWarn = 'StatusLine',
   PairPass = 'DiagnosticOk', PairStatusPass = 'DiagnosticOk', PairGlow = 'DiagnosticOk', PairGlowLine = 'CursorLine', PairStatusGlow = 'DiagnosticOk', PairFail = 'DiagnosticError', PairFailNote = 'DiagnosticError',

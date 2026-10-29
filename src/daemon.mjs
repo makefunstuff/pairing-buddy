@@ -576,6 +576,8 @@ export async function startDaemon(config, {
     if (client.role === 'editor' && session.runLineShown) sendMessage(client.socket, session.runLineShown);
     // The files of /gen file requests still to review, as buffers: a Neovim that restarted lost them.
     if (client.role === 'editor') for (const files of session.gen.reopen()) sendMessage(client.socket, files);
+    // And the code taken from /gen that is not the user's yet: ┊ again on its lines, found by their text.
+    if (client.role === 'editor') sendMessage(client.socket, {type: 'gen_marks', marks: session.gen.allMarks(), all: true});
     if (message.herdr?.socket) agents?.useHerdr(message.herdr.socket);
     const relayed = relays.get(session.root)?.last;
     if (client.role === 'editor' && relayed) sendMessage(client.socket, relayed);
@@ -651,6 +653,18 @@ export async function startDaemon(config, {
     toEditor(client, await session.gen.keep({
       path: typeof message.path === 'string' ? message.path : '', file, n: int(message.gen), action: int(message.action), piece: int(message.piece),
     }));
+  }
+
+  /**
+   * Generated code becomes the user's: the marks `ids` they edited (`how` 'edit') or owned with :Pair own, or with
+   * `all` every mark in the project, or in `file`.
+   */
+  function ownFrom(session, message) {
+    const how = message.how === 'edit' ? 'edit' : 'own';
+    if (Array.isArray(message.ids) && message.ids.length) return session.gen.own(message.ids, how);
+    if (message.all === true) return session.gen.ownAll();
+    if (typeof message.file === 'string') return session.gen.ownAll(resolve(session.root, message.file));
+    if (how === 'own') session.gen.own([], how);
   }
 
   /** x in :Pair gen list, :Pair gen drop, /gen drop: a scaffold's copy is deleted. */
@@ -820,6 +834,10 @@ export async function startDaemon(config, {
     if (message.type === 'gen_decide' && Number.isInteger(message.action)) return session.gen.decide(message.action, message.guess);
     if (message.type === 'gen_cancel') return session.gen.cancel();
     if (message.type === 'gen_list') return session.gen.list();
+    // Owning generated code (owning.mjs): an edit of its lines, :Pair own [range|file|!], lines gone, and where they are.
+    if (message.type === 'gen_own') return ownFrom(session, message);
+    if (message.type === 'gen_gone' && Array.isArray(message.ids)) return session.gen.gone(message.ids);
+    if (message.type === 'gen_marks_at' && Array.isArray(message.marks)) return session.gen.moved(message.marks);
     if (message.type === 'keep') return keepFrom(client, session, message);
     if (message.type === 'gen_try_run') return tryRunFrom(client, session, message);
     if (message.type === 'gen_tries') return triesFrom(client, session);

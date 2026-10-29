@@ -47,7 +47,8 @@ you think, and take the keyboard only when you hand it over. Pair aims for that:
   you keep what you want of it a file at a time. Every request
   runs against your brief (the goal and `NOTES.md`, in your words, which Pair never edits): it asks before going
   against it, and says what its code guessed. Pair knows its own edits from yours, so it never remarks on the code it
-  wrote as if you had ([/gen](docs/gen.md)).
+  wrote as if you had. Code you took stays marked `┊` until you edit it or `:Pair own` it, and `:Pair today` and
+  `pair stats` say how much of it is not yours yet ([/gen](docs/gen.md)).
 
 ## Quick start
 
@@ -91,7 +92,7 @@ your keys and logins).
 - [The chat pane](docs/chat.md): who speaks, what Pair is doing now, wide and narrow panes, a remark's own keys, find, calm motion, role colours, its keys and commands
 - [/gen](docs/gen.md): ask Pair for code at your cursor, as new files to review, as a sample to run outside the
   project, or as a scaffold built in a copy of it, against your brief; take it with one key, `:w`, `/keep` or `k` per
-  file, undo the request as one; Pair's own edits carry their origin
+  file, undo the request as one; Pair's own edits carry their origin, and taken code is marked `┊` until you own it
 - [Push-to-talk](docs/voice.md): ask aloud, heard by whisper.cpp on your CPU or an OpenRouter model, with answers
   read aloud when you are away
 - [Models and providers](docs/models.md): local servers, API keys, subscription logins, one model for both roles,

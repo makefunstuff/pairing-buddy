@@ -56,7 +56,8 @@ Logins and keys for model providers, kept in `auth.json` next to the config, rea
 
 How often Pair spoke unasked, how much of it was useful, per trigger, and how the tuning moved
 ([memory.md](memory.md#pair-stats)). With a decision model, also what it sorted, the Watcher calls it saved, and its
-remarks next to the rules' ([decision.md](decision.md#pair-doctor-and-pair-stats)).
+remarks next to the rules' ([decision.md](decision.md#pair-doctor-and-pair-stats)). With `/gen` requests in the
+window, also what they made and how much of it [became yours](gen.md#owning-generated-code).
 
 ```sh
 pair stats               # the last 7 days, every project
@@ -122,7 +123,7 @@ question for Pair (`@here` in it sends your selection in Neovim along), and a li
 | `/gen tries` | The project's `/gen try` folders still kept, and when each goes (`gen.keepTries`) |
 | `/keep [path]` | Move the newest `/gen try`'s main file into the project at `path`, as a buffer to review in Neovim that `:w` takes. When the newest is a scaffold, keep its file at `path`: a new file as a buffer to review, a change as suggestions in yours |
 | `/gen drop` | Delete the newest `/gen scaffold`'s copy (or worktree); what you did not keep of it is dropped |
-| `/gen` | Today's `/gen` requests in this project |
+| `/gen` | Today's `/gen` requests in this project, and what is [not yours yet](gen.md#owning-generated-code) of the code you took (`┊ not yours yet: 2 files · 31 lines`) |
 | `/gen cancel` | Stop the `/gen` request that runs or waits |
 | `/brief [note\|off]` | What `/gen` runs against: the goal, the board task and a note (`NOTES.md` by default); with a note, pin it; `off` leaves the note out ([gen.md](gen.md#the-brief)) |
 | `/undo` | Undo Pair's last change of the day: an edit of the Driver's, a suggestion you took, or a whole `/gen` request; as `u` in `:Pair today` |
