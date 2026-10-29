@@ -151,6 +151,17 @@ a first try, 10 for the end of a hunt or a number that got much worse. The Partn
 change worked where the others did not, or SILENT. Live: the shift that ends the hunt scored 8, and the remark
 named 23.7 → 1.1.
 
+## The overlap
+
+`overlap` is raised when you edit lines that the branch of one of the repository's working board tasks also changes,
+or the line next to them ([agents.md](agents.md#tasks-working-on-your-files)): Pair reads what those branches change
+every 30 seconds, by git, read only. It is raised once per task and change of its branch, for your own edits of the
+last two minutes, and waits for your next breakpoint like a [held thought](#the-held-thought); held, it is dropped
+once the task no longer changes the file. The Watcher is asked how much hearing it now would save a conflict later:
+0 for a one-line touch-up next to the task's change, 10 if both rewrite the same code. The Partner gets the task, its
+branch, the lines it changes and the first lines it writes there, says what the task's change does and that
+whichever is merged second meets a conflict, and points at your lines; it does not review either change.
+
 ## The search trail
 
 `search_trail` is raised from your picker searches in Neovim ([docs/neovim.md](neovim.md#the-search-trail)): three

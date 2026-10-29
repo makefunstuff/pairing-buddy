@@ -76,6 +76,14 @@ stay herdr's:
   branch deletes and none that is not text ([gen.md](gen.md#reviewing-a-board-task-pair-review)).
 - **Shepherdr has no approve**: a review's merge is a tell, `merge it`, which the task's agent acts on as its brief
   says. Pair never runs `shepherdr merge`.
+- **Tasks working on your files are read every 30 seconds**, so the winbar note and the overlap remark can lag a
+  task's change by that much. Only tasks at work count (not one that waits for a go, needs you or is ready to merge),
+  only tracked files (a new file its agent has not added to git is not seen), and the lines compared are the base
+  branch's: lines you added or removed above an edit shift what counts as the same lines. A window with a winbar of
+  its own gets no note ([agents.md](agents.md#tasks-working-on-your-files)).
+- **`/brief sync` can only tell**: Shepherdr has no way to replace a task's brief, so what changed goes to its agent
+  as a message. It compares words, line by line: a line reworded in the task's brief counts as missing. Only the note
+  and `decisions.md` next to it are compared, not the goal ([gen.md](gen.md#keeping-the-task-in-step-brief-sync)).
 
 ## The chat pane
 

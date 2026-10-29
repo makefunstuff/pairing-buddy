@@ -245,7 +245,9 @@ Anything you type that is not a command is a question for Pair; it is always ans
   chat with what its answers do: `y` takes the guess or the answer given, `n` cancels or leaves it to Pair, and
   anything else you type is the answer. A request that contradicts its [brief](gen.md#the-brief) asks first: `y` as
   asked, `n` follows the brief, `e` opens the note at that line. `/brief` says what the brief is, `/brief <note>`
-  pins a note, `/brief off` leaves it out. `/gen` alone lists today's requests, and then how much of the code you took
+  pins a note, `/brief off` leaves it out, and `/brief sync`, on a board task's branch, says what the task's brief on
+  the board lacks and asks: `y` tells its agent, `c` copies the command, `n` leaves it
+  ([gen.md](gen.md#keeping-the-task-in-step-brief-sync)). `/gen` alone lists today's requests, and then how much of the code you took
   is [not yours yet](gen.md#owning-generated-code) (`┊ not yours yet: 2 files · 31 lines`); `/today` ends with
   the same line.
 

@@ -129,6 +129,7 @@ question for Pair (`@here` in it sends your selection in Neovim along), and a li
 | `/gen cancel` | Stop the `/gen` request that runs or waits |
 | `/gen ` | In the full-screen pane, `/gen` and a space lists the shapes first, then the rest; `Tab` completes one. What a request makes is a [gen card](chat.md#the-gen-card): `Alt-↑` picks it, then `k` keeps, `Enter` opens it in Neovim, `d` (twice) drops what is left, `u` undoes the request |
 | `/brief [note\|off]` | What `/gen` runs against: the goal, the board task and a note (`NOTES.md` by default); with a note, pin it; `off` leaves the note out ([gen.md](gen.md#the-brief)) |
+| `/brief sync` | On a board task's branch: what its brief on the board lacks of yours, with the decisions logged since; `y` tells its agent (a message, never a new brief, and no go for a task that waits), `c` copies the command, `n` leaves it ([gen.md](gen.md#keeping-the-task-in-step-brief-sync)) |
 | `/undo` | Undo Pair's last change of the day: an edit of the Driver's, a suggestion you took, or a whole `/gen` request; as `u` in `:Pair today` |
 | `/today` | What Pair did here today, as in `:Pair today` |
 | `/agents` | Your other agents and board tasks; a relayed line, picked with `Alt-↑`, opens what its task left behind with `o`, `d` and `t` ([agents.md](agents.md)) |
