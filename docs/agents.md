@@ -80,7 +80,7 @@ board task made. Each is read when you press it, read only, and opens in Neovim:
 
 | Key | Opens | How |
 | --- | --- | --- |
-| `o` | its report or its pull request | the report is the newest artifact its agent or reviewer made (`shepherdr artifact list`, then `artifact show` for its file); the pull request is the one `task show` names. One of them opens with `vim.ui.open`; with both, you pick |
+| `o` | its report or its pull request | the report is the newest artifact the task's agent or reviewer made. A task's artifacts are kept in its space, so Pair lists the space's (`shepherdr artifact list --space=<space>`) and asks the newest 20, newest first, who made them (`shepherdr artifact show <id>`: `by BDY-7 agent`); the first that is the task's opens, as its HTML file. The pull request is the one `task show` names. One of them opens with `vim.ui.open`; with both, you pick |
 | `d` | its branch's diff, read only | `git diff <base>...<branch>` in its worktree (or the space's folder), against the branch the repository merges into (origin's default, else `main`), in a split named `pair://agents/<id>/diff` (`q` closes it) |
 | `t` | a terminal in its worktree | a split with your `shell`, started in the task's worktree; for an agent of your own, in its folder |
 

@@ -236,7 +236,7 @@ export class AgentBoard {
     if (what === 'open') {
       if (item.kind !== 'task') return {error: `${name} is an agent of your own, with no report or pull request`};
       if (item.machine) return {error: `${name} is a task of ${item.machine}: Pair reads no more of it than its line`};
-      const report = item.machine ? null : await this.shepherdr?.report(item.id).catch(() => null);
+      const report = item.machine ? null : await this.shepherdr?.report(item.id, {space: item.space}).catch(() => null);
       const number = item.pr?.match(/\/pull\/(\d+)/)?.[1];
       const links = [...(report ? [{label: 'its report', url: report}] : []), ...(item.pr ? [{label: `its pull request${number ? ` #${number}` : ''}`, url: item.pr}] : [])];
       return links.length ? {links} : {error: `${name} has no report or pull request yet`};

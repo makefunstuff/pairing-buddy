@@ -218,14 +218,14 @@ test('/gen board composes a task for the board: y adds it for later, c copies it
   const confirm = of('confirm').at(-1);
   assert.equal(confirm.text, 'gen #1 · a task for the board: "a CSV export of the orders, one…". Add it for later?');
   assert.equal(confirm.copy, true, 'c copies its command in the chat');
-  assert.match(confirm.command, /shepherdr task add 'a CSV export of the orders, one…' --brief 'a CSV export of the orders, one line per day with the totals\n\nFrom the brief/);
-  assert.match(confirm.command, / --space shop --later$/, 'add only: its agent waits for a go');
+  assert.match(confirm.command, /shepherdr task add 'a CSV export of the orders, one…' --brief='a CSV export of the orders, one line per day with the totals\n\nFrom the brief/);
+  assert.match(confirm.command, / --space=shop --later$/, 'add only: its agent waits for a go');
   assert.deepEqual(board.calls(), [], 'nothing is added before the pick');
   pair.answer(confirm.id, true);
   await first;
-  const [verb, sub, title, , brief, ...rest] = board.calls().at(-1);
-  assert.deepEqual([verb, sub, title, ...rest], ['task', 'add', 'a CSV export of the orders, one…', '--space', 'shop', '--later']);
-  assert.equal(brief, [
+  const [verb, sub, title, brief, ...rest] = board.calls().at(-1);
+  assert.deepEqual([verb, sub, title, ...rest], ['task', 'add', 'a CSV export of the orders, one…', '--space=shop', '--later']);
+  assert.equal(brief, '--brief=' + [
     'a CSV export of the orders, one line per day with the totals',
     'From the brief (NOTES.md + goal "add helpers"):\nGoal: add helpers\nNOTES.md:\n> Money in integer cents, never floats.',
     'Asked from Pair with /gen board.',

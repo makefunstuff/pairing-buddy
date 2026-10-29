@@ -181,7 +181,10 @@ test('what a task left behind: its report and pull request, its branch\'s diff a
       {id: 'SHO-7', title: 'Read every run', status: 'ready', place: 'p:here:shop', branch: 'work/7-read-every-run', pr: {number: 12, url: 'https://github.com/o/shop/pull/12'}},
       {id: 'SHO-8', title: 'Not started', status: 'todo', place: 'p:here:shop'},
     ],
-    artifacts: [{id: 'a1', title: 'Findings', chat: 'SHO-7 agent', html: '/data/a1/1.html'}],
+    artifacts: [
+      {id: 'a3', title: 'Plan', space: 'shop', by: 'shop', html: '/data/a3/1.html'},
+      {id: 'a1', title: 'Findings', space: 'shop', by: 'SHO-7 agent', html: '/data/a1/1.html'},
+    ],
   });
   const herdr = await fakeHerdr(join(dir, 'herdr.sock'), {agents: [{pane_id: 'w9:p1', cwd: '/home/me/notes', agent: 'pi', agent_status: 'idle'}]});
   const agents = new AgentBoard({board: board.command, pollMs: 60_000});

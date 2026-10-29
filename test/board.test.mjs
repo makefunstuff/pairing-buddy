@@ -3,7 +3,7 @@ import {execFileSync} from 'node:child_process';
 import {mkdirSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {test} from 'node:test';
-import {Board, boardContext, boardLaunch, boardTitle, branchNumber, commandLine, parseSpaces, reportOf, spaceFor} from '../src/board.mjs';
+import {artifactIds, Board, boardContext, boardLaunch, boardTitle, branchNumber, commandLine, madeBy, parseSpaces, spaceFor} from '../src/board.mjs';
 import {projectContext} from '../src/project-context.mjs';
 import {fakeShepherdr} from './fake-shepherdr.mjs';
 import {scratch} from './temp.mjs';
@@ -48,11 +48,19 @@ test('a repo\'s space is the one of its checkout\'s folder, else the one named a
   assert.equal(spaceFor(spaces, {repos: ['other']}), null);
 });
 
-test('a task\'s report is its agent\'s newest artifact', () => {
-  const list = 'a7  v2  Research report  · BDY-7 agent · 1h\na3  v1  Plan  · pairing-buddy · 2h\na2  v1  Old  · BDY-7 agent · 3d\n';
-  assert.equal(reportOf(list, 'BDY-7'), 'a7');
-  assert.equal(reportOf(list, 'BDY-70'), null, 'not another task\'s');
-  assert.equal(reportOf('No artifacts here yet.', 'BDY-7'), null);
+test('a task\'s report: the list names the space it is kept in, and only show says the task\'s agent made it', () => {
+  // As Shepherdr 2 prints them (server/live/source.ts: artifact list, artifact show).
+  const list = 'a7  v2  BDY-7 research report  · pairing-buddy · 1h\na3  v1  Plan  · pairing-buddy · 2h\n';
+  assert.deepEqual(artifactIds(list), ['a7', 'a3']);
+  assert.deepEqual(artifactIds('No artifacts here yet.'), []);
+  const show = 'a7 “BDY-7 research report” in pairing-buddy: v2, 1h ago by BDY-7 agent. Its Send and notes go to BDY-7 agent.\n'
+    + 'HTML: /home/me/.shepherdr/artifacts/a7/2.html\nData: none\nCopy them to edit; shepherdr artifact update a7 makes the new version.\n'
+    + 'Versions:\n  v2  1h  BDY-7 agent  fixed the chart\n  v1  2h  BDY-7 agent';
+  assert.equal(madeBy(show, 'BDY-7'), true);
+  assert.equal(madeBy(show, 'BDY-70'), false, 'not another task\'s');
+  assert.equal(madeBy(show.replaceAll('BDY-7 agent', 'BDY-70 agent'), 'BDY-7'), false);
+  assert.equal(madeBy(show.replaceAll('BDY-7 agent', 'BDY-7 reviewer'), 'BDY-7'), true, 'its reviewer\'s too');
+  assert.equal(madeBy(show.replaceAll('BDY-7 agent', 'pairing-buddy'), 'BDY-7'), false, 'the coordinator\'s is no task\'s report');
 });
 
 test('a title the board takes is one line of at most 32 characters, cut at a word', () => {
@@ -64,10 +72,10 @@ test('a title the board takes is one line of at most 32 characters, cut at a wor
 });
 
 test('a command line is the words as a shell reads them, each quoted where it has to be', () => {
-  assert.equal(commandLine(['shepherdr', 'task', 'add', 'CSV export', '--brief', "it's done", '--later']), `shepherdr task add 'CSV export' --brief 'it'\\''s done' --later`);
+  assert.equal(commandLine(['shepherdr', 'task', 'add', 'CSV export', "--brief=it's done", '--later']), `shepherdr task add 'CSV export' --brief='it'\\''s done' --later`);
   const words = new Board('shepherdr').addWords({title: 'CSV export', brief: 'b', space: 'shop'});
-  assert.deepEqual(words, ['shepherdr', 'task', 'add', 'CSV export', '--brief', 'b', '--space', 'shop', '--later'], 'add only: for later');
-  assert.deepEqual(new Board('shepherdr').addWords({title: 't', brief: 'b', later: false}), ['shepherdr', 'task', 'add', 't', '--brief', 'b']);
+  assert.deepEqual(words, ['shepherdr', 'task', 'add', 'CSV export', '--brief=b', '--space=shop', '--later'], 'add only: for later; each option one word');
+  assert.deepEqual(new Board('shepherdr').addWords({title: 't', brief: 'b', later: false}), ['shepherdr', 'task', 'add', 't', '--brief=b']);
   assert.deepEqual(new Board('shepherdr').tellWords('BDY-7', 'go'), ['shepherdr', 'task', 'tell', 'BDY-7', 'go']);
 });
 
@@ -80,7 +88,10 @@ test('the board is read through its command: spaces, tasks of a space, a task in
       {id: 'SHO-6', title: 'Old', status: 'done', place: 'p:here:shop', archived: 1},
       {id: 'WEB-1', title: 'Site', status: 'work', place: 'p:here:web'},
     ],
-    artifacts: [{id: 'a1', title: 'Report', chat: 'SHO-7 agent', html: '/data/a1/1.html'}],
+    artifacts: [
+      {id: 'a2', title: 'Plan', space: 'shop', by: 'shop', html: '/data/a2/1.html'}, // the coordinator's
+      {id: 'a1', title: 'Report', space: 'shop', by: 'SHO-7 agent', html: '/data/a1/1.html'},
+    ],
   });
   const shepherdr = new Board(board.command);
   assert.deepEqual((await shepherdr.spaces()).map(space => space.name), ['shop']);
@@ -89,13 +100,19 @@ test('the board is read through its command: spaces, tasks of a space, a task in
   assert.deepEqual(await shepherdr.show('SHO-7'), {
     id: 'SHO-7', title: 'Read every run', status: 'ready', sub: '', machine: null, space: 'shop', branch: 'work/7-read', pr: 'https://github.com/o/shop/pull/12', outcome: null,
   });
-  assert.equal(await shepherdr.report('SHO-7'), '/data/a1/1.html');
+  assert.equal(await shepherdr.report('SHO-7', {space: 'shop'}), '/data/a1/1.html');
+  assert.equal(await shepherdr.report('SHO-7', {space: 'web'}), null, 'kept in its own space');
   assert.equal(await shepherdr.report('WEB-1'), null);
   await assert.rejects(shepherdr.show('SHO-99'), /No task SHO-99/, 'what the board says is the error');
   const added = await shepherdr.add(shepherdr.addWords({title: 'CSV export', brief: 'Export the orders as CSV.', space: 'shop'}));
   assert.equal(added.id, 'SHO-90');
   assert.match(added.said, /for later/);
-  assert.deepEqual(board.calls().at(-1), ['task', 'add', 'CSV export', '--brief', 'Export the orders as CSV.', '--space', 'shop', '--later']);
+  assert.deepEqual(board.calls().at(-1), ['task', 'add', 'CSV export', '--brief=Export the orders as CSV.', '--space=shop', '--later']);
+  assert.equal(board.state().tasks.at(-1).desc, 'Export the orders as CSV.', 'the board took the brief');
+  // A request that starts with -- keeps its brief: the board reads `--brief --x` as a flag without its value.
+  const dashed = await shepherdr.add(shepherdr.addWords({title: '--force push guard', brief: '--force push guard: refuse when branch=main', space: 'shop'}));
+  assert.equal(dashed.id, 'SHO-91');
+  assert.deepEqual(board.state().tasks.at(-1), {id: 'SHO-91', title: 'force push guard', status: 'todo', place: 'p:here:shop', desc: '--force push guard: refuse when branch=main'});
   assert.ok(board.calls().every(([verb, sub]) => ['space list', 'task list', 'task show', 'artifact list', 'artifact show', 'task add'].includes(`${verb} ${sub}`)), 'read, and the one add');
 });
 

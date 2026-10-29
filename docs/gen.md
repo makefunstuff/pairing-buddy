@@ -584,16 +584,17 @@ model runs: Pair composes the board's command and shows it to you whole.
 
 ```
 gen   #9 · a task for the board: "the whole billing module:…". Add it for later?
-      │ shepherdr task add 'the whole billing module:…' --brief 'the whole billing module: invoices, PDF export, …
+      │ shepherdr task add 'the whole billing module:…' --brief='the whole billing module: invoices, PDF export, …
       │ From the brief (NOTES.md + goal "billing"):
-      │ …' --space shop --later
+      │ …' --space=shop --later
       y adds it, for later (add only) · c copies the command · n adds nothing
 ```
 
 - **The title** is your request cut to 32 characters at a word, the most the board takes.
 - **The brief** is your request in your words, then the brief it would run against, quoted: the goal, the branch's
   board task, and the note's first 80 lines. The task's agent works in a git worktree and sees only committed files,
-  so the note goes in the brief, unsaved changes and all.
+  so the note goes in the brief, unsaved changes and all. It goes as one word, `--brief='…'`, so a request that starts
+  with `--` stays the brief: the board would read `--brief` followed by such a word as a flag without its value.
 - **`--space`** is the repository's space on the board, and the command runs in the project, so the board finds the
   space by its folder too.
 - **`--later`**: add only. Shepherdr starts a new task's agent at once; with `--later` the agent reads the brief and

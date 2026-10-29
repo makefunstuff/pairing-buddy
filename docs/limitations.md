@@ -58,8 +58,10 @@ stay herdr's:
 
 - **Shepherdr only.** The board is read through `shepherdr` (Shepherdr 2); herdr-projects 1.x, the board before it, is
   not read any more.
-- **A task's report is found by the words of `shepherdr artifact list`**, which has no JSON: the newest artifact its
-  agent or reviewer made. A change of that line's format in Shepherdr would hide reports (pull requests still open).
+- **A task's report is found by the words of `shepherdr artifact list` and `artifact show`**, which have no JSON: the
+  list names the space an artifact is kept in, not the task, so Pair asks the space's newest 20 who made them (`by
+  BDY-7 agent`). A report older than those 20, or a change of those lines' format in Shepherdr, hides it (the pull
+  request still opens).
 - **The diff is against the branch the repository merges into** (origin's default, else `main`), not the commit the
   task started from, and only for a task whose repository is on this machine.
 - **Another machine's tasks** (Shepherdr lists them too) are only their line: `o`, `d` and `t` open nothing of

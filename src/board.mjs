@@ -8,7 +8,8 @@ import {basename} from 'node:path';
 export const BOARD = 'shepherdr';
 export const TITLE_MAX = 32; // the board refuses a longer title: it fits one line on a phone
 const TIMEOUT_MS = 5000;
-const ADD_TIMEOUT_MS = 60_000; // an add is never cut short: one that went through but answered late would be made twice
+const ADD_TIMEOUT_MS = 60_000;
+const REPORTS_LOOKED_AT = 20; // of a space's newest artifacts, this many are asked who made them // an add is never cut short: one that went through but answered late would be made twice
 
 /**
  * Runs the board's `command` with `args`: its output, or an error whose message is what it said (the board writes its
@@ -40,10 +41,17 @@ export function parseSpaces(text) {
     .map(([name, key, path, github]) => ({name, key, path, github: github?.replace(/^github:/, '') ?? null}));
 }
 
-/** Of `artifact list`'s lines (newest first), the id of the newest artifact a task's agent or reviewer made. */
-export function reportOf(text, id) {
-  const line = text.split('\n').find(each => each.includes(`· ${id} agent ·`) || each.includes(`· ${id} reviewer ·`));
-  return line?.split(/\s+/)[0] || null;
+/** The ids in `artifact list`'s lines (`a12  v2  Research report  · pairing-buddy · 2h`), newest first. */
+export const artifactIds = text => text.split('\n').map(line => /^(\S+)\s{2}v\d+\s{2}/.exec(line)?.[1]).filter(Boolean);
+
+/**
+ * Whether `artifact show`'s text says task `id`'s agent or reviewer made it: its first line ends `by BDY-7 agent.`, and
+ * each version names who made it (`  v1  2h  BDY-7 agent`). The list cannot say: it names the space a task's artifact
+ * is kept in, not the task.
+ */
+export function madeBy(text, id) {
+  const name = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?:^|\\s)${name} (?:agent|reviewer)(?=[\\s.]|$)`, 'm').test(text);
 }
 
 export class Board {
@@ -73,19 +81,26 @@ export class Board {
     return parseSpaces(await this.run(['space', 'list']));
   }
 
-  /** The file of task `id`'s report, its agent's newest artifact; null when it made none. */
-  async report(id) {
-    const artifact = reportOf(await this.run(['artifact', 'list']), id);
-    if (!artifact) return null;
-    return (await this.run(['artifact', 'show', artifact])).match(/^HTML: (.+)$/m)?.[1].trim() ?? null;
+  /**
+   * The file of task `id`'s report: the newest artifact its agent or reviewer made, among the newest of its `space`
+   * (a task's artifacts are kept in its space); null when it made none.
+   */
+  async report(id, {space = null} = {}) {
+    const ids = artifactIds(await this.run(['artifact', 'list', ...(space ? [`--space=${space}`] : [])]));
+    for (const artifact of ids.slice(0, REPORTS_LOOKED_AT)) {
+      const shown = await this.run(['artifact', 'show', artifact]);
+      if (madeBy(shown, id)) return shown.match(/^HTML: (.+)$/m)?.[1].trim() ?? null;
+    }
+    return null;
   }
 
   /**
    * The words that add a task: `title` (cut to TITLE_MAX), `brief`, in `space`. `later`, its agent reads the brief and
-   * waits for a go (add only); without, it starts at once (add and delegate).
+   * waits for a go (add only); without, it starts at once (add and delegate). Each option is one word, `--brief=…`:
+   * the board reads `--brief` followed by a word that starts with `--` as a flag without its value.
    */
   addWords({title, brief, space = null, later = true}) {
-    return [this.command, 'task', 'add', boardTitle(title), '--brief', brief, ...(space ? ['--space', space] : []), ...(later ? ['--later'] : [])];
+    return [this.command, 'task', 'add', boardTitle(title), `--brief=${brief}`, ...(space ? [`--space=${space}`] : []), ...(later ? ['--later'] : [])];
   }
 
   /** The words that tell task `id` something, which is also the go for a task that waits. */
@@ -109,9 +124,13 @@ export function boardTitle(text) {
   return `${words.trimEnd() || cut}…`;
 }
 
-/** `words` as one line to read and paste in a shell: each word quoted where it has to be. */
+/** `words` as one line to read and paste in a shell: each word quoted where it has to be, `--brief='…'` after its `=`. */
 export function commandLine(words) {
-  return words.map(word => (/^[\w./:=@%+,-]+$/.test(word) ? word : `'${word.replace(/'/g, `'\\''`)}'`)).join(' ');
+  const quote = word => (/^[\w./:=@%+,-]*$/.test(word) && word ? word : `'${word.replace(/'/g, `'\\''`)}'`);
+  return words.map(word => {
+    const option = /^(--[\w-]+=)([\s\S]*)$/.exec(word);
+    return option ? `${option[1]}${quote(option[2])}` : quote(word);
+  }).join(' ');
 }
 
 /** The task number a branch is named for: 25 in `work/25-context-card` or `25-fix`; null for `main` or `release/2.0`. */
