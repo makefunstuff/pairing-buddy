@@ -19,7 +19,7 @@ By [semver](https://semver.org/), from what merged since the last tag
 
 ## 2. Bump it, on a branch
 
-The version is written in `package.json` only; everything else reads it from there: the daemon's startup line
+The version is written in `package.json`, and the code reads it from there: the daemon's startup line
 (`pair daemon 0.11.0 listening on …`), `pair --version`, `pair doctor`'s daemon line and the version in the site's
 nav. The lock file repeats it, so bump both with npm:
 
@@ -27,8 +27,10 @@ nav. The lock file repeats it, so bump both with npm:
 npm version 0.12.0 --no-git-tag-version
 ```
 
-The docs show the version in examples, in [Troubleshooting](troubleshooting.md) (`pair doctor`'s output) and in
-INSTALL.md (`npm ls -g` and `pair doctor`). Update those too: `git grep -n 0\\.11\\.0` finds them.
+The docs show the version too: the README's "Version 0.11" line, and examples in
+[Troubleshooting](troubleshooting.md) (`pair doctor`'s output) and INSTALL.md (`npm ls -g` and `pair doctor`). Update
+those as well. `git grep -nE '\b0\.11\b' -- ':!*package-lock.json' ':!CHANGELOG.md'` finds them, in both the
+`0.11` and the `0.11.0` form (some hits, such as a Neovim version, are not Pair's).
 
 ## 3. Write the changelog entry
 

@@ -28,6 +28,10 @@ test('package-lock.json has the version package.json has', () => {
   assert.equal(lock.packages[''].version, version);
 });
 
+test('the README names the release package.json has', () => {
+  assert.match(read('README.md'), new RegExp(`^Version ${version.split('.').slice(0, 2).join('\\.')} `, 'm'));
+});
+
 test('the changelog has a dated entry for this version, with links that work as a release\'s notes', () => {
   const changelog = read('CHANGELOG.md');
   assert.match(changelog, new RegExp(`^## \\[${version.replaceAll('.', '\\.')}\\] - \\d{4}-\\d{2}-\\d{2}$`, 'm'));

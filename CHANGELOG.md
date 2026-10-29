@@ -17,7 +17,8 @@ voice can go through OpenRouter.
 - The `board` setting now defaults to `"shepherdr"`, and the herdr-projects board is no longer read. If you used it,
   install [Shepherdr](https://github.com/makefunstuff/pairing-buddy/blob/main/docs/agents.md#where-it-reads), or set `"board": null` to read no board
   ([#109](https://github.com/makefunstuff/pairing-buddy/pull/109)).
-- A `voice.openrouter` block in the config is refused by 0.10.0: upgrade before you add one
+- 0.10.0 ignores a `voice.openrouter` block, and refuses a `voice` block without `voice.model`: upgrade before you
+  move your voice to OpenRouter
   ([#96](https://github.com/makefunstuff/pairing-buddy/pull/96)).
 - After `npm install -g github:makefunstuff/pairing-buddy`, restart the daemon (`systemctl --user restart
   pairing-buddy`, or `pair setup`) and Neovim: `pair doctor` says when the daemon still runs the old version.
@@ -73,7 +74,7 @@ voice can go through OpenRouter.
   - Overlap: a winbar note on a file a working task also changes (`board_winbar`), a new `overlap` remark when you edit
     the same lines, the task's brief in the `/gen` brief, and `/brief sync`
     ([#112](https://github.com/makefunstuff/pairing-buddy/pull/112)).
-- `pair --version` (also `pair version`), a changelog, and [docs/releasing.md](https://github.com/makefunstuff/pairing-buddy/blob/main/docs/releasing.md) on how to cut a
+- `pair --version` (also `pair version` and `pair -v`), a changelog, and [docs/releasing.md](https://github.com/makefunstuff/pairing-buddy/blob/main/docs/releasing.md) on how to cut a
   release.
 
 ### Changed

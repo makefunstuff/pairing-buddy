@@ -44,7 +44,7 @@ const USAGE = `usage:
   pair stats [--days N]   remarks per hour, useful vs dismissed, per trigger, the tuning, how the decision model did, and what /gen made and you own (default: 7 days)
   pair stats --project [DIR]   the same for one project: the one DIR (default: this folder) belongs to
   pair uninstall    stop and remove the service (the config and data stay)
-  pair --version    the version of this install (also \`pair version\`)
+  pair --version    the version of this install (also \`pair version\`, \`pair -v\`)
   pair daemon       run the daemon in the foreground
   pair supervise    run the daemon in the foreground, restarted when it fails (what \`pair\` starts without a service)
   pair shell-hook bash|zsh|fish   print the shell hook that reports commands, exit codes and (zsh) typing

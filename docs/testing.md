@@ -204,8 +204,8 @@ the work board.
   for the Partner); the Watcher waiting while the Partner works in another project, and its remark saying how long it
   waited; a question cancelling the remark still being written (dropped, and no failure of the model); the context
   budget: the reply's room, compaction, and the instructions, tools and longest note fitting the smallest window.
-- **The version** (`test/version.test.mjs`): `pair --version` (and `pair version`, `pair -v`) and the lock file say
-  what `package.json` says, and the changelog has a dated entry for that version whose links are all full URLs, as
+- **The version** (`test/version.test.mjs`): `pair --version` (and `pair version`, `pair -v`) the lock file and the
+  README's "Version" line say what `package.json` says, and the changelog has a dated entry for that version whose links are all full URLs, as
   it becomes the release's notes ([Releasing](releasing.md)).
 - **The site's link previews** (`test/site-meta.test.mjs`): each docs page's description from its frontmatter or
   first paragraph (own, not thin, at most 155 characters), the tags a page gets, and the check of the built pages
