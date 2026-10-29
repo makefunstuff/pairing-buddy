@@ -244,6 +244,7 @@ The Partner's words are what you act on, so it thinks before it answers, in ever
 | A Scout investigation | `medium` | `scout` |
 | A Driver change | `medium` | `driver` |
 | A remark nobody asked for | `low` | `remark` |
+| A [/gen request](gen.md) | `medium` | `gen` |
 
 A remark may come a few seconds later than it would without thinking; the Watcher has already decided it is worth
 saying, and a wrong remark costs you more than the wait. `"thinking": "high"` makes every turn think more,

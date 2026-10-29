@@ -218,13 +218,13 @@ Anything you type that is not a command is a question for Pair; it is always ans
 - **Up** and **Down** move between the lines of what you type, and from the first or the last line through what you
   sent before in this project, kept across panes and restarts.
 - **/** opens the commands as you type, in three columns: the command, its arguments, what it does. It shows seven at a
-  time; its rule says how many of all (`commands · 7 of 31 · type to narrow`) and its last line how many more there
-  are (`↓ 24 more`); **↑** and **↓** go through all of them. **Tab** completes, **Enter** runs one that needs nothing
+  time; its rule says how many of all (`commands · 7 of 41 · type to narrow`) and its last line how many more there
+  are (`↓ 34 more`); **↑** and **↓** go through all of them. **Tab** completes, **Enter** runs one that needs nothing
   more. The [chat commands](cli.md#chat-commands) list them all. After `/gen` and a space, the menu lists its shapes
-  first (`here`, `file`, `try`, `scaffold`), then what else `/gen` does. After `k` on a scaffold's card, `/keep ` waits
+  first (`here`, `file`, `try`, `scaffold`, `board`), then what else `/gen` does. After `k` on a scaffold's card, `/keep ` waits
   on the line with that scaffold's files left to keep (`Enter keeps`); a `/keep` you type yourself has no menu.
 
-  ![The command menu: seven of 31 commands in three columns (name, arguments, what it does), the count in its rule and ↓ 24 more under it](images/chat-menu.png)
+  ![The command menu: seven commands in three columns (name, arguments, what it does), the count in its rule and how many more under it](images/chat-menu.png)
 - **@** opens the project's files (from git): `@internal/queue/queue.go` names one in your question, for Pair to read;
   **Tab** or **Enter** inserts it (the footer says `Enter inserts`).
   **@here** sends the lines you selected last in Neovim with it, else the line you are on: the question names them
@@ -255,7 +255,7 @@ Anything you type that is not a command is a question for Pair; it is always ans
 
 ## Acting on a message
 
-**Alt-↑** picks the last message (the last remark, [gen card](#the-gen-card) or relayed line of another agent instead, while its action line shows), and further presses go up (**Alt-↓** down; a click picks one too). A bar marks it,
+**Alt-↑** picks the last message (the last remark, [gen card](#the-gen-card) or relayed line of another agent instead, while its action line shows), and further presses go up (**Alt-↓** down, or **↑** **↓** once one is picked; a click picks one too). A bar marks it,
 and the footer lists what you can do with it, with the message's time on the right:
 
 | Key | On the message |
@@ -285,7 +285,7 @@ The last remark, while it is the last thing said, shows `+`, `-`, `a` and `j` on
 - **Ctrl-F** finds in the conversation (`/search <text>` too). The find row stands where you type (what you typed
   waits) and says which match you are on, of how many, and in how many messages: `find: lease  3 of 9 · in 4
   messages`. Every match is underlined; the one you are on is bold, underlined and green (no reverse video, no
-  fill). **↑** and **↓** go from match to match, older or newer, also between two in one message; a folded message
+  fill). **↑** and **↓** (or **Ctrl-P**, **Ctrl-N**) go from match to match, older or newer, also between two in one message; a folded message
   opens to show a match in its folded part. **Enter** keeps the message picked, **Esc** closes.
 
   ![Finding lease: every match underlined, the one you are on bold and green, and the find row: 8 of 8 · in 4 messages](images/chat-find.png)
@@ -294,7 +294,7 @@ The last remark, while it is the last thing said, shows `+`, `-`, `a` and `j` on
 
 ## Every key
 
-`?` on an empty line shows them; any key closes the list. `/help` does too.
+`?` on an empty line shows them; **↑** **↓** and **PgUp** **PgDn** scroll the list, any other key closes it. `/help` does too.
 
 ![The key help: keys, then the commands](images/chat-help.png)
 
@@ -303,12 +303,12 @@ The last remark, while it is the last thing said, shows `+`, `-`, `a` and `j` on
 | `Enter` | Send |
 | `Alt-Enter`, `Ctrl-J` | A new line |
 | `↑` `↓` | Move in what you type, else through what you sent |
-| `Ctrl-A` `Ctrl-E`, `Home` `End` | Start and end of the line |
+| `Ctrl-A` `Ctrl-E`, `Home` `End` | Start and end of the line; on an empty line, `Home` goes to the top of the conversation and `End` back to the newest |
 | `Ctrl-W`, `Alt-Backspace` | Delete the word before the cursor |
 | `Ctrl-U` `Ctrl-K` | Delete to the start, to the end of the line |
 | `Alt-B` `Alt-F`, `Ctrl-←` `Ctrl-→` | A word back, forward |
 | `Tab` | Complete a `/command` or an `@file` |
-| `Esc` | Stop Pair's answer (else a /gen request at work), close a menu, leave a message |
+| `Esc` | Stop Pair's answer (else the Watcher's look at a moment, or a /gen request at work), close a menu, leave a message |
 | `Alt-↑` `Alt-↓` | Pick a message ([above](#acting-on-a-message)); on a gen card, `k` `Enter` `d` `u` keep, open, drop, undo |
 | `PgUp` `PgDn`, wheel | Scroll |
 | `Ctrl-F` | Find |
@@ -317,7 +317,7 @@ The last remark, while it is the last thing said, shows `+`, `-`, `a` and `j` on
 | `Ctrl-L` | Draw the pane again |
 | `Ctrl-C` | Stop the answer or a /gen request at work; else clear what you typed; twice on an empty line, close the pane |
 | `Ctrl-D` | Close the pane, on an empty line |
-| `y` `n` | While Pair asks: allow, decline; `Esc` declines too (for a `/gen` question: take the guess or the answer given, cancel or leave it to Pair) |
+| `y` `n` | While Pair asks: allow, decline; `Esc` declines too (for a `/gen` question: take the guess or the answer given, cancel or leave it to Pair); on `/gen board`'s question, `d` `p` `r` `c` as [above](#what-you-see) |
 | `?` | The keys, on an empty line |
 
 Closing the pane leaves the session running; `pair` or `:Pair chat` opens it again, with the conversation so far.

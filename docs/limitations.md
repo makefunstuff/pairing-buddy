@@ -62,7 +62,7 @@ stay herdr's:
   list names the space an artifact is kept in, not the task, so Pair asks the space's newest 20 who made them (`by
   BDY-7 agent`). A report older than those 20, or a change of those lines' format in Shepherdr, hides it (the pull
   request still opens).
-- **The diff is against the branch the repository merges into** (origin's default, else `main`), not the commit the
+- **The diff is against the branch the repository merges into** (origin's default, else `main`, else `master`), not the commit the
   task started from, and only for a task whose repository is on this machine.
 - **Another machine's tasks** (Shepherdr lists them too) are only their line: `o`, `d` and `t` open nothing of
   theirs.

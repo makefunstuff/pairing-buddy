@@ -82,7 +82,7 @@ type a question and Enter; `/` lists the commands, `?` the keys, and the row abo
 
 ![The chat pane on the right of Neovim, before anything is said: what Pair is and the keys to talk to it](images/chat-empty.png)
 
-The session takes its goal from the herdr board task of your branch, or from the branch name, and asks in the chat
+The session takes its goal from the work board's (Shepherdr's) task for your branch, or from the branch name, and asks in the chat
 only when there is neither (on `main`, say); `:Pair goal <what>` sets it from Neovim. Then work as usual. Pair stays quiet until something is worth a word, and shows it under your line:
 
 - `Alt-j` goes where Pair points; `Ctrl-O` comes back.

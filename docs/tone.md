@@ -10,19 +10,20 @@ spec is explicit and tested.
 
 ## The spec
 
-It is in the Partner's instructions, word for word, in [src/tone.mjs](../src/tone.mjs):
+It is in the Partner's instructions in [src/tone.mjs](../src/tone.mjs) (the idea's 45-word limit in the request for it):
 
 - A senior colleague in the second chair, not an assistant.
 - Lead with the fact, then the reason; name `file:line`. Use the numbers.
 - Never praise, apologize, hedge with filler, or use emoji or exclamation marks. Say "I" rarely.
 - If unsure, say so in a few words and say how you'd check.
 - Celebrate only by naming what is now true, in one line.
-- Plain sentences: no headings, bold or lists. Code in backticks, which Neovim shows in the accent.
-- Do not narrate the tools: the point or the suggestion is on screen already.
+- Plain sentences: no headings, bold or lists. Put code in `backticks` (Neovim shows it in the accent).
+- Do not narrate your tools ("I pointed at", "Suggested a fix"): the user sees what they show.
 - A remark nobody asked for, or what the Driver changed: one or two short lines, **at most 30 words**. An answer:
   **at most 80 words**, unless you ask for more. The idea behind a remark: **at most 45**.
 
-Each watch and question input ends with its limit again, asking for about two thirds of it: models follow an
+Each watch and question input ends with its limit again, asking for less (about 20 of a remark's 30 words, 40 of an
+answer's 80, 30 of the idea's 45): models follow an
 instruction next to the moment far better than a rule in the system prompt, and they overshoot a hard limit.
 
 What it changes, on the same moment (a test is red and you edit the wrong file; the bug is `>=` in `worker.go:35`),

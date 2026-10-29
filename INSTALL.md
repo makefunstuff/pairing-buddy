@@ -616,8 +616,9 @@ Tell the human how to start:
 Only those the human chose in step 2.
 
 **herdr.** Installed in 3.6. Run `pair doctor` inside a herdr pane; expected `✓ herdr    answers in … ms, … panes in
-this workspace`. Nothing to configure: `pair` in a herdr pane opens the chat beside it. The work board
-(`herdr-projects`) and its goal for the branch are read when its command is on `PATH` ([agents.md](docs/agents.md)).
+this workspace`. Nothing to configure: `pair` in a herdr pane opens the chat beside it. The work board,
+Shepherdr (`shepherdr`), and its task for the branch (the goal) are read when `shepherdr` is on the daemon's `PATH`
+([agents.md](docs/agents.md)).
 
 **The shell hook.** It tells Pair each command you run and its exit code. **Check:** `grep -s 'pair shell-hook' "$rc"`
 (`rc` from step 3.1; for fish, `~/.config/fish/config.fish`). **Do**, if it prints nothing, back up the rc file and add one line at its end:

@@ -85,7 +85,7 @@ board task made. Each is read when you press it, read only, and opens in Neovim:
 | Key | Opens | How |
 | --- | --- | --- |
 | `o` | its report or its pull request | the report is the newest artifact the task's agent or reviewer made. A task's artifacts are kept in its space, so Pair lists the space's (`shepherdr artifact list --space=<space>`) and asks the newest 20, newest first, who made them (`shepherdr artifact show <id>`: `by BDY-7 agent`); the first that is the task's opens, as its HTML file. The pull request is the one `task show` names. One of them opens with `vim.ui.open`; with both, you pick |
-| `d` | its branch's diff, read only | `git diff <base>...<branch>` in its worktree (or the space's folder), against the branch the repository merges into (origin's default, else `main`), in a split named `pair://agents/<id>/diff` (`q` closes it) |
+| `d` | its branch's diff, read only | `git diff <base>...<branch>` in its worktree (or the space's folder), against the branch the repository merges into (origin's default, else `main`, else `master`), in a split named `pair://agents/<id>/diff` (`q` closes it) |
 | `t` | a terminal in its worktree | a split with your `shell`, started in the task's worktree; for an agent of your own, in its folder |
 
 When there is nothing to open, Pair says why: no report or pull request yet, no branch yet, no worktree on this
@@ -128,11 +128,11 @@ branch that is, and the task whose worktree you work in. So are other machines' 
 ## Where it reads
 
 Pair reads by itself and writes nothing to the board: it never adds, tells, stops, merges or sets a task on its own.
-The writes there are go through [`/gen board`](gen.md#gen-board-a-task-for-the-board), a task added on a pick that
-names what it does (add only, or add and delegate), a task's [review](gen.md#reviewing-a-board-task-pair-review),
-where a tell, "merge it" told to its agent or archive run on the pick that names them, and
-[`/brief sync`](gen.md#keeping-the-task-in-step-brief-sync), whose tell runs only on its pick too. Pair never runs
-`shepherdr merge`.
+The writes there go through [`/gen board`](gen.md#gen-board-a-task-for-the-board), a task added on a pick that
+names what it does (add only, add and delegate, delegate with a plan first, or delegate for research only), a task's
+[review](gen.md#reviewing-a-board-task-pair-review), where a tell, "merge it" told to its agent or archive run on the
+pick that names them, and [`/brief sync`](gen.md#keeping-the-task-in-step-brief-sync), whose tell runs only on its pick
+too. Pair never runs `shepherdr merge`.
 
 - **herdr's agents**: `agent.list` over herdr's socket, which Pair knows from the chat pane, or from Neovim when it
   runs in herdr. Every agent herdr recognises, in any workspace.
