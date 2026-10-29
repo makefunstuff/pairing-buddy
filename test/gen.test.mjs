@@ -17,6 +17,7 @@ import {PairSession} from '../src/session.mjs';
 import {genLines, statsReport} from '../src/stats.mjs';
 import {openStore} from '../src/store.mjs';
 import {detectTriggers} from '../src/triggers.mjs';
+import {fakeShepherdr} from './fake-shepherdr.mjs';
 import {scratch} from './temp.mjs';
 
 const NOON = new Date(2026, 9, 28, 12, 0).getTime();
@@ -26,7 +27,7 @@ const SUM = 'function sum(a, b) {\n  return a + b\n}';
  * A session in a scratch project with math.js. Each /gen request's turn runs the next of `turns` with its
  * conversation id; `editor(message)` answers what the session asks Neovim (reverts are fine by default).
  */
-function genSession(turns = [], {editor = async () => null, limits, notes = null, askModel = null, store: given = null, root: at = null, genDir = null, sandbox = false} = {}) {
+function genSession(turns = [], {editor = async () => null, limits, notes = null, askModel = null, store: given = null, root: at = null, genDir = null, sandbox = false, board = null} = {}) {
   const root = at ?? realpathSync(scratch('pair-gen-'));
   writeFileSync(join(root, 'math.js'), 'const x = 1\n\nexport {x}\n');
   writeFileSync(join(root, 'other.js'), 'const y = 2\n');
@@ -57,6 +58,7 @@ function genSession(turns = [], {editor = async () => null, limits, notes = null
     genLimits: limits,
     genDir: genDir ?? scratch('pair-gen-data-'),
     genSandbox: sandbox,
+    genBoard: board,
     askModel,
     notify: (to, message) => { sent.push({via: to, ...message}); return 1; },
     requestEditor: async message => {
@@ -204,6 +206,73 @@ test('a guessed shape is asked first, in the chat for a chat request: y takes th
   await pair.gen.request({text: 'here x times two'});
   assert.equal(of('confirm').length, before);
   assert.equal(pair.today().rows.filter(row => row.label === 'generated').at(-1).place.line, 2);
+});
+
+test('/gen board composes a task for the board: y adds it for later, c copies it, n adds nothing; no model runs', async () => {
+  const board = fakeShepherdr(scratch('pair-board-'), {spaces: [{name: 'shop', key: 'SHO', path: '/src/shop'}], tasks: []});
+  const {pair, of, said, asked} = genSession([], {board: board.command, notes: 'Money in integer cents, never floats.\n'});
+  pair.receive({kind: 'context', branch: 'main', git: {}, board: {space: 'shop', task: null, working: 0, waiting: []}});
+  const request = 'board a CSV export of the orders, one line per day with the totals';
+  const first = pair.gen.request({text: request});
+  await until(() => of('confirm').length);
+  const confirm = of('confirm').at(-1);
+  assert.equal(confirm.text, 'gen #1 · a task for the board: "a CSV export of the orders, one…". Add it for later?');
+  assert.equal(confirm.copy, true, 'c copies its command in the chat');
+  assert.match(confirm.command, /shepherdr task add 'a CSV export of the orders, one…' --brief 'a CSV export of the orders, one line per day with the totals\n\nFrom the brief/);
+  assert.match(confirm.command, / --space shop --later$/, 'add only: its agent waits for a go');
+  assert.deepEqual(board.calls(), [], 'nothing is added before the pick');
+  pair.answer(confirm.id, true);
+  await first;
+  const [verb, sub, title, , brief, ...rest] = board.calls().at(-1);
+  assert.deepEqual([verb, sub, title, ...rest], ['task', 'add', 'a CSV export of the orders, one…', '--space', 'shop', '--later']);
+  assert.equal(brief, [
+    'a CSV export of the orders, one line per day with the totals',
+    'From the brief (NOTES.md + goal "add helpers"):\nGoal: add helpers\nNOTES.md:\n> Money in integer cents, never floats.',
+    'Asked from Pair with /gen board.',
+  ].join('\n\n'), 'the request in your words, and the brief quoted: the task\'s agent sees only what is committed');
+  assert.match(said().at(-1), /^gen #1 → board SHO-90 · added, for later: its agent reads the brief and waits for your go \(.*shepherdr task tell SHO-90 go\)\.$/);
+  assert.deepEqual(asked, [], 'no model was asked');
+  assert.deepEqual(pair.today().rows.filter(row => row.label === 'board').map(row => row.text), ['gen #1 → board SHO-90: a CSV export of the orders, one…']);
+
+  const second = pair.gen.request({text: 'board a second one'});
+  await until(() => of('confirm').length === 2);
+  pair.answer(of('confirm').at(-1).id, false, undefined, 'c');
+  await second;
+  assert.match(said().at(-1), /^gen #2: nothing added\. The command, to run yourself: .*shepherdr task add 'a second one'/);
+  const third = pair.gen.request({text: 'board a third one'});
+  await until(() => of('confirm').length === 3);
+  pair.answer(of('confirm').at(-1).id, false, undefined, 'n');
+  await third;
+  assert.equal(said().at(-1), 'gen #3 cancelled: nothing added to the board.');
+  assert.equal(board.calls().filter(([verb, sub]) => verb === 'task' && sub === 'add').length, 1, 'only the y added');
+  assert.ok(board.calls().every(([verb, sub]) => `${verb} ${sub}` === 'task add'), 'nothing but the one add: no tell, no merge, no set');
+
+  // The shape question offers it too; from Neovim, the question is a dialog there that names the command.
+  const fourth = pair.gen.request({text: 'billing module', from: 'editor', place: {file: 'math.js', line: 1}});
+  await until(() => of('gen_ask').length);
+  pair.gen.answer(4, of('gen_ask').at(-1).id, 'board');
+  await until(() => of('gen_ask').length === 2);
+  const ask = of('gen_ask').at(-1);
+  assert.equal(ask.kind, 'board');
+  assert.deepEqual(ask.choices.map(choice => choice.key), ['y', 'c']);
+  assert.match(ask.command, /task add 'billing module'/);
+  pair.gen.answer(4, ask.id, 'y');
+  await fourth;
+  assert.match(said().at(-1), /^gen #4 → board SHO-91 · added, for later/);
+});
+
+test('/gen board without a board says so, and a board that refuses says why', async () => {
+  const {pair, said, of} = genSession();
+  await pair.gen.request({text: 'board a CSV export'});
+  assert.equal(said().at(-1), 'gen #1: there is no board to add it to ("board": null in the config).');
+  const board = fakeShepherdr(scratch('pair-board-'), {spaces: [{name: 'shop', key: 'SHO', path: '/src/shop'}], tasks: []});
+  pair.gen.board = board.command;
+  board.set({down: true});
+  const second = pair.gen.request({text: 'board a CSV export'});
+  await until(() => of('confirm').length);
+  pair.answer(of('confirm').at(-1).id, true);
+  await second;
+  assert.equal(said().at(-1), 'gen #2: the board did not add it: Shepherdr is not running here');
 });
 
 test('from Neovim the shape question is a dialog there; one request runs at a time and the next waits', async () => {

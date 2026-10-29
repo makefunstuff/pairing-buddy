@@ -798,3 +798,40 @@ test('Esc stops a /gen request at work, as it stops an answer; the footer says s
     await t.close();
   }
 });
+
+test('the board in the pane: its counts in the header; a relayed task\'s line has o, d and t; /gen board\'s c copies the command', {timeout: 20_000}, async () => {
+  const t = await standInPane(110, 20, {board: {space: 'shop', working: 2, needs: 1}});
+  try {
+    await t.shows(/── pair · pair-pane-\w+ ─+ board 2 working · 1 needs you · navigator · normal ──/);
+    t.daemon.send({type: 'board', board: {space: 'shop', working: 3, needs: 0}});
+    await t.shows(/── pair · pair-pane-\w+ ─+ board 3 working · navigator · normal ──/);
+
+    const item = {key: 'task:SHO-80', kind: 'task', id: 'SHO-80', title: 'Billing module', status: 'ready', branch: 'work/80-billing', where: '/wt/80', pr: 'https://github.com/o/shop/pull/104'};
+    t.daemon.send({type: 'agents', item, text: '#80 ready to merge: Billing module', more: 0});
+    await t.shows(/◇ #80 ready to merge: Billing module\n {7}o open   d diff   t terminal   · Alt-↑ picks/);
+    await t.type('d');
+    assert.match(t.text(), /^› d/m, 'a letter on the line is the start of a question until the line is picked');
+    await t.type('\x15');
+    await t.type('\x1b[1;3A'); // Alt-↑ picks the relayed line first
+    assert.match(t.text(), /c copy · o open · d diff · t terminal · Esc back/);
+    await t.type('d');
+    assert.deepEqual(await t.sent('agent_link'), {type: 'agent_link', key: 'task:SHO-80', what: 'diff'});
+    await t.type('t');
+    assert.deepEqual(t.daemon.got.filter(m => m.type === 'agent_link').at(-1), {type: 'agent_link', key: 'task:SHO-80', what: 'term'});
+    await t.type('o');
+    assert.deepEqual(t.daemon.got.filter(m => m.type === 'agent_link').at(-1), {type: 'agent_link', key: 'task:SHO-80', what: 'open'});
+    await t.type('\x1b');
+    t.daemon.send({type: 'agents', item: null}); // answered: the line keeps its words, not its keys
+    for (let i = 0; i < 20 && /o open {3}d diff/.test(t.text()); i++) await sleep(25);
+    assert.doesNotMatch(t.text(), /o open {3}d diff/);
+
+    const command = "shepherdr task add 'CSV export' --brief 'CSV export' --space shop --later";
+    t.daemon.send({type: 'confirm', id: 9, gen: 5, text: 'gen #5 · a task for the board: "CSV export". Add it for later?', command, copy: true, hint: 'y adds it, for later (add only) · c copies the command · n adds nothing'});
+    await t.shows(/a task for the board: "CSV export"\. Add it for later\?\n +│ shepherdr task add 'CSV export'/);
+    await t.type('c');
+    assert.deepEqual(await t.sent('confirm'), {type: 'confirm', id: 9, ok: false, text: 'c'});
+    assert.match(t.text(), /Copied, through the terminal's clipboard/);
+  } finally {
+    await t.close();
+  }
+});

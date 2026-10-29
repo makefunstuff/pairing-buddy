@@ -353,8 +353,9 @@ export function bodyLines(entry, width, {continued = false, measure = width} = {
   if (kind === 'confirm') {
     // Pair's question in body text; the command it asks about under it in a code bar, to read and copy whole: the
     // session's own copy of it (a command may hold backticks itself), else the question's first `code`. The keys
-    // that answer are in the footer, once. A /gen question has no command: its hint says what its answers do.
-    const command = entry.hint ? null : entry.command ?? /`([^`]+)`/.exec(text)?.[1];
+    // that answer are in the footer, once. A /gen question has a hint, which says what its answers do, and no
+    // command, but /gen board's: the board's command it composed, to read and copy.
+    const command = entry.hint && !entry.copy ? null : entry.command ?? /`([^`]+)`/.exec(text)?.[1];
     const question = command ? text.replace(`\`${command}\``, () => 'this') : text;
     const lines = wrapTokens(inlineTokens(question, 'text'), words);
     if (command) lines.push(...codeLines(command, width, 'text', [seg('│ ', 'rule')]));
@@ -651,8 +652,8 @@ export function boardSegments(board) {
 /**
  * The header, in the top rule: where you pair and on what, then the board's counts for the repo, the role, in its
  * colour, and the level (the Driver that keeps the wheel says so instead), on the right. The goal is cut first, to a
- * few words, then left out (always in a narrow pane), then the board's counts go, then the role is shortened (nav),
- * and the muted kinds, the level and the role give way.
+ * few words; then the board's counts give way, the goal is left out (always in a narrow pane), the role is shortened
+ * (nav), and the muted kinds, the level and the role give way.
  */
 export function headerLine({project, goal, role, level, muted = [], keep = false, board = null}, width) {
   const where = [seg('pair', 'accentBold'), ...(project ? [seg(' · ', 'dim'), seg(project, 'bold')] : [])];

@@ -104,7 +104,8 @@ export function boardTitle(text) {
   const line = text.replace(/\s+/g, ' ').trim();
   if (line.length <= TITLE_MAX) return line;
   const cut = line.slice(0, TITLE_MAX - 1);
-  return `${cut.replace(/\s+\S*$/, '') || cut}…`;
+  const words = /\s/.test(line[TITLE_MAX - 1]) ? cut : cut.replace(/\s+\S*$/, ''); // a word cut in two goes
+  return `${words.trimEnd() || cut}…`;
 }
 
 /** `words` as one line to read and paste in a shell: each word quoted where it has to be. */

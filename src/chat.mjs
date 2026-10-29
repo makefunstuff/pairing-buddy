@@ -258,7 +258,9 @@ function runPlainChat(socketPath, {input, output, exit, cwd, env}) {
     }
     if (message.type === 'confirm') {
       confirming = message.id;
-      say(message.gen ? 'gen' : 'pair', `${message.gen ? genText(message.text) : message.text} [${message.hint ?? 'y/N'}]`);
+      // /gen board's command, whole: here c answers, and Pair says it again to copy by hand.
+      const command = message.copy && message.command ? `\n${message.command}` : '';
+      say(message.gen ? 'gen' : 'pair', `${message.gen ? genText(message.text) : message.text}${command} [${message.hint ?? 'y/N'}]`);
     }
     if (message.type === 'confirmed' && message.id === confirming) confirming = null; // answered, or timed out
     if (message.type === 'first' && message.step) {

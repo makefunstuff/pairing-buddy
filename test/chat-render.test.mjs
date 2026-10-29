@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import {mock, test} from 'node:test';
 import {LineEditor} from '../src/chat-input.mjs';
-import {baseNames, bodyLines, genStatus, heldText, breakText, codeLines, cutStart, dedent, diffLines, emptyLines, footerKeys, footerLine, headerLine, helpLines, markdownLines, menuLines, remarkKeys, renderFrame, statusLine, transcriptLines, wrapTokens, inlineTokens} from '../src/chat-render.mjs';
+import {baseNames, bodyLines, genStatus, heldText, breakText, codeLines, cutStart, dedent, diffLines, emptyLines, footerKeys, footerLine, headerLine, helpLines, markdownLines, menuLines, relayActions, relayKeys, remarkKeys, renderFrame, statusLine, transcriptLines, wrapTokens, inlineTokens} from '../src/chat-render.mjs';
 import {COMMANDS} from '../src/chat.mjs';
 import {STYLES, paintLine, textWidth} from '../src/chat-style.mjs';
 
@@ -650,4 +650,33 @@ test('a picked gen card: the footer has its keys, in their short words when the 
   const menu = renderFrame({editor: Object.assign(new LineEditor(), {}), entries: [], header: {}, mode: 'menu', menu: {kind: 'keep', title: 'gen #7 · files to keep', chosen: 0, items: [{label: 'internal/admin/orders.go', value: '/keep internal/admin/orders.go'}]}}, {width: 60, height: 12});
   assert.match(menu.lines.join('\n'), /╶─ gen #7 · files to keep ─+\n ▸ internal\/admin\/orders\.go/);
   assert.match(menu.lines.join('\n'), /Enter keeps/);
+});
+
+test('the header counts the board\'s tasks of the repo: board 3 working · 1 needs you; the goal is cut for it, then it gives way', () => {
+  const header = {project: 'hookd', goal: 'make the queue lease outlive the last retry', role: 'navigator', level: 'normal', board: {space: 'hookd', working: 3, needs: 1}};
+  const line = width => plain([headerLine(header, width)])[0];
+  assert.equal(line(118), '── pair · hookd · make the queue lease outlive the last retry ── board 3 working · 1 needs you · navigator · normal ──');
+  assert.equal(line(86), '── pair · hookd · make the q… ── board 3 working · 1 needs you · navigator · normal ──');
+  assert.equal(line(60), '── pair · hookd · make the queue l… ── navigator · normal ──', 'the board\'s counts give way before the goal goes');
+  assert.equal(line(44), '── pair · hookd ──────────── nav · normal ──');
+  const needs = headerLine(header, 118).find(seg => seg.text === '1 needs you');
+  assert.equal(needs.style, 'accent', 'what needs you in the accent');
+  assert.equal(plain([headerLine({...header, board: {working: 2, needs: 0}}, 100)])[0], '── pair · hookd · make the queue lease outlive the last … ── board 2 working · navigator · normal ──');
+  assert.equal(plain([headerLine({...header, goal: null, board: {working: 0, needs: 2}}, 80)])[0], '── pair · hookd ─────────────────────── board 2 need you · navigator · normal ──');
+  assert.equal(plain([headerLine({...header, board: {working: 0, needs: 0}}, 86)])[0], '── pair · hookd · make the queue lease outlive the last retry ── navigator · normal ──', 'nothing to count, nothing said');
+});
+
+test('the relayed line of a board task: o, d and t as an action line while it is the live one; picked, in the footer', () => {
+  const agent = relayKeys({key: 'task:BDY-80', kind: 'task', id: 'BDY-80', branch: 'work/80-billing', where: '/wt/80'});
+  assert.deepEqual(agent, {key: 'task:BDY-80', title: 'BDY-80', live: true, open: true, diff: true, term: true});
+  const entry = {kind: 'note', at, text: '◇ #80 ready to merge: Billing module', meta: {agent}};
+  assert.deepEqual(plain(transcriptLines([entry], 80, {latestRelay: 0}).lines).slice(1), [
+    ' ··    ◇ #80 ready to merge: Billing module',
+    '       o open   d diff   t terminal   · Alt-↑ picks',
+  ]);
+  assert.doesNotMatch(plain(transcriptLines([entry], 80).lines).join('\n'), /Alt-↑ picks/, 'not the live line: no keys');
+  const own = {...entry, meta: {agent: relayKeys({key: 'agent:w3:p1', kind: 'agent', title: 'pi in notes', where: '/home/me/notes'})}};
+  assert.deepEqual(relayActions(own).map(([key]) => key), ['t'], 'an agent of your own: a terminal in its folder only');
+  assert.deepEqual(relayActions({...entry, meta: {agent: relayKeys({key: 'task:BDY-81', kind: 'task', id: 'BDY-81'})}}).map(([key]) => key), ['o'], 'no branch yet, no worktree');
+  assert.deepEqual(footerKeys({mode: 'select', selectedEntry: entry}).map(([key, what]) => `${key} ${what}`), ['c copy', 'o open', 'd diff', 't terminal', 'Esc back']);
 });
