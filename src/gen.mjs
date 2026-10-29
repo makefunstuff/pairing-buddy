@@ -365,8 +365,8 @@ export class Gen {
     } finally {
       clearTimeout(request.timer);
       this.conversations.delete(request.conversation);
-      this.running = null;
     }
+    // Still the running request while it finishes: a scaffold's check runs in Pair's pane, and in its copy.
     await this.finish(request, failure);
     await this.release();
   }
@@ -394,10 +394,12 @@ export class Gen {
     if (request.mode === 'worktree') {
       request.branch = `gen/${request.n}`;
       request.base = (await makeWorktree(this.dir, request.dir, this.root, request.branch)).base;
+      request.dir = await realpath(request.dir);
       return;
     }
     request.texts = await this.session.unsavedBuffers().catch(() => new Map());
     await makeCopy(this.dir, request.dir, this.root, request.texts);
+    request.dir = await realpath(request.dir); // as pathIn names its files
   }
 
   /** Stops the request's model once it has worked its minutes, not counting the time a question waits for the user. */
@@ -1162,7 +1164,8 @@ export class Gen {
     const body = text.replace(/\n$/, '');
     if (!lineCount(body)) return 'write needs the file: text has no lines.';
     const old = request.pieces.find(piece => piece.kind === 'tree' && piece.tree === at);
-    const base = old ? old.base : await readFile(at, 'utf8').catch(() => null);
+    // The project's text when the copy was made, not the copy's now: a run may have changed it since.
+    const base = old ? old.base : (await stat(join(this.root, rel)).catch(() => null))?.isFile() ? await this.baseOf(request, join(this.root, rel)) : null;
     const size = sizeOf(base, `${body}\n`);
     const others = request.pieces.filter(piece => piece.kind === 'tree' && piece !== old);
     const written = others.reduce((sum, piece) => sum + piece.added, 0);
@@ -1333,7 +1336,6 @@ export class Gen {
    * lines they changed since the copy was made is not shown, and the chat says so.
    */
   async keepTree(found, {path = '', file = null, piece = null} = {}) {
-    const session = this.session;
     const name = `gen #${found.n}`;
     const files = found.pieces.filter(one => one.kind === 'tree');
     const wanted = path.trim() && normalize(path.trim());
@@ -1350,7 +1352,21 @@ export class Gen {
       return this.said(`${name}: ${which}: ${left.slice(0, 10).join(', ')}${left.length > 10 ? ', …' : ''}. /keep <path> keeps one; :Pair gen list in Neovim lists them.`);
     }
     const rel = relative(this.root, target.file);
-    if (target.state === 'kept') return this.said(`${name}: ${rel} is kept already.`);
+    // Kept, and still to take or taken: kept already. One whose suggestions or buffer went (undone, dismissed) keeps again.
+    const live = found.pieces.some(one => one.source === target.tree && ['file', 'hunk'].includes(one.kind) && ['proposed', 'taken'].includes(one.state));
+    if (target.keeping || (target.state === 'kept' && live)) return this.said(`${name}: ${rel} is kept already.`);
+    target.keeping = true;
+    try {
+      return await this.keepOne(found, target, rel);
+    } finally {
+      delete target.keeping;
+    }
+  }
+
+  /** keepTree for the file `target` (at `rel` in the project) of scaffold `found`. */
+  async keepOne(found, target, rel) {
+    const session = this.session;
+    const name = `gen #${found.n}`;
     const text = await textOf(target.tree);
     if (text === null) return this.said(`${name}: ${rel} is gone from its copy.`);
     // As the user may have changed it in the copy, in Neovim.

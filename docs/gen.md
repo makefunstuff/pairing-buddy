@@ -464,8 +464,8 @@ gen #7 · scaffold · an admin page for orders · 14:31
 | `x` | Deletes the copy, after a yes (`Delete gen #7's copy? The 6 files not kept go with it.`). What you did not keep is dropped; what you kept stays |
 | `u` | Undoes the whole request ([below](#one-undo-per-request)) |
 
-In the chat, `/keep internal/admin/orders.go` keeps that file of the newest scaffold (when the newest of your tries and
-scaffolds is one); `/keep` alone keeps the only one left, or lists them. `:Pair keep` in a file of the copy keeps
+In the chat, `/keep internal/admin/orders.go` keeps that file of the newest scaffold whose copy is still there (when
+the newest of your tries and such scaffolds is one; the chat's answer names it, `gen #7: …`); `/keep` alone keeps the only one left, or lists them. `:Pair keep` in a file of the copy keeps
 that file. `/gen drop` and `:Pair gen drop` delete the newest scaffold's copy. Keeping one file at a time is the
 point: there is no key that keeps them all, so you read each before it is yours.
 

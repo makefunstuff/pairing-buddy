@@ -200,11 +200,17 @@ export async function makeWorktree(genDir, dir, root, branch) {
   await git(root, ['worktree', 'prune']).catch(() => {});
   await mkdir(dirname(dir), {recursive: true, mode: 0o700});
   await git(root, ['worktree', 'add', '-q', '-b', branch, dir, base]);
-  const {linked} = await projectFiles(root);
-  for (const folder of linked) {
-    if (await lstat(join(dir, folder)).then(() => true, () => false)) continue;
-    await mkdir(dirname(join(dir, folder)), {recursive: true});
-    await linkDependencies(join(root, folder), join(dir, folder)).catch(() => {});
+  // Dependency folders linked as in a copy; a project too big to list has its worktree all the same.
+  const {linked} = await projectFiles(root).catch(() => ({linked: []}));
+  try {
+    for (const folder of linked) {
+      if (await lstat(join(dir, folder)).then(() => true, () => false)) continue;
+      await mkdir(dirname(join(dir, folder)), {recursive: true});
+      await linkDependencies(join(root, folder), join(dir, folder)).catch(() => {});
+    }
+  } catch (error) {
+    await removeWorktree(root, dir, branch, base); // nothing is booked yet: nothing else would remove it
+    throw error;
   }
   return {base};
 }
@@ -233,10 +239,14 @@ export async function changedIn(dir, root, {worktree = false, known = new Set()}
   if (worktree) {
     const listed = await git(dir, ['status', '--porcelain', '-z', '--untracked-files=all']).catch(() => '');
     const found = [];
-    for (const entry of listed.split('\0').filter(Boolean)) {
+    const entries = listed.split('\0');
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
+      if (!entry) continue;
       const code = entry.slice(0, 2);
       const rel = entry.slice(3);
-      if (code.includes('D') || code.includes('R') || known.has(rel)) continue;
+      if (/[RC]/.test(code)) i++; // a rename or copy is followed by the path it came from
+      if (code.includes('D') || /[RC]/.test(code) || known.has(rel)) continue;
       found.push({rel, isNew: code === '??' || code.includes('A')});
     }
     return found;
@@ -436,6 +446,8 @@ export function placeHunks(base, next, current) {
   };
   const hunks = [];
   let conflicts = 0;
+  // An empty file the user left empty: the whole text in place of its one empty line.
+  if (!a.length && !now.length) return next === '' ? {hunks, conflicts} : {hunks: [{line: 1, endLine: 1, insert: false, text: linesOf(next).join('\n'), old: ['']}], conflicts};
   for (const hunk of hunksOf(a, linesOf(next))) {
     let {from, to, lines} = hunk;
     if (!lines.length) {

@@ -9,7 +9,7 @@ import {fileURLToPath} from 'node:url';
 import {test} from 'node:test';
 import {CHECK_PROMPT, CONFLICT_PROMPT} from '../src/brief.mjs';
 import {guessShape, parseGen} from '../src/gen.mjs';
-import {expireTries, projectFolder, tryLine} from '../src/gen-tree.mjs';
+import {expireTries, placeHunks, projectFolder, tryLine} from '../src/gen-tree.mjs';
 import {sandboxWorks} from '../src/sandbox.mjs';
 import {PairSession} from '../src/session.mjs';
 import {openStore} from '../src/store.mjs';
@@ -1040,4 +1040,41 @@ test('/gen scaffold --branch: a git worktree on a branch gen/<n>; gen.scaffold "
 test('the flags make a scaffold; scaffold is guessed only with a question', () => {
   assert.equal(guessShape('an admin page for orders, wired into the router').shape, 'scaffold');
   assert.deepEqual(parseGen('scaffold --branch an admin'), {shape: 'scaffold', words: '--branch an admin'});
+});
+
+test('a scaffold\'s change lands on an empty file too; the base is the project\'s, not what a run made of the copy; undone, it keeps again; a data folder behind a link', async () => {
+  assert.deepEqual(placeHunks('', 'hello\n', ''), {hunks: [{line: 1, endLine: 1, insert: false, text: 'hello', old: ['']}], conflicts: 0});
+  assert.deepEqual(placeHunks('', 'hello\n', 'mine\n').conflicts, 1, 'one the user filled since is theirs');
+
+  const real = realpathSync(scratch('pair-gen-real-'));
+  const link = join(scratch('pair-gen-link-'), 'data');
+  symlinkSync(real, link);
+  const results = [];
+  const {root, pair, of, said} = genSession([async (conversation, pair) => {
+    results.push(await tool(pair, conversation, 'run', {command: 'printf "const y = 2 // tidied\\n" > other.js'}));
+    results.push(await tool(pair, conversation, 'write', {path: 'other.js', text: 'const y = 2 // tidied\nexport {y}'}));
+    results.push(await tool(pair, conversation, 'write', {path: 'empty.js', text: 'export {}'}));
+    return 'Done.';
+  }], {genDir: link, sandbox: false});
+  writeFileSync(join(root, 'empty.js'), '');
+  pair.scout = bashPane(root);
+  pair.allowed = async () => true;
+  await pair.gen.request({text: 'scaffold a thing'});
+  assert.equal(results[1], 'Wrote other.js in the copy: +2 -1 against the project. run runs commands there.', 'against the project\'s other.js, not the run\'s');
+  const card = said().find(text => text.startsWith('gen #1 · scaffold'));
+  assert.match(card, /^gen #1 · scaffold · 2 files, 2 of yours changed/, 'a file the model wrote is not listed again as a run\'s');
+
+  // In a file of the copy, by its real path: the run key checks it, :Pair keep keeps it.
+  const dir = join(projectFolder(real, root), '1');
+  assert.equal(await pair.gen.rerun({file: join(dir, 'other.js')}), 'gen #1 · no check: no command on save, and no build or run in the user\'s terminal yet.');
+  assert.equal(await pair.gen.keep({file: join(dir, 'empty.js')}), 'gen #1: empty.js: 1 change, shown there as suggestions; Alt-y (:Pair accept) takes each.');
+  assert.equal(await pair.gen.keep({path: 'other.js'}), 'gen #1: other.js: 1 change, shown there as suggestions; Alt-y (:Pair accept) takes each.');
+  assert.deepEqual(of('suggest').map(({file, line, insert, text}) => [file.slice(root.length + 1), line, insert, text]), [
+    ['empty.js', 1, false, 'export {}'], ['other.js', 1, false, 'const y = 2 // tidied\nexport {y}'],
+  ]);
+  assert.equal(await pair.gen.keep({path: 'other.js'}), 'gen #1: other.js is kept already.');
+
+  // /undo drops the suggestions not taken: the file keeps again.
+  await pair.undoLast();
+  assert.equal(await pair.gen.keep({path: 'other.js'}), 'gen #1: other.js: 1 change, shown there as suggestions; Alt-y (:Pair accept) takes each.');
 });
