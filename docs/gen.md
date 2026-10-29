@@ -52,7 +52,7 @@ again, `/gen tries` lists the try folders, and `/keep [path]` moves the newest t
 `/gen scaffold <what>` (`/gen scaffold --branch <what>` for a git worktree) asks for a scaffold; `/keep <path>` keeps
 a file of it, and `/gen drop` deletes its copy. `/gen` alone lists today's requests (and how much code you took is
 [not yours yet](#owning-generated-code)), and `/gen cancel` stops the one
-that runs or waits. `/cancel` stops a running request too, when Pair answers nothing else. Typing `/gen` and a space
+that runs or waits. `/cancel`, and `Esc` or `Ctrl-C` in the full-screen pane, stop a request too, when Pair answers nothing else. Typing `/gen` and a space
 lists the shapes first, then what else `/gen` does; `Tab` completes one. What a request makes comes back as a
 [gen card](#in-the-chat-pane-the-gen-card), with keys to keep, open, drop and undo it.
 
@@ -162,7 +162,7 @@ said (a note after it, such as `gen #7: … taken`, does not count), and only th
 
 `d` asks first: the first `d` says what a second one drops (`d again drops gen #7's copy, …`), and only a second `d`
 within a moment does it. `u` shows once the request is done, even before you took anything (an undo then drops what
-it proposed); for a try, only once a file of it is kept. None of the keys show while the request is at work: `Esc`, `/cancel` or `/gen cancel` stop it then. A card for code
+it proposed); for a try, only once a file of it is kept. None of the keys show while the request is at work: `Esc` (or `Ctrl-C`), `/cancel` or `/gen cancel` stop it then, unless Pair answers you meanwhile, when `Esc` stops that answer first. A card for code
 at the cursor shows the code as a diff under its words, and `✓ taken` once you took it; `a` and `j` work on it as on
 any suggestion. A card does not fold: `Enter` on it opens it. A try's card keeps its words on how to take it (where
 its folder is, how long it stays) under its keys. A card that comes while Pair's answer streams waits under the

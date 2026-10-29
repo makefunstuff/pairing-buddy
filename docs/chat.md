@@ -221,7 +221,8 @@ Anything you type that is not a command is a question for Pair; it is always ans
   **Tab** or **Enter** inserts it (the footer says `Enter inserts`).
   **@here** sends the lines you selected last in Neovim with it, else the line you are on: the question names them
   (`queue.go:18-20`), as `:'<,'>Pair ask` does.
-- **Esc** (or **Ctrl-C**) stops the answer Pair is working on; `/cancel` too. You can type your next question while
+- **Esc** (or **Ctrl-C**) stops the answer Pair is working on; `/cancel` too. When Pair answers nothing, they stop a
+  [/gen request](#the-gen-card) at work, or the newest one still starting or waiting its turn (the footer says `Esc stop`). You can type your next question while
   it works.
 - "you take it" or "your turn" hands Pair the wheel, as `/drive` does ([Driver](driver.md)).
 - `/gen here <what>` asks Pair for code at your cursor in Neovim, `@here` in it over the lines you selected there
@@ -296,14 +297,14 @@ The last remark, while it is the last thing said, shows `+`, `-`, `a` and `j` on
 | `Ctrl-U` `Ctrl-K` | Delete to the start, to the end of the line |
 | `Alt-B` `Alt-F`, `Ctrl-←` `Ctrl-→` | A word back, forward |
 | `Tab` | Complete a `/command` or an `@file` |
-| `Esc` | Stop Pair's answer, close a menu, leave a message |
+| `Esc` | Stop Pair's answer (else a /gen request at work), close a menu, leave a message |
 | `Alt-↑` `Alt-↓` | Pick a message ([above](#acting-on-a-message)); on a gen card, `k` `Enter` `d` `u` keep, open, drop, undo |
 | `PgUp` `PgDn`, wheel | Scroll |
 | `Ctrl-F` | Find |
 | `Alt-L` | The talk level: quiet → normal → chatty |
 | `Alt-M` | The mouse on or off |
 | `Ctrl-L` | Draw the pane again |
-| `Ctrl-C` | Stop the answer; else clear what you typed; twice on an empty line, close the pane |
+| `Ctrl-C` | Stop the answer or a /gen request at work; else clear what you typed; twice on an empty line, close the pane |
 | `Ctrl-D` | Close the pane, on an empty line |
 | `y` `n` | While Pair asks: allow, decline; `Esc` declines too (for a `/gen` question: take the guess or the answer given, cancel or leave it to Pair) |
 | `?` | The keys, on an empty line |

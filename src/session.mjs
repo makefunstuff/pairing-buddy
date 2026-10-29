@@ -1467,6 +1467,8 @@ export class PairSession {
   async stop() {
     if (this.role === 'driver' && this.busy) return this.takeBack();
     if (!this.busy && this.gen.running) return this.gen.cancel(this.gen.running.n);
+    // A request not at work yet (it finds its place, reads the brief, waits its turn): the newest goes.
+    if (!this.busy && [...this.gen.requests.values()].some(request => ['asking', 'asks', 'queued'].includes(request.state))) return this.gen.cancel();
     if (!this.busy) return this.message('system', 'Pair is not answering anything now.');
     if (this.unasked) return this.yieldRemark();
     this.cancelled = true;

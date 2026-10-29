@@ -436,6 +436,8 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
     setTimeout(render, FLASH_MS + 50).unref?.();
   };
   const busy = () => BUSY.has(state.activity.state);
+  /** Whether a /gen request is at work or waits its turn: Esc and Ctrl-C stop it, as they stop an answer. */
+  const genAtWork = () => [...state.cards.values()].some(card => ['asking', 'asks', 'queued', 'generating'].includes(card.state));
   const dropPartial = () => {
     const i = partialIndex();
     if (i !== -1) state.entries.splice(i, 1);
@@ -938,7 +940,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
         answer('n');
         return editor.clear(); // what you had typed answered nothing: it is not sent later as a question
       }
-      if (busy() || state.activity.state === 'remark') return send({type: 'cancel'});
+      if (busy() || state.activity.state === 'remark' || genAtWork()) return send({type: 'cancel'});
       if (state.about) state.about = null;
       return;
     }
@@ -1005,7 +1007,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
   }
 
   function ctrlC() {
-    if (busy()) return send({type: 'cancel'});
+    if (busy() || genAtWork()) return send({type: 'cancel'});
     if (!editor.empty || state.about || state.mode !== 'idle') {
       editor.clear();
       state.about = null;
@@ -1083,7 +1085,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
       confirming: state.confirming !== null,
       confirmHint: state.confirming !== null ? state.confirmHint : null,
       about: state.about?.text,
-      busy: busy(),
+      busy: busy() || genAtWork(), // Esc stops it
       editorEmpty: editor.empty,
       selectedEntry: selectedEntry && {...selectedEntry, folded: Boolean(state.last.transcript.ranges[state.selected]?.folded)},
       showEmpty: !state.entries.some(entry => ['you', 'pair', 'watch', 'gen', 'tool', 'confirm'].includes(entry.kind) && !entry.meta?.greeting), // Pair's greeting goes with the card

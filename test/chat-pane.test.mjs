@@ -779,3 +779,22 @@ test('a scaffold\'s card: k puts /keep on the line with its files to pick, Enter
     await t.close();
   }
 });
+
+test('Esc stops a /gen request at work, as it stops an answer; the footer says so', {timeout: 30_000}, async () => {
+  const t = await setUp({width: 80, height: 30, tokensPerSecond: 3});
+  try {
+    await t.shows('What are we doing');
+    await t.type('later\r');
+    await t.shows('No goal then.');
+    t.partner.setResponses([fauxAssistantMessage([fauxText('A migration for the status column, with its test, written slowly so that it is still at work.')])]);
+    await t.type('/gen file a migration adding status\r');
+    await t.shows(/── [▖▘▝▗] gen #1 generating/);
+    assert.match(t.text(), /Esc stop/, 'the footer has the key');
+    await t.type('\x1b');
+    await t.shows('gen #1 cancelled.');
+    await t.shows(/── ◉ watching ─/);
+    assert.doesNotMatch(t.text(), /gen #1 generating/);
+  } finally {
+    await t.close();
+  }
+});
