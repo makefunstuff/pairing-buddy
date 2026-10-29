@@ -743,7 +743,11 @@ test('a scaffold\'s card: k puts /keep on the line with its files to pick, Enter
     await t.type('main');
     assert.match(t.text(), / ▸ cmd\/shop\/main\.go/, 'typing narrows it');
     await t.type('\r');
-    assert.deepEqual(await t.sent('keep'), {type: 'keep', path: 'cmd/shop/main.go'});
+    assert.deepEqual(await t.sent('keep'), {type: 'keep', path: 'cmd/shop/main.go', gen: 7}, 'from that scaffold, not the newest');
+    // Typed by hand, /keep has no menu: it is no card's.
+    await t.type('/keep ');
+    assert.doesNotMatch(t.text(), /files to keep/);
+    await t.type('\x15'); // Ctrl-U
     // Kept one: the card says so, in the status too.
     t.daemon.send({...card, taken: 1, left: 2, files: card.files.slice(0, 2)});
     await t.shows(/gen #7: 1 of 3 kept/);
@@ -761,6 +765,16 @@ test('a scaffold\'s card: k puts /keep on the line with its files to pick, Enter
     t.daemon.send({type: 'gen_card', gen: 8, action: 32, shape: 'file', state: 'generating', since: Date.now() - 5000, of: 0, taken: 0, left: 0, keys: {}});
     t.daemon.send({type: 'gen_card', gen: 9, action: null, shape: 'here', state: 'queued', since: Date.now(), of: 0, taken: 0, left: 0, keys: {}});
     await t.shows(/── [▖▘▝▗] gen #8 generating [5-9]s · gen #9 waits ─/);
+    // Its card comes while Pair's answer streams: the message waits under the answer, and keeps the card as it is then.
+    t.daemon.send({type: 'partial', text: 'The lease is'});
+    t.daemon.send({type: 'message', sender: 'pair', text: 'gen #8 · file · 1 new file to review: db/x.sql +2', at: Date.now(), meta: {gen: 8}});
+    t.daemon.send({type: 'gen_card', gen: 8, action: 32, shape: 'file', state: 'ready', since: Date.now(), of: 1, taken: 0, left: 1, keys: {k: 'keep one', enter: 'open the list'}});
+    t.daemon.send({type: 'message', sender: 'pair', text: 'The lease is short.', at: Date.now()});
+    await t.shows(/ gen   #8 · file · 1 new file to review: db\/x\.sql \+2\n +\n {7}k keep one   Enter open the list   · Alt-↑ picks/);
+    // A daemon that restarts sends today's cards again: what it does not send is gone.
+    t.daemon.send({type: 'welcome', root: t.dir, role: 'navigator', level: 'normal', model: 'qwen3'});
+    await t.shows(/── ◉ watching ─+ qwen3 ──/);
+    assert.doesNotMatch(t.text(), /Alt-↑ picks/, 'no keys on cards the daemon no longer knows');
   } finally {
     await t.close();
   }

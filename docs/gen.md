@@ -155,16 +155,18 @@ said (a note after it, such as `gen #7: … taken`, does not count), and only th
 
 | Key | `here` | `file` | `try` | `scaffold` |
 | --- | --- | --- | --- | --- |
-| `k` | Takes the code into your buffer, unsaved, as `Alt-y` does | Opens the next file to review in Neovim; `:w` there takes it | Keeps its file in the project, as `/keep` does | Puts `/keep ` on the line, with the files left to keep in its menu: pick one, `Enter` keeps it |
+| `k` | Takes the code into your buffer, unsaved, as `Alt-y` does | Opens the next file to review in Neovim; `:w` there takes it | Keeps its main file in the project at its own name, as `/keep` alone does (`/keep <path>` for another) | Puts `/keep ` on the line, with the files of this scaffold left to keep in its menu: pick one, `Enter` keeps it from this scaffold, even when a newer one exists. Only on an empty line: what you typed stays |
 | `Enter` | Neovim goes to where the code goes | Opens `:Pair gen list` | Opens its file | Opens `:Pair gen list` |
-| `d` | Drops the code still showing | Drops the files still to review | | Deletes the copy, and what you did not keep of it |
-| `u` | Undoes the request ([below](#one-undo-per-request)), as `u` in `:Pair today`; once undone, `u again` makes it again | | | |
+| `d` | Drops the code still showing | Drops the files still to review, and its changes still showing as suggestions | | Deletes the copy, and what you did not keep of it |
+| `u` | Undoes the request ([below](#one-undo-per-request)), as `u` in `:Pair today`; once undone, `u again` makes it again | The same | The same, once a file of it is kept | The same |
 
 `d` asks first: the first `d` says what a second one drops (`d again drops gen #7's copy, …`), and only a second `d`
-within a moment does it. `u` shows only once there is something to undo (for a try, once a file of it is kept), and
-none of the keys show while the request is at work: `Esc`, `/cancel` or `/gen cancel` stop it then. A card for code
+within a moment does it. `u` shows once the request is done, even before you took anything (an undo then drops what
+it proposed); for a try, only once a file of it is kept. None of the keys show while the request is at work: `Esc`, `/cancel` or `/gen cancel` stop it then. A card for code
 at the cursor shows the code as a diff under its words, and `✓ taken` once you took it; `a` and `j` work on it as on
-any suggestion. A card does not fold: `Enter` on it opens it.
+any suggestion. A card does not fold: `Enter` on it opens it. A try's card keeps its words on how to take it (where
+its folder is, how long it stays) under its keys. A card that comes while Pair's answer streams waits under the
+answer, with its keys as they are then.
 
 **The status** says what /gen does, in the rule over what you type:
 
@@ -173,11 +175,13 @@ any suggestion. A card does not fold: `Enter` on it opens it.
 | `▖ gen #4 generating 41s` | A request at work, its spinner in magenta, while Pair does nothing else |
 | `▖ gen #4 generating · gen #5 waits` | Another request waits its turn: one runs at a time (`2 more wait` for more) |
 | `▖ thinking · gen #4 generating` | Pair answers your question meanwhile, in its own conversation |
+| `▖ gen #4 starting` | Asked for, not at work yet: it finds where its code goes and reads the brief (one more answer of the model when the brief says something) |
 | `? gen #4 waits for your answer` | The request asks you here: its shape, the brief, or a question of its model |
-| `? gen #4 asks in Neovim` | It asks in a dialog there, where you asked; answer it there (`Alt-g`) |
-| `◉ watching · gen #7: 0 of 9 kept` | Done, with something left: the files of a scaffold kept, `gen #4: 2 to review` for files, `gen #2: ready in Neovim` for code at the cursor. It goes once nothing is left, and gives way first in a narrow pane |
+| `? gen #4 asks in Neovim` | It asks in a dialog there, because you asked in Neovim; answer it there (`Alt-g`) |
+| `◉ watching · gen #7: 0 of 9 kept` | Done, with something left: the files of a scaffold kept, `gen #4: 2 to review` for files, `gen #2: ready in Neovim` for code at the cursor (and for a file request's changes, once its files are taken). It goes once nothing is left (every file of a scaffold kept or dropped), and gives way first in a narrow pane |
 
-A chat pane that opens later, or reconnects, gets the cards of today's requests with their keys. The
+A chat pane that opens later, or reconnects, gets the cards of today's requests with their keys, and of a request
+that waits its turn or asks its shape; what the daemon no longer knows (after a restart) loses its keys. The
 [plain pane](chat.md#the-plain-pane) has no keys: it says `gen` before the card, and under it how to take what it
 made (`In Neovim, :w in one writes it to its path; :Pair gen list lists them.`).
 

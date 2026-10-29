@@ -213,8 +213,8 @@ Anything you type that is not a command is a question for Pair; it is always ans
   time; its rule says how many of all (`commands · 7 of 31 · type to narrow`) and its last line how many more there
   are (`↓ 24 more`); **↑** and **↓** go through all of them. **Tab** completes, **Enter** runs one that needs nothing
   more. The [chat commands](cli.md#chat-commands) list them all. After `/gen` and a space, the menu lists its shapes
-  first (`here`, `file`, `scaffold`, `try`), then what else `/gen` does; after `/keep ` from a scaffold's card, the
-  files of the scaffold left to keep (`Enter keeps`).
+  first (`here`, `file`, `try`, `scaffold`), then what else `/gen` does. After `k` on a scaffold's card, `/keep ` waits
+  on the line with that scaffold's files left to keep (`Enter keeps`); a `/keep` you type yourself has no menu.
 
   ![The command menu: seven of 31 commands in three columns (name, arguments, what it does), the count in its rule and ↓ 24 more under it](images/chat-menu.png)
 - **@** opens the project's files (from git): `@internal/queue/queue.go` names one in your question, for Pair to read;

@@ -586,10 +586,14 @@ test('a gen card: the gen speaker in magenta, its words without "gen", the code 
   assert.equal(plain(transcriptLines([entry], 71, {latestCard: 0}).lines).at(-1), '       k keep one Enter open the list d drop all u undo   · Alt-↑ picks');
   assert.equal(plain(transcriptLines([entry], 44, {latestCard: 0}).lines).at(-1), '       k Enter d u   · Alt-↑ picks');
   assert.equal(plain(transcriptLines([entry], 32, {latestCard: 0}).lines).at(-1), '       k Enter d u', 'narrower still, the aside goes whole, never cut');
-  // Not the live card, or nothing left to do on it: no action line; with no keys at all, the hint says how to take it.
+  // Not the live card, or nothing left to do on it: no action line, and no hint either; without a card (a request of
+  // an older daemon) the hint says how to take it, and a try's always does: where its folder is, how long it stays.
   assert.doesNotMatch(plain(transcriptLines([entry], 80).lines).join('\n'), /Alt-↑ picks/);
-  const old = plain(transcriptLines([{...entry, card: {...card, keys: {}}}], 80, {latestCard: 0}).lines);
-  assert.equal(old.at(-1), '       In Neovim, :Pair gen list keeps them one at a time (k).');
+  const done = plain(transcriptLines([{...entry, card: {...card, keys: {}}}], 80, {latestCard: 0}).lines);
+  assert.equal(done.at(-1), '       │ ~ cmd/shop/main.go          +3 -1', 'all taken: how to take it is no news');
+  assert.equal(plain(transcriptLines([{...entry, card: undefined}], 80).lines).at(-1), '       In Neovim, :Pair gen list keeps them one at a time (k).');
+  const tried = plain(transcriptLines([{...entry, card: {...card, shape: 'try', keys: {k: 'keep', enter: 'open'}}}], 80, {latestCard: 0}).lines);
+  assert.equal(tried.at(-3), '       In Neovim, :Pair gen list keeps them one at a time (k).');
   // A /gen question is the gen speaker's too, and a new request is a new turn.
   const asks = {kind: 'confirm', at, gen: 8, text: '#8 · new files: "migration". Shape?', hint: 'y: file · here, scaffold, try · n cancels', confirm: 3};
   const both = plain(transcriptLines([entry, asks], 80).lines);
@@ -621,8 +625,12 @@ test('the status says what /gen does: a request at work in magenta, the one wait
   assert.equal(spinner.style, 'genGlyph');
   assert.match(row(genView([working, {...working, gen: 5, state: 'queued'}])), /^── ▖ gen #4 generating 41s · gen #5 waits ─/, 'the next one waits its turn (one at a time)');
   assert.match(row(genView([working, {...working, gen: 5, state: 'queued'}, {...working, gen: 6, state: 'queued'}])), /· 2 more wait/);
-  assert.match(row(genView([{...working, state: 'asking'}])), /^── \? gen #4 asks in Neovim ─/, 'a question asked in Neovim is answered there');
-  assert.match(row({...genView([{...working, state: 'asking'}]), activity: {state: 'waiting'}}), /^── \? gen #4 waits for your answer ─/, 'asked here');
+  assert.match(row(genView([{...working, state: 'asking', asks: 'editor'}])), /^── \? gen #4 asks in Neovim ─/, 'a question asked in Neovim is answered there');
+  assert.match(row({...genView([{...working, state: 'asking', asks: 'chat'}]), activity: {state: 'waiting'}}), /^── \? gen #4 waits for your answer ─/, 'asked here');
+  assert.match(row(genView([{...working, state: 'asking'}])), /^── ▖ gen #4 starting ─/, 'asking nothing yet: it finds its place and reads the brief');
+  assert.match(row({...genView([{...working, state: 'asking'}]), activity: {state: 'waiting'}}), /^── \? waiting for your answer ─/, 'a question of Pair\'s own is not the request\'s');
+  assert.match(row(genView([{...working, gen: 3, state: 'asking'}, working])), /gen #4 generating/, 'the one at work first');
+  assert.match(row(genView([{gen: 5, shape: 'file', state: 'ready', of: 0, taken: 0, left: 0, changes: 1, keys: {d: 'drop all'}}])), /gen #5: ready in Neovim/, 'only changes, as suggestions');
   assert.match(row({...genView([working]), activity: {state: 'thinking', since: now}}), /^── ▖ thinking · gen #4 generating ─/, 'Pair answers you meanwhile, in its own conversation');
   // Done: what is left of the newest one, after the watching; it gives way first.
   const scaffold = {gen: 7, shape: 'scaffold', state: 'ready', of: 9, taken: 0, left: 9, keys: {k: 'keep one'}};

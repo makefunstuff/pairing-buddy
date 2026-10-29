@@ -412,7 +412,9 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
   let turnFrom = 1; // the first entry of Pair's turn now: what came since it started
 
   const add = entry => {
-    state.entries.push({id: nextId++, at: Date.now(), ...entry});
+    // A gen card that waited under a streaming answer takes its card as it is now.
+    const card = entry.meta?.gen ? state.cards.get(entry.meta.gen) : undefined;
+    state.entries.push({id: nextId++, at: Date.now(), ...entry, ...(card ? {card} : {})});
     return state.entries.at(-1);
   };
   const partialIndex = () => state.entries.findLastIndex(entry => entry.partial);
@@ -485,6 +487,9 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
     switch (message.type) {
       case 'welcome': {
         look.accent = message.accent ?? look.accent;
+        // The daemon sends today's gen cards again after it: what this pane knew may be gone (a restart).
+        state.cards.clear();
+        for (const entry of state.entries) delete entry.card;
         state.connection = 'up';
         state.root = message.root;
         state.header = {...state.header, project: basename(message.root), goal: message.goal ?? null, role: message.role, keep: Boolean(message.keep), level: message.level, muted: message.muted ?? []};
@@ -656,6 +661,9 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
     state.first = null;
     const parsed = parseInput(text);
     if (!parsed) return;
+    // /keep after k on a scaffold's card keeps from that scaffold, not the newest.
+    if (parsed.type === 'keep' && state.keepFrom !== null) parsed.gen = state.keepFrom;
+    state.keepFrom = null;
     if (parsed.local) return local(parsed, text);
     if (state.connection !== 'up') return send(parsed);
     editor.take();
@@ -823,6 +831,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
 
   /** k on a scaffold's card: /keep on the line, its files in the menu to pick one. */
   function keepOne(card) {
+    if (!editor.empty) return flash('k puts /keep on the line: send or clear what you typed first');
     deselect();
     state.keepFrom = card.gen;
     editor.set('/keep ');
@@ -837,12 +846,11 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
       const items = COMMANDS.filter(([name]) => name.startsWith(editor.text)).map(([name, args, what]) => ({label: name, args, detail: what, value: name}));
       return items.length && !(items.length === 1 && items[0].value === editor.text.trim()) ? {kind: 'command', items} : null;
     }
-    // /keep and a space: the files of the newest scaffold still to keep (the card k was pressed on, else the newest).
+    // /keep and a space after k on a scaffold's card: its files still to keep.
     const keeping = /^\/keep (\S*)$/.exec(editor.text);
-    if (keeping) {
-      const cards = [...state.cards.values()].filter(card => card.files?.length);
-      const card = cards.find(one => one.gen === state.keepFrom) ?? cards.at(-1);
-      const items = (card?.files ?? []).filter(file => file.includes(keeping[1])).map(file => ({label: file, value: `/keep ${file}`}));
+    const card = keeping && state.keepFrom !== null ? state.cards.get(state.keepFrom) : null;
+    if (card?.files?.length) {
+      const items = card.files.filter(file => file.includes(keeping[1])).map(file => ({label: file, value: `/keep ${file}`}));
       return items.length && !items.some(item => item.value === editor.text) ? {kind: 'keep', items, title: `gen #${card.gen} · files to keep`} : null;
     }
     if (/^\/\S*$/.test(editor.text)) {
@@ -949,6 +957,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
       return;
     }
     edit(key);
+    if (!editor.text.startsWith('/keep')) state.keepFrom = null; // the line k put there is gone
     state.menuChosen = state.menuChosen && menu() ? state.menuChosen : 0;
   }
 
@@ -1165,7 +1174,8 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
   // The spinner turns while Pair works; the "2m ago" of the status row moves on.
   const ticker = setInterval(() => {
     state.frame += 1;
-    const genWorks = genStatus([...state.cards.values()]).running?.state === 'generating';
+    const {running} = genStatus([...state.cards.values()]);
+    const genWorks = running?.state === 'generating' || (running?.state === 'asking' && !running.asks); // its spinner turns
     if (busy() || genWorks || state.activity.state === 'remark' || state.connection !== 'up' || state.frame % 40 === 0) render();
   }, 250);
   ticker.unref?.();

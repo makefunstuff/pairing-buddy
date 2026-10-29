@@ -546,8 +546,8 @@ test('/gen file: drafts of new files go to Neovim as buffers to review, checked 
   assert.equal(sent.find(message => message.meta?.hint)?.meta.hint, 'In Neovim, :w in one writes it to its path; :Pair gen list lists them.');
   assert.deepEqual({...of('gen_card').at(-1), since: undefined}, {
     via: 'chat', type: 'gen_card', gen: 1, action: files.action, shape: 'file', state: 'ready', since: undefined, of: 2, taken: 0, left: 2,
-    keys: {k: 'keep one', d: 'drop all', enter: 'open the list', u: 'undo'},
-  }, 'the chat\'s card: two files to review, and its keys');
+    keys: {k: 'keep one', d: 'drop all', enter: 'open the list', u: 'undo'}, changes: 1,
+  }, 'the chat\'s card: two files to review and a change, and its keys');
   assert.equal(of('gen').at(-1).state, 'ready');
   let [row] = pair.today().rows;
   assert.deepEqual([row.text, row.note], ['gen #1 · file · a migration adding status to orders, and its test', '2 files to review · 1 change']);
@@ -1342,6 +1342,9 @@ test('a /gen question asked in the chat says which request asks: the pane gives 
   await until(() => of('confirm').length);
   assert.equal(of('confirm')[0].gen, 1);
   assert.match(of('confirm')[0].text, /^gen #1 · new files: "migration"\. Shape\?/);
+  assert.equal(of('gen_card').at(-1).asks, 'chat', 'the status says it waits for your answer here');
+  // Not booked yet, it is still a card for a pane that connects now.
+  assert.deepEqual(pair.gen.cards().map(card => [card.gen, card.state, card.action, card.asks]), [[1, 'asking', null, 'chat']]);
   pair.gen.cancel();
   await asking;
 });

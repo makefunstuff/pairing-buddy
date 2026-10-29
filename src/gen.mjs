@@ -873,6 +873,7 @@ export class Gen {
       type: 'gen_ask', gen: request.n, id, kind, title, answer, choices: options,
       ...(conflict ? {quote: conflict.text, place} : {}),
     });
+    request.question.where = asked ? 'editor' : 'chat'; // the chat's status says where it waits
     if (request.state === 'generating') this.pause(request);
     this.setState(request, request.state === 'generating' ? 'asks' : 'asking');
     if (asked) {
@@ -886,7 +887,7 @@ export class Gen {
     if (request.state === 'asks') {
       this.setState(request, 'generating');
       this.clock(request);
-    }
+    } else this.sendCard(request.action, request); // it asks no more
     return result;
   }
 
@@ -1831,15 +1832,20 @@ export class Gen {
     const mine = pieces.filter(kind);
     const proposed = mine.filter(piece => piece.state === 'proposed');
     const taken = mine.filter(piece => ['taken', 'kept'].includes(piece.state)).length;
+    // A file request's changes to files you have show as suggestions, as code at the cursor does.
+    const changes = shape === 'file' && request ? pieces.filter(piece => !piece.kind && piece.state === 'proposed').length : 0;
     // A request of a daemon before a restart: its code at the cursor shows no more, its files to review still do.
-    const showing = shape === 'here' ? Boolean(request) && proposed.length : proposed.length;
-    // The ledger has the last word on undone: a request made again after an undo is not undone any more.
-    const state = undone ? 'undone' : request && request.state !== 'undone' ? request.state : showing ? 'ready' : 'done';
+    const showing = (shape === 'here' ? (request ? proposed.length : 0) : proposed.length) + changes;
+    // The ledger has the last word on undone: a request made again after an undo is not undone any more. Ready
+    // with nothing left to take (a scaffold whose files are all kept or dropped) is done.
+    let state = undone ? 'undone' : request && request.state !== 'undone' ? request.state : showing ? 'ready' : 'done';
+    if (state === 'ready' && !showing) state = 'done';
     const deleted = Boolean(entry?.data?.deleted);
     const keys = {};
     if (!running && !undone && !['cancelled', 'failed'].includes(state)) {
       if (shape === 'here' && showing) Object.assign(keys, {k: 'keep', d: 'drop'});
-      if (shape === 'file' && showing) Object.assign(keys, {k: 'keep one', d: 'drop all'});
+      if (shape === 'file' && proposed.length) keys.k = 'keep one';
+      if (shape === 'file' && showing) keys.d = 'drop all';
       if (shape === 'try' && pieces.some(piece => piece.kind === 'try')) keys.k = 'keep';
       if (shape === 'scaffold' && !deleted && mine.length) Object.assign(keys, proposed.length ? {k: 'keep one'} : {}, {d: 'drop all'});
       if (shape === 'here' && pieces.length) keys.enter = 'open';
@@ -1851,7 +1857,9 @@ export class Gen {
     if (undone && pieces.some(piece => piece.state === 'undone')) keys.u = 'again';
     return {
       type: 'gen_card', gen: n, action: action ?? null, shape, state, since: request?.since ?? entry?.at ?? null,
-      of: mine.length, taken, left: proposed.length, keys,
+      of: mine.length, taken, left: proposed.length, keys, ...(changes ? {changes} : {}),
+      // Where its question waits, when it asks one: 'editor' (a dialog in Neovim) or 'chat'.
+      ...(request?.question ? {asks: request.question.where ?? 'chat'} : {}),
       // A scaffold's files still to keep, for /keep's menu in the chat.
       ...(shape === 'scaffold' && !deleted ? {files: proposed.slice(0, KEEP_LISTED).map(piece => relative(this.root, piece.file))} : {}),
     };
@@ -1865,7 +1873,10 @@ export class Gen {
 
   /** The cards of today's requests here, for a chat pane that connects: its messages come back with their keys. */
   cards() {
-    return this.session.store.actions(this.root, startOfDay(this.session.now())).filter(row => row.kind === 'generated').map(row => this.card(row.id)).filter(Boolean);
+    const booked = this.session.store.actions(this.root, startOfDay(this.session.now())).filter(row => row.kind === 'generated').map(row => this.card(row.id));
+    // And those not booked yet: asking their shape or the brief, or waiting their turn.
+    const waiting = [...this.requests.values()].filter(request => !request.action && ['asking', 'asks', 'queued'].includes(request.state)).map(request => this.card(null, request));
+    return [...booked, ...waiting].filter(Boolean);
   }
 
   /**

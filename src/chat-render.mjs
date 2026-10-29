@@ -375,7 +375,9 @@ export function bodyLines(entry, width, {continued = false, measure = width} = {
     const lines = markdownLines(text, width, {measure});
     if (meta.suggestion) lines.push(...diffLines(meta.suggestion, width));
     if (entry.applied) lines.push([seg('✓ taken', 'ok')]);
-    if (meta.hint && !Object.keys(entry.card?.keys ?? {}).length) lines.push(...wrapTokens(inlineTokens(meta.hint, 'text'), words));
+    // How to take it, in words: for a request the pane has no card of (one before this version), and for a try,
+    // where it says where its folder is and how long it stays.
+    if (meta.hint && (!entry.card || entry.card.shape === 'try')) lines.push(...wrapTokens(inlineTokens(meta.hint, 'text'), words));
     return lines;
   }
   // Pair's words: a remark says what about first; a suggestion shows as a diff under its first line.
@@ -679,12 +681,12 @@ const GEN_AT_WORK = ['asking', 'asks', 'queued', 'generating'];
  */
 export function genStatus(cards = []) {
   const working = cards.filter(card => GEN_AT_WORK.includes(card.state));
-  const running = working.find(card => card.state !== 'queued') ?? null;
+  const running = working.find(card => card.state === 'generating') ?? working.find(card => card.state !== 'queued') ?? null;
   const ready = [...cards].reverse().find(card => card.state === 'ready') ?? null;
   const left = !ready ? null
     : ready.shape === 'here' ? 'ready in Neovim'
       : ready.shape === 'scaffold' ? `${ready.taken} of ${ready.of} kept`
-        : ready.shape === 'file' ? `${ready.left} to review` : null;
+        : ready.shape === 'file' ? (ready.left ? `${ready.left} to review` : 'ready in Neovim') : null;
   return {running, queued: working.filter(card => card.state === 'queued').map(card => card.gen), ready: left ? {gen: ready.gen, text: left} : null};
 }
 
@@ -702,7 +704,7 @@ export function statusLine(view, width) {
   const genName = n => seg(`gen #${n}`, 'gen');
   // The requests that wait for the one at work: after it, or after what Pair does.
   const queued = gen.queued.length ? [seg(' · ', 'dim'), seg(gen.queued.length === 1 ? `gen #${gen.queued[0]} waits` : `${gen.queued.length} more wait`, 'text')] : [];
-  const asksAway = gen.running && ['asking', 'asks'].includes(gen.running.state);
+  const asks = gen.running && ['asking', 'asks'].includes(gen.running.state) ? gen.running.asks ?? null : null; // where its question waits
   const spin = SPINNER[frame % SPINNER.length];
   const elapsed = from => (from && now - from >= ELAPSED_AFTER_MS ? [seg(` ${duration(now - from)}`, 'dim')] : []);
   const since = elapsed(activity.since);
@@ -732,7 +734,7 @@ export function statusLine(view, width) {
   } else if (activity.state === 'remark') {
     // The Watcher looks: its colour.
     lefts = [[seg(`${spin} `, 'watcher'), seg(`looking at ${(activity.what ?? 'a moment').replace(/_/g, ' ')}`, 'text'), ...since], [seg(`${spin} `, 'watcher'), seg('looking', 'text'), ...since]];
-  } else if (activity.state === 'waiting' && asksAway) {
+  } else if (activity.state === 'waiting' && asks === 'chat') {
     lefts = [[seg('? ', 'warn'), genName(gen.running.gen), seg(' waits for your answer', 'text')], [seg('? ', 'warn'), genName(gen.running.gen), seg(' waits', 'text')]];
   } else if (activity.state === 'waiting') lefts = [[seg('? ', 'warn'), seg('waiting for your answer', 'text')], [seg('? ', 'warn'), seg('waiting', 'text')]];
   else if (role === 'driver') lefts = [[seg('◆ ', 'driverGlyph'), seg('Pair drives', 'driver'), seg(' · any key in Neovim takes it back', 'dim')], [seg('◆ ', 'driverGlyph'), seg('Pair drives', 'driver')]];
@@ -744,9 +746,12 @@ export function statusLine(view, width) {
       [seg(`${spin} `, 'genGlyph'), genName(gen.running.gen), seg(' generating', 'text'), ...at],
       [seg(`${spin} `, 'genGlyph'), genName(gen.running.gen), ...at],
     ];
-  } else if (asksAway) {
+  } else if (asks === 'editor') {
     // Its question is in Neovim, where it was asked: the chat shows it, read-only.
     lefts = [[seg('? ', 'warn'), genName(gen.running.gen), seg(' asks in Neovim', 'text'), ...queued], [seg('? ', 'warn'), genName(gen.running.gen), seg(' asks', 'text')]];
+  } else if (gen.running && gen.running.state === 'asking' && !asks) {
+    // Not at work yet: it finds its place and reads the brief.
+    lefts = [[seg(`${spin} `, 'genGlyph'), genName(gen.running.gen), seg(' starting', 'text'), ...queued], [seg(`${spin} `, 'genGlyph'), genName(gen.running.gen)]];
   } else {
     const looked = presence?.looked ? ` · looked at ${presence.looked} moment${presence.looked === 1 ? '' : 's'}, spoke ${presence.spoke}` : '';
     const last = presence?.lastAt ? ` · ${ago(presence.lastAt, now)}` : '';
@@ -765,7 +770,7 @@ export function statusLine(view, width) {
   }
   // Pair works on something else while a request is at work: the request goes after it.
   if (gen.running && ['thinking', 'tool', 'remark'].includes(activity.state) && connection === 'up') {
-    const after = [seg(' · ', 'dim'), genName(gen.running.gen), seg(gen.running.state === 'generating' ? ' generating' : ' asks', 'text')];
+    const after = [seg(' · ', 'dim'), genName(gen.running.gen), seg(gen.running.state === 'generating' ? ' generating' : asks ? ' asks' : ' starting', 'text')];
     lefts = [...lefts.map(left => [...left, ...after]), ...lefts];
   }
   // What came while the answer streams waits under it, and says so: nothing above the words you read moves.
