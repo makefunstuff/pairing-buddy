@@ -1454,7 +1454,7 @@ local commands = {
   -- `:Pair own <path>` that of a file, `:Pair own!` all of it in the project.
   own = function(arg, selection)
     if not M.connect() then return vim.notify('Pair: not connected; :Pair own again once it is', vim.log.levels.WARN) end
-    if selection then return send({type = 'gen_own', ids = owning.ids_in(0, selection.from, selection.to)}) end
+    if selection then return send({type = 'gen_own', ids = owning.ids_in(vim.api.nvim_get_current_buf(), selection.from, selection.to)}) end
     local file = arg ~= '' and vim.fn.fnamemodify(vim.fn.expand(arg), ':p') or project_path(0)
     if not file then return vim.notify('Pair: :Pair own works in a file of the project; :Pair own! owns all of it') end
     send({type = 'gen_own', file = file})
@@ -1545,7 +1545,7 @@ function M.setup(opts)
     files_status = genfiles.status,
   })
   genfiles.setup({send = send, redraw_status = redraw_status, label = label, decide_key = config.decide_key})
-  owning.setup({send = send, event = event, redraw_status = redraw_status})
+  owning.setup({send = send, event = event, redraw_status = redraw_status, connected = function() return state.channel ~= nil end})
   gentry.setup({send = send, run_key = config.try_run_key})
   style.apply()
   local group = vim.api.nvim_create_augroup('pair', {clear = true})

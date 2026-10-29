@@ -697,6 +697,24 @@ test('owning in Neovim: ┊ on the lines taken, part by part; your edit makes a 
     await until(() => rows() === '[]', 'gone');
     await until(async () => (await today()).find(row => row.text === 'gen #2 · here · a w')?.counts.lines.gone === 1, 'gone in the ledger');
     assert.equal(messages.filter(message => message.type === 'ledger').at(-1).generated.lines, 0);
+
+    // :'<,'>Pair own owns the parts on those lines; a formatter on save that changes a part owns it too.
+    partner.setResponses([
+      fauxAssistantMessage([fauxToolCall('propose', {file: 'a.js', line: 1, insert: true, text: 'const v = 6\n\nconst u = 7', note: 'v, u'})], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxText('A v and a u.')]),
+    ]);
+    keys('gg:Pair gen here a v and a u<CR>');
+    await said(/^gen #3 · here · 3 lines at a\.js:1/);
+    await until(() => ghosts().length === 1, 'the ghost lines');
+    keys('<M-y>');
+    await until(() => rows() === '[[1,1],[3,3]]', 'its marks');
+    keys('2GV:Pair own<CR>');
+    await said('1 line of generated code is yours now.');
+    await until(() => rows() === '[[3,3]]', 'the v yours');
+    remote(`luaeval("vim.api.nvim_create_autocmd('BufWritePre', {buffer = 0, callback = function() vim.api.nvim_buf_set_lines(0, 3, 4, false, {'const u = 8'}) end}) and 0")`);
+    keys(':w<CR>');
+    await until(() => rows() === '[]', 'the formatted u yours');
+    await until(async () => (await today()).find(row => row.text === 'gen #3 · here · a v and a u')?.counts.lines.owned === 2, 'both owned in the ledger');
   } finally {
     await stop();
   }

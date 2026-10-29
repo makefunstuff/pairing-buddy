@@ -1193,13 +1193,19 @@ test('owning: /undo takes the marks back and again brings them; deleted lines ar
   await pair.undoLast();
   assert.deepEqual(of('gen_unmark').at(-1).ids, [id(0), id(1)]);
   assert.deepEqual(pair.gen.allMarks(), []);
-  assert.equal(store.action(suggestion.action).detail.pieces[0].marks, undefined);
+  assert.deepEqual(store.action(suggestion.action).data.counts.lines.taken, 0, 'nothing taken counts');
   await pair.undo(suggestion.action);
   assert.deepEqual(of('gen_marks').at(-1).marks.map(mark => [mark.id, mark.line]), [[id(0), 2], [id(1), 6]]);
+  // A part you owned stays yours through an undo and again.
+  pair.gen.own([id(0)], 'edit');
+  await pair.undo(suggestion.action);
+  await pair.undo(suggestion.action);
+  assert.deepEqual(of('gen_marks').at(-1).marks.map(mark => mark.id), [id(1)]);
+  assert.equal(store.action(suggestion.action).data.counts.lines.owned, 3);
 
   // Lines deleted (or no longer there when the buffer was read again): gone, neither yours nor Pair's.
   pair.gen.gone([id(1)]);
-  assert.deepEqual(store.action(suggestion.action).data.counts.lines, {taken: 6, owned: 0, gone: 3, generated: 3});
+  assert.deepEqual(store.action(suggestion.action).data.counts.lines, {taken: 6, owned: 3, gone: 3, generated: 0});
 
   // A file request: :w writes the buffer as the user had it; the part they changed there is theirs.
   clock.now += 1000;
@@ -1211,7 +1217,7 @@ test('owning: /undo takes the marks back and again brings them; deleted lines ar
   pair.gen.fileTaken(row.id, 0, `-- mine\n${MIGRATION}\n`);
   assert.deepEqual(of('gen_marks').at(-1).marks, [{id: `${row.id}.0.0`, gen: 2, file: migration, line: 2, text: MIGRATION.split('\n')}]);
   assert.deepEqual(store.action(row.id).data.counts, {taken: 2, dropped: 0, lines: {taken: 4, owned: 2, gone: 0, generated: 2}});
-  assert.deepEqual(pair.today().generated.files.map(({name, lines}) => [name, lines]), [['db/migrations/0007_status.sql', 2], ['math.js', 3]]);
+  assert.deepEqual(pair.today().generated.files.map(({name, lines}) => [name, lines]), [['db/migrations/0007_status.sql', 2]], 'math.js: one part yours, one gone');
 });
 
 test('owning: a warning or a regression in generated code not yours yet; pair stats counts what was taken and owned', () => {

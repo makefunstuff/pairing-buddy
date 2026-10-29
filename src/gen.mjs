@@ -1650,9 +1650,9 @@ export class Gen {
       const reply = await session.requestEditor({type: 'revert', file: piece.file, base, other, origin: `gen:#${n}`}).catch(error => ({error: error.message}));
       if (reply?.error) failed.push(`${relative(this.root, piece.file)}: ${reply.error}`);
       else {
+        if (!undone) unmarked.push(...this.unmark(action.id, piece));
+        else piece.marks ??= takenMarks(piece.text, piece.from ?? piece.line);
         piece.state = undone ? 'taken' : 'undone';
-        unmarked.push(...this.unmark(action.id, piece));
-        if (undone) piece.marks = takenMarks(piece.text, piece.from ?? piece.line);
       }
     }
     const files = pieces.filter(piece => piece.kind === 'file' && piece.state === (undone ? 'undone' : 'taken'));
@@ -1702,11 +1702,12 @@ export class Gen {
       .map(mark => ({id: markId(action, piece.i, mark.k), gen: n, file: piece.file, line: mark.line, text: mark.text}));
   }
 
-  /** `piece` was taken back: its marks are forgotten. Returns the ids of those that were still Pair's. */
+  /**
+   * `piece` was taken back: its marks go from Neovim, and stay in the ledger as they were, so taking it again marks
+   * what was Pair's again, and what was the user's stays theirs. Returns the ids of those that were still Pair's.
+   */
   unmark(action, piece) {
-    const ids = this.marksOf(action, 0, piece).map(mark => mark.id);
-    delete piece.marks;
-    return ids;
+    return this.marksOf(action, 0, piece).map(mark => mark.id);
   }
 
   /** The requests of the last DETAIL_KEPT_MS with code taken that is not the user's yet: {action, n, entry, request, pieces}. */

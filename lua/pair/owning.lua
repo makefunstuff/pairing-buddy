@@ -15,11 +15,20 @@ M.ns = vim.api.nvim_create_namespace('pair_generated')
 local NEAR = 20 -- a part whose line moved this far or less is still found by its text (src/owning.mjs's NEAR)
 
 -- `send(message)` talks to the daemon, `event(fields)` sends an event, `redraw_status()` redraws the statusline: set by setup.
-local deps = {send = function() end, event = function() end, redraw_status = function() end}
+-- `connected()` says whether the daemon hears what is sent.
+local deps = {send = function() end, event = function() end, redraw_status = function() end, connected = function() return true end}
 
 local known = {} -- absolute path -> id -> {id, gen, file, line, text}: the daemon's parts, where they were last seen
 local placed = {} -- buf -> extmark id -> part: those shown in a loaded buffer
 local changed = {} -- buf -> {user = true|nil}: a check of its parts is due, and whether you made a change in it
+local unsent = {own = {}, gone = {}} -- ids that became yours or gone while the daemon was away: sent once it is back
+
+--- Tells the daemon that the parts `ids` are yours (`kind` 'own') or gone; kept while it is away.
+local function tell(kind, ids)
+  if #ids == 0 then return end
+  if not deps.connected() then return vim.list_extend(unsent[kind], ids) end
+  deps.send(kind == 'own' and {type = 'gen_own', ids = ids, how = 'edit'} or {type = 'gen_gone', ids = ids})
+end
 
 function M.setup(given) deps = vim.tbl_extend('force', deps, given) end
 
@@ -86,25 +95,32 @@ local function unplace(buf, extmark)
   if placed[buf] then placed[buf][extmark] = nil end
 end
 
---- Shows the parts known for `buf`'s file that it does not show yet; those not found are gone.
-local function show(buf)
+--- Shows the parts known for `buf`'s file that it does not show yet. With `read` (the buffer was just read from its
+--- file), those not found are gone; else they wait for the next read: another Neovim may have them unsaved.
+local function show(buf, read)
   local file = vim.api.nvim_buf_get_name(buf)
   local shown, gone = {}, {}
   for _, part in pairs(placed[buf] or {}) do shown[part.id] = true end
   for id, part in pairs(known[file] or {}) do
-    if not shown[id] and not place(buf, part) then
+    if not shown[id] and not place(buf, part) and read then
       table.insert(gone, id)
       known[file][id] = nil
     end
   end
-  if #gone > 0 then deps.send({type = 'gen_gone', ids = gone}) end
+  tell('gone', gone)
   report(buf)
   deps.redraw_status()
 end
 
 --- The daemon's parts not yours yet (with `all`, all of them: the others are not Pair's any more), shown where loaded.
 function M.on_marks(message)
+  local held = {} -- yours or gone while the daemon was away: not Pair's to show again
   if message.all then
+    for kind, ids in pairs(unsent) do
+      for _, id in ipairs(ids) do held[id] = true end
+      unsent[kind] = {}
+      tell(kind, ids)
+    end
     local ids = {}
     for _, part in ipairs(message.marks or {}) do ids[part.id] = true end
     for buf, parts in pairs(placed) do
@@ -116,9 +132,11 @@ function M.on_marks(message)
   end
   local files = {}
   for _, part in ipairs(message.marks or {}) do
+    if held[part.id] then goto continue end
     known[part.file] = known[part.file] or {}
     known[part.file][part.id] = {id = part.id, gen = part.gen, file = part.file, line = part.line, text = part.text}
     files[part.file] = true
+    ::continue::
   end
   for file in pairs(files) do
     local buf = buf_of(file)
@@ -177,8 +195,8 @@ local function check(buf)
       if known[file] then known[file][id] = nil end
     end
   end
-  if #owned > 0 then deps.send({type = 'gen_own', ids = owned, how = 'edit'}) end
-  if #gone > 0 then deps.send({type = 'gen_gone', ids = gone}) end
+  tell('own', owned)
+  tell('gone', gone)
   if #owned + #gone > 0 then
     report(buf)
     deps.redraw_status()
@@ -197,6 +215,7 @@ end
 --- The parts of `buf` as they are now, kept with the daemon (a save, an unload) and here, so a buffer loaded
 --- again finds them by their text where they were.
 function M.keep(buf)
+  if changed[buf] then check(buf) end -- a change still to check (a formatter on save) is judged first
   if not placed[buf] or next(placed[buf]) == nil or not vim.api.nvim_buf_is_valid(buf) then return end
   local file = vim.api.nvim_buf_get_name(buf)
   local marks = {}
@@ -219,7 +238,7 @@ function M.read(buf)
     placed[buf] = nil
   end
   vim.api.nvim_buf_clear_namespace(buf, M.ns, 0, -1)
-  if known[vim.api.nvim_buf_get_name(buf)] then show(buf) end
+  if known[vim.api.nvim_buf_get_name(buf)] then show(buf, true) end
 end
 
 --- `buf` goes (unloaded or wiped): what it showed is kept, and shown again when it is read.

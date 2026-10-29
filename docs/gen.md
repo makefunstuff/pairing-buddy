@@ -611,7 +611,8 @@ so Pair keeps track of what you took and have not touched since, and says how mu
   of `/gen file` (and those kept from a try or a scaffold) once `:w` writes them. A part you changed in its buffer
   before `:w` is yours already.
 - **Gone.** A part whose lines you delete, or that is no longer there when the file is read again, is gone: neither
-  yours nor Pair's. `/undo` of the request takes its marks with its code, and again brings them back.
+  yours nor Pair's. `/undo` of the request takes its marks with its code, and again brings them back as they were: a part you had
+  made yours stays yours.
 - **Found again.** Marks are extmarks, so a buffer read again (`:e`, Neovim restarted) loses them. The daemon keeps
   each part's text and the line it was last seen on (Neovim tells it when you save), and finds the part again by its
   text within 20 lines, as the [marks in a note's margin](notes.md) are found. A Neovim that connects gets the marks
@@ -656,6 +657,8 @@ Pair does not commit, and nothing of this reaches git: owning is about your read
   opens the file while the first has the code taken but not saved.
 - Positions reach the daemon with your edits (`debounce_ms`), and are kept with the ledger when you save; after a
   crash of Neovim, marks are found from where you last saved.
+- Neovim's own `u` right after taking deletes the lines, so their parts are gone; `Ctrl-R` brings the code back
+  without its marks (`/undo` and `u` in `:Pair today` keep them).
 - `:Pair own` and the marks are Neovim's; the chat shows what is not yours yet, and `:Pair own` is the way to own it.
 - Files to review go to one Neovim, the one you work in; a second Neovim on the project gets them when it connects.
 - Changes you make in a buffer to review live only in that Neovim: after a Neovim restart the buffer comes back as the
