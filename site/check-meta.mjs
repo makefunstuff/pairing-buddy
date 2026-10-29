@@ -70,7 +70,7 @@ export function checkPage(dist, page, html) {
     if (canonical.length !== 1) problems.push(`${canonical.length ? 'more than one' : 'no'} canonical link`);
     absolute('canonical', canonical[0]);
     if (canonical[0] && url !== canonical[0]) problems.push(`og:url ${url} is not the canonical ${canonical[0]}`);
-    const expected = SITE_URL + (page === 'index.html' ? '' : page);
+    const expected = SITE_URL + page.replace(/(^|\/)index\.html$/, '$1'); // a folder's index.md is the folder's URL, as meta.mjs has it
     if (canonical[0] && canonical[0] !== expected) problems.push(`canonical ${canonical[0]} is not ${expected}`);
   }
 

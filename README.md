@@ -90,9 +90,10 @@ Add the plugin with lazy.nvim:
 Set your model in `~/.config/pairing-buddy/config.json` ([models](docs/models.md)), run `pair doctor` to check every
 part, then `pair` in the herdr pane next to Neovim (or `:Pair chat` in Neovim), and work. In the
 [chat pane](docs/chat.md), `?` lists its keys and `/` its commands.
-[Getting started](docs/getting-started.md) walks through it. Optionally add the
-[shell hook](docs/cli.md#pair-shell-hook) (`eval "$(pair shell-hook bash)"`, or zsh, or fish) to your shell's rc file:
-Pair then gets every command you run, with its exit code, from the shell itself, and in zsh your typing too.
+[Getting started](docs/getting-started.md) walks through it, and the
+[first ten minutes](docs/tutorials/first-ten-minutes.md) tutorial does it step by step, with what `pair doctor`
+shows. Optionally add the [shell hook](docs/cli.md#pair-shell-hook) (`eval "$(pair shell-hook bash)"`, or zsh, or
+fish) to your shell's rc file: Pair then gets every command you run, with its exit code, from the shell itself, and in zsh your typing too.
 
 **Let your AI agent set it up.** Tell your coding agent "follow
 https://github.com/makefunstuff/pairing-buddy/blob/main/INSTALL.md": [INSTALL.md](INSTALL.md) takes it from a fresh
@@ -102,6 +103,8 @@ your keys and logins).
 ## Documentation
 
 - [Getting started](docs/getting-started.md) and [install and daily use](docs/install.md)
+- [Tutorials](docs/tutorials/index.md): short how-tos, a few minutes each, from the
+  [first ten minutes](docs/tutorials/first-ten-minutes.md) to /gen, the board, worktrees and voice
 - [How it works](docs/how-it-works.md), [roles](docs/roles.md) and [workflows](docs/workflows.md)
 - [The chat pane](docs/chat.md): who speaks, what Pair is doing now, wide and narrow panes, a remark's own keys, the gen card, find, calm motion, role colours, its keys and commands
 - [Your other agents](docs/agents.md): the board's tasks and herdr's agents in one line at your next pause, what a

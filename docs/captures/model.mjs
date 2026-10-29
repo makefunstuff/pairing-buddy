@@ -2,6 +2,7 @@
 // llama.cpp or vLLM, and it answers from a scene's script. The Watcher's answer is a function of the prompt;
 // the Partner's answers are taken in order, each after its own pause. Health probes get "OK".
 import {createServer} from 'node:http';
+import {CHECK_PROMPT, CONFLICT_PROMPT} from '../../src/brief.mjs';
 import {MARKS_PROMPT, TASKS_PROMPT} from '../../src/note-reading.mjs';
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -12,7 +13,8 @@ const textOf = content => (typeof content === 'string' ? content : (content ?? [
  * lists the Partner's turns as `{wait, say}` or `{wait, call: [name, args]}` (or `calls: [[name, args], ...]`),
  * each with an optional `when` regex the input must match; a `say` with `stream` (ms) comes a few words at a time,
  * that long apart, as a model streams it. `scene.notes` answers a note's readings: `marks`, one
- * list per reading (the last again after them), and `tasks`, each after `wait`.
+ * list per reading (the last again after them), and `tasks`, each after `wait`. A /gen request's brief checks get
+ * no contradiction before it, and after it `scene.checks`, one list per check in order (none once they run out).
  * `log` hears each request. Resolves with `{baseUrl, close()}`.
  */
 export async function startModelServer(scene, {log = () => {}} = {}) {
@@ -29,6 +31,12 @@ export async function startModelServer(scene, {log = () => {}} = {}) {
       log(`partner -> ${list.length} ${system === TASKS_PROMPT ? 'tasks' : 'marks'}`);
       await sleep(wait ?? 0);
       return {text: JSON.stringify(list)};
+    }
+    if (system === CONFLICT_PROMPT) return {text: '[]'};
+    if (system === CHECK_PROMPT) {
+      const items = scene.checks?.shift() ?? [];
+      log(`partner -> the brief's check: ${items.length} items`);
+      return {text: JSON.stringify(items)};
     }
     if (body.model === 'watcher') {
       const text = scene.watcher(last);
