@@ -854,7 +854,7 @@ export async function startDaemon(config, {
     if (message.type === 'undo') return session.undo(message.action);
     if (message.type === 'applied') return session.applied(message.action, message.before, message.after, {piece: message.piece, from: message.from, to: message.to});
     if (message.type === 'gen') return genFrom(client, session, message);
-    if (message.type === 'gen_answer' && Number.isInteger(message.gen)) return session.gen.answer(message.gen, message.id, message.text);
+    if (message.type === 'gen_answer' && Number.isInteger(message.gen)) return session.gen.answer(message.gen, message.id, message.text, message.edit);
     if (message.type === 'gen_dropped' && Number.isInteger(message.action)) return session.gen.dropped(message.action, message.piece);
     if (message.type === 'gen_written' && Number.isInteger(message.action)) return session.gen.fileTaken(message.action, message.piece, message.text);
     if (message.type === 'gen_review') return sendMessage(client.socket, session.gen.review());

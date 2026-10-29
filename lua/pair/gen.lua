@@ -7,6 +7,7 @@
 -- suggestion of its own you take with the accept key, and a block taller than `gen_preview_lines` shows in a
 -- preview window. A question of Pair's never opens while you type: it waits for your pause, in the statusline.
 -- A request that contradicts the brief asks first: follow the brief, as asked, or open the brief at that line.
+-- /gen board opens the task Pair wrote for the board in pair://board/new to edit; :w asks how to add it.
 -- Only the dialogs, the marks and the preview: init.lua draws the suggestion and tells the daemon.
 local M = {}
 
@@ -206,9 +207,9 @@ end
 -- Pair's questions: the shape it guessed, the brief a request contradicts, and at most two of the model's. Esc leaves
 -- one waiting; the gen key shows it again.
 
-local function answer(message, text)
+local function answer(message, text, edit)
   if waiting == message then waiting = nil end
-  deps.send({type = 'gen_answer', gen = message.gen, id = message.id, text = text})
+  deps.send({type = 'gen_answer', gen = message.gen, id = message.id, text = text, edit = edit})
   deps.redraw_status()
 end
 
@@ -225,6 +226,65 @@ local function open_brief(choice)
   pcall(vim.api.nvim_win_set_cursor, 0, {choice.line, 0})
 end
 
+-- A hand-off to the board: the task in a compose window, pair://board/new, its title on the first line and its brief
+-- under it. :w or Ctrl-S takes it as it is and asks how to add it; :q adds nothing. Esc in that list leaves it waiting,
+-- edits and all: the gen key opens it again, as you wrote it.
+
+--- The pick, once the task is written: y add only, d add and delegate, p plan first, r research only, c copy.
+local function pick(message)
+  select(message.choices or {}, {prompt = message.title .. ' · how?', format_item = brief_line, kind = 'pair_gen_board'}, function(choice)
+    if choice and waiting == message then answer(message, choice.key, message.edited) end
+  end)
+end
+
+function M.compose_task(message)
+  local task = message.edited or message.task or {title = '', brief = ''}
+  local buf = vim.api.nvim_create_buf(false, true)
+  pcall(vim.api.nvim_buf_set_name, buf, 'pair://board/new')
+  vim.bo[buf].buftype = 'acwrite'
+  vim.bo[buf].bufhidden = 'wipe'
+  vim.bo[buf].filetype = 'markdown'
+  local lines = {task.title, ''}
+  vim.list_extend(lines, vim.split(task.brief, '\n', {plain = true}))
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  vim.bo[buf].modified = false
+  local width = math.max(20, math.min(84, vim.o.columns - 4))
+  local win = vim.api.nvim_open_win(buf, true, {
+    relative = 'editor', row = 1, col = math.floor((vim.o.columns - width) / 2), width = width,
+    height = math.max(5, math.min(#lines + 1, vim.o.lines - 6)),
+    border = 'rounded', style = 'minimal', title = ' board task · edit, then :w · :q drops ', title_pos = 'center',
+  })
+  vim.wo[win].wrap = true
+  if message.warning then vim.notify('Pair: ' .. message.warning, vim.log.levels.WARN) end
+  local written = false
+  local function go()
+    local text = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+    local first = 1
+    while text[first] and vim.trim(text[first]) == '' do first = first + 1 end
+    local title = vim.trim(text[first] or '')
+    if title == '' then return vim.notify('Pair: the first line is the task\'s title; :q drops it') end
+    message.edited = {title = title, brief = vim.trim(table.concat(vim.list_slice(text, first + 1), '\n'))}
+    written = true
+    vim.cmd('stopinsert')
+    pcall(vim.api.nvim_win_close, win, true)
+    pick(message)
+  end
+  vim.api.nvim_create_autocmd('BufWriteCmd', {buffer = buf, callback = go})
+  vim.api.nvim_create_autocmd({'TextChanged', 'TextChangedI'}, {buffer = buf, callback = function() vim.bo[buf].modified = false end})
+  vim.api.nvim_create_autocmd('BufWipeout', {buffer = buf, once = true, callback = function()
+    if not written and waiting == message then vim.schedule(function() answer(message, 'n') end) end -- :q drops it
+  end})
+  for _, mode in ipairs({'n', 'i'}) do vim.keymap.set(mode, '<C-s>', go, {buffer = buf, desc = 'Take the board task as written'}) end
+end
+
+--- `c` on a hand-off: the command, as the daemon composed it from the task you wrote.
+function M.on_copy(message)
+  if type(message.text) ~= 'string' then return end
+  vim.fn.setreg('"', message.text)
+  pcall(vim.fn.setreg, '+', message.text)
+  vim.notify('Pair: the command is in the " and + registers')
+end
+
 --- Shows question `message` now.
 function M.show(message)
   if message.kind == 'shape' then
@@ -232,19 +292,7 @@ function M.show(message)
       if choice and waiting == message then answer(message, choice.shape) end
     end)
   end
-  if message.kind == 'board' then
-    -- /gen board: y adds the task for later (add only), c copies its command and adds nothing.
-    local title = ('%s: %s'):format(message.title, message.command or '')
-    return select(message.choices or {}, {prompt = title, format_item = brief_line, kind = 'pair_gen_board'}, function(choice)
-      if not choice or waiting ~= message then return end
-      if choice.key == 'c' then
-        vim.fn.setreg('"', message.command)
-        pcall(vim.fn.setreg, '+', message.command)
-        vim.notify('Pair: the command is in the " and + registers')
-      end
-      answer(message, choice.key)
-    end)
-  end
+  if message.kind == 'board' then return M.compose_task(message) end
   if message.kind == 'brief' then
     local title = ('%s: "%s" %s'):format(message.title, message.quote or '', message.place or '')
     return select(message.choices or {}, {prompt = title, format_item = brief_line, kind = 'pair_gen_brief'}, function(choice)

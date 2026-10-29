@@ -1105,6 +1105,7 @@ local handlers = {
   revert = revert,
   gen = gen.on_state,
   gen_ask = gen.on_ask,
+  gen_copy = gen.on_copy,
   gen_debrief = gen.on_debrief,
   gen_drop = gen_drop,
   -- Code taken from /gen that is not yours yet: ┊ on its lines, until you edit them or :Pair own them.

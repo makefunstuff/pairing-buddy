@@ -41,7 +41,7 @@ export const COMMANDS = [
   ['/gen file', '<what>', 'new files, as unsaved buffers to review in Neovim (:w in one takes it)'],
   ['/gen try', '<what>', 'a sample to read and run, in a folder outside the project, opened in a split in Neovim'],
   ['/gen scaffold', '[--branch] <what>', 'many files and their wiring, built in a copy of the project (--branch: a git worktree); you keep a file at a time'],
-  ['/gen board', '<what>', 'a task for the board (Shepherdr): y adds it for later (add only), c copies its command'],
+  ['/gen board', '<what>|#n', 'a task for the board (Shepherdr), its brief from yours: y add only, d delegate, p plan first, r research, c copy'],
   ['/gen run', '', 'run the newest /gen try again, in Pair\'s pane, in the sandbox'],
   ['/gen tries', '', 'the /gen try folders still kept, and when each goes (gen.keepTries)'],
   ['/gen drop', '', 'delete the newest /gen scaffold\'s copy; what you did not keep of it is dropped'],
@@ -575,7 +575,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
         state.confirmHint = message.hint ?? null;
         add({
           kind: 'confirm', text: message.gen ? genText(message.text) : message.text, confirm: message.id,
-          ...(message.command ? {command: message.command} : {}), ...(message.copy ? {copy: true} : {}), ...(message.hint ? {hint: message.hint} : {}), ...(message.gen ? {gen: message.gen} : {}),
+          ...(message.command ? {command: message.command} : {}), ...(message.copy ? {copy: true} : {}), ...(Array.isArray(message.keys) ? {keys: message.keys} : {}), ...(message.hint ? {hint: message.hint} : {}), ...(message.gen ? {gen: message.gen} : {}),
         });
         break;
       case 'confirmed': {
@@ -978,6 +978,8 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
       flash('Copied, through the terminal\'s clipboard (OSC 52)');
       return answer('c');
     }
+    // And the other choices it names (a hand-off's d, p and r), at once too.
+    if (asking?.keys?.includes(name) && editor.empty && !ctrl && !meta) return answer(name);
     if (name === '?' && editor.empty && !ctrl && !meta) return openHelp();
     if (name === 'enter' && (meta || key.shift)) return editor.insert('\n');
     if (ctrl && name === 'j') return editor.insert('\n');

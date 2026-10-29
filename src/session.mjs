@@ -1236,11 +1236,11 @@ export class PairSession {
    * after the answer, instead of "Allowed." or "Not allowed." (null: none). `command` is the command it asks about,
    * which the full pane shows whole under the question; `gen`, the /gen request that asks (the pane's gen speaker).
    */
-  confirm(text, choices = [], {command = null, copy = false, free = false, timeoutMs = CONFIRM_MS, hint = null, said = null, gen = null} = {}) {
+  confirm(text, choices = [], {command = null, copy = false, keys = null, free = false, timeoutMs = CONFIRM_MS, hint = null, said = null, gen = null} = {}) {
     const id = ++this.lastConfirmation;
     // The command goes as it is too: the full pane shows it whole under the question, backticks and all. `copy`: c
-    // there copies it, and answers c.
-    if (!this.notify('chat', {type: 'confirm', id, text, ...(command ? {command} : {}), ...(copy ? {copy} : {}), ...(hint ? {hint} : {}), ...(gen ? {gen} : {})})) return Promise.resolve(false);
+    // there copies it, and answers c. `keys`: choices the full pane answers with one key, as it does y and n.
+    if (!this.notify('chat', {type: 'confirm', id, text, ...(command ? {command} : {}), ...(copy ? {copy} : {}), ...(keys ? {keys} : {}), ...(hint ? {hint} : {}), ...(gen ? {gen} : {})})) return Promise.resolve(false);
     this.activity('waiting', {what: text});
     return new Promise(resolve => {
       const timer = timeoutMs === null ? null : setTimeout(() => this.answer(id, false, 'No answer, so no.'), timeoutMs);

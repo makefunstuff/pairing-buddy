@@ -25,8 +25,8 @@ import {mkdir, readdir, readFile, realpath, stat, utimes, writeFile} from 'node:
 import {dirname, isAbsolute, join, normalize, relative, sep} from 'node:path';
 import {promisify} from 'node:util';
 import {
-  boardBrief, briefEmpty, briefLine, briefText, CHECK_PROMPT, checkInput, CONFLICT_PROMPT, conflictInput, exceptionKey, parseCheck,
-  parseConflict, quotePlace, readBrief,
+  briefEmpty, briefLine, briefText, CHECK_PROMPT, checkInput, CONFLICT_PROMPT, conflictInput, exceptionKey, parseCheck,
+  handoffBrief, parseConflict, quotePlace, readBrief,
 } from './brief.mjs';
 import {Board, boardTitle, commandLine} from './board.mjs';
 import {checkCommand} from './check.mjs';
@@ -56,6 +56,17 @@ export const SHAPE_WHAT = {
   board: 'a task for the board, for later',
 };
 
+// The keys of a hand-off's picks (see board.mjs PICKS); c copies the command and adds nothing.
+const PICK_KEYS = {y: 'add', d: 'delegate', p: 'plan', r: 'research'};
+/** What each answer to a hand-off does, as Neovim's dialog lists them. */
+const PICK_WHAT = {
+  y: 'add only: its agent reads the brief and waits for your go',
+  d: 'add and delegate: its agent starts now',
+  p: 'add, delegate, plan first: its agent writes a plan and waits',
+  r: 'add, delegate, research only: a report, no code',
+  c: 'copy the command, add nothing',
+};
+const NAMED_FILES = 20; // a board task's brief names at most this many files
 const QUESTIONS = 2; // the model may ask the user this many questions per request
 const AROUND = 30; // the request's input shows this many lines above and below the cursor
 const SELECTED = 80; // and of a selection, at most this many
@@ -234,31 +245,99 @@ export class Gen {
   }
 
   /**
-   * /gen board: the request as a task for the board (Shepherdr), its command composed for you to read. y adds it for
-   * later (add only: its agent reads the brief and waits for your go), c copies the command, n or Esc adds nothing.
-   * Nothing is added without that pick, and nothing is ever delegated, merged or set from here.
+   * /gen board: the request as a task for the board (Shepherdr), its brief built from the brief it runs against (see
+   * handoffBrief), for you to read and edit (in Neovim, the pair://board/new buffer) before anything is added. `/gen
+   * board #9` hands on request #9, too big for gen's limits, with what its check found. Then one pick: y adds it for
+   * later (add only: its agent reads the brief and waits for your go), d adds and delegates (its agent starts now),
+   * p delegates with a plan first, r delegates for research only, c copies the command, n or Esc adds nothing.
+   * Nothing is added without a pick, and nothing is ever merged, stopped or set from here.
    */
   async toBoard(request) {
     const session = this.session;
     const n = `gen #${request.n}`;
     if (!this.board) return this.end(request, 'cancelled', `${n}: there is no board to add it to ("board": null in the config).`);
+    const handed = /^#?(\d+)$/.exec(request.words)?.[1];
+    const source = handed ? this.requests.get(Number(handed)) : null;
+    if (handed && !source) return this.end(request, 'cancelled', `${n}: there is no gen #${handed} since the daemon started, to hand to the board.`);
+    const words = source?.words ?? request.words;
     const brief = await this.brief();
     request.brief = brief;
+    const uncommitted = brief.note ? await this.uncommitted(brief.note) : false;
+    const task = {
+      title: boardTitle(words),
+      brief: handoffBrief({
+        words, brief, uncommitted, files: await this.namedFiles(words, source), test: session.testRuns?.command ?? null,
+        found: source?.debrief?.filter(line => line.startsWith('≠')) ?? [], guessed: source?.check?.guessed ?? [], from: source ? `gen #${source.n}` : null,
+      }),
+    };
     const board = new Board(this.board);
-    const words = board.addWords({title: boardTitle(request.words), brief: boardBrief(request.words, brief), space: session.state.board?.space ?? null});
-    const line = commandLine(words);
-    const choice = await this.question(request, {kind: 'board', title: `${n} · a task for the board: "${boardTitle(request.words)}"`, command: line});
+    const space = session.state.board?.space ?? null;
+    const line = edit => commandLine(board.handoffWords({...edit, space, pick: 'add'}));
+    const warning = uncommitted ? `${brief.note.file} has changes that are not committed: the task's agent works in a git worktree and would not see them, so they are copied into its brief.` : null;
+    if (warning) session.message('system', `${n}: ${warning}`);
+    const choice = await this.question(request, {kind: 'board', title: `${n} · a task for the board: "${task.title}"`, command: line(task), task, warning});
     if (request.state === 'cancelled') return;
-    if (choice === 'c') return this.end(request, 'done', `${n}: nothing added. The command, to run yourself: ${line}`);
-    if (choice !== 'y') return this.end(request, 'cancelled', `${n} cancelled: nothing added to the board.`);
+    const edit = request.edited;
+    const final = edit ? {title: boardTitle(edit.title) || task.title, brief: edit.brief.trim() || task.brief} : task;
+    if (choice === 'c') {
+      const text = line(final);
+      if (request.from === 'editor') session.notify('editor', {type: 'gen_copy', gen: request.n, text});
+      return this.end(request, 'done', `${n}: nothing added. The command, to run yourself: ${text}`);
+    }
+    const pick = PICK_KEYS[choice];
+    if (!pick) return this.end(request, 'cancelled', `${n} cancelled: nothing added to the board.`);
     try {
-      const {id, said} = await board.add(words, {cwd: this.root});
+      const {id, said} = await board.add(board.handoffWords({...final, space, pick}), {cwd: this.root});
       if (!id) return this.end(request, 'done', `${n}: the board answered: ${said}`); // added, as far as it says
-      session.ledger.add('board', `${n} → board ${id}: ${boardTitle(request.words)}`, {data: {gen: request.n, task: id, later: true}});
-      return this.end(request, 'done', `${n} → board ${id} · added, for later: its agent reads the brief and waits for your go (${commandLine(board.tellWords(id, 'go'))}).`);
+      session.ledger.add('board', `${n} → board ${id}: ${final.title}`, {data: {gen: request.n, task: id, pick, later: pick === 'add', ...(source ? {from: source.n} : {})}});
+      const how = pick === 'add' ? `added, for later: its agent reads the brief and waits for your go (${commandLine(board.tellWords(id, 'go'))})`
+        : pick === 'delegate' ? 'added and delegated: its agent starts on the brief now'
+          : pick === 'plan' ? 'added and delegated, plan first: its agent writes its plan and waits for your go'
+            : 'added and delegated, research only: a report, no code';
+      return this.end(request, 'done', `${n}${source ? ` (gen #${source.n})` : ''} → board ${id} · ${how}.`);
     } catch (error) {
       return this.end(request, 'failed', `${n}: the board did not add it: ${error.message.split('\n')[0]}`);
     }
+  }
+
+  /**
+   * Whether the brief's `note` has changes that are not committed (in the editor, on disk or not in git at all): a
+   * board task's agent works in a git worktree, which has only the committed note.
+   */
+  async uncommitted(note) {
+    const rel = relative(this.root, note.path).split(sep).join('/');
+    const committed = await promisify(execFile)('git', ['show', `HEAD:./${rel}`], {cwd: this.root, maxBuffer: 64 << 20}).then(result => result.stdout, () => null);
+    return committed === null || committed.replace(/\n$/, '') !== note.lines.join('\n');
+  }
+
+  /** The project's files a request names in its `words`, and those that `source` (the request it hands on) proposed. */
+  async namedFiles(words, source) {
+    const named = [];
+    for (const word of words.match(/[\w.-]*[\w-]\/[\w./-]*\w|[\w-]+\.[a-z]\w*/gi) ?? []) {
+      const path = await projectFile(this.root, word).catch(() => null);
+      if (path) named.push(relative(this.root, path));
+    }
+    for (const piece of source?.pieces ?? []) {
+      if (piece.kind !== 'try' && piece.file) named.push(relative(this.root, piece.file));
+    }
+    return [...new Set(named)].slice(0, NAMED_FILES);
+  }
+
+  /**
+   * A request that ran into gen.limits (its files, lines or minutes) is bigger than /gen takes: the chat, and Neovim
+   * when it was asked there, offer it to the board. Only offered: nothing is added until the user asks.
+   */
+  offerBoard(request) {
+    if (!this.board || !(request.pastLimit || request.over) || ['cancelled', 'undone'].includes(request.state)) return;
+    const why = request.over ?? `it went past ${request.pastLimit}`;
+    this.session.message('system', `gen #${request.n} is bigger than gen's limits (${why}). /gen board #${request.n} hands it to the board, with its brief and what it found.`);
+    if (request.from === 'editor') this.session.notify('editor', {type: 'gen_debrief', gen: request.n, lines: [`bigger than gen's limits (${why}): :Pair gen board #${request.n} hands it to the board`]});
+  }
+
+  /** A tool's refusal at gen.limits.`limit`: the request is bigger than /gen takes, and is offered to the board when it ends. */
+  past(request, limit, text) {
+    request.pastLimit ??= `gen.limits.${limit}`;
+    return text;
   }
 
   /**
@@ -404,6 +483,7 @@ export class Gen {
     }
     // Still the running request while it finishes: a scaffold's check runs in Pair's pane, and in its copy.
     await this.finish(request, failure);
+    this.offerBoard(request);
     await this.release();
   }
 
@@ -887,31 +967,32 @@ export class Gen {
    * Asks the user about `request` where they asked for it: in Neovim as a dialog, else in the chat. `kind` 'shape'
    * resolves with a shape (the `guess` first) or null; 'question' with the answer, `answer` when they keep the one
    * given, or null when they leave it to Pair; 'brief', about a `conflict` with the brief at `place`, with y (as
-   * asked), n (follow the brief) or e (open the brief there).
+   * asked), n (follow the brief) or e (open the brief there); 'board', about `task` ({title, brief}) and its `command`,
+   * with a pick of PICK_KEYS or c, and the task as the user edited it in `request.edited`.
    */
-  async question(request, {kind, title, guess = null, answer = '', conflict = null, place = null, command = null}) {
+  async question(request, {kind, title, guess = null, answer = '', conflict = null, place = null, command = null, task = null, warning = null}) {
     const session = this.session;
     const id = ++this.asked;
     const choices = kind === 'shape' ? [guess, ...SHAPES.filter(shape => shape !== guess)]
-      : kind === 'brief' ? ['n', 'y', ...(conflict.source === 'note' ? ['e'] : [])] : kind === 'board' ? ['y', 'c'] : null;
-    const waiting = new Promise(resolve => { request.question = {id, kind, title, choices, answer, conflict, place, command, resolve}; });
+      : kind === 'brief' ? ['n', 'y', ...(conflict.source === 'note' ? ['e'] : [])] : kind === 'board' ? [...Object.keys(PICK_KEYS), 'c'] : null;
+    const waiting = new Promise(resolve => { request.question = {id, kind, title, choices, answer, conflict, place, command, warning, resolve}; });
     const options = kind === 'shape' ? choices.map(shape => ({shape, what: SHAPE_WHAT[shape], built: BUILT.has(shape), guessed: shape === guess}))
       : kind === 'brief' ? choices.map(key => ({
         key,
         what: {n: `follow the brief: ${conflict.says}`, y: `as asked: ${conflict.asked}`, e: `open ${place}`}[key],
         ...(key === 'e' ? {file: request.brief.note.path, line: conflict.line} : {}),
       }))
-      : kind === 'board' ? [{key: 'y', what: 'add it, for later (add only: its agent waits for your go)'}, {key: 'c', what: 'copy the command, add nothing'}] : undefined;
+      : kind === 'board' ? choices.map(key => ({key, what: PICK_WHAT[key]})) : undefined;
     const asked = request.from === 'editor' && session.notify('editor', {
       type: 'gen_ask', gen: request.n, id, kind, title, answer, choices: options,
-      ...(conflict ? {quote: conflict.text, place} : {}), ...(command ? {command} : {}),
+      ...(conflict ? {quote: conflict.text, place} : {}), ...(command ? {command} : {}), ...(task ? {task} : {}), ...(warning ? {warning} : {}),
     });
     request.question.where = asked ? 'editor' : 'chat'; // the chat's status says where it waits
     if (request.state === 'generating') this.pause(request);
     this.setState(request, request.state === 'generating' ? 'asks' : 'asking');
     if (asked) {
       if (kind === 'question') session.message('system', `${title} (default: ${answer || 'none'}; answer in Neovim)`);
-      if (kind === 'board') session.message('system', `${title}: \`${command}\` (answer in Neovim)`);
+      if (kind === 'board') session.message('system', `${title}: edit its brief in Neovim (pair://board/new), then pick how to add it.`);
       if (kind === 'brief') session.message('system', `${title}: "${conflict.text}" ${place}. ${conflict.asked} anyway? (answer in Neovim)`);
     } else {
       this.inChat(request, request.question);
@@ -933,12 +1014,12 @@ export class Gen {
     const session = this.session;
     const {kind, title, choices, answer} = question;
     if (kind === 'board') {
-      const asking = session.confirm(`${title}. Add it for later?`, ['c'], {
-        command: question.command, copy: true, timeoutMs: null, gen: request.n, said: () => null,
-        hint: 'y adds it, for later (add only) · c copies the command · n adds nothing',
+      const asking = session.confirm(`${title}. How should Pair add it?`, choices.filter(key => key !== 'y'), {
+        command: question.command, copy: true, keys: choices.filter(key => key !== 'y'), timeoutMs: null, gen: request.n, said: () => null,
+        hint: 'y add only (its agent waits for your go) · d add and delegate · p delegate, plan first · r delegate, research only · c copy the command · n nothing',
       });
       question.confirm = session.lastConfirmation;
-      asking.then(result => this.answered(request, question.id, result === true ? 'y' : result === 'c' ? 'c' : 'n'));
+      asking.then(result => this.answered(request, question.id, result === true ? 'y' : typeof result === 'string' ? result : 'n'));
       return;
     }
     if (kind === 'brief') {
@@ -962,10 +1043,14 @@ export class Gen {
     asking.then(result => this.answered(request, question.id, result === true ? (choices?.[0] ?? answer) : result || null));
   }
 
-  /** The user's answer to question `id` of request `n` (Neovim's gen_answer): the first answer counts. */
-  answer(n, id, text) {
+  /**
+   * The user's answer to question `id` of request `n` (Neovim's gen_answer): the first answer counts. A board task's
+   * comes with `edit`, the task as they edited it ({title, brief}).
+   */
+  answer(n, id, text, edit = null) {
     const request = this.requests.get(n);
     if (!request?.question || request.question.id !== id) return;
+    if (request.question.kind === 'board' && typeof edit?.title === 'string' && typeof edit.brief === 'string') request.edited = {title: edit.title, brief: edit.brief};
     this.answered(request, id, typeof text === 'string' ? text : null);
   }
 
@@ -1062,8 +1147,8 @@ export class Gen {
     if (line > count) return `Line ${line} is past the end of ${file}, which has ${count} lines. Read it first.`;
     const lines = lineCount(text);
     if (!lines) return 'propose needs the code: text has no lines.';
-    if (request.lines + lines > request.limits.lines) return `That is more than ${request.limits.lines} lines for this request (gen.limits.lines): propose less, or say what is left.`;
-    if (!request.files.has(path) && request.files.size >= request.limits.files) return `That is ${request.limits.files} files for this request (gen.limits.files).`;
+    if (request.lines + lines > request.limits.lines) return this.past(request, 'lines', `That is more than ${request.limits.lines} lines for this request (gen.limits.lines): propose less, or say what is left.`);
+    if (!request.files.has(path) && request.files.size >= request.limits.files) return this.past(request, 'files', `That is ${request.limits.files} files for this request (gen.limits.files).`);
     request.lines += lines;
     request.files.add(path);
     const old = insert ? [] : buffer.slice(line - 1, endLine); // what the chat shows it replace
@@ -1088,8 +1173,8 @@ export class Gen {
     const lines = lineCount(body);
     if (!lines) return 'draft needs the file: text has no lines.';
     const old = request.pieces.find(piece => piece.kind === 'file' && piece.file === at.path);
-    if (request.lines - (old ? lineCount(old.text) : 0) + lines > request.limits.lines) return `That is more than ${request.limits.lines} lines for this request (gen.limits.lines): draft less, or say what is left.`;
-    if (!request.files.has(at.path) && request.files.size >= request.limits.files) return `That is ${request.limits.files} files for this request (gen.limits.files).`;
+    if (request.lines - (old ? lineCount(old.text) : 0) + lines > request.limits.lines) return this.past(request, 'lines', `That is more than ${request.limits.lines} lines for this request (gen.limits.lines): draft less, or say what is left.`);
+    if (!request.files.has(at.path) && request.files.size >= request.limits.files) return this.past(request, 'files', `That is ${request.limits.files} files for this request (gen.limits.files).`);
     request.lines += lines - (old ? lineCount(old.text) : 0);
     request.files.add(at.path);
     if (old) Object.assign(old, {text: body, note, endLine: lines});
@@ -1115,8 +1200,8 @@ export class Gen {
     const lines = lineCount(body);
     if (!lines) return 'write needs the file: text has no lines.';
     const old = request.pieces.find(piece => piece.kind === 'try' && piece.file === at);
-    if (request.lines - (old ? lineCount(old.text) : 0) + lines > request.limits.lines) return `That is more than ${request.limits.lines} lines for this request (gen.limits.lines): write less, or say what is left.`;
-    if (!request.files.has(at) && request.files.size >= request.limits.files) return `That is ${request.limits.files} files for this request (gen.limits.files).`;
+    if (request.lines - (old ? lineCount(old.text) : 0) + lines > request.limits.lines) return this.past(request, 'lines', `That is more than ${request.limits.lines} lines for this request (gen.limits.lines): write less, or say what is left.`);
+    if (!request.files.has(at) && request.files.size >= request.limits.files) return this.past(request, 'files', `That is ${request.limits.files} files for this request (gen.limits.files).`);
     try {
       await mkdir(dirname(at), {recursive: true});
       await writeFile(at, `${body}\n`);
@@ -1220,8 +1305,8 @@ export class Gen {
     const size = sizeOf(base, `${body}\n`);
     const others = request.pieces.filter(piece => piece.kind === 'tree' && piece !== old);
     const written = others.reduce((sum, piece) => sum + piece.added, 0);
-    if (written + size.added > request.limits.lines) return `That is more than ${request.limits.lines} lines for this request (gen.limits.lines): write less, or say what is left.`;
-    if (!old && others.length >= request.limits.files) return `That is ${request.limits.files} files for this request (gen.limits.files).`;
+    if (written + size.added > request.limits.lines) return this.past(request, 'lines', `That is more than ${request.limits.lines} lines for this request (gen.limits.lines): write less, or say what is left.`);
+    if (!old && others.length >= request.limits.files) return this.past(request, 'files', `That is ${request.limits.files} files for this request (gen.limits.files).`);
     try {
       await mkdir(dirname(at), {recursive: true});
       await writeFile(at, `${body}\n`);
