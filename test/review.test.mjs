@@ -9,7 +9,7 @@ import {join} from 'node:path';
 import {test} from 'node:test';
 import {Board, MERGE_IT} from '../src/board.mjs';
 import {editOrigin, fold, initialState, originName} from '../src/fold.mjs';
-import {diffView, namedAt, orderFiles, reviewFacts, withHunks} from '../src/review.mjs';
+import {changedSpans, diffView, namedAt, orderFiles, reviewFacts, withHunks} from '../src/review.mjs';
 import {PairSession} from '../src/session.mjs';
 import {openStore} from '../src/store.mjs';
 import {fakeShepherdr} from './fake-shepherdr.mjs';
@@ -333,4 +333,35 @@ test('/undo takes back the newest keep of a review opened days ago, after anothe
   assert.match(said().at(-1), /^Undid SHO-80: took back 1 piece/);
   assert.equal(editor.filter(message => message.type === 'revert').at(-1).origin, 'board:SHO-80');
   assert.ok(of('gen_kept').length > kept, 'the list and its diff are told, to show it is to keep again');
+});
+
+test('≠ brief reads what the branch changed, with its own line numbers: a change at line 380 of a long file is checked', async () => {
+  const root = realpathSync(scratch('pair-review-long-'));
+  const git = (...args) => execFileSync('git', ['-C', root, '-c', 'user.email=t@t', '-c', 'user.name=t', ...args], {stdio: 'pipe'});
+  const lines = Array.from({length: 400}, (_, i) => `const v${i + 1} = ${i + 1}`);
+  git('init', '-q', '-b', 'main');
+  writeFileSync(join(root, 'NOTES.md'), NOTES);
+  writeFileSync(join(root, 'big.js'), `${lines.join('\n')}\n`);
+  git('add', '.');
+  git('commit', '-q', '-m', 'big');
+  git('checkout', '-q', '-b', 'work/80-billing');
+  lines[379] = 'const v380 = 0.1 + 0.2 // FLOAT MONEY';
+  writeFileSync(join(root, 'big.js'), `${lines.join('\n')}\n`);
+  git('commit', '-q', '-am', 'float');
+  git('checkout', '-q', 'main');
+  assert.deepEqual(changedSpans(`${'a\n'.repeat(10)}`, `${'a\n'.repeat(5)}b\n${'a\n'.repeat(4)}`), [{line: 3, text: 'a\na\na\nb\na\na\na'}], 'the change and three lines around it');
+  const board = shop(root);
+  const inputs = [];
+  const askModel = async (prompt, input) => {
+    inputs.push(input);
+    return JSON.stringify([{kind: 'contradicts', source: 'note', line: 3, quote: 'Money in integer cents, never floats.', piece: 1, piece_line: 4, text: 'money in a float'}]);
+  };
+  const {pair} = reviewSession(root, {board: board.command, askModel});
+  await pair.gen.reviews.open('SHO-80');
+  const [action] = [...pair.gen.reviews.pending.keys()];
+  await pair.gen.reviews.pending.get(action);
+  assert.equal(inputs.length, 1);
+  assert.match(inputs[0], /Piece 1, for big\.js:377:\n1: const v377 = 377\n2: const v378 = 378\n3: const v379 = 379\n4: const v380 = 0\.1 \+ 0\.2 \/\/ FLOAT MONEY\n/);
+  assert.doesNotMatch(inputs[0], /const v1 = 1\n/, 'unchanged code far from the change is not checked');
+  assert.deepEqual(pair.gen.review().requests[0].contradicts, ['≠ brief "Money in integer cents, never floats." NOTES.md:3 · big.js:380 money in a float']);
 });

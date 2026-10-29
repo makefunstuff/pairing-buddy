@@ -8,8 +8,8 @@ import {execFile} from 'node:child_process';
 import {basename} from 'node:path';
 
 export const BOARD = 'shepherdr';
-export const TITLE_MAX = 32;
-export const MERGE_IT = 'merge it'; // what a review's merge pick tells the task's agent // the board refuses a longer title: it fits one line on a phone
+export const TITLE_MAX = 32; // the board refuses a longer title: it fits one line on a phone
+export const MERGE_IT = 'merge it'; // what a review's merge pick tells the task's agent
 const TIMEOUT_MS = 5000;
 const ADD_TIMEOUT_MS = 60_000;
 const REPORTS_LOOKED_AT = 20; // of a space's newest artifacts, this many are asked who made them // an add is never cut short: one that went through but answered late would be made twice

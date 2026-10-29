@@ -17,8 +17,9 @@ import {takenMarks} from './owning.mjs';
 
 const run = promisify(execFile);
 const FILES = 300; // a review lists at most this many files of the branch
-const CHECKED_FILES = 20; // the ≠ brief check reads this many of them, the first in the review's order
-const CHECKED_LINES = 300; // and at most this many lines of each
+const CHECKED_FILES = 20; // the ≠ brief check reads the changes of this many of them, the first in the review's order
+const CHECKED_LINES = 600; // and at most this many lines of those changes in all, with their context
+const CHECKED_HUNK = 80; // of which at most this many for one change
 const CONTEXT = 3; // lines around each hunk of a file's diff
 const REVIEW_DAYS = 7; // a review of the same task and commit opened again within this long is the same one
 const DAY = 24 * 60 * 60 * 1000;
@@ -99,6 +100,27 @@ export function withHunks(a, hunks, ks) {
     at = hunk.to;
   });
   return [...out, ...a.slice(at)];
+}
+
+/**
+ * What the branch changed in a file, as the ≠ brief check reads it: each change's new lines with CONTEXT lines around
+ * them, as `{line, text}` where `line` is the first one's number in `next`, and a change of only deleted lines as its
+ * context. At most `max` lines each; overlapping ones are one.
+ */
+export function changedSpans(base, next, max = CHECKED_HUNK) {
+  const b = linesOf(next);
+  const spans = [];
+  let shift = 0;
+  for (const hunk of hunksOf(linesOf(base), b)) {
+    const start = hunk.from + shift; // the change's first line in next, 0-based
+    shift += hunk.lines.length - (hunk.to - hunk.from);
+    const from = Math.max(0, start - CONTEXT);
+    const to = Math.min(b.length, start + hunk.lines.length + CONTEXT, from + max);
+    const last = spans.at(-1);
+    if (last && from <= last.to) last.to = Math.max(last.to, to);
+    else if (to > from) spans.push({from, to});
+  }
+  return spans.map(({from, to}) => ({line: from + 1, text: b.slice(from, Math.min(to, from + max)).join('\n')}));
 }
 
 /**
@@ -273,18 +295,25 @@ export class Reviews {
   }
 
   /**
-   * The ≠ brief check of review `action`: the brief's check (brief.mjs) on the branch's files, the first CHECKED_FILES
-   * in the review's order, CHECKED_LINES lines each. What holds up is booked with the review, and its files go first.
+   * The ≠ brief check of review `action`: the brief's check (brief.mjs) on what the branch changed, the changes of
+   * the first CHECKED_FILES files in the review's order, each with its context and its own line numbers, CHECKED_LINES
+   * lines in all. What holds up is booked with the review, and its files go first.
    */
   async checkBrief(action, task, brief) {
     const {askModel} = this.gen;
     if (!askModel || !brief || briefEmpty(brief)) return;
     const found = this.found(action);
-    const {since, head} = found.entry.data;
+    const {since} = found.entry.data;
     const pieces = [];
+    let lines = 0;
     for (const piece of found.pieces.filter(one => one.kind === 'branch' && one.status !== 'D' && !one.binary).slice(0, CHECKED_FILES)) {
-      const text = await textAt(this.root, head, piece.rel);
-      if (text !== null) pieces.push({file: piece.file, line: 1, insert: false, text: linesOf(text).slice(0, CHECKED_LINES).join('\n')});
+      const texts = await this.textsOf(found.entry, piece);
+      for (const span of texts ? changedSpans(texts.base, texts.next) : []) {
+        const shown = linesOf(`${span.text}\n`).slice(0, CHECKED_LINES - lines);
+        if (!shown.length) break;
+        pieces.push({file: piece.file, line: span.line, insert: false, text: shown.join('\n')});
+        lines += shown.length;
+      }
     }
     if (!pieces.length) return;
     let check;

@@ -450,7 +450,7 @@ end
 
 local function act(key)
   local row = current()
-  if row and row.request and row.request.shape == 'review' then return review_act(key, row) end
+  if row and row.request and row.request.shape == 'review' and key ~= 'decide' then return review_act(key, row) end
   if key == 'u' then
     if row and row.request then deps.send({type = 'undo', action = row.request.action}) M.refresh() end
     return
@@ -528,10 +528,20 @@ end
 
 local function present(value) return value ~= nil and value ~= vim.NIL and value ~= '' end
 
+--- What the brief's check found of `request`: its ≠ brief lines, and its ? guessed ones with the key that logs one.
+local function render_brief(request, add, decide)
+  for _, line in ipairs(request.contradicts or {}) do add('  ' .. line, {request = request}, {{2, 2 + #'≠', 'PairSign'}}) end
+  for g, guess in ipairs(request.guessed or {}) do
+    local tail = decide and ('   %s logs it as a decision'):format(decide) or ''
+    local text = '  ? guessed ' .. guess
+    add(text .. tail, {request = request, guess = g}, {{2, 3, 'PairSign'}, {#text, -1, 'PairKey'}})
+  end
+end
+
 --- A board task's review under its head: what its agent and reviewer said, then its branch's files, each with what
 --- it is (+ new, ~ changed, - deleted), ≠ when the brief's check found it against the brief, ! when the reviewer
 --- names it, and how much of it you kept.
-local function render_review(request, add)
+local function render_review(request, add, decide)
   local review = type(request.review) == 'table' and request.review or {}
   local files = request.branch_files or {}
   local head = ('%s · %s · %s · %s · %s'):format(request.task, (request.title:gsub('\n', ' ')), request.branch, plural(#files, 'file'), hhmm(request.at))
@@ -544,6 +554,7 @@ local function render_review(request, add)
   if present(review.said) then add('  agent     ' .. review.said, {request = request}, {{2, 7, 'PairKey'}}) end
   for _, note in ipairs(review.notes or {}) do add('  · ' .. note, {request = request}, {{2, 3, 'PairSign'}}) end
   if request.checking then add('  ≠ brief: checking the branch against the brief…', {request = request}, {{0, -1, 'PairKey'}}) end
+  render_brief(request, add, decide)
   local width = 0
   for _, file in ipairs(files) do width = math.max(width, vim.fn.strdisplaywidth(file.name)) end
   for _, file in ipairs(files) do
@@ -583,7 +594,7 @@ local function render()
   local decide = deps.label and deps.label(deps.decide_key) or nil
   for i, request in ipairs(view.requests) do
     if i > 1 then add('', nil) end
-    if request.shape == 'review' then render_review(request, add)
+    if request.shape == 'review' then render_review(request, add, decide)
     else
     local head = ('gen #%d · %s · %s · %s'):format(request.gen, request.shape or 'file', (request.words:gsub('\n', ' ')), hhmm(request.at))
     add(head, {request = request}, {{0, #('gen #' .. request.gen), 'PairAccent'}})
@@ -622,17 +633,19 @@ local function render()
       end
     end
     end
-    for _, line in ipairs(request.contradicts or {}) do add('  ' .. line, {request = request}, {{2, 2 + #'≠', 'PairSign'}}) end
-    for g, guess in ipairs(request.guessed or {}) do
-      local tail = decide and ('   %s logs it as a decision'):format(decide) or ''
-      local text = '  ? guessed ' .. guess
-      add(text .. tail, {request = request, guess = g}, {{2, 3, 'PairSign'}, {#text, -1, 'PairKey'}})
-    end
+    if request.shape ~= 'review' then render_brief(request, add, decide) end -- a review has them on top
   end
   if #view.requests == 0 then add('No /gen file or scaffold request, nor a file kept from a try or a board task\'s review, in the last days. :Pair gen file <what> asks for one.', nil, {{0, -1, 'PairKey'}}) end
   add('', nil)
-  local any_scaffold = vim.iter(view.requests):any(function(request) return request.shape == 'scaffold' or request.shape == 'review' end)
-  add(('⏎ open · w take · %sd drop · W take all · D drop all · u undo the request · q close'):format(any_scaffold and 'k keep · ' or ''), nil, {{0, -1, 'PairKey'}})
+  -- The keys of what is listed: a review's alone when there are only reviews.
+  local any_scaffold = vim.iter(view.requests):any(function(request) return request.shape == 'scaffold' end)
+  local any_review = vim.iter(view.requests):any(function(request) return request.shape == 'review' end)
+  local any_gen = #view.requests == 0 or vim.iter(view.requests):any(function(request) return request.shape ~= 'review' end)
+  local parts = {}
+  if any_gen then table.insert(parts, ('⏎ open · w take · %sd drop · W take all · D drop all · u undo the request'):format(any_scaffold and 'k keep · ' or '')) end
+  if any_review then table.insert(parts, (any_gen and 'in a review: ' or '') .. '⏎ diff · k keep · t tell · a merge · A archive · o PR · u undo what you kept') end
+  table.insert(parts, 'q close')
+  add(table.concat(parts, ' · '), nil, {{0, -1, 'PairKey'}})
   view.rows = rows
   vim.bo[view.buf].modifiable = true
   vim.api.nvim_buf_set_lines(view.buf, 0, -1, false, lines)

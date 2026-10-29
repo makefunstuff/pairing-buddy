@@ -805,13 +805,18 @@ test(':Pair review: a board task\'s branch in the list, the reviewer on top; Ent
   const board = fakeShepherdr(scratch('pair-board-'), {spaces: [{name: 'shop', key: 'SHO', path: '/src/shop'}], tasks: [
     {id: 'SHO-80', title: 'Totals in cents', status: 'ready', place: 'p:here:shop', branch: 'work/80-cents', pr: {number: 12, url: 'https://github.com/o/shop/pull/12'}, said: 'y is 20 now.', facts},
   ]});
-  const {project, keys, remote, asked, answer, said, stop} = await genInNvim('add helpers', {stub: true, board: board.command});
+  // The brief's check finds the branch's a.js against the note.
+  const check = (kind, content) => {
+    const piece = kind === 'check' && /Piece (\d+), for a\.js:1:/.exec(content)?.[1];
+    return piece ? JSON.stringify([{kind: 'contradicts', source: 'note', line: 3, quote: 'Money in integer cents.', piece: Number(piece), piece_line: 2, text: 'y is not in cents'}]) : '[]';
+  };
+  const {project, keys, remote, asked, answer, said, stop} = await genInNvim('add helpers', {stub: true, board: board.command, notes: '# Shop\n\nMoney in integer cents.\n', brief: check});
   const git = (...args) => execFileSync('git', ['-C', project, '-c', 'user.email=t@t', '-c', 'user.name=t', ...args], {stdio: 'pipe'});
   const buffer = () => JSON.parse(remote('luaeval("vim.json.encode({name = vim.api.nvim_buf_get_name(0), lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)})")'));
   const a = () => JSON.parse(remote('luaeval("vim.json.encode({lines = vim.api.nvim_buf_get_lines(vim.fn.bufnr(\'a.js\'), 0, -1, false), modified = vim.bo[vim.fn.bufnr(\'a.js\')].modified, marks = #vim.api.nvim_buf_get_extmarks(vim.fn.bufnr(\'a.js\'), vim.api.nvim_create_namespace(\'pair_generated\'), 0, -1, {})})")'));
   try {
     git('init', '-q', '-b', 'main');
-    git('add', 'a.js');
+    git('add', 'a.js', 'NOTES.md');
     git('commit', '-q', '-m', 'a');
     git('checkout', '-q', '-b', 'work/80-cents');
     writeFileSync(join(project, 'a.js'), 'const x = 1\nconst y = 20\nconst z = 3\n');
@@ -823,16 +828,22 @@ test(':Pair review: a board task\'s branch in the list, the reviewer on top; Ent
     assert.ok(!existsSync(join(project, 'lib')), 'on main, no lib/ yet');
     keys(':Pair review SHO-80<CR>');
     await until(() => buffer().name.endsWith('pair://gen/list') && buffer().lines.some(line => line.startsWith('SHO-80 · Totals in cents')), 'the review in the list');
-    const {lines} = buffer();
-    assert.ok(lines.includes('  reviewer  review: 1 round, 1 minor left (lib/b.js has no test) · checks passed (npm test) · PR #12'), lines.join('\n'));
-    assert.ok(lines.includes('  agent     y is 20 now.'));
-    assert.ok(lines.includes('  · not proven: Safari'));
-    assert.ok(lines.some(line => /^  ◌ ~ a\.js +\+1 -1 +⏎ diff  k keep  t tell$/.test(line)), lines.join('\n'));
-    assert.ok(lines.some(line => /^  ◌ \+ lib\/b\.js ! +\+1 +⏎ diff/.test(line)), 'the reviewer names lib/b.js');
-    assert.match(remote('getline(".")'), /lib\/b\.js/, 'the cursor on its first file: the one the reviewer names');
     await said(/^review SHO-80 · Totals in cents · work\/80-cents · 2 files/);
+    // On top: the reviewer's verdict, what its agent said, the rest of the facts, and ≠ brief on the branch, above the
+    // files; the file against the brief first, then the one the reviewer names. The key line has only a review's keys.
+    await until(() => buffer().lines.some(line => line.startsWith('  ≠ brief')), 'the brief\'s check in the list');
+    const {lines} = buffer();
+    assert.deepEqual(lines.slice(1, 7), [
+      '  reviewer  review: 1 round, 1 minor left (lib/b.js has no test) · checks passed (npm test) · PR #12',
+      '  agent     y is 20 now.',
+      '  · not proven: Safari',
+      '  ≠ brief "Money in integer cents." NOTES.md:3 · a.js:2 y is not in cents',
+      '  ◌ ~ a.js ≠1        +1 -1    ⏎ diff  k keep  t tell',
+      '  ◌ + lib/b.js !     +1       ⏎ diff  k keep  t tell',
+    ], lines.join('\n'));
+    assert.equal(lines.at(-1), '⏎ diff · k keep · t tell · a merge · A archive · o PR · u undo what you kept · q close');
     // Enter: the diff, read only; k on its change keeps it in a.js, unsaved, as code not yours yet.
-    keys('j<CR>');
+    keys(':call search("~ a.js")<CR><CR>');
     await until(() => buffer().name.endsWith('pair://board/SHO-80/a.js'), 'the diff');
     assert.deepEqual(buffer().lines, ['@@ -1,3 +1,3 @@', ' const x = 1', '-const y = 2', '+const y = 20', ' const z = 3']);
     assert.equal(remote('&readonly'), '1');

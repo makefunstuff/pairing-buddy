@@ -705,8 +705,10 @@ request's number; `agent` is what the agent said when it was ready; each other p
 what is not proven, a failure it put first) is a `·` line. A task without facts shows `no review in its facts`.
 
 **≠ brief on the branch.** The [brief's check](#the-debrief--brief-and--guessed) runs on the branch, after the list
-opens (`≠ brief: checking…` until it is done): the goal, the reviewed task and your note against the branch's files,
-the first 20 of them in the list's order, 300 lines each. What holds up is listed as for a request, `≠1` marks its
+opens (`≠ brief: checking…` until it is done): the goal, the reviewed task and your note against what the branch
+changed, each change with three lines around it and its own line numbers in the file, so a change at line 380 of a long
+file is read as `big.js:380`. It reads the changes of the first 20 files in the list's order, at most 80 lines of
+one change and 600 in all. What holds up is listed on top, under the reviewer's lines, as for a request; `≠1` marks its
 file, and the chat gets it too. Without a brief, or without the Partner's model, there is no check.
 
 **The files in the order the brief makes them matter**: those `≠ brief` found against it first, then those the task's
