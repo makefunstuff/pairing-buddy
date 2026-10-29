@@ -585,6 +585,7 @@ test('a gen card: the gen speaker in magenta, its words without "gen", the code 
   assert.equal(plain(transcriptLines([entry], 74, {latestCard: 0}).lines).at(-1), '       k keep one  Enter open the list  d drop all  u undo   · Alt-↑ picks');
   assert.equal(plain(transcriptLines([entry], 71, {latestCard: 0}).lines).at(-1), '       k keep one Enter open the list d drop all u undo   · Alt-↑ picks');
   assert.equal(plain(transcriptLines([entry], 44, {latestCard: 0}).lines).at(-1), '       k Enter d u   · Alt-↑ picks');
+  assert.equal(plain(transcriptLines([entry], 32, {latestCard: 0}).lines).at(-1), '       k Enter d u', 'narrower still, the aside goes whole, never cut');
   // Not the live card, or nothing left to do on it: no action line; with no keys at all, the hint says how to take it.
   assert.doesNotMatch(plain(transcriptLines([entry], 80).lines).join('\n'), /Alt-↑ picks/);
   const old = plain(transcriptLines([{...entry, card: {...card, keys: {}}}], 80, {latestCard: 0}).lines);

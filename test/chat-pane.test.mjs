@@ -657,6 +657,12 @@ test('the plain pane (--plain): the role in its prompt in its colour, and └ fo
     daemon.send({type: 'tool', tool: 'read', what: 'queue.go 1-5'});
     await shows(/└ read queue\.go 1-5/);
     assert.doesNotMatch(out, /⎿/);
+    // What /gen made: gen, in magenta, and how to take it under it, for there are no keys here.
+    daemon.send({type: 'gen_card', gen: 4, action: 9, shape: 'file', state: 'ready', of: 1, taken: 0, left: 1, keys: {k: 'keep one'}});
+    daemon.send({type: 'message', sender: 'pair', text: 'gen #4 · file · 1 new file to review: db/x.sql +2', at: Date.now(), meta: {gen: 4, hint: 'In Neovim, :w in one writes it to its path.'}});
+    await shows(/\x1b\[35;1mgen\x1b\[0m #4 · file · 1 new file to review: db\/x\.sql \+2\n {4}In Neovim, :w in one writes it to its path\./);
+    daemon.send({type: 'confirm', id: 3, gen: 5, text: 'gen #5 · new files: "migration". Shape?', hint: 'y: file · here, scaffold, try · n cancels'});
+    await shows(/gen\x1b\[0m #5 · new files: "migration"\. Shape\? \[y: file · here, scaffold, try · n\s+cancels\]/);
   } finally {
     input.end();
     await daemon.close();

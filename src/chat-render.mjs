@@ -482,11 +482,12 @@ export function cardKeys(card) {
 function cardLine(entry, width, picked) {
   const keys = cardKeys(entry.card);
   const aside = picked ? [] : [seg('   · ', 'dim'), seg('Alt-↑', 'bold'), seg(' picks', 'dim')];
-  const line = (gap, words) => [
+  const line = (gap, words, how = aside) => [
     ...keys.flatMap(([, shown, what], i) => [...(i ? [seg(gap)] : []), seg(shown, 'bold'), ...(words ? [seg(` ${what}`, 'dim')] : [])]),
-    ...aside,
+    ...how,
   ];
-  return [line('   ', true), line('  ', true), line(' ', true), line(' ', false)].find(l => lineWidth(l) <= width) ?? clipLine(line(' ', false), width);
+  // Last, the aside goes whole rather than cut.
+  return [line('   ', true), line('  ', true), line(' ', true), line(' ', false), line(' ', false, [])].find(l => lineWidth(l) <= width) ?? clipLine(line(' ', false, []), width);
 }
 
 /** All the text of `entry`, as search and copy see it. */
