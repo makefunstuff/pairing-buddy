@@ -430,6 +430,13 @@ const page = `<!doctype html>
       .cheat-k { flex: 0 0 520px; display: flex; align-items: center; gap: 12px; }
       .cheat .key { font-size: 20px; padding: 10px 12px; }
       .cheat-w { font-family: var(--body); font-size: 40px; color: var(--paper); }
+      .shapes { top: 290px; gap: 34px; }
+      .shapes .cheat-k { flex-basis: 420px; }
+      .shapes .key { font-size: 24px; padding: 14px 16px; }
+      .shapes .cheat-w { font-size: 44px; }
+      .conf { position: absolute; left: 300px; right: 300px; top: 280px; margin: 0; opacity: 0; padding: 36px 44px; font-family: var(--code); font-size: 32px; line-height: 1.5;
+        color: var(--paper); background: var(--term); border: 6px solid var(--paper); box-shadow: 10px 10px 0 var(--ink); }
+      .conf-t { position: absolute; left: 160px; right: 160px; top: 800px; text-align: center; opacity: 0; font-family: var(--body); font-size: 38px; line-height: 1.4; color: var(--yellow); }
       .url { position: absolute; left: 0; right: 0; top: 880px; text-align: center; font-family: var(--label); font-weight: 700; font-size: 36px; color: var(--blue); }
       .herdr { position: absolute; left: 120px; right: 120px; top: 270px; display: flex; gap: 70px; }
       .herdr-c { flex: 1; opacity: 0; }

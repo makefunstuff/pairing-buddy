@@ -1,13 +1,19 @@
 # The video: a tutorial of Pair
 
-A tutorial that teaches how Pair works, one idea per scene, in eight chapters: setup and `pair doctor`, the roles
-(Watcher, Partner, Navigator, Scout, Driver), exploring code (the wrong turn), tests on save, notes and the blank
-page, the hand-over (and taking the wheel back), voice, and Pair with or without herdr. It starts with what Pair is
-and the screen you will see, and ends on the keys to remember. A short cut for social media shows three of its
-moments.
+A tutorial that teaches how Pair works, one idea per scene, in twelve chapters: setup and `pair doctor`; the roles
+(Watcher, Partner, Navigator, Scout, Driver); the chat pane (its header, a remark and its action line, `Alt-↑` to
+pick a message and act on it, `@` for files, the `/` menu and `?` for the keys); exploring code (the wrong turn);
+tests on save; notes and the blank page; the hand-over (and taking the wheel back); asking for code with `/gen`
+(its five shapes, code at the cursor kept with one key, marked `┊` and taken back with `/undo`, the brief and
+`NOTES.md`, new files, a sample with `/gen try` and `/keep`, a scaffold built with `--branch` in a worktree); the
+board (`/gen board` handing a task to another agent, its news at your pause, `:Pair agents` with `o`, `d` and `t`,
+a review with `Alt-r`, the overlap remark when a task changes your file, and `/brief sync`); several worktrees (each
+its own project and session); voice (push-to-talk, and briefly OpenRouter); and Pair with or without herdr. It
+starts with what Pair is and the screen you will see, and ends on the keys to remember. A short cut for social media
+shows three of its moments.
 
-It plays in the [README](../../README.md) and on the [website](https://makefunstuff.github.io/pairing-buddy/#tour),
-where the chapter buttons jump into it.
+It plays on the [website](https://makefunstuff.github.io/pairing-buddy/#tour), where the chapter buttons jump into it;
+the [README](../../README.md) links there.
 
 ## How a scene teaches
 
@@ -37,9 +43,16 @@ Quiet square-wave blips (`sfx.sh`) mark each card and key press, over a chiptune
 
 - **The Neovim scenes** (`docs/captures/tapes/t-*.tape`) run the plugin and the daemon of this checkout with a real
   model, DeepSeek (`deepseek-flash` for both roles), with nothing scripted: what Pair says, the tools it calls, its
-  ghost text and the cases it types are the model's, from one take each. Neovim runs without herdr: `:Pair chat`
-  opens the chat and Pair's pane is a `:terminal`. The voice scene hears its question for real: espeak-ng says it
-  into the recorder and a CPU build of whisper.cpp writes it down.
+  ghost text, the code `/gen` writes, runs and checks, and the cases it types are the model's, from one take each.
+  Neovim runs without herdr: `:Pair chat` opens the full-screen chat pane on the right, and Pair's pane is a
+  `:terminal`. The voice scene hears its question for real: espeak-ng says it into the recorder and whisper.cpp, with
+  its `base.en` model, writes it down.
+- **The board and herdr are stand-ins.** The board scenes run `docs/captures/board.mjs` as `shepherdr`: it answers
+  what Pair reads (the tasks, a task's branch, brief and facts) and keeps what Pair writes on your pick (`task add`,
+  `task tell`); the tasks' branches and worktrees are real git, made by the stage. No herdr runs at all.
+- **Covered, not hidden away.** A sandboxed run (`/gen try`, `/gen scaffold`) prints its whole `bwrap` line in Pair's
+  pane, with the sockets and folders of the machine it ran on; `clips.sh` covers those rows of the pane and says so
+  on the cover.
 - **The setup scenes** (`capture/`): `install` runs the real `npm install -g github:makefunstuff/pairing-buddy` and
   `pair setup` in an empty sandbox home. `start` shows a one-model config for DeepSeek, `pair auth list` with its key
   stored, and `pair doctor` against DeepSeek.
@@ -56,7 +69,8 @@ environment variable the recorded shells could show.
 
 ```sh
 export CAP_MODEL=deepseek CAP_WHISPER_MODEL=/path/to/ggml-base.en.bin CAP_WHISPER=/path/to/whisper-cli
-../captures/record.sh t-wrong-turn t-scout t-tests-on-save t-notes t-blank-page t-hand-over t-take-back t-push-to-talk
+../captures/record.sh t-scout t-chat t-wrong-turn t-tests-on-save t-notes t-blank-page t-hand-over t-take-back \
+  t-gen-here t-gen-file t-gen-try t-gen-scaffold t-board t-overlap t-push-to-talk
 capture/run.sh                 # clips/install.mp4 and clips/start.mp4 (or name one tape)
 ./clips.sh                     # the Neovim takes into clips/
 node tts.mjs [line ...]        # audio/<line>.mp3 for each line of script.mjs (new or changed lines only, unless named)
@@ -75,13 +89,9 @@ A real model says something different on every take, so after recording a scene 
 scene's times and boxes in `script.mjs` to match. The tapes wait for what they need on screen (a question, a
 suggestion, "u undoes it") rather than for a fixed time, and fail when it does not come; record that scene again.
 
-`finish.sh` writes `renders/pairing-buddy-tutorial.mp4` (1080p), `renders/pairing-buddy-tutorial-readme.mp4` (the
-same at 1080p in two passes to under 10 MB, GitHub's limit for an upload, for the README), the site's `hero.mp4`, `hero.webm`,
-`hero-poster.jpg`, `hero.vtt` and `hero-chapters.vtt`, and `renders/pairing-buddy-short.mp4`, the cut for social
-media. The README plays the tutorial from a GitHub attachment (GitHub plays a video in a README only from its own
-attachments, not from a file in the repository): drop `pairing-buddy-tutorial-readme.mp4` into any comment box on
-github.com, put the `user-attachments` link it gives in the README, and clear the box without posting it. The chapter times in the README and on the site come from
-`chapters.json`.
+`finish.sh` writes `renders/pairing-buddy-tutorial.mp4` (1080p), the site's `hero.mp4`, `hero.webm`, `hero-poster.jpg`,
+`hero.vtt` and `hero-chapters.vtt`, and `renders/pairing-buddy-short.mp4`, the cut for social media. The chapter times
+in the README and on the site come from `chapters.json`.
 
 `script.mjs` holds the scenes: the title cards, the shots (which stretch of a take, and how fast), the lines of the
 voice and when each is said, where the camera goes, the boxes (`spots`), the typed text and keys, the before/after
@@ -91,12 +101,13 @@ takes terminal cells of a Neovim take, `T()` of a setup take. `build.mjs` turns 
 
 ## Keeping it public
 
-Every capture runs as a user whose home is a scratch folder under `/tmp`, with its own socket, so no personal path
-or host can show, and the running pairing-buddy service is never touched: the daemon gets a socket in that folder,
+Every capture runs as a user whose home is a scratch folder under `/tmp`, with its own socket, so no personal path or
+host can show, and the running pairing-buddy service is never touched: the daemon gets a socket in that folder,
 `capture/systemctl` stands in for `systemctl --user` during `pair setup`, and the shell the tapes type into has no
-variable whose name holds KEY, TOKEN, SECRET or PASSWORD. The scratch folders go when a take ends. Before a new
-video is published, OCR its frames and check them and the file's metadata for usernames, home paths, hosts, IP
-addresses, ports and keys.
+variable whose name holds KEY, TOKEN, SECRET or PASSWORD. `record.sh` also drops the variables of the session it runs in
+(`HERDR_*`, `SHEPHERDR_*`, `AGENT_BROWSER_*`, `TERM_PROGRAM`), so a scene never reaches the herdr or the board you
+record from. The scratch folders go when a take ends. Before a new video is published, OCR its frames and check them and
+the file's metadata for usernames, home paths, hosts, IP addresses, ports and keys.
 
 Fonts: Press Start 2P, Silkscreen, Pixelify Sans and JetBrains Mono (`fonts/`, SIL Open Font License). The colorscheme
 of the captures is ayu (Apache License 2.0), and `vendor/gsap.min.js` is under GSAP's own licence, not MIT: see

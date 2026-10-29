@@ -15,12 +15,12 @@ and you keep it a file at a time: a new file as a buffer to review, a change to 
 **Docs: [makefunstuff.github.io/pairing-buddy](https://makefunstuff.github.io/pairing-buddy/)** (source in
 [`docs/`](docs/), built from [`site/`](site/)).
 
-https://github.com/user-attachments/assets/d723d090-0b41-45b0-83df-e57fda572562
-
-*The tutorial, 13 minutes with a voiceover and captions, one idea per scene, recorded live with a real model.
-Chapters: 0:00 what Pair is · 0:59 setup and `pair doctor` · 2:44 the roles · 4:19 exploring code · 5:19 tests · 6:42
-notes and the blank page · 9:12 the hand-over · 10:50 voice · 11:36 with or without herdr · 12:12 the keys to
-remember. Its script and how to render it again are in [docs/video](docs/video/).*
+**[Watch the tutorial](https://makefunstuff.github.io/pairing-buddy/#tour)** on the site: 25 minutes with a voiceover
+and captions, one idea per scene, recorded live with a real model. Chapters: 0:00 what Pair is · 0:59 setup and `pair
+doctor` · 2:44 the roles · 4:16 the chat pane · 6:20 exploring code · 7:20 tests · 8:42 notes and the blank page ·
+11:11 the hand-over · 12:51 asking for code with `/gen` · 18:09 the board · 21:41 several worktrees · 22:14 voice ·
+23:20 with or without herdr · 23:55 the keys to remember. Its script and how to render it again are in
+[docs/video](docs/video/).
 
 Version 0.11 ([changelog](CHANGELOG.md)).
 

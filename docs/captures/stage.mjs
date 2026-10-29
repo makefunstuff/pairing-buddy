@@ -55,7 +55,12 @@ const board = join(dir, 'board');
 // A task's `work` (file -> its text, or a function of the text it had) is committed on its branch, as its agent would
 // have; a task with `noWorktree` is the branch the scene itself is on.
 const key = scene.agents?.key ?? scene.agents?.tasks[0]?.id.split('-')[0] ?? 'HSH';
-const showBoard = tasks => writeFileSync(join(board, 'state.json'), JSON.stringify({spaces: [{name: basename(project), key, path: project}], tasks}));
+// A task the scene changes later replaces the one of its id; a task the board added since (a /gen board pick) stays.
+const showBoard = tasks => {
+  const file = join(board, 'state.json');
+  const added = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')).tasks.filter(task => !tasks.some(each => each.id === task.id)) : [];
+  writeFileSync(file, JSON.stringify({spaces: [{name: basename(project), key, path: project}], tasks: [...tasks, ...added]}));
+};
 const worktreeOf = n => join(dir, 'work', `${basename(project)}-${n}`);
 if (scene.agents) {
   mkdirSync(board);

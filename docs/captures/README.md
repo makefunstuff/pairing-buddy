@@ -9,10 +9,12 @@ recording comes out the same each time; the tutorial video's scenes use a real m
   trigger it is asked about. The Partner's turns (tool calls or words, each after its own pause) come in order
   from [scenes.mjs](scenes.mjs), and so do its readings of a note: the marks, and the tasks. The tools those calls reach are real: they read the files, check the line and the
   code they point at, and type the edit.
-- **The board:** [board.mjs](board.mjs) stands in for the work board's command, Shepherdr's `shepherdr` (on the
-  daemon's PATH by that name), answering only what Pair reads, and a `task add` or `task tell`: in the context-card scene (which also fetches Telescope and plenary at pinned commits for its
-  searches) with fixed tasks, and in the agents scene from a state file the stage changes as the scene goes on, its
-  tasks on branches in worktrees the stage makes.
+- **The board:** [board.mjs](board.mjs) stands in for the work board's command, Shepherdr's `shepherdr` (the stage
+  puts it on the daemon's PATH by that name), answering what Pair reads: in the context-card scene (which also fetches
+  Telescope and plenary at pinned commits for its searches) with fixed tasks, and in the agents and the tutorial's
+  board scenes from a state file the stage changes as the scene goes on, its tasks on branches in worktrees the stage
+  makes (a task may have its agent's work committed there). It keeps the two writes
+  Pair makes on your pick, `task add` and `task tell`, in that file.
 - **The day so far:** the pick-up scene starts from yesterday's session (its debrief and where to pick up), and the
   debrief scene from three hours of active time and five verdicts, which [stage.mjs](stage.mjs) writes into the
   daemon's scratch store; the daemon's clock shows the scene's hour.
@@ -100,6 +102,11 @@ above in three ways:
 - **No herdr.** A `t-` scene is set up as the scene of the same name without the prefix (`t-scout` has its own), and
   runs without herdr or its stand-in, so Neovim itself tells Pair which terminal you look at, and Pair's pane opens as
   a `:terminal` along the bottom, on screen.
+
+The tutorial's newer scenes: `t-chat` (the chat pane: a remark, `Alt-↑` and `+`, `@` in a question, the `/` menu and
+`?`), `t-gen-here`, `t-gen-file`, `t-gen-try` and `t-gen-scaffold` (`/gen`, against a `NOTES.md` the scene commits),
+`t-board` (`/gen board`, a task's news, `:Pair agents`, `Alt-r`) and `t-overlap` (the overlap remark and `/brief sync`
+on a board task's branch). VHS has no `Alt+Up`: the tapes send the bytes a terminal sends for it.
 
 The tapes wait for what they need to see (a question, a suggestion, `u undoes it`), so a take fails rather than
 going on when the model says something else; record it again.

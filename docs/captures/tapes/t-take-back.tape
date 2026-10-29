@@ -12,7 +12,7 @@ Type "15G^"
 Sleep 300ms
 Show
 Sleep 2s
-Type ":Pair drive the edge cases"
+Type ":Pair drive add edge cases to this table: 0, 2, 7, 64"
 Sleep 800ms
 Enter
 # Pair is typing once the table has grown past its 22 lines.

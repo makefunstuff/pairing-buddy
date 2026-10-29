@@ -153,380 +153,896 @@ Scout runs commands for you, in a pane of its own, inside a sandbox.
 00:03:22.880 --> 00:03:27.370
 And Driver types one change into your buffer, then gives the wheel back.
 
-00:03:28.580 --> 00:03:32.720
+00:03:28.600 --> 00:03:32.900
 You want to know why a test fails, without digging yourself.
 
-00:03:32.720 --> 00:03:35.810
-Watch the chat, and the pane that opens at the bottom.
+00:03:32.900 --> 00:03:35.390
+Watch the chat, and the pane at the bottom.
 
-00:03:39.300 --> 00:03:44.320
+00:03:37.240 --> 00:03:41.660
 In the chat, slash scout switches Pair to the Scout role.
 
-00:03:44.320 --> 00:03:48.480
+00:03:41.660 --> 00:03:43.470
+The header says so.
+
+00:03:43.470 --> 00:03:47.670
 Then you ask your question, in plain words.
 
-00:03:48.480 --> 00:03:51.380
-Pair’s own pane opens at the bottom.
+00:03:47.670 --> 00:03:51.110
+Scout runs the test in Pair’s own pane at the bottom,
 
-00:03:51.380 --> 00:03:54.940
-Scout runs the test there, and searches the code.
+00:03:51.110 --> 00:03:54.530
+where you can see every command, in a sandbox:
 
-00:03:54.940 --> 00:03:58.860
-Every command is typed where you can see it, in a sandbox:
-
-00:03:58.860 --> 00:04:02.970
+00:03:54.530 --> 00:03:58.600
 only the project is writable, and there is no network.
 
-00:04:02.970 --> 00:04:05.010
-The answer comes back in the chat:
+00:03:58.600 --> 00:04:03.040
+The answer comes back in the chat, and under your line in Neovim:
 
-00:04:05.010 --> 00:04:10.740
-the greater-or-equal on line thirty-five drops the retry that fits exactly.
+00:04:03.040 --> 00:04:08.710
+the greater-or-equal on line thirty-five rejects the wait that fits exactly.
 
-00:04:12.670 --> 00:04:15.410
-You asked once; Scout ran the test in
+00:04:10.580 --> 00:04:15.290
+You asked once; Scout ran the test in plain sight and answered.
 
-00:04:15.410 --> 00:04:17.860
-plain sight and answered in the chat.
+00:04:19.459 --> 00:04:23.320
+Pair’s chat is a full screen pane beside your code.
 
-00:04:21.990 --> 00:04:26.010
+00:04:23.320 --> 00:04:26.130
+Watch its header, then the newest message.
+
+00:04:27.540 --> 00:04:33.690
+The header names the project, the session’s goal, Pair’s role and its talk level.
+
+00:04:33.690 --> 00:04:37.550
+You save, and the tests run in Pair’s pane at the bottom.
+
+00:04:37.550 --> 00:04:40.330
+You fix the budget check and save again:
+
+00:04:40.330 --> 00:04:42.440
+now a queue test fails.
+
+00:04:45.650 --> 00:04:47.450
+Pair’s remark lands in the chat:
+
+00:04:47.450 --> 00:04:50.690
+the kind of moment, the file and line,
+
+00:04:50.690 --> 00:04:53.680
+the fix as a diff, and why.
+
+00:04:53.680 --> 00:04:55.980
+Under it, its action line:
+
+00:04:55.980 --> 00:04:58.870
+the keys that work on this remark.
+
+00:04:58.870 --> 00:05:00.550
+Alt up picks the message,
+
+00:05:00.550 --> 00:05:03.250
+and the footer lists all you can do with it.
+
+00:05:03.250 --> 00:05:05.020
+Plus rates it useful.
+
+00:05:06.950 --> 00:05:11.420
+Every remark lands in the chat too, with the keys that act on it.
+
+00:05:12.930 --> 00:05:15.250
+You have a question about the lease.
+
+00:05:15.250 --> 00:05:17.620
+Watch what you type, then the answer.
+
+00:05:19.150 --> 00:05:23.400
+Anything you type that is not a command is a question for Pair.
+
+00:05:24.550 --> 00:05:27.770
+The at sign opens the project’s files.
+
+00:05:27.770 --> 00:05:32.540
+Tab puts the one you pick into your question, for Pair to read.
+
+00:05:32.540 --> 00:05:37.450
+While Pair works, the rule over the input says what it does.
+
+00:05:37.450 --> 00:05:40.860
+And the answer streams in, under your question.
+
+00:05:43.190 --> 00:05:47.420
+Type a question; @ names a file for Pair to read.
+
+00:05:48.970 --> 00:05:50.570
+Not sure what to type?
+
+00:05:50.570 --> 00:05:52.620
+Watch the menu over the input.
+
+00:05:54.270 --> 00:05:59.110
+Slash opens the commands, each with its arguments and what it does.
+
+00:05:59.110 --> 00:06:00.770
+Typing narrows them:
+
+00:06:00.770 --> 00:06:04.020
+here, all that slash gen does.
+
+00:06:04.020 --> 00:06:08.070
+And on an empty line, question mark shows every key.
+
+00:06:11.420 --> 00:06:17.600
+/ for commands, @ for files, Alt-↑ to act, ?
+
+00:06:17.600 --> 00:06:18.910
+for every key.
+
+00:06:23.060 --> 00:06:27.080
 A test fails, and you start fixing the wrong file.
 
-00:04:26.010 --> 00:04:29.100
+00:06:27.080 --> 00:06:30.170
 Watch the margin, under the line you change.
 
-00:04:32.770 --> 00:04:36.010
+00:06:33.840 --> 00:06:37.080
 In your terminal, the delivery test fails:
 
-00:04:36.010 --> 00:04:38.700
+00:06:37.080 --> 00:06:39.770
 it wants five attempts, and gets four.
 
-00:04:39.770 --> 00:04:44.120
+00:06:40.840 --> 00:06:45.190
 You guess the backoff is wrong, and change the shift on line twenty.
 
-00:04:45.970 --> 00:04:47.810
+00:06:47.040 --> 00:06:48.880
 Pair saw the red test,
 
-00:04:47.810 --> 00:04:51.170
+00:06:48.880 --> 00:06:52.240
 and an edit in a file the failure doesn’t name.
 
-00:04:51.170 --> 00:04:55.160
+00:06:52.240 --> 00:06:56.230
 The Watcher scores that a wrong turn, worth a word.
 
-00:04:55.160 --> 00:05:00.320
+00:06:56.230 --> 00:07:01.390
 So the Partner reads the code, and speaks once, under the line you changed.
 
-00:05:00.320 --> 00:05:04.750
+00:07:01.390 --> 00:07:05.820
 The cause is the greater-or-equal in worker dot go.
 
-00:05:04.750 --> 00:05:07.170
+00:07:05.820 --> 00:07:08.240
 Alt J goes where it points.
 
-00:05:07.170 --> 00:05:09.720
+00:07:08.240 --> 00:07:10.790
 Your cursor never moves by itself.
 
-00:05:13.550 --> 00:05:18.600
+00:07:14.220 --> 00:07:19.270
 Pair spoke once, where you were looking, and pointed at the real cause.
 
-00:05:22.770 --> 00:05:26.690
+00:07:23.440 --> 00:07:27.360
 You fix one line, and a test somewhere else breaks.
 
-00:05:26.690 --> 00:05:29.840
+00:07:27.360 --> 00:07:30.510
 Watch the statusline, then the ghost text.
 
-00:05:32.510 --> 00:05:35.670
+00:07:33.180 --> 00:07:36.340
 Each time you save, Pair runs your tests,
 
-00:05:35.670 --> 00:05:37.790
+00:07:36.340 --> 00:07:38.460
 in its own pane at the bottom.
 
-00:05:37.790 --> 00:05:40.340
+00:07:38.460 --> 00:07:40.980
 The delivery test is red.
 
-00:05:40.340 --> 00:05:47.230
+00:07:40.980 --> 00:07:47.870
 You fix the check on line thirty-five, from greater-or-equal to greater, and save again.
 
-00:05:47.230 --> 00:05:52.930
+00:07:47.870 --> 00:07:53.570
 Delivery passes now, but a queue test that passed before now fails.
 
-00:05:52.930 --> 00:05:57.100
+00:07:53.570 --> 00:07:57.760
 That is a regression, and the Watcher scores it high.
 
-00:05:57.100 --> 00:05:59.760
+00:07:57.760 --> 00:08:00.500
 Pair says why, under your line:
 
-00:05:59.760 --> 00:06:04.060
-the queue’s lease runs out just as the last attempt starts.
+00:08:00.500 --> 00:08:02.980
+the queue’s lease is only the budget,
 
-00:06:04.060 --> 00:06:07.460
+00:08:02.980 --> 00:08:06.570
+and attempt five starts just as it ends.
+
+00:08:06.570 --> 00:08:10.630
 Alt J goes to its fix, in queue dot go.
 
-00:06:07.460 --> 00:06:11.320
+00:08:10.630 --> 00:08:13.930
 The ghost text shows the old line struck through,
 
-00:06:11.320 --> 00:06:13.180
-and the new one under it.
+00:08:13.930 --> 00:08:15.870
+and the new lines under it.
 
-00:06:13.180 --> 00:06:15.310
+00:08:15.870 --> 00:08:18.000
 Nothing has changed yet.
 
-00:06:15.310 --> 00:06:17.790
+00:08:18.000 --> 00:08:20.480
 Alt Y takes it into your buffer.
 
-00:06:17.790 --> 00:06:21.320
+00:08:20.480 --> 00:08:24.010
 You save, the tests run again, and they pass.
 
-00:06:35.290 --> 00:06:38.950
+00:08:35.580 --> 00:08:39.240
 Pair ran the tests you might skip, caught a regression,
 
-00:06:38.950 --> 00:06:41.340
+00:08:39.240 --> 00:08:41.630
 and showed its fix before you took it.
 
-00:06:45.510 --> 00:06:49.090
+00:08:45.800 --> 00:08:49.380
 You are writing a design note, not code yet.
 
-00:06:49.090 --> 00:06:50.880
+00:08:49.380 --> 00:08:51.170
 Watch the margin of the note.
 
-00:06:52.570 --> 00:06:56.740
+00:08:53.460 --> 00:08:58.413
 You finish a sentence about dead letters, and stop to think.
 
-00:06:58.123 --> 00:07:03.453
+00:08:58.413 --> 00:09:03.743
 When you stop, Pair reads the whole note, and the code it names.
 
-00:07:03.453 --> 00:07:07.253
+00:09:03.743 --> 00:09:07.543
 Its notes land in the margin, each with a sign.
 
-00:07:07.253 --> 00:07:10.763
+00:09:07.543 --> 00:09:11.053
 A question mark is a question the note leaves open.
 
-00:07:10.763 --> 00:07:15.443
+00:09:11.053 --> 00:09:15.733
 The not-equal sign marks two lines that can’t both be true:
 
-00:07:15.443 --> 00:07:18.233
+00:09:15.733 --> 00:09:18.523
 five attempts here, six there.
 
-00:07:18.233 --> 00:07:21.653
+00:09:18.523 --> 00:09:21.943
 The arrow says what the code really does.
 
-00:07:21.653 --> 00:07:25.443
+00:09:21.943 --> 00:09:25.733
 Here, the note is wrong about worker dot go.
 
-00:07:25.443 --> 00:07:27.363
+00:09:25.733 --> 00:09:27.653
 Nothing in the note changed.
 
-00:07:27.363 --> 00:07:29.453
+00:09:27.653 --> 00:09:29.743
 The marks are only in the margin.
 
-00:07:32.413 --> 00:07:34.053
+00:09:32.103 --> 00:09:33.743
 When you are ready to build,
 
-00:07:34.053 --> 00:07:37.613
+00:09:33.743 --> 00:09:37.303
 Pair tasks lists the work the note asks for.
 
-00:07:37.613 --> 00:07:40.183
+00:09:37.303 --> 00:09:39.873
 Nothing is added until you say so.
 
-00:07:42.933 --> 00:07:45.293
+00:09:44.623 --> 00:09:46.983
 Pair read the note like a colleague:
 
-00:07:45.293 --> 00:07:49.423
+00:09:46.983 --> 00:09:51.113
 questions, contradictions, facts, in the margin.
 
-00:07:50.933 --> 00:07:54.033
+00:09:52.623 --> 00:09:55.723
 An empty folder, and an idea.
 
-00:07:54.033 --> 00:07:55.333
+00:09:55.723 --> 00:09:57.023
 No code yet.
 
-00:07:55.333 --> 00:07:57.823
+00:09:57.023 --> 00:09:59.513
 Watch the note, under your last line.
 
-00:08:04.113 --> 00:08:06.873
+00:10:05.203 --> 00:10:07.963
 Pair new, and one sentence:
 
-00:08:06.873 --> 00:08:08.263
+00:10:07.963 --> 00:10:09.353
 what you want to try.
 
-00:08:13.113 --> 00:08:18.263
+00:10:15.003 --> 00:10:20.153
 Pair starts a note with your idea, and asks one question under it.
 
-00:08:18.263 --> 00:08:21.373
+00:10:20.153 --> 00:10:23.263
 You answer on the next line, in a few words.
 
-00:08:23.223 --> 00:08:27.183
+00:10:25.713 --> 00:10:29.673
 Each answer brings the next question, one at a time.
 
-00:08:27.183 --> 00:08:29.533
+00:10:29.673 --> 00:10:32.023
 Here, how the stall happens.
 
-00:08:35.222 --> 00:08:37.423
+00:10:35.946 --> 00:10:38.146
 And whether to cap the steps.
 
-00:08:37.423 --> 00:08:39.513
+00:10:38.146 --> 00:10:40.236
 Three short answers are enough.
 
-00:08:47.676 --> 00:08:52.656
+00:10:46.999 --> 00:10:52.259
 Then Pair suggests a first slice, dimmed, under your answers:
 
-00:08:52.656 --> 00:08:56.096
-two files, what they print, what to poke at,
+00:10:52.259 --> 00:10:57.149
+what to build first, what it prints, and what to leave out for now.
 
-00:08:56.096 --> 00:08:58.466
-and what to leave out for now.
-
-00:08:58.466 --> 00:09:01.246
+00:10:57.149 --> 00:10:59.929
 Alt Y takes it into the note.
 
-00:09:01.246 --> 00:09:04.096
+00:10:59.929 --> 00:11:02.779
 Nothing is written to disk until you save.
 
-00:09:05.946 --> 00:09:11.556
+00:11:04.629 --> 00:11:10.239
 Three questions, three short answers, and a first slice small enough to start.
 
-00:09:15.686 --> 00:09:20.306
-You want the edge cases of a table test written, and you’d rather watch.
+00:11:14.389 --> 00:11:19.289
+You want edge cases added to a table test, and you’d rather watch.
 
-00:09:20.306 --> 00:09:22.876
+00:11:19.289 --> 00:11:21.819
 Watch your code, and the statusline.
 
-00:09:24.466 --> 00:09:27.976
+00:11:24.689 --> 00:11:28.199
 You hand over with Pair drive, and say what you want.
 
-00:09:28.946 --> 00:09:30.946
+00:11:31.069 --> 00:11:33.069
 Pair is the Driver now.
 
-00:09:30.946 --> 00:09:33.426
+00:11:33.069 --> 00:11:35.549
 The statusline says it has the wheel.
 
-00:09:33.426 --> 00:09:36.556
+00:11:35.549 --> 00:11:38.679
 It reads the test and the code first.
 
-00:09:36.556 --> 00:09:41.846
+00:11:38.679 --> 00:11:43.969
 Then it types, into your buffer, where you can see every line arrive.
 
-00:09:41.846 --> 00:09:46.626
+00:11:43.969 --> 00:11:48.749
 It runs the tests on the unsaved buffer, in its own pane at the bottom,
 
-00:09:46.626 --> 00:09:49.116
+00:11:48.749 --> 00:11:51.839
 and hands the wheel back with a short note.
 
-00:09:51.886 --> 00:09:54.046
+00:11:51.839 --> 00:11:53.999
 Nothing is saved yet.
 
-00:09:54.046 --> 00:09:57.086
+00:11:53.999 --> 00:11:57.039
 U takes the whole change away in one step,
 
-00:09:57.086 --> 00:09:59.456
+00:11:57.039 --> 00:11:59.409
 and control R brings it back.
 
-00:10:04.946 --> 00:10:10.256
+00:12:05.899 --> 00:12:11.209
 Pair typed one change in plain sight, tested it, and gave the wheel back.
 
-00:10:11.806 --> 00:10:14.886
+00:12:12.759 --> 00:12:15.839
 Pair is typing, and you change your mind.
 
-00:10:14.886 --> 00:10:17.516
+00:12:15.839 --> 00:12:18.469
 Watch the lines it types, and the chat.
 
-00:10:19.646 --> 00:10:21.696
-Same hand-over as before.
+00:12:21.139 --> 00:12:23.389
+The same hand-over as before.
 
-00:10:28.886 --> 00:10:31.466
+00:12:30.359 --> 00:12:32.939
 Pair starts typing the cases.
 
-00:10:31.466 --> 00:10:33.226
+00:12:32.939 --> 00:12:34.699
 You press any key.
 
-00:10:33.226 --> 00:10:38.596
+00:12:34.699 --> 00:12:39.869
 The typing stops, and what it typed is gone, as if it never started.
 
-00:10:38.596 --> 00:10:42.826
+00:12:39.869 --> 00:12:44.099
 The chat says you have the wheel back, and Pair is the Navigator again.
 
-00:10:44.776 --> 00:10:49.486
+00:12:46.049 --> 00:12:50.759
 Any key takes the wheel back, and nothing Pair typed stays behind.
 
-00:10:53.676 --> 00:10:56.776
+00:12:55.109 --> 00:12:59.089
+Pair writes code when you ask for it, and only then.
+
+00:12:59.089 --> 00:13:03.159
+You ask with slash gen, in one of five shapes.
+
+00:13:03.159 --> 00:13:05.599
+Here is code at your cursor.
+
+00:13:05.599 --> 00:13:09.279
+File makes new files, as buffers to review.
+
+00:13:09.279 --> 00:13:13.319
+Try writes a sample to run, outside your project.
+
+00:13:13.319 --> 00:13:18.079
+Scaffold builds many files and their wiring, away from your project.
+
+00:13:18.079 --> 00:13:21.509
+And board hands the work to another agent.
+
+00:13:21.509 --> 00:13:26.339
+Whatever the shape, nothing reaches your project until you take it.
+
+00:13:27.609 --> 00:13:31.009
+You want a small method, right under your cursor.
+
+00:13:31.009 --> 00:13:34.079
+Watch the gen card in the chat, then your code.
+
+00:13:35.609 --> 00:13:39.269
+In the chat, slash gen here, and what you want.
+
+00:13:39.269 --> 00:13:42.199
+Your cursor in Neovim says where it goes.
+
+00:13:47.882 --> 00:13:51.182
+The request gets a number, and runs on its own.
+
+00:13:51.182 --> 00:13:54.742
+Its card shows the code as a diff, with its keys,
+
+00:13:54.742 --> 00:13:58.852
+and Neovim shows it as ghost lines under your cursor.
+
+00:13:58.852 --> 00:14:01.992
+Alt up picks the card, and K keeps it:
+
+00:14:01.992 --> 00:14:06.572
+the code lands in your buffer, unsaved, as one undo step,
+
+00:14:06.572 --> 00:14:08.642
+and the tests run on it.
+
+00:14:08.642 --> 00:14:13.242
+The thin bar in the sign column marks code that is not yours yet.
+
+00:14:13.242 --> 00:14:17.692
+It stays until you edit it, or say Pair own.
+
+00:14:17.692 --> 00:14:22.102
+Slash undo takes the whole request back, in one step.
+
+00:14:23.912 --> 00:14:26.732
+Asked for, kept with one key,
+
+00:14:26.732 --> 00:14:30.522
+marked until you own it, undone in one step.
+
+00:14:32.052 --> 00:14:35.092
+Your notes say logs go through slog,
+
+00:14:35.092 --> 00:14:38.612
+and you ask for f m t dot printf.
+
+00:14:38.612 --> 00:14:40.262
+Watch the question in the chat.
+
+00:14:41.592 --> 00:14:44.192
+Every request runs against the brief:
+
+00:14:44.192 --> 00:14:48.672
+the session’s goal and your notes, NOTES dot md by default.
+
+00:14:48.672 --> 00:14:52.362
+Pair reads it, and never edits it.
+
+00:14:52.362 --> 00:14:54.942
+This request goes against a line of it,
+
+00:14:54.942 --> 00:14:58.862
+so Pair asks first, and quotes the line.
+
+00:14:58.862 --> 00:15:04.512
+Y goes as asked, N follows the brief, and E opens the note there.
+
+00:15:04.512 --> 00:15:06.032
+You press N.
+
+00:15:06.032 --> 00:15:08.012
+The code follows the brief:
+
+00:15:08.012 --> 00:15:10.392
+slog, not printf.
+
+00:15:10.392 --> 00:15:13.442
+And the card says where it went against your words.
+
+00:15:15.392 --> 00:15:16.712
+Your notes are the brief:
+
+00:15:16.712 --> 00:15:19.922
+Pair asks before it goes against them.
+
+00:15:21.512 --> 00:15:23.472
+You want a new test file.
+
+00:15:23.472 --> 00:15:26.242
+Watch the gen card, then Neovim.
+
+00:15:27.812 --> 00:15:30.962
+Slash gen file asks for new files.
+
+00:15:40.072 --> 00:15:44.572
+It comes back as a buffer to review, and nothing is on disk yet.
+
+00:15:44.572 --> 00:15:46.892
+Its check ran your tests with it:
+
+00:15:46.892 --> 00:15:50.732
+here, the new test fails, and the card says why.
+
+00:15:50.732 --> 00:15:54.362
+Schedule overflows past thirty attempts.
+
+00:15:54.362 --> 00:15:57.142
+K opens the file in Neovim.
+
+00:15:57.142 --> 00:16:01.672
+Its winbar says it is generated, and that colon w takes it.
+
+00:16:03.342 --> 00:16:06.002
+Colon w writes it to its path:
+
+00:16:06.002 --> 00:16:10.302
+your own save is the one way Pair’s code reaches your disk.
+
+00:16:10.302 --> 00:16:14.592
+The tests run, and the bar marks lines that are not yours yet.
+
+00:16:16.462 --> 00:16:21.492
+New files arrive as buffers to review; your :w takes them.
+
+00:16:23.102 --> 00:16:26.842
+You want to see an idea run before it touches your project.
+
+00:16:26.842 --> 00:16:29.012
+Watch the split, then the chat.
+
+00:16:30.482 --> 00:16:34.362
+Slash gen try writes a sample in a folder of its own,
+
+00:16:34.362 --> 00:16:35.872
+outside the project.
+
+00:16:41.602 --> 00:16:44.962
+Pair runs it in its pane, in a sandbox:
+
+00:16:44.962 --> 00:16:49.112
+only that folder is writable, and there is no network.
+
+00:16:49.112 --> 00:16:52.912
+The sample opens in a split, as a real file.
+
+00:16:52.912 --> 00:16:55.932
+Change it, and the run key runs it again.
+
+00:16:55.932 --> 00:16:58.782
+The card says how its run went.
+
+00:16:58.782 --> 00:17:03.152
+Slash keep moves it into the project, as a buffer to review.
+
+00:17:09.821 --> 00:17:14.712
+Try it outside the project; /keep moves in what you want.
+
+00:17:16.321 --> 00:17:20.541
+You want a small command and its test, wired to your code.
+
+00:17:20.541 --> 00:17:21.872
+Watch the gen card.
+
+00:17:23.382 --> 00:17:28.902
+Slash gen scaffold builds many files and their wiring away from your project.
+
+00:17:28.902 --> 00:17:33.752
+With dash dash branch, in a git worktree, on a branch of its own.
+
+00:17:39.672 --> 00:17:43.412
+Pair wrote it, built it and ran the tests there.
+
+00:17:43.412 --> 00:17:46.872
+The card lists every file, new or changed,
+
+00:17:46.872 --> 00:17:50.002
+how the check went, and what it guessed.
+
+00:17:50.002 --> 00:17:55.422
+K puts slash keep on the line, with the scaffold’s files in a menu.
+
+00:17:55.422 --> 00:17:58.662
+Enter keeps one, as a buffer to review.
+
+00:17:58.662 --> 00:18:00.522
+No key keeps them all:
+
+00:18:00.522 --> 00:18:01.932
+you read each one.
+
+00:18:03.982 --> 00:18:08.332
+A scaffold is built aside; you keep it a file at a time.
+
+00:18:12.562 --> 00:18:15.002
+Some work is too big to watch:
+
+00:18:15.002 --> 00:18:17.302
+it should be another agent’s task.
+
+00:18:17.302 --> 00:18:18.372
+Watch the chat.
+
+00:18:19.882 --> 00:18:24.902
+Slash gen board hands it to the board, Shepherdr, as a task.
+
+00:18:24.902 --> 00:18:26.042
+No model runs.
+
+00:18:26.042 --> 00:18:29.262
+Pair writes the task’s brief from yours,
+
+00:18:29.262 --> 00:18:32.832
+and shows the whole command before anything is added.
+
+00:18:32.832 --> 00:18:35.252
+Each pick is one key.
+
+00:18:35.252 --> 00:18:39.892
+Y adds it for later, and D adds it and delegates it.
+
+00:18:39.892 --> 00:18:44.112
+P asks for a plan first, R for research only,
+
+00:18:44.112 --> 00:18:46.802
+and C copies the command.
+
+00:18:46.802 --> 00:18:48.382
+You press D.
+
+00:18:48.382 --> 00:18:52.092
+The board adds the task, and its agent starts on the brief.
+
+00:18:54.022 --> 00:18:56.602
+One request, one key:
+
+00:18:56.602 --> 00:18:58.692
+a task for another agent.
+
+00:19:00.302 --> 00:19:03.942
+While you work, another agent finishes its task.
+
+00:19:03.942 --> 00:19:07.192
+Watch the statusline and the chat, when you save.
+
+00:19:09.882 --> 00:19:12.822
+You type, and Pair holds the news:
+
+00:19:12.822 --> 00:19:15.032
+it never speaks while you type.
+
+00:19:16.682 --> 00:19:20.642
+You save, a breakpoint, and one line says it:
+
+00:19:20.642 --> 00:19:24.882
+in the statusline, and in the chat, with its keys.
+
+00:19:24.882 --> 00:19:29.522
+Pair agents lists every task, the ones that need you first.
+
+00:19:29.522 --> 00:19:36.072
+O opens its report or pull request, and D its branch’s diff, read only.
+
+00:19:36.072 --> 00:19:39.122
+And T opens a terminal in its worktree.
+
+00:19:45.772 --> 00:19:50.682
+Other agents’ news waits for your pause, with keys to what they left.
+
+00:19:52.212 --> 00:19:54.452
+A task is ready to merge.
+
+00:19:54.452 --> 00:19:56.272
+Read it before it lands.
+
+00:19:56.272 --> 00:19:57.782
+Watch the review list.
+
+00:19:59.272 --> 00:20:02.912
+Alt R, on the line of a task ready to merge,
+
+00:20:02.912 --> 00:20:05.352
+opens its branch as a review.
+
+00:20:05.352 --> 00:20:08.842
+Pair review, and the task, does the same.
+
+00:20:08.842 --> 00:20:13.342
+On top, what its reviewer said, and what is not proven.
+
+00:20:13.342 --> 00:20:17.702
+Then what the branch guessed that your brief does not settle.
+
+00:20:17.702 --> 00:20:18.842
+Then its files.
+
+00:20:18.842 --> 00:20:23.022
+K keeps one in your checkout, unsaved and marked,
+
+00:20:23.022 --> 00:20:24.492
+for you to make your own.
+
+00:20:26.362 --> 00:20:30.052
+Review a task’s branch, and keep the pieces you want.
+
+00:20:31.622 --> 00:20:35.042
+Another agent is changing the file you have open.
+
+00:20:35.042 --> 00:20:38.252
+Watch the top of the window, then under your line.
+
+00:20:39.602 --> 00:20:42.902
+Each task’s agent works in its own worktree,
+
+00:20:42.902 --> 00:20:46.002
+and Pair reads what its branch changes.
+
+00:20:46.002 --> 00:20:49.172
+The winbar says this file is one of them.
+
+00:20:49.172 --> 00:20:51.962
+You change the same line, and save.
+
+00:20:55.572 --> 00:20:58.312
+Pair says what the other task writes there,
+
+00:20:58.312 --> 00:21:01.732
+and that whichever merges second meets a conflict.
+
+00:21:01.732 --> 00:21:03.102
+The chat has it too.
+
+00:21:04.972 --> 00:21:08.682
+Pair tells you before two agents’ changes collide.
+
+00:21:10.212 --> 00:21:13.712
+Your notes moved on since your task’s brief was written.
+
+00:21:13.712 --> 00:21:14.762
+Watch the chat.
+
+00:21:17.232 --> 00:21:19.852
+You work on a board task’s branch.
+
+00:21:19.852 --> 00:21:22.792
+Slash brief sync says what the task’s brief
+
+00:21:22.792 --> 00:21:25.882
+on the board lacks from NOTES dot md.
+
+00:21:26.782 --> 00:21:32.492
+Y tells the task’s agent, C copies the command, and N leaves it.
+
+00:21:36.442 --> 00:21:40.472
+/brief sync keeps the board’s task in step with your notes.
+
+00:21:44.902 --> 00:21:48.272
+You can work in several git worktrees at once.
+
+00:21:48.272 --> 00:21:52.492
+A project is the git root of the folder Neovim starts in.
+
+00:21:52.492 --> 00:21:55.452
+So each worktree is a project of its own,
+
+00:21:55.452 --> 00:21:59.262
+with its own session, goal, chat and memory.
+
+00:21:59.262 --> 00:22:03.542
+To switch, go to the Neovim you started in the other worktree,
+
+00:22:03.542 --> 00:22:06.792
+rather than colon c d in this one.
+
+00:22:06.792 --> 00:22:11.132
+A scaffold made with dash dash branch is a worktree too.
+
+00:22:11.132 --> 00:22:14.002
+Open a Neovim there, and it pairs on its own.
+
+00:22:17.932 --> 00:22:21.032
 Your hands are on the code, and a question comes up.
 
-00:10:56.776 --> 00:10:59.486
+00:22:21.032 --> 00:22:23.742
 Watch the line under your cursor.
 
-00:11:01.576 --> 00:11:04.876
+00:22:25.832 --> 00:22:29.132
 Hold Alt T, and ask out loud.
 
-00:11:04.876 --> 00:11:07.826
+00:22:29.132 --> 00:22:32.082
 The meter shows Pair hears you.
 
-00:11:07.826 --> 00:11:12.546
+00:22:32.082 --> 00:22:36.802
 Let go, and whisper dot c p p writes down what it heard,
 
-00:11:12.546 --> 00:11:14.246
+00:22:36.802 --> 00:22:38.502
 on your own machine.
 
-00:11:14.246 --> 00:11:17.756
+00:22:38.502 --> 00:22:41.992
 That is your question, under your line.
 
-00:11:17.756 --> 00:11:22.736
-Then Pair answers in the same place, and points at line thirty-five.
+00:22:41.992 --> 00:22:46.952
+Then Pair answers in the same place, and marks line thirty-five.
 
-00:11:22.736 --> 00:11:24.606
+00:22:46.952 --> 00:22:48.602
 Alt J would go there.
 
-00:11:28.616 --> 00:11:32.596
+00:22:55.272 --> 00:22:59.252
 You asked out loud, and the answer came where you were looking.
 
-00:11:32.596 --> 00:11:35.086
+00:22:59.252 --> 00:23:01.742
 Voice is off until you set it up.
 
-00:11:39.356 --> 00:11:45.026
+00:23:03.452 --> 00:23:06.072
+No whisper dot c p p to build?
+
+00:23:06.072 --> 00:23:08.472
+OpenRouter can hear you instead,
+
+00:23:08.472 --> 00:23:12.262
+and read the answer aloud when you are away from the editor.
+
+00:23:12.262 --> 00:23:17.002
+Name its models and your key in the config, and pair doctor checks them.
+
+00:23:17.002 --> 00:23:19.192
+The recording then leaves your machine.
+
+00:23:23.302 --> 00:23:28.972
 Pair works with or without herdr, the terminal workspace for coding agents.
 
-00:11:45.026 --> 00:11:48.446
+00:23:28.972 --> 00:23:32.392
 Without it, one Neovim holds everything.
 
-00:11:48.446 --> 00:11:50.266
+00:23:32.392 --> 00:23:34.212
 Pair chat opens the chat,
 
-00:11:50.266 --> 00:11:53.576
+00:23:34.212 --> 00:23:37.522
 and Pair’s own pane is a terminal at the bottom.
 
-00:11:53.576 --> 00:11:56.826
+00:23:37.522 --> 00:23:40.752
 Every scene you just saw ran this way.
 
-00:11:56.826 --> 00:12:01.426
+00:23:40.752 --> 00:23:45.252
 With herdr, the chat and Pair’s pane are panes of their own.
 
-00:12:01.426 --> 00:12:07.476
-Pair also sees your other agents on herdr’s board, and terminals outside Neovim.
+00:23:45.252 --> 00:23:50.862
+Pair also sees the agents herdr runs, and terminals outside Neovim.
 
-00:12:07.476 --> 00:12:11.326
+00:23:50.862 --> 00:23:54.712
 Either way, it is the same Pair, with the same keys.
 
-00:12:12.816 --> 00:12:14.976
+00:23:56.202 --> 00:23:58.322
 Here are the keys to remember.
 
-00:12:14.976 --> 00:12:21.236
+00:23:58.322 --> 00:24:04.462
 Alt J goes where Pair points, and Alt Y takes its suggested change.
 
-00:12:21.236 --> 00:12:25.416
-Alt question mark explains the idea behind its words.
+00:24:04.462 --> 00:24:08.382
+In the chat, Alt up picks a message, to act on it.
 
-00:12:25.416 --> 00:12:29.656
-Pair drive hands over one change, U undoes it,
+00:24:08.382 --> 00:24:14.002
+Slash gen here asks for code, and slash undo takes it back.
 
-00:12:29.656 --> 00:12:32.256
-and any key takes the wheel back.
+00:24:14.002 --> 00:24:19.342
+Pair drive hands over one change, and any key takes the wheel back.
 
-00:12:32.256 --> 00:12:35.056
+00:24:19.342 --> 00:24:24.762
+Pair agents shows your other agents, and Alt R reviews a task.
+
+00:24:24.762 --> 00:24:27.522
 Hold Alt T to ask out loud,
 
-00:12:35.056 --> 00:12:38.746
+00:24:27.522 --> 00:24:31.092
 and run pair doctor whenever something seems off.
 
-00:12:38.746 --> 00:12:40.806
+00:24:31.092 --> 00:24:33.152
 Pairing buddy is on GitHub.
 
-00:12:40.806 --> 00:12:41.836
+00:24:33.152 --> 00:24:34.182
 Happy pairing.
