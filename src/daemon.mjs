@@ -25,6 +25,7 @@ import {acquireOwner} from './owner.mjs';
 import {EditorPaneHost, HerdrPaneHost} from './pane-hosts.mjs';
 import {Panes, PaneWatch} from './pane-watch.mjs';
 import {NvimPanes} from './nvim-panes.mjs';
+import {TASK_CHANGES_MS, TaskChanges, taskFiles} from './overlap.mjs';
 import {openPartner} from './partner.mjs';
 import {Pace} from './pace.mjs';
 import {probeModel} from './probe.mjs';
@@ -75,14 +76,15 @@ const timestamp = () => new Date().toTimeString().slice(0, 8);
 const defaultLog = line => process.stderr.write(`${timestamp()} ${line}\n`);
 
 /**
- * `probe(role)` checks that a model answers (see probe.mjs); tests pass their own, a short `keepWarmMs`, and a short
- * `agentsPollMs` for the agent relay's board and herdr. With `configFile`, the daemon takes changes to it as they are
+ * `probe(role)` checks that a model answers (see probe.mjs); tests pass their own, a short `keepWarmMs`, a short
+ * `agentsPollMs` for the agent relay's board and herdr, and a short `taskChangesPollMs` for what the board's tasks
+ * change. With `configFile`, the daemon takes changes to it as they are
  * saved (see reload.mjs); `modelsFor(config)` builds the models of a config, at start and after a change, and
  * `decisionFor(config)` its decision model (`{models, model}`, or null; see decision.mjs).
  */
 export async function startDaemon(config, {
   configFile = null, modelsFor = createPairModels, pairModels = modelsFor(config), decisionFor = createDecisionModel, probe, log = defaultLog, keepWarmMs = KEEP_WARM_MS,
-  idleEndMs = IDLE_END_MS, aloneEndMs = ALONE_END_MS, agentsPollMs,
+  idleEndMs = IDLE_END_MS, aloneEndMs = ALONE_END_MS, agentsPollMs, taskChangesPollMs = TASK_CHANGES_MS,
 } = {}) {
   mkdirSync(config.dataDir, {recursive: true, mode: 0o700});
   mkdirSync(join(config.dataDir, 'runs'), {recursive: true}); // the output of the tests run on save, one file per session
@@ -150,6 +152,31 @@ export async function startDaemon(config, {
   const agents = config.agents
     ? new AgentBoard({board: config.board, pollMs: agentsPollMs, log, wanted: () => [...clients].some(client => client.session), onChange: change => { for (const relay of relays.values()) relay.hear(change); }})
     : null;
+
+  // What the board's working tasks of each repo change on their branches, read while a Neovim is connected (overlap.mjs).
+  const taskChanges = new TaskChanges({board: config.board, log});
+  const changesReads = new Map(); // session -> the read under way
+
+  /**
+   * Reads what the working tasks of `session`'s repo change, into its state (the overlap moment) and, when it changed,
+   * to its Neovims (the winbar note). A read under way is not started again; one the board cannot answer keeps the last.
+   */
+  function readTaskChanges(session) {
+    if (changesReads.has(session) || !clientsOf(session, 'editor').length) return changesReads.get(session);
+    const reading = taskChanges.read({root: session.root, space: session.state.board?.space ?? null, own: session.state.board?.task?.id ?? null})
+      .then(tasks => {
+        if (!tasks || !live.has(session.root)) return;
+        session.receive({kind: 'task_changes', tasks});
+        const shown = {type: 'task_files', files: taskFiles(tasks, session.root)};
+        if (JSON.stringify(shown) === JSON.stringify(session.taskFilesShown ?? {type: 'task_files', files: []})) return;
+        session.taskFilesShown = shown;
+        notify(session, 'editors', shown);
+      }, error => log(`[${basename(session.root)}] overlap: ${error.message}`))
+      .finally(() => changesReads.delete(session));
+    changesReads.set(session, reading);
+    return reading;
+  }
+  const changesTimer = setInterval(() => { for (const session of live.values()) readTaskChanges(session); }, taskChangesPollMs);
 
   // A session's own conversation, or one of its /gen requests' (see gen.mjs).
   const sessionOfConversation = id => [...live.values()].find(session => session.owns(id));
@@ -301,6 +328,7 @@ export async function startDaemon(config, {
     if (changed.includes('board')) {
       readContext = projectContext({board: config.board});
       if (agents) agents.board = config.board;
+      taskChanges.board = config.board;
     }
     if (changed.includes('voice')) {
       for (const listener of listeners.values()) listener.close();
@@ -585,6 +613,9 @@ export async function startDaemon(config, {
     if (client.role === 'editor' && session.testsShown) sendMessage(client.socket, session.testsShown);
     if (client.role === 'editor' && session.runShown) sendMessage(client.socket, session.runShown);
     if (client.role === 'editor' && session.runLineShown) sendMessage(client.socket, session.runLineShown);
+    // The files the board's working tasks change: the winbar note on those open, read now for the first Neovim.
+    if (client.role === 'editor' && session.taskFilesShown) sendMessage(client.socket, session.taskFilesShown);
+    if (client.role === 'editor') readTaskChanges(session);
     // The files of /gen file requests still to review, as buffers: a Neovim that restarted lost them.
     if (client.role === 'editor') for (const files of session.gen.reopen()) sendMessage(client.socket, files);
     // And the code taken from /gen that is not the user's yet: ┊ again on its lines, found by their text.
@@ -643,10 +674,11 @@ export async function startDaemon(config, {
     });
   }
 
-  /** /brief and :Pair brief (see gen.mjs): the chat says what it did, and the Neovim that asked does too. */
+  /** /brief and :Pair brief, and their sync (see gen.mjs): the chat says what it did, and the Neovim that asked does too. */
   async function briefFrom(client, session, message) {
-    const text = await session.gen.pinBrief({file: typeof message.file === 'string' ? message.file : null, off: message.off === true});
-    if (client.role === 'editor') sendMessage(client.socket, {type: 'message', sender: 'system', text, at: Date.now()});
+    const text = message.sync === true ? await session.gen.syncBrief({from: client.role === 'editor' ? 'editor' : 'chat'})
+      : await session.gen.pinBrief({file: typeof message.file === 'string' ? message.file : null, off: message.off === true});
+    if (client.role === 'editor' && text) sendMessage(client.socket, {type: 'message', sender: 'system', text, at: Date.now()});
   }
 
   /** What a /gen try says to the Neovim that asked, which may have no chat pane to show it. */
@@ -1018,6 +1050,7 @@ export async function startDaemon(config, {
     async close() {
       configWatch?.close();
       clearInterval(ticker);
+      clearInterval(changesTimer);
       health.stop();
       decision?.stop();
       agents?.stop();

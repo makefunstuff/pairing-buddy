@@ -73,3 +73,15 @@ export async function gitBranchDiff(root, base, branch, maxBytes = 4 << 20) {
   const {stdout} = await run('git', ['-C', root, 'diff', '--no-color', `${base}...${branch}`], {timeout: 10_000, maxBuffer: maxBytes});
   return stdout;
 }
+
+/**
+ * What a task's branch changes, as `git diff -U0` (changed lines, no context): in its `worktree` against where it left
+ * `base`, its commits and the changes its agent has not committed yet; without one, `base...branch`. Read only.
+ */
+export async function gitTaskDiff(root, base, branch, {worktree = null, maxBytes = 4 << 20} = {}) {
+  const diff = ['diff', '--no-color', '--no-ext-diff', '--no-renames', '--src-prefix=a/', '--dst-prefix=b/', '-U0'];
+  const options = {timeout: 10_000, maxBuffer: maxBytes};
+  if (!worktree) return (await run('git', ['-C', root, ...diff, `${base}...${branch}`], options)).stdout;
+  const left = (await run('git', ['-C', worktree, 'merge-base', base, 'HEAD'], options)).stdout.trim();
+  return (await run('git', ['-C', worktree, ...diff, left], options)).stdout;
+}

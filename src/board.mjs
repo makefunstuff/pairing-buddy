@@ -2,8 +2,8 @@
 // branch, pull request and report) and the few command lines it composes for you. Every call is the board's own
 // command with a list of words, never a shell. Pair reads the board by itself; it writes to it only when you pick a
 // choice that names what it does (/gen board's picks: add only, or add and delegate, with a plan first or for research
-// only; in a task's review, a tell, "merge it" told to its agent, or archive), and it never merges, stops or sets
-// anything.
+// only; in a task's review, a tell, "merge it" told to its agent, or archive; /brief sync's tell), and it never merges,
+// stops or sets anything.
 import {execFile} from 'node:child_process';
 import {basename} from 'node:path';
 

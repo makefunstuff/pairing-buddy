@@ -4,7 +4,9 @@ import assert from 'node:assert/strict';
 import {mkdirSync, realpathSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {test} from 'node:test';
-import {briefEmpty, briefLine, briefText, exceptionKey, findQuote, parseCheck, parseConflict, readBrief} from '../src/brief.mjs';
+import {
+  briefEmpty, briefLine, briefSync, briefText, exceptionKey, findQuote, handoffBrief, inSync, parseCheck, parseConflict, readBrief, syncLines, syncTell,
+} from '../src/brief.mjs';
 import {scratch} from './temp.mjs';
 
 const NOTES = '# Orders\n\nThe store: SQLite, one file next to the binary. No server.\nStatuses: new, paid, shipped.\n';
@@ -88,4 +90,42 @@ test('the check after: at most three ≠ brief at real lines of the code, and th
   assert.deepEqual(guessed, ['the default status is new', 'rows sorted newest first', 'cursor paging']);
   const asAsked = findQuote(brief, 'note', 3, 'SQLite');
   assert.equal(parseCheck(answer, brief, pieces, new Set([exceptionKey(asAsked)])).contradicts.length, 1, 'the line the user went against is no news');
+});
+
+test('on a task\'s branch, its brief on the board is part of the brief: the model reads it, a quote may come from it', async () => {
+  const root = project();
+  const task = {id: 'SHO-74', title: 'Orders API', brief: 'Build the orders API.\nUse cents for money.'};
+  const brief = await readBrief({root, task, read});
+  assert.equal(briefLine(brief), 'NOTES.md + board task SHO-74 with its brief');
+  assert.match(briefText(brief), /Board task SHO-74: Orders API\nIts brief on the board:\nBuild the orders API\.\nUse cents for money\.\nNote NOTES\.md:/);
+  assert.deepEqual(findQuote(brief, 'task', null, 'cents for money'), {source: 'task', line: null, text: 'Use cents for money.'});
+  assert.equal((await readBrief({root, task: {...task, brief: '  '}, read})).task.brief, null, 'an empty brief is none');
+});
+
+test('/brief sync: the note\'s lines the task\'s brief lacks, the quotes the note no longer has, the decisions since', async () => {
+  const root = project();
+  const old = await readBrief({root, read: async () => '# Orders\n\nThe store: SQLite, one file next to the binary. No server.\nStatuses: new, paid.\n'});
+  // The task's brief as /gen board wrote it, from the note as it was then.
+  const written = handoffBrief({words: 'Build the orders API.', brief: old});
+  const brief = await readBrief({root, task: {id: 'SHO-74', title: 'Orders API', brief: written}, read});
+  const log = '# Decisions\n\n## 2026-10-28 · Admin is read-only for now\n\n- Status: decided\n- Where: NOTES.md:4\n- Consequences:\n\n'
+    + '## 2026-10-27 · Build the orders API\n\n- Status: decided\n- Where: NOTES.md:1\n- Consequences:\n\n'
+    + '## 2026-10-26 · Use MySQL\n\n- Status: superseded by 2026-10-27 · SQLite\n- Where: NOTES.md:3\n- Consequences:\n';
+  const sync = briefSync(brief, log);
+  assert.deepEqual(sync, {
+    added: [{line: 4, text: 'Statuses: new, paid, shipped.'}],
+    gone: ['Statuses: new, paid.'],
+    decided: [{date: '2026-10-28', title: 'Admin is read-only for now'}],
+    more: 0,
+  }, 'what the brief has is not said again; a superseded decision is none');
+  assert.deepEqual(syncLines(brief, sync), [
+    '+ Statuses: new, paid, shipped. (NOTES.md:4)',
+    '- Statuses: new, paid. (no longer in NOTES.md)',
+    '+ decided 2026-10-28: Admin is read-only for now',
+  ]);
+  const tell = syncTell(brief, sync);
+  assert.match(tell, /^The brief in Pair \(NOTES\.md\) changed since your brief was written\. Take this in:\n\nIt says now:\n- Statuses: new, paid, shipped\. \(NOTES\.md:4\)\n\nIt no longer says:\n- Statuses: new, paid\.\n\nDecided since \(decisions\.md\):\n- 2026-10-28: Admin is read-only for now$/);
+  assert.match(syncTell(brief, sync, {waiting: true}), /\n\nThis is no go: keep waiting for mine\.$/, 'a task that waits is not given its go by it');
+  assert.ok(inSync(briefSync(await readBrief({root, task: {id: 'SHO-74', title: 'x', brief: handoffBrief({words: 'x', brief})}, read}))), 'a brief written from the note now has all of it');
+  assert.equal(briefSync(await readBrief({root, read})), null, 'no board task: nothing to sync with');
 });

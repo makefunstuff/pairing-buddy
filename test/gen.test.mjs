@@ -1526,3 +1526,65 @@ test('a /gen question asked in the chat says which request asks: the pane gives 
   pair.gen.cancel();
   await asking;
 });
+
+test('/brief sync: what the task\'s brief on the board lacks, with the decisions since; y tells its agent, c copies, n leaves it', async () => {
+  const notes = `${SHOP_NOTES}Statuses: new, paid, shipped.\n`;
+  const task = status => ({id: 'SHO-74', title: 'Orders', status, place: 'p:here:shop', branch: 'work/74-orders', desc: 'Build the orders.\n\n> Money in integer cents, never floats. (NOTES.md:3)\n> SQLite, one file next to the binary. (NOTES.md:4)\n> Statuses: new, paid. (NOTES.md:5)'});
+  const board = fakeShepherdr(scratch('pair-board-'), {...SHOP, tasks: [task('work')]});
+  const {root, pair, of, said, sent} = genSession([], {board: board.command, notes});
+  writeFileSync(join(root, 'decisions.md'), '# Decisions\n\n## 2026-10-28 · Admin is read-only for now\n\n- Status: decided\n- Where: NOTES.md:5\n- Consequences:\n');
+  assert.match(await pair.gen.syncBrief(), /^No board task on this branch/, 'off a task\'s branch there is nothing to sync with');
+  pair.receive({kind: 'context', branch: 'work/74-orders', git: {}, board: {space: 'shop', task: {id: 'SHO-74', title: 'Orders', state: 'working'}, working: 0, waiting: []}});
+
+  const ask = async (status, from = 'chat') => {
+    board.set({...SHOP, tasks: [task(status)]});
+    const before = of('confirm').length;
+    const asking = pair.gen.syncBrief({from});
+    if (from === 'chat' && status !== 'done') await until(() => of('confirm').length > before);
+    return {asking, confirm: of('confirm').at(-1)};
+  };
+  let {asking, confirm} = await ask('work');
+  assert.equal(confirm.text, '/brief sync: NOTES.md + goal "add helpers" + board task SHO-74 with its brief. SHO-74\'s brief on the board lacks:\n'
+    + '+ Statuses: new, paid, shipped. (NOTES.md:5)\n- Statuses: new, paid. (no longer in NOTES.md)\n+ decided 2026-10-28: Admin is read-only for now\n'
+    + 'SHO-74\'s agent is at work: this goes as a message, not a new brief.');
+  assert.equal(confirm.hint, 'y tell SHO-74 · c copy the command · n leave it');
+  assert.deepEqual([confirm.copy, confirm.keys], [true, ['c']]);
+  assert.match(confirm.command, /^.*shepherdr task tell SHO-74 'The brief in Pair \(NOTES\.md\) changed since your brief was written/);
+  assert.ok(board.calls().every(([verb, sub]) => verb === 'task' && sub === 'show'), 'nothing goes to the board before the pick');
+  pair.answer(confirm.id, true);
+  await asking;
+  const [tell] = board.calls().filter(([, sub]) => sub === 'tell');
+  assert.deepEqual(tell.slice(0, 3), ['task', 'tell', 'SHO-74']);
+  assert.match(tell[3], /It says now:\n- Statuses: new, paid, shipped\. \(NOTES\.md:5\)\n\nIt no longer says:\n- Statuses: new, paid\.\n\nDecided since \(decisions\.md\):\n- 2026-10-28: Admin is read-only for now$/);
+  assert.equal(said().at(-1), 'Told SHO-74.');
+  assert.match(pair.today().rows.filter(row => row.label === 'board').at(-1).text, /^told SHO-74: The brief in Pair/);
+
+  ({asking, confirm} = await ask('todo'));
+  assert.match(confirm.text, /\nSHO-74 waits for a go: the message says this is none\.$/);
+  assert.match(confirm.command, /This is no go: keep waiting for mine\.'$/);
+  pair.answer(confirm.id, false, undefined, 'c');
+  await asking;
+  assert.match(said().at(-1), /^Nothing told\. The command, to run yourself: .*shepherdr task tell SHO-74 /);
+  ({asking, confirm} = await ask('work'));
+  pair.answer(confirm.id, false);
+  await asking;
+  assert.equal(said().at(-1), 'Nothing told: SHO-74\'s brief stays as it is.');
+  assert.equal(board.calls().filter(([, sub]) => sub === 'tell').length, 1, 'only y told it');
+
+  ({asking} = await ask('done'));
+  assert.match(await asking, /\nSHO-74 is done, so there is no agent to tell\.$/);
+
+  // From Neovim the pick is there: the lines, what y does, and the tell to send with board_do.
+  ({asking} = await ask('need', 'editor'));
+  assert.equal(await asking, null, 'Neovim shows the lines with its pick');
+  assert.match(said().at(-1), /\nPick in Neovim: tell SHO-74: its agent is at work, so this goes as a message, not a new brief, or copy the command\.$/);
+  const offer = sent.filter(message => message.type === 'brief_sync').at(-1);
+  assert.equal(offer.via, 'editor');
+  assert.deepEqual([offer.task, offer.lines.length], ['SHO-74', 3]);
+  assert.match(offer.text, /^The brief in Pair \(NOTES\.md\)/);
+  assert.equal(board.calls().filter(([, sub]) => sub === 'tell').length, 1, 'Neovim sends it on its pick');
+
+  // A task whose brief has it all.
+  board.set({...SHOP, tasks: [{...task('work'), desc: `Build the orders.\n${notes}\nAdmin is read-only for now.`}]});
+  assert.equal(await pair.gen.syncBrief(), '/brief sync: NOTES.md + goal "add helpers" + board task SHO-74 with its brief. SHO-74\'s brief has all of it.');
+});

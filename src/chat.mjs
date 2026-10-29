@@ -48,6 +48,7 @@ export const COMMANDS = [
   ['/keep', '[path]', 'keep a file of the newest /gen try or scaffold: a new file as a buffer to review (:w takes it), a change as suggestions'],
   ['/gen cancel', '', 'stop the /gen request that runs or waits'],
   ['/brief', '[note|off]', 'what /gen runs against: the goal, the board task and a note (NOTES.md); pin another, or none'],
+  ['/brief sync', '', 'how the brief differs from its board task\'s brief, with the decisions since: y tells its agent, c copies'],
   ['/undo', '', 'undo Pair\'s last change: an edit of the Driver\'s, a suggestion you took, a /gen request'],
   ['/today', '', 'what Pair did here today'],
   ['/agents', '', 'your other agents and board tasks, the ones that need you first'],
@@ -98,7 +99,7 @@ export function parseInput(line) {
   if (command === '/gen' && arg === 'drop') return {type: 'gen_copy_delete'};
   if (command === '/keep') return {type: 'keep', path: arg};
   if (command === '/review') return {type: 'review', task: arg};
-  if (command === '/brief') return !arg ? {type: 'brief'} : arg === 'off' ? {type: 'brief', off: true} : {type: 'brief', file: arg};
+  if (command === '/brief') return !arg ? {type: 'brief'} : arg === 'off' ? {type: 'brief', off: true} : arg === 'sync' ? {type: 'brief', sync: true} : {type: 'brief', file: arg};
   if (command === '/gen') {
     // A request may take several lines (Alt-Enter): they go as typed.
     const request = text.slice(command.length).trim();
