@@ -34,7 +34,7 @@ Type "k"
 Sleep 1.5s
 Type "q"
 Sleep 300ms
-Type "G"
+Type "Gzz"
 Sleep 2s
 Screenshot out/gen-scaffold-kept.png
 Sleep 1s

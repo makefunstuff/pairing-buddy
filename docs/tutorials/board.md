@@ -53,7 +53,7 @@ worktree, `r` its review.
 
 ## 4. Review it back
 
-On the line of a task ready to merge, `Alt-r`, or:
+On Pair's statusline line about a task ready to merge, `Alt-r` (`r` on it in `:Pair agents`), or:
 
 ```vim
 :Pair review HKD-31
@@ -85,7 +85,7 @@ While a task's agent works, your note may move on. On the task's branch, `/brief
 `:Pair brief sync`) says what the task's brief on the board lacks: `+` a line of your note it does not have, `-` a
 line it quotes that your note no longer has, `+ decided` a decision logged since.
 
-![/brief sync: the lines the task's brief lacks, and the message it would send its agent](../images/brief-sync.png)
+![/brief sync: the lines the task's brief lacks, the message it would send its agent, and y, c, n](../images/brief-sync.png)
 
 `y` tells its agent (`shepherdr task tell`), `c` copies the command, `n` leaves it. A task waiting for a go is told
 that this is no go.

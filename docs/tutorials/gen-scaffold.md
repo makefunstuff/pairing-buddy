@@ -43,7 +43,7 @@ There is no key that keeps them all: you read each one before it is yours.
 A change to your file lands on your buffer as it is now, so lines you typed since stay. `Alt-y` takes each
 suggestion:
 
-![k on queue.go: its change shown in your queue.go as a suggestion, Alt-y takes it](../images/gen-scaffold-kept.png)
+![k on queue.go: its change under line 33 of your queue.go as a suggestion, M-y takes it](../images/gen-scaffold-kept.png)
 
 From the chat, `/keep internal/health/health.go` keeps one file, and `/gen drop` deletes the copy.
 

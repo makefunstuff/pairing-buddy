@@ -36,14 +36,14 @@ Your edits in a try are not watched: Pair makes no remarks on it.
 To bring it into the project, give it a path. In the sample's window:
 
 ```vim
-:Pair keep internal/queue/recent.go
+:Pair keep cmd/recent/main.go
 ```
 
-or `/keep internal/queue/recent.go` in the chat. It opens as a buffer to review, unsaved, exactly like a
+or `/keep cmd/recent/main.go` in the chat. It opens as a buffer to review, unsaved, exactly like a
 [`/gen file`](gen-here-and-file.md#new-files) one: `:w` in it takes it. The path must be new; `/keep` never writes
 over a file.
 
-![Kept: the sample as a buffer to review at internal/queue/recent.go, :w takes it](../images/gen-keep.png)
+![Kept: the sample as a buffer to review at cmd/recent/main.go, :w takes it](../images/gen-keep.png)
 
 If you do not keep it, do nothing: the folder stays seven days after it last changed or ran, then goes. `/gen tries`
 lists the folders still there.

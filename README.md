@@ -93,7 +93,8 @@ part, then `pair` in the herdr pane next to Neovim (or `:Pair chat` in Neovim), 
 [Getting started](docs/getting-started.md) walks through it, and the
 [first ten minutes](docs/tutorials/first-ten-minutes.md) tutorial does it step by step, with what `pair doctor`
 shows. Optionally add the [shell hook](docs/cli.md#pair-shell-hook) (`eval "$(pair shell-hook bash)"`, or zsh, or
-fish) to your shell's rc file: Pair then gets every command you run, with its exit code, from the shell itself, and in zsh your typing too.
+fish) to your shell's rc file: Pair then gets every command you run, with its exit code, from the shell itself, and
+in zsh your typing too.
 
 **Let your AI agent set it up.** Tell your coding agent "follow
 https://github.com/makefunstuff/pairing-buddy/blob/main/INSTALL.md": [INSTALL.md](INSTALL.md) takes it from a fresh

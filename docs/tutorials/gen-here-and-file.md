@@ -28,7 +28,7 @@ drafts new files as buffers you review and take with `:w`. Either way your disk 
 4. `Alt-y` takes it into your buffer, unsaved, as one undo step. `:Pair dismiss` drops it instead. On the gen card,
    `Alt-↑` then `k` takes it too.
 
-   ![Taken: the code in the buffer marked ┊ in the sign column, ✓ taken on the card, 4 generated in the statusline](../images/gen-taken.png)
+   ![Taken: the code in the buffer, unsaved, ✓ taken on the card, ┊ 4 generated in the statusline](../images/gen-taken.png)
 
 ![/gen here from Alt-g to taken](../images/gen-here.gif)
 

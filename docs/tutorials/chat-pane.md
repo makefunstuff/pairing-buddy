@@ -13,8 +13,8 @@ is doing now.
 
 ## 2. Ask
 
-Type a question and `Enter`. `Alt-Enter` (or `Ctrl-J`) starts a new line. `↑` and `↓` on an empty line go through
-what you asked before.
+Type a question and `Enter`. `Alt-Enter` (or `Ctrl-J`) starts a new line. `↑` and `↓` move between the lines you type,
+and from the first or last one through what you asked before.
 
 - `@` lists the project's files: `@internal/queue/queue.go` names one for Pair to read; `Tab` or `Enter` inserts it.
 - `@here` sends the lines you selected last in Neovim with the question, else the line you are on.

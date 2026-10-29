@@ -17,6 +17,6 @@ Type "h"
 Type ":echo"
 Enter
 Show
-Sleep 1.5s
+Sleep 4s
 Screenshot out/worktrees.png
 Sleep 1s

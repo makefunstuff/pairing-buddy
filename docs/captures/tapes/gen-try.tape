@@ -25,7 +25,7 @@ Sleep 16s
 Screenshot out/gen-try.png
 Ctrl+w
 Type "j"
-Type ":Pair keep internal/queue/recent.go"
+Type ":Pair keep cmd/recent/main.go"
 Sleep 400ms
 Enter
 Sleep 3s

@@ -9,6 +9,12 @@ Sleep 1.5s
 Type ":botright vnew | setlocal nonumber signcolumn=no | vertical resize 56 | terminal $CAP_REPO/bin/pair.mjs chat"
 Enter
 Sleep 2.5s
+Ctrl+w
+Type "h"
+Type ":echo"
+Enter
+Ctrl+w
+Type "l"
 Type "i"
 Sleep 300ms
 Show
@@ -16,7 +22,7 @@ Sleep 800ms
 Type "/brief sync"
 Sleep 400ms
 Enter
-Sleep 3s
+Sleep 2s
 Screenshot out/brief-sync.png
 Type "y"
 Sleep 2s

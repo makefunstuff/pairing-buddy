@@ -52,7 +52,8 @@ the fix. Run it again after each fix.
 
 ![pair doctor: config, service, daemon, plugin, Neovim, herdr, the pane's sandbox, voice, and each model answering](../images/doctor.png)
 
-The lines you need for a first session are `config`, `daemon`, `plugin` and your models (`watcher`, `partner`).
+The lines you need for a first session are `config`, `daemon`, `plugin` and your model: one line, `models`, when
+both roles share one model as above, or `watcher` and `partner` when each has its own, as in the picture.
 `neovim` says `none connected` until a Neovim is open; `voice` is off until you set it up ([Voice](voice.md)).
 
 ## 5. Open a project
