@@ -61,8 +61,9 @@ stay herdr's:
 - **A task's report is found by the words of `shepherdr artifact list`**, which has no JSON: the newest artifact its
   agent or reviewer made. A change of that line's format in Shepherdr would hide reports (pull requests still open).
 - **The diff is against the branch the repository merges into** (origin's default, else `main`), not the commit the
-  task started from, and only for a task whose repository is on this machine. Another machine's tasks open their pull
-  request only.
+  task started from, and only for a task whose repository is on this machine.
+- **Another machine's tasks** (Shepherdr lists them too) are only their line: `o`, `d` and `t` open nothing of
+  theirs.
 - **In Neovim's statusline only `Alt-o`** opens what a task left behind; `Alt-d` and `Alt-t` are Pair's own keys
   (a decision, listening), so the diff and the terminal are in `:Pair agents` and on the chat pane's line.
 - **`/gen board` adds for later only**, and does not let you edit the brief before it adds it.

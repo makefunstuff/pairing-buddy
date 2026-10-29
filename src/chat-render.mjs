@@ -482,10 +482,13 @@ export function relayKeys(item) {
   return {key: item.key, title: item.kind === 'task' ? item.id : item.title, live: true, open: item.kind === 'task', diff: Boolean(item.branch), term: Boolean(item.where)};
 }
 
-/** The keys of a relayed line (see relayKeys), in the order its action line shows them: [key, shown, what]. */
+/**
+ * The keys of a relayed line (see relayKeys), in the order its action line shows them: [key, shown, what]; none once
+ * the line is answered or newer news took its place.
+ */
 export function relayActions(entry) {
   const agent = entry?.meta?.agent;
-  if (!agent) return [];
+  if (!agent?.live) return [];
   return [['o', agent.open, 'open'], ['d', agent.diff, 'diff'], ['t', agent.term, 'terminal']].filter(([, on]) => on).map(([key, , what]) => [key, key, what]);
 }
 

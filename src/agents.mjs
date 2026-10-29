@@ -2,6 +2,7 @@
 // polled every few seconds. Pair only reads them: the board through board.mjs, herdr through `agent.list`, and git for
 // where each task's worktree is. What it does is focus an agent's pane, and find what a task left behind (its report
 // or pull request, its branch's diff, its worktree) when you ask.
+import {existsSync} from 'node:fs';
 import {basename} from 'node:path';
 import {Board} from './board.mjs';
 import {gitBaseBranch, gitBranchDiff, gitWorktrees} from './git.mjs';
@@ -100,6 +101,7 @@ export class AgentBoard {
     this.spacesAt = 0;
     this.shown = new Map(); // task id -> {status, sub, task}: what task show said, read again when its status changes
     this.finished = new Map(); // key -> when a task was seen to finish
+    this.worktrees = new Map(); // task id -> its worktree, as last found: a done task's is gone, but it is still its own
     this.failing = {}; // per source, the error of its last poll
   }
 
@@ -199,7 +201,11 @@ export class AgentBoard {
     const worktrees = new Map(await Promise.all(folders.map(async path => [path, await gitWorktrees(path)])));
     return full.map(task => {
       const path = spaces.get(task.space)?.path;
-      return {...task, repo: path ? basename(path) : task.space ?? null, where: (path && task.branch && worktrees.get(path)?.get(task.branch)) ?? null};
+      const found = (path && task.branch && worktrees.get(path)?.get(task.branch)) ?? null;
+      if (found) this.worktrees.set(task.id, found);
+      // A done task's worktree went with its merge: where it was still tells a session in it that it is its own.
+      const where = found ?? (task.status === 'done' ? this.worktrees.get(task.id) ?? null : null);
+      return {...task, repo: path ? basename(path) : task.space ?? null, where};
     });
   }
 
@@ -222,12 +228,14 @@ export class AgentBoard {
    * `error` says why there is none. Read when you ask, never polled.
    */
   async leftBehind(key, what) {
-    const item = this.items?.find(other => other.key === key);
-    if (!item) return {error: 'it is not on the list any more'};
+    const found = this.items?.find(other => other.key === key);
+    if (!found) return {error: 'it is not on the list any more'};
+    const item = found.kind === 'task' && found.where && !existsSync(found.where) ? {...found, where: null} : found; // a done task's went with its merge
     const name = item.kind === 'task' ? item.id : item.title;
     const far = item.machine ? ` (on ${item.machine})` : '';
     if (what === 'open') {
       if (item.kind !== 'task') return {error: `${name} is an agent of your own, with no report or pull request`};
+      if (item.machine) return {error: `${name} is a task of ${item.machine}: Pair reads no more of it than its line`};
       const report = item.machine ? null : await this.shepherdr?.report(item.id).catch(() => null);
       const number = item.pr?.match(/\/pull\/(\d+)/)?.[1];
       const links = [...(report ? [{label: 'its report', url: report}] : []), ...(item.pr ? [{label: `its pull request${number ? ` #${number}` : ''}`, url: item.pr}] : [])];

@@ -595,7 +595,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
         break;
       case 'agents':
         // The relayed line, with the keys for what its task left behind; it loses them once it is answered.
-        for (const entry of state.entries) if (entry.meta?.agent) entry.meta.agent.live = false;
+        for (const entry of [...state.entries, ...state.held]) if (entry.meta?.agent) entry.meta.agent.live = false;
         if (message.item) arrive({kind: 'note', text: `◇ ${message.text}${message.more ? ` (+${message.more} more · /agents)` : ''}`, meta: {agent: relayKeys(message.item)}});
         break;
       case 'agent_list':

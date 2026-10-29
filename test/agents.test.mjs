@@ -155,11 +155,17 @@ test('the board is read through its command and git, herdr through agent.list; f
     assert.equal(board.calls().filter(call => call.join(' ') === 'task show SHO-7 --json').length, 2, 'read again only when its status changed');
     await agents.focus('task:SHO-7');
     assert.deepEqual(herdr.focused, ['w7:p1']);
+    board.set({spaces: [{name: 'shop', key: 'SHO', path: repo}], tasks: tasks('done')});
+    execFileSync('git', ['-C', repo, 'worktree', 'remove', '--force', worktree]);
+    await agents.poll();
+    assert.equal(agents.items[0].where, worktree, 'done, its worktree gone with the merge: still where it was, so a session there knows it is its own');
+    assert.deepEqual(await agents.leftBehind('task:SHO-7', 'term'), {error: 'SHO-7 has no worktree on this machine: it is done, and it went with the merge'});
 
+    const heard = changes.length;
     board.set({down: true});
     await agents.poll();
     await agents.poll();
-    assert.equal(changes.length, 1, 'a board that fails changes nothing');
+    assert.equal(changes.length, heard, 'a board that fails changes nothing');
     assert.equal(logged.filter(line => line.startsWith('agents: board:')).length, 1, 'and is logged once');
   } finally {
     await herdr.close();

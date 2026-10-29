@@ -60,6 +60,7 @@ test('a title the board takes is one line of at most 32 characters, cut at a wor
   assert.equal(boardTitle('the whole billing module: invoices, PDF export, Stripe webhooks'), 'the whole billing module:…');
   assert.ok(boardTitle('x'.repeat(50)).length <= 32);
   assert.equal(boardTitle('two\n  lines'), 'two lines');
+  assert.equal(boardTitle('--branch the CSV export'), 'branch the CSV export', 'no leading dash: it would read as a flag');
 });
 
 test('a command line is the words as a shell reads them, each quoted where it has to be', () => {

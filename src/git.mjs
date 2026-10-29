@@ -68,7 +68,7 @@ export async function gitBaseBranch(root) {
   return null;
 }
 
-/** What `branch` changes since it left `base` (`git diff base...branch`), up to `maxBytes` of it. */
+/** What `branch` changes since it left `base` (`git diff base...branch`); a diff over `maxBytes` is refused. */
 export async function gitBranchDiff(root, base, branch, maxBytes = 4 << 20) {
   const {stdout} = await run('git', ['-C', root, 'diff', '--no-color', `${base}...${branch}`], {timeout: 10_000, maxBuffer: maxBytes});
   return stdout;

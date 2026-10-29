@@ -8,6 +8,7 @@ import {basename} from 'node:path';
 export const BOARD = 'shepherdr';
 export const TITLE_MAX = 32; // the board refuses a longer title: it fits one line on a phone
 const TIMEOUT_MS = 5000;
+const ADD_TIMEOUT_MS = 60_000; // an add is never cut short: one that went through but answered late would be made twice
 
 /**
  * Runs the board's `command` with `args`: its output, or an error whose message is what it said (the board writes its
@@ -94,14 +95,14 @@ export class Board {
 
   /** Runs `words` (from addWords): the id of the task it added, and what the board said. */
   async add(words, {cwd} = {}) {
-    const said = (await this.run(words.slice(1), {cwd})).trim();
+    const said = (await boardRun(this.command, words.slice(1), {cwd, timeoutMs: ADD_TIMEOUT_MS})).trim();
     return {id: said.match(/^Added ([\w:-]+):/)?.[1] ?? null, said};
   }
 }
 
-/** A title the board takes: one line, at most TITLE_MAX characters, cut at a word. */
+/** A title the board takes: one line, at most TITLE_MAX characters, cut at a word; no leading dash, which reads as a flag. */
 export function boardTitle(text) {
-  const line = text.replace(/\s+/g, ' ').trim();
+  const line = text.replace(/\s+/g, ' ').trim().replace(/^-+\s*/, '');
   if (line.length <= TITLE_MAX) return line;
   const cut = line.slice(0, TITLE_MAX - 1);
   const words = /\s/.test(line[TITLE_MAX - 1]) ? cut : cut.replace(/\s+\S*$/, ''); // a word cut in two goes

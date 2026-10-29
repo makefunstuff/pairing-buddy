@@ -679,4 +679,7 @@ test('the relayed line of a board task: o, d and t as an action line while it is
   assert.deepEqual(relayActions(own).map(([key]) => key), ['t'], 'an agent of your own: a terminal in its folder only');
   assert.deepEqual(relayActions({...entry, meta: {agent: relayKeys({key: 'task:BDY-81', kind: 'task', id: 'BDY-81'})}}).map(([key]) => key), ['o'], 'no branch yet, no worktree');
   assert.deepEqual(footerKeys({mode: 'select', selectedEntry: entry}).map(([key, what]) => `${key} ${what}`), ['c copy', 'o open', 'd diff', 't terminal', 'Esc back']);
+  const answered = {...entry, meta: {agent: {...agent, live: false}}};
+  assert.deepEqual(relayActions(answered), [], 'answered, or older news: its keys go');
+  assert.deepEqual(footerKeys({mode: 'select', selectedEntry: answered}).map(([key]) => key), ['c', 'Esc']);
 });

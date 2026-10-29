@@ -85,8 +85,9 @@ board task made. Each is read when you press it, read only, and opens in Neovim:
 | `t` | a terminal in its worktree | a split with your `shell`, started in the task's worktree; for an agent of your own, in its folder |
 
 When there is nothing to open, Pair says why: no report or pull request yet, no branch yet, no worktree on this
-machine (a task that is done went with its merge, another machine's is not here). From the chat pane, the Neovim of
-the session opens it; with none connected, the chat gives the links or the folder instead.
+machine (a task that is done went with its merge), or a task of another machine, of which Pair reads only its line.
+From the chat pane, the Neovim of the session opens it; with none connected, the chat gives the links or the folder
+instead.
 
 ## Where it reads
 

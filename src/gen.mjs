@@ -253,7 +253,7 @@ export class Gen {
     if (choice !== 'y') return this.end(request, 'cancelled', `${n} cancelled: nothing added to the board.`);
     try {
       const {id, said} = await board.add(words, {cwd: this.root});
-      if (!id) return this.end(request, 'failed', `${n}: the board answered, but named no task: ${said}`);
+      if (!id) return this.end(request, 'done', `${n}: the board answered: ${said}`); // added, as far as it says
       session.ledger.add('board', `${n} → board ${id}: ${boardTitle(request.words)}`, {data: {gen: request.n, task: id, later: true}});
       return this.end(request, 'done', `${n} → board ${id} · added, for later: its agent reads the brief and waits for your go (${commandLine(board.tellWords(id, 'go'))}).`);
     } catch (error) {

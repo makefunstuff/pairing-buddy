@@ -34,6 +34,9 @@ end
 
 local function present(value) return value ~= nil and value ~= vim.NIL and value ~= '' end
 
+--- `text` as a winbar shows it: a % in a title or a path is no statusline item.
+local function bar(text) return (text:gsub('%%', '%%%%')) end
+
 --- Brings the agent of `item` to the front in herdr.
 local function go(item)
   host.send({type = 'agent_go', key = item.key})
@@ -100,7 +103,7 @@ local function show_diff(message)
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, vim.split((message.diff:gsub('\n$', '')), '\n', {plain = true}))
   vim.bo[buf].modifiable, vim.bo[buf].readonly = false, true
   vim.bo[buf].filetype = 'diff'
-  vim.wo.winbar = ' ' .. (message.title or 'diff') .. ' · read only · q closes'
+  vim.wo.winbar = bar(' ' .. (message.title or 'diff') .. ' · read only · q closes')
   vim.keymap.set('n', 'q', '<Cmd>close<CR>', {buffer = buf, desc = 'Close the diff'})
 end
 
@@ -114,7 +117,7 @@ local function open_terminal(message)
   else
     vim.fn.termopen(vim.o.shell, {cwd = message.where})
   end
-  vim.wo.winbar = ' ' .. (message.title or '') .. ' · ' .. vim.fn.fnamemodify(message.where, ':~')
+  vim.wo.winbar = bar(' ' .. (message.title or '') .. ' · ' .. vim.fn.fnamemodify(message.where, ':~'))
   vim.cmd.startinsert()
 end
 
