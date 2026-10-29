@@ -511,7 +511,7 @@ const fileTurn = results => async (conversation, pair) => {
 test('/gen file: drafts of new files go to Neovim as buffers to review, checked at their real paths; a change to a file you have is a suggestion', async () => {
   const results = [];
   const made = [];
-  const {root, pair, asked, of, said} = genSession([fileTurn(results)], {editor: filesEditor(made)});
+  const {root, pair, asked, of, said, sent} = genSession([fileTurn(results)], {editor: filesEditor(made)});
   const checked = [];
   pair.checkGenerated = async (files, texts) => { checked.push({files, texts: Object.fromEntries(texts)}); return {label: 'npm test', mark: 'pass', text: '3 pass'}; };
   await pair.gen.request({text: 'file a migration adding status to orders, and its test'});
@@ -541,8 +541,13 @@ test('/gen file: drafts of new files go to Neovim as buffers to review, checked 
     'gen #1 · file · 2 new files to review: db/migrations/0007_status.sql +2, math.test.js +2: A migration and its test; I guessed TEXT for the status.',
     '1 change to files you have, as suggestions there: other.js:1',
     '✓ `npm test` on the unsaved buffers: 3 pass',
-    'In Neovim, :w in one writes it to its path; :Pair gen list lists them.',
   ].join('\n')));
+  // How to take them goes apart: the plain pane says it, the full pane's card has keys for it.
+  assert.equal(sent.find(message => message.meta?.hint)?.meta.hint, 'In Neovim, :w in one writes it to its path; :Pair gen list lists them.');
+  assert.deepEqual({...of('gen_card').at(-1), since: undefined}, {
+    via: 'chat', type: 'gen_card', gen: 1, action: files.action, shape: 'file', state: 'ready', since: undefined, of: 2, taken: 0, left: 2,
+    keys: {k: 'keep one', d: 'drop all', enter: 'open the list', u: 'undo'}, changes: 1,
+  }, 'the chat\'s card: two files to review and a change, and its keys');
   assert.equal(of('gen').at(-1).state, 'ready');
   let [row] = pair.today().rows;
   assert.deepEqual([row.text, row.note], ['gen #1 · file · a migration adding status to orders, and its test', '2 files to review · 1 change']);
@@ -633,7 +638,7 @@ test('/gen try: the sample in a folder of its own outside the project, run there
   const unwritten = [];
   const genDir = realpathSync(scratch('pair-gen-data-'));
   let of;
-  const {root, pair, asked, of: sentOf, said, clock} = genSession([async (conversation, pair) => {
+  const {root, pair, asked, of: sentOf, said, clock, sent} = genSession([async (conversation, pair) => {
     results.push(await tool(pair, conversation, 'write', {path: 'lru.js', text: LRU}));
     results.push(await tool(pair, conversation, 'write', {path: 'package.json', text: '{"type": "module"}'}));
     results.push(await tool(pair, conversation, 'write', {path: '../escape.js', text: 'x'}));
@@ -675,8 +680,9 @@ test('/gen try: the sample in a folder of its own outside the project, run there
   assert.deepEqual(opened.files.map(file => file.name), ['lru.js', 'package.json']);
   assert.ok(said().includes([
     'gen #1 · try · lru.js +3, package.json +1 · ✓ `node lru.js`: A Map keeps the order; I guessed plain JavaScript, no class.',
-    'In Neovim: lru.js in a split, outside the project. Your run key runs it again; /keep <path> moves it into the project, as a buffer to review. The folder stays 7 days after it last changed or ran (/gen tries).',
   ].join('\n')));
+  assert.equal(sent.find(message => message.meta?.hint)?.meta.hint, 'In Neovim: lru.js in a split, outside the project. Your run key runs it again; /keep <path> moves it into the project, as a buffer to review. The folder stays 7 days after it last changed or ran (/gen tries).');
+  assert.deepEqual(sentOf('gen_card').at(-1).keys, {k: 'keep', enter: 'open'}, 'nothing to undo or drop on a try: k keeps its file, Enter opens it');
   let [row] = pair.today().rows.filter(one => one.label === 'generated');
   assert.deepEqual([row.text, row.note, row.undo], ['gen #1 · try · a small LRU cache', '2 files in its folder · ✓ `node lru.js`', false], 'nothing to undo until something is kept');
   assert.equal(of('gen').at(-1).state, 'done');
@@ -847,7 +853,7 @@ test('/gen scaffold: built and run in a copy of the project, checked there; the 
   const made = [];
   const unwritten = [];
   const genDir = realpathSync(scratch('pair-gen-data-'));
-  const {root, pair, asked, of, said, reverts} = genSession([scaffoldTurn(results)], {genDir, editor: filesEditor(made, unwritten)});
+  const {root, pair, asked, of, said, reverts, sent} = genSession([scaffoldTurn(results)], {genDir, editor: filesEditor(made, unwritten)});
   const ran = [];
   pair.scout = bashPane(root, ran);
   pair.allowed = async () => true;
@@ -879,6 +885,7 @@ test('/gen scaffold: built and run in a copy of the project, checked there; the 
   // The debrief: what it made, where, the runs and the check, the files, what it could not install.
   const card = said().find(text => text.startsWith('gen #1 · scaffold'));
   const lines = card.split('\n');
+  const hint = sent.find(message => message.text === card).meta.hint;
   assert.match(lines[0], /^gen #1 · scaffold · 4 files, 2 of yours changed · \d+s: An admin page for orders; node admin\/orders\.js runs it\. I guessed one file per page\.$/);
   assert.equal(lines[1], `in Pair's copy ${dir} · ran ✓ \`printf "made\\n" > made.txt\``);
   assert.equal(lines[2], 'check ✓ `ls admin`: passed');
@@ -886,7 +893,12 @@ test('/gen scaffold: built and run in a copy of the project, checked there; the 
     '│ + admin/orders.js  +2', '│ ~ math.js          +1 -0', '│ ~ other.js         +1 -1', '│ + made.txt         +1',
   ]);
   assert.equal(lines[7], 'not run: `npm install zod`: the copy has no network (gen.network), so install it yourself once you keep the files');
-  assert.match(lines[8], /^In Neovim, :Pair gen list keeps them one at a time \(k\)/);
+  assert.equal(lines.length, 8);
+  assert.match(hint, /^In Neovim, :Pair gen list keeps them one at a time \(k\)/);
+  assert.deepEqual({...of('gen_card').at(-1), since: undefined, action: undefined}, {
+    via: 'chat', type: 'gen_card', gen: 1, action: undefined, shape: 'scaffold', state: 'ready', since: undefined, of: 4, taken: 0, left: 4,
+    keys: {k: 'keep one', d: 'drop all', enter: 'open the list', u: 'undo'}, files: ['admin/orders.js', 'math.js', 'other.js', 'made.txt'],
+  }, 'the chat\'s card: 0 of 4 kept, the files to keep for /keep\'s menu');
   assert.equal(of('gen_scaffold')[0].files, 4);
   assert.equal(of('gen').at(-1).state, 'ready');
   let [row] = pair.today().rows.filter(one => one.label === 'generated');
@@ -1246,4 +1258,93 @@ test('owning: a warning or a regression in generated code not yours yet; pair st
   assert.deepEqual(genLines([]), []);
   const report = statsReport({remarks: [], activeMs: 0, now: NOON + 1000, days: 7, level: 'normal', autoTune: false, root: '/p', generated});
   assert.ok(report.includes('/gen: 3 requests (here 2 · try 1); pieces taken 2 · dropped 2'));
+});
+
+test('the gen card in the chat: its state and keys follow the request; d drops what is left, Enter and k open it in Neovim, u undoes it', async () => {
+  const opened = [];
+  const {root, pair, clock, of, said} = genSession([
+    async (conversation, pair) => {
+      await tool(pair, conversation, 'propose', {file: 'math.js', line: 1, endLine: 1, insert: true, text: SUM, note: 'sum'});
+      return 'A sum.';
+    },
+    async (conversation, pair) => {
+      await tool(pair, conversation, 'propose', {file: 'math.js', line: 3, endLine: 3, insert: true, text: 'const two = 2', note: 'two'});
+      return 'A two.';
+    },
+  ], {editor: async message => (message.type === 'gen_open' ? (opened.push(message), {ok: false}) : null)});
+  const card = n => of('gen_card').filter(one => one.gen === n).at(-1);
+  await pair.gen.request({text: 'here a sum function', place: {file: join(root, 'math.js'), line: 1}, from: 'editor'});
+  assert.ok(of('gen_card').some(one => one.gen === 1 && one.state === 'generating' && !Object.keys(one.keys).length), 'at work: no keys, Esc and /gen cancel stop it');
+  clock.now += 2500;
+  await pair.tick();
+  const {action} = card(1);
+  assert.deepEqual({...card(1), since: undefined}, {
+    via: 'chat', type: 'gen_card', gen: 1, action, shape: 'here', state: 'ready', since: undefined, of: 1, taken: 0, left: 1,
+    keys: {k: 'keep', d: 'drop', enter: 'open', u: 'undo'},
+  });
+
+  // Enter: Neovim goes to its place. d: what is left is dropped, as a cancel drops it.
+  await pair.gen.open(action);
+  assert.deepEqual(of('go').at(-1), {via: 'editor', type: 'go', file: join(root, 'math.js'), line: 1});
+  await pair.gen.dropAll(action);
+  assert.ok(of('gen_drop').some(one => one.gen === 1), 'its code goes from Neovim');
+  assert.ok(said().includes('gen #1: its code dropped.'));
+  assert.deepEqual([card(1).state, card(1).keys], ['done', {enter: 'open'}], 'nothing taken: nothing to undo either');
+  await pair.gen.dropAll(action);
+  assert.ok(said().includes('gen #1: nothing left to drop.'));
+
+  // Taken (k sends accept, as a does), then undone, then made again.
+  await pair.gen.request({text: 'here a two', place: {file: join(root, 'math.js'), line: 3}, from: 'editor'});
+  clock.now += 2500;
+  await pair.tick();
+  const second = card(2).action;
+  await pair.applied(second, ['a'], ['a', 'const two = 2'], {piece: 0, from: 3, to: 3});
+  assert.deepEqual([card(2).state, card(2).taken, card(2).keys], ['done', 1, {enter: 'open', u: 'undo'}]);
+  await pair.undo(second);
+  assert.deepEqual([card(2).state, card(2).keys], ['undone', {u: 'again'}]);
+  await pair.undo(second);
+  assert.deepEqual(card(2).keys, {enter: 'open', u: 'undo'});
+
+  // A chat that connects gets today's cards, with their keys.
+  assert.deepEqual(pair.gen.cards().map(one => [one.gen, one.state, Object.keys(one.keys).join(' ')]), [[1, 'done', 'enter'], [2, 'done', 'enter u']]);
+  assert.deepEqual(opened, []);
+});
+
+test('the gen card of a file request: k opens the next file to review in Neovim, which makes it again when it lost it; d drops them all', async () => {
+  const made = [];
+  const asked = [];
+  const {pair, of, said} = genSession([fileTurn([])], {editor: async message => {
+    if (message.type === 'gen_open') {
+      asked.push(message);
+      return {ok: asked.length === 1};
+    }
+    return filesEditor(made)(message);
+  }});
+  await pair.gen.request({text: 'file a migration adding status to orders, and its test', from: 'chat'});
+  const card = of('gen_card').at(-1);
+  assert.deepEqual([card.shape, card.left, card.keys], ['file', 2, {k: 'keep one', d: 'drop all', enter: 'open the list', u: 'undo'}]);
+  await pair.gen.open(card.action, 'next');
+  assert.deepEqual(asked, [{type: 'gen_open', action: card.action, piece: 0}], 'Neovim has its buffer: it opens it');
+  made.length = 0;
+  await pair.gen.open(card.action, 'next');
+  assert.deepEqual(made.map(one => [one.open, one.files.map(file => file.name)]), [[true, ['db/migrations/0007_status.sql']]], 'it did not: the daemon sends it again, to open');
+  await pair.gen.open(card.action);
+  assert.deepEqual(of('gen_list_open').length, 1, 'Enter: :Pair gen list');
+  await pair.gen.dropAll(card.action);
+  assert.equal(said().at(-1), 'gen #1: db/migrations/0007_status.sql, math.test.js dropped.', 'its change to other.js, a suggestion, goes too');
+  assert.equal(of('gen_card').at(-1).left, 0);
+  assert.deepEqual(of('gen_card').at(-1).keys, {enter: 'open the list'});
+});
+
+test('a /gen question asked in the chat says which request asks: the pane gives it the gen speaker', async () => {
+  const {pair, of} = genSession([]);
+  const asking = pair.gen.request({text: 'a migration for orders', from: 'chat'});
+  await until(() => of('confirm').length);
+  assert.equal(of('confirm')[0].gen, 1);
+  assert.match(of('confirm')[0].text, /^gen #1 · new files: "migration"\. Shape\?/);
+  assert.equal(of('gen_card').at(-1).asks, 'chat', 'the status says it waits for your answer here');
+  // Not booked yet, it is still a card for a pane that connects now.
+  assert.deepEqual(pair.gen.cards().map(card => [card.gen, card.state, card.action, card.asks]), [[1, 'asking', null, 'chat']]);
+  pair.gen.cancel();
+  await asking;
 });

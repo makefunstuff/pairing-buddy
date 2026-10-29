@@ -1233,12 +1233,12 @@ export class PairSession {
    * no limit). An answer that is one of `choices` allows it too, there: it resolves with that choice; with `free`, any
    * words but n do. `hint` is what the chat's input line says meanwhile, and `said(result)` the line the chat gets
    * after the answer, instead of "Allowed." or "Not allowed." (null: none). `command` is the command it asks about,
-   * which the full pane shows whole under the question.
+   * which the full pane shows whole under the question; `gen`, the /gen request that asks (the pane's gen speaker).
    */
-  confirm(text, choices = [], {command = null, free = false, timeoutMs = CONFIRM_MS, hint = null, said = null} = {}) {
+  confirm(text, choices = [], {command = null, free = false, timeoutMs = CONFIRM_MS, hint = null, said = null, gen = null} = {}) {
     const id = ++this.lastConfirmation;
     // The command goes as it is too: the full pane shows it whole under the question, backticks and all.
-    if (!this.notify('chat', {type: 'confirm', id, text, ...(command ? {command} : {}), ...(hint ? {hint} : {})})) return Promise.resolve(false);
+    if (!this.notify('chat', {type: 'confirm', id, text, ...(command ? {command} : {}), ...(hint ? {hint} : {}), ...(gen ? {gen} : {})})) return Promise.resolve(false);
     this.activity('waiting', {what: text});
     return new Promise(resolve => {
       const timer = timeoutMs === null ? null : setTimeout(() => this.answer(id, false, 'No answer, so no.'), timeoutMs);
@@ -1467,6 +1467,8 @@ export class PairSession {
   async stop() {
     if (this.role === 'driver' && this.busy) return this.takeBack();
     if (!this.busy && this.gen.running) return this.gen.cancel(this.gen.running.n);
+    // A request not at work yet (it finds its place, reads the brief, waits its turn): the newest goes.
+    if (!this.busy && [...this.gen.requests.values()].some(request => ['asking', 'asks', 'queued'].includes(request.state))) return this.gen.cancel();
     if (!this.busy) return this.message('system', 'Pair is not answering anything now.');
     if (this.unasked) return this.yieldRemark();
     this.cancelled = true;

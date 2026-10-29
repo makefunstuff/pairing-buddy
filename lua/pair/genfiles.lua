@@ -221,6 +221,17 @@ function M.on_files(message)
   return {ok = true}
 end
 
+--- k on a gen card in the chat: the buffer of piece `message.piece` of ledger entry `message.action` opens in the
+--- window you work in, to review; :w there takes it. False when Neovim does not have it (the daemon then sends it).
+function M.open_piece(message)
+  local buf = find(message.action, message.piece)
+  if not buf then return {ok = false} end
+  local win = deps.work_window and deps.work_window() or vim.api.nvim_get_current_win()
+  vim.api.nvim_set_current_win(win)
+  vim.api.nvim_win_set_buf(win, buf)
+  return {ok = true}
+end
+
 --- The daemon took request `n` back (/undo, cancelled): its files still to review go.
 function M.drop_gen(n)
   for buf, info in pairs(proposals) do

@@ -30,6 +30,7 @@ Four rows of chrome, two of them rules with words in them; the rest is the conve
   | `you` | What you sent, on screen as soon as you press Enter |
   | `pair` | Pair's answer to a question; a `✎ suggested change` shows as a diff. Also what Pair asks you: the session's goal, its greeting with last time's note, and whether it may run or type a command |
   | `watch` | What Pair said unasked: the kind of moment and the file and line first, then its words |
+  | `gen` | What a [/gen](gen.md) request made, in magenta, as a card with its keys ([below](#the-gen-card)), and what the request asks you |
   | `└` | What Pair's tools did for your question: the files it read, the commands it ran, what it searched |
   | `··` | Notes: the tests on save, a verdict noted, a level changed |
   | `!` | An error, in red, such as a model that does not answer, with what to check: its words are Markdown, so a command in it (`pair doctor`) is a code span, whole, to copy |
@@ -112,7 +113,7 @@ Four rows of chrome, two of them rules with words in them; the rest is the conve
   long Pair has been at it shows once that is 3 seconds, so a short turn does not tick. The status has the colour of
   the part at work: while Pair works on your question its spinner and its word (`thinking`, `writing`, `reading`) are
   in its accent, bold; the Watcher's `◉` and its spinner while it looks are yellow; the Driver's `◆` and `Pair drives`
-  are red, bold. The other words (`watching`, `waiting for your answer`, `reconnecting`) are body text, so they rank
+  are red, bold; a /gen request's number and its spinner are magenta. The other words (`watching`, `waiting for your answer`, `reconnecting`) are body text, so they rank
   above the footer. In a narrow pane, what waits under the answer (`1 remark below`) stays longer than the seconds.
 
   | Status | Means |
@@ -125,6 +126,7 @@ Four rows of chrome, two of them rules with words in them; the rest is the conve
   | `▖ looking at regression` | The Watcher looks at a moment of its own accord (its spinner yellow); it may say nothing |
   | `? waiting for your answer` | It asked to run or type a command |
   | `◆ Pair drives · any key in Neovim takes it back` | Pair has the wheel ([Driver](driver.md)) |
+  | `▖ gen #4 generating 41s`, `◉ watching · gen #7: 0 of 9 kept` | A [/gen request](#the-gen-card) at work (its spinner magenta), or done with something left to take |
   | `! the pair daemon went away · reconnecting 6s · attempt 4` | The daemon restarted (the `!` in yellow): how long it has been away and how many times the pane tried, so a blip reads differently from a daemon that is gone. What you type is kept (the input says so); nothing sends until it is back, and the pane carries on then |
 
   On the right: the Partner's model, how long its last answer took, and the tokens and cost of it when the provider
@@ -160,6 +162,30 @@ the words go under it.
 
 ![The empty pane: Pair's head, what it is, the keys to start with, and Pair asking for the session's goal](images/chat-empty.png)
 
+### The gen card
+
+What a [/gen](gen.md) request makes is the `gen` speaker's, in magenta. Its message is one unit, as a remark is: its
+number and shape, what it made, how its check went, the debrief, and last an **action line** with the keys that still
+do something on it.
+
+```
+ gen   #4 · file · 2 new files to review: db/migrations/0007_orders_status.sql +14, …
+       ✓ `go test ./...` on the unsaved buffers: 41 pass
+       ? guessed existing rows get the status new
+
+       k keep one   Enter open the list   d drop all   u undo   · Alt-↑ picks
+── ◉ watching · gen #4: 2 to review ─────────────────────────── qwen3-coder ──
+```
+
+`k` keeps (code at the cursor goes into your buffer, the next file to review opens in Neovim, a try's file is kept, a
+scaffold puts `/keep` on the line with its files in the menu), `Enter` opens it in Neovim (its place, its file, or
+`:Pair gen list`), `d` drops what is left (a second `d` does it; for a scaffold, its copy goes), `u` undoes the
+request and, once undone, makes it again. As on a remark, they work once the card is picked: the first `Alt-↑`
+picks it while its line shows. Only the keys that still apply show, and none while the request is at work. What a
+request asks you (its shape, the brief, a question of its model) is the gen speaker's too. The status says what
+/gen does: the request at work and the one waiting its turn, and, once done, what is left to take. The whole of it,
+per shape, is in [gen.md](gen.md#in-the-chat-pane-the-gen-card).
+
 ### Calm motion
 
 The pane moves only where you are not reading:
@@ -186,14 +212,17 @@ Anything you type that is not a command is a question for Pair; it is always ans
 - **/** opens the commands as you type, in three columns: the command, its arguments, what it does. It shows seven at a
   time; its rule says how many of all (`commands · 7 of 31 · type to narrow`) and its last line how many more there
   are (`↓ 24 more`); **↑** and **↓** go through all of them. **Tab** completes, **Enter** runs one that needs nothing
-  more. The [chat commands](cli.md#chat-commands) list them all.
+  more. The [chat commands](cli.md#chat-commands) list them all. After `/gen` and a space, the menu lists its shapes
+  first (`here`, `file`, `try`, `scaffold`), then what else `/gen` does. After `k` on a scaffold's card, `/keep ` waits
+  on the line with that scaffold's files left to keep (`Enter keeps`); a `/keep` you type yourself has no menu.
 
   ![The command menu: seven of 31 commands in three columns (name, arguments, what it does), the count in its rule and ↓ 24 more under it](images/chat-menu.png)
 - **@** opens the project's files (from git): `@internal/queue/queue.go` names one in your question, for Pair to read;
   **Tab** or **Enter** inserts it (the footer says `Enter inserts`).
   **@here** sends the lines you selected last in Neovim with it, else the line you are on: the question names them
   (`queue.go:18-20`), as `:'<,'>Pair ask` does.
-- **Esc** (or **Ctrl-C**) stops the answer Pair is working on; `/cancel` too. You can type your next question while
+- **Esc** (or **Ctrl-C**) stops the answer Pair is working on; `/cancel` too. When Pair answers nothing, they stop a
+  [/gen request](#the-gen-card) at work, or the newest one still starting or waiting its turn (the footer says `Esc stop`). You can type your next question while
   it works.
 - "you take it" or "your turn" hands Pair the wheel, as `/drive` does ([Driver](driver.md)).
 - `/gen here <what>` asks Pair for code at your cursor in Neovim, `@here` in it over the lines you selected there
@@ -216,7 +245,7 @@ Anything you type that is not a command is a question for Pair; it is always ans
 
 ## Acting on a message
 
-**Alt-↑** picks the last message (the last remark instead, while its [action line](#what-you-see) shows), and further presses go up (**Alt-↓** down; a click picks one too). A bar marks it,
+**Alt-↑** picks the last message (the last remark or [gen card](#the-gen-card) instead, while its action line shows), and further presses go up (**Alt-↓** down; a click picks one too). A bar marks it,
 and the footer lists what you can do with it, with the message's time on the right:
 
 | Key | On the message |
@@ -228,7 +257,8 @@ and the footer lists what you can do with it, with the message's time on the rig
 | `m` | Mute this kind of remark for the session (`/unmute` lets it back) |
 | `f` | Ask a follow-up about the remark: what you type next goes with its words |
 | `e` | The idea behind the remark, as `/why` |
-| `Enter` | Unfold a long message, or the tool lines one per line |
+| `Enter` | Unfold a long message, or the tool lines one per line; on a gen card, open it in Neovim |
+| `k` `d` `u` | On a [gen card](#the-gen-card): keep, drop (twice), undo |
 | `Esc` | Back to typing; any other key does that too |
 
 The last remark, while it is the last thing said, shows `+`, `-`, `a` and `j` on its own
@@ -267,14 +297,14 @@ The last remark, while it is the last thing said, shows `+`, `-`, `a` and `j` on
 | `Ctrl-U` `Ctrl-K` | Delete to the start, to the end of the line |
 | `Alt-B` `Alt-F`, `Ctrl-←` `Ctrl-→` | A word back, forward |
 | `Tab` | Complete a `/command` or an `@file` |
-| `Esc` | Stop Pair's answer, close a menu, leave a message |
-| `Alt-↑` `Alt-↓` | Pick a message ([above](#acting-on-a-message)) |
+| `Esc` | Stop Pair's answer (else a /gen request at work), close a menu, leave a message |
+| `Alt-↑` `Alt-↓` | Pick a message ([above](#acting-on-a-message)); on a gen card, `k` `Enter` `d` `u` keep, open, drop, undo |
 | `PgUp` `PgDn`, wheel | Scroll |
 | `Ctrl-F` | Find |
 | `Alt-L` | The talk level: quiet → normal → chatty |
 | `Alt-M` | The mouse on or off |
 | `Ctrl-L` | Draw the pane again |
-| `Ctrl-C` | Stop the answer; else clear what you typed; twice on an empty line, close the pane |
+| `Ctrl-C` | Stop the answer or a /gen request at work; else clear what you typed; twice on an empty line, close the pane |
 | `Ctrl-D` | Close the pane, on an empty line |
 | `y` `n` | While Pair asks: allow, decline; `Esc` declines too (for a `/gen` question: take the guess or the answer given, cancel or leave it to Pair) |
 | `?` | The keys, on an empty line |
@@ -306,6 +336,7 @@ that light themes wash out:
 | Dim | Chrome: the rules, the time dividers and an answer's time in the margin, what a key in the footer does, the `└` tool lines, a fold, a link's address |
 | Green, red | `+` and `-` lines of a diff; the find match you are on, in green (bold and underlined too); an error, in red |
 | Blue, green, red (bold) | The role in the header, as on the website: `navigator` blue, `scout` green, `driver` red; and the Driver's `◆ Pair drives` in the status |
+| Magenta | /gen: the `gen` label, and a request's number and spinner in the status |
 | Green, magenta | The eyes and the antenna of Pair's head, on the empty pane |
 
 Light themes are where dim and yellow fade: against the background, dim is about 2 : 1 in Tokyo Night Day and
@@ -320,7 +351,8 @@ is the plain pane: lines as they come, a `navigator ›` prompt (the role in its
 line per question, and `└` lines for the tools. It
 takes the same commands but `/search`, `/copy` and `/clear`, which say they work in the full-screen pane only;
 there `?` and Enter asks about what Pair said last, as `/why` does. Nothing above about keys, picking, the menu, the
-rules or the status applies there: Pair's question ends in `[y/N]`, and the goal is said in the conversation.
+rules or the status applies there: Pair's question ends in `[y/N]`, and the goal is said in the conversation. What a
+/gen request made says `gen` before it (in magenta), and under it how to take it, in words, for there are no keys.
 
 ## Limits
 
