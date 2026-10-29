@@ -9,6 +9,8 @@ import {defineConfig} from 'vitepress';
 import {DESCRIPTION, describe, pageHead} from './meta.mjs';
 
 const REPO = 'https://github.com/makefunstuff/pairing-buddy';
+// The nav names the release, as package.json has it: v0.11 for 0.11.0.
+const RELEASE = `v${JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version.split('.').slice(0, 2).join('.')}`;
 // Folders of docs/ that hold tapes, scripts and renders rather than pages; links into them go to GitHub.
 const NOT_PAGES = ['video/**', 'captures/**'];
 
@@ -79,7 +81,8 @@ export default defineConfig({
     nav: [
       {text: 'Get started', link: '/getting-started'},
       {text: 'Docs', link: '/how-it-works', activeMatch: '^/(?!$|getting-started)'},
-      {text: 'v0.10', items: [
+      {text: RELEASE, items: [
+        {text: 'Changelog', link: `${REPO}/blob/main/CHANGELOG.md`},
         {text: 'Known limitations', link: '/limitations'},
         {text: 'Issues', link: `${REPO}/issues`},
         {text: 'Contributing', link: '/contributing'},
@@ -128,6 +131,7 @@ export default defineConfig({
         {text: 'What Pair gets from herdr', link: '/herdr'},
         {text: 'Tests', link: '/testing'},
         {text: 'Contributing', link: '/contributing'},
+        {text: 'Releasing', link: '/releasing'},
       ]},
     ],
     outline: {level: [2, 3], label: 'On this page'},

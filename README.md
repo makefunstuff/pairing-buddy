@@ -119,7 +119,8 @@ your keys and logins).
 - Reference: [configuration](docs/config.md), [Neovim plugin](docs/neovim-plugin.md), [commands](docs/cli.md)
 - [Troubleshooting](docs/troubleshooting.md) and [known limitations](docs/limitations.md)
 - [Data and privacy](docs/data.md), [tests](docs/testing.md)
-- [Contributing](CONTRIBUTING.md), also [on the site](docs/contributing.md)
+- [Contributing](CONTRIBUTING.md), also [on the site](docs/contributing.md), [releasing](docs/releasing.md) and the
+  [changelog](CHANGELOG.md)
 
 The site is [VitePress](https://vitepress.dev): `cd site && npm ci && npm run dev` previews it, and the
 [Pages workflow](.github/workflows/pages.yml) builds and deploys it on every push to main. Its look is pixel art:

@@ -26,6 +26,7 @@ import {supervise} from '../src/supervise.mjs';
 import {openStore} from '../src/store.mjs';
 import {probeThinkingSettings} from '../src/thinking-probe.mjs';
 import {WINDOW_MS} from '../src/tuning.mjs';
+import {VERSION} from '../src/version.mjs';
 
 const SCRIPT = realpathSync(fileURLToPath(import.meta.url));
 const SERVICE = serviceManager();
@@ -43,6 +44,7 @@ const USAGE = `usage:
   pair stats [--days N]   remarks per hour, useful vs dismissed, per trigger, the tuning, how the decision model did, and what /gen made and you own (default: 7 days)
   pair stats --project [DIR]   the same for one project: the one DIR (default: this folder) belongs to
   pair uninstall    stop and remove the service (the config and data stay)
+  pair --version    the version of this install (also \`pair version\`)
   pair daemon       run the daemon in the foreground
   pair supervise    run the daemon in the foreground, restarted when it fails (what \`pair\` starts without a service)
   pair shell-hook bash|zsh|fish   print the shell hook that reports commands, exit codes and (zsh) typing
@@ -304,7 +306,9 @@ function socketPathOf() {
 
 const [command, ...args] = process.argv.slice(2);
 try {
-  if (command === 'shell-hook') {
+  if (['--version', '-v', 'version'].includes(command)) {
+    console.log(`pair ${VERSION}`);
+  } else if (command === 'shell-hook') {
     process.stdout.write(shellHook(args[0], process.argv[1], {socket: socketPathOf()}));
   } else if (command === 'report') {
     report(args);
