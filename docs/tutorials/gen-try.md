@@ -8,7 +8,7 @@ you to read, change and run again. `/keep` brings it in once you want it.
 
 In the chat (or `:Pair gen try …` in Neovim):
 
-```text
+```
 /gen try an LRU of recent job ids in 30 lines
 ```
 

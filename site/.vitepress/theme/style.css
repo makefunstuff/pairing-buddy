@@ -24,7 +24,8 @@ img[src*="/sprites/"], img[src$="favicon.svg"] { image-rendering: pixelated; }
 .VPSwitchAppearance { border: 2px solid var(--pair-ink) !important; }
 
 /* code blocks are black in both themes, the editor's colours on them (the highlighter's theme is tokyo-night) */
-.vp-doc div[class*='language-'] { color-scheme: dark; border: var(--px-border) solid var(--pair-ink); box-shadow: var(--pair-shadow); }
+.vp-doc div[class*='language-'] { color-scheme: dark; border: var(--px-border) solid var(--pair-ink); box-shadow: var(--pair-shadow);
+  --vp-code-block-color: var(--px-silver); /* plain text with no colours of its own (a text block): the page's navy is lost on black */ }
 .vp-doc [class*='language-'] > span.lang { color: var(--px-silver); font-family: var(--px-font-pixel); }
 .vp-doc [class*='language-'] > button.copy { border: 2px solid var(--px-charcoal); background-color: var(--px-navy); }
 

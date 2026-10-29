@@ -8,7 +8,7 @@ file at a time. Nothing else reaches your project.
 
 In the chat (or `:Pair gen scaffold …` in Neovim):
 
-```text
+```
 /gen scaffold a /healthz endpoint, served by a new cmd/hookd
 ```
 
@@ -49,7 +49,7 @@ From the chat, `/keep internal/health/health.go` keeps one file, and `/gen drop`
 
 ## 4. On a branch instead: --branch
 
-```text
+```
 /gen scaffold --branch a /healthz endpoint, served by a new cmd/hookd
 ```
 
