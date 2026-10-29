@@ -19,8 +19,8 @@ Start a Neovim **in the worktree**, and its chat beside it: in herdr, a tab (or 
 cd ~/src/hookd-lease && nvim
 ```
 
-The project is the git root of the folder Neovim starts in, so this is a new session: the chat's header names the
-worktree's folder, and the session has a goal of its own.
+The project is the git root of the folder Neovim starts in, so this is a new session, with its own goal: the
+chat's header names the worktree's folder.
 
 ![A Neovim and its chat in the worktree: the header says hookd-lease](../images/worktrees.png)
 
