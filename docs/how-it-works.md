@@ -21,7 +21,7 @@ its role's tools.
 - **Your terminals.** The daemon watches your herdr panes, the panes of the tmux session you work in and your
   `:terminal` buffers in Neovim for focus, commands and their output ([herdr.md](herdr.md) says how, and what herdr
   lacks; [neovim.md](neovim.md#without-herdr) for Neovim and tmux).
-- **Where you have been.** Your buffers and jumplist, the herdr work board's task for your branch, and git (branch,
+- **Where you have been.** Your buffers and jumplist, the work board's (Shepherdr's) task for your branch, and git (branch,
   last commit, changed files, pull request). The [context card](neovim.md#what-it-knows-the-context-card) shows all of
   it, and what you hide there is not sent.
 - **The shell hook** (optional, bash, zsh or fish) says when each command starts and ends, with its exit code, so

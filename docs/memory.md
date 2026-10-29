@@ -7,17 +7,18 @@ Pair remembers where the last session in a project stopped, can look up what ear
 A session starts when a Neovim or a chat pane opens in a project; there is nothing to start. Its goal is usually
 written down already, so Pair takes it from there instead of asking:
 
-1. the title of the herdr work board's task for the branch, matched by repo and number (`work/7-retries` in repo
-   `hookd` is task `hookd/7`, never another repo's task 7);
+1. the title of the work board's (Shepherdr's) task for the branch, matched by the repo's space and the number
+   (`work/7-retries` in repo `hookd` is task `HKD-7` of the space `hookd`, never another space's task 7);
 2. else the words of the branch name (`fix/reconnect-after-sleep` is "reconnect after sleep");
 3. else the chat asks: "What are we doing this session?", and the first line you type there is the goal. `later` (or
    `exit`, `skip`, `none`) skips the question, and the next line is a question for Pair again. A question you ask in
    Neovim (`:Pair ask`, or aloud) is always answered, never taken for the goal. `/goal` in the chat or `:Pair goal`
    sets one any time.
 
-The chat says where the goal came from (`Goal, from the board task hookd/7: Retries reach the budget`), and the
+The chat says where the goal came from (`Goal, from the board task HKD-7: Retries reach the budget`), and the
 [context card](neovim.md#what-it-knows-the-context-card) shows it. The board is read with its own command
-(`herdr-projects list --json`); `"board": null` in the config turns that off.
+(`shepherdr space list`, `shepherdr task list --space <space> --json`, `shepherdr task show <id> --json`);
+`"board": null` in the config turns that off.
 
 A session ends by itself, and writes its note:
 

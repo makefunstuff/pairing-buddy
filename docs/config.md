@@ -40,7 +40,7 @@ why while the daemon keeps the config it runs. Run `pair doctor` after a change 
 | `scoutPane` | see [below](#scoutpane) | Pair's own pane: your rc file and the sandbox ([scout.md](scout.md#pairs-pane)) |
 | `taskCommand` | none | What `:Pair tasks` runs for each task you say yes to, as a list of words with `{title}` and `{description}`, never through a shell, for example `["gh", "issue", "create", "--title", "{title}", "--body", "{description}"]`. Without it, the tasks are copied as a checklist ([notes.md](notes.md#tasks-only-when-you-ask)) |
 | `gen` | see [below](#gen) | What one `/gen` request may do at most, its brief's note, and how long a try's folder stays and whether its runs reach the network ([gen.md](gen.md)) |
-| `board` | `"herdr-projects"` | The herdr work board's command: the goal and the [context card](neovim.md#what-it-knows-the-context-card) read the board task of your branch. `null` turns it off |
+| `board` | `"shepherdr"` | The work board's command, [Shepherdr](agents.md#where-it-reads)'s: the goal and the [context card](neovim.md#what-it-knows-the-context-card) read the board task of your branch, the [relay](agents.md) its tasks, the chat's header counts the repository's tasks, and [`/gen board`](gen.md#gen-board-a-task-for-the-board) adds one on your pick. Run as a list of words, never through a shell. `null` turns it off |
 | `socket` | `$PAIR_SOCKET`, else `$XDG_RUNTIME_DIR/pairing-buddy.sock`, else `/tmp/pairing-buddy-<uid>.sock` | The daemon's socket path |
 | `dataDir` | `$XDG_STATE_HOME/pairing-buddy` (`~/.local/state/pairing-buddy`) | Where Pair keeps its data ([data.md](data.md)) |
 

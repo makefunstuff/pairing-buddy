@@ -119,6 +119,7 @@ question for Pair (`@here` in it sends your selection in Neovim along), and a li
 | `/gen file <what>` | Ask Pair for new files: they open in Neovim as buffers to review, and `:w` in one writes it to its path ([gen.md](gen.md#new-files-gen-file)) |
 | `/gen try <what>` | Ask Pair for a sample to read and run, in a folder of its own outside the project, run there in the sandbox; it opens in Neovim in a split ([gen.md](gen.md#samples-gen-try-and-keep)) |
 | `/gen scaffold [--branch] <what>` | Ask Pair for many files and their wiring, built and run in a copy of the project in Pair's data folder (`--branch`: a git worktree on a branch `gen/<n>`); you keep a file at a time ([gen.md](gen.md#many-files-gen-scaffold)) |
+| `/gen board <what>` | Compose a task for the board (Shepherdr): `y` adds it for later (add only: its agent waits for your go), `c` copies the command; nothing else is added, told or merged ([gen.md](gen.md#gen-board-a-task-for-the-board)) |
 | `/gen run` | Run the newest `/gen try` again, in Pair's pane, in its sandbox |
 | `/gen tries` | The project's `/gen try` folders still kept, and when each goes (`gen.keepTries`) |
 | `/keep [path]` | Move the newest `/gen try`'s main file into the project at `path`, as a buffer to review in Neovim that `:w` takes. When the newest is a scaffold, keep its file at `path`: a new file as a buffer to review, a change as suggestions in yours |
@@ -129,7 +130,7 @@ question for Pair (`@here` in it sends your selection in Neovim along), and a li
 | `/brief [note\|off]` | What `/gen` runs against: the goal, the board task and a note (`NOTES.md` by default); with a note, pin it; `off` leaves the note out ([gen.md](gen.md#the-brief)) |
 | `/undo` | Undo Pair's last change of the day: an edit of the Driver's, a suggestion you took, or a whole `/gen` request; as `u` in `:Pair today` |
 | `/today` | What Pair did here today, as in `:Pair today` |
-| `/agents` | Your other agents and board tasks |
+| `/agents` | Your other agents and board tasks; a relayed line, picked with `Alt-↑`, opens what its task left behind with `o`, `d` and `t` ([agents.md](agents.md)) |
 | `/search <text>` | Find in the conversation (`Ctrl-F`) |
 | `/copy [n]` | Copy Pair's last message (or the `n`th last) to the clipboard |
 | `/clear` | Clear the pane; the session and its history stay |

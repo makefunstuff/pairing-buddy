@@ -158,6 +158,13 @@ test('another agent\'s news waits for your save, shows as one line in the status
     assert.ok(remote('bufname()').startsWith(`term://${worktree}`), 'in the task\'s worktree');
     keys('<C-\\><C-n>:close<CR>');
     await until(() => remote('bufname()') === 'pair://agents', 'back in the list');
+    // From the chat pane's relayed line, the diff opens in this Neovim.
+    keys(':close<CR>');
+    await until(() => remote('bufname()') !== 'pair://agents', 'the list to close');
+    sendMessage(chat, {type: 'agent_link', key: 'task:REP-7', what: 'diff'});
+    await until(() => remote('bufname()') === 'pair://agents/REP-7/diff', 'the chat\'s d: the diff in Neovim');
+    keys('q:Pair agents<CR>');
+    await until(() => remote('bufname()') === 'pair://agents', 'the list again');
     keys('3Gt');
     await until(() => remote('execute("messages")').includes('REP-8 has no worktree on this machine'), 'why there is none');
     keys('2G<CR>');

@@ -50,25 +50,25 @@ const TICKS = JSON.parse(readFileSync(new URL('./ticks.json', import.meta.url), 
 const REMARK = 'table.c:35 divides size_t by size_t, so `t->len / t->cap` is always 0 and the table never grows; at load 0.98 linear probing blows past 3 probes.';
 const TEACHING = 'When both operands of `/` are integers, C truncates the result, so a ratio test like that is 0 or 1 — cast to `double` to get the intended fraction.\nhttps://en.cppreference.com/w/c/language/operator_arithmetic';
 
-// The board of a day of exploring: four tasks of this project at work and a notes agent, all in their own panes.
-const task = (n, title, state, stage, msg) => ({id: `hashtab/${n}`, title, state, stage, msg});
+// The board of a day of exploring (Shepherdr's tasks, in the space of this project): four tasks at work, each on a
+// branch in a worktree of its own (the stage makes them; `worktree:21` is #21's), and a notes agent, all in their panes.
+const task = (n, title, status, sub) => ({id: `HSH-${n}`, title, status, sub, place: 'p:here:hashtab', branch: `work/${n}-hashtab`});
 const TASKS = [
-  task(21, 'See crashes and compiler errors', 'working', 'working', 'Parsing clang diagnostics'),
-  task(22, 'The exploration loop: read every run', 'working', 'reviewing', 'Under review'),
-  task(24, 'The search trail from Telescope', 'working', 'working', 'Reading the docs'),
-  task(25, 'Context card and no ceremony', 'working', 'after', 'queued after #21'),
+  task(21, 'See crashes and compiler errors', 'work', 'Parsing clang diagnostics'),
+  task(22, 'The exploration loop: read every run', 'work', 'Under review'),
+  task(24, 'The search trail from Telescope', 'work', 'Reading the docs'),
+  task(25, 'Context card and no ceremony', 'queued', 'Queued after HSH-21'),
 ];
 const AGENTS = {
   tasks: TASKS,
-  files: Object.fromEntries([21, 22, 24, 25].map(n => [`hashtab/${n}`, {worktree: `/work/hashtab-${n}`, link: {pane: `w${n}:p1`}}])),
   herdr: [
-    ...[21, 22, 24].map(n => ({pane_id: `w${n}:p1`, cwd: `/work/hashtab-${n}`, agent: 'claude', agent_status: 'working'})),
+    ...[21, 22, 24].map(n => ({pane_id: `w${n}:p1`, cwd: `worktree:${n}`, agent: 'claude', agent_status: 'working'})),
     {pane_id: 'w3:p1', cwd: '/work/notes', agent: 'pi', agent_status: 'working', terminal_title_stripped: 'tidy the design notes'},
   ],
-  // While you type: #21 asks you a question, #22 passed its review, and the notes agent finishes.
+  // While you type: #21 asks you a question, #22 is ready to merge, and the notes agent finishes.
   later(herdr, show) {
-    show(TASKS.map(t => (t.id === 'hashtab/21' ? {...t, state: 'blocked', stage: 'asks', msg: 'Should a segfault also name its signal number?'}
-      : t.id === 'hashtab/22' ? {...t, state: 'blocked', stage: 'approval', msg: 'Review: Pass'} : t)));
+    show(TASKS.map(t => (t.id === 'HSH-21' ? {...t, status: 'need', sub: 'Should a segfault also name its signal number?'}
+      : t.id === 'HSH-22' ? {...t, status: 'ready', sub: 'Ready to merge'} : t)));
     herdr[3].agent_status = 'idle';
   },
 };

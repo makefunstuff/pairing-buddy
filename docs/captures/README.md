@@ -9,8 +9,10 @@ recording comes out the same each time; the tutorial video's scenes use a real m
   trigger it is asked about. The Partner's turns (tool calls or words, each after its own pause) come in order
   from [scenes.mjs](scenes.mjs), and so do its readings of a note: the marks, and the tasks. The tools those calls reach are real: they read the files, check the line and the
   code they point at, and type the edit.
-- **The board:** [board.mjs](board.mjs) stands in for herdr's work board in the context-card scene, which also
-  fetches Telescope and plenary at pinned commits for its searches.
+- **The board:** [board.mjs](board.mjs) stands in for the work board's command, Shepherdr's `shepherdr`, answering
+  only what Pair reads: in the context-card scene (which also fetches Telescope and plenary at pinned commits for its
+  searches) with fixed tasks, and in the agents scene from a state file the stage changes as the scene goes on, its
+  tasks on branches in worktrees the stage makes.
 - **The day so far:** the pick-up scene starts from yesterday's session (its debrief and where to pick up), and the
   debrief scene from three hours of active time and five verdicts, which [stage.mjs](stage.mjs) writes into the
   daemon's scratch store; the daemon's clock shows the scene's hour.

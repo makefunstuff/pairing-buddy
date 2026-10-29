@@ -24,7 +24,8 @@ description: "What Pair keeps and where: logins in auth.json, the rest in its da
 The [run log](exploration.md) (each build's and run's output and the lines you typed before it) is kept in the
 daemon's memory only, for the session.
 
-Nothing is written to your repository or to the work board (Pair only lists its tasks). Nothing leaves your machine
+Nothing is written to your repository. The work board (Shepherdr) is read, and written to only when you pick it:
+[`/gen board`](gen.md#gen-board-a-task-for-the-board)'s `y` adds one task for later, with the brief shown to you. Nothing leaves your machine
 except the requests to the model endpoints you configured (OpenRouter's voice too, when you set it), `gh pr view` for the
 [context card](neovim.md#what-it-knows-the-context-card) when `gh` is installed and, for a login, to the provider's
 sign-in service. Those requests carry your code: the Watcher gets each moment's text (your edits, a command's

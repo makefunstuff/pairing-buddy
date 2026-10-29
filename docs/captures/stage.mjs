@@ -3,7 +3,7 @@
 // that points at them, and a chat client, as the chat pane would be. Writes `ready` when Neovim may start.
 // usage: node stage.mjs <scene> <scratch dir under /tmp/paircap.*>
 import {execFileSync, spawn} from 'node:child_process';
-import {chmodSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, utimesSync, writeFileSync} from 'node:fs';
+import {cpSync, existsSync, mkdirSync, openSync, readFileSync, utimesSync, writeFileSync} from 'node:fs';
 import {homedir} from 'node:os';
 import {connect} from 'node:net';
 import {basename, join} from 'node:path';
@@ -48,18 +48,18 @@ if (scene.blank) {
   else if (existsSync(join(project, 'go.mod'))) execFileSync('go', ['test', '-count=1', '-run', '^$', './...'], {cwd: project, stdio: 'ignore'});
 }
 
-// The scene's other agents: a stand-in board (its command prints the list; its task files say where each task's
-// agent runs) and herdr's agents. Scenes without them read no board at all, never yours.
+// The scene's other agents: a stand-in board (board.mjs, answering from a state file: the project's space and its
+// tasks, each on a branch in a worktree of its own) and herdr's agents, `worktree:<n>` in their cwd being task n's.
+// Scenes without them read no board at all, never yours.
 const board = join(dir, 'board');
-const showBoard = tasks => writeFileSync(join(board, 'list.json'), JSON.stringify(tasks));
+const showBoard = tasks => writeFileSync(join(board, 'state.json'), JSON.stringify({spaces: [{name: basename(project), key: 'HSH', path: project}], tasks}));
+const worktreeOf = n => join(dir, 'work', `${basename(project)}-${n}`);
 if (scene.agents) {
   mkdirSync(board);
-  writeFileSync(join(board, 'herdr-projects'), `#!/bin/sh\ncat '${join(board, 'list.json')}'\n`);
-  chmodSync(join(board, 'herdr-projects'), 0o755);
-  for (const [id, file] of Object.entries(scene.agents.files)) {
-    mkdirSync(join(board, 'tasks', id), {recursive: true});
-    writeFileSync(join(board, 'tasks', id, 'task.json'), JSON.stringify(file));
+  for (const task of scene.agents.tasks) {
+    execFileSync('git', ['worktree', 'add', '-q', '-b', task.branch, worktreeOf(task.id.split('-')[1])], {cwd: project, stdio: 'ignore'});
   }
+  for (const agent of scene.agents.herdr) agent.cwd = agent.cwd.replace(/^worktree:(\d+)$/, (_, n) => worktreeOf(n));
   showBoard(scene.agents.tasks);
 }
 
@@ -121,13 +121,13 @@ writeFileSync(join(dir, 'config.json'), JSON.stringify({
   ...(scene.testOnSave ? {testOnSave: {[project]: scene.testOnSave}} : {}),
   ...voice(),
   // the stand-in board, or none: not yours
-  board: scene.board ? join(HERE, 'board.mjs') : scene.agents ? join(board, 'herdr-projects') : null,
+  board: scene.board || scene.agents ? join(HERE, 'board.mjs') : null,
   agents: Boolean(scene.agents),
   ...(LIVE ? {model: live} : {models: {watcher: model('watcher'), partner: model('partner')}}),
 }, null, 2));
 const out = openSync(join(dir, 'daemon.log'), 'a');
 const daemon = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', PAIR, 'daemon'], {
-  env: {...process.env, PAIR_CONFIG: join(dir, 'config.json'), HERDR_PROJECTS_DATA_DIR: board, TZ: zone(scene.clock)}, stdio: ['ignore', out, out],
+  env: {...process.env, PAIR_CONFIG: join(dir, 'config.json'), ...(scene.agents ? {CAP_BOARD: join(board, 'state.json')} : {}), TZ: zone(scene.clock)}, stdio: ['ignore', out, out],
 });
 while (!existsSync(socket)) await sleep(50);
 

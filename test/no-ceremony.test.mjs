@@ -51,6 +51,7 @@ function project() {
     tasks: [
       {id: 'ELS-7', status: 'work', title: 'Not this one', place: 'p:here:elsewhere'},
       {id: 'PRB-7', status: 'work', title: 'Faster hash', sub: 'trying fibonacci', place: 'p:here:probe', branch: 'work/7-faster-hash'},
+      {id: 'PRB-8', status: 'need', title: 'Benchmarks', sub: 'Which machine?', place: 'p:here:probe'},
     ],
   });
   return {root, board};
@@ -81,6 +82,7 @@ test('a session takes the goal of its board task, matched by repo and number, an
   try {
     const welcome = await chat.next(message => message.type === 'welcome');
     assert.equal(welcome.goal, 'Faster hash', 'not "Not this one", the other repo\'s task 7');
+    assert.deepEqual(welcome.board, {space: 'probe', working: 0, needs: 1}, 'the chat\'s header counts the space\'s other tasks');
     await chat.next(message => message.text === 'Goal, from the board task PRB-7: Faster hash');
     assert.ok(!chat.received.some(message => /What are we doing/.test(message.text ?? '')), 'nothing is asked');
 

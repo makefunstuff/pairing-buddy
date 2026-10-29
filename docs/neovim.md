@@ -510,12 +510,13 @@ two seconds while it is open.
 
 *The card in the capture, made by the daemon and plugin as shipped: no goal was typed, it came from the board task
 of the branch. The test run and the two Telescope searches are real; the board is a stand-in for
-herdr's work board ([captures/board.mjs](captures/board.mjs)).*
+the work board, Shepherdr ([captures/board.mjs](captures/board.mjs)). The capture predates Shepherdr's task ids:
+`hookd/7` is `HKD-7` now.*
 
 | Source | Rows | Read from |
 | --- | --- | --- |
 | goal | what the session is for, and where it came from | the board task, else the branch name, else what you typed |
-| board | the task, its state, and how many of the repo's other tasks are working or need you | the herdr work board: the task whose number is in the branch name, in this repo |
+| board | the task, its state, and how many of the repo's other tasks are working or need you | the work board, [Shepherdr](agents.md#where-it-reads): the task of the repo's space whose number is in the branch name |
 | git | branch, last commit, how many files changed, the pull request | `git`, and `gh pr view` at most every five minutes |
 | terminal | the last three commands, how they ended and how long ago | the herdr panes and the shell hook |
 | editor | your buffers, the jumplist, and your searches with what you opened from them | Neovim, and the searches the [search trail](#the-search-trail) reads from Telescope, snacks.picker and fzf-lua |
@@ -526,11 +527,12 @@ herdr's work board ([captures/board.mjs](captures/board.mjs)).*
   what went with earlier questions stays in the session's conversation.
 - **A budget per source.** Six buffers, four jumps and three searches go; the card says how many more were cut.
 - **The board's own launches are not yours.** A command that launches one of the board's agents (it hands the agent
-  a file from one of the board's task folders) is left out of the commands, and the card counts it as not sent, so
-  Pair never thinks you ran it. Your own `herdr-projects` commands are yours.
-- **Matched by repo and number.** The branch `work/7-retries` belongs to task 7 of this repo only: another repo's
-  task 7 is never taken for it. The repo is the folder of the main checkout (also from a worktree) or the name in
-  `origin`'s URL.
+  a file of the board's own, such as its hooks' settings in `~/.shepherdr`) is left out of the commands, and the card
+  counts it as not sent, so Pair never thinks you ran it. Your own `shepherdr` commands are yours.
+- **Matched by space and number.** The branch `work/7-retries` belongs to task 7 of this repo's space only (`HKD-7`):
+  another space's task 7 is never taken for it. The space is the one whose folder is the repo's main checkout (also
+  from a worktree), else the one named as that folder or as the name in `origin`'s URL. A repo that is no space of
+  the board's has no board source.
 - The searches are the search trail's: a search you leave with `Esc` shows without "opened", since nothing was.
   Hiding the editor also keeps the search trail from raising a remark, which would send the searches.
 - A branch is read as a task number only when the number stands alone in a part of its name (`work/7-retries`,
