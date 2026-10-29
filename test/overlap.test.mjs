@@ -7,7 +7,7 @@ import {join} from 'node:path';
 import {test} from 'node:test';
 import {fold, initialState} from '../src/fold.mjs';
 import {stillTrue} from '../src/held.mjs';
-import {parseTaskDiff, TaskChanges, taskFiles, touched} from '../src/overlap.mjs';
+import {diffPath, parseTaskDiff, TaskChanges, taskFiles, touched} from '../src/overlap.mjs';
 import {detectTriggers} from '../src/triggers.mjs';
 import {momentOf} from '../src/watcher.mjs';
 import {fakeShepherdr} from './fake-shepherdr.mjs';
@@ -47,6 +47,11 @@ test('a branch\'s diff: its files and the lines of the base it changes, with wha
     {file: 'new.txt', ranges: [{from: 1, to: 1, added: ['hello']}]},
   ]);
   assert.deepEqual(parseTaskDiff(''), []);
+  assert.equal(diffPath('a/my file.js\t'), 'my file.js', 'a name with a space has a tab after it');
+  assert.equal(diffPath('"b/\\303\\274n\\303\\257 \\"q\\".js"'), 'ünï "q".js', 'a quoted name, unquoted');
+  assert.equal(diffPath('/dev/null'), null);
+  assert.deepEqual(parseTaskDiff('--- a/x y.js\t\n+++ b/x y.js\t\n@@ -2 +2 @@\n-b\n\\ No newline at end of file\n+c\n\\ No newline at end of file\n'),
+    [{file: 'x y.js', ranges: [{from: 2, to: 2, added: ['c']}]}], 'no newline at the end is no line');
   const ranges = parseTaskDiff(DIFF)[0].ranges;
   assert.deepEqual(touched(ranges, 5, 5).map(range => range.from), [3], 'the line next to a change touches it');
   assert.deepEqual(touched(ranges, 6, 8), [], 'lines between the changes do not');

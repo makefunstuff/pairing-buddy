@@ -15,6 +15,33 @@ const MAX_RANGES = 40; // per file
 const SAMPLE_LINES = 4; // of each change, the lines the branch writes there, for the Partner's remark
 
 /**
+ * A path as git writes it after `--- ` or `+++ `: `a/my file.js` with a tab after it when it has a space, or quoted
+ * in C's way when it has a character git escapes (`"a/\303\274.js"`). Null for /dev/null.
+ */
+export function diffPath(text) {
+  const raw = text.replace(/\t$/, '');
+  if (raw === '/dev/null') return null;
+  let path = raw;
+  if (raw.startsWith('"') && raw.endsWith('"')) {
+    const bytes = [];
+    const escapes = {n: 10, t: 9, '"': 34, '\\': 92, a: 7, b: 8, f: 12, r: 13, v: 11};
+    for (let i = 1; i < raw.length - 1; i++) {
+      if (raw[i] !== '\\') {
+        bytes.push(...Buffer.from(raw[i]));
+      } else if (/[0-7]{3}/.test(raw.slice(i + 1, i + 4))) {
+        bytes.push(parseInt(raw.slice(i + 1, i + 4), 8));
+        i += 3;
+      } else {
+        bytes.push(escapes[raw[i + 1]] ?? raw.charCodeAt(i + 1));
+        i += 1;
+      }
+    }
+    path = Buffer.from(bytes).toString('utf8');
+  }
+  return /^[ab]\//.test(path) ? path.slice(2) : path;
+}
+
+/**
  * The files and lines a `git diff -U0` changes: [{file, ranges: [{from, to, added}]}], `file` relative to the repo.
  * The lines are the base's, where your checkout has them: a change that only adds lines is the line it adds under
  * (at least 1). `added` holds the first few lines the branch writes there. A deleted file counts; a new one too.
@@ -29,13 +56,13 @@ export function parseTaskDiff(text) {
       range = null;
       continue;
     }
-    const name = /^(?:\+\+\+|---) (?:[ab]\/(.+)|\/dev\/null)$/.exec(line);
-    if (name) {
-      if (name[1] && !files.some(each => each.file === name[1])) {
+    if (/^(?:\+\+\+|---) /.test(line)) {
+      const path = diffPath(line.slice(4));
+      if (path && !files.some(each => each.file === path)) {
         if (files.length >= MAX_FILES) break;
-        file = {file: name[1], ranges: []};
+        file = {file: path, ranges: []};
         files.push(file);
-      } else if (name[1]) file = files.find(each => each.file === name[1]);
+      } else if (path) file = files.find(each => each.file === path);
       continue;
     }
     const hunk = /^@@ -(\d+)(?:,(\d+))? \+\d+(?:,\d+)? @@/.exec(line);
