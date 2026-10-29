@@ -514,9 +514,9 @@ test('/gen try: the sample in a split outside the project; the run key writes an
       fauxAssistantMessage([fauxText('A Map keeps the order.')]),
     ]);
     keys(':Pair gen try a small LRU cache<CR>');
-    await said(/^gen #1 · try · lru\.js \+3 · ✓ `node lru\.js`: A Map keeps the order\.\nIn Neovim: lru\.js in a split, outside the project\./);
+    await said(/^gen #1 · try · lru\.js \+3 · ✓ `node lru\.js`: A Map keeps the order\.$/);
     const sample = messages.find(message => message.type === 'message' && /^gen #1 · try/.test(message.text));
-    assert.ok(sample);
+    assert.match(sample.meta.hint, /^In Neovim: lru\.js in a split, outside the project\./, 'how to take it, apart: the full pane has keys for it');
     assert.equal(existsSync(join(project, 'lru.js')), false, 'nothing in the project');
 
     // It opens in a split below; the cursor stays where it was.
@@ -715,6 +715,27 @@ test('owning in Neovim: ┊ on the lines taken, part by part; your edit makes a 
     keys(':w<CR>');
     await until(() => rows() === '[]', 'the formatted u yours');
     await until(async () => (await today()).find(row => row.text === 'gen #3 · here · a v and a u')?.counts.lines.owned === 2, 'both owned in the ledger');
+  } finally {
+    await stop();
+  }
+});
+
+test('the gen card\'s keys from the chat: k opens the next file to review in the window you work in, Enter opens :Pair gen list', {skip, timeout: 40_000}, async () => {
+  const {partner, keys, remote, said, send, messages, stop} = await genInNvim('orders', {stub: true});
+  try {
+    partner.setResponses([
+      fauxAssistantMessage([fauxToolCall('draft', {path: 'db/0007_status.sql', text: 'ALTER TABLE orders ADD status TEXT;\n', note: 'migration'})], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxText('A migration.')]),
+    ]);
+    keys(':Pair gen file a migration adding status<CR>');
+    await said(/^gen #1 · file · 1 new file to review/);
+    await until(() => proposals(remote).length === 1, 'its buffer');
+    const card = messages.filter(message => message.type === 'gen_card' && message.gen === 1).at(-1);
+    assert.deepEqual([card.state, card.keys], ['ready', {k: 'keep one', d: 'drop all', enter: 'open the list', u: 'undo'}]);
+    send({type: 'gen_open', action: card.action, what: 'next'});
+    await until(() => remote('bufname()') === 'pair://gen/1/db/0007_status.sql', 'the file to review, opened');
+    send({type: 'gen_open', action: card.action});
+    await until(() => remote('bufname()') === 'pair://gen/list', ':Pair gen list');
   } finally {
     await stop();
   }

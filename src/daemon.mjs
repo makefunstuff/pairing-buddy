@@ -569,6 +569,8 @@ export async function startDaemon(config, {
     if (client.role === 'chat') {
       sendMessage(client.socket, session.activityNow);
       sendMessage(client.socket, session.presence);
+      // And today's /gen cards: the keys under each, and the request at work, for the status.
+      for (const card of session.gen.cards()) sendMessage(client.socket, card);
     }
     // A Neovim that connects (or reconnects) after a test run shows its result too, and a late answer it missed.
     if (client.role === 'editor' && session.testsShown) sendMessage(client.socket, session.testsShown);
@@ -843,6 +845,9 @@ export async function startDaemon(config, {
     if (message.type === 'gen_tries') return triesFrom(client, session);
     if (message.type === 'gen_tree_drop' && Number.isInteger(message.action) && Number.isInteger(message.piece)) return session.gen.dropTree(message.action, message.piece);
     if (message.type === 'gen_copy_delete') return copyDeleteFrom(client, session, message);
+    // The keys of a gen card in the chat (see Gen.card): d drops what is left, Enter and k open it in Neovim.
+    if (message.type === 'gen_drop_all' && Number.isInteger(message.action)) return session.gen.dropAll(message.action);
+    if (message.type === 'gen_open' && Number.isInteger(message.action)) return session.gen.open(message.action, message.what === 'next' ? 'next' : 'open');
     if (message.type === 'gen_check') return checkFrom(client, session, message);
     if (message.type === 'brief') return briefFrom(client, session, message);
     if (message.type === 'trail') return sendMessage(client.socket, session.trail());

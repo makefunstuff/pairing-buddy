@@ -52,7 +52,9 @@ again, `/gen tries` lists the try folders, and `/keep [path]` moves the newest t
 `/gen scaffold <what>` (`/gen scaffold --branch <what>` for a git worktree) asks for a scaffold; `/keep <path>` keeps
 a file of it, and `/gen drop` deletes its copy. `/gen` alone lists today's requests (and how much code you took is
 [not yours yet](#owning-generated-code)), and `/gen cancel` stops the one
-that runs or waits. `/cancel` stops a running request too, when Pair answers nothing else.
+that runs or waits. `/cancel` stops a running request too, when Pair answers nothing else. Typing `/gen` and a space
+lists the shapes first, then what else `/gen` does; `Tab` completes one. What a request makes comes back as a
+[gen card](#in-the-chat-pane-the-gen-card), with keys to keep, open, drop and undo it.
 
 ## The shape
 
@@ -83,7 +85,8 @@ gen #1 · new files: "migration". Shape?
 Number, Enter takes 1 (Esc cancels):
 ```
 
-In the chat, `y` takes the guess, a shape word another, and `n` cancels.
+In the chat, `y` takes the guess, a shape word another, and `n` cancels. The question is the gen speaker's
+([below](#in-the-chat-pane-the-gen-card)), and the status says `? gen #1 waits for your answer`.
 
 ## How a request runs
 
@@ -123,6 +126,60 @@ In the chat, `y` takes the guess, a shape word another, and `n` cancels.
 | `files` | `40` | A proposal, draft or write in one more file is refused. Files a scaffold's runs made past it are counted in its debrief, not listed |
 | `commands` | `8` | Searches, and the runs of a try or a scaffold, past it are refused |
 | `minutes` | `10` | The model is stopped; what it proposed so far still shows. Time a question waits for you does not count |
+
+## In the chat pane: the gen card
+
+In the [chat pane](chat.md), what a request makes is the **gen** speaker's, in magenta: the colour /gen has next to
+the roles' (Navigator blue, Scout green, Driver red, the Watcher yellow). Its message is one unit, a **gen card**:
+what it made and how its check went, the debrief, and last its **action line**, the keys that still do something on
+it.
+
+```
+ you   /gen scaffold an admin page for orders: list, detail, status change
+ gen   #7 · scaffold · 9 files, 3 of yours changed · 2m 41s: An admin page under /admin …
+       in Pair's copy …/gen/shop-1a2b3c4d/7 · ran ✓ `go build ./...` · ✓ `go test ./...`
+       check ✓ `go test ./...`: 47 tests, 6 packages
+       │ + internal/admin/orders.go       +118
+       │ ~ cmd/shop/main.go               +3 -1
+       │ … 5 more
+       ≠ brief "Admin is read-only for now." NOTES.md:17 · internal/admin/orders.go:64 …
+       ? guessed html/template, no JS
+
+       k keep one   Enter open the list   d drop all   u undo   · Alt-↑ picks
+── ◉ watching · gen #7: 0 of 9 kept ─────────────────────────── qwen3-coder ──
+```
+
+As on a remark, the keys work once the card is picked: the first `Alt-↑` picks it while its action line shows (the
+aside says so), and a letter typed on an empty line stays a letter. The line shows while the card is the last thing
+said (a note after it, such as `gen #7: … taken`, does not count), and only the keys that still apply:
+
+| Key | `here` | `file` | `try` | `scaffold` |
+| --- | --- | --- | --- | --- |
+| `k` | Takes the code into your buffer, unsaved, as `Alt-y` does | Opens the next file to review in Neovim; `:w` there takes it | Keeps its file in the project, as `/keep` does | Puts `/keep ` on the line, with the files left to keep in its menu: pick one, `Enter` keeps it |
+| `Enter` | Neovim goes to where the code goes | Opens `:Pair gen list` | Opens its file | Opens `:Pair gen list` |
+| `d` | Drops the code still showing | Drops the files still to review | | Deletes the copy, and what you did not keep of it |
+| `u` | Undoes the request ([below](#one-undo-per-request)), as `u` in `:Pair today`; once undone, `u again` makes it again | | | |
+
+`d` asks first: the first `d` says what a second one drops (`d again drops gen #7's copy, …`), and only a second `d`
+within a moment does it. `u` shows only once there is something to undo (for a try, once a file of it is kept), and
+none of the keys show while the request is at work: `Esc`, `/cancel` or `/gen cancel` stop it then. A card for code
+at the cursor shows the code as a diff under its words, and `✓ taken` once you took it; `a` and `j` work on it as on
+any suggestion. A card does not fold: `Enter` on it opens it.
+
+**The status** says what /gen does, in the rule over what you type:
+
+| Status | Means |
+| --- | --- |
+| `▖ gen #4 generating 41s` | A request at work, its spinner in magenta, while Pair does nothing else |
+| `▖ gen #4 generating · gen #5 waits` | Another request waits its turn: one runs at a time (`2 more wait` for more) |
+| `▖ thinking · gen #4 generating` | Pair answers your question meanwhile, in its own conversation |
+| `? gen #4 waits for your answer` | The request asks you here: its shape, the brief, or a question of its model |
+| `? gen #4 asks in Neovim` | It asks in a dialog there, where you asked; answer it there (`Alt-g`) |
+| `◉ watching · gen #7: 0 of 9 kept` | Done, with something left: the files of a scaffold kept, `gen #4: 2 to review` for files, `gen #2: ready in Neovim` for code at the cursor. It goes once nothing is left, and gives way first in a narrow pane |
+
+A chat pane that opens later, or reconnects, gets the cards of today's requests with their keys. The
+[plain pane](chat.md#the-plain-pane) has no keys: it says `gen` before the card, and under it how to take what it
+made (`In Neovim, :w in one writes it to its path; :Pair gen list lists them.`).
 
 ## The brief
 
@@ -241,10 +298,11 @@ gen #4 · file · 2 new files to review: db/migrations/0007_orders_status.sql +1
 ✓ `go test ./...` on the unsaved buffers: 41 pass
 ≠ brief "Statuses: new, paid, shipped." NOTES.md:11 · db/migrations/0007_orders_status.sql:6 also adds cancelled
 ? guessed existing rows get the status new
-In Neovim, :w in one writes it to its path; :Pair gen list lists them.
 ```
 
-and the statusline `gen #4 · 2 to review · :Pair gen list`.
+Its [card](#in-the-chat-pane-the-gen-card) ends with `k keep one   Enter open the list   d drop all   u undo`; the
+plain pane says `In Neovim, :w in one writes it to its path; :Pair gen list lists them.` instead. The statusline
+says `gen #4 · 2 to review · :Pair gen list`, and the chat's status `gen #4: 2 to review`.
 
 - **The check** runs once, on all the new files at their real paths with every other unsaved buffer of yours, with
   the command a [hand-over's check](driver.md#the-check-on-the-unsaved-buffer) uses (the project's command on save,
@@ -433,8 +491,11 @@ check ✓ `go test ./...`: 47 tests, 6 packages
 ≠ brief "Admin is read-only for now." NOTES.md:17 · internal/admin/orders.go:64 the page changes the status
 ? guessed html/template, no JS
 not run: `npm install htmx.org`: the copy has no network (gen.network), so install it yourself once you keep the files
-In Neovim, :Pair gen list keeps them one at a time (k), shows each (Enter) and deletes the copy (x). Here, /keep <path> keeps one; /gen drop deletes the copy.
 ```
+
+In the chat pane the card ends with its keys, `k keep one   Enter open the list   d drop all   u undo`
+([above](#in-the-chat-pane-the-gen-card)); the plain pane says `In Neovim, :Pair gen list keeps them one at a time
+(k), shows each (Enter) and deletes the copy (x). Here, /keep <path> keeps one; /gen drop deletes the copy.` instead.
 
 `+` is a new file, `~` a change to a file you have, with the lines it adds and removes. The `≠ brief` and `? guessed`
 lines are [the brief's check](#the-debrief--brief-and--guessed), on the first 300 lines of each file. Neovim says
@@ -686,6 +747,10 @@ Pair does not commit, and nothing of this reaches git: owning is about your read
 - The code shows in the Neovim you work in; a second Neovim on the same project does not show it.
 - A request from the chat asks its questions in the chat only; one from Neovim asks in Neovim, and the chat shows
   them to read.
+- A gen card's keys are the chat pane's own; the [plain pane](chat.md#the-plain-pane) has none, and says how to take
+  what a request made in words instead. A card of a request from before a daemon restart keeps the keys that still
+  work: its files to review and its undo, not its code at the cursor, which is gone.
+- `k` on a scaffold's card lists at most 200 files to keep in `/keep`'s menu (a scaffold has at most `gen.limits.files`, 40 by default).
 - The daemon keeps the last 20 edits of the session, with their line ranges as they were sent. An origin is not
   followed as lines move: after many edits, or lines added above, an older edit of Pair's no longer marks its
   lines, and they count as yours again.

@@ -9,7 +9,7 @@ import {clearLine, createInterface, cursorTo} from 'node:readline';
 import {agentListLines} from './agent-relay.mjs';
 import {openHistory} from './chat-history.mjs';
 import {LineEditor} from './chat-input.mjs';
-import {renderFrame, searchText, shownTool, toolDone, transcriptLines} from './chat-render.mjs';
+import {cardKeys, genStatus, renderFrame, searchText, shownTool, toolDone, transcriptLines} from './chat-render.mjs';
 import {KeyDecoder, Screen} from './chat-screen.mjs';
 import {dim, formatMessage, sgr} from './chat-style.mjs';
 import {LEVELS} from './config.mjs';
@@ -142,6 +142,9 @@ export function remarkLines(remarks, now = Date.now()) {
   ];
 }
 
+/** What a /gen request says, as the gen speaker says it: gen #7 · scaffold … as #7 · scaffold …, the name is in the gutter. */
+export const genText = text => text.replace(/^gen (#\d+)/, '$1');
+
 /** The answer to a "may Pair run this?" question: only y or yes allows it. */
 export const allows = line => /^\s*y(es)?\s*$/i.test(line);
 
@@ -254,7 +257,7 @@ function runPlainChat(socketPath, {input, output, exit, cwd, env}) {
     }
     if (message.type === 'confirm') {
       confirming = message.id;
-      say('pair', `${message.text} [${message.hint ?? 'y/N'}]`);
+      say(message.gen ? 'gen' : 'pair', `${message.gen ? genText(message.text) : message.text} [${message.hint ?? 'y/N'}]`);
     }
     if (message.type === 'confirmed' && message.id === confirming) confirming = null; // answered, or timed out
     if (message.type === 'first' && message.step) {
@@ -275,7 +278,9 @@ function runPlainChat(socketPath, {input, output, exit, cwd, env}) {
     if (message.type === 'tool' && shownTool(message.tool)) print(dim(`  └ ${toolDone(message.tool, message.what)}`, look));
     // What you type is already on screen; your own lines come back only as history.
     const echo = message.sender === 'user' && !message.history;
-    if (message.type === 'message' && !echo) say(message.sender, message.text);
+    // What a /gen request made is the gen speaker's, with how to take it under it.
+    if (message.type === 'message' && !echo && message.meta?.gen && message.sender === 'pair') say('gen', [genText(message.text), message.meta.hint].filter(Boolean).join('\n'));
+    else if (message.type === 'message' && !echo) say(message.sender, message.text);
     if (message.type === 'ended') {
       say('system', `session ended${message.why ? ` by itself: ${message.why}` : ''}`);
       link.hello(false); // starts the next session, which asks for its goal
@@ -391,6 +396,9 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
     menuClosedFor: null, // the text the menu was closed for with Esc
     confirming: null, // the id of the question Pair asks
     confirmHint: null, // what its answers do, when the question says (a /gen request's)
+    cards: new Map(), // the gen cards, by request number: their state and keys (see Gen.card)
+    armed: null, // d on a gen card waits for a second d: {gen, until}
+    keepFrom: null, // the scaffold whose card k was pressed on: /keep's menu lists its files
     first: null, // tomorrow's first step, which `e` edits right after the debrief
     listed: [], // the ids of the remarks /remarks showed last
     about: null, // the remark a follow-up is about: {id, text}
@@ -446,6 +454,20 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
     if (i === -1 || state.entries[i].verdict) return -1;
     return state.entries.slice(i + 1).every(entry => ['system', 'error'].includes(entry.kind)) ? i : -1;
   };
+  /**
+   * The gen card whose action line shows its keys: the last one, while something on it is left to do and it is the
+   * last thing said, the pane's notes aside (taking its code says so in one); -1 when there is none.
+   */
+  const liveCard = () => {
+    const i = state.entries.findLastIndex(entry => entry.kind === 'gen');
+    if (i === -1 || !cardKeys(state.entries[i].card).length) return -1;
+    return state.entries.slice(i + 1).every(entry => ['system', 'error', 'note'].includes(entry.kind)) ? i : -1;
+  };
+  /** The card of request `n` on its messages: their keys follow it. */
+  const showCard = card => {
+    state.cards.set(card.gen, card);
+    for (const entry of state.entries) if (entry.meta?.gen === card.gen) entry.card = card;
+  };
 
   /** A message from the daemon as an entry: who speaks, and what the pane shows it with. */
   function entryOf(message) {
@@ -453,6 +475,8 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
     let kind = KIND_OF[message.sender] ?? 'system';
     if (kind === 'pair' && meta.trigger) kind = 'watch';
     if (kind === 'system' && meta.error) kind = 'error';
+    // What a /gen request made: the gen speaker's card, with its keys.
+    if (kind === 'pair' && meta.gen) return {kind: 'gen', text: genText(message.text), at: message.at ?? Date.now(), meta, card: state.cards.get(meta.gen)};
     const about = meta.about ? state.entries.find(entry => entry.meta?.remark === meta.about && entry.kind === 'watch') : null;
     return {kind, text: message.text, at: message.at ?? Date.now(), meta, aboutText: about?.text.split('\n')[0]};
   }
@@ -527,7 +551,10 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
       case 'confirm':
         state.confirming = message.id;
         state.confirmHint = message.hint ?? null;
-        add({kind: 'confirm', text: message.text, confirm: message.id, ...(message.command ? {command: message.command} : {}), ...(message.hint ? {hint: message.hint} : {})});
+        add({
+          kind: 'confirm', text: message.gen ? genText(message.text) : message.text, confirm: message.id,
+          ...(message.command ? {command: message.command} : {}), ...(message.hint ? {hint: message.hint} : {}), ...(message.gen ? {gen: message.gen} : {}),
+        });
         break;
       case 'confirmed': {
         if (message.id === state.confirming) state.confirming = null;
@@ -581,6 +608,9 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
         else arrive(entry);
         break;
       }
+      case 'gen_card':
+        showCard(message);
+        break;
       case 'applied': {
         const entry = state.entries.find(e => e.meta?.suggestion?.action === message.action);
         if (entry) entry.applied = true;
@@ -667,7 +697,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
       return;
     }
     if (parsed.local === 'copy') {
-      const answers = state.entries.filter(entry => ['pair', 'watch'].includes(entry.kind) && !entry.partial);
+      const answers = state.entries.filter(entry => ['pair', 'watch', 'gen'].includes(entry.kind) && !entry.partial);
       const entry = answers[answers.length - (parsed.number ?? 1)];
       return entry ? copy(entry) : flash('Pair has said nothing to copy yet');
     }
@@ -728,7 +758,8 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
   function selectBy(by) {
     if (!state.entries.length) return;
     state.found = -1;
-    if (state.selected === -1) state.selected = by < 0 && liveRemark() !== -1 ? liveRemark() : state.entries.length - 1;
+    const live = Math.max(liveRemark(), liveCard()); // the action line's message, when there is one
+    if (state.selected === -1) state.selected = by < 0 && live !== -1 ? live : state.entries.length - 1;
     else state.selected = Math.max(0, Math.min(state.entries.length - 1, state.selected + by));
     state.mode = 'select';
   }
@@ -745,6 +776,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
     if (!entry) return false;
     const {meta = {}} = entry;
     const name = key.name;
+    if (entry.kind === 'gen' && cardKeys(entry.card).some(([one]) => one === name)) return cardAct(entry, name);
     if (name === 'c') copy(entry);
     else if (name === 'a' && meta.suggestion) {
       send({type: 'accept', action: meta.suggestion.action}); // Neovim says when it took it (applied)
@@ -763,10 +795,56 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
     return true;
   }
 
-  // The menu over the input: commands after /, files after @.
+  /**
+   * k, Enter, d or u on gen card `entry` (see Gen.card): keep what it made, open it in Neovim, drop what is left of
+   * it (d twice: a scaffold's copy goes with it), undo it.
+   */
+  function cardAct(entry, name) {
+    const {card} = entry;
+    const n = `gen #${card.gen}`;
+    if (name === 'u') send({type: 'undo', action: card.action});
+    else if (name === 'enter') {
+      if (send({type: 'gen_open', action: card.action})) flash(card.shape === 'file' || card.shape === 'scaffold' ? `${n}: :Pair gen list opens in Neovim` : `Neovim goes to ${n}'s code; Ctrl-O comes back`);
+    } else if (name === 'd' && (state.armed?.gen !== card.gen || state.armed.until < Date.now())) {
+      state.armed = {gen: card.gen, until: Date.now() + FLASH_MS};
+      flash(`d again drops ${card.shape === 'scaffold' ? `${n}'s copy, and what you did not keep of it` : `what is left of ${n}`}`);
+    } else if (name === 'd') {
+      state.armed = null;
+      send({type: 'gen_drop_all', action: card.action});
+    // k: the code at the cursor goes into the buffer, as Alt-y takes it; a file to review opens, a try's file is
+    // kept; for a scaffold, /keep waits on the line with its files to pick.
+    } else if (card.shape === 'here') send({type: 'accept', action: card.action});
+    else if (card.shape === 'file') {
+      if (send({type: 'gen_open', action: card.action, what: 'next'})) flash(`${n}: the next file to review opens in Neovim; :w there takes it`);
+    } else if (card.shape === 'try') send({type: 'keep', path: '', gen: card.gen});
+    else keepOne(card);
+    return true;
+  }
+
+  /** k on a scaffold's card: /keep on the line, its files in the menu to pick one. */
+  function keepOne(card) {
+    deselect();
+    state.keepFrom = card.gen;
+    editor.set('/keep ');
+  }
+
+  // The menu over the input: commands after /, files after @, /gen's shapes after /gen, a scaffold's files after /keep.
 
   function menu() {
     if (state.mode !== 'idle' || state.menuClosedFor === editor.text) return null;
+    // /gen and a space: the shapes, then what else /gen does.
+    if (/^\/gen [a-z]*$/.test(editor.text)) {
+      const items = COMMANDS.filter(([name]) => name.startsWith(editor.text)).map(([name, args, what]) => ({label: name, args, detail: what, value: name}));
+      return items.length && !(items.length === 1 && items[0].value === editor.text.trim()) ? {kind: 'command', items} : null;
+    }
+    // /keep and a space: the files of the newest scaffold still to keep (the card k was pressed on, else the newest).
+    const keeping = /^\/keep (\S*)$/.exec(editor.text);
+    if (keeping) {
+      const cards = [...state.cards.values()].filter(card => card.files?.length);
+      const card = cards.find(one => one.gen === state.keepFrom) ?? cards.at(-1);
+      const items = (card?.files ?? []).filter(file => file.includes(keeping[1])).map(file => ({label: file, value: `/keep ${file}`}));
+      return items.length && !items.some(item => item.value === editor.text) ? {kind: 'keep', items, title: `gen #${card.gen} · files to keep`} : null;
+    }
     if (/^\/\S*$/.test(editor.text)) {
       const items = COMMANDS.filter(([name]) => name.startsWith(editor.text)).map(([name, args, what]) => ({label: name, args, detail: what, value: name}));
       return items.length && !(items.length === 1 && items[0].value === editor.text && !items[0].args) ? {kind: 'command', items} : null;
@@ -788,7 +866,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
     const item = open.items[Math.min(state.menuChosen, open.items.length - 1)];
     state.menuChosen = 0;
     if (open.kind === 'file') return editor.replaceWord(`${item.value} `);
-    if (run && !item.args) {
+    if (run && (!item.args || open.kind === 'keep')) {
       editor.set(item.value);
       return submit();
     }
@@ -841,7 +919,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
         return;
       }
       if (name === 'tab') return complete(open, false);
-      if (name === 'enter' && !meta && !key.shift) return complete(open, open.kind === 'command');
+      if (name === 'enter' && !meta && !key.shift) return complete(open, open.kind !== 'file');
       if (name === 'escape') {
         state.menuClosedFor = editor.text;
         return;
@@ -970,10 +1048,12 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
       entries: state.entries,
       selected: state.selected,
       latestRemark: liveRemark(),
+      latestCard: liveCard(),
+      gen: genStatus([...state.cards.values()]),
       scroll: state.scroll,
       editor,
       mode: open && state.mode === 'idle' ? 'menu' : state.mode,
-      menu: open ? {kind: open.kind, items: open.items, chosen: state.menuChosen} : null,
+      menu: open ? {kind: open.kind, items: open.items, chosen: state.menuChosen, title: open.title} : null,
       search: state.search,
       searchNote: state.searchNote,
       found: state.found,
@@ -997,7 +1077,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
       busy: busy(),
       editorEmpty: editor.empty,
       selectedEntry: selectedEntry && {...selectedEntry, folded: Boolean(state.last.transcript.ranges[state.selected]?.folded)},
-      showEmpty: !state.entries.some(entry => ['you', 'pair', 'watch', 'tool', 'confirm'].includes(entry.kind) && !entry.meta?.greeting), // Pair's greeting goes with the card
+      showEmpty: !state.entries.some(entry => ['you', 'pair', 'watch', 'gen', 'tool', 'confirm'].includes(entry.kind) && !entry.meta?.greeting), // Pair's greeting goes with the card
       writing: partialIndex() !== -1,
       placeholder: state.connection === 'away' ? 'what you type is kept; Enter sends once it is back'
         : state.confirming !== null ? 'or type an answer'
@@ -1085,7 +1165,8 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
   // The spinner turns while Pair works; the "2m ago" of the status row moves on.
   const ticker = setInterval(() => {
     state.frame += 1;
-    if (busy() || state.activity.state === 'remark' || state.connection !== 'up' || state.frame % 40 === 0) render();
+    const genWorks = genStatus([...state.cards.values()]).running?.state === 'generating';
+    if (busy() || genWorks || state.activity.state === 'remark' || state.connection !== 'up' || state.frame % 40 === 0) render();
   }, 250);
   ticker.unref?.();
   const restore = () => screen.stop();

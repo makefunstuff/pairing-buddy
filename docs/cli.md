@@ -125,6 +125,7 @@ question for Pair (`@here` in it sends your selection in Neovim along), and a li
 | `/gen drop` | Delete the newest `/gen scaffold`'s copy (or worktree); what you did not keep of it is dropped |
 | `/gen` | Today's `/gen` requests in this project, and what is [not yours yet](gen.md#owning-generated-code) of the code you took (`┊ not yours yet: 2 files · 31 lines`) |
 | `/gen cancel` | Stop the `/gen` request that runs or waits |
+| `/gen ` | In the full-screen pane, `/gen` and a space lists the shapes first, then the rest; `Tab` completes one. What a request makes is a [gen card](chat.md#the-gen-card): `Alt-↑` picks it, then `k` keeps, `Enter` opens it in Neovim, `d` (twice) drops what is left, `u` undoes the request |
 | `/brief [note\|off]` | What `/gen` runs against: the goal, the board task and a note (`NOTES.md` by default); with a note, pin it; `off` leaves the note out ([gen.md](gen.md#the-brief)) |
 | `/undo` | Undo Pair's last change of the day: an edit of the Driver's, a suggestion you took, or a whole `/gen` request; as `u` in `:Pair today` |
 | `/today` | What Pair did here today, as in `:Pair today` |

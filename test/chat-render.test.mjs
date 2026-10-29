@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import {mock, test} from 'node:test';
 import {LineEditor} from '../src/chat-input.mjs';
-import {baseNames, bodyLines, heldText, breakText, codeLines, cutStart, dedent, diffLines, emptyLines, footerKeys, footerLine, headerLine, helpLines, markdownLines, menuLines, remarkKeys, renderFrame, statusLine, transcriptLines, wrapTokens, inlineTokens} from '../src/chat-render.mjs';
+import {baseNames, bodyLines, genStatus, heldText, breakText, codeLines, cutStart, dedent, diffLines, emptyLines, footerKeys, footerLine, headerLine, helpLines, markdownLines, menuLines, remarkKeys, renderFrame, statusLine, transcriptLines, wrapTokens, inlineTokens} from '../src/chat-render.mjs';
 import {COMMANDS} from '../src/chat.mjs';
 import {STYLES, paintLine, textWidth} from '../src/chat-style.mjs';
 
@@ -559,4 +559,86 @@ test('reconnecting: how long the daemon has been away, how many times the pane t
   assert.match(row(40), /^── ! reconnecting 6s · attempt 3 ─+$/);
   assert.match(row(28), /^── ! reconnecting 6s ─+$/);
   assert.match(plain([statusLine({now, connection: 'away', away: {since: at, attempts: 0}}, 80)])[0], /reconnecting 6s ─/, 'no attempt yet: no count');
+});
+
+test('a gen card: the gen speaker in magenta, its words without "gen", the code at the cursor as a diff, its keys as an action line', () => {
+  const card = {type: 'gen_card', gen: 7, action: 31, shape: 'scaffold', state: 'ready', of: 9, taken: 0, left: 9, keys: {k: 'keep one', enter: 'open the list', d: 'drop all', u: 'undo'}};
+  const text = '#7 · scaffold · 9 files, 3 of yours changed · 2m 41s\nin Pair\'s copy gen/shop/7 · check ✓ `go test ./...`: 47 pass\n│ + internal/admin/orders.go  +118\n│ ~ cmd/shop/main.go          +3 -1';
+  const entry = {kind: 'gen', at, text, meta: {gen: 7, hint: 'In Neovim, :Pair gen list keeps them one at a time (k).'}, card};
+  const you = {kind: 'you', at, text: '/gen scaffold an admin page for orders'};
+  const {lines} = transcriptLines([you, entry], 80, {latestCard: 1});
+  assert.deepEqual(plain(lines).slice(1), [
+    ' you   /gen scaffold an admin page for orders',
+    '',
+    ' gen   #7 · scaffold · 9 files, 3 of yours changed · 2m 41s',
+    '       in Pair\'s copy gen/shop/7 · check ✓ go test ./...: 47 pass',
+    '       │ + internal/admin/orders.go  +118',
+    '       │ ~ cmd/shop/main.go          +3 -1',
+    '       ',
+    '       k keep one   Enter open the list   d drop all   u undo   · Alt-↑ picks',
+  ], 'the keys replace the hint of how to take it');
+  const gutter = lines[3].find(seg => seg.text === 'gen');
+  assert.equal(gutter.style, 'gen');
+  assert.deepEqual(STYLES.gen, ['magenta', 'bold'], 'magenta, as the role colours have it');
+  // Picked, the aside goes; narrower, the gaps narrow, then the words go.
+  assert.match(plain(transcriptLines([entry], 80, {latestCard: 0, selected: 0}).lines).at(-1), /u undo$/);
+  assert.equal(plain(transcriptLines([entry], 74, {latestCard: 0}).lines).at(-1), '       k keep one  Enter open the list  d drop all  u undo   · Alt-↑ picks');
+  assert.equal(plain(transcriptLines([entry], 71, {latestCard: 0}).lines).at(-1), '       k keep one Enter open the list d drop all u undo   · Alt-↑ picks');
+  assert.equal(plain(transcriptLines([entry], 44, {latestCard: 0}).lines).at(-1), '       k Enter d u   · Alt-↑ picks');
+  // Not the live card, or nothing left to do on it: no action line; with no keys at all, the hint says how to take it.
+  assert.doesNotMatch(plain(transcriptLines([entry], 80).lines).join('\n'), /Alt-↑ picks/);
+  const old = plain(transcriptLines([{...entry, card: {...card, keys: {}}}], 80, {latestCard: 0}).lines);
+  assert.equal(old.at(-1), '       In Neovim, :Pair gen list keeps them one at a time (k).');
+  // A /gen question is the gen speaker's too, and a new request is a new turn.
+  const asks = {kind: 'confirm', at, gen: 8, text: '#8 · new files: "migration". Shape?', hint: 'y: file · here, scaffold, try · n cancels', confirm: 3};
+  const both = plain(transcriptLines([entry, asks], 80).lines);
+  assert.ok(both.includes(' gen   #8 · new files: "migration". Shape?'), both.join('\n'));
+  // A long card does not fold: Enter on it opens it in Neovim.
+  const long = {...entry, text: Array.from({length: 30}, (_, i) => `line ${i}`).join('\n')};
+  assert.doesNotMatch(plain(transcriptLines([long], 80).lines).join('\n'), /more lines/);
+});
+
+test('a gen card for code at the cursor: its words, then the diff; ✓ taken once taken', () => {
+  const entry = {kind: 'gen', at, text: '#2 · here · 3 lines at math.js:1: A sum.\n≠ brief "BigInt only" NOTES.md:4 · math.js:1 plain numbers', meta: {gen: 2, place: {file: 'math.js', line: 1}, suggestion: {action: 5, old: [], new: ['function sum(a, b) {', '  return a + b', '}']}}};
+  assert.deepEqual(plain(bodyLines(entry, 60)), [
+    '#2 · here · 3 lines at math.js:1: A sum.',
+    '≠ brief "BigInt only" NOTES.md:4 · math.js:1 plain numbers',
+    '│ + function sum(a, b) {',
+    '│ +   return a + b',
+    '│ + }',
+  ], 'every line of its words, not only the first');
+  assert.equal(plain(bodyLines({...entry, applied: true}, 60)).at(-1), '✓ taken');
+});
+
+test('the status says what /gen does: a request at work in magenta, the one waiting its turn, a question, and what is left to take', () => {
+  const now = at;
+  const row = (view, width = 72) => plain([statusLine({now, model: 'qwen3', activity: {state: 'idle'}, presence: {looked: 31, spoke: 2}, ...view}, width)])[0];
+  const genView = cards => ({gen: genStatus(cards)});
+  const working = {gen: 4, shape: 'file', state: 'generating', since: now - 41_000, of: 0, taken: 0, left: 0, keys: {}};
+  assert.match(row(genView([working])), /^── ▖ gen #4 generating 41s ─+ qwen3 ──$/);
+  const spinner = statusLine({now, activity: {state: 'idle'}, ...genView([working])}, 72).find(seg => seg.text.startsWith('▖'));
+  assert.equal(spinner.style, 'genGlyph');
+  assert.match(row(genView([working, {...working, gen: 5, state: 'queued'}])), /^── ▖ gen #4 generating 41s · gen #5 waits ─/, 'the next one waits its turn (one at a time)');
+  assert.match(row(genView([working, {...working, gen: 5, state: 'queued'}, {...working, gen: 6, state: 'queued'}])), /· 2 more wait/);
+  assert.match(row(genView([{...working, state: 'asking'}])), /^── \? gen #4 asks in Neovim ─/, 'a question asked in Neovim is answered there');
+  assert.match(row({...genView([{...working, state: 'asking'}]), activity: {state: 'waiting'}}), /^── \? gen #4 waits for your answer ─/, 'asked here');
+  assert.match(row({...genView([working]), activity: {state: 'thinking', since: now}}), /^── ▖ thinking · gen #4 generating ─/, 'Pair answers you meanwhile, in its own conversation');
+  // Done: what is left of the newest one, after the watching; it gives way first.
+  const scaffold = {gen: 7, shape: 'scaffold', state: 'ready', of: 9, taken: 0, left: 9, keys: {k: 'keep one'}};
+  assert.match(row(genView([scaffold])), /^── ◉ watching · gen #7: 0 of 9 kept ─/);
+  assert.match(row(genView([{...scaffold, shape: 'file', of: 2, left: 2}])), /◉ watching · gen #7: 2 to review/);
+  assert.match(row(genView([{...scaffold, shape: 'here', of: 1, left: 1}])), /◉ watching · gen #7: ready in Neovim/);
+  assert.doesNotMatch(row(genView([{...scaffold, state: 'done'}])), /gen #7/, 'nothing left: nothing said');
+  assert.match(row(genView([scaffold]), 36), /^── ◉ watching ─/, 'a narrow pane keeps the watching');
+});
+
+test('a picked gen card: the footer has its keys, in their short words when the long ones do not fit', () => {
+  const card = {gen: 7, shape: 'scaffold', keys: {k: 'keep one', enter: 'open the list', d: 'drop all', u: 'undo'}};
+  const keys = footerKeys({mode: 'select', selectedEntry: {kind: 'gen', card, meta: {gen: 7}}}).map(([key, what]) => `${key} ${what}`);
+  assert.deepEqual(keys, ['c copy', 'k keep one', 'Enter open the list', 'd drop all', 'u undo', 'Esc back']);
+  assert.match(plain([footerLine({mode: 'select', selectedEntry: {kind: 'gen', card, meta: {gen: 7}}}, 50)])[0], /k keep · Enter open · d drop · u undo/);
+  // The command menu after /keep names what it keeps from.
+  const menu = renderFrame({editor: Object.assign(new LineEditor(), {}), entries: [], header: {}, mode: 'menu', menu: {kind: 'keep', title: 'gen #7 · files to keep', chosen: 0, items: [{label: 'internal/admin/orders.go', value: '/keep internal/admin/orders.go'}]}}, {width: 60, height: 12});
+  assert.match(menu.lines.join('\n'), /╶─ gen #7 · files to keep ─+\n ▸ internal\/admin\/orders\.go/);
+  assert.match(menu.lines.join('\n'), /Enter keeps/);
 });

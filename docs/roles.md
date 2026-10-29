@@ -16,7 +16,8 @@ budget, reaches the Partner, and never while you type. Details in [The Watcher](
 ## The three roles
 
 Pair has one role at a time. It shows in the chat pane's header, in the role's colour from the website (Navigator
-blue, Scout green, Driver red), and in Neovim's statusline.
+blue, Scout green, Driver red), and in Neovim's statusline. A /gen request, which is no role (below), has magenta: the
+`gen` speaker in the chat, and its request in the chat's status.
 
 ### Navigator (the default)
 

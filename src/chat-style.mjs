@@ -5,7 +5,8 @@
 const RESET = '\x1b[0m';
 const DIM = '\x1b[2m';
 const CYAN = '\x1b[36m';
-const NAMES = {pair: 'pair', user: 'you', system: '··'};
+const MAGENTA = '\x1b[35;1m';
+const NAMES = {pair: 'pair', user: 'you', system: '··', gen: 'gen'};
 
 /** The escape that writes in `hex` (#rrggbb). */
 export function trueColor(hex) {
@@ -56,7 +57,7 @@ export function formatMessage(sender, text, {accent = null, width = 0, color = t
   const paint = (ink, words) => (color ? `${ink}${words}${RESET}` : words);
   const ink = accent ? trueColor(accent) : CYAN;
   const name = NAMES[sender] ?? sender;
-  const head = paint(sender === 'pair' ? ink : DIM, name);
+  const head = paint(sender === 'pair' ? ink : sender === 'gen' ? MAGENTA : DIM, name);
   const indent = ' '.repeat(name.length + 1);
   const lines = wrap(text, width > indent.length + 20 ? width - indent.length : Infinity);
   // Code shows in the accent, without its backticks; without colours the backticks stay, to mark it.
@@ -71,7 +72,8 @@ export const dim = (text, {color = true} = {}) => (color ? `${DIM}${text}${RESET
 // The full-screen pane (chat-render.mjs) builds its lines from segments, {text, style}, and paints them last. The
 // colours are the terminal's own 16, so its theme applies, and Pair's accent; no background fills: a selected
 // message has a bar in the accent, a search match is underlined, and the one you are on green as well. Each role
-// has the site's colour for it: Navigator blue, Scout green, Driver red, the Watcher yellow; Pair's voice is the accent.
+// has the site's colour for it: Navigator blue, Scout green, Driver red, the Watcher yellow, /gen magenta; Pair's
+// voice is the accent.
 
 const SGR = {
   plain: '',
@@ -123,6 +125,8 @@ export const STYLES = {
   scout: ['green', 'bold'],
   driver: ['red', 'bold'],
   driverGlyph: ['red'],
+  gen: ['magenta', 'bold'], // /gen: the gen speaker, and its request in the status…
+  genGlyph: ['magenta'], // …with its spinner
   watcher: ['yellow'], // the Watcher's ◉, orange on the site
   eyes: ['green', 'bold'], // the head's eyes…
   antenna: ['magenta'], // …and its antenna; the frame is the accent

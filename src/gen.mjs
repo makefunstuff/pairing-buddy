@@ -67,6 +67,7 @@ const RUN_CHARS = 3000; // of a try's run, the model is told the last this many 
 const RAN_LINES = 3; // and the chat shows its last this many lines, when the user runs it again
 const SCAFFOLD_LISTED = 300; // a scaffold request is told the names of this many of the project's files
 const CARD_FILES = 8; // the chat's line about a scaffold names this many of its files
+const KEEP_LISTED = 200; // and its card, for /keep's menu, this many of those still to keep
 const CHECKED_LINES = 300; // the brief's check after a scaffold reads this many lines of each file
 const FLAG = /^--(branch|copy)(?=\s|$)\s*/; // /gen scaffold --branch: in a git worktree; --copy: in Pair's copy
 // What installs a package: in a copy without the network it is listed for the user, not run.
@@ -177,6 +178,7 @@ export class Gen {
   /** What the editors show of `request` in the statusline: its number, state and when that started. */
   status(request) {
     this.session.notify('editors', {type: 'gen', gen: request.n, state: request.state, since: request.since ?? this.session.now(), token: request.token ?? null, shape: request.shape});
+    this.sendCard(request.action, request);
   }
 
   setState(request, state) {
@@ -624,9 +626,10 @@ export class Gen {
       ...(changes.length ? [`${plural(changes.length, 'change')} to files you have, as suggestions there: ${changes.map(piece => this.placeText(piece)).join(', ')}`] : []),
       ...(check ? [`${check.mark === 'pass' ? '✓' : '✗'} \`${check.label}\` on the unsaved buffers: ${check.text}`] : []),
       ...debrief,
-      ...(!files.length ? [] : shown ? ['In Neovim, :w in one writes it to its path; :Pair gen list lists them.'] : ['No Neovim shows them now: they open there as buffers once one connects.']),
     ];
-    session.message('pair', lines.join('\n'), {gen: request.n});
+    // How to take them: the plain pane says it under the card, the full pane's card has keys for it.
+    const hint = !files.length ? null : shown ? 'In Neovim, :w in one writes it to its path; :Pair gen list lists them.' : 'No Neovim shows them now: they open there as buffers once one connects.';
+    session.message('pair', lines.join('\n'), {gen: request.n, ...(hint ? {hint} : {})});
     if (request.pieces.some(piece => piece.state === 'proposed')) this.setState(request, 'ready');
   }
 
@@ -667,10 +670,10 @@ export class Gen {
     const lines = [
       `gen #${request.n} · try · ${names.join(', ')} · ${ran ? ranText(ran) : 'not run'}${said ? `: ${said}` : ''}`,
       ...debrief,
-      opened ? `In Neovim: ${relative(request.dir, main.file)} in a split, outside the project. ${ran ? 'Your run key runs it again; ' : ''}/keep <path> moves it into the project, as a buffer to review. The folder stays ${plural(this.keepTries, 'day')} after it last changed or ran (/gen tries).`
-        : `No Neovim to open it in: it is in ${request.dir}. /keep <path> moves it into the project once one connects.`,
     ];
-    if (!cut || files.length) session.message('pair', lines.join('\n'), {gen: request.n});
+    const hint = opened ? `In Neovim: ${relative(request.dir, main.file)} in a split, outside the project. ${ran ? 'Your run key runs it again; ' : ''}/keep <path> moves it into the project, as a buffer to review. The folder stays ${plural(this.keepTries, 'day')} after it last changed or ran (/gen tries).`
+      : `No Neovim to open it in: it is in ${request.dir}. /keep <path> moves it into the project once one connects.`;
+    if (!cut || files.length) session.message('pair', lines.join('\n'), {gen: request.n, hint});
     this.setState(request, 'done');
   }
 
@@ -767,10 +770,10 @@ export class Gen {
       ...(more > 0 ? [`│ … ${more} more`] : []),
       ...debrief,
       ...(installs.length ? [`not run: ${installs.map(command => `\`${command}\``).join(', ')}: the copy has no network (gen.network), so install it yourself once you keep the files`] : []),
-      opened ? 'In Neovim, :Pair gen list keeps them one at a time (k), shows each (Enter) and deletes the copy (x). Here, /keep <path> keeps one; /gen drop deletes the copy.'
-        : 'No Neovim now: /keep <path> keeps a file; :Pair gen list lists them once one connects. /gen drop deletes the copy.',
     ];
-    session.message('pair', lines.join('\n'), {gen: request.n});
+    const hint = opened ? 'In Neovim, :Pair gen list keeps them one at a time (k), shows each (Enter) and deletes the copy (x). Here, /keep <path> keeps one; /gen drop deletes the copy.'
+      : 'No Neovim now: /keep <path> keeps a file; :Pair gen list lists them once one connects. /gen drop deletes the copy.';
+    session.message('pair', lines.join('\n'), {gen: request.n, hint});
     this.setState(request, 'ready');
   }
 
@@ -827,6 +830,7 @@ export class Gen {
       : {i, kind, file, line, endLine, insert, text, note, state, patch, from, to, written, source, ...(kind === 'hunk' ? {old} : {}), ...(marks ? {marks} : {})}));
     const check = request.check ? {contradicts: request.check.contradicts, guessed: request.check.guessed, debrief: request.debrief ?? []} : {};
     this.session.ledger.update(request.action, {data: {...data, ...tally(pieces)}, detail: {words: request.words, pieces, ...check}});
+    this.sendCard(request.action);
   }
 
   /**
@@ -844,6 +848,7 @@ export class Gen {
   rebook(action, {entry, request, pieces}, data) {
     if (request) return this.book(request, data);
     this.session.ledger.update(action, {data: {...data, ...tally(pieces)}, detail: {...(entry.detail ?? {}), pieces}});
+    this.sendCard(action);
   }
 
   /**
@@ -896,7 +901,7 @@ export class Gen {
       const {conflict, place} = question;
       const open = choices.includes('e') ? ` · e open ${place}` : '';
       const asking = session.confirm(`${title}:\n│ "${conflict.text}" ${place}\n${conflict.asked} anyway?`, choices.includes('e') ? ['e'] : [], {
-        timeoutMs: null, hint: `y as asked · n follow the brief (${conflict.says})${open}`, said: () => null,
+        timeoutMs: null, hint: `y as asked · n follow the brief (${conflict.says})${open}`, said: () => null, gen: request.n,
       });
       question.confirm = session.lastConfirmation;
       asking.then(result => this.answered(request, question.id, result === true ? 'y' : result === 'e' ? 'e' : 'n'));
@@ -905,7 +910,7 @@ export class Gen {
     const others = choices?.slice(1).join(', ');
     const text = kind === 'shape' ? `${title} y: ${choices[0]}, or type ${others}; n cancels.` : `${title} y keeps \`${answer}\`, n leaves it to Pair, or type your answer.`;
     const asking = session.confirm(text, choices ?? [], {
-      free: kind === 'question', timeoutMs: null,
+      free: kind === 'question', timeoutMs: null, gen: request.n,
       hint: kind === 'shape' ? `y: ${choices[0]} · ${others} · n cancels` : `y keeps ${answer} · n leaves it to Pair · or your answer`,
       said: result => (result === false && kind === 'question' ? `gen #${request.n}: left to Pair.` : null), // a cancel says so itself
     });
@@ -1324,7 +1329,10 @@ export class Gen {
     if (!old) found.pieces.push(piece);
     const kept = found.pieces.filter(one => one.kind === 'file').map(one => relative(this.root, one.file));
     this.rebook(found.action, found, {note: `kept as ${kept.join(', ')}`, undo: true});
-    if (found.entry?.state === 'undone') this.session.ledger.update(found.action, {state: null}); // kept again after an undo
+    if (found.entry?.state === 'undone') {
+      this.session.ledger.update(found.action, {state: null}); // kept again after an undo
+      this.sendCard(found.action);
+    }
     const shown = await this.showFiles(found.action, found.n, [piece], {open: true});
     // The try's ledger line is the one to undo, which may not be the newest: /undo takes back the newest.
     return this.said(shown ? `${name}: ${keptName} opened, unsaved, generated. :w takes it; u on ${name} in :Pair today takes it back.`
@@ -1407,7 +1415,10 @@ export class Gen {
     const files = found.pieces.filter(one => one.kind === 'tree');
     const kept = files.filter(one => one.state === 'kept').length;
     this.rebook(found.action, found, {note: `${kept} of ${plural(files.length, 'file')} kept`, undo: true});
-    if (found.entry?.state === 'undone') this.session.ledger.update(found.action, {state: null}); // kept again after an undo
+    if (found.entry?.state === 'undone') {
+      this.session.ledger.update(found.action, {state: null}); // kept again after an undo
+      this.sendCard(found.action);
+    }
     this.session.notify('editors', {type: 'gen_kept', gen: found.n});
   }
 
@@ -1675,6 +1686,7 @@ export class Gen {
     const state = undone ? (back ? 'applied' : 'undone') : left ? 'applied' : 'undone';
     const booked = pieces.map(({n: _n, ...piece}) => piece);
     session.ledger.update(action.id, {state, data: {undo: true, ...tally(booked)}, detail: {...(action.detail ?? {}), pieces: booked}});
+    this.sendCard(action.id);
     if (unmarked.length) session.notify('editors', {type: 'gen_unmark', ids: unmarked});
     if (undone) this.sendMarks(action.id, n, taken.filter(piece => piece.state === 'taken'));
     if (again.length) {
@@ -1796,6 +1808,110 @@ export class Gen {
     }
     const list = [...files.values()].sort((a, b) => a.name.localeCompare(b.name));
     return {files: list, lines: list.reduce((sum, file) => sum + file.lines, 0)};
+  }
+
+  // The gen card: what the chat pane shows of a request under its message, and in the status rule (see chat.mjs).
+
+  /**
+   * The card of the request booked as ledger entry `action` (or of `live`, a request not booked yet): its state, how
+   * much of it is taken, kept or left, and the keys that still do something on it, each with its words:
+   * k keep, Enter open, d drop, u undo. Null for an entry that is no request.
+   */
+  card(action, live = null) {
+    const found = action ? this.piecesOf(action) : null;
+    const entry = found?.entry;
+    if (action && entry?.kind !== 'generated') return null;
+    const request = live ?? found?.request ?? null;
+    const n = entry?.data?.gen ?? request.n;
+    const shape = entry?.data?.shape ?? request?.shape ?? null;
+    const pieces = found?.pieces ?? request?.pieces ?? [];
+    const undone = entry?.state === 'undone';
+    const running = ['asking', 'asks', 'queued', 'generating'].includes(request?.state);
+    const kind = {here: piece => !piece.kind, file: piece => piece.kind === 'file', scaffold: piece => piece.kind === 'tree', try: piece => piece.kind === 'file'}[shape] ?? (() => true);
+    const mine = pieces.filter(kind);
+    const proposed = mine.filter(piece => piece.state === 'proposed');
+    const taken = mine.filter(piece => ['taken', 'kept'].includes(piece.state)).length;
+    // A request of a daemon before a restart: its code at the cursor shows no more, its files to review still do.
+    const showing = shape === 'here' ? Boolean(request) && proposed.length : proposed.length;
+    // The ledger has the last word on undone: a request made again after an undo is not undone any more.
+    const state = undone ? 'undone' : request && request.state !== 'undone' ? request.state : showing ? 'ready' : 'done';
+    const deleted = Boolean(entry?.data?.deleted);
+    const keys = {};
+    if (!running && !undone && !['cancelled', 'failed'].includes(state)) {
+      if (shape === 'here' && showing) Object.assign(keys, {k: 'keep', d: 'drop'});
+      if (shape === 'file' && showing) Object.assign(keys, {k: 'keep one', d: 'drop all'});
+      if (shape === 'try' && pieces.some(piece => piece.kind === 'try')) keys.k = 'keep';
+      if (shape === 'scaffold' && !deleted && mine.length) Object.assign(keys, proposed.length ? {k: 'keep one'} : {}, {d: 'drop all'});
+      if (shape === 'here' && pieces.length) keys.enter = 'open';
+      if (shape === 'try' && pieces.some(piece => piece.kind === 'try')) keys.enter = 'open';
+      if (shape === 'file' && mine.length) keys.enter = 'open the list';
+      if (shape === 'scaffold' && !deleted && mine.length) keys.enter = 'open the list';
+    }
+    if (!running && entry?.data?.undo && !undone) keys.u = 'undo';
+    if (undone && pieces.some(piece => piece.state === 'undone')) keys.u = 'again';
+    return {
+      type: 'gen_card', gen: n, action: action ?? null, shape, state, since: request?.since ?? entry?.at ?? null,
+      of: mine.length, taken, left: proposed.length, keys,
+      // A scaffold's files still to keep, for /keep's menu in the chat.
+      ...(shape === 'scaffold' && !deleted ? {files: proposed.slice(0, KEEP_LISTED).map(piece => relative(this.root, piece.file))} : {}),
+    };
+  }
+
+  /** The chat gets the card of `action` (or of `live`, not booked yet) as it is now. */
+  sendCard(action, live = null) {
+    const card = this.card(action ?? null, action ? null : live);
+    if (card) this.session.notify('chat', card);
+  }
+
+  /** The cards of today's requests here, for a chat pane that connects: its messages come back with their keys. */
+  cards() {
+    return this.session.store.actions(this.root, startOfDay(this.session.now())).filter(row => row.kind === 'generated').map(row => this.card(row.id)).filter(Boolean);
+  }
+
+  /**
+   * d on a gen card in the chat: what request `action` proposed and the user did not take is dropped (its code at the
+   * cursor, its files to review); a scaffold's copy is deleted, which drops what was not kept of it.
+   */
+  async dropAll(action) {
+    const found = this.piecesOf(action);
+    if (found.entry?.kind !== 'generated') return '';
+    const {gen: n, shape} = found.entry.data;
+    if (shape === 'scaffold') return this.deleteCopy({action});
+    if (found.request && ['asking', 'asks', 'queued', 'generating'].includes(found.request.state)) return this.said(`gen #${n} is still at work: /gen cancel stops it.`);
+    const proposed = found.pieces.filter(piece => piece.state === 'proposed');
+    if (!proposed.length) return this.said(`gen #${n}: nothing left to drop.`);
+    for (const piece of proposed) piece.state = 'dropped';
+    this.due = this.due.filter(piece => !proposed.includes(piece));
+    this.session.notify('editors', {type: 'gen_drop', gen: n});
+    const files = proposed.filter(piece => piece.kind === 'file');
+    this.rebook(action, found, {note: `${plural(proposed.length, 'piece')} dropped`, undo: found.pieces.some(piece => piece.state === 'taken')});
+    this.settle(found);
+    const what = files.length ? `${files.map(piece => relative(this.root, piece.file)).join(', ')} dropped` : 'its code dropped';
+    return this.said(`gen #${n}: ${what}.`);
+  }
+
+  /**
+   * Enter and k on a gen card in the chat: request `action` in Neovim. `what` 'open': the code at the cursor goes to
+   * its place, a try to its file, file and scaffold requests to :Pair gen list; 'next': the next file to review opens.
+   */
+  async open(action, what = 'open') {
+    const session = this.session;
+    const found = this.piecesOf(action);
+    if (found.entry?.kind !== 'generated') return '';
+    const {gen: n, shape} = found.entry.data;
+    const none = () => this.said('No Neovim is connected to this session: :Pair start in Neovim first.');
+    if (what === 'next') {
+      const piece = found.pieces.find(one => one.kind === 'file' && one.state === 'proposed');
+      if (!piece) return this.said(`gen #${n}: no file left to review.`);
+      const reply = await session.requestEditor({type: 'gen_open', action, piece: piece.i}).catch(() => null);
+      // A Neovim that lost the buffer (it restarted) makes it again.
+      if (!reply?.ok && !(await this.showFiles(action, n, [piece], {open: true}))) return none();
+      return '';
+    }
+    if (shape === 'file' || shape === 'scaffold') return session.notify('editor', {type: 'gen_list_open'}) ? '' : none();
+    const target = shape === 'try' ? mainFile(found.pieces.filter(one => one.kind === 'try')) : found.pieces.find(one => one.state === 'proposed') ?? found.pieces[0];
+    if (!target) return this.said(`gen #${n}: nothing to open.`);
+    return session.notify('editor', {type: 'go', file: target.file, line: target.from ?? target.line ?? 1}) ? '' : none();
   }
 
   /**

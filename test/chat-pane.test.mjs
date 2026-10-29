@@ -57,10 +57,11 @@ async function setUp({width = 70, height = 30, tokensPerSecond} = {}) {
 }
 
 /** A stand-in Neovim: it answers the daemon's requests and keeps what it was sent. */
-function editor(socket, dir, {selection = null} = {}) {
+function editor(socket, dir, {selection = null, place = null} = {}) {
   const nvim = client(socket, {type: 'hello', role: 'editor', cwd: dir, buffers: true});
   const answer = message => {
     if (message.type === 'read') return {text: null};
+    if (message.type === 'gen_place') return place; // where /gen here puts its code: the cursor
     if (message.type === 'buffers') return {buffers: []};
     if (message.type === 'selection') return selection;
     return {ok: true};
@@ -660,5 +661,101 @@ test('the plain pane (--plain): the role in its prompt in its colour, and └ fo
     input.end();
     await daemon.close();
     for (let i = 0; i < 40 && closed === null; i++) await sleep(25);
+  }
+});
+
+test('/gen in the pane: the shapes after /gen, the gen card with its keys, its request in the status; k, Enter, d twice and u on it', {timeout: 30_000}, async () => {
+  const t = await setUp({width: 80, height: 34});
+  const nvim = editor(t.socket, t.dir, {place: {file: join(t.dir, 'queue.go'), line: 1}});
+  try {
+    await t.shows('What are we doing');
+    await t.type('later\r');
+    await t.shows('No goal then.');
+    // /gen and a space: its shapes first, then what else it does.
+    await t.type('/gen ');
+    assert.match(t.text(), /commands · 7 of 8 · type to narrow/);
+    assert.match(t.text(), / ▸ \/gen here +<what> +ask Pair for code at your cursor/);
+    assert.match(t.text(), /\/gen file +<what> +new files/);
+    await t.type('h\t');
+    assert.match(t.text(), /› \/gen here $/m, 'Tab completes the shape, ready for the request');
+    t.partner.setResponses([
+      fauxAssistantMessage([fauxToolCall('propose', {file: 'queue.go', line: 1, insert: true, text: '\n// Budget is how long a lease lasts.', note: 'a comment'})], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxText('A comment on the budget.')]),
+    ]);
+    await t.type('a comment on the budget\r');
+    await t.shows(/^ gen   #1 · here · 2 lines at queue\.go:1: A comment on the budget\.$/m);
+    assert.match(t.text(), /│ \+ \/\/ Budget is how long a lease lasts\./, 'the code as a diff');
+    assert.match(t.text(), /^ {7}k keep   Enter open   d drop   u undo   · Alt-↑ picks$/m, 'its keys, as an action line');
+    await t.shows(/── ◉ watching · gen #1: ready in Neovim ─/);
+    // Picked: the footer has its keys. k takes it in Neovim, as Alt-y does there.
+    await t.type('\x1b[1;3A');
+    assert.match(t.text(), /▌gen   #1 · here/);
+    assert.match(t.text(), /c copy · k keep · Enter open · d drop · u undo · j jump · Esc back/);
+    await t.type('k');
+    await nvim.next(message => message.type === 'accept');
+    // Enter: Neovim goes to its place.
+    await t.type('\r');
+    const go = await nvim.next(message => message.type === 'go');
+    assert.deepEqual({file: go.file, line: go.line}, {file: join(t.dir, 'queue.go'), line: 1});
+    // d once only says what a second d does; the second drops it.
+    await t.type('d');
+    assert.match(t.text(), /d again drops what is left of gen #1/);
+    await t.type('d');
+    await t.shows('gen #1: its code dropped.');
+    await nvim.next(message => message.type === 'gen_drop' && message.gen === 1);
+    await t.shows(/── ◉ watching ─+ Faux Model/);
+    assert.doesNotMatch(t.text(), /gen #1: ready/, 'nothing left to take');
+  } finally {
+    nvim.stop();
+    await t.close();
+  }
+});
+
+test('the plain pane: what /gen made is the gen speaker\'s, with how to take it under it', {timeout: 20_000}, async () => {
+  const {genText} = await import('../src/chat.mjs');
+  assert.equal(genText('gen #7 · scaffold · 9 files'), '#7 · scaffold · 9 files');
+  assert.equal(genText('Undid gen #7'), 'Undid gen #7', 'only its start');
+  const {formatMessage} = await import('../src/chat-style.mjs');
+  assert.equal(formatMessage('gen', '#7 · scaffold', {color: false}), 'gen #7 · scaffold');
+  assert.match(formatMessage('gen', '#7', {color: true}), /^\x1b\[35;1mgen\x1b\[0m #7$/, 'magenta');
+});
+
+test('a scaffold\'s card: k puts /keep on the line with its files to pick, Enter keeps one; d twice deletes the copy; u undoes; at work, the status says so', {timeout: 20_000}, async () => {
+  const t = await standInPane(90, 24);
+  try {
+    const card = {type: 'gen_card', gen: 7, action: 31, shape: 'scaffold', state: 'ready', since: Date.now(), of: 3, taken: 0, left: 3, keys: {k: 'keep one', enter: 'open the list', d: 'drop all', u: 'undo'}, files: ['internal/admin/orders.go', 'internal/admin/orders_test.go', 'cmd/shop/main.go']};
+    t.daemon.send({type: 'message', sender: 'user', text: '/gen scaffold an admin page', at: Date.now()});
+    t.daemon.send(card);
+    t.daemon.send({type: 'message', sender: 'pair', text: 'gen #7 · scaffold · 3 files, 1 of yours changed · 2m 41s', at: Date.now(), meta: {gen: 7, hint: 'In Neovim, :Pair gen list keeps them one at a time (k).'}});
+    await t.shows(/^ gen   #7 · scaffold · 3 files, 1 of yours changed · 2m 41s\n +\n {7}k keep one   Enter open the list   d drop all   u undo   · Alt-↑ picks$/m);
+    assert.doesNotMatch(t.text(), /In Neovim, :Pair gen list/, 'the keys say it');
+    assert.match(t.text(), /── ◉ watching · gen #7: 0 of 3 kept ─/);
+    await t.type('\x1b[1;3A'); // Alt-↑ picks the card first
+    await t.type('k');
+    assert.match(t.text(), /╶─ gen #7 · files to keep ─+\n ▸ internal\/admin\/orders\.go *\n {3}internal\/admin\/orders_test\.go *\n {3}cmd\/shop\/main\.go/);
+    assert.match(t.text(), /› \/keep $/m);
+    await t.type('main');
+    assert.match(t.text(), / ▸ cmd\/shop\/main\.go/, 'typing narrows it');
+    await t.type('\r');
+    assert.deepEqual(await t.sent('keep'), {type: 'keep', path: 'cmd/shop/main.go'});
+    // Kept one: the card says so, in the status too.
+    t.daemon.send({...card, taken: 1, left: 2, files: card.files.slice(0, 2)});
+    await t.shows(/gen #7: 1 of 3 kept/);
+    await t.type('\x1b[1;3A');
+    await t.type('\r');
+    assert.deepEqual(await t.sent('gen_open'), {type: 'gen_open', action: 31});
+    await t.type('d'); // the card is still picked
+    assert.match(t.text(), /d again drops gen #7's copy, and what you did not keep of it/);
+    assert.equal(t.daemon.got.some(m => m.type === 'gen_drop_all'), false, 'not yet');
+    await t.type('d');
+    assert.deepEqual(await t.sent('gen_drop_all'), {type: 'gen_drop_all', action: 31});
+    await t.type('u');
+    assert.deepEqual(await t.sent('undo'), {type: 'undo', action: 31});
+    // Another request at work: its number and how long, in magenta, and the one waiting its turn.
+    t.daemon.send({type: 'gen_card', gen: 8, action: 32, shape: 'file', state: 'generating', since: Date.now() - 5000, of: 0, taken: 0, left: 0, keys: {}});
+    t.daemon.send({type: 'gen_card', gen: 9, action: null, shape: 'here', state: 'queued', since: Date.now(), of: 0, taken: 0, left: 0, keys: {}});
+    await t.shows(/── [▖▘▝▗] gen #8 generating [5-9]s · gen #9 waits ─/);
+  } finally {
+    await t.close();
   }
 });

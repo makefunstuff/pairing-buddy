@@ -1,21 +1,24 @@
 // What the full-screen chat pane draws, from its state: the header in the top rule (where you pair, on what, in
 // which role and at which level), the conversation, the status in the rule under it (what Pair does now), what you
 // type, and a line of the keys that work now: four rows of chrome. Each message has a 7-column gutter with who speaks:
-// you, pair (answers, and the questions Pair asks you), watch (what Pair said unasked), ·· (notes of the pane and the
-// daemon), ! (errors); what Pair's tools did is a └ line under the question. The time is a divider, ── 21:19 ──, at
+// you, pair (answers, and the questions Pair asks you), watch (what Pair said unasked), gen (what a /gen request made,
+// as a card with its keys, and what it asks), ·· (notes of the pane and the daemon), ! (errors); what Pair's tools did
+// is a └ line under the question. The time is a divider, ── 21:19 ──, at
 // the start and after a pause; in a wide pane the words end by column 80, and an answer's time, duration and tokens
 // sit in the margin to its right. Pair's words are Markdown: code blocks, `code`, **bold**, lists and headings show
 // as such, a suggestion as a diff. Code wraps between its tokens, never inside a name or a flag.
 // Colour has one job each: yellow is the Watcher (its label, a remark's kind) and the ? of a question waiting for
-// you; dim is chrome only (rules, times, key descriptions, tool traces), never words addressed to you.
+// you; magenta is /gen (its label, its request in the status); dim is chrome only (rules, times, key descriptions, tool traces), never words addressed to you.
 // Everything here is pure: lines of segments in, lines of segments out (see chat-style.mjs), so it is tested as text.
 import {clipLine, fitText, lineWidth, paintLine, textWidth} from './chat-style.mjs';
 
 const seg = (text, style = 'text') => ({text, style});
 const blank = () => [];
 
-const LABELS = {you: 'you', pair: 'pair', watch: 'watch', system: '··', error: '!', confirm: 'pair', note: '··'};
-const LABEL_STYLES = {you: 'you', pair: 'pair', watch: 'watch', system: 'dim', error: 'errorBold', confirm: 'pair', note: 'dim'};
+const LABELS = {you: 'you', pair: 'pair', watch: 'watch', gen: 'gen', system: '··', error: '!', confirm: 'pair', note: '··'};
+const LABEL_STYLES = {you: 'you', pair: 'pair', watch: 'watch', gen: 'gen', system: 'dim', error: 'errorBold', confirm: 'pair', note: 'dim'};
+/** Who speaks `entry` in the gutter: a /gen request's question is the gen speaker's. */
+const speaker = entry => (entry.kind === 'confirm' && entry.gen ? 'gen' : entry.kind);
 const NARROW = 52; // below this, the header drops the goal and the footer its long words
 const GUTTER = 7; // the selection bar, the name in five, a space
 const MEASURE = 80; // in a wider pane the words end by this column; code and diffs may run on
@@ -366,6 +369,15 @@ export function bodyLines(entry, width, {continued = false, measure = width} = {
   }
   if (kind === 'system') return plainLines(text, words, 'text');
   if (kind === 'error') return markdownLines(text, width, {base: 'error', measure}); // a command in it is `code`, whole
+  if (kind === 'gen') {
+    // A gen card: its words as Pair's, the code at the cursor as a diff under them, and how to take it when the
+    // card has no keys for it (a request of an older daemon); the keys are the action line under it.
+    const lines = markdownLines(text, width, {measure});
+    if (meta.suggestion) lines.push(...diffLines(meta.suggestion, width));
+    if (entry.applied) lines.push([seg('✓ taken', 'ok')]);
+    if (meta.hint && !Object.keys(entry.card?.keys ?? {}).length) lines.push(...wrapTokens(inlineTokens(meta.hint, 'text'), words));
+    return lines;
+  }
   // Pair's words: a remark says what about first; a suggestion shows as a diff under its first line.
   const lines = [];
   if (meta.trigger && !continued) {
@@ -456,6 +468,27 @@ function actionLine(entries, index, width, picked) {
   return [line('  ', true), line(' ', true), line(' ', false)].find(l => lineWidth(l) <= width) ?? clipLine(line(' ', false), width);
 }
 
+/** The keys of a gen card, in the order its action line shows them: [key, what, its words on the card]. */
+export function cardKeys(card) {
+  const keys = card?.keys ?? {};
+  return [['k', 'k'], ['enter', 'Enter'], ['d', 'd'], ['u', 'u']].filter(([key]) => keys[key]).map(([key, shown]) => [key, shown, keys[key]]);
+}
+
+/**
+ * The action line under a gen card, `width` wide: k keep one   Enter open the list   d drop all   u undo   · Alt-↑
+ * picks. As for a remark, the keys work once the card is picked; where it does not fit, the gaps narrow, then the
+ * keys lose their words.
+ */
+function cardLine(entry, width, picked) {
+  const keys = cardKeys(entry.card);
+  const aside = picked ? [] : [seg('   · ', 'dim'), seg('Alt-↑', 'bold'), seg(' picks', 'dim')];
+  const line = (gap, words) => [
+    ...keys.flatMap(([, shown, what], i) => [...(i ? [seg(gap)] : []), seg(shown, 'bold'), ...(words ? [seg(` ${what}`, 'dim')] : [])]),
+    ...aside,
+  ];
+  return [line('   ', true), line('  ', true), line(' ', true), line(' ', false)].find(l => lineWidth(l) <= width) ?? clipLine(line(' ', false), width);
+}
+
 /** All the text of `entry`, as search and copy see it. */
 export function searchText(entry) {
   if (entry.kind === 'tool') return entry.tools.map(({tool, what}) => toolDone(tool, what)).join('\n');
@@ -467,7 +500,9 @@ export function searchText(entry) {
 function startsTurn(entry, previous) {
   if (entry.kind === 'tool') return false;
   if (!previous) return true;
-  return previous.kind !== entry.kind || Boolean(entry.meta?.remark && entry.meta.remark !== previous.meta?.remark);
+  if (speaker(previous) !== speaker(entry)) return true;
+  const gen = one => one.meta?.gen ?? one.gen; // a card's request, or a question's
+  return Boolean(entry.meta?.remark && entry.meta.remark !== previous.meta?.remark) || Boolean(gen(entry) && gen(entry) !== gen(previous));
 }
 
 /** The time between messages, centred and dim: ── 21:19 ──. */
@@ -492,10 +527,10 @@ function turnMeta(entry, room) {
  * matches, found}, end exclusive; `matches` counts what search finds in it, folded or not, and `found` is the line of
  * the match you are on). `selected` is the index of the
  * selected message, `query` what search looks for and `found` the match you are on, by its number in the selected
- * message (a fold opens to show it); `latestRemark` the index of the remark whose action line the pane shows, `now`
- * today, for the day of a divider.
+ * message (a fold opens to show it); `latestRemark` the index of the remark whose action line the pane shows, and
+ * `latestCard` that of the gen card; `now` today, for the day of a divider.
  */
-export function transcriptLines(entries, width, {selected = -1, query = '', found = -1, latestRemark = -1, now = Date.now()} = {}) {
+export function transcriptLines(entries, width, {selected = -1, query = '', found = -1, latestRemark = -1, latestCard = -1, now = Date.now()} = {}) {
   const lines = [];
   const ranges = [];
   const bodyWidth = Math.max(8, width - GUTTER);
@@ -516,8 +551,8 @@ export function transcriptLines(entries, width, {selected = -1, query = '', foun
     if (spaced && lines.length) lines.push(blank());
     const start = lines.length;
     const bar = seg(index === selected ? '▌' : ' ', 'bar');
-    const label = LABELS[entry.kind] ?? '';
-    const head = turn && label ? [seg(label, LABEL_STYLES[entry.kind]), seg(' '.repeat(GUTTER - 1 - textWidth(label)))] : null;
+    const label = LABELS[speaker(entry)] ?? '';
+    const head = turn && label ? [seg(label, LABEL_STYLES[speaker(entry)]), seg(' '.repeat(GUTTER - 1 - textWidth(label)))] : null;
     const continued = Boolean(entry.meta?.remark && entry.meta.remark === previous?.meta?.remark);
     let body = bodyLines(entry, bodyWidth, {continued, measure});
     // What search finds: all of it underlined, the match you are on in green too; a fold does not hide it.
@@ -533,7 +568,8 @@ export function transcriptLines(entries, width, {selected = -1, query = '', foun
     }
     // A match the lines do not show whole (it runs over a wrap, or over a line break) still finds its message, once.
     if (query && !count.n && query.trim() && spans(entry, query)) count.n = 1;
-    const folded = !entry.expanded && entry.kind !== 'tool' && body.length > FOLD_OVER && foundRow < FOLD_TO;
+    // A gen card does not fold: Enter on it opens it in Neovim, and it is short already (CARD_FILES in gen.mjs).
+    const folded = !entry.expanded && !['tool', 'gen'].includes(entry.kind) && body.length > FOLD_OVER && foundRow < FOLD_TO;
     if (folded) {
       const hidden = body.length - FOLD_TO;
       const how = index === selected ? 'Enter' : 'Alt-↑ and Enter';
@@ -541,6 +577,7 @@ export function transcriptLines(entries, width, {selected = -1, query = '', foun
       body = [...body.slice(0, FOLD_TO), [seg(folds.find(fold => textWidth(fold) <= bodyWidth) ?? folds.at(-1), 'dim')]];
     }
     if (index === latestRemark && !entry.verdict) body.push(actionLine(entries, index, bodyWidth, index === selected));
+    if (index === latestCard && cardKeys(entry.card).length) body.push(blank(), cardLine(entry, bodyWidth, index === selected));
     // A wide pane has room right of the words: what the turn took goes there, on its answer's first line.
     if (entry.turn && body.length && width > MEASURE) {
       const used = GUTTER + lineWidth(body[0]);
@@ -633,14 +670,38 @@ export function heldText(held) {
   return parts.length ? `${parts.join(' and ')} below` : '';
 }
 
+const GEN_AT_WORK = ['asking', 'asks', 'queued', 'generating'];
+
+/**
+ * What the status says of the /gen requests (`cards`, the chat's gen cards, see Gen.card in gen.mjs): the one at
+ * work, those that wait for it, and the newest one ready, with what is left of it to take.
+ */
+export function genStatus(cards = []) {
+  const working = cards.filter(card => GEN_AT_WORK.includes(card.state));
+  const running = working.find(card => card.state !== 'queued') ?? null;
+  const ready = [...cards].reverse().find(card => card.state === 'ready') ?? null;
+  const left = !ready ? null
+    : ready.shape === 'here' ? 'ready in Neovim'
+      : ready.shape === 'scaffold' ? `${ready.taken} of ${ready.of} kept`
+        : ready.shape === 'file' ? `${ready.left} to review` : null;
+  return {running, queued: working.filter(card => card.state === 'queued').map(card => card.gen), ready: left ? {gen: ready.gen, text: left} : null};
+}
+
 /**
  * The status, in the rule over the input: what Pair does now on the left, in body text (with a spinner while it
  * works, and how long it has worked once that is 3s), and what waits under the answer that streams; on the right the
  * model, how long its last answer took and what it cost, or that you scrolled up. The glyph has its part's colour:
- * the Watcher's ◉ yellow, the Driver's ◆ red, Pair's spinner the accent. It names no keys: those are in the footer.
+ * the Watcher's ◉ yellow, the Driver's ◆ red, Pair's spinner the accent, a /gen request's magenta. A request at work
+ * shows there too: alone when Pair does nothing else, after what it does otherwise; once done, what is left of it to
+ * take. It names no keys: those are in the footer.
  */
 export function statusLine(view, width) {
   const {activity = {state: 'idle'}, presence, connection = 'up', now = Date.now(), frame = 0, turn, model, down = [], scrolled = 0, role, writing, away, held} = view;
+  const gen = view.gen ?? {running: null, queued: [], ready: null};
+  const genName = n => seg(`gen #${n}`, 'gen');
+  // The requests that wait for the one at work: after it, or after what Pair does.
+  const queued = gen.queued.length ? [seg(' · ', 'dim'), seg(gen.queued.length === 1 ? `gen #${gen.queued[0]} waits` : `${gen.queued.length} more wait`, 'text')] : [];
+  const asksAway = gen.running && ['asking', 'asks'].includes(gen.running.state);
   const spin = SPINNER[frame % SPINNER.length];
   const elapsed = from => (from && now - from >= ELAPSED_AFTER_MS ? [seg(` ${duration(now - from)}`, 'dim')] : []);
   const since = elapsed(activity.since);
@@ -670,9 +731,22 @@ export function statusLine(view, width) {
   } else if (activity.state === 'remark') {
     // The Watcher looks: its colour.
     lefts = [[seg(`${spin} `, 'watcher'), seg(`looking at ${(activity.what ?? 'a moment').replace(/_/g, ' ')}`, 'text'), ...since], [seg(`${spin} `, 'watcher'), seg('looking', 'text'), ...since]];
+  } else if (activity.state === 'waiting' && asksAway) {
+    lefts = [[seg('? ', 'warn'), genName(gen.running.gen), seg(' waits for your answer', 'text')], [seg('? ', 'warn'), genName(gen.running.gen), seg(' waits', 'text')]];
   } else if (activity.state === 'waiting') lefts = [[seg('? ', 'warn'), seg('waiting for your answer', 'text')], [seg('? ', 'warn'), seg('waiting', 'text')]];
   else if (role === 'driver') lefts = [[seg('◆ ', 'driverGlyph'), seg('Pair drives', 'driver'), seg(' · any key in Neovim takes it back', 'dim')], [seg('◆ ', 'driverGlyph'), seg('Pair drives', 'driver')]];
-  else {
+  else if (gen.running?.state === 'generating') {
+    // A /gen request at work, while Pair does nothing else: its colour.
+    const at = elapsed(gen.running.since);
+    lefts = [
+      [seg(`${spin} `, 'genGlyph'), genName(gen.running.gen), seg(' generating', 'text'), ...at, ...queued],
+      [seg(`${spin} `, 'genGlyph'), genName(gen.running.gen), seg(' generating', 'text'), ...at],
+      [seg(`${spin} `, 'genGlyph'), genName(gen.running.gen), ...at],
+    ];
+  } else if (asksAway) {
+    // Its question is in Neovim, where it was asked: the chat shows it, read-only.
+    lefts = [[seg('? ', 'warn'), genName(gen.running.gen), seg(' asks in Neovim', 'text'), ...queued], [seg('? ', 'warn'), genName(gen.running.gen), seg(' asks', 'text')]];
+  } else {
     const looked = presence?.looked ? ` · looked at ${presence.looked} moment${presence.looked === 1 ? '' : 's'}, spoke ${presence.spoke}` : '';
     const last = presence?.lastAt ? ` · ${ago(presence.lastAt, now)}` : '';
     const watching = [seg('◉ ', 'watcher'), seg(role === 'scout' ? 'watching, as Scout' : 'watching', 'text')];
@@ -682,6 +756,16 @@ export function statusLine(view, width) {
       ...(looked || last ? [watching] : []),
       ...(role === 'scout' ? [[seg('◉ ', 'watcher'), seg('Scout', 'text')]] : []),
     ];
+    // A request done, with something left to take: what, first; it gives way before the watching does.
+    if (gen.ready) {
+      const ready = [seg(' · ', 'dim'), genName(gen.ready.gen), seg(`: ${gen.ready.text}`, 'text')];
+      lefts = [[...watching, ...ready], ...lefts];
+    }
+  }
+  // Pair works on something else while a request is at work: the request goes after it.
+  if (gen.running && ['thinking', 'tool', 'remark'].includes(activity.state) && connection === 'up') {
+    const after = [seg(' · ', 'dim'), genName(gen.running.gen), seg(gen.running.state === 'generating' ? ' generating' : ' asks', 'text')];
+    lefts = [...lefts.map(left => [...left, ...after]), ...lefts];
   }
   // What came while the answer streams waits under it, and says so: nothing above the words you read moves.
   const waits = heldText(held);
@@ -713,7 +797,14 @@ export function footerKeys(view) {
   const k = (keys, what, style = 'bold', short = what) => [keys, what, style, short];
   if (mode === 'help') return [k('↑↓ PgUp PgDn', 'scroll'), k('any other key', 'closes this')];
   if (mode === 'search') return [k('↑↓', 'older/newer'), k('Enter', 'keep'), k('Esc', 'close')];
-  if (mode === 'menu') return [k('↑↓', 'choose'), k('Tab', 'complete'), k('Enter', menu?.kind === 'file' ? 'inserts' : 'run'), k('Esc', 'close')];
+  if (mode === 'menu') return [k('↑↓', 'choose'), k('Tab', 'complete'), k('Enter', {file: 'inserts', keep: 'keeps'}[menu?.kind] ?? 'run'), k('Esc', 'close')];
+  if (mode === 'select' && selectedEntry?.kind === 'gen' && cardKeys(selectedEntry.card).length) {
+    // A gen card: its own keys, as its action line has them (k there takes the code at the cursor, as a does).
+    const keys = [k('c', 'copy'), ...cardKeys(selectedEntry.card).map(([, shown, what]) => k(shown, what, 'bold', what.split(' ')[0]))];
+    if (selectedEntry.meta?.place) keys.push(k('j', 'jump'));
+    keys.push(k('Esc', 'back'));
+    return keys;
+  }
   if (mode === 'select' && selectedEntry) {
     const keys = [k('c', 'copy')];
     if (selectedEntry.meta?.suggestion && !selectedEntry.applied) keys.push(k('a', 'apply'));
@@ -796,7 +887,7 @@ export function menuLines(items, chosen, width, {kind = 'command', rows = MENU_R
   const argsWidth = longest ? Math.min(longest + 2, Math.max(0, Math.floor((width - 3 - labelWidth) / 2))) : 0;
   const lines = shown.map((item, i) => {
     const mark = first + i === chosen;
-    const label = (kind === 'file' ? cutStart(item.label, labelWidth - 1) : fitText(item.label, labelWidth - 1)).padEnd(labelWidth);
+    const label = (['file', 'keep'].includes(kind) ? cutStart(item.label, labelWidth - 1) : fitText(item.label, labelWidth - 1)).padEnd(labelWidth);
     const args = item.args && textWidth(item.args) > argsWidth - 2 ? `${fitText(item.args, argsWidth - 3)}…` : item.args ?? '';
     return clipLine([
       seg(mark ? ' ▸ ' : '   ', mark ? 'accent' : 'dim'), seg(label, mark ? 'accentBold' : 'bold'),
@@ -810,8 +901,9 @@ export function menuLines(items, chosen, width, {kind = 'command', rows = MENU_R
 }
 
 /** The line over the menu: what it lists, and how many of them it shows when not all. */
-function menuRule(kind, count, width) {
-  const name = kind === 'file' ? ' files ' : ` commands${count > MENU_ROWS ? ` · ${MENU_ROWS} of ${count} · type to narrow` : ''} `;
+function menuRule(kind, count, width, title = null) {
+  const more = count > MENU_ROWS ? ` · ${MENU_ROWS} of ${count} · type to narrow` : '';
+  const name = kind === 'file' ? ' files ' : kind === 'keep' ? ` ${title ?? 'files to keep'}${more} ` : ` commands${more} `;
   return clipLine([seg('╶─', 'rule'), seg(name, 'dim'), seg('─'.repeat(Math.max(0, width - textWidth(name) - 2)), 'rule')], width);
 }
 
@@ -872,6 +964,7 @@ export function helpLines(commands, width) {
     ['  c a j', 'copy it · apply its suggestion · jump to its line'],
     ['  + - m', 'rate the remark useful or noise · mute its kind'],
     ['  f e', 'ask a follow-up about it · explain it'],
+    ['  k d u', 'on a gen card: keep · drop · undo; Enter opens it in Neovim'],
     ['  Enter', 'unfold a long message or the tool lines'],
     ['PgUp PgDn', 'scroll; the mouse wheel too · End: back down'],
     ['Ctrl-F', 'find in the conversation; ↑ ↓ go from match to match'],
@@ -921,7 +1014,7 @@ export function renderFrame(view, {width, height, look = {color: false}}) {
   // While you find, the find row stands where you type (what you typed waits there).
   if (view.mode === 'search') input.splice(0, input.length, [seg(' find: ', 'accent'), seg(view.search ?? '', 'bold'), seg(view.searchNote ? `  ${view.searchNote}` : '', 'dim')]);
   const bottom = [statusLine({...view, scrolled: view.mode === 'help' ? 0 : view.scroll ?? 0}, width), ...input, footerLine(view, width)];
-  const menu = view.menu?.items?.length ? [menuRule(view.menu.kind, view.menu.items.length, width), ...menuLines(view.menu.items, view.menu.chosen, width, {kind: view.menu.kind})] : [];
+  const menu = view.menu?.items?.length ? [menuRule(view.menu.kind, view.menu.items.length, width, view.menu.title), ...menuLines(view.menu.items, view.menu.chosen, width, {kind: view.menu.kind})] : [];
   const middle = Math.max(1, height - top.length - bottom.length - menu.length);
 
   let body;
@@ -930,7 +1023,7 @@ export function renderFrame(view, {width, height, look = {color: false}}) {
     const help = helpLines(view.commands ?? [], width);
     body = help.slice(view.helpScroll ?? 0, (view.helpScroll ?? 0) + middle);
   } else {
-    const {lines, ranges} = transcriptLines(view.entries, width, {selected: view.selected, query: view.mode === 'search' ? view.search : view.query, found: view.found, latestRemark: view.latestRemark, now: view.now});
+    const {lines, ranges} = transcriptLines(view.entries, width, {selected: view.selected, query: view.mode === 'search' ? view.search : view.query, found: view.found, latestRemark: view.latestRemark, latestCard: view.latestCard, now: view.now});
     const card = view.showEmpty ? [blank(), ...emptyLines(width), blank()] : [];
     const all = [...card, ...lines];
     const offset = card.length;

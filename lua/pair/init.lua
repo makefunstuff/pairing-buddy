@@ -1117,6 +1117,9 @@ local handlers = {
     if message.id then send({type = 'reply', id = message.id, result = result}) end
   end,
   gen_review = genfiles.on_review,
+  -- The keys of a gen card in the chat: Enter opens :Pair gen list, k the next file to review.
+  gen_list_open = function() genfiles.open() end,
+  gen_open = function(message) send({type = 'reply', id = message.id, result = genfiles.open_piece(message)}) end,
   -- /gen try: the sample opens in a split; :Pair gen tries picks one of those still kept.
   gen_try = gentry.on_try,
   gen_tries = gentry.on_tries,
@@ -1544,7 +1547,7 @@ function M.setup(opts)
     accept = function(suggestion) accept(suggestion) end,
     files_status = genfiles.status,
   })
-  genfiles.setup({send = send, redraw_status = redraw_status, label = label, decide_key = config.decide_key})
+  genfiles.setup({send = send, redraw_status = redraw_status, label = label, decide_key = config.decide_key, work_window = work_window})
   owning.setup({send = send, event = event, redraw_status = redraw_status, connected = function() return state.channel ~= nil end})
   gentry.setup({send = send, run_key = config.try_run_key})
   style.apply()

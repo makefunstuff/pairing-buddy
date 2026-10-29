@@ -48,7 +48,8 @@ you think, and take the keyboard only when you hand it over. Pair aims for that:
   runs against your brief (the goal and `NOTES.md`, in your words, which Pair never edits): it asks before going
   against it, and says what its code guessed. Pair knows its own edits from yours, so it never remarks on the code it
   wrote as if you had. Code you took stays marked `┊` until you edit it or `:Pair own` it, and `:Pair today` and
-  `pair stats` say how much of it is not yours yet ([/gen](docs/gen.md)).
+  `pair stats` say how much of it is not yours yet ([/gen](docs/gen.md)). In the chat pane, what a request made is a
+  card with its keys: `k` keep, `Enter` open it in Neovim, `d` drop, `u` undo.
 
 ## Quick start
 
@@ -89,7 +90,7 @@ your keys and logins).
 
 - [Getting started](docs/getting-started.md) and [install and daily use](docs/install.md)
 - [How it works](docs/how-it-works.md), [roles](docs/roles.md) and [workflows](docs/workflows.md)
-- [The chat pane](docs/chat.md): who speaks, what Pair is doing now, wide and narrow panes, a remark's own keys, find, calm motion, role colours, its keys and commands
+- [The chat pane](docs/chat.md): who speaks, what Pair is doing now, wide and narrow panes, a remark's own keys, the gen card, find, calm motion, role colours, its keys and commands
 - [/gen](docs/gen.md): ask Pair for code at your cursor, as new files to review, as a sample to run outside the
   project, or as a scaffold built in a copy of it, against your brief; take it with one key, `:w`, `/keep` or `k` per
   file, undo the request as one; Pair's own edits carry their origin, and taken code is marked `┊` until you own it
