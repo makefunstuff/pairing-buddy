@@ -228,12 +228,16 @@ SHO-74's agent is at work: this goes as a message, not a new brief.
   y tell SHO-74 · c copy the command · n leave it
 ```
 
-- **`+` a line of the note** the task's brief does not have, with its `file:line`. Headings and blank lines are left
-  out; a line counts as there when the task's brief has its words, whatever the case and the quotes.
+- **`+` a line of the note** the task's brief does not have, with its `file:line`. Headings, fenced code blocks (their
+  fences too), a table's rule row and lines with fewer than three letters or digits are left out; a line counts as
+  there when the task's brief has its words, whatever the case and the quotes.
 - **`-` a line the task's brief quotes from the note** (as [`/gen board`](#gen-board-a-task-for-the-board) quotes
   them, `> words (NOTES.md:4)`) that the note no longer has.
 - **`+ decided`**: a decision of the [decision log](notes.md#the-decision-log) next to the note (`decisions.md`) that is decided, not
-  superseded, and not in the task's brief. These are the decisions logged since its brief was written.
+  superseded, and not in the task's brief, logged on or after the day the task's branch left the base branch (the
+  date of the commit it shares with your local `main` or origin's, whichever is further on): its brief was written no
+  earlier, so these are the decisions logged since. Without git to tell that day, every decision the brief lacks is
+  listed, as `+ decided 2026-10-28, not in its brief`, and the message says `Decided, and not in your brief`.
 
 Shepherdr has no way to replace a task's brief, and changing the instructions under a running agent would be unsafe
 anyway, so the one offer is a message to its agent, `shepherdr task tell <id> "…"`, with what changed: what the note
@@ -241,8 +245,10 @@ says now, what it no longer says, and what was decided since. Its words depend o
 
 | The task | `y` sends |
 | --- | --- |
-| at work, merging or needing you | the message: its agent takes it in as it goes |
+| at work or merging | the message: its agent takes it in as it goes |
+| needing you, ready to merge or idle | the message: its agent waits for you, and takes it in as a message, not a new brief |
 | waiting for a go (To do, Queued) | the message, which ends `This is no go: keep waiting for mine.`: it does not start the agent |
+| stopped | the message, and the pick says so: a message to a stopped task starts its agent again |
 | done | nothing is offered: there is no agent to tell |
 
 `c` copies the command and sends nothing; `n` (or `Esc`) leaves the task's brief as it is. From Neovim the lines show

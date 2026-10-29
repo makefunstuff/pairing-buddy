@@ -44,7 +44,8 @@ export function diffPath(text) {
 /**
  * The files and lines a `git diff -U0` changes: [{file, ranges: [{from, to, added}]}], `file` relative to the repo.
  * The lines are the base's, where your checkout has them: a change that only adds lines is the line it adds under
- * (at least 1). `added` holds the first few lines the branch writes there. A deleted file counts; a new one too.
+ * (at least 1). `added` holds the first few lines the branch writes there. A deleted file counts; a new one too, and a
+ * binary one, without lines. A change of a file's mode alone is no change of it.
  */
 export function parseTaskDiff(text) {
   const files = [];
@@ -65,6 +66,16 @@ export function parseTaskDiff(text) {
         file = {file: path, ranges: []};
         files.push(file);
       } else if (path) file = files.find(each => each.file === path);
+      continue;
+    }
+    // A binary file has no lines: it is changed as a whole, which the winbar says; no edit of yours overlaps it.
+    const binary = header && /^Binary files (.+) and (.+) differ$/.exec(line);
+    if (binary) {
+      const path = diffPath(binary[2]) ?? diffPath(binary[1]);
+      if (path && !files.some(each => each.file === path)) {
+        if (files.length >= MAX_FILES) break;
+        files.push({file: path, ranges: []});
+      }
       continue;
     }
     const hunk = /^@@ -(\d+)(?:,(\d+))? \+\d+(?:,\d+)? @@/.exec(line);

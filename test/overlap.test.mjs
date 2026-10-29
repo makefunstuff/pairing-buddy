@@ -54,6 +54,9 @@ test('a branch\'s diff: its files and the lines of the base it changes, with wha
     [{file: 'x y.js', ranges: [{from: 2, to: 2, added: ['c']}]}], 'no newline at the end is no line');
   assert.deepEqual(parseTaskDiff('diff --git a/m.lua b/m.lua\n--- a/m.lua\n+++ b/m.lua\n@@ -3 +2,0 @@\n--- the old comment\n@@ -40,2 +39,2 @@\n-a\n-b\n+++x\n+y\n'),
     [{file: 'm.lua', ranges: [{from: 3, to: 3, added: []}, {from: 40, to: 41, added: ['++x', 'y']}]}], 'in a hunk, a removed `-- comment` is a line, not a file');
+  assert.deepEqual(parseTaskDiff('diff --git a/img.png b/img.png\nindex 1..2 100644\nBinary files a/img.png and b/img.png differ\ndiff --git a/new.png b/new.png\nnew file mode 100644\nBinary files /dev/null and b/new.png differ\n'),
+    [{file: 'img.png', ranges: []}, {file: 'new.png', ranges: []}], 'a binary file is changed, without lines');
+  assert.deepEqual(parseTaskDiff('diff --git a/run.sh b/run.sh\nold mode 100644\nnew mode 100755\n'), [], 'a mode alone is no change of the file');
   const ranges = parseTaskDiff(DIFF)[0].ranges;
   assert.deepEqual(touched(ranges, 5, 5).map(range => range.from), [3], 'the line next to a change touches it');
   assert.deepEqual(touched(ranges, 6, 8), [], 'lines between the changes do not');

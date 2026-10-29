@@ -2,14 +2,14 @@
 // the user's pause, booked in the ledger as one line, and undone as one unit. A session on a store in memory, with a
 // stand-in Partner and editor.
 import assert from 'node:assert/strict';
-import {execFile} from 'node:child_process';
+import {execFile, execFileSync} from 'node:child_process';
 import {existsSync, readFileSync, realpathSync, symlinkSync, lutimesSync, writeFileSync} from 'node:fs';
 import {basename, join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {test} from 'node:test';
 import {CHECK_PROMPT, CONFLICT_PROMPT} from '../src/brief.mjs';
 import {fold, generatedAt, initialState} from '../src/fold.mjs';
-import {guessShape, parseGen} from '../src/gen.mjs';
+import {guessShape, parseGen, syncPick} from '../src/gen.mjs';
 import {expireTries, placeHunks, projectFolder, tryLine} from '../src/gen-tree.mjs';
 import {findPart, parseMarkId, partsOf, writtenMarks} from '../src/owning.mjs';
 import {sandboxWorks} from '../src/sandbox.mjs';
@@ -1532,7 +1532,14 @@ test('/brief sync: what the task\'s brief on the board lacks, with the decisions
   const task = status => ({id: 'SHO-74', title: 'Orders', status, place: 'p:here:shop', branch: 'work/74-orders', desc: 'Build the orders.\n\n> Money in integer cents, never floats. (NOTES.md:3)\n> SQLite, one file next to the binary. (NOTES.md:4)\n> Statuses: new, paid. (NOTES.md:5)'});
   const board = fakeShepherdr(scratch('pair-board-'), {...SHOP, tasks: [task('work')]});
   const {root, pair, of, said, sent} = genSession([], {board: board.command, notes});
-  writeFileSync(join(root, 'decisions.md'), '# Decisions\n\n## 2026-10-28 · Admin is read-only for now\n\n- Status: decided\n- Where: NOTES.md:5\n- Consequences:\n');
+  writeFileSync(join(root, 'decisions.md'), '# Decisions\n\n## 2026-10-20 · Orders live in SQLite\n\n- Status: decided\n- Where: NOTES.md:4\n- Consequences:\n\n'
+    + '## 2026-10-28 · Admin is read-only for now\n\n- Status: decided\n- Where: NOTES.md:5\n- Consequences:\n');
+  // The task's branch left main on 2026-10-27: a decision from before that its brief had to hand.
+  const git = (...args) => execFileSync('git', ['-C', root, '-c', 'user.email=t@t', '-c', 'user.name=t', ...args], {stdio: 'pipe', env: {...process.env, GIT_COMMITTER_DATE: '2026-10-27T12:00:00', GIT_AUTHOR_DATE: '2026-10-27T12:00:00'}});
+  git('init', '-q', '-b', 'main');
+  git('add', '.');
+  git('commit', '-qm', 'start');
+  git('checkout', '-q', '-b', 'work/74-orders');
   assert.match(await pair.gen.syncBrief(), /^No board task on this branch/, 'off a task\'s branch there is nothing to sync with');
   pair.receive({kind: 'context', branch: 'work/74-orders', git: {}, board: {space: 'shop', task: {id: 'SHO-74', title: 'Orders', state: 'working'}, working: 0, waiting: []}});
 
@@ -1546,7 +1553,7 @@ test('/brief sync: what the task\'s brief on the board lacks, with the decisions
   let {asking, confirm} = await ask('work');
   assert.equal(confirm.text, '/brief sync: NOTES.md + goal "add helpers" + board task SHO-74 with its brief. SHO-74\'s brief on the board lacks:\n'
     + '+ Statuses: new, paid, shipped. (NOTES.md:5)\n- Statuses: new, paid. (no longer in NOTES.md)\n+ decided 2026-10-28: Admin is read-only for now\n'
-    + 'SHO-74\'s agent is at work: this goes as a message, not a new brief.');
+    + 'SHO-74\'s agent is at work: this goes as a message, not a new brief.', 'the decision from before the branch is not listed');
   assert.equal(confirm.hint, 'y tell SHO-74 · c copy the command · n leave it');
   assert.deepEqual([confirm.copy, confirm.keys], [true, ['c']]);
   assert.match(confirm.command, /^.*shepherdr task tell SHO-74 'The brief in Pair \(NOTES\.md\) changed since your brief was written/);
@@ -1555,7 +1562,7 @@ test('/brief sync: what the task\'s brief on the board lacks, with the decisions
   await asking;
   const [tell] = board.calls().filter(([, sub]) => sub === 'tell');
   assert.deepEqual(tell.slice(0, 3), ['task', 'tell', 'SHO-74']);
-  assert.match(tell[3], /It says now:\n- Statuses: new, paid, shipped\. \(NOTES\.md:5\)\n\nIt no longer says:\n- Statuses: new, paid\.\n\nDecided since \(decisions\.md\):\n- 2026-10-28: Admin is read-only for now$/);
+  assert.match(tell[3], /It says now:\n- Statuses: new, paid, shipped\. \(NOTES\.md:5\)\n\nIt no longer says:\n- Statuses: new, paid\.\n\nDecided since your branch left the base branch on 2026-10-27 \(decisions\.md\):\n- 2026-10-28: Admin is read-only for now$/);
   assert.equal(said().at(-1), 'Told SHO-74.');
   assert.match(pair.today().rows.filter(row => row.label === 'board').at(-1).text, /^told SHO-74: The brief in Pair/);
 
@@ -1574,10 +1581,19 @@ test('/brief sync: what the task\'s brief on the board lacks, with the decisions
   ({asking} = await ask('done'));
   assert.match(await asking, /\nSHO-74 is done, so there is no agent to tell\.$/);
 
+  // A stopped task's agent starts again on a message, and the pick says so; one that waits for you takes it in.
+  for (const [status, then] of [['off', 'SHO-74\'s agent is stopped: a message starts it again.'], ['ready', 'SHO-74\'s agent waits for you (ready to merge): this goes as a message, not a new brief.'], ['idle', 'SHO-74\'s agent waits for you (idle): this goes as a message, not a new brief.']]) {
+    ({asking, confirm} = await ask(status));
+    assert.equal(confirm.text.split('\n').at(-1), then, status);
+    pair.answer(confirm.id, false);
+    await asking;
+  }
+  assert.equal(syncPick('SHO-74', 'off').does, 'tell SHO-74: its agent is stopped, and a message starts it again');
+
   // From Neovim the pick is there: the lines, what y does, and the tell to send with board_do.
   ({asking} = await ask('need', 'editor'));
   assert.equal(await asking, null, 'Neovim shows the lines with its pick');
-  assert.match(said().at(-1), /\nPick in Neovim: tell SHO-74: its agent is at work, so this goes as a message, not a new brief, or copy the command\.$/);
+  assert.match(said().at(-1), /\nPick in Neovim: tell SHO-74: its agent waits for you, and takes this in as a message, not a new brief, or copy the command\.$/);
   const offer = sent.filter(message => message.type === 'brief_sync').at(-1);
   assert.equal(offer.via, 'editor');
   assert.deepEqual([offer.task, offer.lines.length], ['SHO-74', 3]);

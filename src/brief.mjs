@@ -224,28 +224,52 @@ export function parseCheck(answer, brief, pieces, exceptions = new Set()) {
 }
 
 const SYNC_SHOWN = 12; // of each kind, /brief sync lists this many
-// A line of the note worth comparing: words, not a heading's marks, a rule or a fence alone.
-const bare = text => plain(text.replace(/^\s*(?:#+|[-*+>]|\d+[.)])\s+/, '').replace(/^\s*(?:#+|[-*_=`]{3,})\s*$/, ''));
+const SYNC_MIN_CHARS = 3; // a line with fewer letters and digits says nothing to compare
+// A line of the note worth comparing: words, not a heading's marks, a rule or a table's rule row alone.
+const bare = text => plain(text.replace(/^\s*(?:#+|[-*+>]|\d+[.)])\s+/, '').replace(/^\s*(?:#+|[-*_=]{3,}|\|?[\s:|-]*-[\s:|-]*\|?)\s*$/, ''));
+const FENCE = /^\s*(`{3,}|~{3,})/;
+
+/** The note's lines that say something, numbered: no headings, and nothing of a fenced block, its fences included. */
+function saying(lines) {
+  const kept = [];
+  let fence = null;
+  lines.forEach((text, i) => {
+    const opens = FENCE.exec(text)?.[1];
+    if (fence) {
+      if (opens && opens[0] === fence[0] && opens.length >= fence.length) fence = null;
+      return;
+    }
+    if (opens) {
+      fence = opens;
+      return;
+    }
+    const line = text.trim();
+    if (!/^#/.test(line) && (bare(line).match(/[\p{L}\p{N}]/gu) ?? []).length >= SYNC_MIN_CHARS) kept.push({line: i + 1, text: line});
+  });
+  return kept;
+}
 // handoffBrief's quotes: `> words (NOTES.md:4)`.
 const QUOTE = /^> (.+) \(([^()\s]+):(\d+)\)$/;
 
 /**
  * How the brief differs from its board task's brief (`brief.task.brief`), for /brief sync: `added`, the note's lines
- * the task's brief does not have ({line, text}), its headings left out; `gone`, the lines it quotes from the note that the note no longer
- * has; `decided`, the decisions of the log `log` (decisions.md's text) it does not have ({date, title}). Null without
- * a board task.
+ * the task's brief does not have ({line, text}), its headings, fenced blocks and table rules left out; `gone`, the
+ * lines it quotes from the note that the note no longer has; `decided`, the decisions of the log `log` (decisions.md's
+ * text) it does not have ({date, title}), logged on `since` (YYYY-MM-DD: the day the task's branch left the base
+ * branch, before which its brief cannot have been written) or later; without `since`, every one it lacks. Null
+ * without a board task.
  */
-export function briefSync(brief, log = '') {
+export function briefSync(brief, log = '', {since = null} = {}) {
   if (!brief.task) return null;
   const told = plain(brief.task.brief ?? '');
-  const has = text => text.length >= 3 && told.includes(text);
-  const added = !brief.note ? [] : brief.note.lines.map((text, i) => ({line: i + 1, text: text.trim()}))
-    .filter(each => !/^#/.test(each.text) && bare(each.text) && !has(bare(each.text))); // a heading is no instruction
+  const has = text => text.length >= SYNC_MIN_CHARS && told.includes(text);
+  const added = !brief.note ? [] : saying(brief.note.lines).filter(each => !has(bare(each.text)));
   const kept = new Set((brief.note?.lines ?? []).map(bare));
   const gone = !brief.note ? [] : (brief.task.brief ?? '').split('\n').map(line => QUOTE.exec(line.trim()))
     .filter(quote => quote && quote[2] === brief.note.file && !kept.has(bare(quote[1]))).map(quote => quote[1]);
-  const decided = entries(log).filter(entry => entry.decided && !has(plain(entry.title))).map(({date, title}) => ({date, title}));
-  return {added: added.slice(0, SYNC_SHOWN), gone: gone.slice(0, SYNC_SHOWN), decided: decided.slice(0, SYNC_SHOWN),
+  const decided = entries(log).filter(entry => entry.decided && !has(plain(entry.title)) && (!since || entry.date >= since))
+    .map(({date, title}) => ({date, title}));
+  return {since, added: added.slice(0, SYNC_SHOWN), gone: gone.slice(0, SYNC_SHOWN), decided: decided.slice(0, SYNC_SHOWN),
     more: Math.max(0, added.length - SYNC_SHOWN) + Math.max(0, gone.length - SYNC_SHOWN) + Math.max(0, decided.length - SYNC_SHOWN)};
 }
 
@@ -258,7 +282,7 @@ export function syncLines(brief, sync) {
   return [
     ...sync.added.map(each => `+ ${shorten(each.text, TEXT_CHARS)} (${file}:${each.line})`),
     ...sync.gone.map(text => `- ${shorten(text, TEXT_CHARS)} (no longer in ${file})`),
-    ...sync.decided.map(each => `+ decided ${each.date}: ${shorten(each.title, TEXT_CHARS)}`),
+    ...sync.decided.map(each => `+ decided ${each.date}${sync.since ? '' : ', not in its brief'}: ${shorten(each.title, TEXT_CHARS)}`),
     ...(sync.more ? [`(and ${sync.more} more)`] : []),
   ];
 }
@@ -272,7 +296,8 @@ export function syncTell(brief, sync, {waiting = false} = {}) {
   const parts = [`The brief in Pair${file ? ` (${file})` : ''} changed since your brief was written. Take this in:`];
   if (sync.added.length) parts.push(`It says now:\n${sync.added.map(each => `- ${each.text} (${file}:${each.line})`).join('\n')}`);
   if (sync.gone.length) parts.push(`It no longer says:\n${sync.gone.map(text => `- ${text}`).join('\n')}`);
-  if (sync.decided.length) parts.push(`Decided since (decisions.md):\n${sync.decided.map(each => `- ${each.date}: ${each.title}`).join('\n')}`);
+  const decided = sync.since ? `Decided since your branch left the base branch on ${sync.since} (decisions.md)` : 'Decided, and not in your brief (decisions.md)';
+  if (sync.decided.length) parts.push(`${decided}:\n${sync.decided.map(each => `- ${each.date}: ${each.title}`).join('\n')}`);
   if (waiting) parts.push('This is no go: keep waiting for mine.');
   return parts.join('\n\n');
 }

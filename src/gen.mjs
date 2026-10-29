@@ -28,7 +28,7 @@ import {
   briefEmpty, briefLine, briefSync, briefText, CHECK_PROMPT, checkInput, CONFLICT_PROMPT, conflictInput, exceptionKey, parseCheck,
   handoffBrief, inSync, parseConflict, quotePlace, readBrief, syncLines, syncTell,
 } from './brief.mjs';
-import {Board, boardTitle, commandLine} from './board.mjs';
+import {Board, boardTitle, commandLine, stateWords} from './board.mjs';
 import {checkCommand} from './check.mjs';
 import {commandPolicy} from './command-policy.mjs';
 import {GEN_BRIEF, GEN_KEEP_TRIES, GEN_LIMITS, GEN_SCAFFOLD} from './config.mjs';
@@ -39,7 +39,7 @@ import {
   changedIn, daysLeft, expireTries, filesIn, freshFolder, linesOf, makeCopy, makeWorktree, noLinks, pathIn, placeHunks, projectFolder,
   removeCopy, removeWorktree, scaffoldFolder, sizeOf, textOf, tryFolder, tryLine, triesIn, trySandboxed,
 } from './gen-tree.mjs';
-import {gitFiles} from './git.mjs';
+import {gitFiles, gitForkDay} from './git.mjs';
 import {DETAIL_KEPT_MS, keptOutput, notYoursLine, startOfDay} from './ledger.mjs';
 import {markId, parseMarkId, takenMarks, tally, writtenMarks} from './owning.mjs';
 import {Reviews} from './review.mjs';
@@ -140,6 +140,19 @@ const lineCount = text => (text === '' ? 0 : text.replace(/\n$/, '').split('\n')
 const answerOf = text => (text && !SILENT.test(text) ? text.trim() : '');
 const ranMark = ran => (ran.exit === 0 && !ran.timedOut ? '✓' : '✗');
 const ranText = ran => `${ranMark(ran)} \`${ran.command}\`${ran.timedOut ? ' (stopped: it ran too long)' : ran.exit ? ` exit ${ran.exit}` : ''}`;
+/**
+ * What /brief sync's tell does to a task in `status`, as its pick says it: {does, then}, `waiting` when its agent waits
+ * for a go (the message then says it is none). Null for a done task: there is no agent to tell.
+ */
+export function syncPick(id, status) {
+  if (status === 'done') return null;
+  if (['todo', 'queued'].includes(status)) return {waiting: true, does: `tell ${id}: its agent waits for a go, and the message says it is none`, then: `${id} waits for a go: the message says this is none.`};
+  if (status === 'off') return {does: `tell ${id}: its agent is stopped, and a message starts it again`, then: `${id}'s agent is stopped: a message starts it again.`};
+  if (['work', 'merging'].includes(status)) return {does: `tell ${id}: its agent is at work, so this goes as a message, not a new brief`, then: `${id}'s agent is at work: this goes as a message, not a new brief.`};
+  if (['need', 'ready', 'idle'].includes(status)) return {does: `tell ${id}: its agent waits for you, and takes this in as a message, not a new brief`, then: `${id}'s agent waits for you (${stateWords(status)}): this goes as a message, not a new brief.`};
+  return {does: `tell ${id}: a message to its agent (${stateWords(status) || 'its state is not known'})`, then: `${id} is ${stateWords(status) || 'in a state Pair does not know'}: this goes to its agent as a message.`};
+}
+
 const tail = (text, chars) => (text.length > chars ? `…${text.slice(-chars)}` : text);
 
 export class Gen {
@@ -428,21 +441,22 @@ export class Gen {
     }
     const brief = await readBrief({root: this.root, pin: this.pin, fallback: this.briefName, goal: session.state.goal, task, read: path => session.bufferText(path)});
     const log = await session.bufferText(join(brief.note ? dirname(brief.note.path) : this.root, LOG_NAME)).catch(() => '');
-    const sync = briefSync(brief, typeof log === 'string' ? log : '');
+    // The task's brief was written no earlier than the day its branch left the base: older decisions it had to hand.
+    const sync = briefSync(brief, typeof log === 'string' ? log : '', {since: await gitForkDay(this.root)});
     const head = `/brief sync: ${briefLine(brief)}`;
     if (inSync(sync)) return say(`${head}. ${task.id}'s brief has all of it${brief.note ? '' : ' (there is no note to compare: /brief <note> pins one)'}.`);
     const lines = syncLines(brief, sync);
     const said = `${head}. ${task.id}'s brief on the board lacks:\n${lines.join('\n')}`;
-    if (task.status === 'done') return say(`${said}\n${task.id} is done, so there is no agent to tell.`);
-    const waiting = ['todo', 'queued'].includes(task.status);
-    const text = syncTell(brief, sync, {waiting});
+    const pick = syncPick(task.id, task.status);
+    if (!pick) return say(`${said}\n${task.id} is done, so there is no agent to tell.`);
+    const text = syncTell(brief, sync, {waiting: Boolean(pick.waiting)});
     const command = commandLine(board.tellWords(task.id, text));
-    const does = waiting ? `tell ${task.id}: its agent waits for a go, and the message says it is none` : `tell ${task.id}: its agent is at work, so this goes as a message, not a new brief`;
+    const {does} = pick;
     if (from === 'editor' && session.notify('editor', {type: 'brief_sync', task: task.id, title: head, lines, text, command, does})) {
       session.message('system', `${said}\nPick in Neovim: ${does}, or copy the command.`);
       return null; // Neovim shows the lines with its pick
     }
-    const answer = await session.confirm(`${said}\n${waiting ? `${task.id} waits for a go: the message says this is none.` : `${task.id}'s agent is at work: this goes as a message, not a new brief.`}`, ['c'], {
+    const answer = await session.confirm(`${said}\n${pick.then}`, ['c'], {
       command, copy: true, keys: ['c'], timeoutMs: null, said: () => null, hint: `y tell ${task.id} · c copy the command · n leave it`,
     });
     if (answer === 'c') return say(`Nothing told. The command, to run yourself: ${command}`);

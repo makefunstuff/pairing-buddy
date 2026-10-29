@@ -83,7 +83,9 @@ stay herdr's:
   its own gets no note ([agents.md](agents.md#tasks-working-on-your-files)).
 - **`/brief sync` can only tell**: Shepherdr has no way to replace a task's brief, so what changed goes to its agent
   as a message. It compares words, line by line: a line reworded in the task's brief counts as missing. Only the note
-  and `decisions.md` next to it are compared, not the goal ([gen.md](gen.md#keeping-the-task-in-step-brief-sync)).
+  and `decisions.md` next to it are compared, not the goal. Shepherdr gives no time a task was added, so "decided
+  since" counts from the day its branch left the base branch, by its decisions' dates: a decision logged that same day
+  before the task was added is listed too ([gen.md](gen.md#keeping-the-task-in-step-brief-sync)).
 
 ## The chat pane
 

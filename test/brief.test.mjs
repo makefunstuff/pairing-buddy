@@ -111,8 +111,9 @@ test('/brief sync: the note\'s lines the task\'s brief lacks, the quotes the not
   const log = '# Decisions\n\n## 2026-10-28 · Admin is read-only for now\n\n- Status: decided\n- Where: NOTES.md:4\n- Consequences:\n\n'
     + '## 2026-10-27 · Build the orders API\n\n- Status: decided\n- Where: NOTES.md:1\n- Consequences:\n\n'
     + '## 2026-10-26 · Use MySQL\n\n- Status: superseded by 2026-10-27 · SQLite\n- Where: NOTES.md:3\n- Consequences:\n';
-  const sync = briefSync(brief, log);
+  const sync = briefSync(brief, log, {since: '2026-10-27'});
   assert.deepEqual(sync, {
+    since: '2026-10-27',
     added: [{line: 4, text: 'Statuses: new, paid, shipped.'}],
     gone: ['Statuses: new, paid.'],
     decided: [{date: '2026-10-28', title: 'Admin is read-only for now'}],
@@ -124,8 +125,21 @@ test('/brief sync: the note\'s lines the task\'s brief lacks, the quotes the not
     '+ decided 2026-10-28: Admin is read-only for now',
   ]);
   const tell = syncTell(brief, sync);
-  assert.match(tell, /^The brief in Pair \(NOTES\.md\) changed since your brief was written\. Take this in:\n\nIt says now:\n- Statuses: new, paid, shipped\. \(NOTES\.md:4\)\n\nIt no longer says:\n- Statuses: new, paid\.\n\nDecided since \(decisions\.md\):\n- 2026-10-28: Admin is read-only for now$/);
+  assert.match(tell, /^The brief in Pair \(NOTES\.md\) changed since your brief was written\. Take this in:\n\nIt says now:\n- Statuses: new, paid, shipped\. \(NOTES\.md:4\)\n\nIt no longer says:\n- Statuses: new, paid\.\n\nDecided since your branch left the base branch on 2026-10-27 \(decisions\.md\):\n- 2026-10-28: Admin is read-only for now$/);
+  // Only decisions from the day the task's branch left the base on: one from before, its brief had to hand.
+  const before = '# Decisions\n\n## 2020-01-01 · Old decision\n\n- Status: decided\n- Where: NOTES.md:4\n- Consequences:\n';
+  assert.deepEqual(briefSync(brief, before, {since: '2026-10-27'}).decided, []);
+  // Without that day (no git), every decision it lacks, said so: not "since".
+  const undated = briefSync(brief, before);
+  assert.deepEqual(syncLines(brief, undated).at(-1), '+ decided 2020-01-01, not in its brief: Old decision');
+  assert.match(syncTell(brief, undated), /\n\nDecided, and not in your brief \(decisions\.md\):\n- 2020-01-01: Old decision$/);
   assert.match(syncTell(brief, sync, {waiting: true}), /\n\nThis is no go: keep waiting for mine\.$/, 'a task that waits is not given its go by it');
   assert.ok(inSync(briefSync(await readBrief({root, task: {id: 'SHO-74', title: 'x', brief: handoffBrief({words: 'x', brief})}, read}))), 'a brief written from the note now has all of it');
   assert.equal(briefSync(await readBrief({root, read})), null, 'no board task: nothing to sync with');
+
+  // A fence, the code in it, a table's rule row and a line too short to say anything are no instructions.
+  const noisy = await readBrief({root, task: {id: 'SHO-74', title: 'x', brief: 'Build it.'}, read: async () => [
+    '# Orders', '', '```js', 'const a = 1', '```', '~~~', 'b = 2', '~~~', '| status | meaning |', '|---|:-:|', '| --- | --- |', 'ok', '- [ ]', '---', 'Money in cents.',
+  ].join('\n')});
+  assert.deepEqual(briefSync(noisy).added, [{line: 9, text: '| status | meaning |'}, {line: 15, text: 'Money in cents.'}]);
 });
