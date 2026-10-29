@@ -180,8 +180,8 @@ test('a guessed shape is asked first, in the chat for a chat request: y takes th
   const first = pair.gen.request({text: 'a sample LRU cache to try'});
   await new Promise(resolve => setImmediate(resolve));
   const confirm = of('confirm').at(-1);
-  assert.match(confirm.text, /^gen #1 · a sample to run: "sample"\. Shape\? y: try, or type here, file, scaffold; n cancels\.$/);
-  assert.equal(confirm.hint, 'y: try · here, file, scaffold · n cancels');
+  assert.match(confirm.text, /^gen #1 · a sample to run: "sample"\. Shape\? y: try, or type here, file, scaffold, board; n cancels\.$/);
+  assert.equal(confirm.hint, 'y: try · here, file, scaffold, board · n cancels');
   pair.answer(confirm.id, true);
   await first;
   assert.ok(said().includes('gen #1 · try · nothing proposed.'), 'y took the guess, and it ran');
@@ -214,7 +214,7 @@ test('from Neovim the shape question is a dialog there; one request runs at a ti
   await until(() => of('gen_ask').length);
   const ask = of('gen_ask').at(-1);
   assert.deepEqual({kind: ask.kind, title: ask.title, gen: ask.gen}, {kind: 'shape', title: 'gen #1 · at the cursor. Shape?', gen: 1});
-  assert.deepEqual(ask.choices.map(choice => [choice.shape, choice.guessed, choice.built]), [['here', true, true], ['file', false, true], ['scaffold', false, true], ['try', false, true]]);
+  assert.deepEqual(ask.choices.map(choice => [choice.shape, choice.guessed, choice.built]), [['here', true, true], ['file', false, true], ['scaffold', false, true], ['try', false, true], ['board', false, true]]);
   assert.equal(of('confirm').length, 0, 'not asked in the chat as well');
   pair.gen.answer(1, ask.id, 'here');
   await until(() => asked.length === 1);

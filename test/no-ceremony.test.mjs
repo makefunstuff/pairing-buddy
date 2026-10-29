@@ -1,9 +1,9 @@
 // No ceremony: the goal comes from the board task or the branch, and sessions end by themselves.
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {chmodSync, realpathSync, writeFileSync} from 'node:fs';
+import {realpathSync, writeFileSync} from 'node:fs';
 import {connect} from 'node:net';
-import {basename, join} from 'node:path';
+import {join} from 'node:path';
 import {test} from 'node:test';
 import {createModels, fauxAssistantMessage, fauxProvider, fauxText} from '@earendil-works/pi-ai';
 import {parseConfig} from '../src/config.mjs';
@@ -11,6 +11,7 @@ import {startDaemon} from '../src/daemon.mjs';
 import {readMessages, sendMessage} from '../src/protocol.mjs';
 import {PairSession} from '../src/session.mjs';
 import {openStore} from '../src/store.mjs';
+import {fakeShepherdr} from './fake-shepherdr.mjs';
 import {scratch} from './temp.mjs';
 
 const answers = async () => ({ok: true});
@@ -37,7 +38,7 @@ function client(socketPath, hello) {
   };
 }
 
-/** A git repo on branch `work/7-faster-hash`, and a board command that knows its task 7 and another repo's. */
+/** A git repo on branch `work/7-faster-hash`, and a board (Shepherdr, faked) whose space for it has task 7, as another space does. */
 function project() {
   const root = realpathSync(scratch('probe-'));
   const git = (...args) => execFileSync('git', ['-c', 'user.name=dev', '-c', 'user.email=dev@example.com', ...args], {cwd: root});
@@ -45,13 +46,13 @@ function project() {
   writeFileSync(join(root, 'probe.c'), 'int probe(int n) { return n * 31; }\n');
   git('add', '-A');
   git('commit', '-qm', 'probe: first hash');
-  const tasks = [
-    {id: 'elsewhere/7', state: 'working', title: 'Not this one', msg: ''},
-    {id: `${basename(root)}/7`, state: 'working', title: 'Faster hash', msg: 'trying fibonacci'},
-  ];
-  const board = join(scratch('board-'), 'board');
-  writeFileSync(board, `#!/bin/sh\necho '${JSON.stringify(tasks)}'\n`);
-  chmodSync(board, 0o755);
+  const {command: board} = fakeShepherdr(scratch('board-'), {
+    spaces: [{name: 'elsewhere', key: 'ELS', path: '/src/elsewhere'}, {name: 'probe', key: 'PRB', path: root}],
+    tasks: [
+      {id: 'ELS-7', status: 'work', title: 'Not this one', place: 'p:here:elsewhere'},
+      {id: 'PRB-7', status: 'work', title: 'Faster hash', sub: 'trying fibonacci', place: 'p:here:probe', branch: 'work/7-faster-hash'},
+    ],
+  });
   return {root, board};
 }
 
@@ -80,14 +81,14 @@ test('a session takes the goal of its board task, matched by repo and number, an
   try {
     const welcome = await chat.next(message => message.type === 'welcome');
     assert.equal(welcome.goal, 'Faster hash', 'not "Not this one", the other repo\'s task 7');
-    await chat.next(message => message.text === `Goal, from the board task ${basename(root)}/7: Faster hash`);
+    await chat.next(message => message.text === 'Goal, from the board task PRB-7: Faster hash');
     assert.ok(!chat.received.some(message => /What are we doing/.test(message.text ?? '')), 'nothing is asked');
 
     editor.send({type: 'context'});
     const card = await editor.next(message => message.type === 'context');
     assert.equal(card.goal, 'Faster hash');
     assert.deepEqual(card.sections.map(section => section.source), ['board', 'git', 'terminal', 'editor']);
-    assert.equal(card.sections[0].rows[0].text, `${basename(root)}/7 · Faster hash`);
+    assert.equal(card.sections[0].rows[0].text, 'PRB-7 · Faster hash');
     assert.match(card.sections[1].rows.find(row => row.label === 'last').text, /^[0-9a-f]{7} probe: first hash$/);
 
     editor.send({type: 'hide', source: 'board', hidden: true});

@@ -679,7 +679,7 @@ test('/gen in the pane: the shapes after /gen, the gen card with its keys, its r
     await t.shows('No goal then.');
     // /gen and a space: its shapes first, then what else it does.
     await t.type('/gen ');
-    assert.match(t.text(), /commands · 7 of 8 · type to narrow/);
+    assert.match(t.text(), /commands · 7 of 9 · type to narrow/);
     assert.match(t.text(), / ▸ \/gen here +<what> +ask Pair for code at your cursor/);
     assert.match(t.text(), /\/gen file +<what> +new files/);
     await t.type('h\t');

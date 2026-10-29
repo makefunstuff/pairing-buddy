@@ -64,6 +64,27 @@ export function briefText(brief) {
   return parts.join('\n');
 }
 
+const BOARD_NOTE_LINES = 80; // a board task's brief quotes this many lines of the note
+
+/**
+ * A board task's brief, from a /gen board request and the brief it runs against: the request in the user's words, then
+ * the goal, the branch's board task and the note, quoted, since the task's agent sees only what is committed.
+ */
+export function boardBrief(request, brief) {
+  const parts = [request.trim()];
+  const from = [];
+  if (brief.goal) from.push(`Goal: ${brief.goal}`);
+  if (brief.task) from.push(`Board task ${brief.task.id}: ${brief.task.title}`);
+  if (brief.note) {
+    const lines = brief.note.lines.slice(0, BOARD_NOTE_LINES);
+    const cut = brief.note.lines.length > lines.length ? `\n> (${brief.note.lines.length - lines.length} more lines in ${brief.note.file})` : '';
+    from.push(`${brief.note.file}:\n${lines.map(line => `> ${line}`.trimEnd()).join('\n')}${cut}`);
+  }
+  if (from.length) parts.push(`From the brief (${briefLine(brief)}):\n${from.join('\n')}`);
+  parts.push('Asked from Pair with /gen board.');
+  return parts.join('\n\n');
+}
+
 /**
  * Where `quote` is in the brief: `{source, line, text}` with the whole line it is on, or null when the brief has no
  * such words. `line` (of the note) is looked at first; a quote found on another line is moved there.

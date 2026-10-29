@@ -301,8 +301,8 @@ function taskCommand(raw) {
   return raw;
 }
 
-/** The work board's command (herdr-projects), which the context card and the goal are read from; null for none. */
-function boardCommand(raw = 'herdr-projects') {
+/** The work board's command (Shepherdr's `shepherdr`), which the context card, the goal and the relay read; null for none. */
+function boardCommand(raw = 'shepherdr') {
   if (raw !== null && (typeof raw !== 'string' || !raw.trim())) throw new Error('config: board must be the board\'s command, or null');
   return raw && raw.trim().replace(/^~(?=\/)/, homedir());
 }

@@ -39,3 +39,37 @@ export async function repoNames(root) {
   ];
   return [...new Set(names.filter(Boolean))];
 }
+
+/** The folder of the main checkout of `root`'s repository, also from one of its worktrees; null outside git. */
+export async function gitCheckout(root) {
+  const common = await git(root, ['rev-parse', '--path-format=absolute', '--git-common-dir']).catch(() => null);
+  return common && basename(common) === '.git' ? dirname(common) : null;
+}
+
+/** The worktrees of `root`'s repository by branch: Map branch -> folder; empty outside git. */
+export async function gitWorktrees(root) {
+  const out = await git(root, ['worktree', 'list', '--porcelain']).catch(() => '');
+  const worktrees = new Map();
+  let path = null;
+  for (const line of out.split('\n')) {
+    if (line.startsWith('worktree ')) path = line.slice('worktree '.length);
+    else if (line.startsWith('branch refs/heads/') && path) worktrees.set(line.slice('branch refs/heads/'.length), path);
+  }
+  return worktrees;
+}
+
+/** The branch the repository of `root` merges into: its origin's default, else main or master; null when it has none. */
+export async function gitBaseBranch(root) {
+  const head = await git(root, ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD']).catch(() => null);
+  if (head) return head.replace(/^origin\//, '');
+  for (const name of ['main', 'master']) {
+    if (await git(root, ['rev-parse', '--verify', '--quiet', `refs/heads/${name}`]).then(() => true, () => false)) return name;
+  }
+  return null;
+}
+
+/** What `branch` changes since it left `base` (`git diff base...branch`), up to `maxBytes` of it. */
+export async function gitBranchDiff(root, base, branch, maxBytes = 4 << 20) {
+  const {stdout} = await run('git', ['-C', root, 'diff', '--no-color', `${base}...${branch}`], {timeout: 10_000, maxBuffer: maxBytes});
+  return stdout;
+}

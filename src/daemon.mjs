@@ -11,7 +11,7 @@ import {goalFromContext, SOURCES} from './context-card.mjs';
 import {loadSizedConfig} from './context-window.mjs';
 import {byUse, herdrFocus, noteEditor} from './editors.mjs';
 import {expireTries} from './gen-tree.mjs';
-import {gitRoot} from './git.mjs';
+import {gitRoot, repoNames} from './git.mjs';
 import {createDecider, DecisionModel} from './decision.mjs';
 import {MODEL_ROLES, ModelHealth} from './health.mjs';
 import {NoteMargin} from './margin.mjs';
@@ -295,7 +295,7 @@ export async function startDaemon(config, {
       session.setTestOnSave(testOnSaveOf(session.root, session.id));
       session.gen.limits = config.gen.limits; // a request already running keeps the limits it started with
       session.gen.briefName = config.gen.brief;
-      Object.assign(session.gen, {keepTries: config.gen.keepTries, network: config.gen.network, sandbox: config.scoutPane.sandbox, scaffold: config.gen.scaffold});
+      Object.assign(session.gen, {keepTries: config.gen.keepTries, network: config.gen.network, sandbox: config.scoutPane.sandbox, scaffold: config.gen.scaffold, board: config.board});
       Object.assign(margins.get(session.root) ?? {}, {typingPauseMs: config.typingPauseMs, taskCommand: config.taskCommand});
     }
     if (changed.includes('board')) {
@@ -370,12 +370,20 @@ export async function startDaemon(config, {
   let readContext = projectContext({board: config.board});
   const contextReads = new Map(); // session -> {at, reading}: the last read of its git and board, or the one under way
 
+  /** What the chat's header says of the board: how many of the repo's other tasks work and need you; null without one. */
+  const boardCounts = board => (board ? {space: board.space, working: board.working, needs: board.waiting.length} : null);
+
   /** Reads the project's git and board into the session state, unless a read is under way or `freshMs` old. */
   function refreshContext(session, freshMs = 0) {
     const last = contextReads.get(session);
     if (last && (last.reading || Date.now() - last.at < freshMs)) return last.reading ?? Promise.resolve();
     const reading = readContext(session.root)
-      .then(event => session.receive(event), error => log(`[${basename(session.root)}] context: ${error.message}`))
+      .then(event => {
+        const before = JSON.stringify(boardCounts(session.state.board));
+        session.receive(event);
+        const counts = boardCounts(session.state.board);
+        if (JSON.stringify(counts) !== before) notify(session, 'chat', {type: 'board', board: counts}); // the chat's header
+      }, error => log(`[${basename(session.root)}] context: ${error.message}`))
       .finally(() => contextReads.set(session, {at: Date.now(), reading: null}));
     contextReads.set(session, {at: last?.at ?? 0, reading});
     return reading;
@@ -411,7 +419,7 @@ export async function startDaemon(config, {
         checkOutput: join(config.dataDir, 'runs', `${record.id}.check.out`), // the hand-over's check: writable in the sandbox too
         genLimits: config.gen.limits,
         genBrief: config.gen.brief,
-        genDir: join(config.dataDir, 'gen'), genKeepTries: config.gen.keepTries, genNetwork: config.gen.network, genSandbox: config.scoutPane.sandbox, genScaffold: config.gen.scaffold,
+        genDir: join(config.dataDir, 'gen'), genKeepTries: config.gen.keepTries, genNetwork: config.gen.network, genSandbox: config.scoutPane.sandbox, genScaffold: config.gen.scaffold, genBoard: config.board,
         askModel: (systemPrompt, content) => askNoteModel(systemPrompt, content, {asked: true}), // the /gen brief's checks
         notify: (role, message) => notify(session, role, message),
         requestEditor: message => requestEditor(session, message),
@@ -434,6 +442,7 @@ export async function startDaemon(config, {
       // A stored conversation gets the model now in the config, and one from v0.1, which had no roles, its role's tools.
       await session.configurePartner(session.role);
       live.set(root, session);
+      session.repos = [...new Set([basename(root), ...await repoNames(root)])]; // the names the board may know it by
       await refreshContext(session);
       // No ceremony: a session starts with the goal of its board task, or of its branch, instead of asking.
       const goal = !session.state.goal && goalFromContext(session.state);
@@ -442,7 +451,7 @@ export async function startDaemon(config, {
         const send = message => notify(session, 'editors', message) + notify(session, 'chat', message);
         const breakpoint = () => session.breakpoints.last(session.state, Date.now());
         const wait = () => session.typing() || session.busy || session.role === 'driver';
-        relays.set(root, new AgentRelay({root, send, breakpoint, wait}));
+        relays.set(root, new AgentRelay({root, repos: session.repos, send, breakpoint, wait}));
       }
       return session;
     })();
@@ -563,7 +572,7 @@ export async function startDaemon(config, {
     const {session} = client;
     sendMessage(client.socket, {
       type: 'welcome', root: session.root, goal: session.state.goal, level: session.budget.level, role: session.role, keep: session.keepWheel, models: health.snapshot(),
-      accent: session.accent, model: sessionPartner.modelName(), muted: [...session.muted],
+      accent: session.accent, model: sessionPartner.modelName(), muted: [...session.muted], board: boardCounts(session.state.board),
     });
     // The chat pane's status row starts from what Pair does now, and how much it looked at so far.
     if (client.role === 'chat') {
@@ -727,11 +736,10 @@ export async function startDaemon(config, {
 
   /** Every task and agent but this session's own task, the most urgent first, for `:Pair agents` and `/agents`. */
   function agentList(session) {
-    const project = basename(session.root);
     const items = (agents?.list() ?? [])
       .filter(item => item.where !== session.root)
       .sort((a, b) => STATUSES.indexOf(a.status) - STATUSES.indexOf(b.status))
-      .map(item => ({...item, name: itemName(item, project)}));
+      .map(item => ({...item, name: itemName(item, session.repos)}));
     return {type: 'agent_list', items, off: !agents};
   }
 
@@ -749,6 +757,23 @@ export async function startDaemon(config, {
       sendMessage(client.socket, {type: 'message', sender: 'system', text: `Cannot go there: ${error.message}.`, at: Date.now()});
     }
     if (shown) relay.clear();
+  }
+
+  /**
+   * o, d or t on a task or agent (`what`: 'open', 'diff', 'term'), from `:Pair agents`, the relay line, or the chat's
+   * relay line: what it left behind goes to the Neovim that asked, else the session's, which opens it. Without a
+   * Neovim, the chat says where it is.
+   */
+  async function agentLink(client, session, {key, what}) {
+    if (!['open', 'diff', 'term'].includes(what) || typeof key !== 'string') return;
+    const found = agents ? await agents.leftBehind(key, what) : {error: 'the agent relay is off ("agents": false in the config)'};
+    const reply = {type: 'agent_link', key, what, ...found};
+    const editor = client.role === 'editor' ? client : editorsOf(session)[0];
+    if (editor && !found.error) return sendMessage(editor.socket, reply);
+    const say = text => sendMessage(client.socket, {type: 'message', sender: 'system', text, at: Date.now()});
+    if (found.error) return client.role === 'editor' ? sendMessage(client.socket, reply) : say(`Nothing to open: ${found.error}.`);
+    if (what === 'open') return say(found.links.map(link => `${link.label}: ${link.url}`).join('\n'));
+    say(what === 'term' ? `${found.title}'s worktree: ${found.where} (no Neovim to open a terminal in)` : 'The diff opens in Neovim, and none is connected.');
   }
 
   /** The pane watch of the session of the shell hook's `message`, or null when its project has none. */
@@ -868,6 +893,7 @@ export async function startDaemon(config, {
     if (message.type === 'panes') return watches.get(session.root)?.refresh();
     if (message.type === 'agents') return sendMessage(client.socket, agentList(session));
     if (message.type === 'agent_go') return goToAgent(client, session, message.key);
+    if (message.type === 'agent_link') return agentLink(client, session, message);
     if (message.type === 'context') return sendCard(client, session);
     if (message.type === 'hide' && SOURCES.includes(message.source)) {
       session.receive({kind: 'hide', source: message.source, hidden: message.hidden !== false});

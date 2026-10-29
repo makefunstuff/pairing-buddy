@@ -21,15 +21,16 @@
   // every save. Most runners also put each test's result on its line (go test -json, jest --json, cargo test, pytest -v).
   // "testOnSave": {"~/src/shop": "go test -json ./..."},
 
-  // The herdr work board's command: a session takes its goal from the board task of its branch (matched by repo and
-  // number), and the context card (:Pair context) shows the task. null turns it off; without the command, nothing is read.
-  // "board": "herdr-projects",
+  // The work board's command, Shepherdr's: a session takes its goal from the board task of its branch (matched by the
+  // repo's space and the number), the context card (:Pair context) shows the task, the chat's header counts the space's
+  // tasks, and /gen board composes a task to add. null turns it off; without the command, nothing is read.
+  // "board": "shepherdr",
 
   // A project is a git root (each git worktree is one). In a monorepo, these folders are projects of their own;
   // "<folder>/*" makes each folder in it one.
   // "sessionRoots": ["~/src/shop/packages/*"],
 
-  // Your other agents: when one needs you, is ready to approve or is done, Pair says so in one line at your next
+  // Your other agents: when one needs you, is ready to merge or is done, Pair says so in one line at your next
   // breakpoint (a save, a run that ended, a stop to look). It reads herdr's agents and the board above, if there is
   // one. false turns the relay off.
   // "agents": false,
