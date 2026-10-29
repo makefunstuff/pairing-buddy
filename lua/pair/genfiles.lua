@@ -8,7 +8,11 @@
 -- these buffers too, and it opens at once. The list shows a /gen scaffold's files too, those of its copy of the
 -- project: `k` keeps one (a new file as one of these buffers, a change to a file of yours as suggestions in it), `d`
 -- drops it, `Enter` opens it (a change, as a diff with your file), `r` checks the copy again, `t` opens a terminal
--- in it and `x` deletes it.
+-- in it and `x` deletes it. A board task's review (:Pair review <id>, see src/review.mjs) is in the list too: its
+-- branch's files, the reviewer's verdict and findings on top; `Enter` shows a file's diff, read only, `k` keeps the
+-- file in yours (in the diff, `k` keeps the hunk under the cursor), unsaved and marked ┊, `t` tells its agent, `a`
+-- asks it to merge, `A` archives the task and `o` opens its pull request, each of the last three on a pick that names
+-- it.
 local style = require('pair.style')
 
 local M = {}
@@ -25,7 +29,8 @@ local entered = nil -- the buffer you went to last: a :wa writes the others from
 local leaving = false -- Neovim quits: its buffers go, and nothing is dropped
 local quiet = {} -- buf -> true: a buffer Pair itself takes away (taken, dropped, undone), which drops nothing more
 local skipped = nil -- the proposals a :wa skipped, said once it is done
-local view = {buf = nil, win = nil, from = nil, rows = {}, requests = {}}
+local view = {buf = nil, win = nil, from = nil, rows = {}, requests = {}, focus = nil}
+local diffs = {} -- buf -> what the daemon sent of a review's file diff open in it: each buffer's keys act on its own
 
 local group = vim.api.nvim_create_augroup('pair_gen_files', {clear = true})
 
@@ -386,8 +391,66 @@ local function all(row, verb)
   end)
 end
 
+-- A board task's review: what goes to the board goes only on a pick that names it, and can be copied instead.
+
+--- Asks `prompt`: `does` (the board command runs), copy it, or nothing.
+local function board_pick(task, verb, text, prompt, does)
+  local choices = {{key = 'y', what = does}, {key = 'c', what = 'copy the command, run nothing'}, {key = 'n', what = 'nothing'}}
+  vim.ui.select(choices, {prompt = prompt, format_item = function(choice) return choice.what end, kind = 'pair_board_review'}, function(choice)
+    if not choice or choice.key == 'n' then return end
+    deps.send({type = 'board_do', task = task, verb = verb, text = text, run = choice.key == 'y'})
+  end)
+end
+
+--- t: what to tell the task's agent, from the file (and line) you are on, then the pick.
+local function tell(request, place)
+  vim.ui.input({prompt = ('Tell %s: '):format(request.task), default = place and (place .. ': ') or ''}, function(text)
+    if not text or vim.trim(text) == '' or (place and vim.trim(text) == place .. ':') then return end
+    board_pick(request.task, 'tell', text, ('Tell %s: "%s"'):format(request.task, text), ('tell %s: shepherdr task tell %s "…"'):format(request.task, request.task))
+  end)
+end
+
+--- a: Shepherdr has no approve: the task's agent is told to merge it, as its brief would, and Pair never merges.
+local function merge(request)
+  board_pick(request.task, 'merge', nil, ('Merge %s?'):format(request.task), ('tell %s "merge it": its agent merges the branch'):format(request.task))
+end
+
+--- A: the task out of every list, its record kept; what you kept of it is yours, and its branch is not merged.
+local function archive(request)
+  local twice = request.kept and ' You kept pieces of it: merging its whole branch would bring them in twice.' or ''
+  board_pick(request.task, 'archive', nil, ('Archive %s?%s'):format(request.task, twice), ('archive %s: out of every list, its record kept'):format(request.task))
+end
+
+--- Enter on a file of a review: its diff, read only, from the daemon (on_diff opens it).
+local function review_diff(request, file)
+  deps.send({type = 'review_diff', action = request.action, piece = file.piece})
+end
+
+local function review_act(key, row)
+  local request, file = row.request, row.branch
+  if key == 'open' and file then return review_diff(request, file) end
+  if key == 'k' and file then
+    deps.send({type = 'review_keep', action = request.action, piece = file.piece})
+    return M.refresh()
+  end
+  if key == 't' then return tell(request, file and file.name) end
+  if key == 'a' then return merge(request) end
+  if key == 'A' then return archive(request) end
+  if key == 'o' then
+    if not request.pr or request.pr == vim.NIL then return vim.notify(('Pair: %s has no pull request'):format(request.task)) end
+    local ok, err = pcall(vim.ui.open, request.pr)
+    if not ok then vim.notify('Pair: cannot open ' .. request.pr .. ': ' .. tostring(err), vim.log.levels.WARN) end
+    return
+  end
+  if key == 'u' then
+    deps.send({type = 'undo', action = request.action})
+    return M.refresh()
+  end
+end
+
 local function act(key)
   local row = current()
+  if row and row.request and row.request.shape == 'review' and key ~= 'decide' then return review_act(key, row) end
   if key == 'u' then
     if row and row.request then deps.send({type = 'undo', action = row.request.action}) M.refresh() end
     return
@@ -463,6 +526,63 @@ local function render_tree(request, add)
   end
 end
 
+local function present(value) return value ~= nil and value ~= vim.NIL and value ~= '' end
+
+--- What the brief's check found of `request`: its ≠ brief lines, and its ? guessed ones with the key that logs one.
+local function render_brief(request, add, decide)
+  for _, line in ipairs(request.contradicts or {}) do add('  ' .. line, {request = request}, {{2, 2 + #'≠', 'PairSign'}}) end
+  for g, guess in ipairs(request.guessed or {}) do
+    local tail = decide and ('   %s logs it as a decision'):format(decide) or ''
+    local text = '  ? guessed ' .. guess
+    add(text .. tail, {request = request, guess = g}, {{2, 3, 'PairSign'}, {#text, -1, 'PairKey'}})
+  end
+end
+
+--- A board task's review under its head: what its agent and reviewer said, then its branch's files, each with what
+--- it is (+ new, ~ changed, - deleted), ≠ when the brief's check found it against the brief, ! when the reviewer
+--- names it, and how much of it you kept.
+local function render_review(request, add, decide)
+  local review = type(request.review) == 'table' and request.review or {}
+  local files = request.branch_files or {}
+  local head = ('%s · %s · %s · %s · %s'):format(request.task, (request.title:gsub('\n', ' ')), request.branch, plural(#files, 'file'), hhmm(request.at))
+  add(head, {request = request}, {{0, #request.task, 'PairAccent'}})
+  local verdict = present(review.review) and review.review or 'no review in its facts'
+  if present(review.checks) then verdict = verdict .. ' · ' .. review.checks end
+  local pr = present(request.pr) and request.pr:match('/pull/(%d+)')
+  if pr then verdict = verdict .. ' · PR #' .. pr end
+  add('  reviewer  ' .. verdict, {request = request}, {{2, 10, 'PairAccent'}})
+  if present(review.said) then add('  agent     ' .. review.said, {request = request}, {{2, 7, 'PairKey'}}) end
+  for _, note in ipairs(review.notes or {}) do add('  · ' .. note, {request = request}, {{2, 3, 'PairSign'}}) end
+  if request.checking then add('  ≠ brief: checking the branch against the brief…', {request = request}, {{0, -1, 'PairKey'}}) end
+  render_brief(request, add, decide)
+  local width = 0
+  for _, file in ipairs(files) do width = math.max(width, vim.fn.strdisplaywidth(file.name)) end
+  for _, file in ipairs(files) do
+    local size = file.status == 'A' and ('+%d'):format(file.added) or ('+%d -%d'):format(file.added, file.removed)
+    local what
+    if file.binary then what = 'not text'
+    elseif file.status == 'D' then what = ('%-8s deleted on the branch · ⏎ diff'):format(size)
+    elseif file.kept == 0 then what = ('%-8s ⏎ diff  k keep  t tell'):format(size)
+    elseif file.kept < file.hunks then what = ('%-8s kept %d of %d · ⏎ diff  k the rest'):format(size, file.kept, file.hunks)
+    else what = 'kept · unsaved in yours · ⏎ diff' end
+    local flags = (file.against > 0 and (' ≠' .. file.against) or '') .. (file.found and ' !' or '')
+    local glyph = file.kept > 0 and file.kept >= file.hunks and style.glyphs.pass or style.glyphs.away
+    local mark = ({A = '+', D = '-'})[file.status] or '~'
+    local name = file.name .. flags
+    local prefix = ('  %s %s '):format(glyph, mark)
+    local text = ('%s%s%s   %s'):format(prefix, name, string.rep(' ', math.max(0, width + 4 - vim.fn.strdisplaywidth(name))), what)
+    local hls = {{#text - #what, -1, 'PairKey'}}
+    if flags ~= '' then table.insert(hls, {#prefix + #file.name, #prefix + #name, 'PairSign'}) end
+    add(text, {request = request, branch = file}, hls)
+  end
+  if request.archived then
+    add(('  archived · what you kept of %s stays yours'):format(request.task), {request = request}, {{0, -1, 'PairKey'}})
+  elseif request.kept then
+    add(('  you kept pieces of %s: merging its whole branch would bring them in twice · A archives it (asks)'):format(request.task), {request = request}, {{0, -1, 'PairSign'}})
+  end
+  add(('  o PR · t tell its agent · a merge (asks) · A archive (asks)%s'):format(request.kept and ' · u undo what you kept' or ''), {request = request}, {{0, -1, 'PairKey'}})
+end
+
 local function render()
   local lines, marks, rows = {}, {}, {}
   -- `hls`: {from, to, group}, `to` -1 for the end of the line.
@@ -474,6 +594,8 @@ local function render()
   local decide = deps.label and deps.label(deps.decide_key) or nil
   for i, request in ipairs(view.requests) do
     if i > 1 then add('', nil) end
+    if request.shape == 'review' then render_review(request, add, decide)
+    else
     local head = ('gen #%d · %s · %s · %s'):format(request.gen, request.shape or 'file', (request.words:gsub('\n', ' ')), hhmm(request.at))
     add(head, {request = request}, {{0, #('gen #' .. request.gen), 'PairAccent'}})
     local about = {}
@@ -510,17 +632,20 @@ local function render()
         add(('  ~ %s:%d   a suggestion there · %s'):format(change.name, change.line, change.state), {request = request}, {{0, -1, 'PairKey'}})
       end
     end
-    for _, line in ipairs(request.contradicts or {}) do add('  ' .. line, {request = request}, {{2, 2 + #'≠', 'PairSign'}}) end
-    for g, guess in ipairs(request.guessed or {}) do
-      local tail = decide and ('   %s logs it as a decision'):format(decide) or ''
-      local text = '  ? guessed ' .. guess
-      add(text .. tail, {request = request, guess = g}, {{2, 3, 'PairSign'}, {#text, -1, 'PairKey'}})
     end
+    if request.shape ~= 'review' then render_brief(request, add, decide) end -- a review has them on top
   end
-  if #view.requests == 0 then add('No /gen file or scaffold request, nor a file kept from a try, in the last days. :Pair gen file <what> asks for one.', nil, {{0, -1, 'PairKey'}}) end
+  if #view.requests == 0 then add('No /gen file or scaffold request, nor a file kept from a try or a board task\'s review, in the last days. :Pair gen file <what> asks for one.', nil, {{0, -1, 'PairKey'}}) end
   add('', nil)
+  -- The keys of what is listed: a review's alone when there are only reviews.
   local any_scaffold = vim.iter(view.requests):any(function(request) return request.shape == 'scaffold' end)
-  add(('⏎ open · w take · %sd drop · W take all · D drop all · u undo the request · q close'):format(any_scaffold and 'k keep · ' or ''), nil, {{0, -1, 'PairKey'}})
+  local any_review = vim.iter(view.requests):any(function(request) return request.shape == 'review' end)
+  local any_gen = #view.requests == 0 or vim.iter(view.requests):any(function(request) return request.shape ~= 'review' end)
+  local parts = {}
+  if any_gen then table.insert(parts, ('⏎ open · w take · %sd drop · W take all · D drop all · u undo the request'):format(any_scaffold and 'k keep · ' or '')) end
+  if any_review then table.insert(parts, (any_gen and 'in a review: ' or '') .. '⏎ diff · k keep · t tell · a merge · A archive · o PR · u undo what you kept') end
+  table.insert(parts, 'q close')
+  add(table.concat(parts, ' · '), nil, {{0, -1, 'PairKey'}})
   view.rows = rows
   vim.bo[view.buf].modifiable = true
   vim.api.nvim_buf_set_lines(view.buf, 0, -1, false, lines)
@@ -549,14 +674,19 @@ local function list_buffer()
   map('k', function() act('k') end, 'Keep the file of the scaffold\'s copy')
   map('x', function() act('x') end, 'Delete the scaffold\'s copy')
   map('r', function() act('r') end, 'Run the check again in the scaffold\'s copy')
-  map('t', function() act('t') end, 'A terminal in the scaffold\'s copy')
+  map('t', function() act('t') end, 'A terminal in the scaffold\'s copy; in a review, tell the task\'s agent')
+  map('a', function() act('a') end, 'In a review: ask the task\'s agent to merge it (asks first)')
+  map('A', function() act('A') end, 'In a review: archive the task (asks first)')
+  map('o', function() act('o') end, 'In a review: open the task\'s pull request')
   map('q', function() M.close() end, 'Close the list')
   if deps.decide_key and deps.decide_key ~= '' then map(deps.decide_key, function() act('decide') end, 'Log the guess as a decision') end
   return buf
 end
 
---- :Pair gen list: opens the list, or goes to it, and asks the daemon for the file requests.
-function M.open()
+--- :Pair gen list: opens the list, or goes to it, and asks the daemon for the file requests; with `action`, the cursor
+--- goes to that one (a board task's review opening).
+function M.open(action)
+  view.focus = type(action) == 'number' and action or nil
   if not (view.buf and vim.api.nvim_buf_is_valid(view.buf)) then view.buf = list_buffer() end
   if not valid_win() then
     view.from = vim.api.nvim_get_current_win()
@@ -602,16 +732,27 @@ function M.on_review(message)
   local function todo(row)
     if not row then return false end
     if row.tree then return row.tree.state == 'proposed' end
+    if row.branch then return row.branch.kept < row.branch.hunks and row.branch.status ~= 'D' and not row.branch.binary end
     return row.file ~= nil and row.file.state == 'proposed'
   end
   local function same(row)
     if not (at and row and row.request.action == at.request.action) then return false end
     if at.tree and row.tree then return row.tree.piece == at.tree.piece end
+    if at.branch and row.branch then return row.branch.piece == at.branch.piece end
     return at.file and row.file and not at.tree and not row.tree and row.file.piece == at.file.piece
   end
   local line
-  for i, row in pairs(view.rows) do
-    if same(row) and todo(row) then line = i end
+  if view.focus then
+    for i = vim.api.nvim_buf_line_count(view.buf), 1, -1 do
+      local row = view.rows[i]
+      if row and row.request.action == view.focus and (row.branch or not line) then line = i end
+    end
+    view.focus = nil
+  end
+  if not line then
+    for i, row in pairs(view.rows) do
+      if same(row) and todo(row) then line = i end
+    end
   end
   if not line then
     for i = 1, vim.api.nvim_buf_line_count(view.buf) do
@@ -619,6 +760,87 @@ function M.on_review(message)
     end
   end
   if line and vim.api.nvim_win_get_buf(view.win) == view.buf then pcall(vim.api.nvim_win_set_cursor, view.win, {line, 0}) end
+end
+
+-- A file of a review, as a diff: read only; `k` keeps the hunk under the cursor, `K` the whole file, `t` tells the
+-- task's agent about the line you are on, `q` closes it and goes back to the list. It shows again as you keep, with what is kept.
+
+local diff_ns = vim.api.nvim_create_namespace('pair_review_diff')
+
+--- The hunk of the diff under the cursor: its index, or nil on its head line or outside any.
+local function hunk_here(message)
+  local row = vim.api.nvim_win_get_cursor(0)[1]
+  for _, hunk in ipairs(message.hunks or {}) do
+    if row >= hunk.first and row <= hunk.last then return hunk end
+  end
+end
+
+--- Where the cursor is in the branch's file, as `path:line`, for a tell.
+local function place_here(message)
+  local row = vim.api.nvim_win_get_cursor(0)[1]
+  local lines = vim.api.nvim_buf_get_lines(0, 0, row, false)
+  local at
+  for i, line in ipairs(lines) do
+    local start = line:match('^@@ %-%d+,?%d* %+(%d+)')
+    if start then at = tonumber(start) - 1
+    elseif at and not vim.startswith(line, '-') then at = at + 1 end
+    if i == row then break end
+  end
+  return at and ('%s:%d'):format(message.name, math.max(at, 1)) or message.name
+end
+
+local function draw_diff(buf, message)
+  vim.bo[buf].modifiable, vim.bo[buf].readonly = true, false
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, message.lines or {})
+  vim.bo[buf].modifiable, vim.bo[buf].readonly = false, true
+  vim.api.nvim_buf_clear_namespace(buf, diff_ns, 0, -1)
+  for _, hunk in ipairs(message.hunks or {}) do
+    local text = hunk.kept and 'kept · unsaved in yours' or 'k keeps this change'
+    pcall(vim.api.nvim_buf_set_extmark, buf, diff_ns, hunk.first - 1, 0, {virt_text = {{'  ' .. text, hunk.kept and 'PairStatusPass' or 'PairKey'}}})
+  end
+end
+
+--- The daemon's review_diff: a file of a review as a diff, in a split above the list (or where you work).
+function M.on_diff(message)
+  if present(message.error) then return vim.notify('Pair: ' .. message.error) end
+  for buf, shown in pairs(diffs) do
+    if vim.api.nvim_buf_is_valid(buf) and shown.action == message.action and shown.piece == message.piece then
+      diffs[buf] = message
+      return draw_diff(buf, message)
+    end
+  end
+  local win = work_window()
+  if win then vim.api.nvim_set_current_win(win) end
+  vim.cmd('aboveleft new')
+  local buf = vim.api.nvim_get_current_buf()
+  vim.bo[buf].buftype, vim.bo[buf].bufhidden, vim.bo[buf].swapfile = 'nofile', 'wipe', false
+  pcall(vim.api.nvim_buf_set_name, buf, ('pair://board/%s/%s'):format(message.task, message.name))
+  vim.bo[buf].filetype = 'diff'
+  diffs[buf] = message
+  draw_diff(buf, message)
+  vim.wo.winbar = (' %s · read only · k keeps the change · K the file · t tells · q closes'):format(message.title):gsub('%%', '%%%%')
+  local function map(key, run, desc) vim.keymap.set('n', key, run, {buffer = buf, nowait = true, desc = desc}) end
+  map('q', function()
+    vim.cmd.close()
+    if valid_win() then vim.api.nvim_set_current_win(view.win) end
+  end, 'Close the diff, back to the list')
+  map('k', function()
+    local shown = diffs[buf]
+    local hunk = hunk_here(shown)
+    if not hunk then return vim.notify('Pair: put the cursor on a change to keep it; K keeps the whole file') end
+    if hunk.kept then return vim.notify('Pair: that change is kept already') end
+    deps.send({type = 'review_keep', action = shown.action, piece = shown.piece, hunk = hunk.k})
+  end, 'Keep this change in your file, unsaved')
+  map('K', function() deps.send({type = 'review_keep', action = diffs[buf].action, piece = diffs[buf].piece}) end, 'Keep the whole file, unsaved')
+  map('t', function() tell({task = diffs[buf].task}, place_here(diffs[buf])) end, 'Tell the task\'s agent about this line')
+  vim.api.nvim_create_autocmd('BufWipeout', {group = group, buffer = buf, callback = function() diffs[buf] = nil end})
+end
+
+--- Asks the daemon for the open diffs again: something of them was kept, or taken back.
+function M.refresh_diff()
+  for buf, shown in pairs(diffs) do
+    if vim.api.nvim_buf_is_valid(buf) then deps.send({type = 'review_diff', action = shown.action, piece = shown.piece}) end
+  end
 end
 
 function M.setup(lent)

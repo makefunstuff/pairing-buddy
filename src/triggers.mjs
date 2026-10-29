@@ -1,5 +1,5 @@
 // Finds the moments where a remark might help. Pure: the caller passes the clock and the keys already fired.
-import {byUser, errorSignature, failed, failureLine, generatedAt, pairMade, userEdits} from './fold.mjs';
+import {byUser, errorSignature, failed, failureLine, generatedAt, madeIn, pairMade, userEdits} from './fold.mjs';
 import {PROSE_KINDS, proseTriggers} from './prose-triggers.mjs';
 import {moveText, runsDetail} from './run-log.mjs';
 import {readingSummary} from './run-output.mjs';
@@ -125,7 +125,7 @@ function redTriggers(state, now) {
 function generatedText(state, files) {
   const marked = [...new Set(files)].filter(file => state.generated?.[file]?.length);
   const gens = [...new Set(marked.flatMap(file => state.generated[file].map(range => range.gen)).filter(Boolean))];
-  return marked.length ? ` ${marked.join(', ')} ${marked.length === 1 ? 'has' : 'have'} code the user took from ${gens.map(n => `gen #${n}`).join(', ') || '/gen'} and has not made their own yet.` : '';
+  return marked.length ? ` ${marked.join(', ')} ${marked.length === 1 ? 'has' : 'have'} code the user took from ${gens.map(madeIn).join(', ') || '/gen'} and has not made their own yet.` : '';
 }
 
 /**

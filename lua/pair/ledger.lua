@@ -20,7 +20,7 @@ M.rate = function() end
 local view = {
   buf = nil, win = nil, -- the list, and the window showing it or what an entry opens to
   rows = {}, summary = '',
-  generated = nil, -- the code taken from /gen not yours yet: {files = {{file, name, lines, line, gens}}, lines}
+  generated = nil, -- the code taken from /gen not yours yet: {files = {{file, name, lines, line, gens, from}}, lines}
   generated_line = nil, -- its line in the list
   from = nil, -- the window you opened the list from: where <CR> goes to a place
   refresh = nil, -- the timer that asks for the list again after a change
@@ -157,7 +157,8 @@ local function pick_generated(prompt, run)
   vim.ui.select(files, {
     prompt = prompt,
     format_item = function(file)
-      local gens = table.concat(vim.tbl_map(function(n) return 'gen #' .. n end, file.gens or {}), ', ')
+      -- Where it came from: gen #3, or the board task you kept it from in a review (BDY-80).
+      local gens = table.concat(file.from or vim.tbl_map(function(n) return 'gen #' .. n end, file.gens or {}), ', ')
       return ('%s · %d line%s · %s'):format(file.name, file.lines, file.lines == 1 and '' or 's', gens)
     end,
   }, function(file) if file then run(file) end end)

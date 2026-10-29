@@ -127,6 +127,7 @@ const MAX_EDITS = 5; // per hand-over: a change in a few places, still small eno
 
 const CONFIRM_MS = 60_000;
 const UNDO_LOOKBACK_MS = 24 * 60 * 60_000; // /undo finds Pair's last change of the last day
+const REVIEW_KEPT_MS = 7 * 24 * 60 * 60_000; // and of a board task's review opened as long ago as one is the same (review.mjs)
 const ASKING_TOOLS = new Set(['run', 'type']); // tools that may ask the user before they do anything
 
 /**
@@ -1499,7 +1500,11 @@ export class PairSession {
 
   /** Undoes Pair's last change that can be undone (/undo): an edit of the Driver's or a suggestion you took. */
   async undoLast() {
-    const last = this.store.actions(this.root, this.now() - UNDO_LOOKBACK_MS).filter(action => action.data?.undo && action.state !== 'undone').at(-1);
+    // A board task's review is the same entry for days: what counts is when it last changed your code (changedAt).
+    const since = this.now() - UNDO_LOOKBACK_MS;
+    const when = action => action.data?.changedAt ?? action.at;
+    const last = this.store.actions(this.root, since - REVIEW_KEPT_MS).filter(action => action.data?.undo && action.state !== 'undone' && when(action) >= since)
+      .reduce((newest, action) => (!newest || when(action) >= when(newest) ? action : newest), null);
     if (!last) return this.message('system', 'Pair has changed nothing today that can be undone.');
     await this.undo(last.id);
   }

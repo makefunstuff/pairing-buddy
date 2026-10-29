@@ -30,6 +30,9 @@ stand-ins: their agents move on once you start typing.*
   question, the task was merged). When the agent has no pane any more (a finished task's agent is gone), `Alt-a`
   puts the line away. A line that asks nothing of you (done, failed) also goes by itself after two minutes; one that
   needs you or is ready to merge stays.
+- **`Alt-r`** (`<M-r>`, the `agents_review_key` option), on the line of a task ready to merge, opens its branch as a
+  [review](gen.md#reviewing-a-board-task-pair-review) in `:Pair gen list`: what its reviewer said, `≠ brief` on the
+  branch, and its files, to keep the pieces you want in yours. The line then says `M-r reviews`.
 - **`Alt-o`** (`<M-o>`, the `agents_open_key` option) opens the task's report or pull request (see
   [what a task left behind](#what-a-task-left-behind)). Pair's own keys `Alt-d` and `Alt-t` (a decision, listening)
   stay theirs, so the diff and the terminal are one key away in `:Pair agents`, where the relayed task is under the
@@ -40,12 +43,13 @@ stand-ins: their agents move on once you start typing.*
   its keys go.
 - **`:Pair agents`** (or `/agents` in the chat) lists every task and agent, the ones that need you first: needs
   you, ready to merge, failed, done (tasks you saw finish in the last 12 hours), idle agents, working, waiting.
-  `Enter` on a line goes to that agent; `o`, `d` and `t` open what its task left behind; `q` closes the list.
+  `Enter` on a line goes to that agent; `o`, `d` and `t` open what its task left behind; `r` opens its branch as a
+  [review](gen.md#reviewing-a-board-task-pair-review); `q` closes the list.
 
 ![:Pair agents: needs you #21, ready to approve #22, idle pi in notes, working #24, waiting #25](images/agents-list.png)
 
 *The capture predates Shepherdr: `ready to approve` is `ready to merge` now, and the list has the keys in its top
-line: `Enter goes · o report or PR · d diff · t terminal · q closes`.*
+line: `Enter goes · o report or PR · d diff · t terminal · r review · q closes`.*
 
 | State | From the board (Shepherdr) | From herdr |
 | --- | --- | --- |
@@ -92,8 +96,10 @@ instead.
 ## Where it reads
 
 Pair reads by itself and writes nothing to the board: it never adds, tells, stops, merges or sets a task on its own.
-The one write there is goes through [`/gen board`](gen.md#gen-board-a-task-for-the-board): a task added, on a pick
-that names what it does (add only, or add and delegate).
+The writes there are go through [`/gen board`](gen.md#gen-board-a-task-for-the-board), a task added on a pick that
+names what it does (add only, or add and delegate), and a task's [review](gen.md#reviewing-a-board-task-pair-review),
+where a tell, "merge it" told to its agent or archive run on the pick that names them. Pair never runs `shepherdr
+merge`.
 
 - **herdr's agents**: `agent.list` over herdr's socket, which Pair knows from the chat pane, or from Neovim when it
   runs in herdr. Every agent herdr recognises, in any workspace.
@@ -119,9 +125,10 @@ On by default. In `~/.config/pairing-buddy/config.json`:
 "board": "/path/to/shepherdr"         // the board's command, when it is not on the daemon's PATH
 ```
 
-The board is the one the context card, the goal, the chat's header and `/gen board` use (`board`, default
-`shepherdr`). herdr-projects 1.x (the board before Shepherdr) is not read any more.
+The board is the one the context card, the goal, the chat's header, `/gen board` and `:Pair review` use (`board`,
+default `shepherdr`). herdr-projects 1.x (the board before Shepherdr) is not read any more.
 
-In Neovim, `agents_key = '<M-a>'` and `agents_open_key = '<M-o>'` in `setup()` change the keys (`false` for none; each
-is mapped only while a line shows, and only where you have no mapping of your own). The statusline part comes with
+In Neovim, `agents_key = '<M-a>'`, `agents_open_key = '<M-o>'` and `agents_review_key = '<M-r>'` in `setup()` change
+the keys (`false` for none; each is mapped only while a line shows, `Alt-r` only on a task ready to merge, and only
+where you have no mapping of your own). The statusline part comes with
 `require('pair').statusline()`.

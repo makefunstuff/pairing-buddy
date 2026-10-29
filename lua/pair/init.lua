@@ -50,6 +50,7 @@ local config = {
   teach_key = '<M-?>',
   agents_key = '<M-a>',
   agents_open_key = '<M-o>', -- on the relayed line of a board task: opens its report or pull request
+  agents_review_key = '<M-r>', -- on the relayed line of a board task ready to merge: its branch as a review
   gen_key = '<M-g>', -- asks Pair for code, in Normal and Visual mode
   gen_input = 'ui', -- or 'cmdline': the request and its questions always on Neovim's own prompt, not vim.ui's
   gen_preview_lines = 30, -- a /gen block taller than this shows in a preview window
@@ -964,6 +965,42 @@ local function revert(message)
   send({type = 'reply', id = message.id, result = why and {error = why} or {ok = true}})
 end
 
+-- k in a board task's review (see genfiles.lua): what its branch changes goes into your buffer as it is now, unsaved,
+-- as Pair's edit of origin board:<id>, a hunk at a time from the bottom up, each with the buffer before and after it,
+-- so the ledger can undo it. A file the branch adds is a buffer of its own at its path, not written.
+local function board_keep(message)
+  local ok, result = pcall(function()
+    local buf = load(message.file)
+    vim.bo[buf].buflisted = true
+    -- A new file in a folder you do not have yet: its first :w makes the folder.
+    local folder = vim.fn.fnamemodify(message.file, ':h')
+    if vim.fn.isdirectory(folder) == 0 then
+      vim.api.nvim_create_autocmd('BufWritePre', {buffer = buf, once = true, callback = function() vim.fn.mkdir(folder, 'p') end})
+    end
+    local origin = type(message.origin) == 'string' and message.origin or 'pair'
+    local hunks = type(message.hunks) == 'table' and message.hunks or {}
+    local order = {}
+    for i = 1, #hunks do order[i] = i end
+    table.sort(order, function(a, b) return hunks[a].line > hunks[b].line end)
+    local kept = {}
+    for _, i in ipairs(order) do
+      local hunk = hunks[i]
+      local new = text_lines(hunk.text or '')
+      local count = vim.api.nvim_buf_line_count(buf)
+      if hunk.line > count then error('the file is shorter than where its change goes', 0) end
+      local before = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+      local first = hunk.insert and hunk.line or hunk.line - 1
+      local last = hunk.insert and hunk.line or math.min(hunk.endLine or hunk.line, count)
+      by_pair(buf, origin, function() vim.api.nvim_buf_set_lines(buf, first, last, false, new) end)
+      local from = hunk.insert and hunk.line + 1 or hunk.line
+      kept[i] = {before = before, after = vim.api.nvim_buf_get_lines(buf, 0, -1, false), from = from, to = from + math.max(#new, 1) - 1}
+    end
+    if vim.fn.bufwinid(buf) ~= -1 then vim.cmd.redraw() end
+    return {kept = kept}
+  end)
+  send({type = 'reply', id = message.id, result = ok and result or {error = tostring(result)}})
+end
+
 -- The chat pane prints Pair in the same accent as here, once Neovim has true colours to give.
 local function send_accent()
   local color = vim.o.termguicolors and vim.api.nvim_get_hl(0, {name = 'PairAccent', link = false}).fg
@@ -1103,6 +1140,8 @@ local handlers = {
     redraw_status()
   end,
   revert = revert,
+  board_keep = board_keep,
+  review_diff = genfiles.on_diff,
   gen = gen.on_state,
   gen_ask = gen.on_ask,
   gen_copy = gen.on_copy,
@@ -1120,7 +1159,7 @@ local handlers = {
   end,
   gen_review = genfiles.on_review,
   -- The keys of a gen card in the chat: Enter opens :Pair gen list, k the next file to review.
-  gen_list_open = function() genfiles.open() end,
+  gen_list_open = function(message) genfiles.open(message.action) end,
   gen_open = function(message) send({type = 'reply', id = message.id, result = genfiles.open_piece(message)}) end,
   -- /gen try: the sample opens in a split; :Pair gen tries picks one of those still kept.
   gen_try = gentry.on_try,
@@ -1134,7 +1173,10 @@ local handlers = {
     gentry.on_copy_gone(message)
     genfiles.refresh_open()
   end,
-  gen_kept = function() genfiles.refresh_open() end,
+  gen_kept = function()
+    genfiles.refresh_open()
+    genfiles.refresh_diff()
+  end,
   gen_unwrite = function(message) send({type = 'reply', id = message.id, result = genfiles.unwrite(message)}) end,
   -- Without herdr: Pair's pane, your terminals and typing into one of them, all in this Neovim (pane.lua).
   pane = function(message) pane.request(message, function(result) send({type = 'reply', id = message.id, result = result}) end) end,
@@ -1435,6 +1477,14 @@ local commands = {
   noise = function() feedback(false, state.remark) end,
   why = function() M.teach() end,
   agents = agents.request,
+  -- `:Pair review <id>`: a board task's branch as a review in :Pair gen list (see genfiles.lua); without an id, the
+  -- task the relayed line is about.
+  review = function(arg)
+    if not M.connect() then return vim.notify('Pair: not connected; :Pair review again once it is', vim.log.levels.WARN) end
+    local task = arg ~= '' and arg or agents.relayed_task()
+    if not task then return vim.notify('Pair: :Pair review <id>, as :Pair review BDY-80') end
+    send({type = 'review', task = task})
+  end,
   -- /gen: `:Pair gen` asks in a dialog, `:Pair gen [here|file] <what>` asks at once, `:Pair gen +` opens the compose
   -- window; with a range, over those lines (in a note, the lines are the request). `:Pair gen cancel` stops it,
   -- `:Pair gen list` lists the files of /gen file requests to review and of scaffolds to keep, `:Pair gen run` runs
@@ -1542,7 +1592,7 @@ function M.setup(opts)
   ledger.send = send
   ledger.rate = feedback
   listen.setup({mode = config.listen_mode, hold_ms = config.listen_hold_ms, release_ms = config.listen_release_ms, silence_ms = config.listen_silence_ms})
-  agents.setup({send = send, map_keys = map_keys, unmap_keys = unmap_keys, key_label = key_label, redraw_status = redraw_status}, config.agents_key, config.agents_open_key)
+  agents.setup({send = send, map_keys = map_keys, unmap_keys = unmap_keys, key_label = key_label, redraw_status = redraw_status}, config.agents_key, config.agents_open_key, config.agents_review_key)
   gen.setup({input = config.gen_input, preview_lines = config.gen_preview_lines, key = config.gen_key}, {
     send = send, redraw_status = redraw_status, project_path = project_path, label = label,
     typing = function() return now_ms() - typing_at < 1500 end,

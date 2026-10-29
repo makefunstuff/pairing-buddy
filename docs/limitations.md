@@ -70,6 +70,12 @@ stay herdr's:
   (a decision, listening), so the diff and the terminal are in `:Pair agents` and on the chat pane's line.
 - **`/gen board`'s task is edited only in Neovim** (`pair://board/new`); in the chat pane, copy the command (`c`) to
   change it. `/gen board #n` hands on only a request of the running daemon.
+- **A task's review reads its verdict from the facts line** its agent wrote (`shepherdr task show --json`): what the
+  reviewer found but the agent left out of it is not there. Only a branch in this repository can be reviewed, only
+  what is committed on it, and it is kept in Neovim; the chat's `/review` opens it there. Pair keeps no file the
+  branch deletes and none that is not text ([gen.md](gen.md#reviewing-a-board-task-pair-review)).
+- **Shepherdr has no approve**: a review's merge is a tell, `merge it`, which the task's agent acts on as its brief
+  says. Pair never runs `shepherdr merge`.
 
 ## The chat pane
 

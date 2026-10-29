@@ -776,6 +776,18 @@ export async function startDaemon(config, {
     say(what === 'term' ? `${found.title}'s worktree: ${found.where} (no Neovim to open a terminal in)` : 'The diff opens in Neovim, and none is connected.');
   }
 
+  /**
+   * t, a and A in a task's review: a tell, "merge it" told to its agent, or archive, run on the pick that named it
+   * (`run`), else its command line, copied in Neovim (gen_copy) or said in the chat.
+   */
+  async function boardDo(client, session, message) {
+    const found = await session.gen.reviews.boardDo({task: message.task, verb: message.verb, text: message.text, run: message.run === true});
+    const say = text => sendMessage(client.socket, {type: 'message', sender: 'system', text, at: Date.now()});
+    if (found.error) return say(`Nothing sent to the board: ${found.error}.`);
+    if (found.line) return client.role === 'editor' ? sendMessage(client.socket, {type: 'gen_copy', text: found.line}) : say(found.line);
+    session.message('system', found.said);
+  }
+
   /** The pane watch of the session of the shell hook's `message`, or null when its project has none. */
   async function hookWatch(message) {
     const session = live.get(await rootOf(message.cwd));
@@ -874,6 +886,15 @@ export async function startDaemon(config, {
     if (message.type === 'gen_drop_all' && Number.isInteger(message.action)) return session.gen.dropAll(message.action);
     if (message.type === 'gen_open' && Number.isInteger(message.action)) return session.gen.open(message.action, message.what === 'next' ? 'next' : 'open');
     if (message.type === 'gen_check') return checkFrom(client, session, message);
+    // A board task's branch as a review (review.mjs): opened, a file's diff, a file or hunk kept, a board command.
+    if (message.type === 'review') return toEditor(client, await session.gen.reviews.open(message.task));
+    if (message.type === 'review_diff' && Number.isInteger(message.action) && Number.isInteger(message.piece)) {
+      return sendMessage(client.socket, {type: 'review_diff', action: message.action, piece: message.piece, ...(await session.gen.reviews.diff(message.action, message.piece))});
+    }
+    if (message.type === 'review_keep' && Number.isInteger(message.action) && Number.isInteger(message.piece)) {
+      return toEditor(client, await session.gen.reviews.keep(message.action, message.piece, Number.isInteger(message.hunk) ? message.hunk : null));
+    }
+    if (message.type === 'board_do') return boardDo(client, session, message);
     if (message.type === 'brief') return briefFrom(client, session, message);
     if (message.type === 'trail') return sendMessage(client.socket, session.trail());
     if (message.type === 'forget_trail') return session.forgetTrail();

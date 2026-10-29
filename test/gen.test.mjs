@@ -1318,7 +1318,7 @@ test('owning: code taken is marked ┊ part by part until you edit a part or own
     {id: id(1), gen: 1, file, line: 6, text: ['function get(rows, id) {', '  return rows.find(row => row.id === id)', '}']},
   ]);
   assert.equal(marked.via, 'editors');
-  assert.deepEqual(pair.today().generated, {files: [{file, name: 'math.js', lines: 6, line: 2, gens: [1]}], lines: 6});
+  assert.deepEqual(pair.today().generated, {files: [{file, name: 'math.js', lines: 6, line: 2, gens: [1], from: ['gen #1']}], lines: 6});
   pair.gen.list();
   assert.match(said().at(-1), /\n┊ not yours yet: 1 file · 6 lines · :Pair own in Neovim makes it yours, :Pair today lists it$/);
 

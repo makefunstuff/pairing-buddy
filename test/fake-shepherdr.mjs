@@ -38,7 +38,7 @@ if (a0 === 'task' && a1 === 'list') {
 if (a0 === 'task' && a1 === 'show') {
   const t = state.tasks.find(each => each.id === a2);
   if (!t) fail('No task ' + a2);
-  out(JSON.stringify({id: t.id, name: t.title, status: t.status, place: t.place, sub: t.sub ?? '', branch: t.branch, pr: t.pr, outcome: t.outcome, desc: t.desc ?? 'No brief yet.'}, null, 2));
+  out(JSON.stringify({id: t.id, name: t.title, status: t.status, place: t.place, sub: t.sub ?? '', branch: t.branch, pr: t.pr, outcome: t.outcome, desc: t.desc ?? 'No brief yet.', said: t.said, facts: t.facts}, null, 2));
 }
 // As Shepherdr prints them: the list names the space an artifact is kept in (a task's agent's goes in its task's
 // space), and only show says who made it.
@@ -65,14 +65,24 @@ if (a0 === 'task' && a1 === 'add') {
   writeFileSync(dir + '/state.json', JSON.stringify(state));
   out(flags.has('later') ? 'Added ' + id + ': ' + title + ', for later. Its agent (Claude) reads the brief now and waits for a go (shepherdr task tell ' + id + ' "go").' : 'Added ' + id + ': ' + title + '. Its agent (Claude) starts on the brief now.');
 }
-if (a0 === 'task' && a1 === 'tell') out('Told ' + a2 + '.');
+if (a0 === 'task' && a1 === 'tell') {
+  if (!state.tasks.some(each => each.id === a2)) fail('No task ' + a2);
+  out('Told ' + a2 + '.');
+}
+if (a0 === 'task' && a1 === 'archive') {
+  const t = state.tasks.find(each => each.id === a2);
+  if (!t) fail('No task ' + a2);
+  t.archived = 1;
+  writeFileSync(dir + '/state.json', JSON.stringify(state));
+  out('Archived ' + a2 + '.');
+}
 fail('shepherdr (fake): no ' + args.join(' '));
 `;
 
 /**
  * Writes the fake board into `dir`, its state `state` ({spaces, tasks, artifacts}): {command, set(state), calls()},
  * where calls() lists the argument lists it got. Each task is {id, title, status, sub, place: 'p:here:<space>',
- * branch, pr: {number, url}}; each artifact {id, title, space, by: 'BDY-7 agent', html}, newest first.
+ * branch, pr: {number, url}, desc, said, facts}; each artifact {id, title, space, by: 'BDY-7 agent', html}, newest first.
  */
 export function fakeShepherdr(dir, state) {
   const command = join(dir, 'shepherdr');

@@ -36,7 +36,12 @@ the work board.
   (the note's lines with `file:line`, the files, the tests, a check's open questions, a note not committed copied
   whole), added only on a pick (add only, delegate, plan first, research only) and nothing else written, and a request
   past `gen.limits` offered to it; in a headless Neovim, the task edited in `pair://board/new` and `:q` dropping it,
-  `Alt-o`, and `d` and `t` in `:Pair agents`.
+  `Alt-o`, and `d` and `t` in `:Pair agents`. A task's review in a scratch git repository: the facts line read into
+  the reviewer's verdict and the rest, the files in the brief's order, `≠ brief` on the branch with a stand-in model,
+  a hunk and then the rest of a file kept into a buffer as it is now, a new file kept, a deleted one refused, origin
+  `board:<id>` and the marks, `/undo` taking it back; tell, merge (a tell) and archive copied or run only on the pick,
+  never `shepherdr merge`; in a headless Neovim, `:Pair review`, the list, `Enter`'s diff, `k` on a hunk, `A`, `a`,
+  `t` and `Alt-r`.
 - **The daemon end to end** with scripted models; several projects and Neovims at once; Neovim and the chat pane
   reconnecting after a daemon restart; a question the restart cut off answered late, a remark dropped; a saved config
   taken without a restart (a new model between turns, one with an error refused).
