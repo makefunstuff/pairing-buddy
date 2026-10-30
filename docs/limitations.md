@@ -2,7 +2,8 @@
 
 What Pair cannot do well yet; where one has a GitHub issue, it is linked. The full list of issues, with the ones
 already fixed, is the [tracking issue](https://github.com/makefunstuff/pairing-buddy/issues/51); open ones carry the
-[`limitation` label](https://github.com/makefunstuff/pairing-buddy/issues?q=is%3Aissue+is%3Aopen+label%3Alimitation).
+[`limitation` label](https://github.com/makefunstuff/pairing-buddy/issues?q=is%3Aissue+is%3Aopen+label%3Alimitation),
+but for [#44](https://github.com/makefunstuff/pairing-buddy/issues/44), labelled `testing`.
 
 ## herdr
 
