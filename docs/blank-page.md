@@ -65,10 +65,10 @@ The Partner writes the slice as JSON. The daemon checks it against the rules and
 | Rule | Why |
 | --- | --- |
 | Two files: the build or run file and one source file; fewer is refused, and never more than three | The thinnest slice that runs end to end (Cockburn's walking skeleton), not a skeleton of the whole idea |
-| No README, licence, `.gitignore`, test folder or config files | There is nothing to describe until it runs |
+| No README, licence, changelog, `.gitignore`, Dockerfile, test or docs folder (other config files are asked against, not refused) | There is nothing to describe until it runs |
 | No library or tool you did not name | Every dependency in the first slice is one you chose |
-| How to run it, and 2 to 4 probes | What to try once it runs, and what to watch |
-| One test, for the first piece with an answer you can write down without running the program | Exploring comes first. A test comes when one piece is settled |
+| How to run it, and 2 to 4 probes (fewer than two is refused; more than four is asked against, not refused) | What to try once it runs, and what to watch |
+| One test, for the first piece with an answer you can write down without running the program (asked for, never refused) | Exploring comes first. A test comes when one piece is settled |
 | Every line at most 90 characters (asked for again, never refused) | It is a note, not a spec |
 
 A slice that breaks a rule gets one more try, with what was wrong. If the second try breaks a rule too, the chat
@@ -119,5 +119,5 @@ land in the frame after the stall:
 - `NOTES.md` is in Neovim's current folder, and must be inside the project (the git root, or the folder itself
   when there is no git yet).
 - An answer that has gone cannot be taken back: once it has settled after `Esc`, the next question comes.
-- The slice's rules are checked in code, but a library is found by its name in your words. A library the model
+- The slice's rules are checked in code where the table does not say otherwise, but a library is found by its name in your words. A library the model
   uses without listing it in `needs` is not caught.

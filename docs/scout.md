@@ -17,7 +17,7 @@ Switching to Scout opens a pane below the chat pane, labelled `pair scout`. It r
   uses, with your unsaved text in it, and what it writes stays in the copy. `search` reads the saved files; the
   model reads a buffer with `read`.
 - For a remark nobody asked for, Scout may read and search, but `run` answers "not now".
-- Switching back to Navigator, or ending the session, closes the pane. A daemon that restarts finds its pane again by the label, so a change to `scoutPane` in the config shows once the pane opens anew.
+- Ending the session closes the pane; so does switching back to Navigator, unless the project has tests on save, which run in it. A daemon that restarts finds its pane again by the label, so a change to `scoutPane` in the config shows once the pane opens anew.
 
 The pane's shell is set by `scoutPane` in the config (`pair doctor` says how it runs):
 

@@ -124,7 +124,7 @@ question for Pair (`@here` in it sends your selection in Neovim along), and a li
 | `/gen here <what>` | Ask Pair for code at your cursor in Neovim; with `@here`, over the lines you selected there ([gen.md](gen.md)) |
 | `/gen file <what>` | Ask Pair for new files: they open in Neovim as buffers to review, and `:w` in one writes it to its path ([gen.md](gen.md#new-files-gen-file)) |
 | `/gen try <what>` | Ask Pair for a sample to read and run, in a folder of its own outside the project, run there in the sandbox; it opens in Neovim in a split ([gen.md](gen.md#samples-gen-try-and-keep)) |
-| `/gen scaffold [--branch] <what>` | Ask Pair for many files and their wiring, built and run in a copy of the project in Pair's data folder (`--branch`: a git worktree on a branch `gen/<n>`); you keep a file at a time ([gen.md](gen.md#many-files-gen-scaffold)) |
+| `/gen scaffold [--branch\|--copy] <what>` | Ask Pair for many files and their wiring, built and run in a copy of the project in Pair's data folder (`--branch`: a git worktree on a branch `gen/<n>`; `--copy`: the copy, whatever `gen.scaffold` says); you keep a file at a time ([gen.md](gen.md#many-files-gen-scaffold)) |
 | `/gen board <what>` | Hand a task to the board (Shepherdr), its brief built from yours: `y` add only (its agent waits for your go), `d` add and delegate, `p` delegate with a plan first, `r` delegate for research only, `c` copy the command; nothing is told, merged or set ([gen.md](gen.md#gen-board-a-task-for-the-board)) |
 | `/gen board #<n>` | Hand request `n`, too big for `gen.limits`, to the board, with what its check found |
 | `/gen run` | Run the newest `/gen try` again, in Pair's pane, in its sandbox |
