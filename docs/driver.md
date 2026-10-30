@@ -15,8 +15,8 @@ Neither saves anything. Your buffer changes, and the disk changes only when you 
 
 `suggest(file, line, end_line, new_text, note)` shows that lines `line` to `end_line` would become `new_text`:
 
-- The old lines are highlighted (`PairSuggestDelete`, linked to `DiffDelete`), with the note and the accept key at the end of the first one.
-- The new lines appear below them as ghost text (`PairSuggestAdd`, linked to `DiffAdd`). They are virtual lines: not in the buffer, not in your undo tree.
+- The old lines are struck through and dimmed (`PairSuggestDelete`; linked to `Comment` without `termguicolors`), with the note and the accept key at the end of the first one.
+- The new lines appear below them as ghost text on a faint accent background (`PairSuggestAdd`; linked to `DiffAdd` without `termguicolors`). They are virtual lines: not in the buffer, not in your undo tree.
 - The chat shows the same note and the new text.
 
 | You | What happens |

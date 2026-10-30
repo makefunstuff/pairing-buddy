@@ -40,7 +40,7 @@ bold headings; the pair wrote one line on what is now true and one next step, in
 
 ## The idea behind it
 
-There is one tone, not a menu of personalities. Teaching is on request: `Alt-?` on Pair's words in Neovim (or `?`
+There is one tone, not a menu of personalities. Teaching is on request: `Alt-?` on Pair's words in Neovim (or `/why`
 in the chat) asks for the one idea worth keeping behind them: a principle you can reuse next time, in plain words,
 not a repeat of the remark. When it is about a language, a library or a tool and the model is sure of the address,
 it ends with one link to the official documentation, which `Alt-?` then opens. How it looks:

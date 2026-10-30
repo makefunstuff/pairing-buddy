@@ -36,7 +36,7 @@ own pane where you see every one and its output. What may run is decided in code
 - writes and installs ask you first;
 - commits, pushes, the network and `sudo` are refused.
 
-At most four commands per question. Where bubblewrap works, the pane is a [sandbox](scout.md#the-sandbox) in which
+At most four searches and commands in all per question. Where bubblewrap works, the pane is a [sandbox](scout.md#the-sandbox) in which
 only the project is writable. Switch with `/scout` or `:Pair scout`. Details in [Scout](scout.md).
 
 ### Driver

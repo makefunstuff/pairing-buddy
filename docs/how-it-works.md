@@ -72,13 +72,14 @@ error. A direct question in the chat is always answered.
 
 For anything unasked:
 
-1. Cheap rules drop what is plainly noise: a `grep` that finds nothing, a command you stopped. A moment scored in
+1. While you type nothing is asked, and once the talk level's budget is spent the moment is dropped (or, for a
+   file you are still in, kept for later) without asking ([talk levels](config.md#talk-levels)).
+2. Cheap rules drop what is plainly noise: a `grep` that finds nothing, a command you stopped. A moment scored in
    the last half hour keeps its score. While the Watcher's calls take 1.5 s or more, half the kinds of moment you
    can see for yourself are not asked about, and from 3 s all of them
    ([watcher.md](watcher.md#when-the-server-is-slow)).
-2. The Watcher scores the moment from 0 to 10 with a single number; for drift it is told what the file is about. Only scores at or above the talk level's bar reach
+3. The Watcher scores the moment from 0 to 10 with a single number; for drift it is told what the file is about. Only scores at or above the talk level's bar reach
    the Partner.
-3. The budget limits how often Pair speaks ([talk levels](config.md#talk-levels)).
 
 With a [decision model](decision.md) in the config, a classifier such as TypeSafe's Jev sorts each moment before the
 Watcher: what it is sure is noise is dropped, and what it is sure is worth a remark needs no Watcher call. Whether to

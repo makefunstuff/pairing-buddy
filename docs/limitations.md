@@ -1,8 +1,9 @@
 # Known limitations
 
-What Pair cannot do well yet, one GitHub issue each. The full list, with the ones already fixed, is the
-[tracking issue](https://github.com/makefunstuff/pairing-buddy/issues/51); open limitations carry the
-[`limitation` label](https://github.com/makefunstuff/pairing-buddy/issues?q=is%3Aissue+is%3Aopen+label%3Alimitation).
+What Pair cannot do well yet; where one has a GitHub issue, it is linked. The full list of issues, with the ones
+already fixed, is the [tracking issue](https://github.com/makefunstuff/pairing-buddy/issues/51); open ones carry the
+[`limitation` label](https://github.com/makefunstuff/pairing-buddy/issues?q=is%3Aissue+is%3Aopen+label%3Alimitation),
+but for [#44](https://github.com/makefunstuff/pairing-buddy/issues/44), labelled `testing`.
 
 ## herdr
 
@@ -39,7 +40,8 @@ stay herdr's:
 
 - **Push-to-talk guesses when you let go** of `Alt-t` from the terminal's key repeats, since Neovim drops key-release
   events. A terminal that is slow to repeat turns a hold into a tap; `listen_mode = 'toggle'` (press to start, press
-  again to ask) never guesses ([voice.md](voice.md#4-the-key)).
+  again to ask) never guesses ([voice.md](voice.md#4-the-key)). Only one recording runs per project: `Alt-t` in
+  another Neovim of the same project starts over there.
   [#55](https://github.com/makefunstuff/pairing-buddy/issues/55)
 
 - **/gen**: a try's or a scaffold's runs need bubblewrap for their own sandbox (without it they run in their folder

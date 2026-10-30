@@ -33,7 +33,7 @@ line go with your next edit, as its other words do. Whisper heard nothing (a cou
 line says `◌ heard nothing` for a moment and Pair is not asked. Pair could not answer (its model is down, say)?
 The line says `◌ no answer · the chat says why` for a moment, and the chat pane says why. Pair could not hear you (no
 microphone, OpenRouter did not answer in time, refused the key or is out of credits)? Neovim says
-`Pair could not listen: …` and the chat pane says the same, with what went wrong in plain words.
+`Pair could not listen: …` and the chat pane says `Pair could not hear you: …`, with what went wrong in plain words.
 
 **Hold or tap.** A terminal sends no key-up, only the key again and again while you hold it. Pair counts the key as
 let go when those repeats stop (about 0.2 s after the last one). A short press that does not repeat is a tap: Pair

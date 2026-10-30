@@ -13,7 +13,7 @@ Pair uses herdr's socket API (protocol 22, herdr 0.9.5) to see the user's termin
 | A command's output | `pane.read` with `source: recent_unwrapped` | Read once when a command ends (the last 1000 lines, herdr's maximum); the lines after the one the command was typed on, without the prompt line. With the hook, that line is found once more when the command starts (see below) |
 | An editor in a pane | `pane.process_info` | A pane whose foreground process is `nvim`, `vim` or `vi`; looked at when a pane appears, and with the hook while a command runs, once a second (twice with focus): an editor can open late, as `git commit` does after its hooks |
 | Open the chat pane | `pane.split` (with `env`), `pane.send_text` | `pair` splits the current pane and starts `pair chat` in the new one |
-| Pair's own pane (Scout) | `pane.split`, `pane.rename`, `pane.close`, `pane.list` (`label`) | Opened below the chat pane and labelled `pair scout`, so a restarted daemon finds it again; closed when the role goes back to Navigator |
+| Pair's own pane (Scout) | `pane.split`, `pane.rename`, `pane.close`, `pane.list` (`label`) | Opened below the chat pane and labelled `pair scout`, so a restarted daemon finds it again; closed when the role goes back to Navigator, unless the project has tests on save, which run in it |
 | Running a command there | `pane.send_text` | The command is typed with Enter; its shell writes its output and exit code to files (see below); Ctrl-C (`\x03`) stops a command that runs too long |
 | The Driver's `type` | `pane.send_text` | One line of plain text, without `\r`, sent to the user's terminal pane after a yes in the chat; never to the chat, Scout or editor pane |
 

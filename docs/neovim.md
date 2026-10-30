@@ -1,8 +1,8 @@
 # The pair in Neovim
 
 Pair sits in the second chair. In Neovim it has a small visual language: a few marks in one colour, all in your
-own font, and no windows, boxes, borders or field labels (the panels, `:Pair trail`, `:Pair context`, `:Pair today`
-and `:Pair agents`, open only when you ask).
+own font, and no windows, boxes, borders or field labels (the panels, `:Pair trail`, `:Pair context`, `:Pair today`,
+`:Pair runs`, `:Pair tasks` and `:Pair agents`, open only when you ask).
 Everything it shows follows one test: would you keep it on screen for an eight-hour day?
 
 ![Pair stops a wrong turn: it reads, says why under your edit, and Alt-j goes to the real cause](images/wrong-turn.gif)
@@ -622,7 +622,7 @@ and, for terminals that are neither Neovim's nor tmux's, their output ([herdr.md
 - **Pair's pane.** With no herdr chat pane in the project, `:Pair scout` and the tests on save open Pair's pane as
   a `:terminal` along the bottom of the Neovim you are in, without moving your cursor. It is the same shell as in
   herdr ([scout.md](scout.md)): every command typed where you see it, the prompt `scout[N] exit X $ `, the sandbox.
-  Closing its window leaves it running; it closes with the switch back to Navigator. When a herdr chat pane comes,
+  Closing its window leaves it running; it closes with the switch back to Navigator, unless the project has tests on save. When a herdr chat pane comes,
   Pair's pane moves there.
 - **The Driver's `type`.** It goes to the `:terminal` buffer of yours you were in last (Pair's pane and the chat
   are not yours). The question in the chat names it, `nvim:<buffer>`, and lists your other terminals: answer `y`,
