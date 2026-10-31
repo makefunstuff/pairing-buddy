@@ -217,6 +217,7 @@ export function selectionInput({file, from, to}, text) {
 
 const NAME_CHARS = 32; // of a failing test's name in the statusline
 const LATE_QUESTION_CHARS = 60; // of the question a late answer names
+const PLAN_RETRY_MS = 60_000; // a plan proposal that failed is asked again after this
 const CHANGED_LINES = 60; // of the lines the user changed since the Partner's last turn, it gets this many
 
 /** Whether a finished test run failed: its exit code, a timeout, a failing test or a crash (a sanitizer's, also with exit 0) say so. */
@@ -349,6 +350,21 @@ export function cleanNote(text) {
 /** Whether `file`, relative to the project root, lies outside it. */
 const outsideRoot = file => file === '..' || file.startsWith(`..${sep}`) || isAbsolute(file);
 
+/**
+ * Where the lines of `edit` are in `lines` now: found by their words, the place nearest to where they were, since an
+ * edit above them moves them; a deletion (from > to) by its number. Null when the words are no longer there.
+ */
+function placeNow(lines, edit) {
+  if (edit.from > edit.to) return {from: Math.min(edit.from, lines.length), to: Math.min(edit.from, lines.length) - 1};
+  const words = edit.text.split('\n');
+  let best = null;
+  for (let i = 0; i + words.length <= lines.length; i++) {
+    if (!words.every((word, j) => lines[i + j] === word)) continue;
+    if (best === null || Math.abs(i + 1 - edit.from) < Math.abs(best + 1 - edit.from)) best = i;
+  }
+  return best === null ? null : {from: best + 1, to: Math.min(lines.length, best + 1 + edit.to - edit.from)};
+}
+
 // What the user does, unlike what Pair, herdr's focus or the LSP report: a session nobody uses never ends by itself.
 const USER_EVENTS = new Set(['typing', 'edit', 'enter', 'cursor', 'scroll', 'save', 'command_end', 'search']);
 // Of those, the ones that are work, not only looking around: a session with none of them has nothing to debrief.
@@ -452,7 +468,8 @@ export class PairSession {
     this.runLineShown = null; // the statusline's line about the last run (see showRunLine)
     this.wins = new Wins(); // what went right, for the debrief
     this.thread = new Thread(); // the goal as steps, done and next (see thread.mjs)
-    this.threading = false; // a plan is being proposed, or a landing checked
+    this.threading = false; // a landing is being checked
+    this.planRetry = null; // a plan proposal that failed, to ask again: {goal, at}
     this.toldAt = null; // when the Partner's last turn started: the user's edits since are news to it (see changedSince)
     this.breaks = new Breaks(); // when a break is due, at the next natural end
     this.pickedUp = false; // the morning pick-up ran, or this session carries straight on from the last
@@ -1220,7 +1237,16 @@ export class PairSession {
       this.planChanged();
       this.ledger.add('plan', 'dropped the steps: a new goal');
     }
-    this.proposePlan(goal).catch(error => this.log(`plan: ${error.message}`));
+    this.askForPlan(goal);
+  }
+
+  /** Asks for the goal's steps; a call that fails (or gives way to a question) is asked again a minute later. */
+  askForPlan(goal) {
+    this.planRetry = null;
+    this.proposePlan(goal).catch(error => {
+      this.log(`plan: ${error.message}`);
+      if (this.state.goal === goal) this.planRetry = {goal, at: this.now()};
+    });
   }
 
   /**
@@ -1301,6 +1327,9 @@ export class PairSession {
    */
   async threadDue() {
     const now = this.now();
+    const retry = this.planRetry;
+    if (retry && (this.state.goal !== retry.goal || this.thread.steps.length)) this.planRetry = null;
+    else if (retry && now - retry.at >= PLAN_RETRY_MS && this.health.ok()) this.askForPlan(retry.goal);
     const old = this.thread.expired(now);
     if (old) this.ledger.quiet('plan', `${old.what}: not checked in ${LANDED_KEPT_MS / 60_000} min, let go`, {budget: true});
     const proposed = this.thread.proposed;
@@ -1326,7 +1355,8 @@ export class PairSession {
       this.threading = false;
     }
     if (this.thread.landed !== landed) return; // a newer landing, or a new plan, came meanwhile: looked at next
-    if (!this.budget.allows(this.now()).ok) return; // a remark took the budget meanwhile: the landing waits
+    // While the model thought, a remark may have taken the budget, or the user started typing: the landing waits.
+    if (!this.budget.allows(this.now()).ok || !this.threadMaySpeak(landed.at, this.now())) return;
     const line = this.thread.done(numbers);
     if (!line) return this.ledger.quiet('plan', `${landed.what}: no step done yet`);
     this.planChanged();
@@ -1339,28 +1369,38 @@ export class PairSession {
    */
   async changedSince() {
     if (this.toldAt === null) return '';
-    const byFile = new Map();
-    for (const edit of userEdits(this.state).toReversed()) { // newest first: what the cap cuts is the oldest
-      if (edit.at <= this.toldAt || !edit.file || outsideRoot(edit.file)) continue;
-      const range = {from: Math.max(1, Math.min(edit.from, edit.to) - 1), to: Math.max(edit.from, edit.to) + 1};
-      const ranges = byFile.get(edit.file) ?? [];
-      const near = ranges.find(other => range.from <= other.to + 1 && range.to >= other.from - 1);
-      if (near) Object.assign(near, {from: Math.min(near.from, range.from), to: Math.max(near.to, range.to)});
-      else ranges.push(range);
-      byFile.set(edit.file, ranges);
+    const edits = userEdits(this.state).filter(edit => edit.at > this.toldAt && edit.file && !outsideRoot(edit.file));
+    const files = new Map(); // file -> {lines: as they are now, shown: the line numbers picked}
+    let left = CHANGED_LINES;
+    for (const edit of edits.toReversed()) { // newest first: what the cap cuts is the oldest
+      if (left <= 0) break;
+      if (!files.has(edit.file)) {
+        const path = await projectFile(this.root, edit.file).catch(() => null);
+        const text = path && (await this.bufferText(path).catch(() => null));
+        files.set(edit.file, typeof text === 'string' ? {lines: text.split('\n'), shown: new Set()} : null);
+      }
+      const file = files.get(edit.file);
+      const place = file && placeNow(file.lines, edit);
+      if (!place) continue; // its lines changed again since: a newer edit shows them
+      for (let line = Math.max(1, place.from - 1); line <= Math.min(file.lines.length, place.to + 1) && left > 0; line++) {
+        if (!file.shown.has(line)) left -= 1;
+        file.shown.add(line);
+      }
     }
     const parts = [];
-    let left = CHANGED_LINES;
-    for (const [file, ranges] of byFile) {
-      const path = await projectFile(this.root, file).catch(() => null);
-      const text = path && (await this.bufferText(path).catch(() => null));
-      if (typeof text !== 'string') continue;
-      for (const {from, to} of ranges.sort((a, b) => a.from - b.from)) {
-        if (left <= 0) break;
-        const last = Math.min(to, from + left - 1);
-        parts.push(`${file}:${from}-${last}\n${numberedLines(text, from, last)}`);
-        left -= last - from + 1;
+    for (const [name, file] of files) {
+      if (!file?.shown.size) continue;
+      const numbers = [...file.shown].sort((x, y) => x - y);
+      let run = [];
+      const flush = () => {
+        if (run.length) parts.push(`${name}:${run[0]}-${run.at(-1)}\n${run.map(line => `${line}: ${file.lines[line - 1]}`).join('\n')}`);
+        run = [];
+      };
+      for (const line of numbers) {
+        if (run.length && line !== run.at(-1) + 1) flush();
+        run.push(line);
       }
+      flush();
     }
     if (!parts.length) return '';
     return `\n\nThe user changed these lines since your last turn; they are now as below, and any earlier read of them is stale:\n${parts.join('\n\n')}`;

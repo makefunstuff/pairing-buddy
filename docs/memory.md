@@ -31,9 +31,9 @@ pair  Steps: 1 the cart tests pass · 2 the bogo code works
 ```
 
 You keep them by doing nothing. `p` alone on the line, then `Enter`, puts `/plan the cart tests pass; the bogo code
-works` on the line to edit and send (a step you keep word for word stays done); `/plan a; b; c` sets steps of your own, `/plan off` drops them, and `/plan` alone
-shows them, done and next. A goal too small for two steps gets none, and a new goal drops the old goal's steps. Steps you
-set win over a proposal Pair is still thinking about.
+works` on the line to edit and send (a step you keep word for word stays done); `/plan a; b; c` sets steps of your own,
+`/plan off` drops them, and `/plan` alone shows them, done and next. A goal too small for two steps gets none, and a new
+goal drops the old goal's steps. Steps you set win over a proposal Pair is still thinking about.
 
 When a step may have landed (a test run or a command that failed passes again, you take a suggestion or code from
 `/gen`, you commit), Pair waits for your next break and then checks it against the same facts the
@@ -56,9 +56,10 @@ to half an hour. The ledger (`/today`) records each line said, each one held bac
 steps. The plan lives in the session
 only: never in `NOTES.md`, the brief or your files, and it is gone when the session ends.
 
-**What you just changed.** Each of Pair's turns (a remark, a question, `/drive`, an explanation) also carries the lines you changed since Pair's last turn, read from
-your buffer as they are now (up to 60 lines, the newest first), with the words "any earlier read of them is stale". Pair's conversation
-holds what it read before, and without them a suggestion could put back a bug you had just fixed.
+**What you just changed.** Each of Pair's turns (a remark, a question, `/drive`, an explanation) also carries the lines
+you changed since Pair's last turn, read from your buffer as they are now (up to 60 lines, the newest first), with the
+words "any earlier read of them is stale". Pair's conversation holds what it read before, and without them a suggestion
+could put back a bug you had just fixed.
 
 A session ends by itself, and writes its note:
 

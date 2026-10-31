@@ -276,3 +276,62 @@ test('editing the steps with p keeps a step done; the thread\'s lines show in Ne
   pair.setPlan('a; b, reworded; c');
   assert.match(pair.thread.summary(), /^✓ 1 a · → 2 b, reworded \(next\)/);
 });
+
+test('a proposal that failed is asked again a minute later', async () => {
+  const {pair, advance} = session();
+  let calls = 0;
+  pair.threadModel = async () => {
+    calls += 1;
+    if (calls === 1) throw new Error('gave way to a question');
+    return 'one\ntwo';
+  };
+  pair.setGoal('cart');
+  await settle();
+  assert.equal(pair.planSteps(), null);
+  await pair.tick();
+  assert.equal(calls, 1, 'not at once');
+  advance(61_000);
+  await pair.tick();
+  await settle();
+  assert.equal(pair.planSteps(), 'one; two');
+});
+
+test('lines changed, then moved by an insertion above, are found where they are now', async () => {
+  const before = ['a', 'b', 'function total() {', '  return fixed;', '}', ''];
+  const now = ['import x;', 'import y;', ...before];
+  const {pair, asked, advance, at} = session({buffer: now.join('\n')});
+  writeFileSync(join(pair.root, 'cart.js'), now.join('\n'));
+  pair.setGoal('later');
+  await pair.ask('first');
+  advance(1000);
+  pair.receive({kind: 'edit', file: 'cart.js', from: 4, to: 4, text: '  return fixed;', at: at()});
+  advance(1000);
+  pair.receive({kind: 'edit', file: 'cart.js', from: 1, to: 2, text: 'import x;\nimport y;', at: at()});
+  advance(1000);
+  await pair.ask('second');
+  const block = asked.at(-1);
+  assert.match(block, /6:   return fixed;/, 'the fix, at its line now');
+  assert.match(block, /1: import x;\n2: import y;\n3: a/);
+  assert.doesNotMatch(block, /more lines; ask/);
+});
+
+test('a done check whose answer comes while the user types waits for the next break', async () => {
+  const {pair, said, advance, at} = session();
+  pair.setPlan('a; b');
+  let answer;
+  pair.threadModel = () => new Promise(resolve => { answer = resolve; });
+  pair.thread.land('a commit', at());
+  advance(4 * MIN);
+  const ticked = pair.tick();
+  await new Promise(resolve => setTimeout(resolve, 50)); // the facts read git
+  pair.receive({kind: 'typing', at: at()});
+  answer('done: 1');
+  await ticked;
+  await checked(pair);
+  assert.deepEqual(said(), []);
+  advance(3000);
+  pair.threadModel = async () => 'done: 1';
+  await pair.tick();
+  await checked(pair);
+  assert.deepEqual(said(), ['done: a; next: b']);
+});
