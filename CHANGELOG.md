@@ -19,12 +19,12 @@ release is cut.
   `Alt-y` does there; the window with your code goes to it and lights its lines for a moment (`Ctrl-O` comes back),
   and the focus stays in the chat. A remark's action line and a gen card's show it (`Alt-y take`, in place of `a`
   and `k`, which still work once the message is picked) and take that one; `?` lists it.
-- **A living thread: done and next.** When the session gets a goal, Pair proposes it as two to four steps in one line;
-  `p` in the chat puts them on the line to edit, `/plan a; b; c` sets your own, `/plan off` drops them. When a step
-  lands (tests go green, you take Pair's code, a commit), Pair checks the debrief's facts of the session so far and
-  says at your next break `done: X; next: Y`. The steps go with every question, so "what's left?" is answered from
-  them. Each line costs the talk budget like a remark; the plan lives in the session only, never in `NOTES.md` or the
-  brief.
+- **A living thread: done and next.** When the session gets a goal, Pair proposes it as two to four steps in one line,
+  at your next break; `p` in the chat puts them on the line to edit, `/plan a; b; c` sets your own, `/plan off` drops
+  them. When a step lands (tests go green, you take Pair's code, a commit), Pair checks the debrief's facts of the
+  session so far and says at your next break `done: X; next: Y`. The steps go with every question, so "what's left?"
+  is answered from them. Each line costs the talk budget like a remark, and the ledger books each one; the plan lives
+  in the session only, never in `NOTES.md` or the brief.
 
 ### Changed
 

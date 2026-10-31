@@ -31,7 +31,7 @@ import {tmpdir} from 'node:os';
 import {asksBack, oneQuestion, PROSE_CHECKS} from './prose-triggers.mjs';
 import {parseTestOutput, testSummary} from './test-output.mjs';
 import {TestRuns, treeOf} from './test-runs.mjs';
-import {DONE_PROMPT, parseDone, parseSteps, PLAN_PROMPT, planText, stepsLine, Thread} from './thread.mjs';
+import {DONE_PROMPT, LANDED_KEPT_MS, parseDone, parseSteps, PLAN_PROMPT, planText, stepsLine, Thread} from './thread.mjs';
 import {named} from './terminals.mjs';
 import {currentTrail, trailMatches, trailSummary} from './trail.mjs';
 import {detectTriggers, freshCodeIn, TRIGGER_KINDS} from './triggers.mjs';
@@ -1212,32 +1212,36 @@ export class PairSession {
     this.goalFrom = from;
     this.notify('chat', {type: 'goal', goal}); // the chat pane's header
     if (!from) this.message('system', `Goal: ${goal}`, {goal: 'set'}); // the full pane has it in its header
+    // A new goal ends the old goal's steps: they would be judged against work that is no longer the goal.
+    if (this.thread.steps.length) {
+      this.thread.drop();
+      this.planChanged();
+      this.ledger.add('plan', 'dropped the steps: a new goal');
+    }
     this.proposePlan(goal).catch(error => this.log(`plan: ${error.message}`));
   }
 
   /**
-   * Pair proposes the goal as two to four steps, in one line of its own: kept unless the user edits (/plan, `p` in the
-   * chat) or drops them (/plan off). The line counts against the talk budget like any remark; with none left, the
-   * steps are kept unsaid, and the chat's `p` still shows them.
+   * Pair proposes the goal as two to four steps, in one line of its own, said at the user's next break (see
+   * threadDue): kept unless the user edits (/plan, `p` in the chat) or drops them (/plan off). The line counts against
+   * the talk budget like any remark; with none left, the steps are kept unsaid, and the chat's `p` still shows them.
+   * Steps the user set while the model thought, or a newer goal, win over its answer.
    */
   async proposePlan(goal) {
-    if (!this.askModel || this.threading) return;
-    this.threading = true;
-    let steps;
-    try {
-      steps = parseSteps(await this.askModel(PLAN_PROMPT, `Goal: ${goal}`));
-    } finally {
-      this.threading = false;
-    }
-    if (this.state.goal !== goal || !this.thread.set(steps)) return; // a newer goal, or one too small for steps
-    const said = this.sayThread(`Steps: ${stepsLine(this.thread.steps)}`, 'proposed the steps');
-    this.planChanged({proposed: said});
+    if (!this.askModel) return;
+    const version = this.thread.version;
+    const steps = parseSteps(await this.askModel(PLAN_PROMPT, `Goal: ${goal}`));
+    if (this.state.goal !== goal || this.thread.version !== version) return; // a newer goal, or the user's own steps
+    if (!this.thread.set(steps)) return this.ledger.quiet('plan', 'the goal is too small for steps');
+    this.thread.proposed = {at: this.now()};
+    this.planChanged();
   }
 
   /** The user's own steps (`a; b; c`): they replace Pair's; fewer than two drop the plan. */
   setPlan(text) {
     if (!this.thread.set(parseSteps(text))) return this.dropPlan();
     this.planChanged();
+    this.ledger.add('plan', `your steps: ${planText(this.thread.steps)}`);
     this.message('system', `Steps: ${stepsLine(this.thread.steps)}`);
   }
 
@@ -1245,6 +1249,7 @@ export class PairSession {
     const had = this.thread.steps.length > 0;
     this.thread.drop();
     this.planChanged();
+    if (had) this.ledger.add('plan', 'you dropped the steps');
     this.message('system', had ? 'Steps dropped. /plan <a; b; c> sets new ones.' : 'No steps to drop. /plan <a; b; c> sets some.');
   }
 
@@ -1279,16 +1284,36 @@ export class PairSession {
     return true;
   }
 
+  /** Whether the thread may speak now: at a break since `since`, with Pair, the model and the user all free. */
+  threadMaySpeak(since, now) {
+    if (this.threading || this.busy || this.gen.running || this.role === 'driver' || this.blankPage?.open || !this.health.ok()) return false;
+    return !this.typing() && this.breakpoints.last(this.state, now) >= since;
+  }
+
   /**
-   * A step may have landed (tests green, code taken, a commit): at the user's next break, with the model and the budget
-   * free, the debrief's facts of the session so far say which steps are done, and Pair says "done: X; next: Y". A
-   * landing that finished no step says nothing. One the budget holds back waits, up to LANDED_KEPT_MS.
+   * At the user's next break: Pair's proposed steps are said, and a step that may have landed (tests green, code taken,
+   * a commit) is checked against the debrief's facts of the session so far, and Pair says "done: X; next: Y". A
+   * landing that finished no step says nothing. One the budget holds back waits, up to LANDED_KEPT_MS; the ledger
+   * books each one held back, and each one let go.
    */
   async threadDue() {
     const now = this.now();
+    const old = this.thread.expired(now);
+    if (old) this.ledger.quiet('plan', `${old.what}: not checked in ${LANDED_KEPT_MS / 60_000} min, let go`, {budget: true});
+    const proposed = this.thread.proposed;
+    if (proposed && this.threadMaySpeak(proposed.at, now)) {
+      this.thread.proposed = null;
+      const said = this.sayThread(`Steps: ${stepsLine(this.thread.steps)}`, 'proposed the steps');
+      this.planChanged({proposed: said});
+      return;
+    }
     const landed = this.thread.due(now);
-    if (!landed || this.threading || this.busy || this.gen.running || this.role === 'driver' || !this.askModel || !this.health.ok()) return;
-    if (this.typing() || this.breakpoints.last(this.state, now) < landed.at || !this.budget.allows(now).ok) return;
+    if (!landed || !this.askModel || !this.threadMaySpeak(landed.at, now)) return;
+    if (!this.budget.allows(now).ok) {
+      if (!landed.held) this.ledger.quiet('plan', `${landed.what}: held back, the talk budget is spent`, {budget: true});
+      landed.held = true;
+      return;
+    }
     this.threading = true;
     let numbers;
     try {
@@ -1298,6 +1323,7 @@ export class PairSession {
       this.threading = false;
     }
     if (this.thread.landed !== landed) return; // a newer landing, or a new plan, came meanwhile: looked at next
+    if (!this.budget.allows(this.now()).ok) return; // a remark took the budget meanwhile: the landing waits
     const line = this.thread.done(numbers);
     if (!line) return this.ledger.quiet('plan', `${landed.what}: no step done yet`);
     this.planChanged();
@@ -1311,7 +1337,7 @@ export class PairSession {
   async changedSince() {
     if (this.toldAt === null) return '';
     const byFile = new Map();
-    for (const edit of userEdits(this.state)) {
+    for (const edit of userEdits(this.state).toReversed()) { // newest first: what the cap cuts is the oldest
       if (edit.at <= this.toldAt || !edit.file || outsideRoot(edit.file)) continue;
       const range = {from: Math.max(1, Math.min(edit.from, edit.to) - 1), to: Math.max(edit.from, edit.to) + 1};
       const ranges = byFile.get(edit.file) ?? [];

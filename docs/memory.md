@@ -22,7 +22,8 @@ The chat says where the goal came from (`Goal, from the board task HKD-7: Retrie
 
 ## The thread: done and next
 
-Once the session has a goal, Pair proposes it as two to four steps, in one line of its own:
+Once the session has a goal, Pair proposes it as two to four steps, in one line of its own, at your next break (not
+while you type, nor among `:Pair new`'s questions):
 
 ```
 pair  Steps: 1 the cart tests pass · 2 the bogo code works
@@ -31,7 +32,8 @@ pair  Steps: 1 the cart tests pass · 2 the bogo code works
 
 You keep them by doing nothing. `p` alone on the line, then `Enter`, puts `/plan the cart tests pass; the bogo code
 works` on the line to edit and send; `/plan a; b; c` sets steps of your own, `/plan off` drops them, and `/plan` alone
-shows them, done and next. A goal too small for two steps gets none.
+shows them, done and next. A goal too small for two steps gets none, and a new goal drops the old goal's steps. Steps you
+set win over a proposal Pair is still thinking about.
 
 When a step may have landed (a test run or a command that failed passes again, you take a suggestion or code from
 `/gen`, you commit), Pair waits for your next break and then checks it against the same facts the
@@ -42,16 +44,17 @@ changes you kept, the commits and `git status`. Only a step those facts show don
 pair  done: the cart tests pass; next: the bogo code works
 ```
 
-A landing that finished no step says nothing. The steps go with every question and remark as `Plan: ✓ 1 … · → 2 …
-(next)`, so "what's left?" is answered from them, and the debrief reads them too.
+A landing that finished no step says nothing. The steps go with every question and remark as `Plan (✓ done, → next, ○
+open): ✓ 1 … · → 2 … (next)`, so "what's left?" is answered from them, and the debrief reads them too.
 
 Each of these lines is an unasked remark: it costs the [talk budget](how-it-works.md) like any other, and with the
 budget spent, a proposal is kept unsaid (`p` still shows it) and a "done" line waits until the budget allows, for up
-to half an hour. The ledger (`/today`) records each line said and each one held back. The plan lives in the session
+to half an hour. The ledger (`/today`) records each line said, each one held back or let go, and each change to the
+steps. The plan lives in the session
 only: never in `NOTES.md`, the brief or your files, and it is gone when the session ends.
 
 **What you just changed.** Each question or remark also carries the lines you changed since Pair's last turn, read from
-your buffer as they are now (up to 60 lines), with the words "any earlier read of them is stale". Pair's conversation
+your buffer as they are now (up to 60 lines, the newest first), with the words "any earlier read of them is stale". Pair's conversation
 holds what it read before, and without them a suggestion could put back a bug you had just fixed.
 
 A session ends by itself, and writes its note:

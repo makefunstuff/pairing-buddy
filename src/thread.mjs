@@ -41,6 +41,8 @@ export class Thread {
   constructor() {
     this.steps = []; // {text, done}
     this.landed = null; // the latest step that may have landed and is not said yet: {what, at}
+    this.proposed = null; // Pair's steps, not said yet: {at}, said at the user's next break
+    this.version = 0; // each new plan or drop: a model answer about an older one is let go
   }
 
   get open() { return this.steps.filter(step => !step.done); }
@@ -50,12 +52,16 @@ export class Thread {
   set(steps) {
     this.steps = steps.length >= STEPS.min ? steps.slice(0, STEPS.max).map(text => ({text, done: false})) : [];
     this.landed = null;
+    this.proposed = null;
+    this.version += 1;
     return this.steps.length > 0;
   }
 
   drop() {
     this.steps = [];
     this.landed = null;
+    this.proposed = null;
+    this.version += 1;
   }
 
   /** Something that may finish a step happened: tests went green, code was taken, a commit. */
@@ -65,8 +71,14 @@ export class Thread {
 
   /** The landing to say at a break at `now`, or null: the plan has an open step, and the landing is not old. */
   due(now) {
-    if (this.landed && now - this.landed.at > LANDED_KEPT_MS) this.landed = null;
-    return this.next ? this.landed : null;
+    return this.next && this.landed && now - this.landed.at <= LANDED_KEPT_MS ? this.landed : null;
+  }
+
+  /** The landing that got too old to say at `now`, which it lets go; null when none did. */
+  expired(now) {
+    const old = this.landed && now - this.landed.at > LANDED_KEPT_MS ? this.landed : null;
+    if (old) this.landed = null;
+    return old;
   }
 
   /** Marks steps `numbers` done; returns the line to say, or null when none was open. Ends the landing. */

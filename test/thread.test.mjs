@@ -82,13 +82,19 @@ async function checked(pair) {
   for (let i = 0; i < 200 && pair.threading; i++) await new Promise(resolve => setTimeout(resolve, 5));
 }
 
-test('a goal gets its steps in one line of Pair\'s, which costs the talk budget; p can edit them', async () => {
-  const {pair, sent, said} = session();
+test('a goal gets its steps in one line of Pair\'s at the next break, which costs the talk budget; p can edit them', async () => {
+  const {pair, sent, said, advance, at} = session();
+  pair.receive({kind: 'typing', at: at()});
   pair.setGoal('make the cart tests pass, then add buy N get one free');
   await settle();
+  await pair.tick();
+  assert.deepEqual(said(), [], 'not while they type');
+  assert.equal(pair.planSteps(), 'the cart tests pass; the bogo code works', 'p has them already');
+  advance(3000);
+  await pair.tick();
   assert.deepEqual(said(), ['Steps: 1 the cart tests pass · 2 the bogo code works']);
   assert.equal(pair.budget.allows(pair.now()).ok, false, 'paid for like a remark');
-  assert.deepEqual(sent.filter(message => message.type === 'plan').map(({steps, proposed}) => ({steps, proposed})), [{steps: 'the cart tests pass; the bogo code works', proposed: true}]);
+  assert.deepEqual(sent.filter(message => message.type === 'plan').map(({steps, proposed}) => ({steps, proposed})).at(-1), {steps: 'the cart tests pass; the bogo code works', proposed: true});
   assert.match(pair.state.plan, /→ 1 the cart tests pass/);
 });
 
@@ -97,19 +103,68 @@ test('with the budget spent, the steps are kept unsaid; a goal too small for ste
   spent.pair.budget.spend(spent.at());
   spent.pair.setGoal('a goal');
   await settle();
+  await spent.pair.tick();
   assert.deepEqual(spent.said(), []);
+  assert.ok(spent.actions.some(action => action.kind === 'quiet' && /proposed the steps, not said/.test(JSON.stringify(action))));
   assert.equal(spent.pair.planSteps(), 'the cart tests pass; the bogo code works');
   const small = session({plan: 'NONE'});
   small.pair.setGoal('rename a variable');
   await settle();
+  await small.pair.tick();
   assert.deepEqual(small.said(), []);
   assert.equal(small.pair.planSteps(), null);
+  assert.ok(small.actions.some(action => action.kind === 'quiet' && /too small for steps/.test(JSON.stringify(action))));
+});
+
+test('steps the user sets while Pair thinks win; a new goal drops the old goal\'s steps', async () => {
+  let answer;
+  const {pair, said} = session();
+  pair.askModel = () => new Promise(resolve => { answer = resolve; });
+  pair.setGoal('cart');
+  pair.setPlan('mine; also mine');
+  answer('the cart tests pass\nthe bogo code works');
+  await settle();
+  await pair.tick();
+  assert.equal(pair.planSteps(), 'mine; also mine');
+  assert.deepEqual(said(), []);
+
+  pair.setGoal('something else');
+  assert.equal(pair.planSteps(), null, 'the old steps go with the old goal');
+  assert.equal(pair.state.plan, null, 'and leave the models\' Now lines');
+  answer('NONE');
+  await settle();
+  assert.equal(pair.planSteps(), null);
+});
+
+test('a second goal set while the first is proposed gets its own steps', async () => {
+  const answers = [];
+  const {pair} = session();
+  pair.askModel = () => new Promise(resolve => answers.push(resolve));
+  pair.setGoal('first');
+  pair.setGoal('second');
+  answers[1]('two a\ntwo b');
+  answers[0]('one a\none b');
+  await settle();
+  assert.equal(pair.planSteps(), 'two a; two b');
+});
+
+test('the steps wait out the questions of :Pair new', async () => {
+  const {pair, said} = session();
+  pair.blankPage = {open: true, covers: () => false};
+  pair.setGoal('cart');
+  await settle();
+  await pair.tick();
+  assert.deepEqual(said(), []);
+  pair.blankPage = null;
+  await pair.tick();
+  assert.equal(said().length, 1);
 });
 
 test('going green says done and next at the next break, from the session\'s facts', async () => {
   const {pair, models, said, advance, at} = session();
   pair.setGoal('cart');
   await settle();
+  await pair.tick();
   pair.receive({kind: 'command_end', cmd: 'npm test', exit: 1, output: 'fail', at: at()});
   advance(4 * MIN); // past the budget's gap since the steps line
   pair.receive({kind: 'typing', at: at()});
@@ -146,11 +201,24 @@ test('a landing that finished no step says nothing; one the budget holds back wa
   held.pair.thread.land('a commit', held.at());
   held.advance(MIN);
   await held.pair.tick();
+  await held.pair.tick();
   assert.equal(held.models.length, 0, 'the budget holds it');
+  assert.equal(held.actions.filter(action => /held back, the talk budget/.test(JSON.stringify(action))).length, 1, 'booked once');
   held.advance(3 * MIN);
   await held.pair.tick();
   await checked(held.pair);
   assert.deepEqual(held.said(), ['done: a; next: b']);
+});
+
+test('a landing held past half an hour is let go, and the ledger says so', async () => {
+  const {pair, actions, models, advance, at} = session();
+  pair.setPlan('a; b');
+  pair.budget.spend(at());
+  pair.thread.land('a commit', at());
+  advance(31 * MIN);
+  await pair.tick();
+  assert.equal(models.length, 0);
+  assert.ok(actions.some(action => /a commit: not checked in 30 min, let go/.test(JSON.stringify(action))));
 });
 
 test('your own steps replace Pair\'s, and /plan off drops them: nothing lands after', async () => {

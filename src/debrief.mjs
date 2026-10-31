@@ -68,7 +68,7 @@ export function factLines({goal, wins, kept = [], commits = [], changes = null, 
   const {tests, commands} = wins.green;
   return [
     `Goal: ${goal ?? '(not set)'}`,
-    plan && `The session's plan (✓ done, ○ open): ${plan}`,
+    plan && `The session's plan (✓ done, → next, ○ open): ${plan}`,
     tests.length && `Tests that failed during the session and pass now: ${tests.join(', ')}`,
     commands.length && `Commands that pass again after failing: ${commands.map(cmd => `\`${cmd}\``).join(', ')}`,
     wins.moved.length && `Numbers that moved the right way:${list(wins.moved)}`,
