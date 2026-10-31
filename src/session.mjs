@@ -842,9 +842,9 @@ export class PairSession {
         this.store.showRemark(id);
         // A place the user is still editing (no command since, in the last two minutes) says nothing when they
         // edit on there; one they changed and then ran something on does.
-        const last = this.state.edits.findLast(byUser);
-        const still = last && last.at > (this.state.commands.at(-1)?.endedAt ?? 0) && this.now() - last.at < STILL_EDITING_MS;
-        const places = pointedAt.filter(place => !still || !touches(place, last.file, last.from, last.to));
+        const since = Math.max(this.state.commands.at(-1)?.endedAt ?? 0, this.now() - STILL_EDITING_MS);
+        const still = this.state.edits.filter(edit => byUser(edit) && edit.at > since);
+        const places = pointedAt.filter(place => !still.some(edit => touches(place, edit.file, edit.from, edit.to)));
         if (places.length) this.awaiting.set(id, {at: this.now(), places});
         this.lastRemarkTrigger = trigger.kind;
         this.presence = {...this.presence, spoke: this.presence.spoke + 1};

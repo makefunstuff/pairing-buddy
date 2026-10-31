@@ -133,10 +133,11 @@ test('an edit where you were editing already, or on a suggestion\'s lines, does 
     return 'The shift doubles: `backoff.go:4`.';
   }]);
   there.pair.receive({kind: 'command_end', pane: 'w1:p2', cmd: 'go test ./...', exit: 1, output: RED, at: there.clock.now - 30_000});
-  there.pair.receive({kind: 'edit', file: join(there.root, 'backoff.go'), from: 4, to: 4, at: there.clock.now - 5000});
+  there.pair.receive({kind: 'edit', file: join(there.root, 'backoff.go'), from: 4, to: 4, at: there.clock.now - 8000});
+  there.pair.receive({kind: 'edit', file: join(there.root, 'worker.go'), from: 4, to: 4, at: there.clock.now - 5000});
   await there.pair.tick();
   there.pair.receive({kind: 'edit', file: join(there.root, 'backoff.go'), from: 4, to: 4, origin: 'user'});
-  assert.equal(there.store.remarks(0)[0].verdict, null, 'it pointed where the user was typing: editing on there is no answer');
+  assert.equal(there.store.remarks(0)[0].verdict, null, 'it pointed where the user was typing, also before their last edit: editing on there is no answer');
 
   const ran = pairSession([async pair => {
     await pair.point({file: 'worker.go', line: 4, endLine: 4, note: '7s + 8s = 15s: still inside the budget', code: '>='});
