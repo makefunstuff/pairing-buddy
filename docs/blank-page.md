@@ -23,9 +23,9 @@ the answer before it.*
    mode (`Esc`) and changed nothing for a second and a half. Going back into Insert mode, or fixing a typo in
    Normal mode, waits again, so it is the fixed answer that goes. The next question shows under it, and the one
    before goes.
-4. A question has at most 18 words: one question, no code, no list of options, and not one you answered already
-   (most of its words the same as an earlier question's). One that breaks this gets one more try, with what was
-   wrong; the second try is shown as it comes.
+4. Pair is asked for one question, no code, no list of options. A question has at most 18 words and is not one you
+   answered already (most of its words the same as an earlier question's). One that is no question, is longer or
+   repeats one gets one more try, with what was wrong; the second try is shown as it comes.
 
 While a question waits, Pair makes no remarks about the note. Its remarks about everything else go on: a question
 you leave unanswered does not silence it. `:Pair clear` ends the questions; `:Pair new` starts again.

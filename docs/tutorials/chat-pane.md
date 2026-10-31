@@ -5,7 +5,7 @@ to a line, rate a remark. This walks through the keys you will use every day.
 
 ## 1. Open it
 
-In herdr, run `pair` in the pane next to Neovim. Without herdr, `:Pair chat` in Neovim opens the same pane on the
+In herdr, run `pair` in a shell pane next to Neovim: the chat opens in a new pane to its right. Without herdr, `:Pair chat` in Neovim opens the same pane on the
 right. Closing it leaves the session running; opening it again brings back the conversation.
 
 The top rule names the project, the goal, the role and the talk level. The rule over where you type says what Pair

@@ -61,6 +61,8 @@ bug (a wrong format, an uninitialised value); an unused variable while you explo
 - Only the formats above are read: no MSVC, rustc, or Go build errors outside `go test`.
 - A crash without a report or a stack (a bare segfault, without a sanitizer) has no line to show; the statusline and
   the remark still name it.
+- A run on save starts on a save of a source file Pair knows by its extension; `.odin` and `.c3` are not among them
+  yet, so Odin's and C3's builds are read from your terminal only.
 - Odin's and C3's formats are written from their compilers' sources and not yet checked against their real output.
 - Only the last build or run that crashed or printed diagnostics shows in Neovim.
 - A warning is new against this session's builds and edits only: after a daemon restart the first build is the

@@ -80,7 +80,7 @@ everywhere. `pair doctor` checks that the Partner does think, and that the Watch
 [watcher.md](watcher.md#thinking-the-partner-not-the-watcher).
 
 The optional `decision` entry takes the same `provider`, `model` and key fields, an `api` of its own (`"openai"` for
-OpenAI's Decisions API, `"system-one"` or `"llama-cpp"`) at a `baseUrl`, and `timeoutMs` (default 1500): see
+OpenAI's Decisions API, `"system-one"` or `"llama-cpp"`) at a `baseUrl`, `timeoutMs` (default 1500) and, for a gateway, `contextWindow` (default 32768): see
 [decision.md](decision.md#configure).
 
 ## `testOnSave`

@@ -566,7 +566,7 @@ cat > smoke.lua <<'EOF'
 local pair = require('pair')
 local out = function(text) io.stdout:write(text .. '\n') end
 vim.cmd('Pair start smoke test')
-if not vim.wait(10000, function() return pair.status() ~= '' end, 200) then out('not connected'); vim.cmd('cquit 1') end
+if not vim.wait(10000, function() local s = pair.status() return s ~= '' and not s:find('reconnecting', 1, true) end, 200) then out('not connected'); vim.cmd('cquit 1') end
 out('status: ' .. pair.status())
 vim.cmd('Pair ask Is there a bug in this file? One sentence.')
 -- Pair's words are virtual text: a note after the line it points at, or lines under the line you are on.

@@ -126,7 +126,7 @@ Four rows of chrome, two of them rules with words in them; the rest is the conve
 
   | Status | Means |
   | --- | --- |
-  | `◉ watching · looked at 12 moments, spoke 2 · 3m ago` | Idle. The Watcher looked at 12 moments this session and Pair spoke at 2: most moments are not worth a word |
+  | `◉ watching · looked at 12 moments, spoke 2 · 3m ago` | Idle. The Watcher looked at 12 moments this session and Pair spoke at 2: most moments are not worth a word. In the Scout role, `◉ watching, as Scout` |
   | `▖ thinking 4s` | Pair works on your question; `Esc` stops it |
   | `▖ writing 6s` | Its answer is arriving, word by word |
   | `▖ writing 6s · 1 remark below` | A remark or a note came while the answer streams: it waits, and goes under the answer once that is done ([below](#calm-motion)) |
@@ -134,7 +134,7 @@ Four rows of chrome, two of them rules with words in them; the rest is the conve
   | `▖ looking at regression` | The Watcher looks at a moment of its own accord (its spinner yellow); it may say nothing |
   | `? waiting for your answer` | It asked to run or type a command |
   | `◆ Pair drives · any key in Neovim takes it back` | Pair has the wheel ([Driver](driver.md)) |
-  | `▖ gen #4 generating 41s`, `◉ watching · gen #7: 0 of 9 kept` | A [/gen request](#the-gen-card) at work (its spinner magenta), or done with something left to take |
+  | `▖ gen #4 generating 41s`, `◉ watching · gen #7: 0 of 9 kept` | A [/gen request](#the-gen-card) at work (its spinner magenta), or done with something left to take. Before it works, `▖ gen #4 starting`, `? gen #4 waits for your answer` or `? gen #4 asks in Neovim` |
   | `! the pair daemon went away · reconnecting 6s · attempt 4` | The daemon restarted (the `!` in yellow): how long it has been away and how many times the pane tried, so a blip reads differently from a daemon that is gone. What you type is kept (the input says so); nothing sends until it is back, and the pane carries on then |
 
   On the right: the Partner's model, how long its last answer took, and the tokens and cost of it when the provider
@@ -318,6 +318,7 @@ The last remark, while it is the last thing said, shows `+`, `-`, `a` and `j` on
 | `Ctrl-C` | Stop the answer or a /gen request at work; else clear what you typed; twice on an empty line, close the pane |
 | `Ctrl-D` | Close the pane, on an empty line |
 | `y` `n` | While Pair asks: allow, decline; `Esc` declines too (for a `/gen` question: take the guess or the answer given, cancel or leave it to Pair); on `/gen board`'s question, `d` `p` `r` `c` as [above](#what-you-see) |
+| `e` | Right after the debrief, alone on the line, then `Enter`: puts `/first` and tomorrow's first step on the line to edit |
 | `?` | The keys, on an empty line |
 
 Closing the pane leaves the session running; `pair` or `:Pair chat` opens it again, with the conversation so far.
