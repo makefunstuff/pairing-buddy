@@ -380,8 +380,8 @@ export class PairSession {
    * where `genScaffold` says ('tree', Pair's copy, or 'worktree'); /gen board composes a task for `genBoard`, the
    * board's command.
    */
-  constructor({record, store, partner, score, pace = null, decision = () => null, typingPauseMs, notify, requestEditor, previousNote = null, lastSession = null, autoTune = false, health = {ok: () => true}, testOnSave = null, checkOutput = null, genLimits, genBrief, genDir = null, genKeepTries, genNetwork = false, genSandbox = 'auto', genScaffold, genBoard = null, askModel = null, log = () => {}, now = Date.now}) {
-    Object.assign(this, {record, store, partner, score, pace, decision, typingPauseMs, notify, requestEditor, previousNote, lastSession, autoTune, health, askModel, log, now});
+  constructor({record, store, partner, score, pace = null, decision = () => null, typingPauseMs, notify, requestEditor, previousNote = null, lastSession = null, autoTune = false, health = {ok: () => true}, testOnSave = null, checkOutput = null, genLimits, genBrief, genDir = null, genKeepTries, genNetwork = false, genSandbox = 'auto', genScaffold, genBoard = null, askModel = null, threadModel = askModel, log = () => {}, now = Date.now}) {
+    Object.assign(this, {record, store, partner, score, pace, decision, typingPauseMs, notify, requestEditor, previousNote, lastSession, autoTune, health, askModel, threadModel, log, now});
     this.sorted = new Map(); // trigger key -> {at, sort}: what the decision model sorted it as lately
     this.told = new Map(); // trigger key -> what the decision model was told about it first, for the decisions log
     this.checkOutput = checkOutput ?? join(tmpdir(), `pair-check-${process.pid}-${record.id}`, 'check.out'); // its copy of the project goes next to it
@@ -920,7 +920,7 @@ export class PairSession {
     try {
       // The trail's queries, searched in the project: which of the user's words the code has, and where.
       const seen = trigger.kind === 'search_trail' ? {...trigger, detail: `${trigger.detail}\n${await trailMatches(this.root, trigger.searches)}`} : trigger;
-      const input = watchInput(seen, `${describeState(this.state, this.now())}${await this.changedSince()}`);
+      const input = watchInput(seen, describeState(this.state, this.now()));
       if (!(await this.talk(input, {kind: 'remark'}))) {
         this.ledger.quiet(trigger.kind, 'Pair looked, and found nothing worth saying');
         return this.store.dropRemark(id);
@@ -1044,7 +1044,7 @@ export class PairSession {
     }
     await this.yieldRemark();
     const earlier = remark ? `\n\nThis is about your remark (${remark.trigger}): "${remark.text ?? '(its words were not kept)'}"` : '';
-    await this.talk(`[user] ${text}${earlier}${await this.selected(selection)}${this.recalled(text)}${await this.gen.tryContext()}${await this.changedSince()}\n\nNow:\n${describeState(this.state, this.now())}\n\n${KEEP.answer}`);
+    await this.talk(`[user] ${text}${earlier}${await this.selected(selection)}${this.recalled(text)}${await this.gen.tryContext()}\n\nNow:\n${describeState(this.state, this.now())}\n\n${KEEP.answer}`);
     // An answer that is no answer still answers: the chat says so, rather than leaving the question hanging.
     if (!this.words.length && !this.target && !this.cancelled && !this.failed) this.message('system', 'Pair had nothing to add to that.');
     return this.words.join('\n');
@@ -1098,6 +1098,8 @@ export class PairSession {
    */
   async talk(input, options = {}, answering = null) {
     this.busy = true;
+    // Every turn carries what the user changed since the last: a remark, a question, /drive or a teach.
+    if (typeof input === 'string') input = `${input}${await this.changedSince()}`;
     this.toldAt = this.now();
     this.spoke = false;
     this.said = false;
@@ -1228,9 +1230,9 @@ export class PairSession {
    * Steps the user set while the model thought, or a newer goal, win over its answer.
    */
   async proposePlan(goal) {
-    if (!this.askModel) return;
+    if (!this.threadModel) return;
     const version = this.thread.version;
-    const steps = parseSteps(await this.askModel(PLAN_PROMPT, `Goal: ${goal}`));
+    const steps = parseSteps(await this.threadModel(PLAN_PROMPT, `Goal: ${goal}`));
     if (this.state.goal !== goal || this.thread.version !== version) return; // a newer goal, or the user's own steps
     if (!this.thread.set(steps)) return this.ledger.quiet('plan', 'the goal is too small for steps');
     this.thread.proposed = {at: this.now()};
@@ -1239,7 +1241,7 @@ export class PairSession {
 
   /** The user's own steps (`a; b; c`): they replace Pair's; fewer than two drop the plan. */
   setPlan(text) {
-    if (!this.thread.set(parseSteps(text))) return this.dropPlan();
+    if (!this.thread.set(parseSteps(text), {keepDone: true})) return this.dropPlan();
     this.planChanged();
     this.ledger.add('plan', `your steps: ${planText(this.thread.steps)}`);
     this.message('system', `Steps: ${stepsLine(this.thread.steps)}`);
@@ -1280,6 +1282,7 @@ export class PairSession {
     }
     this.budget.spend(this.now());
     this.message('pair', text, {plan: true});
+    this.notify('editor', {type: 'delight', text, calm: true}); // Neovim says it too, under the cursor, as a break hint
     this.ledger.add('said', text, {data: {note: why}, detail: {words: text}});
     return true;
   }
@@ -1308,7 +1311,7 @@ export class PairSession {
       return;
     }
     const landed = this.thread.due(now);
-    if (!landed || !this.askModel || !this.threadMaySpeak(landed.at, now)) return;
+    if (!landed || !this.threadModel || !this.threadMaySpeak(landed.at, now)) return;
     if (!this.budget.allows(now).ok) {
       if (!landed.held) this.ledger.quiet('plan', `${landed.what}: held back, the talk budget is spent`, {budget: true});
       landed.held = true;
@@ -1318,7 +1321,7 @@ export class PairSession {
     let numbers;
     try {
       const facts = factLines({...(await this.debriefFacts()), stopped: null});
-      numbers = parseDone(await this.askModel(DONE_PROMPT, this.thread.doneInput(facts)), this.thread.steps.length);
+      numbers = parseDone(await this.threadModel(DONE_PROMPT, this.thread.doneInput(facts)), this.thread.steps.length);
     } finally {
       this.threading = false;
     }

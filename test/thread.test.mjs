@@ -119,7 +119,7 @@ test('with the budget spent, the steps are kept unsaid; a goal too small for ste
 test('steps the user sets while Pair thinks win; a new goal drops the old goal\'s steps', async () => {
   let answer;
   const {pair, said} = session();
-  pair.askModel = () => new Promise(resolve => { answer = resolve; });
+  pair.threadModel = () => new Promise(resolve => { answer = resolve; });
   pair.setGoal('cart');
   pair.setPlan('mine; also mine');
   answer('the cart tests pass\nthe bogo code works');
@@ -139,7 +139,7 @@ test('steps the user sets while Pair thinks win; a new goal drops the old goal\'
 test('a second goal set while the first is proposed gets its own steps', async () => {
   const answers = [];
   const {pair} = session();
-  pair.askModel = () => new Promise(resolve => answers.push(resolve));
+  pair.threadModel = () => new Promise(resolve => answers.push(resolve));
   pair.setGoal('first');
   pair.setGoal('second');
   answers[1]('two a\ntwo b');
@@ -248,4 +248,31 @@ test('a question after the user changed lines gets those lines as they are now, 
   assert.match(asked[1], /The user changed these lines since your last turn; they are now as below, and any earlier read of them is stale:\ncart\.js:1-3\n1: function total\(lines\) \{\n2:   return lines\.reduce\(\(sum, line\) => sum \+ line\.price \* line\.qty, 0\);\n3: \}/);
   await pair.ask('and now?');
   assert.doesNotMatch(asked[2], /changed these lines/, 'told once');
+});
+
+test('a teach turn carries the changed lines too, and the next question still gets them only once', async () => {
+  const buffer = ['function total(lines) {', '  return 0;', '}', ''].join('\n');
+  const {pair, asked, advance, at} = session({buffer});
+  writeFileSync(join(pair.root, 'cart.js'), buffer);
+  pair.setGoal('later');
+  await pair.ask('what does total do?');
+  advance(1000);
+  pair.receive({kind: 'edit', file: 'cart.js', from: 2, to: 2, text: '  return 0;', at: at()});
+  advance(1000);
+  await pair.teach('total sums the lines');
+  assert.match(asked.at(-1), /changed these lines since your last turn[^]*2:   return 0;/);
+  await pair.ask('and now?');
+  assert.doesNotMatch(asked.at(-1), /changed these lines/);
+});
+
+test('editing the steps with p keeps a step done; the thread\'s lines show in Neovim too', async () => {
+  const {pair, sent, advance} = session();
+  pair.setPlan('a; b; c');
+  pair.thread.land('a commit', pair.now());
+  advance(4 * MIN);
+  await pair.tick();
+  await checked(pair);
+  assert.ok(sent.some(message => message.role === 'editor' && message.type === 'delight' && message.text === 'done: a; next: b'));
+  pair.setPlan('a; b, reworded; c');
+  assert.match(pair.thread.summary(), /^✓ 1 a · → 2 b, reworded \(next\)/);
 });

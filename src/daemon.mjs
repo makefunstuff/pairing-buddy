@@ -450,6 +450,7 @@ export async function startDaemon(config, {
         genBrief: config.gen.brief,
         genDir: join(config.dataDir, 'gen'), genKeepTries: config.gen.keepTries, genNetwork: config.gen.network, genSandbox: config.scoutPane.sandbox, genScaffold: config.gen.scaffold, genBoard: config.board,
         askModel: (systemPrompt, content) => askNoteModel(systemPrompt, content, {asked: true}), // the /gen brief's checks
+        threadModel: (systemPrompt, content) => askNoteModel(systemPrompt, content), // the plan's steps and done checks: unasked, they give way
         notify: (role, message) => notify(session, role, message),
         requestEditor: message => requestEditor(session, message),
         log: line => log(`[${basename(root)}] ${line}`),

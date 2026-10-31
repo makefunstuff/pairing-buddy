@@ -48,9 +48,13 @@ export class Thread {
   get open() { return this.steps.filter(step => !step.done); }
   get next() { return this.open[0] ?? null; }
 
-  /** The plan, from the model or the user's words: a plan of fewer than two steps is none. Returns whether it holds one. */
-  set(steps) {
-    this.steps = steps.length >= STEPS.min ? steps.slice(0, STEPS.max).map(text => ({text, done: false})) : [];
+  /**
+   * The plan, from the model or the user's words: a plan of fewer than two steps is none. With `keepDone`, a step whose
+   * words are those of one done already stays done (the user edited the others). Returns whether it holds one.
+   */
+  set(steps, {keepDone = false} = {}) {
+    const done = new Set(keepDone ? this.steps.filter(step => step.done).map(step => step.text) : []);
+    this.steps = steps.length >= STEPS.min ? steps.slice(0, STEPS.max).map(text => ({text, done: done.has(text)})) : [];
     this.landed = null;
     this.proposed = null;
     this.version += 1;

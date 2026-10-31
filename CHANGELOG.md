@@ -28,7 +28,7 @@ release is cut.
 
 ### Changed
 
-- **Pair never works from a stale read.** Each question and remark carries the lines you changed since Pair's last
+- **Pair never works from a stale read.** Each remark, question, `/drive` and explanation carries the lines you changed since Pair's last
   turn, as they are now in your buffer, so a suggestion no longer puts back a bug you just fixed.
 - **A remark you act on counts as useful.** Editing the lines a remark pointed at, within ten minutes, counts it as
   useful wherever its words showed, also when it reached you while you were in your terminal; the ledger books it
