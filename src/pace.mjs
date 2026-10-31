@@ -11,7 +11,8 @@
 // numbers in the terminal, the warning the build printed). The ones kept to the end are news you cannot see: why a
 // run crashed, an error in code you moved on from, a test you have not run, a failure you did not look at. Where the
 // user's own verdicts on a kind add up (as many as tuning.mjs needs: five judged remarks), their kept share decides
-// the order instead, so a kind Pair gets dismissed stops costing a call.
+// the order instead, so a kind Pair gets dismissed stops costing a call. Fresh code goes first of all: a bug in it is
+// news, but it costs a call for every hunk you finish, most of them sound, and a test finds the bug later anyway.
 import {TRIGGER_KINDS} from './triggers.mjs';
 
 // About a second is the aim. A cloud API tested for this (docs/watcher.md, "When the server is slow") scored in
@@ -26,7 +27,7 @@ const SAMPLES = 12; // the latest this many calls count, and
 const MIN_VERDICTS = 5; // judged remarks a kind needs before its kept share ranks it (as in tuning.mjs)
 
 /** The kinds Pair gives up first, the least worth a call first; the rest it keeps to the end. */
-export const GIVE_UP = ['note_drift', 'note_stall', 'drift', 'search_trail', 'number_moved', 'same_result', 'new_warning', 'stall'];
+export const GIVE_UP = ['fresh_code', 'note_drift', 'note_stall', 'drift', 'search_trail', 'number_moved', 'same_result', 'new_warning', 'stall'];
 
 /** The kinds never given up: news the user cannot see for themselves. */
 export const KEPT = TRIGGER_KINDS.filter(kind => !GIVE_UP.includes(kind));

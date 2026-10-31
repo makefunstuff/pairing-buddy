@@ -18,6 +18,7 @@ Answer with one number.`;
 // The search trail: whether the user is going in circles, with what fails now, which says what they are after.
 // A crash: whether hearing where and why saves a hunt. A new warning: whether it is a bug, not just untidy.
 // The overlap: whether hearing that another agent's task changes the same lines saves a conflict later.
+// Fresh code: the hunk itself, and whether it has a bug; how good or tidy it is is no question here.
 // The exploration loop: whether a change that did nothing, or a number that moved, has a reason worth a sentence.
 const WHAT_HAPPENED = {
   drift: (trigger, state) => `The user now edits ${trigger.file}.${trigger.gist ? ` What the file is about: ${trigger.gist}` : ''}\n`
@@ -40,6 +41,11 @@ const WHAT_HAPPENED = {
     + '(earlier changes did not move the numbers and this one did, so why this one worked is worth knowing) or when it got much worse.',
   overlap: trigger => `The user edits ${trigger.file}:${trigger.edited.from}-${trigger.edited.to}, and another agent's board task (${trigger.task.id}) changes ${trigger.ranges.map(range => `${range.from}-${range.to}`).join(', ')} of that file on its own branch, at the same time.\n`
     + 'Score how much hearing it now would save them a conflict later: 0 for a one-line touch-up next to its change, 10 if both rewrite the same code.',
+  fresh_code: trigger => `The user just finished writing these lines of ${trigger.file}:\n${trigger.code}\n`
+    + 'Score how likely they hold a real bug the user would want to hear of now: 0 for code that does what it plainly means, '
+    + 'code plainly not finished yet (a block still open, no return written yet), or code whose only faults are style, naming '
+    + 'or a missing check they may add later; 10 for a plain bug (a wrong variable, operator or index, a value never used, '
+    + 'a loop off by one).',
   ...PROSE_WATCH,
 };
 

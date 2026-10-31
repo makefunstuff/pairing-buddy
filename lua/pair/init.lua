@@ -1689,6 +1689,7 @@ function M.setup(opts)
   -- Saving is when Pair runs your tests, if you set a command for the project (see docs/tests-on-save.md).
   vim.api.nvim_create_autocmd('BufWritePost', {group = group, callback = function(args)
     local file = state.channel and project_path(args.buf)
+    if file and state.pending[args.buf] then flush(args.buf) end -- the edits before the save first: a save ends them
     if file then event({kind = 'save', file = file}) end
     owning.keep(args.buf) -- where its generated code is, as saved
   end})

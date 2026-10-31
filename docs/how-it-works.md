@@ -54,6 +54,7 @@ A remark can come from one of these moments (its **trigger**):
 | `overlap` | You edit lines that the branch of a board task at work also changes: whichever is merged second meets a conflict ([agents.md](agents.md#tasks-working-on-your-files)) |
 | `note_stall` | In a Markdown note, you wrote a question and then nothing for 90 s: one question back, never the answer ([notes.md](notes.md#what-the-triggers-mean-in-prose)) |
 | `note_drift` | In a Markdown note, a new section shares no word with the note's title or the goal: one question, "is this still the … note?" |
+| `fresh_code` | You finished a function or hunk of three lines or more (you saved, or the cursor left it): the Watcher reads just those lines for a likely bug, and only a bug gets a word, at your next break ([watcher.md](watcher.md#fresh-code)) |
 | `search_trail` | Three or more Telescope, snacks.picker or fzf-lua searches since your last edit, one of them closed with nothing opened, or repeated. The remark gets what fails now, so it can say where the thing is in the code's own word ([neovim.md](neovim.md#the-search-trail)) |
 
 The moments about code you wrote leave out the code Pair wrote for you: the Driver's edits, a suggestion you took,
@@ -87,7 +88,7 @@ speak is then the probability that a remark is worth interrupting you for now, a
 typing, your recent work and your verdicts on earlier remarks. If it is down or slow, the rules above decide at once.
 
 Pair never speaks while you type in Neovim or the chat pane: a remark that is ready while you type waits for your
-next pause. One that can wait (drift, a stall, an error in code you moved on from) waits longer, for your next break:
+next pause. One that can wait (drift, a stall, an error in code you moved on from, a likely bug in code you just finished) waits longer, for your next break:
 a save, a run that ended, a stop out of Insert mode, or a quiet stretch. Meanwhile a `•` in Neovim's margin marks it,
 and `Alt-j` shows it early. Details in [watcher.md](watcher.md).
 

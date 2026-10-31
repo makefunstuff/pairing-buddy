@@ -53,7 +53,7 @@ describe('Pair\'s tone on live models', {skip: !stacks.length ? SKIP_REASON : !h
       const conversation = await partner.createConversation();
       session = new PairSession({
         record: {id: 1, root, conversation_id: conversation, goal: 'the table keeps the average probe under 3', level: 'normal', role: 'navigator'},
-        store: {addMessage() {}, addAction: () => 1, updateAction() {}, addRemark: () => 1, dropRemark() {}, seeRemark() {}},
+        store: {addMessage() {}, addAction: () => 1, updateAction() {}, lastRemark: () => null, addRemark: () => 1, showRemark() {}, dropRemark() {}, seeRemark() {}},
         partner, score: async () => ({value: 9, reason: ''}), typingPauseMs: 2000, log: line => console.error(line),
         notify: (to, message) => {
           if (to === 'chat' && message.type === 'message' && message.sender === 'pair') chat.push(message.text);
@@ -99,6 +99,24 @@ describe('Pair\'s tone on live models', {skip: !stacks.length ? SKIP_REASON : !h
         assert.ok(response.status < 400, `its link opens (${response.status})`);
       }
       await close();
+    });
+
+    test(`${stack.name}: fresh code with a bug gets one line naming file:line, before anything ran`, {timeout: 300_000}, async t => {
+      const {root} = probe();
+      const {session, editor, close} = await pairIn(root);
+      const now = Date.now();
+      const lines = readFileSync(join(root, 'table.c'), 'utf8').split('\n');
+      session.receive({kind: 'edit', file: 'table.c', from: 34, to: 37, text: lines.slice(33, 37).join('\n'), at: now - 12_000});
+      session.receive({kind: 'cursor', file: 'table.c', line: 45, at: now - 12_000});
+      session.receive({kind: 'save', file: 'table.c', at: now - 10_000});
+      const trigger = detectTriggers(session.state, now).find(found => found.kind === 'fresh_code');
+      assert.ok(trigger, 'the saved hunk is fresh code');
+      await session.remark(trigger, 9);
+      await close();
+      const remark = editor.find(message => message.type === 'remark');
+      assert.ok(remark?.text, 'a remark under the line');
+      holds(t, remark.text, WORDS.remark, 'the remark');
+      assert.match(remark.text, PLACE, 'it names the place as file:line');
     });
 
     test(`${stack.name}: a question gets a short answer with the place, without headings or lists`, {timeout: 300_000}, async t => {

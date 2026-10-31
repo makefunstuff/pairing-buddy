@@ -76,7 +76,8 @@ and `Enter`, or `later`. `:Pair goal <what>` sets it from Neovim.
 
 ## 6. Work
 
-Work as you always do. Pair stays quiet until something is worth a word, then says one line under yours:
+Work as you always do. Pair stays quiet until something is worth a word, such as a failure you missed or a likely
+bug in a function you just finished, then says one line under yours at your next break:
 
 | Key | What it does |
 | --- | --- |

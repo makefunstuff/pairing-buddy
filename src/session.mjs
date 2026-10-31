@@ -33,7 +33,7 @@ import {parseTestOutput, testSummary} from './test-output.mjs';
 import {TestRuns, treeOf} from './test-runs.mjs';
 import {named} from './terminals.mjs';
 import {currentTrail, trailMatches, trailSummary} from './trail.mjs';
-import {detectTriggers, TRIGGER_KINDS} from './triggers.mjs';
+import {detectTriggers, freshCodeIn, TRIGGER_KINDS} from './triggers.mjs';
 import {IGNORED_AFTER_MS, keptShares, outcome, tuning, WINDOW_MS} from './tuning.mjs';
 import {prepareUnsaved, withTree} from './unsaved.mjs';
 import {KEEP, splitTeaching, teachInput} from './tone.mjs';
@@ -88,6 +88,11 @@ const CHECKS = {
     + 'either change. Say in one or two short sentences which task also changes these lines and, from the lines it writes there, '
     + 'what its change does, and that whichever is merged second meets a conflict: the user may want to wait for it, or tell it. '
     + 'Point at the user\'s lines.',
+  fresh_code: 'The user just finished writing these lines; nothing has failed. Read them and the code they call, and trace '
+    + 'them with a real input. Only if they hold a bug (a wrong result, a crash, a wrong variable, operator or index, a value '
+    + 'never used or never set), point at the line, with the few characters that are wrong as code, and say why in one '
+    + 'sentence. Code plainly not finished yet (a block still open, no return written yet), style, naming, a missing test or a '
+    + 'check they may add later is no bug: answer exactly SILENT.',
   ...PROSE_CHECKS,
 };
 
@@ -918,7 +923,8 @@ export class PairSession {
         this.store.showRemark(id);
         // A place the user is still editing (no command since, in the last two minutes) says nothing when they
         // edit on there; one they changed and then ran something on does.
-        const since = Math.max(this.state.commands.at(-1)?.endedAt ?? 0, this.now() - STILL_EDITING_MS);
+        // Fresh code is about lines the user finished: any edit there from now on is acting on it.
+        const since = trigger.kind === 'fresh_code' ? this.now() : Math.max(this.state.commands.at(-1)?.endedAt ?? 0, this.now() - STILL_EDITING_MS);
         const still = this.state.edits.filter(edit => byUser(edit) && edit.at > since);
         const places = pointedAt.filter(place => !still.some(edit => touches(place, edit.file, edit.from, edit.to)));
         if (places.length) this.awaiting.set(id, {at: this.now(), places});
@@ -1784,6 +1790,13 @@ export class PairSession {
 
   /** The Watcher's score; drift comes with what the file is about (see gist.mjs), read only once it is asked. */
   async scoreWithGist(trigger, state) {
+    if (trigger.kind === 'fresh_code') {
+      // The code as it is now, read once: the Watcher scores it, and the Partner, if it speaks, gets the same lines.
+      const path = await projectFile(this.root, trigger.file).catch(() => null);
+      const text = path ? await this.bufferText(path).catch(() => null) : null;
+      if (text !== null) Object.assign(trigger, freshCodeIn(trigger, text));
+      return this.score(trigger, state);
+    }
     if (trigger.kind !== 'drift') return this.score(trigger, state);
     const path = await projectFile(this.root, trigger.file).catch(() => null);
     const about = path ? gist(await this.bufferText(path).catch(() => '')) : '';
