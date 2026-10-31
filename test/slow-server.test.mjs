@@ -60,9 +60,9 @@ test('on a slow server the daemon stops asking the Watcher about drift, and stil
       await until(() => server.asked.length > i, `score ${i + 1}`);
     }
     await until(() => logged.some(line => /Pair is not asking about/.test(line)), 'the pace to change');
-    assert.match(logged.find(line => /Pair is not asking about/.test(line)), /takes 1\.7 s a call: Pair is not asking about note_drift, note_stall, drift, search_trail while the server is this slow/);
+    assert.match(logged.find(line => /Pair is not asking about/.test(line)), /takes 1\.7 s a call: Pair is not asking about fresh_code, note_drift, note_stall, drift, search_trail while the server is this slow/);
     const status = await requestDaemon(config.socket, {type: 'status'});
-    assert.deepEqual([status.pace.level, status.pace.givenUp], ['slow', ['note_drift', 'note_stall', 'drift', 'search_trail']]);
+    assert.deepEqual([status.pace.level, status.pace.givenUp], ['slow', ['fresh_code', 'note_drift', 'note_stall', 'drift', 'search_trail']]);
 
     // Work on a file off the goal: drift, which costs no call now.
     const before = server.asked.length;

@@ -1,6 +1,6 @@
 # The Watcher: fast and well-judged
 
-Every candidate remark (a failed command you missed, the same error again, a new diagnostic, a stall, drift, the wrong turn, a regression, a crash, a new warning, a search trail, the same numbers after a change or a number that moved, and in a Markdown note a stall after a question or a section that drifts) goes through the speak gate before the Partner writes a word. The gate asks the Watcher model for a score from 0 to 10, so the Watcher must answer in well under a second, and must not make the Partner's model slower. This page says how Pair keeps it that way.
+Every candidate remark (a failed command you missed, the same error again, a new diagnostic, a stall, drift, the wrong turn, a regression, a crash, a new warning, a search trail, the same numbers after a change or a number that moved, code you just finished writing, and in a Markdown note a stall after a question or a section that drifts) goes through the speak gate before the Partner writes a word. The gate asks the Watcher model for a score from 0 to 10, so the Watcher must answer in well under a second, and must not make the Partner's model slower. This page says how Pair keeps it that way.
 
 ## The order of the gate
 
@@ -19,7 +19,7 @@ Each trigger is looked at once: a dropped trigger does not come back. Drift is t
 
 ## The held thought
 
-Once the Partner has written a remark, it shows at your next pause if it is about what you are doing right now: a wrong turn, a regression, the same failure again, a failure you did not look at. Everything else (drift, a stall, an error in code you wrote and moved on from) can wait, and is held until your next **breakpoint**:
+Once the Partner has written a remark, it shows at your next pause if it is about what you are doing right now: a wrong turn, a regression, the same failure again, a failure you did not look at. Everything else (drift, a stall, an error in code you wrote and moved on from, a likely bug in code you just finished) can wait, and is held until your next **breakpoint**:
 
 - a save;
 - a command or test run that ended (a commit is one too);
@@ -28,7 +28,7 @@ Once the Partner has written a remark, it shows at your next pause if it is abou
 
 Meanwhile Neovim shows a `•` in the sign column at the line it is about (where it points, else where its trigger is) and the statusline says `● pair · held thought · M-j`; nothing goes to the chat. `Alt-j` (or `:Pair jump`) shows it at once. A breakpoint that came while the Partner was still writing counts, so a remark that is ready while you already rest shows at once, without a dot.
 
-A held thought is dropped, without a word, when what it saw is gone by then: the error is no longer in your code (on any line: lines added above it only move it), or you left the file that drifted. It is not stored as a remark, so it counts neither as useful nor as noise. It costs the talk budget only when it shows, so a thought you have not seen never holds back another remark. While a thought is held, other triggers that can wait are not judged; urgent ones still are, and show at your next pause as usual, while the held one keeps waiting for its breakpoint.
+A held thought is dropped, without a word, when what it saw is gone by then: the error is no longer in your code (on any line: lines added above it only move it), or you left the file that drifted, or you edited the code it read again. It is not stored as a remark, so it counts neither as useful nor as noise. It costs the talk budget only when it shows, so a thought you have not seen never holds back another remark. While a thought is held, other triggers that can wait are not judged; urgent ones still are, and show at your next pause as usual, while the held one keeps waiting for its breakpoint.
 
 ## The prefilter
 
@@ -76,6 +76,30 @@ once you take it, as Pair's (`gen:#n`). Code you took stays [not yours](gen.md#o
 until you edit a part of it or `:Pair own` it, and meanwhile `new_code_diagnostic` and `new_warning` skip its lines,
 whoever edited near them; a `regression` names the request whose code is not yours yet in a file it names. See
 [gen.md](gen.md).
+
+## Fresh code
+
+Every other moment is a symptom: something failed, came back, or went quiet. `fresh_code` is the one about your work
+itself, what a pair beside you would read as you write it. It is raised when you finish a hunk: your own edits of a
+source file that touch or nearly touch each other, in the last two minutes, with at least three lines that are not
+blank, once you save the file or move the cursor more than two lines away from it (another file counts). Edits of a
+Markdown note have the [note's own moments](#in-a-note); a one-line fix is no hunk. Code Pair wrote, and code you took
+from a `/gen` request that is [not yours yet](gen.md#owning-generated-code), is left out, and so is a hunk with an
+error diagnostic in it: `new_code_diagnostic` speaks for that. It is raised once per hunk and edit: change the hunk
+again and it is read again, as it is now.
+
+The Watcher gets the lines themselves, at most 40, and one question: how likely they hold a real bug you would want to
+hear of now, 0 for code that does what it plainly means or whose only faults are style, naming or a check you may add
+later, 10 for a plain bug (a wrong variable, operator or index, a value never used or never set, a missing return, a
+loop off by one). Only a score at the bar goes on. The Partner reads the lines and the code they call, traces them
+with a real input, and only for a bug points at the line with the few characters that are wrong and says why in one
+sentence; anything else is SILENT.
+
+It never speaks while you type: like every remark it waits for your pause, and it is a
+[held thought](#the-held-thought), so the line shows at your next break, with a `•` where it points meanwhile. It
+spends the same talk budget, and a held one is dropped if you edit those lines again before the break. On a slow
+server it is the first kind Pair stops asking about ([below](#when-the-server-is-slow)): it costs one Watcher call per
+hunk you finish.
 
 ## The wrong turn
 
@@ -211,7 +235,7 @@ A server that does not say what it has loaded shows it in the time it takes. The
 
 Every candidate remark waits for one Watcher call, and Pair cannot make that call faster. What it can do is ask fewer of them. The prefilter drops what it is sure is noise (a `grep` that found nothing, a run you stopped yourself) without asking, and a moment seen in the last half hour gets its last score again (above). On a slow server, what is left is still one call per new moment, and moments come several at a time: a failure that comes up after a drift and two numbers waits for all three scores before its own.
 
-So the daemon times each Watcher call, keep-warm pings included, and goes by the median of the last twelve. At 1.5 s or more (where `pair doctor` warns), Pair stops asking about half the kinds you can see for yourself: a note's drift and stalled question, drift, and a search trail. At 3 s or more it stops asking about all of them, the numbers that moved or did not, a new warning and a stall too. A remark on those would tell you what is already on your screen. It never stops asking about news you cannot see: a failure you missed, the same error again, an error in code you moved on from, an edit while a test is red, a regression, a crash. With `autoTune` on (the default), once you have judged five remarks of a kind, the share you kept ranks it instead of the list, so a kind you keep dismissing is the first to go and one you keep using the last. Every kind is asked about again when the median is 1 s or less; between 1 and 1.5 s the pace stays as it is, so a server at the border does not change its mind on every call. It takes five calls to say anything, and the median is the lower middle, so two reload-long calls among the first five (a cold load at start, a reload after the first Partner turn) change nothing; it takes more than half of the calls being slow.
+So the daemon times each Watcher call, keep-warm pings included, and goes by the median of the last twelve. At 1.5 s or more (where `pair doctor` warns), Pair stops asking about half the kinds you can see for yourself: code you just wrote, a note's drift and stalled question, drift, and a search trail. At 3 s or more it stops asking about all of them, the numbers that moved or did not, a new warning and a stall too. A remark on those would tell you what is already on your screen. It never stops asking about news you cannot see: a failure you missed, the same error again, an error in code you moved on from, an edit while a test is red, a regression, a crash. With `autoTune` on (the default), once you have judged five remarks of a kind, the share you kept ranks it instead of the list, so a kind you keep dismissing is the first to go and one you keep using the last. Every kind is asked about again when the median is 1 s or less; between 1 and 1.5 s the pace stays as it is, so a server at the border does not change its mind on every call. It takes five calls to say anything, and the median is the lower middle, so two reload-long calls among the first five (a cold load at start, a reload after the first Partner turn) change nothing; it takes more than half of the calls being slow.
 
 The daemon's log says when the pace changes, `pair doctor` has a `pace` line with the median and the kinds not asked, and `:Pair today` books those moments as "not asked, the server is slow". `"watcherPace": false` asks about every kind however slow the server is.
 

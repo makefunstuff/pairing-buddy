@@ -76,6 +76,47 @@ const DRIFT_BY_MEANING = [
     gist: 'Counts sheep for the bedtime story screen and plays the animation. It defines countSheep, SheepAnimation.'},
 ];
 
+// Fresh code: a hunk the user just wrote and saved, read for a bug. Only the bugs reach the normal bar: correct code,
+// and code that is only untidy, stay under it, so reading along does not make Pair chatty.
+const written = (code, file = 'src/cart.js') => scenario([
+  {kind: 'edit', file, from: 20, to: 19 + code.length, text: code.join('\n'), at: sec(12)},
+  {kind: 'cursor', file, line: 21 + code.length, at: sec(12)},
+  {kind: 'save', file, at: sec(10)},
+]);
+const FRESH_CODE = [
+  {name: 'a share of the discount by price, not price times quantity', bug: true, state: written([
+    'export function lineShares(lines, discount) {',
+    '  const total = lines.reduce((sum, line) => sum + line.price * line.qty, 0);',
+    '  return lines.map(line => discount * line.price / total);',
+    '}',
+  ])},
+  {name: 'a loop that reads one past the end', bug: true, state: written([
+    'export function cheapest(lines) {',
+    '  let best = lines[0];',
+    '  for (let i = 1; i <= lines.length; i++) if (lines[i].price < best.price) best = lines[i];',
+    '  return best;',
+    '}',
+  ])},
+  {name: 'a correct subtotal', bug: false, state: written([
+    'export function subtotal(lines) {',
+    '  return lines.reduce((sum, line) => sum + line.price * line.qty, 0);',
+    '}',
+  ])},
+  {name: 'correct money formatting', bug: false, state: written([
+    'export function formatMoney(cents) {',
+    "  const sign = cents < 0 ? '-' : '';",
+    '  const abs = Math.abs(cents);',
+    "  return `${sign}$${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, '0')}`;",
+    '}',
+  ])},
+  {name: 'untidy but correct', bug: false, state: written([
+    'export function calc(a,b){',
+    '  var x=a*b',
+    '  return x',
+    '}',
+  ])},
+];
+
 function triggerOf(state) {
   const [trigger] = detectTriggers(state, NOW);
   assert.ok(trigger, 'the scenario raises a trigger');
@@ -113,6 +154,16 @@ describe('Watcher on live models', {skip: stacks.length ? false : SKIP_REASON}, 
         const result = await score({...triggerOf({...state, goal}), gist}, {...state, goal});
         t.diagnostic(`drift scored ${result.value}`);
         assert.equal(result.value >= BUDGETS.normal.bar, drifted, `score ${result.value}`);
+      });
+    }
+
+    for (const {name, bug, state} of FRESH_CODE) {
+      test(`${stack.name}: fresh code, ${bug ? 'a bug' : 'no bug'}: ${name}`, async t => {
+        const trigger = detectTriggers(state, NOW).find(found => found.kind === 'fresh_code');
+        assert.ok(trigger, 'the saved hunk is fresh code');
+        const result = await score(trigger, state);
+        t.diagnostic(`fresh_code scored ${result.value}`);
+        assert.equal(result.value >= BUDGETS.normal.bar, bug, `score ${result.value}`);
       });
     }
 

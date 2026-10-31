@@ -7,7 +7,7 @@ import {readingSummary} from './run-output.mjs';
 import {isSourceFile, testSummary} from './test-output.mjs';
 import {currentTrail, lost, TRAIL, trailLines} from './trail.mjs';
 
-export const TRIGGER_KINDS = ['failed_command', 'repeated_error', 'new_code_diagnostic', 'stall', 'drift', 'edit_while_red', 'regression', 'search_trail', 'crash', 'new_warning', 'same_result', 'number_moved', 'overlap', ...PROSE_KINDS];
+export const TRIGGER_KINDS = ['failed_command', 'repeated_error', 'new_code_diagnostic', 'stall', 'drift', 'edit_while_red', 'regression', 'search_trail', 'crash', 'new_warning', 'same_result', 'number_moved', 'overlap', 'fresh_code', ...PROSE_KINDS];
 
 export const TIMING = {
   lookGraceMs: 4_000, // a failure gets this long to be noticed before Pair counts it as missed
@@ -16,6 +16,12 @@ export const TIMING = {
   newCodeMs: 60_000, // an edit this close before a diagnostic counts as the code that caused it
   driftWindowMs: 10 * 60_000, // drift is looked at only while the last edit is this recent
   redMs: 10 * 60_000, // a failed test run counts as still red for this long, unless a newer run passed
+};
+
+export const FRESH = {
+  minLines: 3, // a hunk needs this many lines that are not blank to be code worth reading: a one-line fix is not
+  maxLines: 40, // of a hunk the Watcher reads (an edit sends at most 40 lines)
+  nearLines: 2, // edits this close to each other are one hunk, and a cursor this close is still in it
 };
 
 /** Not looked at: never seen at the bottom of its pane, or the user scrolled away from it since (scrolled past). */
@@ -247,6 +253,56 @@ function overlapTriggers(state, now) {
   return found;
 }
 
+/**
+ * The user's hunks of the last recentMs: their own edits of a source file that touch or nearly touch, merged, each
+ * with its lines as the edits sent them (the newer edit wins a line) and when it was last edited.
+ */
+function hunks(state, now) {
+  const found = [];
+  for (const edit of userEdits(state).filter(each => now - each.at <= TIMING.recentMs && isSourceFile(each.file))) {
+    const near = found.filter(hunk => hunk.file === edit.file && edit.from <= hunk.to + FRESH.nearLines && edit.to >= hunk.from - FRESH.nearLines);
+    const hunk = {file: edit.file, from: Math.min(edit.from, ...near.map(each => each.from)), to: Math.max(edit.to, ...near.map(each => each.to)), lastAt: edit.at, lines: new Map()};
+    for (const each of near) each.lines.forEach((text, line) => hunk.lines.set(line, text));
+    edit.text.split('\n').forEach((text, i) => edit.from + i <= edit.to && hunk.lines.set(edit.from + i, text));
+    found.splice(0, found.length, ...found.filter(each => !near.includes(each)), hunk);
+  }
+  return found;
+}
+
+/** Whether the user is done with `hunk` for now: they saved its file since, or the cursor left it. */
+function finished(state, hunk) {
+  if ((state.saves?.[hunk.file] ?? 0) >= hunk.lastAt) return true;
+  return state.file !== hunk.file || !state.cursor || state.cursor.line < hunk.from - FRESH.nearLines || state.cursor.line > hunk.to + FRESH.nearLines;
+}
+
+/**
+ * Fresh code: a hunk the user just finished writing (saved, or left), read for a likely bug before a test finds it.
+ * Raised once per hunk and last edit; a hunk Pair or a /gen request wrote is not the user's, and an error diagnostic
+ * in it has its own moment.
+ */
+function freshCodeTriggers(state, now) {
+  const found = [];
+  for (const hunk of hunks(state, now)) {
+    const numbered = [...hunk.lines].sort((a, b) => a[0] - b[0]).slice(0, FRESH.maxLines);
+    if (numbered.filter(([, text]) => text.trim()).length < FRESH.minLines || !finished(state, hunk)) continue;
+    if (numbered.some(([line]) => generatedAt(state, hunk.file, line))) continue;
+    if ((state.diagnostics[hunk.file] ?? []).some(item => item.severity === 'error' && item.line >= hunk.from && item.line <= hunk.to)) continue;
+    const code = numbered.map(([line, text]) => `${line}: ${text}`).join('\n');
+    found.push({
+      kind: 'fresh_code',
+      key: `fresh:${hunk.file}:${hunk.from}:${hunk.lastAt}`,
+      detail: `The user just finished writing ${hunk.file}:${span(hunk)}${(state.saves?.[hunk.file] ?? 0) >= hunk.lastAt ? ' and saved it' : ' and moved on'}:\n${code}`,
+      file: hunk.file,
+      line: hunk.from,
+      from: hunk.from,
+      to: hunk.to,
+      at: hunk.lastAt,
+      code,
+    });
+  }
+  return found;
+}
+
 /** What fails now, in one line: a red test run, else a failed command, both while recent; null when nothing does. */
 export function failingNow(state, now) {
   const {tests} = state;
@@ -289,6 +345,6 @@ export function detectTriggers(state, now, fired = new Set()) {
   // A run in the user's terminal is the terminal's: a hidden terminal sends none. Pair's own runs on save are Pair's.
   const runs = hidden('terminal') && state.run?.by === 'you' ? {crashes: [], warnings: []} : {crashes: crashTriggers(state, now), warnings: warningTriggers(state, now)};
   const loop = hidden('terminal') && state.runs.at(-1)?.by === 'you' ? [] : loopTriggers(state, now);
-  return [...runs.crashes, ...commands, ...diagnosticTriggers(state), ...regressionTriggers(state, now), ...redTriggers(state, now), ...runs.warnings, ...loop, ...overlapTriggers(state, now), ...driftTriggers(state, now), ...trail, ...proseTriggers(state, now)]
+  return [...runs.crashes, ...commands, ...diagnosticTriggers(state), ...regressionTriggers(state, now), ...redTriggers(state, now), ...runs.warnings, ...loop, ...overlapTriggers(state, now), ...driftTriggers(state, now), ...trail, ...freshCodeTriggers(state, now), ...proseTriggers(state, now)]
     .filter(trigger => !fired.has(trigger.key));
 }

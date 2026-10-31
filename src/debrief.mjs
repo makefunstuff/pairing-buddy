@@ -153,7 +153,7 @@ export async function firstPlace(root, first, stopped, known, readLines) {
 const ABOUT = {
   drift: 'drift', edit_while_red: 'edits while red', regression: 'regressions', repeated_error: 'repeated errors',
   failed_command: 'failed commands', stall: 'being stuck', new_code_diagnostic: 'diagnostics', search_trail: 'searches',
-  crash: 'crashes', new_warning: 'warnings', overlap: 'overlaps with board tasks',
+  crash: 'crashes', new_warning: 'warnings', overlap: 'overlaps with board tasks', fresh_code: 'code you just wrote',
 };
 
 /**

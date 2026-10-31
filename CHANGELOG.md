@@ -7,6 +7,14 @@ release is cut.
 
 ## [Unreleased]
 
+### Added
+
+- **Pair reads along: a "fresh code" moment.** When you finish a function or hunk of three lines or more (you save, or
+  move away from it), the Watcher reads just those lines for a likely bug, and if it clears the bar Pair says one line
+  at your next break, before a test finds it. Bugs only, not style; never while you type; the same speak gate, talk
+  budget and held thought as every other remark. It is `fresh_code` in `pair stats`, `/mute fresh_code` turns it off,
+  and on a slow server it is the first kind Pair stops asking about.
+
 ### Changed
 
 - **A remark you act on counts as useful.** Editing the lines a remark pointed at, within ten minutes, counts it as

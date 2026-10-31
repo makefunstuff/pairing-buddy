@@ -88,6 +88,10 @@ const CHECKS = {
     + 'either change. Say in one or two short sentences which task also changes these lines and, from the lines it writes there, '
     + 'what its change does, and that whichever is merged second meets a conflict: the user may want to wait for it, or tell it. '
     + 'Point at the user\'s lines.',
+  fresh_code: 'The user just finished writing these lines; nothing has failed. Read them and the code they call, and trace '
+    + 'them with a real input. Only if they hold a bug (a wrong result, a crash, a wrong variable, operator or index, a value '
+    + 'never used or never set), point at the line, with the few characters that are wrong as code, and say why in one '
+    + 'sentence. Style, naming, a missing test or a check they may add later is no bug: answer exactly SILENT.',
   ...PROSE_CHECKS,
 };
 

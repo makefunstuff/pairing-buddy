@@ -19,7 +19,7 @@ test('a fast server keeps every kind; a slow one gives half the kinds up, a very
   assert.equal(pace.skips('note_drift'), null);
   hearAll(pace, SLOW_MS, SLOW_MS + 200, SLOW_MS + 400, SLOW_MS + 600, SLOW_MS + 800, SLOW_MS + 1000);
   assert.equal(pace.level, 'slow');
-  assert.deepEqual(pace.given(), GIVE_UP.slice(0, GIVE_UP.length / 2));
+  assert.deepEqual(pace.given(), GIVE_UP.slice(0, Math.ceil(GIVE_UP.length / 2)));
   assert.match(pace.skips('drift').reason, /^the Watcher takes 1\.5 s a call: Pair is not asking about drift/);
   assert.equal(pace.skips('stall'), null, 'the second half is still asked about');
   hearAll(pace, ...Array(12).fill(VERY_SLOW_MS));
@@ -27,7 +27,7 @@ test('a fast server keeps every kind; a slow one gives half the kinds up, a very
   assert.deepEqual(pace.given(), GIVE_UP);
   for (const kind of KEPT) assert.equal(pace.skips(kind), null, `${kind} is news you cannot see`);
   assert.deepEqual(logged.length, 2, logged.join('\n'));
-  assert.match(logged[1], /takes 3\.0 s a call: Pair is not asking about note_drift, .*stall while the server is this slow/);
+  assert.match(logged[1], /takes 3\.0 s a call: Pair is not asking about fresh_code, note_drift, .*stall while the server is this slow/);
 });
 
 test('every kind is ranked: the kinds given up and the kinds kept are all the trigger kinds', () => {
@@ -99,13 +99,13 @@ test('the log, pair doctor and the gate name the same kinds once verdicts change
   const pace = new Pace({log: line => logged.push(line)});
   hearAll(pace, ...Array(5).fill(2000));
   pace.rank({note_drift: {share: 1, judged: 6}, stall: {share: 0, judged: 6}});
-  const given = ['stall', 'note_stall', 'drift', 'search_trail'];
+  const given = ['fresh_code', 'stall', 'note_stall', 'drift', 'search_trail'];
   assert.deepEqual(pace.given(), given);
   assert.deepEqual(pace.snapshot().givenUp, given);
-  assert.match(paceCheck(pace.snapshot()).text, /not asking about stall, note_stall, drift, search_trail until/);
+  assert.match(paceCheck(pace.snapshot()).text, /not asking about fresh_code, stall, note_stall, drift, search_trail until/);
   assert.equal(pace.skips('note_drift'), null);
   assert.ok(pace.skips('stall'));
-  assert.equal(logged.at(-1), 'the user\'s verdicts change what Pair gives up: it is not asking about stall, note_stall, drift, search_trail while the server is this slow');
+  assert.equal(logged.at(-1), 'the user\'s verdicts change what Pair gives up: it is not asking about fresh_code, stall, note_stall, drift, search_trail while the server is this slow');
   const lines = logged.length;
   pace.rank({note_drift: {share: 1, judged: 6}, stall: {share: 0, judged: 7}});
   assert.equal(logged.length, lines, 'the same kinds: nothing to log');
@@ -118,7 +118,7 @@ test('the user\'s own verdicts rank what goes first: a kind they dismiss before 
     drift: {share: 0, judged: 2}, // too few verdicts to say
   };
   const given = giveUp('slow', keptOf);
-  assert.equal(given[0], 'stall');
+  assert.deepEqual(given.slice(0, 2), ['fresh_code', 'stall'], 'dismissed every time ranks with the first of the order');
   assert.ok(!given.includes('note_drift'));
   assert.ok(given.includes('drift'), 'two verdicts do not move a kind');
   assert.deepEqual(giveUp('very-slow', keptOf).sort(), [...GIVE_UP].sort(), 'very slow gives every one up, whatever the verdicts');

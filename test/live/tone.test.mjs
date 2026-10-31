@@ -101,6 +101,24 @@ describe('Pair\'s tone on live models', {skip: !stacks.length ? SKIP_REASON : !h
       await close();
     });
 
+    test(`${stack.name}: fresh code with a bug gets one line naming file:line, before anything ran`, {timeout: 300_000}, async t => {
+      const {root} = probe();
+      const {session, editor, close} = await pairIn(root);
+      const now = Date.now();
+      const lines = readFileSync(join(root, 'table.c'), 'utf8').split('\n');
+      session.receive({kind: 'edit', file: 'table.c', from: 34, to: 37, text: lines.slice(33, 37).join('\n'), at: now - 12_000});
+      session.receive({kind: 'cursor', file: 'table.c', line: 45, at: now - 12_000});
+      session.receive({kind: 'save', file: 'table.c', at: now - 10_000});
+      const trigger = detectTriggers(session.state, now).find(found => found.kind === 'fresh_code');
+      assert.ok(trigger, 'the saved hunk is fresh code');
+      await session.remark(trigger, 9);
+      await close();
+      const remark = editor.find(message => message.type === 'remark');
+      assert.ok(remark?.text, 'a remark under the line');
+      holds(t, remark.text, WORDS.remark, 'the remark');
+      assert.match(remark.text, PLACE, 'it names the place as file:line');
+    });
+
     test(`${stack.name}: a question gets a short answer with the place, without headings or lists`, {timeout: 300_000}, async t => {
       const run = probe();
       const {session, chat, close} = await pairIn(run.root);

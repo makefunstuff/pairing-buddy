@@ -33,6 +33,7 @@ export function initialState({root = null, goal = null} = {}) {
     runs: [], // every build and run of the session that is no test run, numbered, with the change before it and its numbers (see run-log.mjs)
     builds: {cmds: [], warnings: []}, // the commands run so far, and the warnings their output printed (warningKey)
     edited: [], // the files the user edited in this session
+    saves: {}, // when the user last saved each file: a save ends the code they were writing there (see triggers.mjs's fresh code)
     // The context card's sources (see context-card.mjs): git and the board as last read, where the user has been in the
     // editor (with the searches above), the sources they hid, and how many of the board's agent launches were left out of the commands.
     git: null,
@@ -206,6 +207,8 @@ const handlers = {
   },
 
   enter: (state, event) => ({...state, file: event.file}),
+
+  save: (state, event) => (event.file ? {...state, saves: {...state.saves, [event.file]: event.at}} : state),
 
   // Where Neovim marks code taken from a /gen request (or kept from a board task) that is not the user's yet, in one file, as it is now.
   generated: (state, event) => {
