@@ -128,10 +128,13 @@ The session keeps the last test run (who ran it, when, what failed) and shows it
 ## Tests on save
 
 With a command for the project in `testOnSave` (see [tests-on-save.md](tests-on-save.md)), Pair runs it in this
-pane each time you save a source file there (not notes or docs, and not files outside the project). It is typed as
+pane each time you save a source file there (not notes or docs, and not files outside the project). What runs is
 `cd <project> && (<command>) > <data dir>/runs/<session>.out 2>&1` (from the root, whatever a Scout command's `cd`
-did to the pane's shell; in parentheses, so all of `cc -o probe probe.c && ./probe` goes to the file): the pane shows the command line and its exit code in the prompt, and
-the daemon reads the output back from the file, whole, however long it is. Then:
+did to the pane's shell; in parentheses, so all of `cc -o probe probe.c && ./probe` goes to the file), but the pane
+shows only `pair-run <command>`: the line is in a file of the pane's own, and `pair-run`, a function of its rc file,
+runs it in a subshell. The same goes for a run on the unsaved buffers, in a scratch copy of the project. The prompt
+shows the exit code, the daemon reads the output back from the file, whole, however long it is, and the ledger keeps
+the command and its output. Then:
 
 - Most runners also name each test (`src/test-output.mjs`, `src/test-reports.mjs`), and `src/test-places.mjs` finds
   it: a Go test's function as `func Name(` in the `_test.go` files of its package (the package's directory from

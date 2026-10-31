@@ -103,7 +103,7 @@ export class TestRuns {
       const label = runLabel(command);
       this.report({state: 'run', label, saved});
       const started = Date.now();
-      const ran = await pane.run(runLine(command, this.root, this.outputFile), {timeoutMs: this.timeoutMs, signal: controller.signal});
+      const ran = await pane.run(runLine(command, this.root, this.outputFile), {timeoutMs: this.timeoutMs, signal: controller.signal, shown: label});
       cancelled = ran.cancelled;
       if (cancelled) return;
       const {exit, timedOut} = ran;
@@ -140,7 +140,7 @@ export class TestRuns {
         if (lost) throw new Error(`${lost.slice(this.root.length + 1)} is in a dependency folder`);
         const outputFile = join(dir, 'run.out');
         const started = Date.now();
-        const {exit, timedOut} = await pane.run(runLine(run.command, run.root, outputFile), {timeoutMs: this.timeoutMs});
+        const {exit, timedOut} = await pane.run(runLine(run.command, run.root, outputFile), {timeoutMs: this.timeoutMs, shown: this.label});
         const picture = run.root === this.root ? null : await pictureSince(run.root, started);
         const result = await readResult({command: run.command, root: run.root, outputFile, started, exit, texts: run.texts});
         const placed = result.placed.map(test => ({

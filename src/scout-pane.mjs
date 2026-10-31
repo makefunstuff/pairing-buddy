@@ -6,13 +6,16 @@
 import {createHash} from 'node:crypto';
 import {join} from 'node:path';
 import {PaneRuns} from './pane-runs.mjs';
-import {rcNames, scoutPaneConfig, shellLine} from './scout-shell.mjs';
+import {rcNames, scoutPaneConfig, shellLine, shellQuote} from './scout-shell.mjs';
 
 export {shellQuote} from './scout-shell.mjs';
 
 const READY_MS = 5000;
 const RC_READY_MS = 15_000; // an rc file may take its time (version managers, completions)
 export const RUN_TIMEOUT_MS = 120_000;
+
+/** `text` as one word for the shell: as it is when it is plain, else quoted. Only shown: pair-run ignores it. */
+const word = text => (/^[\w@%+=:,./ -]+$/.test(text) ? text : shellQuote(text));
 
 export class ScoutPane {
   /**
@@ -37,7 +40,7 @@ export class ScoutPane {
   async open() {
     if (this.paneId !== null && (await this.host.has(this.paneId))) return;
     this.paneId = await this.host.find();
-    if (this.paneId !== null && (await this.runs.next()) !== null) return;
+    if (this.paneId !== null && (await this.runs.next()) !== null && (await this.runs.current())) return;
     if (this.paneId !== null) await this.close();
     // Its folder first, which the sandbox binds only if it is there; then the line, before the pane, since it throws
     // when the config asks for a sandbox that cannot be made.
@@ -78,15 +81,16 @@ export class ScoutPane {
   /**
    * Types `command` in the pane and resolves with `{exit, output, timedOut, cancelled}` once it ends. A command
    * still running after `timeoutMs`, or when `signal` aborts, is stopped with Ctrl-C; one aborted before its turn
-   * is never typed. Commands run one at a time.
+   * is never typed. Commands run one at a time. With `shown` (the user's command in it), the pane shows
+   * `pair-run <shown>` instead of the plumbing around it: the cd into a scratch copy, the file its output goes to.
    */
-  run(command, {timeoutMs = RUN_TIMEOUT_MS, signal} = {}) {
-    const result = this.queue.then(() => (signal?.aborted ? {exit: null, output: '', timedOut: false, cancelled: true} : this.runNow(command, timeoutMs, signal)));
+  run(command, {timeoutMs = RUN_TIMEOUT_MS, signal, shown = null} = {}) {
+    const result = this.queue.then(() => (signal?.aborted ? {exit: null, output: '', timedOut: false, cancelled: true} : this.runNow(command, timeoutMs, signal, shown)));
     this.queue = result.catch(() => {});
     return result;
   }
 
-  async runNow(command, timeoutMs, signal) {
+  async runNow(command, timeoutMs, signal, shown) {
     await this.open();
     const {runs} = this;
     const number = await runs.next();
@@ -94,8 +98,10 @@ export class ScoutPane {
     await runs.clearLog();
     // Aborted while the pane got ready: never typed.
     if (signal?.aborted) return {exit: null, output: '', timedOut: false, cancelled: true};
+    if (shown) await runs.setLine(command);
+    const line = shown ? `pair-run ${word(shown)}` : command;
     // Ctrl-U first clears anything typed at the prompt by hand.
-    const typed = this.host.send(this.paneId, `\x15${command}\r`);
+    const typed = this.host.send(this.paneId, `\x15${line}\r`);
     let timedOut = false;
     let cancelled = false;
     // Ctrl-C once the command is typed, so it stops the command and not the prompt before it.

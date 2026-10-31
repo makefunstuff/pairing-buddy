@@ -361,10 +361,11 @@ scripted.*
 | It | When | On the right |
 | --- | --- | --- |
 | `read` | it read a file; reads in a row are one line (`queue_test.go 24-37, queue.go 1-29`) | `⏎ go` |
-| `said` | its words, unasked or answering you | your verdict on a remark (`+ useful`, `- noise`), or `⏎ all` |
+| `said` | its words, unasked or answering you; also closing words it did not show, with why (`not shown: it said the notes again`, or a suggestion said to be made before you took it) | your verdict on a remark (`+ useful`, `- noise`), or `⏎ all` |
 | `recalled` | what it looked up in the project's [earlier sessions](memory.md#earlier-sessions) | |
 | `pointed`, `showed` | it pointed at a line, or opened one in a split | `⏎ go` |
 | `suggested` | it suggested a change | `⏎ go`; once you accept it, `accepted · u undo` |
+| `wheel` | you handed it the wheel, with your words (`set the timeout to 30 s · one change`, or `· until you take it back`), and it gave it back (`back to you`); the chat has no role lines for one change | |
 | `typed` | the Driver's edit (`6 lines in backoff_test.go · one undo step`), or one line it typed into your terminal | `u undo`, for the edit |
 | `ran`, `searched` | a command in its pane, or the tests it ran on save or on the unsaved buffer, or a `/gen try`'s or a scaffold's run (`go run . (gen #8's try)`, `go test ./... (gen #7's copy)`), with `✓` or `✗`; the same run in a row is one line (`· 3 times`) | `⏎ output` |
 | `generated` | a [/gen request](gen.md), one line for all of it (`gen #3 · here · a list handler`), with what became of its code (`3 lines proposed`, `1 of 1 piece taken`, `1 dropped`, `2 files to review`, `1 of 2 files taken`, `2 files in its folder · ✓ \`go run .\``, `kept as internal/cache/lru.go`, `9 files · 3 of yours changed · ✓ go test ./...`, `2 of 9 files kept · copy deleted`), and `≠1` when its code goes against the [brief](gen.md#the-brief) | `u undo` the whole request, once it has code |

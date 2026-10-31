@@ -3,7 +3,7 @@ import {mkdirSync, readFileSync, realpathSync, writeFileSync} from 'node:fs';
 import {readFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {test} from 'node:test';
-import {PairSession, runReport} from '../src/session.mjs';
+import {checkLine, claimsChange, PairSession, restates, runReport, spokenCommand} from '../src/session.mjs';
 import {detectTriggers} from '../src/triggers.mjs';
 import {scratch} from './temp.mjs';
 
@@ -371,6 +371,21 @@ test('an answer that ends after an edit with more still gets its change checked,
   await pair.drive('your turn');
   assert.equal(ran.length, 1, 'checked once the answer ended');
   assert.equal(sent.find(message => message.type === 'handback').tests, 'pass');
+  assert.ok(sent.some(message => message.sender === 'pair' && message.text === 'Ran your `go test ./...` on it: 4 pass.'));
+  // With an expectation only the model could judge: the answer is over, so Pair's own line says how it went.
+  sent.length = 0;
+  await pair.drive('your turn: a case, expect: the cart total stays right');
+  assert.ok(sent.some(message => message.sender === 'pair' && message.text === 'Ran your `go test ./...` on it: 4 pass.'));
+});
+
+test('/navigate ending a /drive! books the way back in the ledger', async () => {
+  const {pair} = driverSession({turn: async () => 'ok'});
+  const actions = [];
+  pair.store.addAction = action => actions.push(action);
+  await pair.drive('the edge cases', null, {keep: true});
+  await pair.setRole('navigator');
+  assert.deepEqual(actions.filter(action => action.kind === 'wheel').map(action => [action.text, action.data.note]),
+    [['the edge cases', 'until you take it back'], ['back to you', undefined]]);
 });
 
 test('handed over from Scout, Pair goes back to Scout, with its pane still open', async () => {
@@ -385,7 +400,8 @@ test('handed over from Scout, Pair goes back to Scout, with its pane still open'
   assert.equal(pair.role, 'scout');
   assert.deepEqual(roles, ['navigator', 'scout'], 'stored as Scout again');
   assert.equal(closed, 0, 'Scout\'s pane stays');
-  assert.ok(sent.some(message => message.text === 'Role: Scout. Pair can also search and run read-only, test and build commands in its own pane; anything else asks you first.'));
+  // One change needs no role lines in the chat, before or after it; the ledger has both ends of it.
+  assert.ok(!sent.some(message => message.to === 'chat' && /^Role: /.test(message.text ?? '')), 'no role lines for one change');
   // A key takes the wheel back to Scout too.
   pair.partner.ask = async () => { await pair.takeBack(); return 'ok'; };
   await pair.drive('you take it');
@@ -505,6 +521,78 @@ test('a suggestion goes to the editor as an inline diff, in any role', async () 
   const count = (await readFile('package.json', 'utf8')).split('\n').length;
   assert.match(await pair.suggest({file: 'package.json', line: count + 1, endLine: count + 1, text: 'x', note: 'x'}), /past the end of package\.json/);
   assert.equal(sent.filter(message => message.type === 'suggest').length, 1, 'a line past the end is not shown');
+});
+
+test('one remark, once: closing words that only say the notes again are not shown, and the ledger keeps them', async () => {
+  const {pair, sent} = driverSession();
+  const closing = '`lineShares` uses line.price instead of price × qty, and divides by zero when the total is 0.';
+  pair.partner.ask = async (_id, _input, {onEvent}) => {
+    await pair.point({file: 'package.json', line: 2, endLine: 2, note: 'uses line.price, not price × qty'});
+    await pair.point({file: 'package.json', line: 3, endLine: 3, note: 'divides by zero when total is 0'});
+    onEvent({type: 'text', text: closing}); // as the model streams it
+    return closing;
+  };
+  const actions = [];
+  pair.store.addAction = action => actions.push(action);
+  await pair.ask('does lineShares look right?');
+  const chat = sent.filter(message => message.to === 'chat' && message.type === 'message' && message.sender === 'pair').map(message => message.text);
+  assert.deepEqual(chat, ['package.json:2 uses line.price, not price × qty', 'package.json:3 divides by zero when total is 0']);
+  const said = actions.find(action => action.kind === 'said');
+  assert.equal(said.data.note, 'not shown: it said the notes again');
+  assert.match(said.text, /^`lineShares` uses line\.price/);
+  assert.ok(!sent.some(message => message.text === 'Pair had nothing to add to that.'), 'the notes answered');
+
+  // Nothing streams once the turn pointed: words that are not shown never flash up in the chat either.
+  assert.ok(!sent.some(message => message.type === 'partial' && message.text), 'no partial text after the notes');
+
+  // Words that add something still show.
+  pair.partner.ask = async () => {
+    await pair.point({file: 'package.json', line: 2, endLine: 2, note: 'uses line.price'});
+    return 'The per-line share should weigh quantity: a 3-pack counts once today.';
+  };
+  await pair.ask('and?');
+  assert.ok(sent.some(message => message.sender === 'pair' && message.text === 'The per-line share should weigh quantity: a 3-pack counts once today.'));
+});
+
+test('a suggestion is not a change: words that say it was made are not shown; an edit while driving is one', async () => {
+  const {pair, sent} = driverSession({turn: async pair => {
+    await pair.suggest({file: 'package.json', line: 2, endLine: 2, text: 'a', note: 'the bogo branch'});
+    return 'Added the bogo branch to `total`.';
+  }});
+  const actions = [];
+  pair.store.addAction = action => actions.push(action);
+  await pair.ask('write it');
+  assert.ok(!sent.some(message => message.text === 'Added the bogo branch to `total`.'), 'nothing was added yet');
+  const said = actions.find(action => action.kind === 'said');
+  assert.equal(said.data.note, 'not shown: it said a suggestion was made before you took it');
+});
+
+test('Pair says a command as you know it, and its check of an edit in one line', () => {
+  assert.equal(spokenCommand("npm test 2>&1 | grep -E '✖|ℹ (pass|fail)'"), 'npm test');
+  assert.equal(spokenCommand("cd 'sub' && make && ./probe"), 'make && ./probe');
+  assert.equal(spokenCommand('make || true'), 'make || true');
+  assert.equal(spokenCommand('go test ./... > out.txt'), 'go test ./...');
+  assert.equal(spokenCommand("go test -run 'TestA|TestB' ./... 2>&1 | tee out"), "go test -run 'TestA|TestB' ./...");
+  assert.equal(spokenCommand('npm test -- --grep "a > b"'), 'npm test -- --grep "a > b"');
+  assert.equal(spokenCommand('node -e "x => 1"'), 'node -e "x => 1"');
+  assert.equal(checkLine({label: 'npm test', exit: 0, tests: {failedCount: 0, passed: 0, failed: []}}), 'Ran your `npm test` on it: nothing failed.');
+  assert.equal(checkLine({label: 'npm test 2>&1 | grep x', exit: 0, tests: {failedCount: 0, passed: 9, failed: []}}), 'Ran your `npm test` on it: 9 pass.');
+  assert.equal(checkLine({label: 'npm test', exit: 1, tests: {failedCount: 1, passed: 8, failed: ['bogo']}}), 'Ran your `npm test` on it: 1 fails (bogo).');
+  assert.equal(checkLine({label: 'make run', exit: 0}, {text: 'avg probe 1.3'}), 'Ran your `make run` on it: avg probe 1.3.');
+  assert.equal(checkLine({label: 'make run', exit: 2}), 'Ran your `make run` on it: exit 2.');
+  // Red with no test failing: how it failed, never that it passed.
+  assert.equal(checkLine({label: 'npx vitest run --coverage', exit: 1, tests: {failedCount: 0, passed: 9, failed: []}}), 'Ran your `npx vitest run --coverage` on it: exit 1.');
+  assert.equal(checkLine({label: 'npm test', exit: null, timedOut: true, timeoutMs: 120_000, tests: {failedCount: 0, passed: 9, failed: []}}), 'Ran your `npm test` on it: stopped after 2 min.');
+});
+
+test('restates and claimsChange: the notes again, and a change said to be made', () => {
+  assert.equal(restates('Off by one at the loop end.', ['off by one at the loop end']), true);
+  assert.equal(restates('The loop should stop at len, since the last index is len - 1.', ['off by one']), false);
+  assert.equal(restates('Anything.', []), false);
+  assert.equal(claimsChange('Added the bogo branch.'), true);
+  assert.equal(claimsChange("I've changed the guard."), true);
+  assert.equal(claimsChange('✓ Fixed the off-by-one.'), true);
+  assert.equal(claimsChange('This adds the bogo branch.'), false);
 });
 
 test('several suggestions in one answer all go to the editor; the jump key aims at the first', async () => {
@@ -873,11 +961,14 @@ test('after the Driver\'s edit, the tests run on the unsaved buffer: the Partner
   await pair.drive('your turn');
   const overlay = `${join(root, 'run.out')}.unsaved/overlay.json`;
   assert.deepEqual(ran, [`cd '${root}' && (go test -overlay '${overlay}' -json ./...) > '${root}/run.out.unsaved/run.out' 2>&1`]);
-  assert.match(reply, /^Changed, as one undo step\. Now say in one sentence what you changed, and whether the tests pass\. `go test \.\/\.\.\.` on the unsaved buffer: 4 passed\.$/);
+  assert.match(reply, /^Changed, as one undo step\. Now say in one sentence what you changed\. The user already sees "Ran your `go test \.\/\.\.\.` on it: 4 pass\.", so do not repeat it\. `go test \.\/\.\.\.` on the unsaved buffer: 4 passed\.$/);
   const [start, end] = tests();
   assert.deepEqual(start, {to: 'editors', type: 'tests', state: 'run', label: 'go test ./... (unsaved)'});
   assert.deepEqual([end.state, end.label, end.text], ['pass', 'go test ./... (unsaved)', '4 tests, 2 packages']);
-  assert.ok(sent.some(message => message.to === 'chat' && message.text === '`go test ./... (unsaved)` after Pair\'s edit: 4 passed'));
+  // The check, once, in Pair's own words: no command echo from the system.
+  const said = sent.filter(message => message.to === 'chat' && message.type === 'message').map(message => [message.sender, message.text]);
+  assert.deepEqual(said.filter(([sender]) => sender === 'pair').map(([, text]) => text).filter(text => text.startsWith('Ran')), ['Ran your `go test ./...` on it: 4 pass.']);
+  assert.ok(!said.some(([sender]) => sender === 'system'), 'no system lines for one change');
   const handback = sent.find(message => message.type === 'handback');
   assert.deepEqual([handback.line, handback.endLine, handback.tests, handback.text], [7, 7, 'pass', 'Added a case; the tests pass.']);
   assert.equal(pair.state.tests, null, 'a run on the buffer is no baseline for the next run on save');
@@ -902,7 +993,7 @@ test('a change in several edits is checked once, after the last, on every buffer
   await pair.drive('your turn');
   assert.equal(ran.length, 1, 'one run, after the last edit');
   assert.match(replies[0], /^Changed, as one undo step\. Make your next edit/);
-  assert.match(replies[1], /whether the tests pass\. `go test \.\/\.\.\.` on the unsaved buffer: 4 passed\.$/);
+  assert.match(replies[1], /so do not repeat it\. `go test \.\/\.\.\.` on the unsaved buffer: 4 passed\.$/);
   assert.deepEqual([...checked], [
     [join(root, 'cart/cart_test.go'), `buffer of ${join(root, 'cart/cart_test.go')}\n`],
     [join(root, 'tax/tax_test.go'), `buffer of ${join(root, 'tax/tax_test.go')}\n`],

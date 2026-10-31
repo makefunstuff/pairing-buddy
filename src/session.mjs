@@ -151,6 +151,28 @@ export function toolWhat(name, args = {}) {
   }
 }
 
+const STOPWORDS = new Set(['the', 'and', 'for', 'not', 'but', 'with', 'this', 'that', 'its', 'it\'s', 'are', 'was', 'when', 'than', 'then', 'there', 'here', 'into', 'from', 'one', 'has', 'have', 'line', 'lines']);
+const contentWords = text => text.toLowerCase().replace(/[`'"()[\]{},;:!?]/g, ' ').split(/\s+/)
+  .map(word => word.replace(/\.+$/, '')).filter(word => word.length > 2 && !STOPWORDS.has(word) && !/^\d+$/.test(word));
+const RESTATED = 0.75; // of a closing sentence's words, this share in the notes makes it the notes again
+
+/**
+ * Whether `words`, said at the end of a turn, only say again what its `notes` (of points and suggestions) already
+ * show: most of their words are in them.
+ */
+export function restates(words, notes) {
+  if (!notes.length) return false;
+  const known = new Set(contentWords(notes.join(' ')));
+  const said = contentWords(words);
+  return said.length > 0 && said.filter(word => known.has(word)).length / said.length >= RESTATED;
+}
+
+// Words that say a change is made. A suggestion is not made until the user takes it.
+const CLAIM = /^(?:i\s+|i've\s+)?(?:added|changed|fixed|removed|replaced|updated|moved|renamed|deleted|wrote|inserted|swapped|applied|made)\b/i;
+
+/** Whether `words` say a change is done: after a suggestion the user has not taken, that is not true. */
+export const claimsChange = words => CLAIM.test(words.trim().replace(/^[✓✗]\s*/, ''));
+
 /** Whether streamed text `text` may show yet: not while it could still be the start of SILENT, and never SILENT. */
 export function streamable(text) {
   const start = text.trimStart();
@@ -221,6 +243,54 @@ export function runText({exit, timedOut, timeoutMs = RUN_TIMEOUT_MS, tests, read
 /** What a finished run found, for the chat and the models: its tests, else its crash or compiler errors, else `text`. */
 const summaryOf = (run, text) => (run.tests ? testSummary(run.tests) : (run.reading && readingSummary(run.reading)) || text);
 
+/**
+ * A command as Pair says it: the part the user knows, without the redirects, pipes and `cd` around it
+ * (`npm test 2>&1 | grep -E 'fail'` is `npm test`).
+ */
+export function spokenCommand(label) {
+  let said = '';
+  let quote = null;
+  for (let at = 0; at < label.length; at++) {
+    const char = label[at];
+    if (quote) {
+      if (char === quote) quote = null;
+      said += char;
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      said += char;
+      continue;
+    }
+    // A pipe ends what the user knows of it (`||` does not); a redirect, with its target, goes.
+    if (char === '|' && label[at + 1] !== '|' && label[at - 1] !== '|') break;
+    const redirect = /^\d*>>?&?\s*(?:&\d|'[^']*'|"[^"]*"|[^\s&|;'"]+)/.exec(label.slice(at));
+    if (redirect && (at === 0 || /\s/.test(label[at - 1]))) {
+      at += redirect[0].length - 1;
+      continue;
+    }
+    said += char;
+  }
+  return said.replace(/^cd\s+\S+\s*&&\s*/, '').replace(/\s+/g, ' ').trim() || label;
+}
+
+/**
+ * Whether Pair says the check of its edit itself: not when only the Partner can tell whether the run shows what the
+ * user expects, since its ✓ or ✗ sentence says it then.
+ */
+export const spokenCheck = (run, {expect, verdict}) => !expect || isRed(run) || Boolean(verdict.mark);
+
+/** The check of Pair's edit as Pair says it: "Ran your `npm test` on it: 9 pass." `verdict` is judge()'s. */
+export function checkLine(run, verdict = {}) {
+  const {tests} = run;
+  const names = tests?.failed?.length ? ` (${tests.failed.slice(0, 3).join(', ')}${tests.failed.length > 3 ? ', ...' : ''})` : '';
+  // A run that failed with no test failing (a coverage bar, a timeout, a crash) says how it failed, not what passed.
+  const result = !tests || (isRed(run) && !tests.failedCount) ? verdict.text || runText(run)
+    : tests.failedCount ? `${tests.failedCount} ${tests.failedCount === 1 ? 'fails' : 'fail'}${names}`
+      : tests.passed === 0 ? 'nothing failed' : `${tests.passed ?? 'all'} ${tests.passed === 1 ? 'passes' : 'pass'}`;
+  return `Ran your \`${spokenCommand(run.label)}\` on it: ${result}.`;
+}
+
 const DONE = 'Changed, as one undo step. Now say in one sentence what you changed';
 
 /**
@@ -229,15 +299,18 @@ const DONE = 'Changed, as one undo step. Now say in one sentence what you change
  * Partner compares the output with `expect` and starts its sentence with ✓ or ✗, which the hand-back line shows.
  */
 export function checkReport(run, {expect, verdict, root}) {
-  if (run.tests && !expect) return `${DONE}, and whether the tests pass. \`${run.label}\` on the unsaved buffer: ${summaryOf(run, runText(run))}.`;
+  // The user already heard how the check went, in Pair's own words (checkLine): the Partner does not say it again.
+  const heard = `The user already sees "${checkLine(run, verdict)}", so do not repeat it.`;
+  if (run.tests && !expect && !isRed(run)) return `${DONE}. ${heard} \`${run.label}\` on the unsaved buffer: ${summaryOf(run, runText(run))}.`;
   const ran = `\`${run.label}\` on the unsaved buffer:\n${runReport(run, root)}`;
-  if (!expect) return `${DONE}, and whether it built and ran. ${ran}`;
+  if (!expect) return `${DONE}; if it did not build or run, say why in a few words. ${heard} ${ran}`;
   const asked = `The user expects: "${expect}".`;
-  if (isRed(run)) return `${DONE}, and that the run failed: ${verdict.text}. ${asked} Say why from the output in a few words. ${ran}`;
+  if (isRed(run)) return `${DONE}. ${heard} ${asked} The run failed: say why from the output in a few words. ${ran}`;
   if (verdict.mark) {
-    const meets = verdict.mark === 'pass' ? 'meets it' : 'does not meet it: say why from the output in a few words';
-    return `${DONE}, and the line the run printed for what the user expects. ${asked} It printed ${verdict.text}, which ${meets}. ${ran}`;
+    const meets = verdict.mark === 'pass' ? 'which meets it' : 'which does not meet it: say why from the output in a few words';
+    return `${DONE}. ${heard} ${asked} It printed ${verdict.text}, ${meets}. ${ran}`;
   }
+  // No line was said for this one (spokenCheck): the Partner's sentence, starting with ✓ or ✗, is the one.
   const found = verdict.text ? ` Of the numbers it bounds, the run printed ${verdict.text}; the rest is not in the output.` : '';
   return `${DONE}. ${asked}${found} Compare the output with it: start your sentence with ✓ if the run shows that, or ✗ if it does not, `
     + `then say what it printed for it. ${ran}`;
@@ -343,6 +416,9 @@ export class PairSession {
     this.checksAllowed = new Set(); // check commands the user allowed this session
     this.remarkId = null; // the stored remark of the running unasked turn
     this.lastRemark = store.lastRemark(record.id); // the last remark that reached the user: what feedback without an id rates
+    this.notes = []; // the notes this turn's points and suggestions showed (see unshown)
+    this.suggested = false;
+    this.edited = false;
     this.lastWords = null; // what Pair said in its last turn that said anything: what a teach request without words is about
     this.tickedAt = null;
     this.activeMs = 0; // active time not yet stored
@@ -524,7 +600,7 @@ export class PairSession {
     if (run.state === 'error') {
       this.log(`tests on save: ${run.error}`);
       if (run.error !== this.runError) {
-        this.message('system', `Pair could not run \`${run.label}\`: ${run.error}.`);
+        this.message('system', `Pair could not run \`${spokenCommand(run.label)}\`: ${run.error}.`);
         this.ledger.add('ran', run.label, {data: {note: run.short, result: 'fail'}});
       }
       this.runError = run.error;
@@ -554,15 +630,16 @@ export class PairSession {
     this.ledger.add('ran', run.label, {data: {note: text, result: red ? 'fail' : 'pass'}, detail: {output: keptOutput(run.output)}});
     this.showTests({type: 'tests', state: red ? 'fail' : 'pass', label: run.label, text, results, ...(red ? {redSince: this.delight.redSince} : {})});
     // The chat hears of a run when it turns red or green, or finds new failures; a run like the last one is no news.
-    if (red && (!this.wasRed || (run.tests && this.state.tests.newly.length))) this.message('system', `\`${run.label}\` after you saved ${run.saved}: ${summaryOf(run, text)}`);
-    else if (!red && this.wasRed) this.message('system', `\`${run.label}\` passes again${moment?.lasted >= LONG_RED_MS ? `, after ${Math.round(moment.lasted / 60_000)} min of red` : ''}: ${text}.`);
+    if (red && (!this.wasRed || (run.tests && this.state.tests.newly.length))) this.message('system', `\`${spokenCommand(run.label)}\` after you saved ${run.saved}: ${summaryOf(run, text)}`);
+    else if (!red && this.wasRed) this.message('system', `\`${spokenCommand(run.label)}\` passes again${moment?.lasted >= LONG_RED_MS ? `, after ${Math.round(moment.lasted / 60_000)} min of red` : ''}: ${text}.`);
     this.wasRed = red;
     this.delighted(moment);
   }
 
   /**
    * The run on the unsaved buffer after the Driver's edit: the editors show it like a run on save, but it is no
-   * baseline for the next one, and a run that could not start leaves the last run on save in the statusline.
+   * baseline for the next one, and a run that could not start leaves the last run on save in the statusline. The
+   * chat hears of it from whoever ran it: the hand-over in Pair's words (checkChange), a /gen request on its card.
    */
   unsavedRun(run) {
     const label = `${run.label} (unsaved)`;
@@ -576,7 +653,6 @@ export class PairSession {
     const red = verdict.mark ? verdict.mark === 'fail' : isRed(run);
     this.ledger.add('ran', run.label, {data: {note: `${text} · unsaved`, result: red ? 'fail' : 'pass'}, detail: {output: keptOutput(run.output)}});
     this.showTests({type: 'tests', state: red ? 'fail' : 'pass', label, text, results: run.placed});
-    this.message('system', `\`${label}\` after Pair's edit: ${summaryOf(run, text)}`);
   }
 
   /** The editor's accent (see style.lua), which the chat pane prints Pair in too; one that is no #rrggbb is ignored. */
@@ -1012,6 +1088,9 @@ export class PairSession {
     this.words = [];
     this.target = null;
     this.pointedAt = [];
+    this.notes = []; // what this turn's points and suggestions already show, and whether it suggested
+    this.suggested = false;
+    this.edited = false;
     this.thinks = this.partner.thinkingOf(this.conversationId, options.kind) !== 'off';
     this.showThinking(true);
     this.working();
@@ -1021,13 +1100,18 @@ export class PairSession {
     // The chat pane shows an answer to the user as it streams; a remark nobody asked for shows only once it is done.
     const onEvent = event => {
       if (event.type === 'usage') usage = event;
-      else if (asked && !this.blankPage?.consulting && (event.text === '' || streamable(event.text))) this.notify('chat', {type: 'partial', text: event.text});
+      // Not once the turn has pointed or suggested: its closing words show only if they say more than the notes (unshown).
+      else if (asked && !this.notes.length && !this.blankPage?.consulting && (event.text === '' || streamable(event.text))) this.notify('chat', {type: 'partial', text: event.text});
     };
     const ask = answering ?? (() => this.partner.ask(this.conversationId, input, {...options, onEvent}));
     try {
       const answer = this.voiced(await ask());
-      // After a say, local models tend to end with filler or a repeat; the say already was the answer.
-      if (answer && !silent(answer) && !this.said) {
+      // After a say, local models tend to end with filler or a repeat; the say already was the answer. Words that only
+      // repeat the notes the turn showed, or say a suggestion is made, are not shown: one remark, once, and true. The
+      // ledger keeps them, as it keeps all Pair said.
+      const unsaid = answer && !silent(answer) && !this.said && this.unshown(answer);
+      if (unsaid) this.ledger.add('said', answer, {data: {note: `not shown: ${unsaid}`}, detail: {words: answer}});
+      else if (answer && !silent(answer) && !this.said) {
         const meta = this.metaNow();
         this.show(() => this.message('pair', answer, meta));
         this.words.push(answer);
@@ -1053,6 +1137,16 @@ export class PairSession {
       this.activity('idle');
     }
     return this.spoke;
+  }
+
+  /**
+   * Why closing words `answer` are not shown, or null: they repeat this turn's notes, or say a change is made after
+   * a suggestion the user has not taken (an edit while driving is made).
+   */
+  unshown(answer) {
+    if (this.suggested && !this.edited && claimsChange(answer)) return 'it said a suggestion was made before you took it';
+    if (restates(answer, this.notes)) return 'it said the notes again';
+    return null;
   }
 
   /** What Pair said this turn, in the ledger: with its remark, rated there, and the place it pointed at. */
@@ -1129,9 +1223,10 @@ export class PairSession {
 
   /**
    * Switches Pair's role; true when it did. Scout needs Pair's own pane (in herdr or Neovim), which opens with the switch
-   * and closes with the switch back to Navigator. Driver needs Neovim, where any key takes the wheel back.
+   * and closes with the switch back to Navigator. Driver needs Neovim, where any key takes the wheel back. `quiet`:
+   * the chat gets no role line (a one-step hand-over, whose edit and check say enough).
    */
-  async setRole(role) {
+  async setRole(role, {quiet = false} = {}) {
     if (role === 'scout' && !this.scout) {
       this.message('system', 'Scout needs its own pane: run `pair` inside herdr, or :Pair start in Neovim.');
       return false;
@@ -1144,6 +1239,7 @@ export class PairSession {
       if (!opened) return false;
     }
     if (role === 'navigator') await this.closePane();
+    if (this.role === 'driver' && role !== 'driver') this.ledger.add('wheel', 'back to you'); // /navigate, /scout end a /drive!
     if (!this.notify('editors', {type: 'role', role}) && role === 'driver') {
       this.message('system', 'Pair drives only in Neovim: run :Pair start there first.');
       return false;
@@ -1151,7 +1247,7 @@ export class PairSession {
     this.role = role;
     if (role !== 'driver') this.keepWheel = false;
     await this.configurePartner(role);
-    this.announce(role);
+    this.announce(role, {quiet});
     return true;
   }
 
@@ -1160,12 +1256,12 @@ export class PairSession {
     if (!this.testRuns) await this.scout?.close();
   }
 
-  /** Tells the chat about the new role, and stores it unless it is the Driver's. */
-  announce(role) {
+  /** Tells the chat about the new role (its header, and a line unless `quiet`), and stores it unless it is the Driver's. */
+  announce(role, {quiet = false} = {}) {
     // The wheel is never handed over across a restart: a drive ends in Navigator, so a restart during one does too.
     this.store.setRole(this.id, role === 'driver' ? 'navigator' : role);
     this.notify('chat', {type: 'role', role});
-    this.message('system', ROLE_NOTES[role]);
+    if (!quiet) this.message('system', ROLE_NOTES[role]);
   }
 
   /**
@@ -1182,8 +1278,11 @@ export class PairSession {
     if (this.busy) return this.message('system', 'Pair is still answering; hand over again once it is done.');
     if (this.role !== 'driver') {
       const from = this.role;
-      if (!(await this.setRole('driver'))) return;
+      // One change needs no role lines before and after it: the edit, the check and Pair's sentence say it.
+      if (!(await this.setRole('driver', {quiet: !keep}))) return;
       this.handedFrom = from;
+      // No line in the chat, but the ledger has it, as it has the edits and the check.
+      this.ledger.add('wheel', words || 'the change you talked about', {data: {note: keep ? 'until you take it back' : 'one change'}});
     }
     if (keep && !this.keepWheel) {
       this.message('system', KEEP_NOTE);
@@ -1199,7 +1298,7 @@ export class PairSession {
     const description = describeState(this.state, this.now());
     await this.talk(driveInput(words, description, await this.selected(selection), checkInput(parts.expect, check), this.keepWheel));
     // An answer that ended after an edit with `more`: its change is checked all the same, for the hand-back line.
-    if (this.unchecked) await this.checkChange();
+    if (this.unchecked) await this.checkChange({late: true});
     if (!this.keepWheel) await this.handBack();
     // The hand-back line: what Pair says it did, under the lines it changed, with how the check went on them. An
     // expectation the code could not check is the Partner's to judge: its words start with ✓ or ✗.
@@ -1262,7 +1361,9 @@ export class PairSession {
     if (note) this.message('system', note);
     this.notify('editors', {type: 'role', role});
     if (role === 'navigator') await this.closePane();
-    this.announce(role);
+    this.ledger.add('wheel', 'back to you');
+    // The way back is no news: the hand-back line says it in Neovim, and a take-back's note in the chat.
+    this.announce(role, {quiet: true});
   }
 
   /** A key the user pressed in Neovim or at a shell prompt while Pair was driving. */
@@ -1602,6 +1703,7 @@ export class PairSession {
     const path = await projectFile(this.root, file);
     if (!path) return `No file ${file} in the project`;
     this.spoke = true;
+    this.notes.push(note);
     if (!this.target?.suggestion) this.target = {file: path, line, endLine, note, code};
     this.pointedAt.push({file: relative(this.root, path), from: line, to: endLine ?? line});
     this.ledger.add('pointed', `${relative(this.root, path)}:${line}, ${note}`, {data: {place: {file: path, line}}});
@@ -1610,7 +1712,7 @@ export class PairSession {
       this.notify('editor', {type: 'point', file: path, line, endLine, note, code});
       this.message('pair', `${file}:${line} ${note}`, meta);
     });
-    return 'highlighted';
+    return 'Highlighted, with your note: the user sees it, so do not say it again.';
   }
 
   async open({file, line}) {
@@ -1635,6 +1737,8 @@ export class PairSession {
     const count = lines.length;
     if (line > count) return `Line ${line} is past the end of ${file}, which has ${count} lines. Read it first.`;
     this.spoke = true;
+    this.notes.push(note);
+    this.suggested = true;
     // The jump key goes to the turn's first suggestion before a point: that is where the one key that takes it works.
     // The editor shows every suggestion, and its jump key goes on from that one to the next.
     const first = !this.target?.suggestion;
@@ -1648,7 +1752,8 @@ export class PairSession {
       this.notify('editor', {type: 'suggest', file: path, line, endLine, text, note, remark, action, aim: first});
       this.message('pair', `${file}:${line}${endLine > line ? `-${endLine}` : ''} suggestion: ${note}\n${text}`, meta);
     });
-    return 'Shown in the editor. The user accepts it with one key or ignores it.';
+    return 'Shown in the editor, with your note, and not made: the user accepts it with one key or ignores it. '
+      + 'Do not say it again, and do not say you added or changed it.';
   }
 
   /** Reads a file as the editor has it; the editor shows where Pair reads (its gaze) as it does. */
@@ -1700,14 +1805,17 @@ export class PairSession {
 
   // Scout's tools: they work only in Pair's own pane, where the user sees each command typed and run.
 
-  /** Runs `command` in Pair's pane. A /gen request (`gen`) may search in any role, within its own limits. */
-  async inPane(command, {gen = false} = {}) {
+  /**
+   * Runs `command` in Pair's pane. A /gen request (`gen`) may search in any role, within its own limits. `shown`: the
+   * command the pane shows, without the plumbing around it (see ScoutPane.run).
+   */
+  async inPane(command, {gen = false, shown = null} = {}) {
     // Also covers a turn that started as Scout when the user has switched back since: its pane is closed.
     if (!gen && !['scout', 'driver'].includes(this.role)) throw new Error('Searching and running need the Scout role; the user can switch with /scout.');
     if (!this.scout) throw new Error('Pair has no pane of its own: run `pair` inside herdr, or :Pair start in Neovim');
     if (!gen && ++this.paneUses > PANE_USES_PER_TURN) throw new Error(`That is ${PANE_USES_PER_TURN} commands for this question. Answer with what you found.`);
-    const result = await this.scout.run(command);
-    this.receive({kind: 'scout_run', cmd: command, exit: result.exit, output: result.output});
+    const result = await this.scout.run(command, {shown});
+    this.receive({kind: 'scout_run', cmd: shown ?? command, exit: result.exit, output: result.output});
     return result;
   }
 
@@ -1717,7 +1825,7 @@ export class PairSession {
     // Always with a path: rg without one searches its stdin when that is not a terminal.
     const rg = `rg --line-number --no-heading --color never --max-columns 200 --max-count 20 -- ${shellQuote(pattern)} ${shellQuote(path)}`;
     // In a subshell: the pane's own directory stays the project.
-    const result = await this.inPane(cwd ? `(cd ${shellQuote(cwd)} && ${rg})` : rg, {gen});
+    const result = await this.inPane(cwd ? `(cd ${shellQuote(cwd)} && ${rg})` : rg, {gen, shown: cwd ? rg : null});
     const lines = result.output.split('\n');
     const found = result.exit === 0 ? `${lines.length} ${lines.length === 1 ? 'match' : 'matches'}` : result.exit === 1 ? 'no matches' : `exit ${result.exit}`;
     this.ledger.add('searched', `${pattern}${path === '.' ? '' : ` in ${path}`}`, {data: {note: found}, detail: {output: keptOutput(result.output)}});
@@ -1760,7 +1868,7 @@ export class PairSession {
       const run = await prepareUnsaved({root: this.root, command, texts: buffers, dir, tree}).catch(error => error);
       if (run instanceof Error) return `Could not run it on the unsaved buffers: ${run.message}.`;
       // In a subshell: the pane's own directory stays the project for the commands after it.
-      return this.inPane(`(cd ${shellQuote(run.root)} && ${run.command})`);
+      return this.inPane(`(cd ${shellQuote(run.root)} && ${run.command})`, {shown: command});
     }).finally(() => rm(dir, {recursive: true, force: true}));
   }
 
@@ -1797,6 +1905,7 @@ export class PairSession {
       this.edits--;
       return `Not changed: ${reply.error}.`;
     }
+    this.edited = true;
     this.message('pair', `Changed ${file}:${line}${endLine > line ? `-${endLine}` : ''} (u undoes it).`);
     // The editor says which lines it changed: lines the edit kept as they were are not Pair's.
     const count = text === '' ? 0 : text.replace(/\n$/, '').split('\n').length;
@@ -1829,9 +1938,9 @@ export class PairSession {
 
   /**
    * Checks the hand-over's change on the unsaved buffers it touched, with the user's command (see check.mjs), and
-   * says how it went, for the Partner.
+   * says how it went, for the Partner. `late`: the answer already ended, so Pair's own line is the only one.
    */
-  async checkChange() {
+  async checkChange({late = false} = {}) {
     this.unchecked = false;
     // A run of its own would read the saved file, see the old code and send small models in circles.
     // An edit outside a hand-over (the blank page's slice) is checked like a bare one: no expectation.
@@ -1841,6 +1950,7 @@ export class PairSession {
     const run = await this.runUnsaved(check.command, [...new Set(this.handback.changes.map(change => change.file))]);
     if (run.state === 'error') return `${DONE}. \`${run.label}\` could not run on the unsaved buffer: ${run.error}.`;
     const verdict = this.checked(run);
+    if (late || spokenCheck(run, {expect, verdict})) this.message('pair', checkLine(run, verdict));
     // The line printed for what the user expects, when the code judged it; else the Partner's ✓ or ✗ says it.
     Object.assign(this.handback, {tests: verdict.mark, check: expect && verdict.mark ? verdict.text : null});
     const said = checkReport(run, {expect, verdict, root: this.root});

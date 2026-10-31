@@ -231,7 +231,8 @@ test('a note that does not fit after its line goes under it, also when the windo
       fauxAssistantMessage([fauxText('Start at one.')]),
     ]);
     send({type: 'ask', text: 'and total?'});
-    await answered('Start at one.');
+    // "Start at one." only says the note again: the suggestion shows, once, and the words do not.
+    await until(() => messages.some(message => message.text?.startsWith('a.js:1 suggestion: start at one')), 'the suggestion');
     const strike = await until(() => marks('pair_suggest').find(([, , , details]) => details.hl_group === 'PairSuggestDelete'), 'the struck line');
     assert.deepEqual([strike[1], strike[2], strike[3].end_col], [0, 2, 15], 'from the first character after the two tabs to the end');
   } finally {
@@ -865,7 +866,10 @@ test('the ledger: :Pair today lists what Pair did; u undoes its edit after your 
     assert.match(ledgerLines()[read - 1], /^\d\d:\d\d {2}read {10}a\.js 1-3$/);
     assert.match(ledgerLines()[typed - 1], /typed {9}2 lines in a\.js {3}one undo step$/);
     assert.match(ledgerLines()[ran - 1], /ran {11}cat a\.js {3}✓ passed · unsaved$/);
-    assert.deepEqual(hints(), ['⏎ go', 'u undo', '⏎ output', '⏎ all'], 'the key that acts on each');
+    assert.deepEqual(hints(), ['', '⏎ go', 'u undo', '⏎ output', '⏎ all', ''], 'the key that acts on each');
+    // The hand-over has no role lines in the chat, but the ledger has both ends of it.
+    assert.match(ledgerLines()[0], /wheel {9}your turn {3}one change$/);
+    assert.match(ledgerLines().at(-1), /wheel {9}back to you$/);
     assert.equal(remote('&buftype'), 'nofile', 'the cursor is in the ledger');
     assert.match(remote('&statusline'), /pair · today%=\d things · 0 remarks, 0 useful · \d+ min$/);
 

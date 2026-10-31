@@ -40,6 +40,9 @@ _pair_end() {
 PROMPT_COMMAND=_pair_end
 PS0='\${_pair_set[_pair_running=_pair_n]}$(_pair_put next "running $_pair_n")\\e]133;C;aid=pair\${_pair_n}\\a'
 PS1='\\[\\e]133;A\\a\\]scout[$_pair_n] exit $_pair_exit $ \\[\\e]133;B\\a\\]'
+# A command with plumbing around it (a cd, its output to a file) is in $PAIR_RUNS/line: the pane shows it as
+# "pair-run <the command>", and runs the line in a subshell, so the pane's directory stays as it was.
+pair-run() { ( builtin source "$PAIR_RUNS/line" ); }
 `;
 
 /** The marks around the output of command `number` in the log. */
@@ -60,6 +63,16 @@ export class PaneRuns {
     await this.remove();
     await mkdir(this.dir, {recursive: true, mode: 0o700});
     await writeFile(rcFileIn(this.dir), RC);
+  }
+
+  /** Whether the shell's rc file is this Pair's: a pane of an older one lacks what it types now (pair-run). */
+  async current() {
+    return (await readFile(rcFileIn(this.dir), 'utf8').catch(() => '')) === RC;
+  }
+
+  /** Writes the line `pair-run` runs next. */
+  setLine(line) {
+    return writeFile(join(this.dir, 'line'), `${line}\n`, {mode: 0o600});
   }
 
   /** Removes the files, once the pane is closed. */
