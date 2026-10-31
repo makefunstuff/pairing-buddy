@@ -109,7 +109,7 @@ the work board.
 - **Memory and feedback.** The note the next session starts from (in the chat and the Partner's instructions, per
   project, never a failed note); earlier sessions searched by `recall`, and a question about the past that comes with
   them; remarks stored with their verdicts (`+`, `Alt-n`, an accepted suggestion, `+2` from `/remarks`, `+` after a
-  daemon restart, end to end in the chat pane); ignored remarks counting as noise and seen ones as neither; the tuning
+  daemon restart, end to end in the chat pane); an edit where a remark pointed counting it useful (not Pair's edits, not where you were editing already, not past ten minutes, never over your own verdict), ignored remarks counting as not useful and seen ones as neither; the tuning
   and its bounds, per project with the fallback to all; active time, reading included (scrolling reported from a
   headless Neovim); `pair stats` and `pair stats --project`.
 - **The tone.** The checker the live tests use (praise, apology, filler, emoji, `!` outside code, headings and lists,
@@ -159,7 +159,7 @@ the work board.
   once the last Neovim closed, with a note only for a session that was used.
 - **The day's end and the morning pick-up.** The wins (tests and commands green again, numbers that moved, kept
   changes), the debrief's first step and the file its short name resolves to, the lesson line from the verdicts
-  (ignored remarks counting as noise), the debrief kept as the note and a place; the next morning landing on that
+  (only remarks you rated noise are noise; ignored ones are counted beside them), the debrief kept as the note and a place; the next morning landing on that
   place after the code moved, the gaze reading it, the line and the failing run "since yesterday" with signs only for
   files unchanged since; no pick-up right after an end or once you work; the first step without a model; `/first`;
   break hints only at a natural end after 50 minutes of focus. In a headless Neovim: an empty Neovim landing, the

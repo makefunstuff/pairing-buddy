@@ -65,6 +65,8 @@ The moment this language was made for: a test is red, and you start fixing it in
 4. You undo. The words go with your edit: an edit counts as having seen them, neither useful nor noise.
 5. `Alt-j` goes there. The line is tinted, the `>=` is underlined, and Pair's note sits after the line.
    `Ctrl-O` brings you back.
+6. You fix the `>=`. An edit where the remark pointed counts it as useful, also when its words reached you in your
+   terminal instead ([feedback on remarks](memory.md#feedback-on-remarks)).
 
 ![The remark under the edited line](images/remark.png)
 
@@ -367,6 +369,7 @@ scripted.*
 | `ran`, `searched` | a command in its pane, or the tests it ran on save or on the unsaved buffer, or a `/gen try`'s or a scaffold's run (`go run . (gen #8's try)`, `go test ./... (gen #7's copy)`), with `✓` or `✗`; the same run in a row is one line (`· 3 times`) | `⏎ output` |
 | `generated` | a [/gen request](gen.md), one line for all of it (`gen #3 · here · a list handler`), with what became of its code (`3 lines proposed`, `1 of 1 piece taken`, `1 dropped`, `2 files to review`, `1 of 2 files taken`, `2 files in its folder · ✓ \`go run .\``, `kept as internal/cache/lru.go`, `9 files · 3 of yours changed · ✓ go test ./...`, `2 of 9 files kept · copy deleted`), and `≠1` when its code goes against the [brief](gen.md#the-brief) | `u undo` the whole request, once it has code |
 | `asked`, `refused` | what it asked before running or typing, and what its policy refused, with the reason | `you said no` |
+| `counted useful` | you edited where a remark pointed, so it counts as useful ([memory.md](memory.md#feedback-on-remarks)) | `+ useful`; `-` there makes it noise after all |
 | `stayed quiet` | the moments it let pass: `3 moments under the bar`, held back by the budget, or `not asked, the server is slow` ([watcher.md](watcher.md#when-the-server-is-slow)) | `⏎ why` |
 
 The last one shows that the gate works: Pair noticed, judged, and chose not to talk.
@@ -571,8 +574,8 @@ pair Day's end: 3 h 05 min in hookd.
 - `Tomorrow, first` names a place. `worker.go:27` or `Makefile:14` is enough, and a path with spaces works in
   backticks (`` `src/ring buffer.c:9` ``) or as it is: Pair finds the one file git tracks (or you had open)
   with that name. Without a place, the pick-up starts where you stopped.
-- The last line is a rule, not the model: the share of noise among the session's remarks (a remark ignored for ten
-  minutes counts as noise) and what most of it was about. With `autoTune` on, those verdicts raise that trigger's bar,
+- The last line is a rule, not the model: the share of noise among the session's remarks (the ones you rated noise;
+  a remark that got no answer is counted beside them, never as noise) and what most of it was about. With `autoTune` on, those verdicts raise that trigger's bar,
   so Pair says it will keep quieter there; without it, it only says the share. No noise, no line.
 - `e`, right after the debrief, puts the first step on the chat's line as `/first …` to edit; Enter keeps it.
   `/first <step>` (or `:Pair first <step>`) works any time: in a session you have done no work in yet it replaces the last

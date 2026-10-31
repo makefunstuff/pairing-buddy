@@ -82,7 +82,7 @@ Work as you always do. Pair stays quiet until something is worth a word, then sa
 | --- | --- |
 | `Alt-j` | Go where Pair points; `Ctrl-O` comes back |
 | `Alt-y` | Take a suggested change, unsaved, as your own edit |
-| `Alt-u` / `Alt-n` | Tell Pair that remark was useful / noise |
+| `Alt-u` / `Alt-n` | Tell Pair that remark was useful / noise; editing the lines it pointed at counts as useful too |
 | `:Pair ask <question>` | Ask from Neovim; the answer shows under your line and in the chat |
 
 In the chat, type a question and `Enter`. The session ends by itself after 45 minutes without you; `:Pair end` ends

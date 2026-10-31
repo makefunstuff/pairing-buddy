@@ -73,6 +73,95 @@ test('the wrong turn: Pair reads, says why under your line, and points at the re
   assert.equal(store.remarks(0)[0].verdict, 'useful', 'a verdict wins over seen, also when seen comes later');
 });
 
+/** The wrong turn's remark, made while the user was in their terminal: the words never showed under their line. */
+async function pointedRemark() {
+  const session = pairSession([async pair => {
+    await pair.point({file: 'worker.go', line: 4, endLine: 4, note: '7s + 8s = 15s: still inside the budget', code: '>='});
+    return 'Attempt 5 lands at exactly 15s, and `worker.go:4` gives up on `>=`.';
+  }]);
+  const {root, pair, clock} = session;
+  pair.receive({kind: 'focus', target: 'terminal', pane: 'w1:p2', at: clock.now - 40_000});
+  pair.receive({kind: 'command_end', pane: 'w1:p2', cmd: 'go test ./...', exit: 1, output: RED, at: clock.now - 30_000});
+  pair.receive({kind: 'edit', file: join(root, 'backoff.go'), from: 4, to: 4, at: clock.now - 5000});
+  await pair.tick();
+  return {...session, remark: session.store.remarks(0)[0]};
+}
+
+test('an edit where a remark pointed counts it useful, wherever its words showed; the ledger and the chat say so', async () => {
+  const {root, pair, store, clock, sent, remark} = await pointedRemark();
+  assert.equal(remark.verdict, null);
+  clock.now += 3 * 60_000;
+  pair.receive({kind: 'edit', file: join(root, 'backoff.go'), from: 4, to: 4, origin: 'user'});
+  assert.equal(store.remarks(0)[0].verdict, null, 'an edit elsewhere says nothing');
+  pair.receive({kind: 'edit', file: join(root, 'worker.go'), from: 4, to: 4, origin: 'pair'});
+  assert.equal(store.remarks(0)[0].verdict, null, 'nor does an edit Pair made');
+  pair.receive({kind: 'edit', file: join(root, 'worker.go'), from: 5, to: 5, origin: 'user'});
+  assert.equal(store.remarks(0)[0].verdict, 'useful', 'the user changed the line it pointed at');
+  assert.ok(sent.some(message => message.via === 'chat' && message.type === 'acted' && message.remark === remark.id), 'the chat marks it useful');
+  const acted = store.actions(root, 0).filter(action => action.kind === 'acted');
+  assert.equal(acted.length, 1);
+  assert.match(acted[0].text, /^worker\.go:4, you edited where a remark pointed$/);
+  pair.feedback({useful: false, id: remark.id});
+  assert.equal(store.remarks(0)[0].verdict, 'dismissed', 'a - afterwards still wins');
+});
+
+test('an edit where a remark pointed leaves your own verdict alone, and counts only within ten minutes', async () => {
+  const dismissed = await pointedRemark();
+  dismissed.pair.feedback({useful: false, id: dismissed.remark.id});
+  dismissed.pair.receive({kind: 'edit', file: join(dismissed.root, 'worker.go'), from: 4, to: 4, origin: 'user'});
+  assert.equal(dismissed.store.remarks(0)[0].verdict, 'dismissed', 'the user\'s - wins over the guess');
+  assert.ok(!dismissed.sent.some(message => message.type === 'acted'));
+
+  const seen = await pointedRemark();
+  seen.pair.seen(seen.remark.id);
+  seen.pair.receive({kind: 'edit', file: join(seen.root, 'worker.go'), from: 3, to: 4, origin: 'user'});
+  assert.equal(seen.store.remarks(0)[0].verdict, 'useful', 'seen, then acted on: useful');
+
+  const late = await pointedRemark();
+  late.clock.now += 11 * 60_000;
+  late.pair.receive({kind: 'edit', file: join(late.root, 'worker.go'), from: 4, to: 4, origin: 'user'});
+  assert.equal(late.store.remarks(0)[0].verdict, null, 'past ten minutes it is no longer the next edit');
+
+  const whole = await pointedRemark();
+  whole.pair.receive({kind: 'edit', file: join(whole.root, 'worker.go'), from: 1, to: 40, origin: 'user'});
+  assert.equal(whole.store.remarks(0)[0].verdict, null, 'a format of the whole file acts on nothing');
+});
+
+test('an edit where you were editing already, or on a suggestion\'s lines, does not count a remark useful', async () => {
+  const there = pairSession([async pair => {
+    await pair.point({file: 'backoff.go', line: 4, endLine: 4, note: 'the shift', code: '<<'});
+    return 'The shift doubles: `backoff.go:4`.';
+  }]);
+  there.pair.receive({kind: 'command_end', pane: 'w1:p2', cmd: 'go test ./...', exit: 1, output: RED, at: there.clock.now - 30_000});
+  there.pair.receive({kind: 'edit', file: join(there.root, 'backoff.go'), from: 4, to: 4, at: there.clock.now - 8000});
+  there.pair.receive({kind: 'edit', file: join(there.root, 'worker.go'), from: 4, to: 4, at: there.clock.now - 5000});
+  await there.pair.tick();
+  there.pair.receive({kind: 'edit', file: join(there.root, 'backoff.go'), from: 4, to: 4, origin: 'user'});
+  assert.equal(there.store.remarks(0)[0].verdict, null, 'it pointed where the user was typing, also before their last edit: editing on there is no answer');
+
+  const ran = pairSession([async pair => {
+    await pair.point({file: 'worker.go', line: 4, endLine: 4, note: '7s + 8s = 15s: still inside the budget', code: '>='});
+    return 'Your change at `worker.go:4` gives up on `>=`.';
+  }]);
+  ran.pair.receive({kind: 'edit', file: join(ran.root, 'worker.go'), from: 4, to: 4, at: ran.clock.now - 40_000});
+  ran.pair.receive({kind: 'command_end', pane: 'w1:p2', cmd: 'go test ./...', exit: 1, output: RED, at: ran.clock.now - 30_000});
+  ran.pair.receive({kind: 'command_end', pane: 'w1:p2', cmd: 'go test ./...', exit: 1, output: RED, at: ran.clock.now - 10_000});
+  await ran.pair.tick();
+  ran.pair.receive({kind: 'edit', file: join(ran.root, 'worker.go'), from: 4, to: 4, origin: 'user'});
+  assert.equal(ran.store.remarks(0)[0].verdict, 'useful', 'a line changed, then tested, then fixed after the remark: acted on');
+
+  const suggested = pairSession([async pair => {
+    await pair.suggest({file: 'worker.go', line: 4, endLine: 4, note: 'give up after the budget', text: '\tif elapsed+wait > budget {'});
+    return 'Attempt 5 lands at exactly 15s: `>` keeps it.';
+  }]);
+  suggested.pair.receive({kind: 'command_end', pane: 'w1:p2', cmd: 'go test ./...', exit: 1, output: RED, at: suggested.clock.now - 30_000});
+  suggested.pair.receive({kind: 'edit', file: join(suggested.root, 'backoff.go'), from: 4, to: 4, at: suggested.clock.now - 5000});
+  await suggested.pair.tick();
+  assert.ok(suggested.store.remarks(0).length, 'the remark was made');
+  suggested.pair.receive({kind: 'edit', file: join(suggested.root, 'worker.go'), from: 4, to: 4, origin: 'user'});
+  assert.equal(suggested.store.remarks(0)[0].verdict, null, 'typing over a suggestion ignores it');
+});
+
 test('the words of a remark are what Pair said, also through say; a turn starts with no words and no target', async () => {
   const {pair, clock, sent} = pairSession([
     async pair => { pair.say('Two places changed.'); return ''; },

@@ -157,19 +157,22 @@ const ABOUT = {
 };
 
 /**
- * What the user's verdicts on this session's remarks say Pair should do differently; null without noise. A remark
- * ignored for ten minutes counts as noise, as it does for the tuning. With `tuned` (autoTune) Pair says it acts on it.
+ * What the user's verdicts on this session's remarks say Pair should do differently; null without noise. Noise is
+ * what the user dismissed: a remark that got no answer (they may have read it in the chat, or acted on it elsewhere)
+ * is only counted beside it. With `tuned` (autoTune) Pair says it acts on it.
  */
 export function lessonLine(remarks, now, {tuned = false} = {}) {
-  const noise = remarks.filter(remark => ['dismissed', 'ignored'].includes(outcome(remark, now)));
+  const noise = remarks.filter(remark => outcome(remark, now) === 'dismissed');
   if (!noise.length) return null;
+  const unanswered = remarks.filter(remark => outcome(remark, now) === 'ignored').length;
   const counts = new Map();
   for (const remark of noise) counts.set(remark.trigger, (counts.get(remark.trigger) ?? 0) + 1);
   const [trigger, count] = [...counts].sort((a, b) => b[1] - a[1])[0];
   const about = ABOUT[trigger] ?? trigger.replaceAll('_', ' ');
   const share = `${noise.length} of my ${remarks.length} remark${remarks.length === 1 ? '' : 's'} ${noise.length === 1 ? 'was' : 'were'} noise`;
   const which = noise.length === 1 ? `about ${about}` : count === noise.length ? `${count === 2 ? 'both' : 'all'} about ${about}` : `${count} about ${about}`;
-  return `${share}, ${which}${tuned && count > 1 ? ': I\'ll keep quieter there' : ''}.`;
+  const rest = unanswered ? `; ${unanswered} got no answer` : '';
+  return `${share}, ${which}${tuned && count > 1 ? ': I\'ll keep quieter there' : ''}${rest}.`;
 }
 
 /** "3 h 05 min", "25 min", "under a minute". */

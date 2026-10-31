@@ -99,14 +99,15 @@ test('a file named by its end resolves to the one file git tracks, or the user h
   assert.deepEqual(await firstPlace(root, null, null, [], readLines), null);
 });
 
-test('the lesson: the share of noise and what it was about; nothing without noise', () => {
+test('the lesson: the share of noise and what it was about; a remark with no answer is no noise; nothing without noise', () => {
   const now = 100 * MIN;
   const remark = (trigger, verdict, at = now - MIN) => ({trigger, verdict, at});
-  const five = [remark('drift', 'dismissed'), remark('drift', null, now - 20 * MIN), remark('regression', 'useful'), remark('crash', 'seen'), remark('edit_while_red', 'useful')];
-  assert.equal(lessonLine(five, now, {tuned: true}), '2 of my 5 remarks were noise, both about drift: I\'ll keep quieter there.');
-  assert.equal(lessonLine(five, now), '2 of my 5 remarks were noise, both about drift.', 'without autoTune Pair promises nothing');
+  const five = [remark('drift', 'dismissed'), remark('drift', 'dismissed'), remark('drift', null, now - 20 * MIN), remark('regression', 'useful'), remark('crash', 'seen')];
+  assert.equal(lessonLine(five, now, {tuned: true}), '2 of my 5 remarks were noise, both about drift: I\'ll keep quieter there; 1 got no answer.');
+  assert.equal(lessonLine(five, now), '2 of my 5 remarks were noise, both about drift; 1 got no answer.', 'without autoTune Pair promises nothing');
   assert.equal(lessonLine([remark('drift', 'dismissed'), remark('crash', 'dismissed'), remark('crash', 'dismissed')], now, {tuned: true}), '3 of my 3 remarks were noise, 2 about crashes: I\'ll keep quieter there.');
   assert.equal(lessonLine([remark('stall', 'dismissed')], now), '1 of my 1 remark was noise, about being stuck.');
+  assert.equal(lessonLine([remark('repeated_error', null, now - 20 * MIN)], now), null, 'ignored for ten minutes: no answer, not noise');
   assert.equal(lessonLine([remark('drift', null)], now), null, 'too young to count as ignored');
   assert.equal(lessonLine([], now), null);
 });
