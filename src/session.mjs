@@ -91,7 +91,8 @@ const CHECKS = {
   fresh_code: 'The user just finished writing these lines; nothing has failed. Read them and the code they call, and trace '
     + 'them with a real input. Only if they hold a bug (a wrong result, a crash, a wrong variable, operator or index, a value '
     + 'never used or never set), point at the line, with the few characters that are wrong as code, and say why in one '
-    + 'sentence. Style, naming, a missing test or a check they may add later is no bug: answer exactly SILENT.',
+    + 'sentence. Code plainly not finished yet (a block still open, no return written yet), style, naming, a missing test or a '
+    + 'check they may add later is no bug: answer exactly SILENT.',
   ...PROSE_CHECKS,
 };
 

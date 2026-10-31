@@ -80,28 +80,31 @@ whoever edited near them; a `regression` names the request whose code is not you
 ## Fresh code
 
 Every other moment is a symptom: something failed, came back, or went quiet. `fresh_code` is the one about your work
-itself, what a pair beside you would read as you write it. It is raised when you finish a hunk: your own edits of a
-source file that touch or nearly touch each other (a function written over a few minutes is one hunk), the last of
-them in the last two minutes, with at least three lines that are not blank written in the last five minutes (a one-line fix next to older code is none), once you save the file or move the cursor
-more than two lines away from it for 15 s (another file counts; a glance at a callee does not). Neovim sends the edits you made just before a save first, so
-`:w` right after typing finishes the hunk too. Edits of a
-Markdown note have the [note's own moments](#in-a-note); a one-line fix is no hunk. Code Pair wrote, and code you took
-from a `/gen` request that is [not yours yet](gen.md#owning-generated-code), is left out, and so is a hunk with an
-error diagnostic in it: `new_code_diagnostic` speaks for that. It is raised once per hunk and edit: change the hunk
-again and it is read again, as it is now.
+itself, what a pair beside you would read as you write it. It is raised when you finish a **hunk**: your own edits of
+a source file that touch or nearly touch each other (a function written over a few minutes is one hunk), the last of
+them in the last two minutes, with at least three lines that are not blank written in the last five minutes. A
+one-line fix next to older code is no hunk, and neither is an edit of 20 lines or more at once (a paste, a formatter).
+You finish it when you save the file, when the cursor rests more than two lines away from it (or in another file) for
+15 s, or when you edit somewhere else; a quick jump to a callee and back is not finishing. Neovim sends the edits you
+made just before a save first, so `:w` right after typing finishes the hunk too. Edits of a Markdown note have the
+[note's own moments](#in-a-note). Code Pair wrote, and code you took from a `/gen` request that is
+[not yours yet](gen.md#owning-generated-code), is left out, and so is a hunk with an error diagnostic in it:
+`new_code_diagnostic` speaks for that. Each hunk is read once: tweaks and saves after it do not read it again.
 
-The Watcher gets the lines themselves, at most 40, read from your buffer as they are now, and one question: how likely they hold a real bug you would want to
-hear of now, 0 for code that does what it plainly means or whose only faults are style, naming or a check you may add
-later, 10 for a plain bug (a wrong variable, operator or index, a value never used or never set, a missing return, a
-loop off by one). Only a score at the bar goes on. The Partner reads the lines and the code they call, traces them
-with a real input, and only for a bug points at the line with the few characters that are wrong and says why in one
-sentence; anything else is SILENT.
+The Watcher gets the lines themselves, at most 40, read from your buffer as they are now (found again by their first
+line when lines above moved them), and one question: how likely they hold a real bug you would want to hear of now,
+0 for code that does what it plainly means, code plainly not finished yet (a block still open, no return written
+yet), or faults of style, naming or a check you may add later; 10 for a plain bug (a wrong variable, operator or
+index, a value never used, a loop off by one). Only a score at the bar goes on. The Partner reads the lines and the
+code they call, traces them with a real input, and only for a bug points at the line with the few characters that are
+wrong and says why in one sentence; anything else is SILENT.
 
 It never speaks while you type: like every remark it waits for your pause, and it is a
 [held thought](#the-held-thought), so the line shows at your next break, with a `•` where it points meanwhile. It
-spends the same talk budget, and a held one is dropped if you edit those lines again before the break. On a slow
-server it is the first kind Pair stops asking about ([below](#when-the-server-is-slow)): it costs one Watcher call per
-hunk you finish.
+spends the same talk budget, and a held one is dropped if you edit those lines, or write on right below them, before
+the break. Editing the line it pointed at afterwards counts it as useful, as for any remark. On a slow server it is
+the first kind Pair gives up, unless your verdicts rank it higher ([below](#when-the-server-is-slow)): it costs one
+Watcher call per hunk you finish.
 
 ## The wrong turn
 

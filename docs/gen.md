@@ -866,7 +866,7 @@ The daemon keeps the origin with each edit. An edit Pair made:
 - **is no news about your code.** `new_code_diagnostic` is raised only when the newest edit near the error is
   yours. `drift` and `edit_while_red` look at your own last edit, so the Driver working in another file is not you
   drifting from the goal or taking a wrong turn while a test is red. `new_warning` leaves out a warning on lines
-  Pair edited last, and a file only Pair edited is no file you edited. In a Markdown note, text Pair put there is no
+  Pair edited last, and a file only Pair edited is no file you edited, and Pair's lines are no `fresh_code` of yours. In a Markdown note, text Pair put there is no
   question you asked (`note_stall`) and no section you began (`note_drift`).
 - **is not you at the keyboard.** It is no keystroke (the speak gate's typing pause, "Last keystroke"), does not
   move the current file, and counts neither as active time nor as you using the session (which ends after you are

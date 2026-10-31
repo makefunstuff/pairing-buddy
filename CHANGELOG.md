@@ -10,10 +10,10 @@ release is cut.
 ### Added
 
 - **Pair reads along: a "fresh code" moment.** When you finish a function or hunk of three lines or more (you save, or
-  move away from it), the Watcher reads just those lines for a likely bug, and if it clears the bar Pair says one line
+  move away from it for a while), the Watcher reads just those lines for a likely bug, and if it clears the bar Pair says one line
   at your next break, before a test finds it. Bugs only, not style; never while you type; the same speak gate, talk
   budget and held thought as every other remark. It is `fresh_code` in `pair stats`, `/mute fresh_code` turns it off,
-  and on a slow server it is the first kind Pair stops asking about.
+  and on a slow server it is the first kind Pair stops asking about, unless your verdicts rank it higher.
 
 ### Changed
 

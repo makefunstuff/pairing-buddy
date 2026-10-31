@@ -47,8 +47,9 @@ export function stillTrue(trigger, state) {
     return (state.diagnostics[trigger.file] ?? []).some(item => item.message === trigger.message);
   }
   if (trigger.kind === 'drift') return userEdits(state).at(-1)?.file === trigger.file;
-  // Fresh code: the user has not edited (or deleted: from > to) those lines since; a hunk changed meanwhile is read again as itself.
-  if (trigger.kind === 'fresh_code') return !userEdits(state).some(edit => edit.file === trigger.file && edit.at > trigger.at && edit.from <= trigger.to && Math.max(edit.from, edit.to) >= trigger.from);
+  // Fresh code: the user has not edited (or deleted: from > to) those lines since, nor written on right below them: a
+  // thought about code they went back to finish is stale.
+  if (trigger.kind === 'fresh_code') return !userEdits(state).some(edit => edit.file === trigger.file && edit.at > trigger.at && edit.from <= trigger.to + 2 && Math.max(edit.from, edit.to) >= trigger.from);
   if (trigger.kind === 'search_trail') return state.lastEditAt < trigger.searches[0].at; // an edit since: you found it
   // The task still changes that file: one that was merged, stopped or archived meanwhile is no news.
   if (trigger.kind === 'overlap') return (state.tasks ?? []).some(task => task.id === trigger.task.id && task.files.some(each => each.file === trigger.file));

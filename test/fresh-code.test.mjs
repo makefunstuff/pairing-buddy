@@ -70,7 +70,7 @@ test('a small fix, a note, old code, Pair\'s code and code with an error of its 
   assert.equal(fresh(foldAll([...written, away]), 20_000).length, 1, 'the same function, just written, is');
 });
 
-test('two hunks far apart are read apart; editing a hunk again makes it fresh again', () => {
+test('two hunks far apart are read apart; a hunk is read once, and a thought about it goes stale once it changes', () => {
   const state = foldAll([
     ...written,
     {kind: 'edit', file: 'cart.js', from: 30, to: 33, text: 'a();\nb();\nc();\nd();', at: 6000},
@@ -84,9 +84,20 @@ test('two hunks far apart are read apart; editing a hunk again makes it fresh ag
   assert.equal(stillTrue(found[1], again), true, 'the other hunk did not');
   const deleted = fold(state, {kind: 'edit', file: 'cart.js', from: 30, to: 29, text: '', at: 23_000});
   assert.equal(stillTrue(found[1], deleted), false, 'its lines deleted: gone');
-  const now = fold(again, {kind: 'cursor', file: 'cart.js', line: 60, at: 23_000});
-  const [reread] = fresh(now, 40_000, new Set(found.map(trigger => trigger.key)));
-  assert.match(reread.code, /line\.price \* line\.qty/, 'read again as it is now');
+  const writingOn = fold(state, {kind: 'edit', file: 'cart.js', from: 35, to: 35, text: 'e();', at: 23_000});
+  assert.equal(stillTrue(found[1], writingOn), false, 'written on right below it: they went back to finish it');
+  const now = foldAll([{kind: 'cursor', file: 'cart.js', line: 60, at: 23_000}, {kind: 'save', file: 'cart.js', at: 23_000}], again);
+  assert.deepEqual(fresh(now, 40_000, new Set(found.map(trigger => trigger.key))), [], 'a tweak and a save do not read it again');
+});
+
+test('a glance away is no leaving, resting away or writing elsewhere is; a paste or a formatter is no code written', () => {
+  const resting = foldAll([...written, {kind: 'cursor', file: 'cart.js', line: 12, at: 30_000}, {kind: 'cursor', file: 'cart.js', line: 45, at: 34_000}]);
+  assert.deepEqual(fresh(resting, 35_000), [], 'in it for half a minute, then a jump to a callee');
+  assert.equal(fresh(resting, 34_000 + 15_000).length, 1, 'still away 15 s later');
+  const elsewhere = fold(resting, {kind: 'edit', file: 'cart.js', from: 45, to: 45, text: 'x', at: 35_000});
+  assert.equal(fresh(elsewhere, 36_000).length, 1, 'writing elsewhere');
+  const formatted = foldAll([{kind: 'edit', file: 'cart.js', from: 1, to: 300, text: SHARES.join('\n'), at: 1000}, {kind: 'save', file: 'cart.js', at: 2000}]);
+  assert.deepEqual(fresh(formatted, 3000), [], 'a 300-line edit at once');
 });
 
 test('a function written over minutes is one hunk; its code is read again as the file is now', () => {
@@ -104,6 +115,9 @@ test('a function written over minutes is one hunk; its code is read again as the
   assert.equal(now.code, ['10: ' + SHARES[0], '11: ' + SHARES[1], '12:   const unused = 0;', '13: ' + SHARES[2], '14: ' + SHARES[3]].join('\n'),
     'a line inserted since moves the rest, and the end comes along');
   assert.match(now.detail, /cart\.js:10-13 and moved on:\n10: function lineShares/);
+  const above = freshCodeIn(trigger, ['import a;', 'import b;', 'import c;', 'import d;', ...lines].join('\n'));
+  assert.deepEqual([above.from, above.to, above.line], [14, 17, 14], 'four lines inserted above move it');
+  assert.match(above.code, /^14: function lineShares[^]*\n16: {3}const unused[^]*18: }$/);
 });
 
 test('fresh code can wait for a break, and the Watcher reads the code itself for a bug', () => {
@@ -171,7 +185,7 @@ test('the session: never asked while typing, held with a dot, said at the save',
   await pair.tick();
   assert.deepEqual(scored, ['fresh_code']);
   assert.match(asked[0], /^\[watch\] fresh_code: The user just finished writing cart\.js:10-13 and moved on:\n10: function lineShares/);
-  assert.match(asked[0], /Style, naming, a missing test or a check they may add later is no bug: answer exactly SILENT\./);
+  assert.match(asked[0], /Code plainly not finished yet \(a block still open, no return written yet\), style, naming, a missing test or a check they may add later is no bug: answer exactly SILENT\./);
   assert.deepEqual(shown('held').map(({file: at, line}) => [at, line]), [[file, 11]], 'a dot where it points');
   assert.deepEqual(shown('remark'), [], 'still in Insert mode: no break yet');
 

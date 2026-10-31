@@ -43,8 +43,9 @@ const WHAT_HAPPENED = {
     + 'Score how much hearing it now would save them a conflict later: 0 for a one-line touch-up next to its change, 10 if both rewrite the same code.',
   fresh_code: trigger => `The user just finished writing these lines of ${trigger.file}:\n${trigger.code}\n`
     + 'Score how likely they hold a real bug the user would want to hear of now: 0 for code that does what it plainly means, '
-    + 'or whose only faults are style, naming or a missing check they may add later; 10 for a plain bug (a wrong variable, '
-    + 'operator or index, a value never used or never set, a missing return, a loop off by one).',
+    + 'code plainly not finished yet (a block still open, no return written yet), or code whose only faults are style, naming '
+    + 'or a missing check they may add later; 10 for a plain bug (a wrong variable, operator or index, a value never used, '
+    + 'a loop off by one).',
   ...PROSE_WATCH,
 };
 
