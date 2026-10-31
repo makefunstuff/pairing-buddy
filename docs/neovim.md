@@ -65,6 +65,8 @@ The moment this language was made for: a test is red, and you start fixing it in
 4. You undo. The words go with your edit: an edit counts as having seen them, neither useful nor noise.
 5. `Alt-j` goes there. The line is tinted, the `>=` is underlined, and Pair's note sits after the line.
    `Ctrl-O` brings you back.
+6. You fix the `>=`. An edit where the remark pointed counts it as useful, also when its words reached you in your
+   terminal instead ([feedback on remarks](memory.md#feedback-on-remarks)).
 
 ![The remark under the edited line](images/remark.png)
 

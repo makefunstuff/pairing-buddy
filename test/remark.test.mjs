@@ -138,6 +138,17 @@ test('an edit where you were editing already, or on a suggestion\'s lines, does 
   there.pair.receive({kind: 'edit', file: join(there.root, 'backoff.go'), from: 4, to: 4, origin: 'user'});
   assert.equal(there.store.remarks(0)[0].verdict, null, 'it pointed where the user was typing: editing on there is no answer');
 
+  const ran = pairSession([async pair => {
+    await pair.point({file: 'worker.go', line: 4, endLine: 4, note: '7s + 8s = 15s: still inside the budget', code: '>='});
+    return 'Your change at `worker.go:4` gives up on `>=`.';
+  }]);
+  ran.pair.receive({kind: 'edit', file: join(ran.root, 'worker.go'), from: 4, to: 4, at: ran.clock.now - 40_000});
+  ran.pair.receive({kind: 'command_end', pane: 'w1:p2', cmd: 'go test ./...', exit: 1, output: RED, at: ran.clock.now - 30_000});
+  ran.pair.receive({kind: 'command_end', pane: 'w1:p2', cmd: 'go test ./...', exit: 1, output: RED, at: ran.clock.now - 10_000});
+  await ran.pair.tick();
+  ran.pair.receive({kind: 'edit', file: join(ran.root, 'worker.go'), from: 4, to: 4, origin: 'user'});
+  assert.equal(ran.store.remarks(0)[0].verdict, 'useful', 'a line changed, then tested, then fixed after the remark: acted on');
+
   const suggested = pairSession([async pair => {
     await pair.suggest({file: 'worker.go', line: 4, endLine: 4, note: 'give up after the budget', text: '\tif elapsed+wait > budget {'});
     return 'Attempt 5 lands at exactly 15s: `>` keeps it.';

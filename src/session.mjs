@@ -158,6 +158,7 @@ export function streamable(text) {
 }
 const REMARKS_LISTED = 9; // /remarks lists this many, so +N and -N take one digit
 const ACTED_SLACK = 2; // an edit this many lines off where a remark pointed still acts on it
+const STILL_EDITING_MS = 2 * 60_000; // where the user edited this recently, with no command since, they still edit
 const ACTED_LINES = 20; // an edit of more lines (a format of the whole file, a :%s) acts on no remark
 const touches = (place, file, from, to = from) => place.file === file && from <= place.to + ACTED_SLACK && to >= place.from - ACTED_SLACK;
 const PANE_USES_PER_TURN = 4; // small steps: a few searches or commands per question, not a long plan
@@ -839,9 +840,11 @@ export class PairSession {
         this.budget.spend(this.now());
         this.lastRemark = id;
         this.store.showRemark(id);
-        // A place the user was editing already says nothing when they edit on there.
+        // A place the user is still editing (no command since, in the last two minutes) says nothing when they
+        // edit on there; one they changed and then ran something on does.
         const last = this.state.edits.findLast(byUser);
-        const places = pointedAt.filter(place => !last || !touches(place, last.file, last.from, last.to));
+        const still = last && last.at > (this.state.commands.at(-1)?.endedAt ?? 0) && this.now() - last.at < STILL_EDITING_MS;
+        const places = pointedAt.filter(place => !still || !touches(place, last.file, last.from, last.to));
         if (places.length) this.awaiting.set(id, {at: this.now(), places});
         this.lastRemarkTrigger = trigger.kind;
         this.presence = {...this.presence, spoke: this.presence.spoke + 1};
