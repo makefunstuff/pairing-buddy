@@ -169,7 +169,7 @@ said (a note after it, such as `gen #7: … taken`, does not count), and only th
 
 | Key | `here` | `file` | `try` | `scaffold` |
 | --- | --- | --- | --- | --- |
-| `k` | Takes the code into your buffer, unsaved, as `Alt-y` does | Opens the next file to review in Neovim; `:w` there takes it | Keeps its main file in the project at its own name, as `/keep` alone does (`/keep <path>` for another) | Puts `/keep ` on the line, with the files of this scaffold left to keep in its menu: pick one, `Enter` keeps it from this scaffold, even when a newer one exists. Only on an empty line: what you typed stays |
+| `k` | Takes the code into your buffer, unsaved, as `Alt-y` does. Its line shows `Alt-y take` in its place: `Alt-y` takes it at once, while you type, and Neovim goes to it ([chat.md](chat.md#taking-it-from-the-chat-alt-y)) | Opens the next file to review in Neovim; `:w` there takes it | Keeps its main file in the project at its own name, as `/keep` alone does (`/keep <path>` for another) | Puts `/keep ` on the line, with the files of this scaffold left to keep in its menu: pick one, `Enter` keeps it from this scaffold, even when a newer one exists. Only on an empty line: what you typed stays |
 | `Enter` | Neovim goes to where the code goes | Opens `:Pair gen list` | Opens its file | Opens `:Pair gen list` |
 | `d` | Drops the code still showing | Drops the files still to review, and its changes still showing as suggestions | | Deletes the copy, and what you did not keep of it |
 | `u` | Undoes the request ([below](#one-undo-per-request)), as `u` in `:Pair today`; once undone, `u again` makes it again | The same | The same, once a file of it is kept | The same |
@@ -335,7 +335,7 @@ and one `Ctrl-E` jumps to their last 21, so a taller block cannot be read in pla
 
 | You | What happens |
 | --- | --- |
-| `Alt-y`, `:Pair accept`, or `a` on it in the chat | The code goes into your buffer, unsaved, as one undo step, marked `┊` ([below](#owning-generated-code)). It is the request's code (`gen:#2`, below) until you edit it |
+| `Alt-y` (in Neovim or the chat), `:Pair accept`, or `k` on its card in the chat | The code goes into your buffer, unsaved, as one undo step, marked `┊` ([below](#owning-generated-code)). It is the request's code (`gen:#2`, below) until you edit it |
 | `:Pair dismiss`, or over a selection, edit the lines it replaces | It is dropped: the ledger says so, and there is nothing of it to undo |
 | `/undo`, or `u` on the request in `:Pair today` | The whole request goes (below) |
 

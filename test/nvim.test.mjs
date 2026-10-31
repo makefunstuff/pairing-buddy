@@ -1577,7 +1577,7 @@ test('the exploration loop: every run read next to the one before, :Pair runs, a
   }
 });
 
-test('from the chat pane: a takes a suggestion by its id, j goes to a place leaving a jump back, @here sends the selection', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
+test('from the chat pane: a takes a suggestion by its id, Alt-y takes it and goes there, j goes to a place leaving a jump back, @here sends the selection', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
   const {project, partner, messages, remote, keys, send, lines, stop} = await pairInNvim('tune the numbers');
   const answered = text => until(() => messages.some(message => message.text === text), `the answer "${text}"`);
   try {
@@ -1595,6 +1595,54 @@ test('from the chat pane: a takes a suggestion by its id, j goes to a place leav
     send({type: 'accept', action: 9999});
     await sleep(200);
     assert.deepEqual(lines(), ['const x = 1', 'const y = 2', 'const z = 30'], 'an unknown one changes nothing');
+
+    // The chat's Alt-y: with nothing showing, Neovim says so to the chat.
+    send({type: 'take'});
+    await until(() => messages.some(message => message.type === 'take_none'), 'nothing to take, said to the chat');
+
+    // With two showing, the newest is taken, and Neovim goes to it and lights its lines for a moment; Ctrl-O comes
+    // back, one u undoes it.
+    partner.setResponses([
+      fauxAssistantMessage([fauxToolCall('suggest', {file: 'a.js', line: 1, new_text: 'const x = 10', note: 'ten'})], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxToolCall('suggest', {file: 'a.js', line: 2, new_text: 'const y = 20', note: 'twenty'})], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxText('Try 10 and 20.')]),
+    ]);
+    send({type: 'ask', text: 'and x and y?'});
+    await answered('Try 10 and 20.');
+    keys('gg');
+    keys(':botright new | setlocal buftype=nofile<CR>'); // where :Pair chat would be: the focus stays there
+    const taken = messages.findLast(message => message.meta?.suggestion).meta.suggestion;
+    send({type: 'take'});
+    await until(() => remote('getbufline(bufnr("a.js"), 2)[0]') === 'const y = 20', 'the newest suggestion taken with Alt-y');
+    assert.equal(remote('getbufline(bufnr("a.js"), 1)[0]'), 'const x = 1', 'and only it');
+    await until(() => remote('line(".", bufwinid("a.js"))') === '2', 'the window with the code at its line');
+    assert.equal(remote('&buftype'), 'nofile', 'the focus stayed');
+    keys(':close<CR>');
+    await until(() => remote('line(".")') === '2', 'Neovim at its line');
+    const lit = () => Number(remote(`luaeval("#vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_create_namespace('pair_taken'), 0, -1, {})")`));
+    assert.ok(lit() > 0, 'its lines lit');
+    await until(() => lit() === 0, 'the light to go', 3000);
+    assert.equal(remote('&modified'), '1', 'unsaved');
+    keys('<C-o>');
+    await until(() => remote('line(".")') === '1', 'Ctrl-O back');
+    keys('u');
+    await until(() => lines()[1] === 'const y = 2', 'one u undoes it');
+    assert.deepEqual(lines(), ['const x = 1', 'const y = 2', 'const z = 30'], 'and only it');
+    send({type: 'take', action: taken.action});
+    await until(() => messages.some(message => message.type === 'take_none' && message.why === 'gone'), 'Alt-y under one already taken: gone');
+    send({type: 'take'});
+    await until(() => lines()[0] === 'const x = 10', 'the next Alt-y takes the one still showing');
+
+    // A remark's suggestion edited away in Neovim: the chat hears it is gone, so its Alt-y take goes.
+    partner.setResponses([
+      fauxAssistantMessage([fauxToolCall('suggest', {file: 'a.js', line: 3, new_text: 'const z = 300', note: 'three hundred'})], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxText('Try 300.')]),
+    ]);
+    send({type: 'ask', text: 'z bigger?'});
+    await answered('Try 300.');
+    const edited = messages.findLast(message => message.meta?.suggestion).meta.suggestion.action;
+    keys('3Gccconst z = 31<Esc>');
+    await until(() => messages.some(message => message.type === 'suggestion_gone' && message.action === edited), 'the chat told it is gone');
 
     keys('gg');
     send({type: 'go', file: 'a.js', line: 2});

@@ -877,6 +877,10 @@ export async function startDaemon(config, {
     if (message.type === 'undo_last') return session.undoLast();
     // From the chat pane: a suggestion taken, or a place to go to, in the Neovim the user works in.
     if (message.type === 'accept' && Number.isInteger(message.action)) return relayToEditor(session, {type: 'accept', action: message.action});
+    // The chat's Alt-y: Neovim takes its newest suggestion and goes there, or says it has none.
+    if (message.type === 'take') return relayToEditor(session, {type: 'take', ...(Number.isInteger(message.action) ? {action: message.action} : {})});
+    if (message.type === 'take_none') return notify(session, 'chat', {type: 'take_none', ...(['gone', 'changed'].includes(message.why) ? {why: message.why} : {})});
+    if (message.type === 'suggestion_gone' && Number.isInteger(message.action)) return notify(session, 'chat', {type: 'suggestion_gone', action: message.action});
     if (message.type === 'go' && typeof message.file === 'string') return relayToEditor(session, {type: 'go', file: resolve(session.root, message.file), line: Number(message.line) || 1});
     if (message.type === 'goal') return session.setGoal(message.text);
     if (message.type === 'first' && typeof message.text === 'string' && message.text.trim()) return session.setFirst(message.text.trim());

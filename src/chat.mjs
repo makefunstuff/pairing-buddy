@@ -9,7 +9,7 @@ import {clearLine, createInterface, cursorTo} from 'node:readline';
 import {agentListLines} from './agent-relay.mjs';
 import {openHistory} from './chat-history.mjs';
 import {LineEditor} from './chat-input.mjs';
-import {cardKeys, genStatus, relayActions, relayKeys, renderFrame, searchText, shownTool, toolDone, transcriptLines} from './chat-render.mjs';
+import {cardKeys, genStatus, relayActions, relayKeys, remarkKeys, renderFrame, searchText, shownTool, toolDone, transcriptLines} from './chat-render.mjs';
 import {KeyDecoder, Screen} from './chat-screen.mjs';
 import {dim, formatMessage, sgr} from './chat-style.mjs';
 import {LEVELS} from './config.mjs';
@@ -647,6 +647,15 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
         flash('Taken in Neovim, unsaved: u there undoes it, /undo here');
         break;
       }
+      case 'take_none':
+        flash({
+          gone: 'That suggestion is no longer showing in Neovim (taken, dismissed or edited)',
+          changed: 'Its lines changed in Neovim since, so it was dropped',
+        }[message.why] ?? 'Nothing to take: no suggestion or gen block is showing in Neovim');
+        break;
+      case 'suggestion_gone': // dismissed or edited away in Neovim: its keys go
+        for (const entry of [...state.entries, ...state.held]) if (entry.meta?.suggestion?.action === message.action) entry.gone = true;
+        break;
       case 'ended':
         note(`session ended${message.why ? ` by itself: ${message.why}` : ''}`);
         link.hello(false);
@@ -830,6 +839,21 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
   }
 
   /**
+   * Alt-y, wherever you are in the pane: a suggestion or gen block goes into its buffer, as Alt-y takes it in Neovim,
+   * and Neovim goes to it. While an action line shows `Alt-y take`, it is that one; else the newest still showing in
+   * Neovim, which only Neovim knows. Neovim says when it took it (applied), or why not (take_none). What you typed
+   * stays.
+   */
+  function take() {
+    const remark = liveRemark();
+    const card = liveCard();
+    let action;
+    if (card > remark && state.entries[card].card?.shape === 'here' && state.entries[card].card.keys?.k) action = state.entries[card].card.action;
+    else if (remark !== -1) action = remarkKeys(state.entries, remark).apply?.meta.suggestion.action;
+    send({type: 'take', ...(Number.isInteger(action) ? {action} : {})});
+  }
+
+  /**
    * k, Enter, d or u on gen card `entry` (see Gen.card): keep what it made, open it in Neovim, drop what is left of
    * it (d twice: a scaffold's copy goes with it), undo it.
    */
@@ -941,6 +965,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
     if (state.mode === 'search') return searchKey(key);
     if (meta && name === 'up') return selectBy(-1);
     if (meta && name === 'down') return selectBy(1);
+    if (meta && name === 'y') return take();
     if (meta && name === 'l') return cycleLevel();
     if (meta && name === 'm') {
       screen.setMouse(!screen.mouse);

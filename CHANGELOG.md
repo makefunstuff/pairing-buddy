@@ -14,6 +14,11 @@ release is cut.
   at your next break, before a test finds it. Bugs only, not style; never while you type; the same speak gate, talk
   budget and held thought as every other remark. It is `fresh_code` in `pair stats`, `/mute fresh_code` turns it off,
   and on a slow server it is the first kind Pair stops asking about, unless your verdicts rank it higher.
+- **`Alt-y` in the chat pane takes what Pair offered.** While you type, without picking a message, it takes the
+  newest suggestion or `/gen here` block still showing in Neovim into its buffer, unsaved and one undo step, as
+  `Alt-y` does there; the window with your code goes to it and lights its lines for a moment (`Ctrl-O` comes back),
+  and the focus stays in the chat. A remark's action line and a gen card's show it (`Alt-y take`, in place of `a`
+  and `k`, which still work once the message is picked) and take that one; `?` lists it.
 
 ### Changed
 

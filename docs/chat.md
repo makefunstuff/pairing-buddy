@@ -50,16 +50,17 @@ Four rows of chrome, two of them rules with words in them; the rest is the conve
          finds the job taken and gets a 409.
          │ - return &Lease{ttl: cfg.Budget}
          │ + return &Lease{ttl: cfg.Budget + cfg.AttemptTimeout}
-         + useful  - noise  a apply  j jump  · Alt-↑ first
+         Alt-y take  + useful  - noise  j jump  · Alt-↑ first
 
    you   why does the third retry get a 409 and not a 200?
          └ read internal/queue/lease.go 1-40 · searched AttemptTimeout
   ```
 
   A remark is one unit: what about, its words, its diff behind the same `│ ` bar as a code block, and last its
-  **action line**, the keys that work on it, spaced like buttons: `+` useful, `-` noise, `a` takes its suggestion,
-  `j` goes to its line (each only where it applies). They work once the remark is picked: the first `Alt-↑` picks
-  it (the aside says so), and the line drops the aside. On an empty line the letters stay letters, so a question that
+  **action line**, the keys that work on it, spaced like buttons: `Alt-y` takes its suggestion, `+` useful, `-`
+  noise, `j` goes to its line (each only where it applies). `Alt-y` works at once, while you type
+  ([below](#taking-it-from-the-chat-alt-y)); the others once the remark is picked: the first `Alt-↑` picks it (the
+  aside says so), and the line drops the aside. On an empty line the letters stay letters, so a question that
   starts with `a` or `-` is typed, never taken as a key. The line shows while the remark is the last thing said (a
   note after it, such as the tests on save, does not count); once you rate it, or you or Pair say something after it,
   the line goes.
@@ -146,7 +147,7 @@ Four rows of chrome, two of them rules with words in them; the rest is the conve
 - **What you type**, after `›`, and under it **the keys that work now**: they change when Pair works, asks, or you
   pick a message. The footer holds keys only; a short note (copied, taken in Neovim) shows there for a moment.
 
-![A remark on save: watch, regression, the file and line, the suggestion as a diff, and its action line: + useful, - noise, a apply, j jump](images/chat-remark.png)
+![A remark on save: watch, regression, the file and line, the suggestion as a diff, and its action line: Alt-y take, + useful, - noise, j jump](images/chat-remark.png)
 
 ### The empty pane
 
@@ -188,7 +189,8 @@ do something on it.
 `k` keeps (code at the cursor goes into your buffer, the next file to review opens in Neovim, a try's file is kept, a
 scaffold puts `/keep` on the line with its files in the menu), `Enter` opens it in Neovim (its place, its file, or
 `:Pair gen list`), `d` drops what is left (a second `d` does it; for a scaffold, its copy goes), `u` undoes the
-request and, once undone, makes it again. As on a remark, they work once the card is picked: the first `Alt-↑`
+request and, once undone, makes it again. On a `/gen here` card the line shows `Alt-y take` in place of `k`, as a
+remark's shows it in place of `a`: it takes the code at once. As on a remark, the letters work once the card is picked: the first `Alt-↑`
 picks it while its line shows. Only the keys that still apply show, and none while the request is at work. What a
 request asks you (its shape, the brief, a question of its model) is the gen speaker's too. The status says what
 /gen does: the request at work and the one waiting its turn, and, once done, what is left to take. The whole of it,
@@ -272,8 +274,23 @@ and the footer lists what you can do with it, with the message's time on the rig
 | `o` `d` `t` | On another agent's relayed line: open its task's report or pull request, its branch's diff (read only), a terminal in its worktree, in Neovim ([agents.md](agents.md#what-a-task-left-behind)) |
 | `Esc` | Back to typing; any other key does that too |
 
-The last remark, while it is the last thing said, shows `+`, `-`, `a` and `j` on its own
-[action line](#what-you-see): `Alt-↑` then the key. Typing `+` or `-` and Enter rates the last remark too, and
+The last remark, while it is the last thing said, shows `Alt-y`, `+`, `-` and `j` on its own
+[action line](#what-you-see): `Alt-y` at once, `Alt-↑` then the key for the others.
+
+### Taking it from the chat: Alt-y
+
+**Alt-y**, as in Neovim, takes what Pair offered without leaving the chat. While a remark's or a
+[`/gen here`](gen.md#the-code-lands-where-you-asked) card's action line shows `Alt-y take`, it takes that one;
+otherwise the newest suggestion still showing in Neovim, any that `Alt-y` there would take: a remark's, one in an
+answer, a `/gen` block or change, a review's (Neovim knows what is still there). One you dismissed or edited away in
+Neovim loses its `Alt-y take`. It works while you type, halfway through a question too, or with a message picked
+(not in the key help or while finding), with what you typed left as it was; a message you picked does not change what it
+takes (`a` takes the picked one's). The code
+lands in its buffer as `Alt-y` there lands it: unsaved, one undo step (`u` in Neovim; `/undo` here for what the ledger
+booked).
+Then the window you work in goes to it, and its lines light up for a moment, so you see where they went;
+`Ctrl-O` there comes back. The focus stays where it was. When nothing is taken, the footer says why: nothing is showing, that suggestion is gone, or its lines changed. In `:Pair chat`, you stay in the chat: the window
+with your code beside it moves. Typing `+` or `-` and Enter rates the last remark too, and
 `/useful 2` or `/noise 2` an older one, as `+2` and `-2` do after `/remarks`.
 
 ![A message picked with Ctrl-F and Enter: the bar on its left, the match it was found by in green, and the keys that act on it in the footer](images/chat-select.png)
@@ -309,6 +326,7 @@ The last remark, while it is the last thing said, shows `+`, `-`, `a` and `j` on
 | `Alt-B` `Alt-F`, `Ctrl-←` `Ctrl-→` | A word back, forward |
 | `Tab` | Complete a `/command` or an `@file` |
 | `Esc` | Stop Pair's answer (else the Watcher's look at a moment, or a /gen request at work), close a menu, leave a message |
+| `Alt-y` | Take the latest suggestion or `/gen here` block into Neovim, unsaved, and go there ([above](#taking-it-from-the-chat-alt-y)) |
 | `Alt-↑` `Alt-↓` | Pick a message ([above](#acting-on-a-message)); on a gen card, `k` `Enter` `d` `u` keep, open, drop, undo |
 | `PgUp` `PgDn`, wheel | Scroll |
 | `Ctrl-F` | Find |

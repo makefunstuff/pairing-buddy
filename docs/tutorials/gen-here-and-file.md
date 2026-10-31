@@ -26,8 +26,8 @@ drafts new files as buffers you review and take with `:w`. Either way your disk 
 
    ![The proposal as ghost lines under line 28, and the gen card in the chat with its diff and keys](../images/gen-here.png)
 
-4. `Alt-y` takes it into your buffer, unsaved, as one undo step. `:Pair dismiss` drops it instead. On the gen card,
-   `Alt-↑` then `k` takes it too.
+4. `Alt-y` takes it into your buffer, unsaved, as one undo step. `:Pair dismiss` drops it instead. In the chat,
+   `Alt-y` takes it too, and Neovim goes to it (or `Alt-↑` then `k` on the gen card).
 
    ![Taken: the code in the buffer, unsaved, ✓ taken on the card, ┊ 4 generated in the statusline](../images/gen-taken.png)
 

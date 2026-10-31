@@ -22,7 +22,7 @@ Type "x"
 Sleep 700ms
 Type ":w"
 Enter
-Wait+Screen@120s /a apply/
+Wait+Screen@120s /Alt-y take/
 Sleep 5s
 Ctrl+w
 Type "l"
