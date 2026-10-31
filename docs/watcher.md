@@ -81,14 +81,16 @@ whoever edited near them; a `regression` names the request whose code is not you
 
 Every other moment is a symptom: something failed, came back, or went quiet. `fresh_code` is the one about your work
 itself, what a pair beside you would read as you write it. It is raised when you finish a hunk: your own edits of a
-source file that touch or nearly touch each other, in the last two minutes, with at least three lines that are not
-blank, once you save the file or move the cursor more than two lines away from it (another file counts). Edits of a
+source file that touch or nearly touch each other (a function written over a few minutes is one hunk), the last of
+them in the last two minutes, with at least three lines that are not blank, once you save the file or move the cursor
+more than two lines away from it (another file counts). Neovim sends the edits you made just before a save first, so
+`:w` right after typing finishes the hunk too. Edits of a
 Markdown note have the [note's own moments](#in-a-note); a one-line fix is no hunk. Code Pair wrote, and code you took
 from a `/gen` request that is [not yours yet](gen.md#owning-generated-code), is left out, and so is a hunk with an
 error diagnostic in it: `new_code_diagnostic` speaks for that. It is raised once per hunk and edit: change the hunk
 again and it is read again, as it is now.
 
-The Watcher gets the lines themselves, at most 40, and one question: how likely they hold a real bug you would want to
+The Watcher gets the lines themselves, at most 40, read from your buffer as they are now, and one question: how likely they hold a real bug you would want to
 hear of now, 0 for code that does what it plainly means or whose only faults are style, naming or a check you may add
 later, 10 for a plain bug (a wrong variable, operator or index, a value never used or never set, a missing return, a
 loop off by one). Only a score at the bar goes on. The Partner reads the lines and the code they call, traces them

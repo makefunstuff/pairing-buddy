@@ -1,15 +1,19 @@
 // Fresh code: a hunk the user just finished writing is read for a likely bug, and a remark waits for their next break.
 import assert from 'node:assert/strict';
+import {execFileSync, spawn} from 'node:child_process';
 import {realpathSync, writeFileSync} from 'node:fs';
+import {createServer} from 'node:net';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {fold, initialState} from '../src/fold.mjs';
 import {stillTrue, urgent} from '../src/held.mjs';
 import {PairSession} from '../src/session.mjs';
 import {openStore} from '../src/store.mjs';
-import {detectTriggers} from '../src/triggers.mjs';
+import {detectTriggers, freshCodeIn, TIMING} from '../src/triggers.mjs';
 import {momentOf} from '../src/watcher.mjs';
-import {scratch} from './temp.mjs';
+import {hasNvim, REPO, until} from './nvim-harness.mjs';
+import {readMessages, sendMessage} from '../src/protocol.mjs';
+import {scratch, socketDir} from './temp.mjs';
 
 const foldAll = (events, state = initialState()) => events.reduce(fold, state);
 const fresh = (state, now, fired) => detectTriggers(state, now, fired).filter(trigger => trigger.kind === 'fresh_code');
@@ -76,6 +80,23 @@ test('two hunks far apart are read apart; editing a hunk again makes it fresh ag
   const now = fold(again, {kind: 'cursor', file: 'cart.js', line: 60, at: 8000});
   const [reread] = fresh(now, 9000, new Set(found.map(trigger => trigger.key)));
   assert.match(reread.code, /line\.price \* line\.qty/, 'read again as it is now');
+});
+
+test('a function written over minutes is one hunk; its code is read again as the file is now', () => {
+  const slow = foldAll([
+    {...written[0], at: 1000},
+    {...written[2], at: 1000 + 4 * 60_000},
+    {kind: 'cursor', file: 'cart.js', line: 40, at: 1000 + 4 * 60_000},
+  ]);
+  const [trigger] = fresh(slow, 1000 + 5 * 60_000);
+  assert.deepEqual([trigger.from, trigger.to], [10, 13], 'the header written four minutes before is part of it');
+  assert.deepEqual(fresh(slow, 1000 + 4 * 60_000 + TIMING.recentMs + 1), [], 'not fresh once its last edit is old');
+
+  const lines = Array(9).fill('').concat([SHARES[0], SHARES[1], '  const unused = 0;', ...SHARES.slice(2)]);
+  const now = freshCodeIn(trigger, lines.join('\n'));
+  assert.equal(now.code, ['10: ' + SHARES[0], '11: ' + SHARES[1], '12:   const unused = 0;', '13: ' + SHARES[2], '14: ' + SHARES[3]].join('\n'),
+    'a line inserted since moves the rest, and the end comes along');
+  assert.match(now.detail, /cart\.js:10-13 and moved on:\n10: function lineShares/);
 });
 
 test('fresh code can wait for a break, and the Watcher reads the code itself for a bug', () => {
@@ -160,4 +181,30 @@ test('the session: fresh code under the bar costs a Watcher call and says nothin
   clock.now += 2500;
   await pair.tick();
   assert.deepEqual(scored, ['fresh_code'], 'the same hunk is not scored again');
+});
+
+test('Neovim sends the edits you made before a save first, so the save ends them', {skip: !hasNvim && 'no nvim'}, async () => {
+  const project = realpathSync(scratch('pair-fresh-nvim-'));
+  writeFileSync(join(project, 'a.js'), 'const x = 1\n');
+  const dir = socketDir();
+  const received = [];
+  let editor;
+  const server = createServer(socket => { editor = socket; readMessages(socket, message => received.push(message)); });
+  await new Promise(resolve => server.listen(join(dir, 'pair.sock'), resolve));
+  const nvimSocket = join(dir, 'nvim.sock');
+  const nvim = spawn('nvim', ['--headless', '--clean', '--listen', nvimSocket, '--cmd', `set rtp+=${REPO}`, '--cmd', `cd ${project}`,
+    '-c', `lua require('pair').setup({socket = '${join(dir, 'pair.sock')}', debounce_ms = 5000})`, 'a.js', '-c', 'Pair start'], {stdio: 'ignore'});
+  try {
+    await until(() => editor && received.some(message => message.type === 'hello'), 'the plugin to connect');
+    sendMessage(editor, {type: 'welcome', root: project, level: 'normal', role: 'navigator', models: {}});
+    const remote = expr => execFileSync('nvim', ['--server', nvimSocket, '--remote-expr', expr], {encoding: 'utf8'}).trim();
+    remote(`execute("call append(1, ['function f() {', '  return 1;', '}'])")`);
+    remote('execute("write")'); // well within the 5 s the edit waits for typing to pause
+    const kinds = () => received.map(message => message.event?.kind).filter(kind => kind === 'edit' || kind === 'save');
+    await until(() => kinds().includes('save'), 'the save');
+    assert.deepEqual(kinds(), ['edit', 'save']);
+  } finally {
+    nvim.kill();
+    server.close();
+  }
 });

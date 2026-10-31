@@ -254,19 +254,20 @@ function overlapTriggers(state, now) {
 }
 
 /**
- * The user's hunks of the last recentMs: their own edits of a source file that touch or nearly touch, merged, each
- * with its lines as the edits sent them (the newer edit wins a line) and when it was last edited.
+ * The user's hunks: their own edits of a source file in the last driftWindowMs that touch or nearly touch, merged,
+ * each with its lines as the edits sent them (the newer edit wins a line) and when it was last edited. A function
+ * written over several minutes is one hunk; only one edited in the last recentMs is fresh.
  */
 function hunks(state, now) {
   const found = [];
-  for (const edit of userEdits(state).filter(each => now - each.at <= TIMING.recentMs && isSourceFile(each.file))) {
+  for (const edit of userEdits(state).filter(each => now - each.at <= TIMING.driftWindowMs && isSourceFile(each.file))) {
     const near = found.filter(hunk => hunk.file === edit.file && edit.from <= hunk.to + FRESH.nearLines && edit.to >= hunk.from - FRESH.nearLines);
     const hunk = {file: edit.file, from: Math.min(edit.from, ...near.map(each => each.from)), to: Math.max(edit.to, ...near.map(each => each.to)), lastAt: edit.at, lines: new Map()};
     for (const each of near) each.lines.forEach((text, line) => hunk.lines.set(line, text));
     edit.text.split('\n').forEach((text, i) => edit.from + i <= edit.to && hunk.lines.set(edit.from + i, text));
     found.splice(0, found.length, ...found.filter(each => !near.includes(each)), hunk);
   }
-  return found;
+  return found.filter(hunk => now - hunk.lastAt <= TIMING.recentMs);
 }
 
 /** Whether the user is done with `hunk` for now: they saved its file since, or the cursor left it. */
@@ -287,20 +288,29 @@ function freshCodeTriggers(state, now) {
     if (numbered.filter(([, text]) => text.trim()).length < FRESH.minLines || !finished(state, hunk)) continue;
     if (numbered.some(([line]) => generatedAt(state, hunk.file, line))) continue;
     if ((state.diagnostics[hunk.file] ?? []).some(item => item.severity === 'error' && item.line >= hunk.from && item.line <= hunk.to)) continue;
-    const code = numbered.map(([line, text]) => `${line}: ${text}`).join('\n');
-    found.push({
-      kind: 'fresh_code',
-      key: `fresh:${hunk.file}:${hunk.from}:${hunk.lastAt}`,
-      detail: `The user just finished writing ${hunk.file}:${span(hunk)}${(state.saves?.[hunk.file] ?? 0) >= hunk.lastAt ? ' and saved it' : ' and moved on'}:\n${code}`,
-      file: hunk.file,
-      line: hunk.from,
-      from: hunk.from,
-      to: hunk.to,
-      at: hunk.lastAt,
-      code,
-    });
+    const saved = (state.saves?.[hunk.file] ?? 0) >= hunk.lastAt;
+    found.push(withCode({kind: 'fresh_code', key: `fresh:${hunk.file}:${hunk.lastAt}`, file: hunk.file, line: hunk.from, from: hunk.from, to: hunk.to, at: hunk.lastAt, saved},
+      numbered.map(([line, text]) => `${line}: ${text}`).join('\n')));
   }
   return found;
+}
+
+const withCode = (trigger, code) => ({
+  ...trigger,
+  code,
+  detail: `The user just finished writing ${trigger.file}:${span(trigger)}${trigger.saved ? ' and saved it' : ' and moved on'}:\n${code}`,
+});
+
+/**
+ * `trigger` (fresh code) with its lines read again from `text`, the file as the user sees it now: the edits' own text
+ * misses the lines between them, and lines inserted since move the code they sent. Two lines past the hunk come
+ * with it, where an insertion pushed its end.
+ */
+export function freshCodeIn(trigger, text) {
+  const lines = text.split('\n');
+  const to = Math.min(lines.length, trigger.to + FRESH.nearLines, trigger.from + FRESH.maxLines - 1);
+  if (to < trigger.from) return trigger;
+  return withCode(trigger, lines.slice(trigger.from - 1, to).map((line, i) => `${trigger.from + i}: ${line}`).join('\n'));
 }
 
 /** What fails now, in one line: a red test run, else a failed command, both while recent; null when nothing does. */

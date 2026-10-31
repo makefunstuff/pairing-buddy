@@ -140,6 +140,10 @@ the work board.
 - **Context windows and thinking settings.** The window from vLLM's, llama.cpp's and LM Studio's metadata or pi-ai's
   catalog, the config's own winning; `pair doctor --thinking` against fake servers that take a chat-template switch
   with a budget field, or `reasoning_effort` with three levels.
+- **Fresh code.** A hunk is fresh once you save or leave it, never a one-line fix, a note, old code, Pair's or
+  `/gen`'s code, or one with an error of its own; read again from the buffer as it is now; held to a break, dropped
+  once you edit it again; under the bar, one Watcher call and no Partner. In a headless Neovim, `:w` right after
+  typing sends the edit before the save (`test/fresh-code.test.mjs`).
 - **The wrong turn's trigger.** Raised once per red run and file, never for the code the failure names, its test,
   notes, or a run that passed since.
 - **The search trail.** Three searches with one closed empty make a trail, an edit or the time window ends it; the
@@ -256,7 +260,8 @@ entry like those in the config:
 Stacks can name a `provider` too, with its login or key from `pair auth`. Without `PAIR_LIVE_CONFIG` (or a gitignored
 `test/live/config.json`) the live tests are skipped.
 
-- **The Watcher** scores worth-it and noise moments, and the speak gate decides.
+- **The Watcher** scores worth-it and noise moments, and the speak gate decides. Fresh code: two hunks with a bug
+  reach the normal bar, and three without one (one only untidy) stay under it.
 - **The Partner's tool calls:** pointing at the right line, staying silent on noise, reading before answering,
   changing nothing when asked to; on a wrong turn, pointing at the real cause with its code, or staying silent when
   your edit is the fix; on a regression found on save, a real `node --test` run, suggesting the fix where it breaks
@@ -310,7 +315,7 @@ it is back.
 
 **The tone.** `test/live/tone.test.mjs` runs a real Pair session on a small C program with a Makefile
 ([test/live/probe](../test/live/probe/)), built and run for real: a remark on a failed `make run` names `file:line` in
-at most 30 words, the idea behind it stays within 45 and its link opens, a question gets at most 80 words, and a green
+at most 30 words, and so does a remark on fresh code you just saved there, the idea behind it stays within 45 and its link opens, a question gets at most 80 words, and a green
 run after a long red is named, not praised; none of them with praise, apology, filler, emoji, `!`, headings or lists.
 Details in [tone.md](tone.md).
 

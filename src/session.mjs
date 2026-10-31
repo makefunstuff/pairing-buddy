@@ -33,7 +33,7 @@ import {parseTestOutput, testSummary} from './test-output.mjs';
 import {TestRuns, treeOf} from './test-runs.mjs';
 import {named} from './terminals.mjs';
 import {currentTrail, trailMatches, trailSummary} from './trail.mjs';
-import {detectTriggers, TRIGGER_KINDS} from './triggers.mjs';
+import {detectTriggers, freshCodeIn, TRIGGER_KINDS} from './triggers.mjs';
 import {IGNORED_AFTER_MS, keptShares, outcome, tuning, WINDOW_MS} from './tuning.mjs';
 import {prepareUnsaved, withTree} from './unsaved.mjs';
 import {KEEP, splitTeaching, teachInput} from './tone.mjs';
@@ -1788,6 +1788,13 @@ export class PairSession {
 
   /** The Watcher's score; drift comes with what the file is about (see gist.mjs), read only once it is asked. */
   async scoreWithGist(trigger, state) {
+    if (trigger.kind === 'fresh_code') {
+      // The code as it is now, read once: the Watcher scores it, and the Partner, if it speaks, gets the same lines.
+      const path = await projectFile(this.root, trigger.file).catch(() => null);
+      const text = path ? await this.bufferText(path).catch(() => null) : null;
+      if (text !== null) Object.assign(trigger, freshCodeIn(trigger, text));
+      return this.score(trigger, state);
+    }
     if (trigger.kind !== 'drift') return this.score(trigger, state);
     const path = await projectFile(this.root, trigger.file).catch(() => null);
     const about = path ? gist(await this.bufferText(path).catch(() => '')) : '';

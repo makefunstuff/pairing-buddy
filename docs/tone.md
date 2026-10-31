@@ -78,6 +78,7 @@ average probe of 12.6 and fails its check. The program is built and run for real
 | --- | --- |
 | `make run` failed twice: a remark | names `file:line`, at most 30 words |
 | `Alt-?` on that remark | at most 45 words, not the remark again; a link, if any, opens |
+| you saved `table_put` (lines 34-37), which you just wrote: fresh code | names `file:line`, at most 30 words |
 | "why is the average probe 12.6?" | names `file:line`, at most 80 words |
 | green after 23 minutes of red: "was that really it?" | names what is now true, at most 80 words |
 

@@ -7,11 +7,12 @@
 // Watcher's own calls take.
 //
 // Which kinds to give up is not a guess. A moment is worth a call when the user cannot see it for themselves; the
-// kinds first off the list are all on the screen already (the code you just wrote, the note you are writing, the file you chose to open, the
+// kinds first off the list are all on the screen already (the note you are writing, the file you chose to open, the
 // numbers in the terminal, the warning the build printed). The ones kept to the end are news you cannot see: why a
 // run crashed, an error in code you moved on from, a test you have not run, a failure you did not look at. Where the
 // user's own verdicts on a kind add up (as many as tuning.mjs needs: five judged remarks), their kept share decides
-// the order instead, so a kind Pair gets dismissed stops costing a call.
+// the order instead, so a kind Pair gets dismissed stops costing a call. Fresh code goes first of all: a bug in it is
+// news, but it costs a call for every hunk you finish, most of them sound, and a test finds the bug later anyway.
 import {TRIGGER_KINDS} from './triggers.mjs';
 
 // About a second is the aim. A cloud API tested for this (docs/watcher.md, "When the server is slow") scored in
