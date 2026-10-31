@@ -163,6 +163,8 @@ export function openStore(path) {
     rateRemark: (id, verdict) => db.prepare('UPDATE remarks SET verdict = ? WHERE id = ?').run(verdict, id).changes > 0,
     /** Records that the user saw remark `id` (they edited after it showed), unless it has a verdict already. */
     seeRemark: id => db.prepare('UPDATE remarks SET verdict = \'seen\' WHERE id = ? AND verdict IS NULL').run(id),
+    /** Records that the user acted on remark `id` (edited where it pointed): useful, unless they gave a verdict of their own. */
+    actOnRemark: id => db.prepare('UPDATE remarks SET verdict = \'useful\' WHERE id = ? AND (verdict IS NULL OR verdict = \'seen\')').run(id).changes > 0,
     /** The remarks of session `id`, oldest first. */
     sessionRemarks: id => db.prepare('SELECT id, trigger, score, at, verdict FROM remarks WHERE session_id = ? ORDER BY id').all(id),
     /** The last remark of session `id`, or null: what feedback without a number rates, also after a daemon restart. */

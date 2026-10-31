@@ -157,6 +157,7 @@ export function streamable(text) {
   return start.length > 0 && !'SILENT'.startsWith(start.toUpperCase()) && !/^SILENT\b/i.test(start) && !/<tool_call>/.test(text);
 }
 const REMARKS_LISTED = 9; // /remarks lists this many, so +N and -N take one digit
+const ACTED_SLACK = 2; // an edit this many lines off where a remark pointed still acts on it
 const PANE_USES_PER_TURN = 4; // small steps: a few searches or commands per question, not a long plan
 const SEARCH_LINES = 50;
 const RUN_OUTPUT_CHARS = 3000;
@@ -322,6 +323,8 @@ export class PairSession {
     this.asksBack = false; // that remark is one question back, and nothing else (see prose-triggers.mjs)
     this.words = []; // what Pair said this turn: an unasked remark shows it under the user's line too
     this.target = null; // where the user's jump key goes: Pair's suggestion this turn, else where it pointed last
+    this.pointedAt = []; // every place Pair pointed at or suggested for this turn: {file, from, to}, file relative
+    this.awaiting = new Map(); // shown remarks with places and no verdict yet, by id: {at, places} (see actedOn)
     this.held = []; // parts of an urgent unasked remark that came while the user was typing
     this.holding = null; // the parts of the running remark, when it can wait for the user's next breakpoint (see held.mjs)
     this.thought = null; // the held thought, {id, trigger, since, parts}: a remark ready, waiting for that breakpoint
@@ -422,6 +425,7 @@ export class PairSession {
     if (USER_EVENTS.has(event.kind) && mine) this.usedAt = this.now();
     if (WORK_EVENTS.has(event.kind) && mine) this.worked = true;
     if (event.kind === 'save' && file && !outsideRoot(file)) this.testRuns?.saved(file);
+    if (event.kind === 'edit' && file && mine) this.actedOn(file, event.from, event.to);
     // A key at a shell prompt (herdr.mjs tells it from the pane's text) takes the wheel back, as one in Neovim does.
     if (event.kind === 'typing' && event.source === 'terminal' && this.role === 'driver') this.takeBack().catch(error => this.log(`take-back: ${error.message}`));
     if (event.kind === 'command_end') {
@@ -827,12 +831,13 @@ export class PairSession {
       }
       // After the remark's own words, also when they wait for a pause in the user's typing. The editor shows
       // the words under the line the user is on, with a way to the place Pair pointed at.
-      const {words, target} = this;
+      const {words, target, pointedAt} = this;
       // The budget pays for a remark the user gets to see, when they see it.
       this.show(() => {
         this.budget.spend(this.now());
         this.lastRemark = id;
         this.store.showRemark(id);
+        if (pointedAt.length) this.awaiting.set(id, {at: this.now(), places: pointedAt});
         this.lastRemarkTrigger = trigger.kind;
         this.presence = {...this.presence, spoke: this.presence.spoke + 1};
         this.notify('chat', {type: 'remark', id, trigger: trigger.kind, place: target ? {file: relative(this.root, target.file), line: target.line} : null});
@@ -882,6 +887,26 @@ export class PairSession {
     const remarks = this.store.recentRemarks(this.root, REMARKS_LISTED)
       .map(({id, trigger, at, text, ...remark}) => ({id, trigger, at, text, outcome: outcome({...remark, at}, now)}));
     return {type: 'remarks', remarks};
+  }
+
+  /**
+   * The user edited lines `from` to `to` of `file`: a remark of the last ten minutes that pointed there (give or take
+   * ACTED_SLACK lines, as edits above move them) was acted on, wherever its words showed (under their line, in the
+   * chat, or nowhere while they were in their terminal), and counts as useful. A verdict of the user's own wins: a
+   * dismissed remark stays dismissed, and a - later still makes it noise.
+   */
+  actedOn(file, from, to) {
+    if (!Number.isInteger(from)) return;
+    const now = this.now();
+    for (const [id, {at, places}] of this.awaiting) {
+      if (now - at >= IGNORED_AFTER_MS) { this.awaiting.delete(id); continue; }
+      const place = places.find(place => place.file === file && from <= place.to + ACTED_SLACK && (to ?? from) >= place.from - ACTED_SLACK);
+      if (!place) continue;
+      this.awaiting.delete(id);
+      if (!this.store.actOnRemark(id)) continue;
+      this.ledger.add('acted', `${file}:${place.from}, you edited where a remark pointed`, {data: {place: {file: join(this.root, file), line: place.from}, remark: id}});
+      this.notify('chat', {type: 'acted', remark: id});
+    }
   }
 
   /** The user's remark seen: they edited after it showed. Neither useful nor noise; a verdict still replaces it. */
@@ -976,6 +1001,7 @@ export class PairSession {
     this.paneUses = 0;
     this.words = [];
     this.target = null;
+    this.pointedAt = [];
     this.thinks = this.partner.thinkingOf(this.conversationId, options.kind) !== 'off';
     this.showThinking(true);
     this.working();
@@ -1567,6 +1593,7 @@ export class PairSession {
     if (!path) return `No file ${file} in the project`;
     this.spoke = true;
     if (!this.target?.suggestion) this.target = {file: path, line, endLine, note, code};
+    this.pointedAt.push({file: relative(this.root, path), from: line, to: endLine ?? line});
     this.ledger.add('pointed', `${relative(this.root, path)}:${line}, ${note}`, {data: {place: {file: path, line}}});
     const meta = {...this.metaNow(), place: {file: relative(this.root, path), line}};
     this.show(() => {
@@ -1602,6 +1629,7 @@ export class PairSession {
     // The editor shows every suggestion, and its jump key goes on from that one to the next.
     const first = !this.target?.suggestion;
     if (first) this.target = {file: path, line, endLine, note, suggestion: true};
+    this.pointedAt.push({file: relative(this.root, path), from: line, to: endLine ?? line});
     const remark = this.remarkId; // now: a suggestion held for the user's pause is shown after the turn ended
     const action = this.ledger.add('suggested', `${relative(this.root, path)}:${line}, ${note}`, {data: {place: {file: path, line}, remark: remark ?? undefined}});
     // The chat pane shows it as a diff, which `a` there takes, as the accept key does in Neovim.

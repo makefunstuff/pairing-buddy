@@ -48,7 +48,7 @@ do with it:
 | `a` | Take its suggestion in Neovim, unsaved, as `Alt-y` does there |
 | `j` | Go to its file and line in Neovim; `Ctrl-O` there comes back |
 | `c` | Copy its text |
-| `+` / `-` | Rate the remark useful or noise |
+| `+` / `-` | Rate the remark useful or noise; editing where it pointed marks it `✓ useful` by itself |
 | `f` | Ask a follow-up about it |
 | `e` | The idea behind it, as `/why` |
 | `Enter` | Unfold a long message |

@@ -604,6 +604,9 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
       case 'agent_list':
         arrive({kind: 'note', text: agentListLines(message).join('\n')});
         break;
+      case 'acted': // you edited where a remark pointed: it counts as useful, unless you rated it yourself
+        state.entries.filter(entry => entry.meta?.remark === message.remark && !entry.verdict).forEach(entry => { entry.verdict = 'useful'; });
+        break;
       case 'remarks':
         state.listed = message.remarks.map(remark => remark.id);
         arrive({kind: 'note', text: remarkLines(message.remarks).join('\n')});

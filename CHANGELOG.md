@@ -7,6 +7,15 @@ release is cut.
 
 ## [Unreleased]
 
+### Changed
+
+- **A remark you act on counts as useful.** Editing the lines a remark pointed at, within ten minutes, counts it as
+  useful wherever its words showed, also when it reached you while you were in your terminal; the ledger books it
+  (`counted useful`) and the chat marks it. Before, such a remark counted as ignored, and with `autoTune` enough of
+  them raised the bar. Your own `+` or `-` still wins.
+- **The day's end debrief calls only the remarks you rated noise "noise".** Remarks that got no answer are counted
+  beside them (`…; 1 got no answer.`).
+
 ## [0.11.0] - 2026-10-29
 
 Pair can now write code you ask for (`/gen`), works with the Shepherdr work board, has a rebuilt chat pane, and its
