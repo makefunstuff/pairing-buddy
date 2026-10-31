@@ -38,7 +38,11 @@ completes, `Enter` runs one that needs nothing more. A few to know:
 
 ![The command menu: seven commands in three columns, the count in its rule and how many more under it](../images/chat-menu.png)
 
-## 4. Act on a message
+## 4. Take a suggestion, act on a message
+
+`Alt-y` takes the newest suggestion still showing (or `/gen here` block) into your buffer from right here, unsaved,
+as one undo step, as `Alt-y` does in Neovim; Neovim goes to it and lights its lines for a moment (`Ctrl-O` there
+comes back). No need to pick it first, or to leave the chat.
 
 `Alt-↑` picks the last message; more presses go up, `Alt-↓` down. A bar marks it, and the footer lists what you can
 do with it:
@@ -54,7 +58,8 @@ do with it:
 | `Enter` | Unfold a long message |
 | `Esc` | Back to typing |
 
-When a remark is the last thing said, its own line shows these keys under it: `Alt-↑` then the key.
+When a remark is the last thing said, its own line shows its keys under it: `Alt-y take` works at once, the others
+after `Alt-↑`.
 
 ![A remark that came on save, its suggestion as a diff, and its action line](../images/chat-remark.png)
 

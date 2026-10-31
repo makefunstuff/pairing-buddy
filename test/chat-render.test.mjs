@@ -343,7 +343,7 @@ test('a wide pane: the words end by column 80, code and diffs use the width, and
   assert.match(plain(transcriptLines([answer], 100).lines)[1], /word {2,}14:05 · 6\.4s$/, 'less room: the tokens go first');
 });
 
-test('a remark is one unit: its last line has the keys that work on it once picked, spaced like buttons, Alt-↑ as an aside', () => {
+test('a remark is one unit: its last line has Alt-y to take it and the keys that work on it once picked, spaced like buttons, Alt-↑ as an aside', () => {
   const suggestion = {action: 4, old: ['return &Lease{ttl: cfg.Budget}'], new: ['return &Lease{ttl: cfg.Budget + cfg.AttemptTimeout}']};
   const remark = {kind: 'watch', at, text: 'internal/queue/lease.go:18 suggestion: the lease ends before the last attempt does', meta: {remark: 7, trigger: 'regression', place: {file: 'internal/queue/lease.go', line: 18}, suggestion}};
   const lines = plain(transcriptLines([remark], 80, {latestRemark: 0}).lines);
@@ -352,15 +352,15 @@ test('a remark is one unit: its last line has the keys that work on it once pick
     '       the lease ends before the last attempt does',
     '       │ - return &Lease{ttl: cfg.Budget}',
     '       │ + return &Lease{ttl: cfg.Budget + cfg.AttemptTimeout}',
-    '       + useful  - noise  a apply  j jump  · Alt-↑ first',
+    '       Alt-y take  + useful  - noise  j jump  · Alt-↑ first',
   ], 'the diff has the code block\'s bar and space');
   const action = transcriptLines([remark], 80, {latestRemark: 0}).lines.at(-1);
-  assert.deepEqual(action.filter(s => s.style === 'bold').map(s => s.text), ['+', '-', 'a', 'j', 'Alt-↑'], 'the keys bold');
-  assert.ok(action.filter(s => /useful|noise|apply|jump|first/.test(s.text)).every(s => s.style === 'dim'), 'their words dim');
-  assert.match(plain(transcriptLines([{...remark, applied: true}], 80, {latestRemark: 0}).lines).at(-1), /^ {7}\+ useful {2}- noise {2}j jump {2}· Alt-↑ first$/, 'taken: no a');
-  assert.equal(plain(transcriptLines([remark], 80, {latestRemark: 0, selected: 0}).lines).at(-1).trimEnd(), '▌      + useful  - noise  a apply  j jump', 'picked: the keys work now, no aside');
-  assert.equal(plain(transcriptLines([remark], 54, {latestRemark: 0}).lines).at(-1), '       + useful - noise a apply j jump  · Alt-↑ first', 'narrower: the gaps first');
-  assert.equal(plain(transcriptLines([remark], 44, {latestRemark: 0}).lines).at(-1), '       + - a j  · Alt-↑ first', 'a narrow pane: the keys without words, the aside kept');
+  assert.deepEqual(action.filter(s => s.style === 'bold').map(s => s.text), ['Alt-y', '+', '-', 'j', 'Alt-↑'], 'the keys bold');
+  assert.ok(action.filter(s => /useful|noise|take|jump|first/.test(s.text)).every(s => s.style === 'dim'), 'their words dim');
+  assert.match(plain(transcriptLines([{...remark, applied: true}], 80, {latestRemark: 0}).lines).at(-1), /^ {7}\+ useful {2}- noise {2}j jump {2}· Alt-↑ first$/, 'taken: no Alt-y');
+  assert.equal(plain(transcriptLines([remark], 80, {latestRemark: 0, selected: 0}).lines).at(-1).trimEnd(), '▌      Alt-y take  + useful  - noise  j jump', 'picked: the keys work now, no aside');
+  assert.equal(plain(transcriptLines([remark], 58, {latestRemark: 0}).lines).at(-1), '       Alt-y take + useful - noise j jump  · Alt-↑ first', 'narrower: the gaps first');
+  assert.equal(plain(transcriptLines([remark], 44, {latestRemark: 0}).lines).at(-1), '       Alt-y + - j  · Alt-↑ first', 'a narrow pane: the keys without words, the aside kept');
   const pieces = [{...remark, text: 'the lease ends early', meta: {...remark.meta, suggestion: undefined}}, {kind: 'watch', at, text: 'see the retry', meta: {remark: 7, trigger: 'regression'}}];
   assert.deepEqual(Object.keys(remarkKeys(pieces, 1)).filter(key => remarkKeys(pieces, 1)[key]), ['jump'], 'the keys of the whole remark, from its last part');
 });

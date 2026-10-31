@@ -440,6 +440,8 @@ local function drop_suggestion(suggestion)
   -- A /gen piece you dismissed or edited away is dropped; one you took, or the daemon took back, is not.
   if suggestion.gen and not suggestion.taken and not suggestion.quiet then
     send({type = 'gen_dropped', action = suggestion.action, piece = suggestion.piece})
+  elseif not suggestion.gen and suggestion.action and not suggestion.taken then
+    send({type = 'suggestion_gone', action = suggestion.action}) -- the chat's keys for it go
   end
   local next = suggestions.all()[1]
   if state.target == suggestion.target then aim(next and next.target) end
@@ -462,7 +464,8 @@ local function picked()
   return target or suggestions.all()[#suggestions.all()]
 end
 
---- Takes `suggestion` into its buffer, unless its lines changed since it was shown.
+--- Takes `suggestion` into its buffer, unless its lines changed since it was shown; on success, returns the row its
+--- new lines start on (0-based).
 local function accept(suggestion)
   local unchanged = suggestions.still(suggestion)
   local first, last = suggestions.range(suggestion)
@@ -480,6 +483,7 @@ local function accept(suggestion)
       piece = suggestion.piece, from = suggestion.gen and first + 1 or nil, to = suggestion.gen and first + math.max(#suggestion.new, 1) or nil,
     })
   end
+  return first
 end
 
 function M.accept()
@@ -803,6 +807,36 @@ local function go(message)
   vim.api.nvim_win_set_buf(win, buf)
   pcall(vim.api.nvim_win_set_cursor, win, {math.min(message.line, vim.api.nvim_buf_line_count(buf)), 0})
   vim.cmd('normal! zz')
+end
+
+local taken_ns = vim.api.nvim_create_namespace('pair_taken')
+
+--- The chat pane's Alt-y: takes ledger action `message.action` (the one whose action line it pressed it under), else
+--- the newest suggestion still showing (any Alt-y here would take), then the window you work in goes to its lines
+--- (Ctrl-O there comes back; the focus stays put) and lights them up for a moment, so you see where they landed. When it takes
+--- nothing, it tells the chat why.
+local function take(message)
+  local suggestion = suggestions.all()[#suggestions.all()]
+  if type(message.action) == 'number' then
+    suggestion = vim.iter(suggestions.all()):find(function(one) return one.action == message.action end)
+    if not suggestion then return send({type = 'take_none', why = 'gone'}) end
+  end
+  if not suggestion then return send({type = 'take_none'}) end
+  local first = accept(suggestion)
+  if not first then return send({type = 'take_none', why = 'changed'}) end
+  if not vim.api.nvim_buf_is_valid(suggestion.buf) then return end
+  -- The window you work in goes there; the focus stays where it is, so in :Pair chat you go on typing in the chat.
+  local win = work_window()
+  vim.bo[suggestion.buf].buflisted = true
+  vim.api.nvim_win_call(win, function()
+    vim.cmd("normal! m'")
+    vim.api.nvim_win_set_buf(win, suggestion.buf)
+    pcall(vim.api.nvim_win_set_cursor, win, {math.min(first + 1, vim.api.nvim_buf_line_count(suggestion.buf)), 0})
+    vim.cmd('normal! zz')
+  end)
+  if #suggestion.new > 0 then
+    vim.hl.range(suggestion.buf, taken_ns, 'PairSuggestAdd', {first, 0}, {first + #suggestion.new - 1, 2147483647}, {timeout = 1500})
+  end
 end
 
 --- Where a /gen request from the chat goes: the cursor, or the selection, in the window you work in.
@@ -1133,6 +1167,7 @@ local handlers = {
   buffers = function(message) send({type = 'reply', id = message.id, result = {buffers = buffers.unsaved(message.root)}}) end,
   suggest = suggest,
   accept = accept_action,
+  take = take,
   go = go,
   selection = selection,
   edit = edit,

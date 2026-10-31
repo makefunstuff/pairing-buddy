@@ -229,6 +229,37 @@ test('Esc stops an answer while it streams; what streamed goes, and the pane say
   }
 });
 
+test('Alt-y asks Neovim to take its newest suggestion, from anywhere in the pane, without picking it; nothing to take says so', {timeout: 20_000}, async () => {
+  const t = await setUp({width: 80});
+  const nvim = editor(t.socket, t.dir);
+  try {
+    await t.shows('What are we doing');
+    await t.type('later\r');
+    await t.shows('No goal then.');
+    await t.type('\x1by');
+    await nvim.next(message => message.type === 'take');
+    nvim.send({type: 'take_none'}); // Neovim shows none
+    await t.shows('Nothing to take: no suggestion or gen block is showing in Neovim');
+    t.partner.setResponses([
+      fauxAssistantMessage([fauxToolCall('suggest', {file: 'queue.go', line: 4, new_text: '\treturn &Queue{ttl: cfg.Budget + cfg.AttemptTimeout}', note: 'past the last attempt'})], {stopReason: 'toolUse'}),
+      fauxAssistantMessage([fauxText('That is all.')]),
+    ]);
+    await t.type('fix it?\r');
+    await t.shows('That is all.');
+    await t.type('and why');
+    await t.type('\x1by'); // Alt-y, halfway through a question
+    for (let i = 0; i < 100 && nvim.received.filter(message => message.type === 'take').length < 2; i++) await sleep(20);
+    assert.equal(nvim.received.filter(message => message.type === 'take').length, 2, 'Neovim asked to take it');
+    assert.match(t.text(), /› and why$/m, 'what you typed stays');
+    const suggested = nvim.received.find(message => message.type === 'suggest');
+    nvim.send({type: 'applied', action: suggested.action, before: [QUEUE], after: [QUEUE]});
+    await t.shows('✓ taken');
+  } finally {
+    nvim.stop();
+    await t.close();
+  }
+});
+
 test('a suggestion: a diff; picked with Alt-↑, a takes it in Neovim and j goes there; @here asks about your selection', {timeout: 20_000}, async () => {
   const t = await setUp({width: 80});
   const nvim = editor(t.socket, t.dir, {selection: {file: join(t.dir, 'queue.go'), from: 3, to: 4}});
@@ -454,19 +485,19 @@ test('a remark\'s action line: a question that starts with a, j, + or - is typed
   const t = await standInPane();
   try {
     t.daemon.send({...REMARK, at: Date.now()});
-    await t.shows(/│ \+ return &Lease\{ttl: cfg\.Budget \+ cfg\.AttemptTimeout\}\n {7}\+ useful {2}- noise {2}a apply {2}j jump {2}· Alt-↑ first\n/);
+    await t.shows(/│ \+ return &Lease\{ttl: cfg\.Budget \+ cfg\.AttemptTimeout\}\n {7}Alt-y take {2}\+ useful {2}- noise {2}j jump {2}· Alt-↑ first\n/);
     for (const question of ['are you sure?', 'just why?', '-v flag?', '+1 on that']) {
       await t.type(question);
       assert.match(t.text(), new RegExp(`^› ${question.replace(/[?+]/g, '\\$&')}$`, 'm'), `${question}: typed whole`);
       await t.type('\x15'); // Ctrl-U
     }
-    assert.deepEqual(t.daemon.got.filter(m => ['accept', 'go', 'feedback'].includes(m.type)), [], 'nothing taken, no jump, no verdict');
+    assert.deepEqual(t.daemon.got.filter(m => ['accept', 'go', 'feedback'].includes(m.type)), [], 'nothing accepted, no jump, no verdict');
     assert.doesNotMatch(t.text(), /✗ noise|✓ useful/);
 
     t.daemon.send({type: 'message', sender: 'system', text: 'tests on save: 1 failed', at: Date.now()});
     await t.shows(/tests on save/);
     await t.type('\x1b[1;3A'); // Alt-↑: the remark, not the note after it
-    await t.shows(/^▌ +\+ useful {2}- noise {2}a apply {2}j jump$/m);
+    await t.shows(/^▌ +Alt-y take {2}\+ useful {2}- noise {2}j jump$/m);
     assert.match(t.text(), /c copy · a apply · j jump · \+\/- rate/);
     await t.type('a');
     assert.deepEqual(await t.sent('accept'), {type: 'accept', action: 9}, 'picked: a takes its suggestion');
@@ -477,11 +508,17 @@ test('a remark\'s action line: a question that starts with a, j, + or - is typed
     await t.shows(/regression · internal\/queue\/lease\.go:18 {2}✓ useful/);
     assert.doesNotMatch(t.text(), /\+ useful {2}-/, 'rated: the line goes');
 
-    t.daemon.send({...REMARK, at: Date.now(), meta: {...REMARK.meta, remark: 6}});
-    await t.shows(/a apply {2}j jump {2}· Alt-↑ first/);
+    t.daemon.send({...REMARK, at: Date.now(), meta: {...REMARK.meta, remark: 6, suggestion: {...REMARK.meta.suggestion, action: 10}}});
+    await t.shows(/Alt-y take {2}\+ useful {2}- noise {2}j jump {2}· Alt-↑ first/);
+    await t.type('\x1by'); // Alt-y under the remark's line: that suggestion
+    assert.deepEqual(await t.sent('take'), {type: 'take', action: 10}, 'Alt-y names the suggestion its line is under');
+    t.daemon.send({type: 'take_none', why: 'gone'});
+    await t.shows(/That suggestion is no longer showing in Neovim/);
+    t.daemon.send({type: 'suggestion_gone', action: 10}); // edited away in Neovim
+    await t.shows(/^ {7}\+ useful {2}- noise {2}j jump {2}· Alt-↑ first$/m);
     t.daemon.send({type: 'message', sender: 'pair', text: 'And another thing.', at: Date.now()});
     await t.shows(/And another thing\./);
-    assert.doesNotMatch(t.text(), /a apply/, 'Pair spoke since: the line goes');
+    assert.doesNotMatch(t.text(), /Alt-y take/, 'Pair spoke since: the line goes');
     await t.type('\x1b'); // back to typing
     await t.type('\x1b[1;3A');
     assert.match(t.text(), /^▌pair +And another thing\./m, 'and Alt-↑ picks the newest message again');
@@ -691,7 +728,7 @@ test('/gen in the pane: the shapes after /gen, the gen card with its keys, its r
     await t.type('a comment on the budget\r');
     await t.shows(/^ gen   #1 · here · 2 lines at queue\.go:1: A comment on the budget\.$/m);
     assert.match(t.text(), /│ \+ \/\/ Budget is how long a lease lasts\./, 'the code as a diff');
-    assert.match(t.text(), /^ {7}k keep   Enter open   d drop   u undo   · Alt-↑ picks$/m, 'its keys, as an action line');
+    assert.match(t.text(), /^ {7}Alt-y take   Enter open   d drop   u undo   · Alt-↑ picks$/m, 'its keys, as an action line');
     await t.shows(/── ◉ watching · gen #1: ready in Neovim ─/);
     // Picked: the footer has its keys. k takes it in Neovim, as Alt-y does there.
     await t.type('\x1b[1;3A');

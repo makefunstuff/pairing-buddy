@@ -450,19 +450,20 @@ export function remarkKeys(entries, index) {
   const id = entries[index]?.meta?.remark;
   const group = entries.filter(entry => id && entry.meta?.remark === id);
   return {
-    apply: group.find(entry => entry.meta.suggestion && !entry.applied) ?? null,
+    apply: group.find(entry => entry.meta.suggestion && !entry.applied && !entry.gone) ?? null,
     jump: group.findLast(entry => entry.meta.place) ?? null,
   };
 }
 
 /**
- * The action line under a remark, `width` wide: + useful  - noise  a apply  j jump  · Alt-↑ first, spaced like
- * buttons. The keys work once the remark is picked (a letter on an empty line is the start of a question), so until
- * then the aside says how; `picked`, it goes. Where it does not fit, the gaps narrow, then the keys lose their words.
+ * The action line under a remark, `width` wide: Alt-y take  + useful  - noise  j jump  · Alt-↑ first, spaced like
+ * buttons. Alt-y takes its suggestion from anywhere in the pane; the letters work once the remark is picked (a letter
+ * on an empty line is the start of a question), so until then the aside says how; `picked`, it goes. Picked, `a`
+ * takes the suggestion too. Where it does not fit, the gaps narrow, then the keys lose their words.
  */
 function actionLine(entries, index, width, picked) {
   const {apply, jump} = remarkKeys(entries, index);
-  const keys = [['+', 'useful'], ['-', 'noise'], ...(apply ? [['a', 'apply']] : []), ...(jump ? [['j', 'jump']] : [])];
+  const keys = [...(apply ? [['Alt-y', 'take']] : []), ['+', 'useful'], ['-', 'noise'], ...(jump ? [['j', 'jump']] : [])];
   const aside = picked ? [] : [seg('  · ', 'dim'), seg('Alt-↑', 'bold'), seg(' first', 'dim')];
   const line = (gap, words) => [
     ...keys.flatMap(([key, what], i) => [...(i ? [seg(gap)] : []), seg(key, 'bold'), ...(words ? [seg(` ${what}`, 'dim')] : [])]),
@@ -470,6 +471,12 @@ function actionLine(entries, index, width, picked) {
   ];
   return [line('  ', true), line(' ', true), line(' ', false)].find(l => lineWidth(l) <= width) ?? clipLine(line(' ', false), width);
 }
+
+/**
+ * A gen card's action line: its keys, with Alt-y in place of k while its code at the cursor is there to take (k still
+ * takes it once the card is picked), as a remark's line has Alt-y in place of a.
+ */
+const cardLineKeys = card => cardKeys(card).map(key => (card.shape === 'here' && key[0] === 'k' ? ['alt-y', 'Alt-y', 'take'] : key));
 
 /** The keys of a gen card, in the order its action line shows them: [key, what, its words on the card]. */
 export function cardKeys(card) {
@@ -497,7 +504,7 @@ export function relayActions(entry) {
  * picks. As for a remark, the keys work once the card is picked; where it does not fit, the gaps narrow, then the
  * keys lose their words. A relayed line's keys show the same way: o open   d diff   t terminal.
  */
-function cardLine(entry, width, picked, keys = cardKeys(entry.card)) {
+function cardLine(entry, width, picked, keys = cardLineKeys(entry.card)) {
   const aside = picked ? [] : [seg('   · ', 'dim'), seg('Alt-↑', 'bold'), seg(' picks', 'dim')];
   const line = (gap, words, how = aside) => [
     ...keys.flatMap(([, shown, what], i) => [...(i ? [seg(gap)] : []), seg(shown, 'bold'), ...(words ? [seg(` ${what}`, 'dim')] : [])]),
@@ -844,7 +851,7 @@ export function footerKeys(view) {
   }
   if (mode === 'select' && selectedEntry) {
     const keys = [k('c', 'copy')];
-    if (selectedEntry.meta?.suggestion && !selectedEntry.applied) keys.push(k('a', 'apply'));
+    if (selectedEntry.meta?.suggestion && !selectedEntry.applied && !selectedEntry.gone) keys.push(k('a', 'apply'));
     if (selectedEntry.meta?.place) keys.push(k('j', 'jump'));
     if (selectedEntry.meta?.remark) keys.push(k('+/-', 'rate'), k('m', 'mute'), k('f', 'follow up'), k('e', 'explain'));
     if (selectedEntry.kind === 'tool' || selectedEntry.folded) keys.push(k('Enter', selectedEntry.expanded ? 'fold' : 'unfold'));
@@ -997,6 +1004,7 @@ export function helpLines(commands, width) {
     ['↑ ↓', 'move in what you type, else what you sent before'],
     ['Esc', 'stop Pair\'s answer · close a menu · leave a message'],
     ['Tab', 'complete a /command or an @file'],
+    ['Alt-y', 'take the latest suggestion or gen block into Neovim, unsaved, and go there'],
     ['Alt-↑ Alt-↓', 'pick a message, then:'],
     ['  c a j', 'copy it · apply its suggestion · jump to its line'],
     ['  + - m', 'rate the remark useful or noise · mute its kind'],
