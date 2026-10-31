@@ -106,6 +106,14 @@ the break. Editing the line it pointed at afterwards counts it as useful, as for
 the first kind Pair gives up, unless your verdicts rank it higher ([below](#when-the-server-is-slow)): it costs one
 Watcher call per hunk you finish.
 
+Measured live with DeepSeek Flash as both models (2026-10-31): three correct hunks, one of them only untidy, and a
+function not finished yet all scored 0; a loop one past the end scored 8 to 10. The bug of the session that asked for
+this moment, a share of a discount by `line.price` where the total is of `line.price * line.qty`, scored 0 to 4: the
+fast Watcher, which does not think, rarely sees a bug that needs two lines read together, and a wording that caught it
+named that bug, so it was not kept. In a scripted half hour of six hunks (two with a bug) and one failing test seen
+twice, Pair made 2 remarks before this moment and 3 with it: the new one was the loop past the end, and none was on
+correct code. The [tone test](tone.md) holds for its remark.
+
 ## The wrong turn
 
 `edit_while_red` is raised when the last test run (yours, or Scout's) failed in the last ten minutes, its output names source files, and you then edit a source file it does not name. A test file and the code it tests count as one name: `worker_test.go` and `worker.go`, `test/ws.test.ts` and `src/ws.ts`, `test_ws.py` and `ws.py`. It is raised once per run and file, and not at all once a newer run passed. It is judged before drift, since it is the more specific moment.

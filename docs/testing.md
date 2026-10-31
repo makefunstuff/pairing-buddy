@@ -260,8 +260,9 @@ entry like those in the config:
 Stacks can name a `provider` too, with its login or key from `pair auth`. Without `PAIR_LIVE_CONFIG` (or a gitignored
 `test/live/config.json`) the live tests are skipped.
 
-- **The Watcher** scores worth-it and noise moments, and the speak gate decides. Fresh code: two hunks with a bug
-  reach the normal bar, and three without one (one only untidy) stay under it.
+- **The Watcher** scores worth-it and noise moments, and the speak gate decides. Fresh code: three hunks without a bug (one only
+  untidy) stay under the normal bar and a loop one past the end reaches it; a subtle bug (a price where price times
+  quantity was meant) is reported, not failed.
 - **The Partner's tool calls:** pointing at the right line, staying silent on noise, reading before answering,
   changing nothing when asked to; on a wrong turn, pointing at the real cause with its code, or staying silent when
   your edit is the fix; on a regression found on save, a real `node --test` run, suggesting the fix where it breaks
