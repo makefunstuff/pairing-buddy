@@ -51,7 +51,7 @@ export async function pairInNvim(goal, {testOnSave, runs = false, thinks = false
     socket: join(dataDir, 'pair.sock'),
     testOnSave: testOnSave ? {[project]: testOnSave} : undefined,
     voice,
-    agents: false, // never the real board of the machine running the tests
+    agents: false, plan: false, // never the real board of the machine running the tests
     board, // a fake board's command, or none
     models: {watcher: {api: 'openai', baseUrl: 'http://unused', model: 'w'}, partner: {api: 'openai', baseUrl: 'http://unused', model: 'p'}},
   });

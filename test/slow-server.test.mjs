@@ -44,7 +44,7 @@ test('on a slow server the daemon stops asking the Watcher about drift, and stil
   const project = scratch('pair-project-');
   const dataDir = scratch('pair-data-');
   writeFileSync(join(project, 'invoice.js'), 'export const total = items => items.length;\n');
-  const config = parseConfig({dataDir, socket: join(dataDir, 'pair.sock'), typingPauseMs: 50, keepWarm: false,
+  const config = parseConfig({dataDir, socket: join(dataDir, 'pair.sock'), typingPauseMs: 50, keepWarm: false, plan: false,
     model: {api: 'openai', baseUrl: server.url, model: 'one', contextWindow: 32768}});
   const logged = [];
   const daemon = await startDaemon(config, {probe: async () => ({ok: true}), log: line => logged.push(line)});

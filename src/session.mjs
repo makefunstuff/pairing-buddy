@@ -396,8 +396,8 @@ export class PairSession {
    * where `genScaffold` says ('tree', Pair's copy, or 'worktree'); /gen board composes a task for `genBoard`, the
    * board's command.
    */
-  constructor({record, store, partner, score, pace = null, decision = () => null, typingPauseMs, notify, requestEditor, previousNote = null, lastSession = null, autoTune = false, health = {ok: () => true}, testOnSave = null, checkOutput = null, genLimits, genBrief, genDir = null, genKeepTries, genNetwork = false, genSandbox = 'auto', genScaffold, genBoard = null, askModel = null, threadModel = askModel, log = () => {}, now = Date.now}) {
-    Object.assign(this, {record, store, partner, score, pace, decision, typingPauseMs, notify, requestEditor, previousNote, lastSession, autoTune, health, askModel, threadModel, log, now});
+  constructor({record, store, partner, score, pace = null, decision = () => null, typingPauseMs, notify, requestEditor, previousNote = null, lastSession = null, autoTune = false, health = {ok: () => true}, testOnSave = null, checkOutput = null, genLimits, genBrief, genDir = null, genKeepTries, genNetwork = false, genSandbox = 'auto', genScaffold, genBoard = null, askModel = null, threadModel = askModel, proposing = true, log = () => {}, now = Date.now}) {
+    Object.assign(this, {record, store, partner, score, pace, decision, typingPauseMs, notify, requestEditor, previousNote, lastSession, autoTune, health, askModel, threadModel, proposing, log, now});
     this.sorted = new Map(); // trigger key -> {at, sort}: what the decision model sorted it as lately
     this.told = new Map(); // trigger key -> what the decision model was told about it first, for the decisions log
     this.checkOutput = checkOutput ?? join(tmpdir(), `pair-check-${process.pid}-${record.id}`, 'check.out'); // its copy of the project goes next to it
@@ -1256,7 +1256,7 @@ export class PairSession {
    * Steps the user set while the model thought, or a newer goal, win over its answer.
    */
   async proposePlan(goal) {
-    if (!this.threadModel) return;
+    if (!this.threadModel || !this.proposing) return; // the config's "plan": false
     const version = this.thread.version;
     const steps = parseSteps(await this.threadModel(PLAN_PROMPT, `Goal: ${goal}`));
     if (this.state.goal !== goal || this.thread.version !== version) return; // a newer goal, or the user's own steps

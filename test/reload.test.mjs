@@ -90,7 +90,7 @@ test('the daemon takes a new model between turns, and keeps the old config when 
   const dataDir = scratch('pair-data-');
   const configFile = join(dataDir, 'config', 'config.json');
   mkdirSync(join(dataDir, 'config'));
-  const save = raw => writeFileSync(configFile, JSON.stringify({dataDir, socket: join(dataDir, 'pair.sock'), ...raw}));
+  const save = raw => writeFileSync(configFile, JSON.stringify({dataDir, socket: join(dataDir, 'pair.sock'), plan: false, ...raw}));
   save({model: entry('first'), testOnSave: {[project]: 'npm test'}});
 
   // Each model name the config can give gets its own scripted provider.

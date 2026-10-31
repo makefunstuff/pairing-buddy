@@ -60,7 +60,7 @@ function project() {
 async function daemonFor(board, options = {}) {
   const dataDir = scratch('pair-data-');
   const config = parseConfig({
-    dataDir, socket: join(dataDir, 'pair.sock'), board, agents: false,
+    dataDir, socket: join(dataDir, 'pair.sock'), board, agents: false, plan: false,
     models: {watcher: {api: 'openai', baseUrl: 'http://unused', model: 'w'}, partner: {api: 'openai', baseUrl: 'http://unused', model: 'p'}},
   });
   const watcher = fauxProvider({provider: 'faux-watcher'});

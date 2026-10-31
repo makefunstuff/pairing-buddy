@@ -140,7 +140,7 @@ test('end to end: edit, save and :Pair end at once, close the panel, move, quit:
   execFileSync('git', ['init', '-q'], {cwd: root});
   const dataDir = scratch('pair-data-');
   const config = parseConfig({
-    dataDir, socket: join(socketDir(), 'pair.sock'), agents: false, board: null,
+    dataDir, socket: join(socketDir(), 'pair.sock'), agents: false, plan: false, board: null,
     models: {watcher: {api: 'openai', baseUrl: 'http://unused', model: 'w'}, partner: {api: 'openai', baseUrl: 'http://unused', model: 'p'}},
   });
   const watcher = fauxProvider({provider: 'faux-watcher'});

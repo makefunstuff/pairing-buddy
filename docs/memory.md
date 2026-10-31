@@ -33,7 +33,8 @@ pair  Steps: 1 the cart tests pass · 2 the bogo code works
 You keep them by doing nothing. `p` alone on the line, then `Enter`, puts `/plan the cart tests pass; the bogo code
 works` on the line to edit and send (a step you keep word for word stays done); `/plan a; b; c` sets steps of your own,
 `/plan off` drops them, and `/plan` alone shows them, done and next. A goal too small for two steps gets none, and a new
-goal drops the old goal's steps. Steps you set win over a proposal Pair is still thinking about.
+goal drops the old goal's steps. Steps you set win over a proposal Pair is still thinking about. `"plan": false` in
+the [config](config.md) turns the proposals off; `/plan` still sets steps of your own.
 
 When a step may have landed (a test run or a command that failed passes again, you take a suggestion or code from
 `/gen`, you commit), Pair waits for your next break and then checks it against the same facts the

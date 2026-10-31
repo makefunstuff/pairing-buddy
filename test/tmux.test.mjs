@@ -185,7 +185,7 @@ test('the daemon watches the tmux session the chat runs in, and a shell hook\'s 
   const project = realpathSync(scratch('pair-project-'));
   const dataDir = socketDir('pair-data-');
   const config = parseConfig({
-    dataDir, socket: join(dataDir, 'pair.sock'), agents: false, board: null, scoutPane: {sandbox: false},
+    dataDir, socket: join(dataDir, 'pair.sock'), agents: false, plan: false, board: null, scoutPane: {sandbox: false},
     models: {watcher: {api: 'openai', baseUrl: 'http://unused', model: 'w'}, partner: {api: 'openai', baseUrl: 'http://unused', model: 'p'}},
   });
   const watcher = fauxProvider({provider: 'faux-watcher'});

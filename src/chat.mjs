@@ -20,7 +20,6 @@ import {tmuxOf} from './tmux.mjs';
 /** The commands of the chat, as [name, arguments, what it does]: the help, the menu `/` opens, and Tab complete them. */
 export const COMMANDS = [
   ['/goal', '<text>', 'set the session goal'],
-  ['/plan', '[a; b; c|off]', 'the goal\'s steps, done and next: set your own, or drop them (p on an empty line edits them)'],
   ['/level', LEVELS.join('|'), 'how often Pair speaks unasked'],
   ['/quiet', '', 'speak unasked only when it matters'],
   ['/normal', '', 'the usual level'],
@@ -48,6 +47,7 @@ export const COMMANDS = [
   ['/gen drop', '', 'delete the newest /gen scaffold\'s copy; what you did not keep of it is dropped'],
   ['/keep', '[path]', 'keep a file of the newest /gen try or scaffold: a new file as a buffer to review (:w takes it), a change as suggestions'],
   ['/gen cancel', '', 'stop the /gen request that runs or waits'],
+  ['/plan', '[a; b; c|off]', 'the goal\'s steps, done and next: set your own, or drop them (p on an empty line edits them)'],
   ['/brief', '[note|off]', 'what /gen runs against: the goal, the board task and a note (NOTES.md); pin another, or none'],
   ['/brief sync', '', 'how the brief differs from its board task\'s brief, with the decisions since: y tells its agent, c copies'],
   ['/undo', '', 'undo Pair\'s last change: an edit of the Driver\'s, a suggestion you took, a /gen request'],

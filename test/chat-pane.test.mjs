@@ -27,7 +27,7 @@ async function setUp({width = 70, height = 30, tokensPerSecond} = {}) {
   writeFileSync(join(dir, 'queue.go'), QUEUE);
   const path = join(dir, 'config.json');
   const entry = {api: 'openai', baseUrl: 'http://unused', model: 'm'};
-  writeFileSync(path, JSON.stringify({dataDir: dir, socket: join(dir, 'pair.sock'), agents: false, models: {watcher: entry, partner: entry}}));
+  writeFileSync(path, JSON.stringify({dataDir: dir, socket: join(dir, 'pair.sock'), agents: false, plan: false, models: {watcher: entry, partner: entry}}));
   const config = loadConfig(path);
   const partner = fauxProvider(tokensPerSecond ? {tokensPerSecond} : {});
   const models = createModels();

@@ -7,6 +7,10 @@
   // and the level's budget, within fixed bounds. `pair stats` shows how. false keeps the level's defaults.
   "autoTune": true,
 
+  // Once the session has a goal, Pair proposes it as two to four steps and says "done: X; next: Y" when one lands.
+  // false proposes none; /plan in the chat still sets steps of your own.
+  "plan": true,
+
   // While you work, Pair asks the Watcher's model for one token every 4 min, so a server that unloads idle
   // models (many do after 5 min) still has it loaded when a remark needs scoring. false turns it off; with an
   // "anthropic" or a "provider" Watcher it is off unless set.

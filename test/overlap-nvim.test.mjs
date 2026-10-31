@@ -62,7 +62,7 @@ test('a file a working task changes says so in the winbar; your edit on its line
   const fake = fakeShepherdr(boardHome, {spaces: [space], tasks: tasks('work')});
 
   const config = parseConfig({
-    dataDir, socket: join(dataDir, 'pair.sock'), typingPauseMs: 400, board: fake.command, agents: false,
+    dataDir, socket: join(dataDir, 'pair.sock'), typingPauseMs: 400, board: fake.command, agents: false, plan: false,
     models: {watcher: {api: 'openai', baseUrl: 'http://unused', model: 'w'}, partner: {api: 'openai', baseUrl: 'http://unused', model: 'p'}},
   });
   const watched = []; // what the Watcher was asked to score

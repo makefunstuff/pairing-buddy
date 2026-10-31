@@ -277,6 +277,16 @@ test('editing the steps with p keeps a step done; the thread\'s lines show in Ne
   assert.match(pair.thread.summary(), /^✓ 1 a · → 2 b, reworded \(next\)/);
 });
 
+test('with "plan": false in the config, Pair proposes no steps; /plan still sets yours', async () => {
+  const {pair, models} = session();
+  pair.proposing = false;
+  pair.setGoal('cart');
+  await settle();
+  assert.equal(models.length, 0);
+  pair.setPlan('a; b');
+  assert.equal(pair.planSteps(), 'a; b');
+});
+
 test('a proposal that failed is asked again a minute later', async () => {
   const {pair, advance} = session();
   let calls = 0;

@@ -33,6 +33,7 @@ test('a question the daemon was answering when it stopped is answered late, in t
   const config = parseConfig({
     dataDir,
     socket: join(dataDir, 'pair.sock'),
+    plan: false,
     models: {watcher: {api: 'openai', baseUrl: 'http://unused', model: 'w'}, partner: {api: 'openai', baseUrl: 'http://unused', model: 'p'}},
   });
   const options = {probe: async () => ({ok: true}), log: () => {}};
