@@ -193,9 +193,15 @@ function M.ask(words, range, compose)
   local lines = note and vim.api.nvim_buf_get_lines(buf, range.from - 1, range.to, false) or {}
   local where = mark_here(not note and range or nil)
   local shape = range and not note and 'here' or nil
+  if words ~= '' and not compose then return send(where, words, shape) end
+  -- The key, and the dialog, mean here: at the cursor in a file of the project, so no question about the shape. A
+  -- shape word typed first (Tab completes it) still names another. In a note the request is the note, and outside
+  -- the project there is no here: the shape is guessed and asked.
+  if not range and where and not is_note(buf) then shape = 'here' end
   if compose then return M.compose(where, shape, words ~= '' and words or table.concat(lines, '\n')) end
-  if words ~= '' then return send(where, words, shape) end
-  local prompt = shape and ('gen here · what should Pair write over lines %d-%d? '):format(range.from, range.to) or 'gen · what should Pair write? '
+  local prompt = range and shape and ('gen here · what should Pair write over lines %d-%d? '):format(range.from, range.to)
+    or shape and ('gen here · what should Pair write at line %d? '):format(vim.api.nvim_win_get_cursor(0)[1])
+    or 'gen · what should Pair write? '
   input({prompt = prompt, default = lines[1] or '', completion = 'customlist,v:lua.PairGenComplete'}, function(text)
     if text == nil then return unmark(where) end -- Esc: no request
     if text == '' then return M.compose(where, shape, '') end -- an empty Enter: a longer request

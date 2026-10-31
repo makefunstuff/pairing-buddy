@@ -19,6 +19,8 @@ It is in the Partner's instructions in [src/tone.mjs](../src/tone.mjs) (the idea
 - Celebrate only by naming what is now true, in one line.
 - Plain sentences: no headings, bold or lists. Put code in `backticks` (Neovim shows it in the accent).
 - Do not narrate your tools ("I pointed at", "Suggested a fix"): the user sees what they show.
+- Say each thing once: the notes of `point` and `suggest` already show, so do not say them again.
+- Never say you did what did not happen: a suggestion is made only when the user takes it, so not "Added".
 - A remark nobody asked for, or what the Driver changed: one or two short lines, **at most 30 words**. An answer:
   **at most 80 words**, unless you ask for more. The idea behind a remark: **at most 45**.
 
@@ -37,6 +39,25 @@ from one model under two instructions:
 
 And when the tests go green after a long red, the plain assistant wrote a 213-word review with "Good catch" and
 bold headings; the pair wrote one line on what is now true and one next step, in 29 words.
+
+## One voice
+
+What Pair does around its words reads like the same colleague, not a tool log:
+
+- **No ceremony for one change.** A hand-over of one change prints no role lines before or after it; the edit, the
+  check and Pair's sentence say what happened. `/scout`, `/navigate` and `/drive!` still say what the role may do.
+- **Checks said as speech.** After its edit, Pair says `Ran your \`npm test\` on it: 9 pass.`, once: the command as you
+  know it, without the redirects and pipes around it. The model hears that you already have it, and does not repeat
+  it. A run on save says `\`npm test\` after you saved cart.js: 2 failed (…)` the same way.
+- **Plumbing out of sight.** Pair's pane shows `pair-run npm test`, not the `cd` into a scratch copy and the file
+  its output goes to ([scout.md](scout.md#tests-on-save)).
+- **One remark, once.** The notes of its points and suggestions show in the editor and the chat; closing words that
+  only say them again are not shown.
+- **Only what happened.** Words that say a suggestion was made (`Added the bogo branch`) are not shown before you
+  take it.
+
+Nothing is hidden for it: the ledger (`:Pair today`) keeps every step, the hand-over (`wheel`), the whole command
+line and its output (`⏎ output`), and the words it did not show, with why.
 
 ## The idea behind it
 

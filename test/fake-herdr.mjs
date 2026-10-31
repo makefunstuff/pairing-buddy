@@ -2,7 +2,7 @@
 // subscribe to, and a
 // shell in each new pane that runs scripted commands, shows the prompt Scout's bash would show and writes the
 // files its rc file would (see pane-runs.mjs).
-import {appendFileSync, mkdirSync, writeFileSync} from 'node:fs';
+import {appendFileSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {createServer} from 'node:net';
 import {join} from 'node:path';
 import {readMessages, sendMessage} from '../src/protocol.mjs';
@@ -47,7 +47,9 @@ export async function fakeHerdr(socketPath, {commands = {}, agents = [], nvims =
     const command = text.replace(/^\x15/, '').replace(/\r$/, '');
     shell.lines[shell.lines.length - 1] += command;
     writeFileSync(join(shell.runs, 'next'), `running ${shell.count}\n`);
-    const {output = '', exit = 0} = (typeof commands === 'function' ? await commands(command) : commands[command]) ?? {};
+    // As the real rc file does (pane-runs.mjs): pair-run runs the line Pair wrote for it, plumbing and all.
+    const line = /^pair-run\b/.test(command) ? readFileSync(join(shell.runs, 'line'), 'utf8').replace(/\n$/, '') : command;
+    const {output = '', exit = 0} = (typeof commands === 'function' ? await commands(line) : commands[line]) ?? {};
     if (output) shell.lines.push(...output.split('\n'));
     const marked = `\x1b]133;C;aid=pair${shell.count}\x07${output ? `${output}\n` : ''}\x1b]133;D;${exit};aid=pair${shell.count}\x07`;
     appendFileSync(join(shell.runs, 'pane.log'), marked);

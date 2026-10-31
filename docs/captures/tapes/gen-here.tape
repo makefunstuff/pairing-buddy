@@ -19,7 +19,7 @@ Show
 Sleep 1s
 Alt+g
 Sleep 800ms
-Type "here Release, to end a job's lease early"
+Type "Release, to end a job's lease early"
 Sleep 600ms
 Screenshot out/gen-ask.png
 Enter

@@ -7,14 +7,15 @@ drafts new files as buffers you review and take with `:w`. Either way your disk 
 ## Code at your cursor
 
 1. In Neovim, put the cursor where the code goes (or select the lines it should replace) and press `Alt-g`
-   (or `:Pair gen`). A prompt asks what to write. Start with the shape, `here`, then say what:
+   (or `:Pair gen`). The key means here, so the prompt asks only what to write (`gen here · what should Pair write
+   at line 28?`):
 
    ```text
-   here Release, to end a job's lease early
+   Release, to end a job's lease early
    ```
 
-   Without a shape word Pair guesses one and asks first; `Enter` takes the guess. `Tab` completes the shape.
-   From the chat, `/gen here <what>` does the same, at your cursor in Neovim.
+   To ask for another shape, start with its word (`file …`, `try …`); `Tab` completes it. From the chat,
+   `/gen here <what>` does the same, at your cursor in Neovim.
 
    ![Alt-g: the request on Neovim's prompt, and gen #1 generating in the chat and the statusline](../images/gen-ask.png)
 

@@ -76,9 +76,9 @@ function recordingHands(root) {
   return {calls, hands: {
     roleOf: () => 'navigator',
     say: record('say', 'shown'),
-    point: record('point', 'highlighted'),
+    point: record('point', 'Highlighted, with your note: the user sees it, so do not say it again.'),
     open: record('open', 'opened in a split'),
-    suggest: record('suggest', 'Shown in the editor. The user accepts it with one key or ignores it.'),
+    suggest: record('suggest', 'Shown in the editor, with your note, and not made: the user accepts it with one key or ignores it. Do not say it again, and do not say you added or changed it.'),
     read: async (_conversation, {file, from, to}) => {
       calls.push({name: 'read', args: {file}});
       const source = await readProjectPath(root, file);

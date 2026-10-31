@@ -35,8 +35,9 @@ timeout to 30 s`).
 1. The statusline says `pair has the wheel · any key takes it back`.
 2. Pair types the change as ghost text with its own cursor. A line enters your buffer only when it is whole; each
    line it changed gets `▎` in the sign column.
-3. It checks the **unsaved** buffer with your tests (or your last build and run), and hands back: its words under the
-   last line it changed, `✓` or `✗`, and `u undoes it`.
+3. It checks the **unsaved** buffer with your tests (or your last build and run) and says so once, in the chat:
+   `Ran your npm test on it: 9 pass.` Then it hands back: its words under the last line it changed, `✓` or `✗`, and
+   `u undoes it`. One change gets no role lines in the chat; `:Pair today` still lists it.
 4. Nothing is saved. Read it, then `:w`, or `u` to take it away (one `u` per edit, at most five edits).
 
 ![Handed back: six cases, ✓ in the margin and the statusline, and its note on the case you would have skipped](../images/hand-back.png)

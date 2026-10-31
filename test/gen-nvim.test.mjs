@@ -89,7 +89,16 @@ async function genInNvim(goal, {stub = false, brief = () => '[]', notes = null, 
   };
 }
 
-test('/gen here with a popup input: the request, the shape guessed and shown, the code where you asked after you typed on, Alt-y, then /undo', {skip, timeout: 40_000}, async () => {
+// The shape question, for a request whose words name no shape and whose asking says no place.
+const SHAPE_ITEMS = [
+  'here      at the cursor, over a selection  (guessed)',
+  'file      new files to review',
+  'scaffold  many files, in Pair\'s copy',
+  'try       a sample outside the project',
+  'board     a task for the board, for later',
+];
+
+test('/gen here with a popup input: the request at the cursor, no shape asked, the code where you asked after you typed on, Alt-y, then /undo', {skip, timeout: 40_000}, async () => {
   const {partner, keys, lines, status, ghosts, words, asked, answer, said, today, send, messages, stop} = await genInNvim('add helpers', {stub: true});
   try {
     let input;
@@ -102,20 +111,12 @@ test('/gen here with a popup input: the request, the shape guessed and shown, th
       },
       fauxAssistantMessage([fauxText('Added w, a number.')]),
     ]);
-    answer('a w constant', 'here');
+    answer('a w constant');
     keys('2G<M-g>');
     await said('gen #1 · here · 1 line at a.js:2: Added w, a number.');
     assert.match(typeof input === 'string' ? input : JSON.stringify(input), /\[gen\] gen #1, here\. The user asked: \\?"a w constant\\?"[\s\S]*cursor is on line 2 of a\.js/);
-    const [request, shape] = asked();
-    assert.deepEqual(request, {kind: 'input', prompt: 'gen · what should Pair write? ', default: ''});
-    assert.equal(shape.prompt, 'gen #1 · at the cursor. Shape?');
-    assert.deepEqual(shape.items, [
-      'here      at the cursor, over a selection  (guessed)',
-      'file      new files to review',
-      'scaffold  many files, in Pair\'s copy',
-      'try       a sample outside the project',
-      'board     a task for the board, for later',
-    ]);
+    // The key says where: here, at the cursor. No question about the shape.
+    assert.deepEqual(asked(), [{kind: 'input', prompt: 'gen here · what should Pair write at line 2? ', default: ''}]);
 
     // It lands under the line you asked on, which your typing moved down one, once you pause.
     await until(() => ghosts().length === 1, 'the ghost lines');
@@ -149,16 +150,20 @@ test('/gen here with a popup input: the request, the shape guessed and shown, th
     const row1 = (await today()).find(one => one.kind === 'generated');
     assert.deepEqual([row1.text, row1.state], ['gen #1 · here · a w constant', 'undone']);
 
-    // Esc on the request asks nothing; Esc on the shape leaves it waiting, and Alt-g shows it again.
+    // Esc on the request asks nothing.
     answer('<Esc>');
     keys('<M-g>');
-    await until(() => asked().length === 3, 'the dialog');
+    await until(() => asked().length === 2, 'the dialog');
     await sleep(200);
     assert.equal(messages.filter(message => message.text?.startsWith('/gen')).length, 1, 'no request sent');
+    // Words without a shape word, from :Pair gen: the shape is guessed and asked; Esc on it leaves it waiting, and
+    // Alt-g shows it again.
     partner.setResponses([fauxAssistantMessage([fauxText('Nothing to add.')])]);
-    answer('a v constant');
-    keys('<M-g>');
+    keys(':Pair gen a v constant<CR>');
     await until(() => /gen #2 asks · M-g/.test(status()), 'the question waiting');
+    const shape = asked().at(-1);
+    assert.equal(shape.prompt, 'gen #2 · at the cursor. Shape?');
+    assert.deepEqual(shape.items, SHAPE_ITEMS);
     answer('here');
     keys('<M-g>');
     await said('gen #2 · here · nothing proposed: Nothing to add.');
@@ -204,14 +209,12 @@ test('/gen here with Neovim\'s own prompt: the request on the command line, the 
     assert.equal(tall(height - 1), '1');
     assert.equal(lines()[1], 'const r0 = 0');
 
-    // No shape word: the guess comes as a numbered list on the command line, where an empty Enter takes it.
+    // Words with no shape word: the guess comes as a numbered list on the command line, where an empty Enter takes it.
     partner.setResponses([
       fauxAssistantMessage([fauxToolCall('propose', {file: 'a.js', line: 1, insert: false, end_line: 1, text: 'const x = 10', note: 'ten'})], {stopReason: 'toolUse'}),
       fauxAssistantMessage([fauxText('Ten.')]),
     ]);
-    keys(':Pair gen<CR>');
-    await sleep(300);
-    keys('x as ten<CR>');
+    keys(':Pair gen x as ten<CR>');
     await sleep(500);
     keys('<CR>');
     await said('gen #2 · here · 1 line at a.js:1: Ten.');
@@ -227,10 +230,8 @@ test('/gen here with Neovim\'s own prompt: the request on the command line, the 
     keys('<CR>');
     await until(() => remote('bufname()') === 'pair://gen/compose', 'the compose window');
     keys('a sum<CR>of two numbers<Esc>:w<CR>');
-    await sleep(500);
-    keys('1<CR>');
     await said('gen #3 · here · nothing proposed: Nothing.');
-    assert.ok(messages.some(message => message.text === '/gen a sum\nof two numbers'), 'both lines are the request');
+    assert.ok(messages.some(message => message.text === '/gen here a sum\nof two numbers'), 'both lines are the request, here: no shape asked');
     assert.equal(floats().length, 0, 'the compose window closed');
     assert.equal(readFileSync(join(project, 'a.js'), 'utf8'), 'const x = 1\nconst y = 2\nconst z = 3\n', 'nothing was saved');
     // The 40 lines taken are not yours yet: the statusline counts them.

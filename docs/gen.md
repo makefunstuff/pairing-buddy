@@ -27,7 +27,9 @@ no code: it [hands the request to the board](#gen-board-a-task-for-the-board) as
 
 ## Asking
 
-**In Neovim**, `Alt-g` (the `gen_key`) or `:Pair gen` asks what Pair should write, in a dialog:
+**In Neovim**, `Alt-g` (the `gen_key`) or `:Pair gen` asks what Pair should write, in a dialog. In a file of the
+project the key (and `:Pair gen +`) means here, at the cursor: the dialog says so (`gen here · what should Pair write at line 12?`), and no shape is asked.
+A shape word first (`file a migration for …`) still asks for another.
 
 - The dialog is Neovim's own `vim.ui.input`, and the shape and Pair's questions are `vim.ui.select` and
   `vim.ui.input`. Pair draws no dialog of its own: a plugin that replaces those hooks, such as
@@ -73,7 +75,9 @@ code is `here`; then words like "here", "below this" or "this function" mean `he
 app" mean `scaffold`; "sample", "example", "to try" mean `try`; a file name or "migration", "test file", "new file"
 mean `file`; anything else is `here`. `board` is never guessed: it is in the list for you to pick. A guess is always shown first, and goes only once you confirm it, so `scaffold`
 is never picked silently. A shape you typed is not asked about, and neither is `--branch` or `--copy` at the start of
-the request: they say where a scaffold goes, so they make one.
+the request: they say where a scaffold goes, so they make one. Nor is a request from Neovim's gen key or the
+`:Pair gen` dialog in code, which mean here; `:Pair gen <words>` with no shape word, a request from a note, and
+`/gen <words>` in the chat are guessed and asked.
 
 In Neovim the guess comes as a list with the guess first, so `Enter` takes it. A select plugin shows it as its own
 picker; without one (or with `gen_input = 'cmdline'`), Pair's numbered list on the command line asks instead of

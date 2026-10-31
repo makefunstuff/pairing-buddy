@@ -116,6 +116,44 @@ test('the pane opens beside the chat, runs commands one at a time and types only
   }
 });
 
+test('a run with plumbing shows only the command in the pane: pair-run runs the line, and a pane of an older Pair is opened anew', async t => {
+  const dir = tempDir(t, 'pair-herdr-');
+  const socketPath = join(dir, 'herdr.sock');
+  const line = "cd '/tmp/runs/trees/b9af' && (npm test) > '/tmp/runs/run.out' 2>&1";
+  const herdr = await fakeHerdr(socketPath, {commands: {[line]: {output: '', exit: 1}}});
+  const host = () => new HerdrPaneHost({socketPath, workspaceId: 'w1', besidePane: 'w1:p2'});
+  const pane = new ScoutPane({host: host(), cwd: '/project', runsDir: join(dir, 'panes')});
+  try {
+    assert.deepEqual(await pane.run(line, {shown: 'npm test'}), {exit: 1, output: '', timedOut: false, cancelled: false});
+    assert.deepEqual(herdr.sent.at(-1), [pane.paneId, '\x15pair-run npm test\r'], 'no cd, no redirect: only the command');
+    assert.match(herdr.panes.get(pane.paneId).lines.join('\n'), /scout\[1\] exit 0 \$ pair-run npm test\n/);
+    const piped = "npm test 2>&1 | grep -E 'fail'";
+    await pane.run(line, {shown: piped});
+    assert.deepEqual(herdr.sent.at(-1), [pane.paneId, `\x15pair-run ${shellQuote(piped)}\r`], 'one word, never run: pair-run ignores it');
+
+    // A pane whose rc file is an older Pair's has no pair-run: a later daemon opens a new one.
+    writeFileSync(join(pane.runs.dir, 'pane.bash'), '# an older Pair\n');
+    const again = new ScoutPane({host: host(), cwd: '/project', runsDir: join(dir, 'panes')});
+    await again.run('echo two');
+    assert.notEqual(again.paneId, pane.paneId);
+    await again.close();
+  } finally {
+    await herdr.close();
+  }
+});
+
+test('pair-run in the real shell: runs the line in a subshell with its exit code, and the pane stays where it was', {skip: hasBash ? false : 'bash not installed', timeout: 30_000}, async t => {
+  const dir = tempDir(t, 'pair-runs-');
+  const out = shellQuote(join(dir, 'run.out'));
+  const {results} = await runInPane({setup: scoutPaneConfig({sandbox: false}), cwd: dir, dir: join(dir, 'pane'), commands: [
+    `printf '%s\\n' ${shellQuote(`cd / && (echo ran in $PWD; exit 3) > ${out} 2>&1`)} > "$PAIR_RUNS/line"`,
+    'pair-run npm test',
+    'pwd',
+    `cat ${out}`,
+  ]});
+  assert.deepEqual(results.slice(1), [{exit: 3, output: ''}, {exit: 0, output: dir}, {exit: 0, output: 'ran in /'}]);
+});
+
 test('a command whose signal aborts is stopped with Ctrl-C, and one aborted before its turn is never typed', async t => {
   const dir = tempDir(t, 'pair-herdr-');
   const socketPath = join(dir, 'herdr.sock');

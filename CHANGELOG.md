@@ -15,6 +15,13 @@ release is cut.
   them raised the bar. Your own `+` or `-` still wins.
 - **The day's end debrief calls only the remarks you rated noise "noise".** Remarks that got no answer are counted
   beside them (`…; 1 got no answer.`).
+- **Pair speaks as one voice.** A one-change hand-over prints no role lines before and after it, and Pair says its
+  check once, as speech: `Ran your npm test on it: 9 pass.`, not the raw command line and the result twice. Its pane
+  shows `pair-run npm test` instead of the `cd` into a scratch copy and the file the output goes to. `Alt-g` means
+  here: no `Shape?` question (a shape word first still asks for another). Closing words that only repeat the notes
+  Pair just showed, or say a suggestion was made before you took it, are not shown. The ledger keeps every step:
+  the hand-over (`wheel`), the whole command and its output, and the words it did not show, with why
+  ([docs/tone.md](https://github.com/makefunstuff/pairing-buddy/blob/main/docs/tone.md#one-voice)).
 
 ## [0.11.0] - 2026-10-29
 

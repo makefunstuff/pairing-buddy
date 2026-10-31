@@ -1,8 +1,8 @@
 // The ledger: everything Pair did in a project, one line each. What it read, said, pointed at, showed, suggested,
-// searched, recalled, ran, typed, asked you and was refused, the moments it stayed quiet, and the remarks it counted
-// useful because you edited where they pointed. `:Pair today` in Neovim and /today in the chat list the day's. An
-// edit of Pair's keeps the file's text before and after it, so it can be undone later, after other edits too: Neovim
-// merges the undo into the buffer as it is now (see lua/pair/merge.lua).
+// searched, recalled, ran, typed, asked you and was refused, when it took the wheel and gave it back, the moments it
+// stayed quiet, and the remarks it counted useful because you edited where they pointed. `:Pair today` in Neovim and
+// /today in the chat list the day's. An edit of Pair's keeps the file's text before and after it, so it can be undone
+// later, after other edits too: Neovim merges the undo into the buffer as it is now (see lua/pair/merge.lua).
 
 const OUTPUT_CHARS = 20_000; // of a command's output, the ledger keeps the end
 export const DETAIL_KEPT_MS = 7 * 24 * 60 * 60_000; // what entries open to (outputs, edits' text) is kept this long

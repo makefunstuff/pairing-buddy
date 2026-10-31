@@ -18,7 +18,7 @@ The keys exist only while there is something for them to do, and only where you 
 | `Alt-a` | Go to the agent whose news Pair relayed ([your other agents](agents.md)) |
 | `Alt-o` | On a relayed board task's line: open its report or pull request ([your other agents](agents.md#what-a-task-left-behind)) |
 | `Alt-r` | On the relayed line of a board task ready to merge: open its branch as a [review](gen.md#reviewing-a-board-task-pair-review) |
-| `Alt-g` | Ask Pair for code ([/gen](gen.md)): at the cursor, or in Visual mode over the selection; while Pair's question waits, show it again |
+| `Alt-g` | Ask Pair for code ([/gen](gen.md)) here: at the cursor, or in Visual mode over the selection, without asking the shape (at the cursor, a shape word first asks for another; outside the project the shape is asked); while Pair's question waits, show it again |
 | `\r` (`<LocalLeader>r`) | In a [/gen try](gen.md#samples-gen-try-and-keep)'s sample: write it and run it again in Pair's pane. In a file of a [/gen scaffold](gen.md#many-files-gen-scaffold)'s copy: write it and check the copy again |
 | any key | Take the wheel back while Pair drives |
 

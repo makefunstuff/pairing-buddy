@@ -272,7 +272,7 @@ test('a bound the run misses comes back ✗ with the number; a crash comes back 
   crash.seen.pair = two.pair;
   two.pair.receive({kind: 'command_end', cmd: 'make -s run', exit: 0, output: 'avg probe 200.50 worst 400\n', cwd: two.root});
   await two.pair.drive('you take it: spread the keys, avg probe stays under 2');
-  assert.match(crash.seen.reply, /and that the run failed: /);
+  assert.match(crash.seen.reply, /The run failed: say why from the output/);
   assert.equal(two.sent.find(message => message.type === 'handback').tests, 'fail');
 });
 

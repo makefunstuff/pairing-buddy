@@ -225,7 +225,7 @@ export class Gen {
   }
 
   /**
-   * A new request: `text` is `[shape] words`, or the words with `shape` apart (Neovim's dialog). From Neovim it
+   * A new request: `text` is `[shape] words`, or the words with `shape` apart (Neovim's dialog: its key means here). From Neovim it
    * comes with the `place` of the cursor ({file, line}) or the `selection` ({file, from, to}) and the `token` of the mark
    * there; from the chat, with `here` when it should take the selection. `from` is where it was asked ('editor' or
    * 'chat'): its questions go there. Resolves once it is done, cancelled or waiting.
@@ -233,9 +233,12 @@ export class Gen {
   async request({text = '', shape = null, here = false, selection = null, place = null, token = null, from = 'chat'} = {}) {
     const session = this.session;
     const parsed = parseGen(text);
-    let named = SHAPES.includes(shape) ? shape : parsed.shape;
+    // A shape word typed first wins over the one the gen key gave at the cursor (here, where you are); over a
+    // selection, the code replaces it, so it stays here.
+    const given = SHAPES.includes(shape) ? shape : null;
+    let named = selection ? given ?? parsed.shape : parsed.shape ?? given;
     // --branch and --copy say where a scaffold goes, so they make one.
-    const flag = !named || named === 'scaffold' ? FLAG.exec(parsed.words)?.[1] ?? null : null;
+    const flag = (!parsed.shape && !selection) || named === 'scaffold' ? FLAG.exec(parsed.words)?.[1] ?? null : null;
     const words = flag ? parsed.words.replace(FLAG, '') : parsed.words;
     if (flag) named = 'scaffold';
     session.message('user', `/gen ${[named, flag && `--${flag}`, words].filter(Boolean).join(' ')}`);
