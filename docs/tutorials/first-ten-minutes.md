@@ -72,6 +72,11 @@ The project is the git root of that folder, and it gets its own session. Then op
 The chat asks what you are doing this session, unless the branch name or a board task already says. Type the goal
 and `Enter`, or `later`. `:Pair goal <what>` sets it from Neovim.
 
+Pair answers with the goal as two to four steps, in one line (`Steps: 1 the cart tests pass · 2 the bogo code works`).
+Keep them, or type `p` and `Enter` to edit them; `/plan off` drops them. When a step lands (your tests go green, you
+take Pair's code, you commit), Pair says at your next break what is done and what is next: `done: the cart tests pass;
+next: the bogo code works`.
+
 ![The chat pane on the right of Neovim before anything is said: what Pair is and the keys to talk to it](../images/chat-empty.png)
 
 ## 6. Work

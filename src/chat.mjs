@@ -20,6 +20,7 @@ import {tmuxOf} from './tmux.mjs';
 /** The commands of the chat, as [name, arguments, what it does]: the help, the menu `/` opens, and Tab complete them. */
 export const COMMANDS = [
   ['/goal', '<text>', 'set the session goal'],
+  ['/plan', '[a; b; c|off]', 'the goal\'s steps, done and next: set your own, or drop them (p on an empty line edits them)'],
   ['/level', LEVELS.join('|'), 'how often Pair speaks unasked'],
   ['/quiet', '', 'speak unasked only when it matters'],
   ['/normal', '', 'the usual level'],
@@ -80,6 +81,9 @@ export function parseInput(line) {
   const arg = rest.join(' ');
   const number = /^[1-9]$/.test(arg) ? Number(arg) : undefined;
   if (command === '/goal' && arg) return {type: 'goal', text: arg};
+  if (command === '/plan' && arg === 'off') return {type: 'plan_off'};
+  if (command === '/plan' && arg) return {type: 'plan', text: arg};
+  if (command === '/plan') return {type: 'plan_show'};
   if (command === '/first' && arg) return {type: 'first', text: arg};
   if (command === '/level' && LEVELS.includes(arg)) return {type: 'level', level: arg};
   if (['/quiet', '/normal', '/chatty'].includes(command) && !arg) return {type: 'level', level: command.slice(1)};
@@ -221,6 +225,7 @@ function runPlainChat(socketPath, {input, output, exit, cwd, env}) {
   const rl = createInterface({input, output, prompt: '› '});
   let confirming = null; // the id of the question the next line answers
   let first = null; // tomorrow's first step, which `e` edits, right after the debrief
+  let plan = null; // the session's steps as /plan takes them, which `p` puts on the line
   let listed = []; // the ids of the remarks /remarks showed last: what +2 and -2 rate
   const look = {accent: null, color: !!output.isTTY && !env.NO_COLOR}; // the accent: the editor's, once it sends it
   const showRole = role => {
@@ -246,6 +251,7 @@ function runPlainChat(socketPath, {input, output, exit, cwd, env}) {
 
   function onMessage(message, {reconnected}) {
     if (message.type === 'welcome') {
+      plan = message.plan ?? null;
       look.accent = message.accent ?? look.accent;
       showRole(message.role);
       if (reconnected) say('system', 'reconnected');
@@ -270,6 +276,8 @@ function runPlainChat(socketPath, {input, output, exit, cwd, env}) {
       first = message.step;
       print(dim('·· e edits tomorrow\'s first step', look));
     }
+    if (message.type === 'plan') plan = message.steps ?? null;
+    if (message.type === 'plan' && message.proposed) print(dim('·· p edits the steps · /plan off drops them', look));
     if (message.type === 'ledger') print(ledgerText(message).map(line => dim(`·· ${line}`, look)).join('\n'));
     // Another agent's news, at your breakpoint: one line, like the pane's own notes.
     if (message.type === 'agents' && message.item) say('system', `◇ ${message.text}${message.more ? ` (+${message.more} more · /agents)` : ''}`);
@@ -306,6 +314,11 @@ function runPlainChat(socketPath, {input, output, exit, cwd, env}) {
     if (editing) {
       rl.prompt();
       return rl.write(`/first ${step}`);
+    }
+    // `p` puts the session's steps on the line, to edit and send with Enter.
+    if (plan !== null && line.trim() === 'p') {
+      rl.prompt();
+      return rl.write(`/plan ${plan}`);
     }
     const input = parseInput(line);
     if (input?.local === 'quit') return rl.close();
@@ -406,6 +419,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
     armed: null, // d on a gen card waits for a second d: {gen, until}
     keepFrom: null, // the scaffold whose card k was pressed on: /keep's menu lists its files
     first: null, // tomorrow's first step, which `e` edits right after the debrief
+    plan: null, // the session's steps as /plan takes them, which `p` puts on the line
     listed: [], // the ids of the remarks /remarks showed last
     about: null, // the remark a follow-up is about: {id, text}
     files: [],
@@ -509,6 +523,7 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
         for (const entry of state.entries) delete entry.card;
         state.connection = 'up';
         state.root = message.root;
+        state.plan = message.plan ?? null;
         state.header = {...state.header, project: basename(message.root), goal: message.goal ?? null, role: message.role, keep: Boolean(message.keep), level: message.level, muted: message.muted ?? [], board: message.board ?? null};
         state.model = message.model ?? null;
         state.down = Object.entries(message.models ?? {}).filter(([, why]) => why).map(([role]) => role);
@@ -587,6 +602,10 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
         if (entry && entry.answer === undefined) entry.answer = false; // it timed out
         break;
       }
+      case 'plan':
+        state.plan = message.steps ?? null;
+        if (message.proposed) note('p edits the steps · /plan off drops them');
+        break;
       case 'first':
         if (message.step) {
           state.first = message.step;
@@ -693,6 +712,8 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
       return;
     }
     state.first = null;
+    // `p` puts the session's steps on the line, to edit and send with Enter.
+    if (state.plan !== null && text.trim() === 'p') return editor.set(`/plan ${state.plan}`);
     const parsed = parseInput(text);
     if (!parsed) return;
     // /keep after k on a scaffold's card keeps from that scaffold, not the newest.

@@ -30,6 +30,7 @@ completes, `Enter` runs one that needs nothing more. A few to know:
 | Command | What it does |
 | --- | --- |
 | `/goal <what>` | Sets the session's goal |
+| `/plan` | The goal's steps, done and next; `p` alone on the line puts them there to edit, `/plan off` drops them |
 | `/scout`, `/navigate`, `/drive <what>` | Switches the role ([Roles and handing over](roles-and-hand-over.md)) |
 | `/gen here <what>` | Asks for code at your cursor in Neovim ([/gen](gen-here-and-file.md)) |
 | `/undo` | Takes back the last thing Pair changed today |

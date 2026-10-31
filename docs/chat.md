@@ -336,6 +336,7 @@ with your code beside it moves. Typing `+` or `-` and Enter rates the last remar
 | `Ctrl-C` | Stop the answer or a /gen request at work; else clear what you typed; twice on an empty line, close the pane |
 | `Ctrl-D` | Close the pane, on an empty line |
 | `y` `n` | While Pair asks: allow, decline; `Esc` declines too (for a `/gen` question: take the guess or the answer given, cancel or leave it to Pair); on `/gen board`'s question, `d` `p` `r` `c` as [above](#what-you-see) |
+| `p` | Alone on the line, then `Enter`: puts `/plan` and the session's steps on the line to edit ([the thread](memory.md#the-thread-done-and-next)) |
 | `e` | Right after the debrief, alone on the line, then `Enter`: puts `/first` and tomorrow's first step on the line to edit |
 | `?` | The keys, on an empty line |
 

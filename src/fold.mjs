@@ -11,6 +11,7 @@ export function initialState({root = null, goal = null} = {}) {
   return {
     root,
     goal,
+    plan: null, // the session's steps, done and next, as one line (see thread.mjs); null without a plan
     branch: null,
     file: null,
     cursor: null,
@@ -279,6 +280,8 @@ const handlers = {
   terminal: (state, event) => ({...state, terminalPane: event.pane ?? state.terminalPane}),
 
   goal: (state, event) => ({...state, goal: event.text}),
+
+  plan: (state, event) => ({...state, plan: event.text ?? null}),
 
   // A search in one of Neovim's pickers, as it closed: `file` is what the user opened from it, if anything.
   search: (state, event) => ({

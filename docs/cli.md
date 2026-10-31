@@ -109,6 +109,7 @@ question for Pair (`@here` in it sends your selection in Neovim along), and a li
 | Command | What it does |
 | --- | --- |
 | `/goal <text>` | Set the session goal |
+| `/plan [a; b; c\|off]` | The goal's steps ([the thread](memory.md#the-thread-done-and-next)): alone, shows them, done and next; with steps, sets your own; `off` drops them. `p` alone on the line puts them there to edit |
 | `/level quiet\|normal\|chatty` | How often Pair speaks unasked, for this session (`Alt-L` cycles it) |
 | `/quiet`, `/normal`, `/chatty` | The same, shorter |
 | `/navigate`, `/scout` | Switch [role](roles.md) |

@@ -600,7 +600,7 @@ export async function startDaemon(config, {
     client.session = await loadSession(await rootOf(message.cwd));
     const {session} = client;
     sendMessage(client.socket, {
-      type: 'welcome', root: session.root, goal: session.state.goal, level: session.budget.level, role: session.role, keep: session.keepWheel, models: health.snapshot(),
+      type: 'welcome', root: session.root, goal: session.state.goal, plan: session.planSteps(), level: session.budget.level, role: session.role, keep: session.keepWheel, models: health.snapshot(),
       accent: session.accent, model: sessionPartner.modelName(), muted: [...session.muted], board: boardCounts(session.state.board),
     });
     // The chat pane's status row starts from what Pair does now, and how much it looked at so far.
@@ -883,6 +883,9 @@ export async function startDaemon(config, {
     if (message.type === 'suggestion_gone' && Number.isInteger(message.action)) return notify(session, 'chat', {type: 'suggestion_gone', action: message.action});
     if (message.type === 'go' && typeof message.file === 'string') return relayToEditor(session, {type: 'go', file: resolve(session.root, message.file), line: Number(message.line) || 1});
     if (message.type === 'goal') return session.setGoal(message.text);
+    if (message.type === 'plan' && typeof message.text === 'string') return session.setPlan(message.text);
+    if (message.type === 'plan_off') return session.dropPlan();
+    if (message.type === 'plan_show') return session.showPlan();
     if (message.type === 'first' && typeof message.text === 'string' && message.text.trim()) return session.setFirst(message.text.trim());
     if (message.type === 'level') return session.setLevel(message.level);
     if (message.type === 'role' && ROLES.includes(message.role)) return session.setRole(message.role);
