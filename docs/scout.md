@@ -121,6 +121,8 @@ The output of every test run, yours, Scout's or the one on save, is parsed for t
 | go test -json | lines of JSON events with `Action` and `Package` | tests with a `fail` event (subtests rather than their parents) | `file.go:12: message` from the test's output, a panic and its first frame outside the runtime, or the compiler error |
 | jest --json, vitest --reporter=json | a JSON line with `testResults` (also among npm's own lines) | `failed` assertion results, named `describe › test` | The first line of the failure message, with `Expected`/`Received`, and its line in the test file from the stack |
 
+zig test, ctest, TAP and JUnit XML reports are read too (`src/test-reports.mjs`).
+
 The session keeps the last test run (who ran it, when, what failed) and shows it to the models. For your own commands it also decides the failure triggers: a failed test run counts as failed without an exit code, a passing one does not, whatever words its test names contain, and the same failing test twice is the same error. Scout's own runs never raise a remark, since Pair already has their result.
 
 ## Tests on save

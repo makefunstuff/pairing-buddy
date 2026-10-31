@@ -66,7 +66,7 @@ cd ~/src/yourproject && nvim
 
 The project is the git root of that folder, and it gets its own session. Then open the chat beside it:
 
-- **In herdr**, run `pair` in a pane next to Neovim: the chat pane opens there.
+- **In herdr**, run `pair` in a shell pane next to Neovim: the chat pane opens in a new pane to its right.
 - **Without herdr**, run `:Pair chat` in Neovim: the same chat opens on the right, in a terminal buffer.
 
 The chat asks what you are doing this session, unless the branch name or a board task already says. Type the goal

@@ -108,8 +108,8 @@ line, and `Alt-j` goes to the suggestion, where `Alt-y` takes it.
 ## Crashes and new warnings
 
 Builds and runs are read by `src/run-output.mjs` (see [builds.md](builds.md)), yours in the
-terminal and Pair's on save. Two triggers come from them: a crash is judged first of all, a new warning just
-before drift.
+terminal and Pair's on save. Two triggers come from them: a crash is judged first of all, a new warning after
+the wrong turn and before the exploration loop and drift.
 
 `crash` is raised when the last build or run died of a signal (from its exit code, or the shell's or make's words
 when herdr gives no exit code) or reported a fault: a sanitizer, a failed assert, a panic. It is raised also while
@@ -195,7 +195,7 @@ never the answer, or asks once whether the section still belongs in the note; it
 
 ## Keep-warm
 
-Many local servers unload a model that has not been asked for a few minutes, and loading it again takes from seconds to minutes: the Watcher's call then times out, and Pair stays quiet until the model is back. While you work (a key, an edit or a command in the last five minutes), the daemon makes sure the Watcher's model has been asked something in the last four minutes: if not, it sends the Watcher's own instructions with a one-token answer. When you stop working, the pings stop too, and the server may unload the model as it likes.
+Many local servers unload a model that has not been asked for a few minutes, and loading it again takes from seconds to minutes: the Watcher's call then times out, and Pair stays quiet until the model is back. While you work (a key, an edit, a command, a cursor move or a scroll in the last five minutes), the daemon makes sure the Watcher's model has been asked something in the last four minutes: if not, it sends the Watcher's own instructions with a one-token answer. When you stop working, the pings stop too, and the server may unload the model as it likes.
 
 `"keepWarm": false` turns this off. It is on by default only for a Watcher with `"api": "openai"`; with an `anthropic` or a `provider` Watcher it is off unless you set it: a cloud model is never unloaded, and each ping would be a paid request.
 

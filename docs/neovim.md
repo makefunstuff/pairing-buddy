@@ -60,7 +60,7 @@ The moment this language was made for: a test is red, and you start fixing it in
    shift, sure it is off by one.
 2. Once you pause, Pair looks: its gaze crosses the line numbers of `backoff.go`, then the statusline says
    `● reading worker.go`.
-3. Two quiet lines appear under your edit, fading in over a quarter of a second: the shift is fine, and the real
+3. Two quiet lines appear under your edit, fading in over about 0.3 seconds: the shift is fine, and the real
    cause is `worker.go:35`, which gives up on `>=`. They end with `M-j`.
 4. You undo. The words go with your edit: an edit counts as having seen them, neither useful nor noise.
 5. `Alt-j` goes there. The line is tinted, the `>=` is underlined, and Pair's note sits after the line.
