@@ -121,6 +121,33 @@ test('an edit where a remark pointed leaves your own verdict alone, and counts o
   late.clock.now += 11 * 60_000;
   late.pair.receive({kind: 'edit', file: join(late.root, 'worker.go'), from: 4, to: 4, origin: 'user'});
   assert.equal(late.store.remarks(0)[0].verdict, null, 'past ten minutes it is no longer the next edit');
+
+  const whole = await pointedRemark();
+  whole.pair.receive({kind: 'edit', file: join(whole.root, 'worker.go'), from: 1, to: 40, origin: 'user'});
+  assert.equal(whole.store.remarks(0)[0].verdict, null, 'a format of the whole file acts on nothing');
+});
+
+test('an edit where you were editing already, or on a suggestion\'s lines, does not count a remark useful', async () => {
+  const there = pairSession([async pair => {
+    await pair.point({file: 'backoff.go', line: 4, endLine: 4, note: 'the shift', code: '<<'});
+    return 'The shift doubles: `backoff.go:4`.';
+  }]);
+  there.pair.receive({kind: 'command_end', pane: 'w1:p2', cmd: 'go test ./...', exit: 1, output: RED, at: there.clock.now - 30_000});
+  there.pair.receive({kind: 'edit', file: join(there.root, 'backoff.go'), from: 4, to: 4, at: there.clock.now - 5000});
+  await there.pair.tick();
+  there.pair.receive({kind: 'edit', file: join(there.root, 'backoff.go'), from: 4, to: 4, origin: 'user'});
+  assert.equal(there.store.remarks(0)[0].verdict, null, 'it pointed where the user was typing: editing on there is no answer');
+
+  const suggested = pairSession([async pair => {
+    await pair.suggest({file: 'worker.go', line: 4, endLine: 4, note: 'give up after the budget', text: '\tif elapsed+wait > budget {'});
+    return 'Attempt 5 lands at exactly 15s: `>` keeps it.';
+  }]);
+  suggested.pair.receive({kind: 'command_end', pane: 'w1:p2', cmd: 'go test ./...', exit: 1, output: RED, at: suggested.clock.now - 30_000});
+  suggested.pair.receive({kind: 'edit', file: join(suggested.root, 'backoff.go'), from: 4, to: 4, at: suggested.clock.now - 5000});
+  await suggested.pair.tick();
+  assert.ok(suggested.store.remarks(0).length, 'the remark was made');
+  suggested.pair.receive({kind: 'edit', file: join(suggested.root, 'worker.go'), from: 4, to: 4, origin: 'user'});
+  assert.equal(suggested.store.remarks(0)[0].verdict, null, 'typing over a suggestion ignores it');
 });
 
 test('the words of a remark are what Pair said, also through say; a turn starts with no words and no target', async () => {

@@ -572,8 +572,8 @@ pair Day's end: 3 h 05 min in hookd.
 - `Tomorrow, first` names a place. `worker.go:27` or `Makefile:14` is enough, and a path with spaces works in
   backticks (`` `src/ring buffer.c:9` ``) or as it is: Pair finds the one file git tracks (or you had open)
   with that name. Without a place, the pick-up starts where you stopped.
-- The last line is a rule, not the model: the share of noise among the session's remarks (a remark ignored for ten
-  minutes counts as noise) and what most of it was about. With `autoTune` on, those verdicts raise that trigger's bar,
+- The last line is a rule, not the model: the share of noise among the session's remarks (the ones you rated noise;
+  a remark that got no answer is counted beside them, never as noise) and what most of it was about. With `autoTune` on, those verdicts raise that trigger's bar,
   so Pair says it will keep quieter there; without it, it only says the share. No noise, no line.
 - `e`, right after the debrief, puts the first step on the chat's line as `/first …` to edit; Enter keeps it.
   `/first <step>` (or `:Pair first <step>`) works any time: in a session you have done no work in yet it replaces the last

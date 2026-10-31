@@ -12,7 +12,7 @@ import {debriefInput, firstPlace, heading, keptChanges, lessonLine, parseDebrief
 import {Delight, LONG_RED_MS} from './delight.mjs';
 import {describeState} from './describe.mjs';
 import {insideRoot, MAX_LINES, newProjectFile, numberedLines, projectFile, readProjectPath} from './files.mjs';
-import {editOrigin, failed, fold, initialState} from './fold.mjs';
+import {byUser, editOrigin, failed, fold, initialState} from './fold.mjs';
 import {decide} from './gate.mjs';
 import {Gen} from './gen.mjs';
 import {gist} from './gist.mjs';
@@ -158,6 +158,8 @@ export function streamable(text) {
 }
 const REMARKS_LISTED = 9; // /remarks lists this many, so +N and -N take one digit
 const ACTED_SLACK = 2; // an edit this many lines off where a remark pointed still acts on it
+const ACTED_LINES = 20; // an edit of more lines (a format of the whole file, a :%s) acts on no remark
+const touches = (place, file, from, to = from) => place.file === file && from <= place.to + ACTED_SLACK && to >= place.from - ACTED_SLACK;
 const PANE_USES_PER_TURN = 4; // small steps: a few searches or commands per question, not a long plan
 const SEARCH_LINES = 50;
 const RUN_OUTPUT_CHARS = 3000;
@@ -323,7 +325,7 @@ export class PairSession {
     this.asksBack = false; // that remark is one question back, and nothing else (see prose-triggers.mjs)
     this.words = []; // what Pair said this turn: an unasked remark shows it under the user's line too
     this.target = null; // where the user's jump key goes: Pair's suggestion this turn, else where it pointed last
-    this.pointedAt = []; // every place Pair pointed at or suggested for this turn: {file, from, to}, file relative
+    this.pointedAt = []; // every place Pair pointed at this turn: {file, from, to}, file relative
     this.awaiting = new Map(); // shown remarks with places and no verdict yet, by id: {at, places} (see actedOn)
     this.held = []; // parts of an urgent unasked remark that came while the user was typing
     this.holding = null; // the parts of the running remark, when it can wait for the user's next breakpoint (see held.mjs)
@@ -837,7 +839,10 @@ export class PairSession {
         this.budget.spend(this.now());
         this.lastRemark = id;
         this.store.showRemark(id);
-        if (pointedAt.length) this.awaiting.set(id, {at: this.now(), places: pointedAt});
+        // A place the user was editing already says nothing when they edit on there.
+        const last = this.state.edits.findLast(byUser);
+        const places = pointedAt.filter(place => !last || !touches(place, last.file, last.from, last.to));
+        if (places.length) this.awaiting.set(id, {at: this.now(), places});
         this.lastRemarkTrigger = trigger.kind;
         this.presence = {...this.presence, spoke: this.presence.spoke + 1};
         this.notify('chat', {type: 'remark', id, trigger: trigger.kind, place: target ? {file: relative(this.root, target.file), line: target.line} : null});
@@ -892,15 +897,17 @@ export class PairSession {
   /**
    * The user edited lines `from` to `to` of `file`: a remark of the last ten minutes that pointed there (give or take
    * ACTED_SLACK lines, as edits above move them) was acted on, wherever its words showed (under their line, in the
-   * chat, or nowhere while they were in their terminal), and counts as useful. A verdict of the user's own wins: a
-   * dismissed remark stays dismissed, and a - later still makes it noise.
+   * chat, or nowhere while they were in their terminal), and counts as useful. Not where they were editing already
+   * when it showed, nor by an edit of many lines at once. A suggestion's lines are not watched: editing them ignores
+   * it (accepting it is the verdict). A verdict of the user's own wins: a dismissed remark stays dismissed, and a -
+   * later still makes it noise.
    */
-  actedOn(file, from, to) {
-    if (!Number.isInteger(from)) return;
+  actedOn(file, from, to = from) {
+    if (!Number.isInteger(from) || to - from >= ACTED_LINES) return;
     const now = this.now();
     for (const [id, {at, places}] of this.awaiting) {
       if (now - at >= IGNORED_AFTER_MS) { this.awaiting.delete(id); continue; }
-      const place = places.find(place => place.file === file && from <= place.to + ACTED_SLACK && (to ?? from) >= place.from - ACTED_SLACK);
+      const place = places.find(place => touches(place, file, from, to));
       if (!place) continue;
       this.awaiting.delete(id);
       if (!this.store.actOnRemark(id)) continue;
@@ -1629,7 +1636,6 @@ export class PairSession {
     // The editor shows every suggestion, and its jump key goes on from that one to the next.
     const first = !this.target?.suggestion;
     if (first) this.target = {file: path, line, endLine, note, suggestion: true};
-    this.pointedAt.push({file: relative(this.root, path), from: line, to: endLine ?? line});
     const remark = this.remarkId; // now: a suggestion held for the user's pause is shown after the turn ended
     const action = this.ledger.add('suggested', `${relative(this.root, path)}:${line}, ${note}`, {data: {place: {file: path, line}, remark: remark ?? undefined}});
     // The chat pane shows it as a diff, which `a` there takes, as the accept key does in Neovim.
