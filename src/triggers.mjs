@@ -22,6 +22,8 @@ export const FRESH = {
   minLines: 3, // a hunk needs this many lines that are not blank to be code worth reading: a one-line fix is not
   maxLines: 40, // of a hunk the Watcher reads (an edit sends at most 40 lines)
   nearLines: 2, // edits this close to each other are one hunk, and a cursor this close is still in it
+  writingMs: 5 * 60_000, // a hunk needs minLines written this recently: a one-line fix next to older code is no new code
+  leftMs: 15_000, // a cursor away from a hunk this long after its last edit has left it; a glance at a callee has not
 };
 
 /** Not looked at: never seen at the bottom of its pane, or the user scrolled away from it since (scrolled past). */
@@ -262,17 +264,25 @@ function hunks(state, now) {
   const found = [];
   for (const edit of userEdits(state).filter(each => now - each.at <= TIMING.driftWindowMs && isSourceFile(each.file))) {
     const near = found.filter(hunk => hunk.file === edit.file && edit.from <= hunk.to + FRESH.nearLines && edit.to >= hunk.from - FRESH.nearLines);
-    const hunk = {file: edit.file, from: Math.min(edit.from, ...near.map(each => each.from)), to: Math.max(edit.to, ...near.map(each => each.to)), lastAt: edit.at, lines: new Map()};
-    for (const each of near) each.lines.forEach((text, line) => hunk.lines.set(line, text));
-    edit.text.split('\n').forEach((text, i) => edit.from + i <= edit.to && hunk.lines.set(edit.from + i, text));
+    const hunk = {file: edit.file, from: Math.min(edit.from, ...near.map(each => each.from)), to: Math.max(edit.to, ...near.map(each => each.to)), lastAt: edit.at, lines: new Map(), recent: new Set()};
+    for (const each of near) {
+      each.lines.forEach((text, line) => hunk.lines.set(line, text));
+      each.recent.forEach(line => hunk.recent.add(line));
+    }
+    edit.text.split('\n').forEach((text, i) => {
+      if (edit.from + i > edit.to) return;
+      hunk.lines.set(edit.from + i, text);
+      if (now - edit.at <= FRESH.writingMs && text.trim()) hunk.recent.add(edit.from + i);
+    });
     found.splice(0, found.length, ...found.filter(each => !near.includes(each)), hunk);
   }
   return found.filter(hunk => now - hunk.lastAt <= TIMING.recentMs);
 }
 
-/** Whether the user is done with `hunk` for now: they saved its file since, or the cursor left it. */
-function finished(state, hunk) {
+/** Whether the user is done with `hunk` for now: they saved its file since, or the cursor left it a while ago. */
+function finished(state, hunk, now) {
   if ((state.saves?.[hunk.file] ?? 0) >= hunk.lastAt) return true;
+  if (now - hunk.lastAt < FRESH.leftMs) return false;
   return state.file !== hunk.file || !state.cursor || state.cursor.line < hunk.from - FRESH.nearLines || state.cursor.line > hunk.to + FRESH.nearLines;
 }
 
@@ -285,7 +295,8 @@ function freshCodeTriggers(state, now) {
   const found = [];
   for (const hunk of hunks(state, now)) {
     const numbered = [...hunk.lines].sort((a, b) => a[0] - b[0]).slice(0, FRESH.maxLines);
-    if (numbered.filter(([, text]) => text.trim()).length < FRESH.minLines || !finished(state, hunk)) continue;
+    // Lines written lately, not a line changed next to older code: a one-line fix of a function is no new code.
+    if (hunk.recent.size < FRESH.minLines || !finished(state, hunk, now)) continue;
     if (numbered.some(([line]) => generatedAt(state, hunk.file, line))) continue;
     if ((state.diagnostics[hunk.file] ?? []).some(item => item.severity === 'error' && item.line >= hunk.from && item.line <= hunk.to)) continue;
     const saved = (state.saves?.[hunk.file] ?? 0) >= hunk.lastAt;

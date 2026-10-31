@@ -36,33 +36,38 @@ test('a hunk the user finished writing is fresh code: once they leave it, or sav
   const state = foldAll(written);
   assert.deepEqual(fresh(state, 5000), [], 'the cursor is still in it');
   const left = fold(state, {kind: 'cursor', file: 'cart.js', line: 40, at: 5000});
-  const [trigger] = fresh(left, 5000);
+  assert.deepEqual(fresh(left, 10_000), [], 'a glance away, at a callee, is no leaving');
+  const [trigger] = fresh(left, 20_000);
   assert.equal(trigger.file, 'cart.js');
   assert.deepEqual([trigger.from, trigger.to, trigger.line], [10, 13, 10]);
   assert.equal(trigger.code, SHARES.map((text, i) => `${10 + i}: ${text}`).join('\n'), 'both edits, as one hunk');
   assert.match(trigger.detail, /^The user just finished writing cart\.js:10-13 and moved on:/);
-  assert.deepEqual(fresh(left, 5000, new Set([trigger.key])), [], 'once per hunk');
+  assert.deepEqual(fresh(left, 20_000, new Set([trigger.key])), [], 'once per hunk');
 
   const saved = fold(state, {kind: 'save', file: 'cart.js', at: 5000});
   assert.equal(fresh(saved, 5000).length, 1, 'a save ends it too, the cursor still in it');
   assert.match(fresh(saved, 5000)[0].detail, /and saved it:/);
-  assert.equal(fresh(fold(state, {kind: 'enter', file: 'other.js', at: 5000}), 5000).length, 1, 'another file is leaving it');
+  assert.equal(fresh(fold(state, {kind: 'enter', file: 'other.js', at: 5000}), 20_000).length, 1, 'another file is leaving it');
 });
 
 test('a small fix, a note, old code, Pair\'s code and code with an error of its own are no fresh code', () => {
   const away = {kind: 'cursor', file: 'cart.js', line: 40, at: 5000};
   const small = foldAll([{kind: 'edit', file: 'cart.js', from: 10, to: 11, text: '  return 1;\n', at: 1000}, away]);
-  assert.deepEqual(fresh(small, 5000), [], 'fewer than three lines of code');
+  assert.deepEqual(fresh(small, 20_000), [], 'fewer than three lines of code');
   const note = foldAll([{...written[0], file: 'NOTES.md'}, {...written[2], file: 'NOTES.md'}, away]);
-  assert.deepEqual(fresh(note, 5000), [], 'prose has moments of its own');
+  assert.deepEqual(fresh(note, 20_000), [], 'prose has moments of its own');
   const old = foldAll([...written, away]);
   assert.deepEqual(fresh(old, 4000 + 120_001), [], 'written over two minutes ago');
   const pairs = foldAll([...written.map(event => ({...event, origin: 'pair'})), away]);
-  assert.deepEqual(fresh(pairs, 5000), [], 'the Driver wrote it');
+  assert.deepEqual(fresh(pairs, 20_000), [], 'the Driver wrote it');
   const generated = foldAll([...written, {kind: 'generated', file: 'cart.js', marks: [{from: 12, to: 12, gen: 1}]}, away]);
-  assert.deepEqual(fresh(generated, 5000), [], 'taken from a /gen request and not theirs yet');
+  assert.deepEqual(fresh(generated, 20_000), [], 'taken from a /gen request and not theirs yet');
   const erring = foldAll([...written, {kind: 'diagnostics', file: 'cart.js', items: [{line: 11, severity: 'error', message: 'x'}], at: 4500}, away]);
-  assert.deepEqual(fresh(erring, 5000), [], 'an error there is new_code_diagnostic\'s');
+  assert.deepEqual(fresh(erring, 20_000), [], 'an error there is new_code_diagnostic\'s');
+  const fix = {kind: 'edit', file: 'cart.js', from: 11, to: 11, text: SHARES[1], at: 8 * 60_000};
+  const later = foldAll([...written, fix, {...away, at: fix.at}]);
+  assert.deepEqual(fresh(later, fix.at + 20_000), [], 'a one-line fix of a function written minutes ago');
+  assert.equal(fresh(foldAll([...written, away]), 20_000).length, 1, 'the same function, just written, is');
 });
 
 test('two hunks far apart are read apart; editing a hunk again makes it fresh again', () => {
@@ -71,14 +76,16 @@ test('two hunks far apart are read apart; editing a hunk again makes it fresh ag
     {kind: 'edit', file: 'cart.js', from: 30, to: 33, text: 'a();\nb();\nc();\nd();', at: 6000},
     {kind: 'cursor', file: 'cart.js', line: 60, at: 6000},
   ]);
-  const found = fresh(state, 7000);
+  const found = fresh(state, 22_000);
   assert.deepEqual(found.map(trigger => [trigger.from, trigger.to]), [[10, 13], [30, 33]]);
-  const again = fold(state, {kind: 'edit', file: 'cart.js', from: 11, to: 11, text: '  const total = lines.reduce((sum, line) => sum + line.price * line.qty, 0);', at: 8000});
+  const again = fold(state, {kind: 'edit', file: 'cart.js', from: 11, to: 11, text: '  const total = lines.reduce((sum, line) => sum + line.price * line.qty, 0);', at: 23_000});
   const [first] = found;
   assert.equal(stillTrue(first, again), false, 'the hunk changed since: the thought about it is stale');
   assert.equal(stillTrue(found[1], again), true, 'the other hunk did not');
-  const now = fold(again, {kind: 'cursor', file: 'cart.js', line: 60, at: 8000});
-  const [reread] = fresh(now, 9000, new Set(found.map(trigger => trigger.key)));
+  const deleted = fold(state, {kind: 'edit', file: 'cart.js', from: 30, to: 29, text: '', at: 23_000});
+  assert.equal(stillTrue(found[1], deleted), false, 'its lines deleted: gone');
+  const now = fold(again, {kind: 'cursor', file: 'cart.js', line: 60, at: 23_000});
+  const [reread] = fresh(now, 40_000, new Set(found.map(trigger => trigger.key)));
   assert.match(reread.code, /line\.price \* line\.qty/, 'read again as it is now');
 });
 
@@ -158,6 +165,10 @@ test('the session: never asked while typing, held with a dot, said at the save',
 
   clock.now += 2500;
   await pair.tick();
+  assert.deepEqual(scored, [], 'a pause, but not long enough away from it to have left it');
+  for (let i = 0; i < 15; i += 1) types(); // writing on further down
+  clock.now += 2500;
+  await pair.tick();
   assert.deepEqual(scored, ['fresh_code']);
   assert.match(asked[0], /^\[watch\] fresh_code: The user just finished writing cart\.js:10-13 and moved on:\n10: function lineShares/);
   assert.match(asked[0], /Style, naming, a missing test or a check they may add later is no bug: answer exactly SILENT\./);
@@ -168,12 +179,15 @@ test('the session: never asked while typing, held with a dot, said at the save',
   await pair.tick();
   assert.deepEqual(shown('remark').map(remark => remark.text), ['cart.js:11 sums `line.price`, not `line.price * line.qty`.']);
   assert.equal(pair.store.remarks(0)[0].trigger, 'fresh_code', 'a remark like any other, in the ledger and the stats');
+  clock.now += 20_000;
+  pair.receive({kind: 'edit', file, from: 11, to: 11, text: '  const total = lines.reduce((sum, line) => sum + line.price * line.qty, 0);'});
+  assert.equal(pair.store.remarks(0)[0].verdict, 'useful', 'fixing the line it pointed at counts it useful');
 });
 
 test('the session: fresh code under the bar costs a Watcher call and says nothing', async () => {
   const {pair, clock, writes, shown, scored, asked} = pairSession(3);
   writes();
-  clock.now += 2500;
+  clock.now += 16_000;
   await pair.tick();
   assert.deepEqual(scored, ['fresh_code']);
   assert.deepEqual(asked, [], 'the Partner is not asked');
@@ -193,7 +207,7 @@ test('Neovim sends the edits you made before a save first, so the save ends them
   await new Promise(resolve => server.listen(join(dir, 'pair.sock'), resolve));
   const nvimSocket = join(dir, 'nvim.sock');
   const nvim = spawn('nvim', ['--headless', '--clean', '--listen', nvimSocket, '--cmd', `set rtp+=${REPO}`, '--cmd', `cd ${project}`,
-    '-c', `lua require('pair').setup({socket = '${join(dir, 'pair.sock')}', debounce_ms = 5000})`, 'a.js', '-c', 'Pair start'], {stdio: 'ignore'});
+    '-c', `lua require('pair').setup({socket = '${join(dir, 'pair.sock')}', debounce_ms = 5000})`, join(project, 'a.js'), '-c', 'Pair start'], {cwd: project, stdio: 'ignore'});
   try {
     await until(() => editor && received.some(message => message.type === 'hello'), 'the plugin to connect');
     sendMessage(editor, {type: 'welcome', root: project, level: 'normal', role: 'navigator', models: {}});

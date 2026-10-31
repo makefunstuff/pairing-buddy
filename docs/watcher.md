@@ -82,8 +82,8 @@ whoever edited near them; a `regression` names the request whose code is not you
 Every other moment is a symptom: something failed, came back, or went quiet. `fresh_code` is the one about your work
 itself, what a pair beside you would read as you write it. It is raised when you finish a hunk: your own edits of a
 source file that touch or nearly touch each other (a function written over a few minutes is one hunk), the last of
-them in the last two minutes, with at least three lines that are not blank, once you save the file or move the cursor
-more than two lines away from it (another file counts). Neovim sends the edits you made just before a save first, so
+them in the last two minutes, with at least three lines that are not blank written in the last five minutes (a one-line fix next to older code is none), once you save the file or move the cursor
+more than two lines away from it for 15 s (another file counts; a glance at a callee does not). Neovim sends the edits you made just before a save first, so
 `:w` right after typing finishes the hunk too. Edits of a
 Markdown note have the [note's own moments](#in-a-note); a one-line fix is no hunk. Code Pair wrote, and code you took
 from a `/gen` request that is [not yours yet](gen.md#owning-generated-code), is left out, and so is a hunk with an

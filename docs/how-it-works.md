@@ -88,7 +88,7 @@ speak is then the probability that a remark is worth interrupting you for now, a
 typing, your recent work and your verdicts on earlier remarks. If it is down or slow, the rules above decide at once.
 
 Pair never speaks while you type in Neovim or the chat pane: a remark that is ready while you type waits for your
-next pause. One that can wait (drift, a stall, an error in code you moved on from) waits longer, for your next break:
+next pause. One that can wait (drift, a stall, an error in code you moved on from, a likely bug in code you just finished) waits longer, for your next break:
 a save, a run that ended, a stop out of Insert mode, or a quiet stretch. Meanwhile a `•` in Neovim's margin marks it,
 and `Alt-j` shows it early. Details in [watcher.md](watcher.md).
 
