@@ -58,7 +58,7 @@ require('pair').setup({
 | `debounce_ms` | `2000` | How long after you stop typing an edit is sent. Each edit says who made it, you or Pair ([gen.md](gen.md)); Pair's are sent at once |
 | `max_points` | `5` | Points kept at once |
 | `jump_key` | `'<M-j>'` | Goes where Pair pointed last, or shows a held thought; from one suggestion on to the next. Mapped in Normal mode while it points somewhere or holds a thought |
-| `accept_key` | `'<M-y>'` | Accepts the suggestion under the cursor, else the one `jump_key` goes to, else the newest. Mapped in Normal mode, only in a buffer with a suggestion and only while one shows, also over a mapping of your own there. Avoid `<Tab>`: terminals send it for Ctrl-I, the jumplist's forward jump |
+| `accept_key` | `'<M-y>'` | Accepts the suggestion under the cursor, else the newest in the buffer. Mapped in Normal mode, only in a buffer with a suggestion and only while one shows, also over a mapping of your own there. Avoid `<Tab>`: terminals send it for Ctrl-I, the jumplist's forward jump |
 | `listen_key` | `'<M-t>'` | Hold it to speak to Pair ([voice.md](voice.md)). Mapped in Normal and Visual mode from the start |
 | `listen_mode` | `'hold'` | `'hold'`: hold the key and let go, or tap it twice. `'toggle'`: press it to start, press it again to ask, never guessing when you let go; holding it is one press, however long the terminal waits to repeat it ([voice.md](voice.md#4-the-key)) |
 | `listen_hold_ms`, `listen_release_ms` | `650`, `220` | In `'hold'`: no repeat this long after the press is a tap; no repeat this long is letting go. In `'toggle'`: a press this close to another is its repeat; a press this soon after the one that asked is that key's repeat |
@@ -120,7 +120,7 @@ to standard ones and does not fade.
 | `:Pair keep [path]` | Move the `/gen try` file you are in (else the newest try's main file) into the project at `path` (else at its path in the try's folder), as a `pair://gen/<n>/<path>` buffer to review that `:w` takes; only a new file. In a file of a scaffold's copy, keep that file (with a path: the scaffold's file at that path) |
 | `:Pair own [path]`, `:'<,'>Pair own`, `:Pair own!` | Make the code you took from `/gen` yours ([gen.md](gen.md#owning-generated-code)): all of it in this buffer's file (or in `path`), that on the lines, or all of it in the project. Its `┊` marks go |
 | `:Pair brief [path\|off\|sync]` | The [brief](gen.md#the-brief) `/gen` runs against: in a Markdown buffer, pin that note; with a path, pin that note; `off`, leave the note out; elsewhere, say what the brief is. `sync`, on a board task's branch: what the task's brief on the board lacks, then a pick: tell its agent, copy the command, or nothing ([gen.md](gen.md#keeping-the-task-in-step-brief-sync)) |
-| `:Pair accept` | Accept Pair's suggestion under the cursor, else the one `Alt-j` goes to, else the newest (same as `Alt-y`); for a suggestion in an unasked remark, that rates the remark useful |
+| `:Pair accept` | Accept Pair's suggestion under the cursor, else the newest in the buffer (same as `Alt-y`); for a suggestion in an unasked remark, that rates the remark useful |
 | `:Pair dismiss` | Drop the same suggestion, and only that one; for a suggestion in an unasked remark, that rates the remark not useful |
 | `:Pair useful` | Pair's last unasked remark was useful (same as `Alt-u`) |
 | `:Pair noise` | It was not (same as `Alt-n`) |
