@@ -82,7 +82,7 @@ require('pair').setup({
 | `land` | `true` | The [morning pick-up](neovim.md#the-morning-pick-up-and-the-days-end) opens an empty Neovim (or a start screen) on the place the last session's debrief named |
 | `glyphs` | plain Unicode | Pair's marks (below) |
 
-Every key option takes `false` for none; the commands work either way. The keys but `accept_key` are mapped only where you have no
+Every key option takes `false` for none; the commands work either way. All keys but `accept_key` are mapped only where you have no
 mapping of your own, and all but `listen_key` and `gen_key` only while there is something for them to act on. Each says what it does
 until you have used it once (`M-j goes there`); the keys you have used are kept in `stdpath('state')/pair/keys.json`.
 The glyphs are plain Unicode, so they show in any font: `voice` `●`, `idea` `∴`, `mark` `▎`, `held` `•`, `away` `◌`, `wheel` `◎`, `listen` `◉`, `pass`
