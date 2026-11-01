@@ -160,12 +160,20 @@ export class CorePanes {
   start(look, reportScroll, failure) {
     this.stopped = false;
     Object.assign(this, {look, failure});
-    this.begin().catch(error => failure(error));
+    this.retry();
+  }
+
+  /** Starts, and while the core does not answer, tries again every RETRY_MS, as herdr's event stream does. */
+  retry() {
+    this.begin().catch(error => {
+      this.failure(error);
+      if (!this.stopped) this.timer = setTimeout(() => this.retry(), RETRY_MS);
+    });
   }
 
   /**
    * Once the chat's space is known: the events of its terminals and the window's focus. A start that failed (the core
-   * did not answer) is tried again at the next look.
+   * did not answer) is tried again by retry(), or sooner by a look.
    */
   async begin({looking = false} = {}) {
     if (this.stream || this.stopped) return;

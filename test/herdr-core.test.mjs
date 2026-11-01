@@ -181,8 +181,8 @@ test('a core that does not answer at first is tried again, and its terminals are
   const failures = [];
   source.start(() => {}, () => {}, error => failures.push(error));
   await until(() => failures.length === 1, 'the failed start');
-  source.socketPath = socketPath; // the core is back
+  source.socketPath = socketPath; // the core is back, and nothing else asks for a look
+  await until(() => core.subscribers.size === 1, 'the event stream, started again by itself');
   assert.deepEqual((await source.list()).map(each => each.pane).sort(), ['t1', 't2']);
-  await until(() => core.subscribers.size === 1, 'the event stream');
   source.stop();
 });
