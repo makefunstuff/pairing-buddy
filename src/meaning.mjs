@@ -229,38 +229,40 @@ export class ProjectIndex {
     return true;
   }
 
-  /** BM25 over the chunks' words, built once per change of the files. */
+  /** Each chunk's words with how often it has them, and the average length, built once per change of the files. */
   keywordIndex() {
     if (this.keywords) return this.keywords;
     const chunks = this.chunks;
-    const frequency = new Map();
     const counts = chunks.map(chunk => {
       const count = new Map();
       for (const word of chunk.words) count.set(word, (count.get(word) ?? 0) + 1);
-      for (const word of count.keys()) frequency.set(word, (frequency.get(word) ?? 0) + 1);
       return count;
     });
     const average = chunks.reduce((sum, chunk) => sum + chunk.words.length, 0) / (chunks.length || 1);
-    this.keywords = {chunks, counts, frequency, average};
+    this.keywords = {chunks, counts, average};
     return this.keywords;
   }
 
-  /** The chunks with the query's words, best first (BM25), at most `limit`. */
+  /**
+   * The chunks that have every word of the query, each as the start of one of theirs (`retr` finds `retryCount`;
+   * a word of two letters only as a whole word),
+   * best first by BM25, at most `limit`. Every word, as lfm-pixel's keyword search: a question in other words than
+   * the code's then finds nothing here and is left to its meaning, and a name only the code has finds its chunk.
+   */
   keywordRanking(query, limit = LIST) {
-    const {chunks, counts, frequency, average} = this.keywordIndex();
+    const {chunks, counts, average} = this.keywordIndex();
     const terms = [...new Set(words(query))].filter(term => !STOPWORDS.has(term));
+    if (!terms.length) return [];
+    const frequencies = counts.map(count => terms.map(term => {
+      let n = 0;
+      for (const [word, times] of count) if (term.length > 2 ? word.startsWith(term) : word === term) n += times;
+      return n;
+    }));
+    const df = terms.map((_, t) => frequencies.filter(tf => tf[t] > 0).length);
+    const matching = chunks.map((chunk, i) => [chunk, frequencies[i]]).filter(([, tf]) => tf.every(f => f > 0));
     const n = chunks.length;
-    const scored = [];
-    chunks.forEach((chunk, i) => {
-      let score = 0;
-      for (const term of terms) {
-        const tf = counts[i].get(term);
-        if (!tf) continue;
-        const df = frequency.get(term);
-        score += Math.log(1 + (n - df + 0.5) / (df + 0.5)) * (tf * 2.2) / (tf + 1.2 * (0.25 + 0.75 * chunk.words.length / average));
-      }
-      if (score > 0) scored.push([chunk, score]);
-    });
+    const scored = matching.map(([chunk, tf]) => [chunk, tf.reduce((score, f, t) => score
+      + Math.log(1 + (n - df[t] + 0.5) / (df[t] + 0.5)) * (f * 2.2) / (f + 1.2 * (0.25 + 0.75 * chunk.words.length / average)), 0)]);
     return scored.sort((a, b) => b[1] - a[1]).slice(0, limit).map(([chunk]) => chunk);
   }
 

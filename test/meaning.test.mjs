@@ -109,6 +109,9 @@ test('the index finds code worded unlike the search, keeps its vectors in the da
   const [byWord] = await index.search('quantity');
   assert.equal(byWord.file, 'src/cart.js', 'a word only the code has ranks it too');
   assert.equal(byWord.keyword, true);
+  assert.deepEqual(index.keywordRanking('quant item').map(chunk => chunk.file), ['src/cart.js'], 'each word as the start of one of the code\'s');
+  assert.deepEqual(index.keywordRanking('quantity tries'), [], 'every word, or none: the meaning ranks a question in other words');
+  assert.deepEqual(index.keywordRanking('how is it'), [], 'the small words of a question are no keywords');
 
   const again = new ProjectIndex({root, path: indexPath(dataDir, root), embed: (texts, options) => embedder.embed(texts, options)});
   await again.load();

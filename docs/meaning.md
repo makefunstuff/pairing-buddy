@@ -61,8 +61,10 @@ Two rankings, fused:
 - **By meaning.** Your words, as a search (`task: search result | query: …`), against every chunk (`title: <path> |
   text: …`): the prompts EmbeddingGemma was trained with. The closest by cosine similarity, within 0.1 of the best
   (unrelated code scores close too, so a fixed cut-off would not do).
-- **By words.** BM25 over the chunks' words, with identifiers split as well (`retryCount` is `retry` and `count` too)
-  and the small words of a question left out.
+- **By words.** The chunks that have every word of your search, each as the start of one of theirs (`retr` finds
+  `retryCount`), ranked by BM25; identifiers are split too (`retryCount` is also `retry` and `count`), and the small
+  words of a question are left out. Every word, as in lfm-pixel: a question in other words than the code's finds
+  nothing here and is left to its meaning, and a name only the code has finds its chunk.
 
 Each chunk scores `1/(60 + rank)` in each ranking it is in, summed: reciprocal rank fusion, as in lfm-pixel's notes
 search, rather than adding scores that are on different scales. A chunk both rankings like goes first; an exact
