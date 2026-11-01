@@ -43,8 +43,8 @@ Press `Alt-s` again and type what you mean:
 
 Your words find nothing; stop typing, and the closest pieces join the list a moment later, best first, each as
 `file:line` and its first line of code, with the piece in the preview. `Enter` opens it at its line, `<C-q>` sends the
-list to quickfix. In Visual mode, `Alt-s` starts with the selected words; `:Pair find <words>` works too, and `/find
-<words>` in the chat.
+list to quickfix. In Visual mode, `Alt-s` starts with the selected words; `:Pair find <words>` works too, and
+`/find <words>` in the chat.
 
 ## 4. What it did
 

@@ -44,6 +44,22 @@ test('every docs page has a description of its own that fits the previews', () =
   assert.ok(DESCRIPTION.length <= MAX_DESCRIPTION);
 });
 
+// A code span wrapped onto a line that starts with `<` ends there: Markdown reads that line as raw HTML, and VitePress's
+// build stops on the element it never closes (`/find` then `<words>` broke the site once).
+test('no docs page wraps a code span onto a line that starts with <', () => {
+  const pages = [...readdirSync(docs), ...readdirSync(new URL('tutorials/', docs)).map(f => `tutorials/${f}`)];
+  for (const file of pages.filter(f => f.endsWith('.md'))) {
+    let fenced = false;
+    let previous = '';
+    for (const [i, line] of readFileSync(new URL(file, docs), 'utf8').split('\n').entries()) {
+      if (/^\s*(```|~~~)/.test(line)) fenced = !fenced;
+      else if (!fenced && line.startsWith('<'))
+        assert.ok((previous.match(/`/g) ?? []).length % 2 === 0, `${file}:${i + 1} starts a code span's second line with <`);
+      previous = fenced ? '' : line;
+    }
+  }
+});
+
 test('a page\'s URL is absolute, as the build writes it', () => {
   assert.equal(pageUrl('index.md'), SITE_URL);
   assert.equal(pageUrl('models.md'), `${SITE_URL}models.html`);
