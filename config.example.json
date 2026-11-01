@@ -49,10 +49,14 @@
   // "tree", a copy in Pair's data folder, or "worktree", a git worktree on a branch gen/<n>. The defaults:
   // "gen": {"limits": {"files": 40, "lines": 4000, "commands": 8, "minutes": 10}, "brief": "NOTES.md", "keepTries": 7, "network": false, "scaffold": "tree"},
 
-  // Search by meaning (Alt-s in Neovim, see docs/meaning.md) is off until you say yes to its model's one download.
-  // Its embedder runs on LiteRT-LM in this Python (else a venv in Pair's data folder, else python3) on this many
-  // cores, at low priority; false turns it off for good.
-  // "meaning": {"python": "~/.local/state/pairing-buddy/meaning/venv/bin/python", "threads": 2},
+  // Search by meaning (Alt-s in Neovim, see docs/meaning.md): its word search works at once; meaning needs
+  // EmbeddingGemma 2, downloaded once by :Pair find on. It runs on LiteRT-LM in this Python (else a venv in Pair's data
+  // folder, else python3) on this many cores, at low priority. "index": "project" keeps the index in .pair/ of the
+  // repository (listed in .git/info/exclude) rather than Pair's data folder; false turns it all off for good.
+  // "meaning": {"python": "~/.local/state/pairing-buddy/meaning/venv/bin/python", "threads": 2, "index": "data"},
+
+  // Or an embedding model of your own behind an OpenAI-compatible /v1/embeddings, instead of EmbeddingGemma 2:
+  // "embedding": {"api": "openai", "baseUrl": "http://127.0.0.1:8080/v1", "model": "jina-embeddings-v2-base-code"},
 
   // Pair's own pane, where Scout's commands and the tests on save run (see docs/scout.md#pairs-pane): your rc file
   // for its aliases, functions and PATH (true is ~/.bashrc), and the bubblewrap sandbox: "auto" where bwrap works,

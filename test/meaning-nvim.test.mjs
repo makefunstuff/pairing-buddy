@@ -1,6 +1,8 @@
-// Search by meaning in Neovim: off, Alt-s offers the one download and nothing comes without a yes; on, :Pair find
-// shows the ranked chunks in Telescope (a stand-in here, with the entries the real one gets) or in vim.ui.select,
-// and choosing one opens it at its line. The daemon's fake embedder stands in for EmbeddingGemma 2.
+// Search by meaning in Neovim: Alt-s and :Pair find open a live picker. In Telescope (a stand-in here that drives the
+// picker's finder as the real one does, with the entries it gets) the words show on every key and meaning's pieces join
+// below them once typing stops, the selection staying where it was; the entries carry what the previewer, Enter and
+// <C-q> need. Without a model the words still work and the title says how to add meaning. vim.ui.select gets the fused
+// ranking, and choosing a piece opens it at its line. The daemon's fake embedder stands in for EmbeddingGemma 2.
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {mkdirSync, writeFileSync} from 'node:fs';
@@ -12,25 +14,50 @@ import {hasNvim, pairInNvim, until} from './nvim-harness.mjs';
 import {scratch} from './temp.mjs';
 
 const DELIVER = 'export function deliver(job) {\n  let tries = 0\n  while (tries < 5) {\n    tries += 1\n    if (send(job)) return true\n    sleep(backoff(tries))\n  }\n}\n';
+const CART = 'export function total(cart) {\n  return cart.items.reduce((sum, item) => sum + item.cents * item.quantity, 0)\n}\n';
+const INVOICE = '// What the order comes to.\nexport function bill(order) {\n  return order.price\n}\n';
 
-/** A Telescope that only records what a picker gets: its title and its entries, as the real one would make them. */
+/**
+ * A Telescope that runs a picker's finder as the real one does: `_G.type_prompt(text)` types a prompt, and
+ * `refresh` runs the finder again for it; `_G.telescoped` keeps the spec's title, sorter and previewer, the
+ * entries shown, and how many times they were made.
+ */
 function fakeTelescope() {
   const dir = scratch('meaning-telescope-');
-  mkdirSync(join(dir, 'lua', 'telescope'), {recursive: true});
+  mkdirSync(join(dir, 'lua', 'telescope', 'actions'), {recursive: true});
   const module = (name, body) => writeFileSync(join(dir, 'lua', 'telescope', `${name}.lua`), body);
   module('pickers', `return {new = function(_, spec)
-    local entries = vim.tbl_map(spec.finder.entry_maker, spec.finder.results)
-    _G.telescoped = {title = spec.prompt_title, entries = entries, sorter = spec.sorter ~= nil, previewer = spec.previewer ~= nil}
-    return {find = function() end}
+    local picker = {prompt = spec.default_text or '', callbacks = {}, prompt_border = {change_title = function(_, title) _G.telescoped.title = title end}}
+    _G.telescoped = {title = spec.prompt_title, sorter = spec.sorter and spec.sorter.highlighter_only, previewer = spec.previewer ~= nil, shown = {}, runs = 0}
+    function picker:run()
+      local shown = {}
+      spec.finder(self.prompt, function(entry) shown[#shown + 1] = entry end, function()
+        _G.telescoped.shown = shown
+        _G.telescoped.runs = _G.telescoped.runs + 1
+        for _, callback in ipairs(self.callbacks) do callback(self) end
+      end)
+    end
+    function picker:find() spec.attach_mappings(1); self:run() end
+    function picker:refresh() self:run() end
+    function picker:register_completion_callback(callback) table.insert(self.callbacks, callback) end
+    picker.manager = {num_results = function() return #_G.telescoped.shown end, get_entry = function(_, i) return _G.telescoped.shown[i] end}
+    function picker:get_row(index) return index - 1 end
+    function picker:set_selection(row) _G.selected = _G.telescoped.shown[row + 1] end
+    _G.type_prompt = function(text) picker.prompt = text; picker:run() end
+    return picker
   end}`);
-  module('finders', 'return {new_table = function(spec) return spec end}');
-  module('config', 'return {values = {generic_sorter = function() return {} end, grep_previewer = function() return {} end}}');
+  module('finders', 'return {}');
+  module('sorters', 'return {highlighter_only = function() return {highlighter_only = true} end}');
+  module('config', 'return {values = {grep_previewer = function() return {} end}}');
+  module('actions/state', 'return {get_selected_entry = function() return _G.selected end}');
+  module('actions', `local enhance = function() return {enhance = function() end} end
+    return {select_default = {enhance = function() end}, close = {enhance = function() end}}`);
   return dir;
 }
 
 /** Asks the daemon for its status until the project's index is built: `send` and `messages` are the chat client's. */
 async function built(send, messages) {
-  send({type: 'meaning', query: 'deliver'}); // the first search opens the index, which builds in the background
+  send({type: 'find', query: 'deliver'}); // the first search opens the index, which builds in the background
   await until(() => {
     send({type: 'status'});
     const index = messages.findLast(message => message.type === 'status')?.meaning.indexes[0];
@@ -38,57 +65,116 @@ async function built(send, messages) {
   }, 'the index to be built');
 }
 
-/** The project as a git repo with a retry loop in it, so search by meaning has something to find. */
-function withCode(project) {
+/**
+ * The project as a git repo with a retry loop and a cart in it, so search by meaning has something to find: saved in
+ * Neovim, as the index hears of new files between its looks at the whole project.
+ */
+async function withCode(project, remote) {
   writeFileSync(join(project, 'deliver.js'), DELIVER);
+  writeFileSync(join(project, 'cart.js'), CART);
+  writeFileSync(join(project, 'invoice.js'), INVOICE);
   execFileSync('git', ['init', '-q'], {cwd: project});
+  for (const file of ['deliver.js', 'cart.js', 'invoice.js']) remote(`execute("edit ${join(project, file)} | write")`);
+  await new Promise(resolve => setTimeout(resolve, 300));
 }
 
-test('off, Alt-s offers the model\'s one download and a no leaves it off; on, :Pair find opens the chosen chunk at its line', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
-  const fetched = [];
-  const {project, dataDir, watcher, messages, remote, keys, send, stop} = await pairInNvim('deliver', {
-    setup: "meaning_picker = 'select'",
-    meaningWith: {embedder: fakeEmbedder(), fetch: async url => { fetched.push(url); return new Response('x'); }},
-  });
+const shown = remote => JSON.parse(remote('json_encode(luaeval("vim.tbl_map(function(e) return e.display end, _G.telescoped.shown)"))'));
+
+test('Telescope, live: the words on every key, meaning below them once typing stops, nothing moving; entries for the previewer and <C-q>', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
+  const {project, dataDir, watcher, messages, remote, send, stop} = await pairInNvim('deliver', {rtp: [fakeTelescope()], setup: 'meaning_debounce_ms = 400', meaningWith: {embedder: fakeEmbedder()}});
   try {
     watcher.setResponses(Array.from({length: 10}, () => fauxAssistantMessage([fauxText('0')])));
-    withCode(project);
-    remote(`luaeval("(function() vim.ui.input = function(_, done) done('try again when sending fails') end; vim.fn.confirm = function(text) _G.offered = text; return 2 end end)() or 0")`);
-    keys('<M-s>');
-    await until(() => remote('luaeval("_G.offered or \'\'")').includes('EmbeddingGemma 2'), 'the offer of the download');
-    assert.match(remote('luaeval("_G.offered")'), /165 MB from Hugging Face, once, checked by its SHA-256/);
-    assert.deepEqual(fetched, [], 'nothing is downloaded without a yes');
-
-    fakeModel(dataDir); // as if the download had been taken: the rest is the daemon's (see meaning.test.mjs)
+    await withCode(project, remote);
+    fakeModel(dataDir);
     await built(send, messages);
-    remote(`luaeval("(function() vim.ui.select = function(items, opts, choose) _G.picked = {prompt = opts.prompt, shown = vim.tbl_map(opts.format_item, items)}; choose(items[1]) end end)() or 0")`);
-    remote('execute("Pair find try again when sending fails")');
-    await until(() => remote('expand("%:t")') === 'deliver.js', 'the chosen chunk to open');
-    assert.equal(remote('line(".")'), '1');
-    const picked = JSON.parse(remote('json_encode(luaeval("_G.picked"))'));
-    assert.match(picked.prompt, /^By meaning: try again when sending fails/);
-    assert.equal(picked.shown[0], 'deliver.js:1  export function deliver(job) {');
+    remote('execute("Pair find")');
+    await until(() => remote('luaeval("_G.telescoped ~= nil")') === 'true', 'the Telescope picker');
+    const picker = JSON.parse(remote('json_encode(luaeval("{sorter = _G.telescoped.sorter, previewer = _G.telescoped.previewer}"))'));
+    assert.deepEqual(picker, {sorter: true, previewer: true}, 'Pair\'s order, and the hit at its line in the preview');
+
+    remote('luaeval("_G.type_prompt(\'tota\')")');
+    await until(() => shown(remote).length > 0, 'the word hits');
+    const words = shown(remote);
+    assert.deepEqual(words, ['cart.js:1  export function total(cart) {'], 'tota starts total, before meaning is asked');
+    remote('luaeval("(function() _G.selected = _G.telescoped.shown[1] end)()")');
+    await until(() => shown(remote).length > 1, 'meaning\'s hits');
+    const merged = shown(remote);
+    assert.deepEqual(merged.slice(0, words.length), words, 'what showed stays where it was');
+    assert.ok(merged.includes('invoice.js:2  export function bill(order) {'), 'the price, by its meaning: shown at its line under its doc comment');
+    assert.equal(remote('luaeval("_G.selected.display")'), words[0], 'and stays selected');
+    const entry = JSON.parse(remote('json_encode(luaeval("_G.telescoped.shown[1]"))'));
+    assert.equal(entry.filename, join(project, 'cart.js'));
+    assert.equal(entry.lnum, 1);
+    assert.equal(entry.text, 'export function total(cart) {', 'quickfix gets its line');
+
+    remote('luaeval("_G.type_prompt(\'try again when sending fails\')")');
+    await until(() => shown(remote)[0] === 'deliver.js:1  export function deliver(job) {', 'a question in other words, by meaning alone');
+    assert.match(remote('luaeval("_G.telescoped.title")'), /^Find \(\d+ ms\)$/);
   } finally {
     await stop();
   }
 });
 
-test('Telescope first: its picker gets each chunk with its file and line, best first, a sorter and a previewer', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
-  const {project, dataDir, watcher, messages, remote, send, stop} = await pairInNvim('deliver', {rtp: [fakeTelescope()], meaningWith: {embedder: fakeEmbedder()}});
+test('without a model the words still work, and the picker says how to add meaning', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
+  const fetched = [];
+  const {project, watcher, remote, keys, stop} = await pairInNvim('deliver', {
+    rtp: [fakeTelescope()],
+    meaningWith: {embedder: fakeEmbedder(), fetch: async url => { fetched.push(url); return new Response('x'); }},
+  });
   try {
     watcher.setResponses(Array.from({length: 10}, () => fauxAssistantMessage([fauxText('0')])));
-    withCode(project);
+    await withCode(project, remote);
+    keys('<M-s>');
+    await until(() => remote('luaeval("_G.telescoped ~= nil")') === 'true', 'the Telescope picker');
+    await until(() => {
+      remote('luaeval("_G.type_prompt(\'quantity\')")');
+      return shown(remote).length > 0 && /words only/.test(remote('luaeval("_G.telescoped.title")'));
+    }, 'the word hits');
+    assert.deepEqual(shown(remote), ['cart.js:1  export function total(cart) {']);
+    assert.equal(remote('luaeval("_G.telescoped.title")'), 'Find (words only: :Pair find on adds meaning)');
+    assert.deepEqual(fetched, [], 'nothing is downloaded without :Pair find on');
+  } finally {
+    await stop();
+  }
+});
+
+test('vim.ui.select gets the fused ranking; choosing a piece opens it at its line, and the ledger hears of it', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
+  const {project, dataDir, watcher, messages, remote, send, stop} = await pairInNvim('deliver', {setup: "meaning_picker = 'select'", meaningWith: {embedder: fakeEmbedder()}});
+  try {
+    watcher.setResponses(Array.from({length: 10}, () => fauxAssistantMessage([fauxText('0')])));
+    await withCode(project, remote);
     fakeModel(dataDir);
     await built(send, messages);
-    remote('execute("Pair find retry")'); // no word of the code, but its meaning
-    await until(() => remote('luaeval("_G.telescoped ~= nil")') === 'true', 'the Telescope picker');
-    const picker = JSON.parse(remote('json_encode(luaeval("_G.telescoped"))'));
-    assert.match(picker.title, /^By meaning: retry/);
-    assert.ok(picker.sorter && picker.previewer);
-    const [first] = picker.entries;
-    assert.equal(first.filename, join(project, 'deliver.js'));
-    assert.equal(first.lnum, 1);
-    assert.equal(first.display, 'deliver.js:1  export function deliver(job) {');
+    remote(`luaeval("(function() vim.ui.select = function(items, opts, choose) _G.picked = {prompt = opts.prompt, shown = vim.tbl_map(opts.format_item, items)}; choose(items[1]) end end)() or 0")`);
+    remote('execute("Pair find try again when sending fails")');
+    await until(() => remote('expand("%:t")') === 'deliver.js', 'the chosen piece to open');
+    assert.equal(remote('line(".")'), '1');
+    const picked = JSON.parse(remote('json_encode(luaeval("_G.picked"))'));
+    assert.equal(picked.prompt, 'Find: try again when sending fails');
+    assert.equal(picked.shown[0], 'deliver.js:1  export function deliver(job) {');
+    await until(() => {
+      send({type: 'today'});
+      return JSON.stringify(messages.findLast(message => message.type === 'ledger') ?? {}).includes('in the picker');
+    }, 'the choice in the ledger');
+  } finally {
+    await stop();
+  }
+});
+
+test('/find in the chat: the fused ranking, with how it ranked', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
+  const {project, dataDir, watcher, messages, remote, send, stop} = await pairInNvim('deliver', {meaningWith: {embedder: fakeEmbedder()}});
+  try {
+    watcher.setResponses(Array.from({length: 10}, () => fauxAssistantMessage([fauxText('0')])));
+    await withCode(project, remote);
+    fakeModel(dataDir);
+    await built(send, messages);
+    send({type: 'find', query: 'try again when sending fails'});
+    await until(() => messages.some(message => message.type === 'found' && message.query === 'try again when sending fails'), 'the answer');
+    const found = messages.find(message => message.type === 'found' && message.query === 'try again when sending fails');
+    assert.equal(found.id, undefined);
+    assert.equal(found.state, 'on');
+    assert.equal(found.results[0].file, 'deliver.js');
+    assert.equal(found.results[0].path, join(project, 'deliver.js'));
   } finally {
     await stop();
   }

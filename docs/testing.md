@@ -165,16 +165,25 @@ the work board.
   `Esc` in fzf-lua's default setup, which hides the picker, a resumed picker with fewer words, grep words with
   punctuation as you gave them, grep_cWORD and grep_cword, what you opened, and fzf-lua set to end fzf, in fzf's own
   bottom-up layout with a `>` pointer, where a result line starts like the prompt.
-- **Search by meaning.** Chunks of at most 60 lines and 1,500 characters cut at a blank line, identifiers split into
-  words, reciprocal rank fusion; the files git lists without what `.gitignore` leaves out, pictures or lockfiles; a
-  question worded unlike the code finding it by meaning and a word only the code has by keywords; the index kept in
-  the data folder, nothing embedded again after a restart, a save embedding only the changed chunk; off without the
-  model and nothing indexed, the build and the search in the ledger, the keywords still ranking (and the picker
-  saying why) when the embedder fails; the model kept only when its SHA-256 matches the pinned one; the helper loaded
-  once, a search going before the batches waiting, a missing runtime named; the trail's "by meaning" lines; the
-  config and `pair doctor`. In a headless Neovim, `Alt-s` offering the download and a no downloading nothing, `:Pair
-  find` opening the chosen chunk at its line through `vim.ui.select`, and a stand-in Telescope getting each chunk's
-  file and line. A fake embedder stands in for the model (`test/meaning.test.mjs`, `test/meaning-nvim.test.mjs`).
+- **Search by meaning.** Pieces cut at 60 lines and 1,500 characters at a blank line, blocks between blank lines,
+  tree-sitter's definitions with the comments above them in a headless Neovim (Lua and C, whose parsers every Neovim
+  has) and blank lines without a parser or without Neovim; identifiers split into words, a question's small words
+  left out, reciprocal rank fusion; the files git lists without what `.gitignore` leaves out, pictures or lockfiles;
+  the SQLite index in the data folder with no copy of the code, the word search without a model, a question worded
+  unlike the code found by meaning and a word only the code has by its words, nothing embedded again after a restart,
+  a save embedding only the changed piece; two worktrees sharing one index and the second embedding only what it
+  changed, each finding its own pieces, and `:Pair index rebuild` making both again; `"index": "project"` in `.pair/`,
+  listed once in `.git/info/exclude` and not `.gitignore`; the brute-force search over 20,000 vectors under 250 ms; the
+  build and the search in the ledger, the words still ranking (and the answer saying why) when the embedder fails; an
+  `embedding` model at a fake `/v1/embeddings` (its prompt, its key, vectors made unit length, a failing server said);
+  the model kept only when its SHA-256 matches the pinned one; the helper loaded once, a search going before the
+  batches waiting, a missing runtime named; the trail's "by meaning" lines; the config and `pair doctor` (each index's
+  size and age, the `embedding` model answering or not). In a headless Neovim with a stand-in Telescope that runs the
+  picker's finder as the real one does: the words' hit on the first keys, meaning's hits joining below it with the
+  hit still selected, the entries the previewer and `<C-q>` need, a question found by meaning alone; without a model
+  the words and the title that says how to add meaning; `vim.ui.select` with the fused list, the chosen piece opened
+  at its line and booked; `/find` from the chat. A fake embedder stands in for the model (`test/meaning.test.mjs`,
+  `test/meaning-nvim.test.mjs`).
 - **The context card and no ceremony.** The board task matched by repo and number (never another repo's task of the
   same number, nor a version branch), the board's agent launches left out of your commands, each source's rows and
   budget, a hidden source left out of what the Partner gets and raising no remark (no failed command with a hidden

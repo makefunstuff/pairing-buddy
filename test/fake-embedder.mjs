@@ -2,7 +2,7 @@
 // unlike the code still finds it, as EmbeddingGemma does, without its model or runtime. And a model "downloaded" into a
 // data folder, which modelReady takes for the checked one.
 import {statSync, writeFileSync, mkdirSync} from 'node:fs';
-import {DIMENSIONS, MODEL, meaningDir, modelPath} from '../src/embedder.mjs';
+import {DIMENSIONS, documentText, MODEL, meaningDir, modelPath, queryText} from '../src/embedder.mjs';
 import {words} from '../src/meaning.mjs';
 
 // Each group is one meaning: any of its words counts as the first.
@@ -22,7 +22,7 @@ const slot = word => {
 
 /** The fake's vector of `text`: its words' meanings, and a little of the words themselves, normalized. */
 export function fakeVector(text) {
-  const body = text.replace(/^title: (.*?) \| text: /, '').replace(/^task: search result \| query: /, '');
+  const body = text.replace(/^title: (.*?) \| text: /, '').replace(/^task: search result \| query: /, '').replace(/^Represent this query for searching relevant code: /, '');
   const vector = new Float32Array(DIMENSIONS);
   for (const word of words(body)) {
     const meaning = meaningOf.get(word);
@@ -36,7 +36,8 @@ export function fakeVector(text) {
 /** An embedder as Meaning uses one; `calls` lists every batch it got, `failWith` makes the next calls fail. */
 export function fakeEmbedder() {
   const embedder = {
-    python: 'fake-python', runtime: {runtime: 'fake'}, msPerText: 1, calls: [], failWith: null, busy: false,
+    python: 'fake-python', runtime: {runtime: 'fake'}, msPerText: 1, calls: [], failWith: null, busy: false, id: 'fake', ready: true,
+    document: documentText, query: queryText,
     async embed(texts, {urgent = false} = {}) {
       embedder.calls.push({texts, urgent});
       if (embedder.failWith) throw new Error(embedder.failWith);
@@ -55,4 +56,32 @@ export function fakeModel(dataDir) {
   writeFileSync(modelPath(dataDir), 'not a model');
   const stat = statSync(modelPath(dataDir));
   writeFileSync(`${modelPath(dataDir)}.sha256`, JSON.stringify({sha256: MODEL.sha256, size: stat.size, mtimeMs: stat.mtimeMs}));
+}
+
+/**
+ * An OpenAI-compatible /v1/embeddings for the tests, on a free local port, with the fake's vectors: `requests` lists
+ * the bodies it got and their authorization, `failWith` makes it answer that status.
+ */
+export async function fakeEmbeddingServer() {
+  const {createServer} = await import('node:http');
+  const server = createServer((request, response) => {
+    let body = '';
+    request.on('data', chunk => { body += chunk; });
+    request.on('end', () => {
+      const asked = JSON.parse(body || '{}');
+      server.requests.push({url: request.url, authorization: request.headers.authorization ?? null, ...asked});
+      if (server.failWith) {
+        response.writeHead(server.failWith, {'content-type': 'application/json'});
+        return response.end(JSON.stringify({error: {message: 'model not loaded'}}));
+      }
+      response.writeHead(200, {'content-type': 'application/json'});
+      // Three times the fake's numbers, not of unit length (Pair makes them so), and out of order.
+      response.end(JSON.stringify({data: asked.input.map((text, index) => ({index, embedding: [...fakeVector(text)].map(value => value * 3)})).reverse()}));
+    });
+  });
+  server.requests = [];
+  server.failWith = null;
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  server.baseUrl = `http://127.0.0.1:${server.address().port}/v1`;
+  return server;
 }

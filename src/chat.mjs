@@ -55,6 +55,7 @@ export const COMMANDS = [
   ['/today', '', 'what Pair did here today'],
   ['/agents', '', 'your other agents and board tasks, the ones that need you first'],
   ['/review', '<id>', 'a board task\'s branch as a review in Neovim\'s :Pair gen list: what its reviewer said, ≠ brief, keep pieces'],
+  ['/find', '<words>', 'find code in the project by what it does, or by its words (Alt-s in Neovim)'],
   ['/search', '<text>', 'find in the conversation (Ctrl-F)'],
   ['/copy', '[n]', 'copy Pair\'s last answer (or the nth last) to the clipboard'],
   ['/clear', '', 'clear the pane; the session and its history stay'],
@@ -94,6 +95,7 @@ export function parseInput(line) {
   if (command === '/drive!') return {type: 'drive', text: arg, keep: true};
   if (command === '/end') return {type: 'end'};
   if (command === '/today') return {type: 'today'};
+  if (command === '/find' && arg) return {type: 'find', query: arg};
   if (command === '/agents') return {type: 'agents'};
   if (command === '/cancel') return {type: 'cancel'};
   if (command === '/undo') return {type: 'undo_last'};
@@ -129,6 +131,18 @@ export function parseInput(line) {
   if (command.startsWith('/')) return {local: 'unknown', command};
   if (HAND_OVER.test(text)) return {type: 'drive', text};
   return HERE.test(text) ? {type: 'ask', text, here: true} : {type: 'ask', text};
+}
+
+/** The chat's lines for a /find answer: how it ranked, then each piece's file:line and first line, best first. */
+export function foundLines(message) {
+  const how = message.state === 'on' && !message.problem ? 'by meaning and words'
+    : `by words only (${message.problem ?? (message.state === 'disabled' ? 'search by meaning is off in the config' : ':Pair find on in Neovim adds meaning')})`;
+  const building = message.chunks && message.embedded < message.chunks && message.state === 'on' ? `, index ${Math.floor(100 * message.embedded / message.chunks)}% built` : '';
+  if (!message.results?.length) return [`find "${message.query}": nothing ${how}${building}`];
+  return [
+    `find "${message.query}", ${how}${building}${message.ms !== undefined ? `, ${message.ms} ms` : ''}:`,
+    ...message.results.slice(0, 10).map(result => `  ${result.file}:${result.line}  ${result.head}`),
+  ];
 }
 
 const OUTCOMES = {dismissed: 'noise'};
@@ -278,6 +292,7 @@ function runPlainChat(socketPath, {input, output, exit, cwd, env}) {
     if (message.type === 'plan') plan = message.steps ?? null;
     if (message.type === 'plan' && message.proposed) print(dim('·· p edits the steps · /plan off drops them', look));
     if (message.type === 'ledger') print(ledgerText(message).map(line => dim(`·· ${line}`, look)).join('\n'));
+    if (message.type === 'found' && message.id === undefined) print(foundLines(message).map(line => dim(`·· ${line}`, look)).join('\n'));
     // Another agent's news, at your breakpoint: one line, like the pane's own notes.
     if (message.type === 'agents' && message.item) say('system', `◇ ${message.text}${message.more ? ` (+${message.more} more · /agents)` : ''}`);
     if (message.type === 'agent_list') print(agentListLines(message).join('\n'));
@@ -613,6 +628,9 @@ export function startChatPane(socketPath, {dataDir = null, input, output, size =
         break;
       case 'ledger':
         arrive({kind: 'note', text: ledgerText(message).join('\n')});
+        break;
+      case 'found': // /find's answer; a picker's (with its id) goes to the Neovim that asked
+        if (message.id === undefined) arrive({kind: 'note', text: foundLines(message).join('\n')});
         break;
       case 'agents':
         // The relayed line, with the keys for what its task left behind; it loses them once it is answered.
