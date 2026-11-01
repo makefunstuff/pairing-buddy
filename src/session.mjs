@@ -217,7 +217,7 @@ export function selectionInput({file, from, to}, text) {
 
 const NAME_CHARS = 32; // of a failing test's name in the statusline
 const LATE_QUESTION_CHARS = 60; // of the question a late answer names
-const PLAN_RETRY_MS = 60_000; // a plan proposal that failed is asked again after this
+const PLAN_RETRY_MS = 60_000; // a plan proposal or done check that failed is asked again after this
 const CHANGED_LINES = 60; // of the lines the user changed since the Partner's last turn, it gets this many
 
 /** Whether a finished test run failed: its exit code, a timeout, a failing test or a crash (a sanitizer's, also with exit 0) say so. */
@@ -1226,12 +1226,14 @@ export class PairSession {
 
   /** The goal the user set, or one taken `from` the board task or the branch, which the greeting names. */
   setGoal(goal, from = null) {
+    const same = goal === this.state.goal;
     this.store.setGoal(this.id, goal);
     this.receive({kind: 'goal', text: goal});
     this.goalFrom = from;
     this.notify('chat', {type: 'goal', goal}); // the chat pane's header
     if (!from) this.message('system', `Goal: ${goal}`, {goal: 'set'}); // the full pane has it in its header
     // A new goal ends the old goal's steps: they would be judged against work that is no longer the goal.
+    if (same && (this.thread.steps.length || this.planRetry)) return; // the same goal again keeps its steps
     if (this.thread.steps.length) {
       const proposal = this.thread.proposed;
       this.letGoUnsaid('a new goal');
@@ -1366,12 +1368,16 @@ export class PairSession {
       return;
     }
     const landed = this.thread.due(now);
-    if (!landed || !this.threadModel || !this.threadMaySpeak(landed.at, now)) return;
+    if (!landed || !this.threadModel || (landed.retryAt ?? 0) > now || !this.threadMaySpeak(landed.at, now)) return;
     this.threading = true;
     let numbers;
     try {
       const facts = factLines({...(await this.debriefFacts()), stopped: null});
       numbers = parseDone(await this.threadModel(DONE_PROMPT, this.thread.doneInput(facts)), this.thread.steps.length);
+    } catch (error) { // a check that failed is asked again a minute later, as a proposal is, until the landing is old
+      this.log(`plan: ${error.message}`);
+      landed.retryAt = this.now() + PLAN_RETRY_MS;
+      return;
     } finally {
       this.threading = false;
     }

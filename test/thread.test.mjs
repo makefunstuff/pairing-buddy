@@ -139,6 +139,8 @@ test('steps the user sets while Pair thinks win; a new goal drops the old goal\'
   assert.equal(pair.planSteps(), 'mine; also mine');
   assert.deepEqual(said(), []);
 
+  pair.setGoal('cart');
+  assert.equal(pair.planSteps(), 'mine; also mine', 'the same goal again keeps them');
   pair.setGoal('something else');
   assert.equal(pair.planSteps(), null, 'the old steps go with the old goal');
   assert.equal(pair.state.plan, null, 'and leave the models\' Now lines');
@@ -256,6 +258,25 @@ test('a held "done" line survives the next landing, gathers its steps, and a cha
   pair.dropPlan();
   assert.ok(actions.some(action => /done: c; that was the last step\W+ not said: you dropped the steps/.test(JSON.stringify(action))));
   assert.equal(pair.thread.unsaid, null);
+});
+
+test('a done check that failed is asked again a minute later, not on every tick', async () => {
+  const {pair, said, advance, at} = session();
+  pair.setPlan('a; b');
+  let calls = 0;
+  pair.threadModel = async () => { calls += 1; if (calls === 1) throw new Error('429'); return 'done: 1'; };
+  pair.thread.land('a commit', at());
+  advance(4 * MIN);
+  await pair.tick();
+  await checked(pair);
+  for (let i = 0; i < 5; i++) { advance(1000); await pair.tick(); await checked(pair); }
+  assert.equal(calls, 1, 'not again within the minute');
+  assert.deepEqual(said(), []);
+  advance(MIN);
+  await pair.tick();
+  await checked(pair);
+  assert.equal(calls, 2);
+  assert.deepEqual(said(), ['done: a; next: b']);
 });
 
 test('a landing held past half an hour is let go, and the ledger says so', async () => {

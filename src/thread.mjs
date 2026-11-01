@@ -101,7 +101,7 @@ export class Thread {
     for (const step of newly) step.done = true;
     if (hold) {
       const before = this.unsaid;
-      this.unsaid = {steps: [...(before?.steps ?? []), ...newly], what: before ? `${before.what}; ${hold.what}` : hold.what, at: before?.at ?? hold.at};
+      this.unsaid = {steps: [...(before?.steps ?? []), ...newly], what: before ? `${before.what}; ${hold.what}` : hold.what, at: hold.at}; // half an hour from its newest step
     }
     return this.line(newly);
   }
