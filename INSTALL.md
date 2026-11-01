@@ -71,8 +71,8 @@ Write down four facts for the steps below:
    Watcher question is a request, so a small local or cheap Watcher next to a cloud Partner saves money.
 2. **Optional parts** (each one is optional; Pair works without all of them):
    - [herdr](https://herdr.dev), the terminal workspace that is Pair's best home (chat pane beside Neovim, your
-     terminals watched): the older herdr (panes) or herdr-core with the Herdr window (terminals), told apart by
-     themselves ([herdr.md](docs/herdr.md#which-herdr)). Without it, everything runs inside Neovim and tmux.
+     terminals watched): the older herdr (panes) or herdr-core with the Herdr window (terminals); Pair tells them
+     apart by itself ([herdr.md](docs/herdr.md#which-herdr)). Without it, everything runs inside Neovim and tmux.
    - ripgrep (`rg`) for Scout's code search, and on Linux bubblewrap (`bwrap`) to run Pair's commands in a sandbox.
      Recommended.
    - The shell hook, which tells Pair the exit codes of the commands you run (one line in the shell rc file).
@@ -197,7 +197,7 @@ Install only what the human chose in step 2, with their yes to sudo.
 | ripgrep (recommended) | `rg --version \| head -1` | `ripgrep 1…` or newer | package `ripgrep` (all package managers above) |
 | bubblewrap (Linux only, recommended) | `bwrap --version` | `bubblewrap 0.…` | package `bubblewrap` |
 | tmux (without herdr) | `tmux -V` | `tmux 3.…` | package `tmux` |
-| herdr | `herdr --version`, or `command -v hc` for herdr-core | `herdr 0.9.5` or newer, or a path | see [herdr.dev](https://herdr.dev); ask the human if it offers more than one way |
+| herdr | `herdr --version`, or `command -v hc herdr-core` for herdr-core | `herdr 0.9.5` or newer, or a path | see [herdr.dev](https://herdr.dev); ask the human if it offers more than one way |
 | Push-to-talk | (step 9) | | see [voice.md](docs/voice.md#setup) |
 
 `bash` is needed too and is there on every supported system (`bash --version`). bubblewrap may be installed and still
@@ -622,7 +622,7 @@ Only those the human chose in step 2.
 **herdr.** Installed in 3.6. Run `pair doctor` inside a herdr pane; expected `✓ herdr    herdr (panes, …) answers in …
 ms, … panes in this workspace`, or in a herdr-core terminal `✓ herdr    herdr-core … (terminals, …) answers in … ms, …;
 the Herdr window shows terminal …`. Nothing to configure: `pair` in a herdr pane opens the chat beside it, and in
-herdr-core in a terminal the Herdr window shows. The work board, Shepherdr (`shepherdr`), and its task for the branch
+herdr-core it does so in a terminal the Herdr window shows. The work board, Shepherdr (`shepherdr`), and its task for the branch
 (the goal) are read when `shepherdr` is on the daemon's `PATH`; Shepherdr 2.1 answers only inside the agent sessions
 it starts, and `pair doctor`'s board line says which ([agents.md](docs/agents.md)).
 
