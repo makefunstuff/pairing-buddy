@@ -18,6 +18,7 @@ The keys exist only while there is something for them to do, and only where you 
 | `Alt-a` | Go to the agent whose news Pair relayed ([your other agents](agents.md)) |
 | `Alt-o` | On a relayed board task's line: open its report or pull request ([your other agents](agents.md#what-a-task-left-behind)) |
 | `Alt-r` | On the relayed line of a board task ready to merge: open its branch as a [review](gen.md#reviewing-a-board-task-pair-review) |
+| `Alt-s` | [Search the project by meaning](meaning.md): asks for your words, or in Visual mode takes the selected ones, and shows the closest chunks of code in Telescope, snacks.picker or fzf-lua; the first time, it offers the model's one download |
 | `Alt-g` | Ask Pair for code ([/gen](gen.md)) here: at the cursor, or in Visual mode over the selection, without asking the shape (at the cursor, a shape word first asks for another; outside the project the shape is asked); while Pair's question waits, show it again |
 | `\r` (`<LocalLeader>r`) | In a [/gen try](gen.md#samples-gen-try-and-keep)'s sample: write it and run it again in Pair's pane. In a file of a [/gen scaffold](gen.md#many-files-gen-scaffold)'s copy: write it and check the copy again |
 | any key | Take the wheel back while Pair drives |
@@ -44,6 +45,8 @@ require('pair').setup({
   sound_volume = 0.5,  -- 0 to 1
   land = true,         -- false: the morning pick-up does not open an empty Neovim where you stopped
   gen_key = '<M-g>',   -- asks Pair for code (/gen); false for none
+  meaning_key = '<M-s>', -- searches the project by meaning; false for none
+  meaning_picker = 'auto', -- or 'telescope', 'snacks', 'fzf-lua', 'select': where search by meaning shows its results
   gen_input = 'ui',    -- 'cmdline': the /gen request and its questions on Neovim's own prompt, not vim.ui's
   gen_preview_lines = 30, -- a /gen block taller than this shows in a preview window
   try_run_key = '<LocalLeader>r', -- in a /gen try's sample: runs it again; in a scaffold's copy: checks it again
@@ -76,6 +79,8 @@ require('pair').setup({
 | `sound_volume` | `0.5` | Their volume, 0 to 1 |
 | `answers` | `true` | The first two lines of Pair's answer to a question you typed (`:Pair ask`, the chat) show under the line it was about, too ([what each thing looks like](neovim.md#what-each-thing-looks-like)) |
 | `gen_key` | `'<M-g>'` | Asks Pair for code ([gen.md](gen.md#asking)): a dialog for the request, in Normal mode at the cursor, in Visual mode over the selected lines. While a question of Pair's waits, shows it again. Mapped in Normal and Visual mode from the start |
+| `meaning_key` | `'<M-s>'` | [Search by meaning](meaning.md#search): asks for your words through `vim.ui.input` and searches; in Visual mode, searches for the selected words. Mapped in Normal and Visual mode from the start |
+| `meaning_picker` | `'auto'` | Where search by meaning shows what it found: `'auto'` is Telescope if it is installed, else snacks.picker, else fzf-lua, else `vim.ui.select`; or name one |
 | `gen_input` | `'ui'` | Where the `/gen` request, its shape and Pair's questions are asked: `'ui'` through `vim.ui.input` and `vim.ui.select`, which snacks.nvim, dressing.nvim or noice.nvim show as floating dialogs (else Neovim's own prompt); `'cmdline'` always Neovim's own prompt and numbered list |
 | `gen_preview_lines` | `30` | A `/gen` block taller than this (or than its window) shows as one line in place and in a preview window under it, instead of as ghost lines |
 | `try_run_key` | `'<LocalLeader>r'` | In a [/gen try](gen.md#samples-gen-try-and-keep)'s sample (a buffer of its folder): writes the sample's changed buffers and runs it again in Pair's pane, as `:Pair gen run` does. In a file of a [/gen scaffold](gen.md#many-files-gen-scaffold)'s copy: writes it and runs the check again in the copy, as `r` in `:Pair gen list` does. Mapped in Normal mode in those buffers only, and not over a mapping of your own; then a try's winbar names `:Pair gen run` instead, and a scaffold copy's names no key. `<LocalLeader>` is `\` unless you set `maplocalleader`, so it is not Vim's own `r` |
@@ -83,7 +88,7 @@ require('pair').setup({
 | `glyphs` | plain Unicode | Pair's marks (below) |
 
 Every key option takes `false` for none; the commands work either way. All keys but `accept_key` are mapped only where you have no
-mapping of your own, and all but `listen_key` and `gen_key` only while there is something for them to act on. Each says what it does
+mapping of your own, and all but `listen_key`, `gen_key` and `meaning_key` only while there is something for them to act on. Each says what it does
 until you have used it once (`M-j goes there`); the keys you have used are kept in `stdpath('state')/pair/keys.json`.
 The glyphs are plain Unicode, so they show in any font: `voice` `●`, `idea` `∴`, `mark` `▎`, `held` `•`, `away` `◌`, `wheel` `◎`, `listen` `◉`, `pass`
 `✓`, `fail` `✗`, `warn` `△`, `agents` `◇` and `generated` `┊` (code you took from `/gen` that is not yours yet), and in a note's margin `question` `?`, `contradiction` `≠`, `code` `→`,
@@ -111,6 +116,7 @@ to standard ones and does not fade.
 | `:Pair drive! [what]` | The same, and Pair keeps the wheel for each request after it until you take it back ([driver.md](driver.md#keeping-the-wheel)) |
 | `:Pair jump` | Go where Pair pointed last (same as `Alt-j`); `Ctrl-O` comes back. While Pair holds a thought, show it now |
 | `:Pair trail` | Show your searches since your last edit, as Pair saw them; `x` forgets them |
+| `:Pair find [words\|on\|off]` | [Search the project by meaning](meaning.md#search) (same as `Alt-s`); without words, asks for them. `on` downloads its model once and indexes the open projects; `off` deletes the model and the indexes |
 | `:Pair runs` | The session's builds and runs, newest last, with the change before each and its numbers; `⏎` its output, `d` its change, `x` removes the hunt's debug lines ([exploration.md](exploration.md)) |
 | `:Pair gen [here\|file\|try\|scaffold\|board] [what]` | Ask Pair for code ([gen.md](gen.md)), or with `board` hand a task to the board, edited in `pair://board/new` (`:w` asks how to add it, `:q` drops it), and `:Pair gen board #n` a request too big for `/gen` ([gen.md](gen.md#gen-board-a-task-for-the-board)): without words, in a dialog (same as `Alt-g`); with words, at once. With a range (`:'<,'>Pair gen`), over those lines, or in a note, the lines are the request. `:Pair gen +` opens the compose window for a longer request, `:Pair gen cancel` stops the request that runs or waits. `:Pair gen scaffold --branch …` builds in a git worktree |
 | `:Pair gen list` | The files of `/gen file` requests (and files kept from a try) to review, as `pair://gen/<n>/<path>` buffers: `⏎` opens one, `w` takes it (writes it to its path, as `:w` in it does), `d` drops it, `W`/`D` all of a request after a yes, `u` undoes the request, `Alt-d` logs a `? guessed` line as a decision ([gen.md](gen.md#the-review-list-pair-gen-list)). And the files of a scaffold's copy: `k` keeps one (a new file as such a buffer, a change as suggestions in yours), `⏎` opens it (a change as a diff), `d` drops it, `r` checks the copy again, `t` opens a terminal there, `x` deletes the copy after a yes ([gen.md](gen.md#keeping-it-a-file-at-a-time)) |

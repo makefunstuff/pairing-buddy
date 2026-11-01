@@ -235,7 +235,8 @@ Watcher's score and the Partner's words are what a live model answered to this t
    "retry", `Enter`: `backoff.go` opens.
 3. A few seconds after the last search, with no edit since, Pair looks. The Watcher scores the trail with what fails
    now; the Partner gets the trail, the failing test's message, and what ripgrep finds in the project for each of
-   your queries, then reads the code.
+   your queries (with [search by meaning](meaning.md#the-search-trail) on, also the code closest to what each one
+   means), then reads the code.
 4. Its words show under your line: the word you are looking for is `ErrBudget`, and it fires at
    `elapsed+wait >= cfg.Budget`, which refuses the wait that lands exactly on the 15 s budget. They end with `M-j`.
 5. `Alt-j` goes to `worker.go:35`, the `>=` underlined.
@@ -278,6 +279,14 @@ Grep Cword); for `grep`, `grep_cword`, `grep_cWORD` and `grep_visual` your words
 gave them and not as escaped for rg, and not the fuzzy filter typed over them. A resumed picker, closed again, is a
 search again, with the words it has then. `searches = false` in `setup` turns
 all of this off.
+
+## Search by meaning
+
+When you know what the code does but not what it calls it, `Alt-s` (or `:Pair find <words>`) searches the project by
+meaning: "how long to wait before trying again" finds `nextDelay(attempt)`. The closest chunks of code show in
+Telescope, snacks.picker or fzf-lua, best first, and `Enter` opens one at its line. It runs on your machine, from an
+index Pair builds in the background in its own data folder; it is off until you say yes to its model's one download.
+How it ranks, what the index holds and what it costs are in [Search by meaning](meaning.md).
 
 ## The held thought
 

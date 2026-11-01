@@ -396,8 +396,8 @@ export class PairSession {
    * where `genScaffold` says ('tree', Pair's copy, or 'worktree'); /gen board composes a task for `genBoard`, the
    * board's command.
    */
-  constructor({record, store, partner, score, pace = null, decision = () => null, typingPauseMs, notify, requestEditor, previousNote = null, lastSession = null, autoTune = false, health = {ok: () => true}, testOnSave = null, checkOutput = null, genLimits, genBrief, genDir = null, genKeepTries, genNetwork = false, genSandbox = 'auto', genScaffold, genBoard = null, askModel = null, threadModel = askModel, proposing = true, log = () => {}, now = Date.now}) {
-    Object.assign(this, {record, store, partner, score, pace, decision, typingPauseMs, notify, requestEditor, previousNote, lastSession, autoTune, health, askModel, threadModel, proposing, log, now});
+  constructor({record, store, partner, score, pace = null, decision = () => null, typingPauseMs, notify, requestEditor, previousNote = null, lastSession = null, autoTune = false, health = {ok: () => true}, testOnSave = null, checkOutput = null, genLimits, genBrief, genDir = null, genKeepTries, genNetwork = false, genSandbox = 'auto', genScaffold, genBoard = null, askModel = null, threadModel = askModel, proposing = true, meaningHits = null, log = () => {}, now = Date.now}) {
+    Object.assign(this, {record, store, partner, score, pace, decision, typingPauseMs, notify, requestEditor, previousNote, lastSession, autoTune, health, askModel, threadModel, proposing, meaningHits, log, now});
     this.sorted = new Map(); // trigger key -> {at, sort}: what the decision model sorted it as lately
     this.told = new Map(); // trigger key -> what the decision model was told about it first, for the decisions log
     this.checkOutput = checkOutput ?? join(tmpdir(), `pair-check-${process.pid}-${record.id}`, 'check.out'); // its copy of the project goes next to it
@@ -935,8 +935,9 @@ export class PairSession {
     this.remarkTrigger = trigger.kind;
     if (decisionId) this.store.linkDecision(decisionId, id);
     try {
-      // The trail's queries, searched in the project: which of the user's words the code has, and where.
-      const seen = trigger.kind === 'search_trail' ? {...trigger, detail: `${trigger.detail}\n${await trailMatches(this.root, trigger.searches)}`} : trigger;
+      // The trail's queries, searched in the project: which of the user's words the code has, and where; with search
+      // by meaning on, also where the code has what they mean.
+      const seen = trigger.kind === 'search_trail' ? {...trigger, detail: `${trigger.detail}\n${await trailMatches(this.root, trigger.searches, {meaning: this.meaningHits})}`} : trigger;
       const input = watchInput(seen, describeState(this.state, this.now()));
       if (!(await this.talk(input, {kind: 'remark'}))) {
         this.ledger.quiet(trigger.kind, 'Pair looked, and found nothing worth saying');

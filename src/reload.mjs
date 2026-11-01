@@ -10,11 +10,11 @@ const SETTLE_MS = 200; // an editor's save can be several writes, or a write and
 /** The fields of a parsed config that a change can touch, in the order the chat names them. */
 const FIELDS = [
   'models', 'decision', 'level', 'typingPauseMs', 'autoTune', 'plan', 'keepWarm', 'watcherPace', 'testOnSave', 'sessionRoots', 'voice', 'taskCommand', 'gen', 'board', 'agents',
-  'socket', 'dataDir',
+  'meaning', 'socket', 'dataDir',
 ];
 
-/** Only a restart moves these: the daemon listens on its socket, holds its data directory and starts the agent relay. */
-export const RESTART_FIELDS = ['socket', 'dataDir', 'agents'];
+/** Only a restart moves these: the daemon listens on its socket, holds its data directory, starts the agent relay and the embedder. */
+export const RESTART_FIELDS = ['socket', 'dataDir', 'agents', 'meaning'];
 
 /** The fields that differ between two parsed configs. */
 export function configChanges(running, next) {

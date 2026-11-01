@@ -21,6 +21,7 @@ import {CorePaneHost, CorePanes, HerdrApp} from './herdr-core.mjs';
 import {followLoaded, shareServer} from './loaded-model.mjs';
 import {DETAIL_KEPT_MS} from './ledger.mjs';
 import {Listener} from './listen.mjs';
+import {Meaning} from './meaning.mjs';
 import {createDecisionModel, createPairModels} from './models.mjs';
 import {acquireOwner} from './owner.mjs';
 import {EditorPaneHost, HerdrPaneHost} from './pane-hosts.mjs';
@@ -87,6 +88,7 @@ export async function startDaemon(config, {
   configFile = null, modelsFor = createPairModels, pairModels = modelsFor(config), decisionFor = createDecisionModel, probe, log = defaultLog, keepWarmMs = KEEP_WARM_MS,
   idleEndMs = IDLE_END_MS, aloneEndMs = ALONE_END_MS, agentsPollMs, taskChangesPollMs = TASK_CHANGES_MS,
   appCommand = 'herdr-app', // the Herdr window's command, for herdr-core's focus and agents
+  meaningWith = {}, // tests' fetch and embedder for search by meaning (see meaning.mjs)
 } = {}) {
   mkdirSync(config.dataDir, {recursive: true, mode: 0o700});
   mkdirSync(join(config.dataDir, 'runs'), {recursive: true}); // the output of the tests run on save, one file per session
@@ -154,6 +156,14 @@ export async function startDaemon(config, {
   const agents = config.agents
     ? new AgentBoard({board: config.board, pollMs: agentsPollMs, appCommand, log, wanted: () => [...clients].some(client => client.session), onChange: change => { for (const relay of relays.values()) relay.hear(change); }})
     : null;
+
+  // Search by meaning (meaning.mjs): the index of each project with a session, built in the background once its model
+  // is downloaded; its builds and searches go to that project's ledger.
+  const meaning = new Meaning({
+    dataDir: config.dataDir, config: config.meaning, log,
+    book: (root, kind, text, options) => live.get(root)?.ledger.add(kind, text, options),
+    ...meaningWith,
+  });
 
   // What the board's working tasks of each repo change on their branches, read while a Neovim is connected (overlap.mjs).
   const taskChanges = new TaskChanges({board: config.board, log});
@@ -457,6 +467,7 @@ export async function startDaemon(config, {
         threadModel: (systemPrompt, content) => askNoteModel(systemPrompt, content, {report: false}), // the plan's steps and done checks: unasked, they give way, and a failure is asked again, not a model down
         notify: (role, message) => notify(session, role, message),
         requestEditor: message => requestEditor(session, message),
+        meaningHits: query => meaning.trailHits(root, query), // the search trail's "by meaning" lines
         log: line => log(`[${basename(root)}] ${line}`),
       });
       session.panes = new Terminals({editors: () => editorsOf(session), ask: askEditor, watch: () => watches.get(root) ?? null});
@@ -476,6 +487,7 @@ export async function startDaemon(config, {
       // A stored conversation gets the model now in the config, and one from v0.1, which had no roles, its role's tools.
       await session.configurePartner(session.role);
       live.set(root, session);
+      meaning.open(root); // once search by meaning is on, its index loads and builds in the background
       session.repos = [...new Set([basename(root), ...await repoNames(root)])]; // the names the board may know it by
       await refreshContext(session);
       // No ceremony: a session starts with the goal of its board task, or of its branch, instead of asking.
@@ -495,6 +507,7 @@ export async function startDaemon(config, {
 
   function receive(session, event) {
     session.receive(event);
+    if (event.kind === 'save' && typeof event.file === 'string') meaning.saved(session.root, event.file).catch(error => log(`meaning: ${error.message}`));
     if (event.kind === 'command_end') refreshContext(session);
     if (event.kind === 'focus' && event.target === 'editor') herdrFocus(clientsOf(session, 'editor'), event.pane);
   }
@@ -598,6 +611,7 @@ export async function startDaemon(config, {
     paneSources.delete(session.root);
     sessions.delete(session.root);
     live.delete(session.root);
+    meaning.leave(session.root).catch(() => {});
     margins.delete(session.root);
     relays.delete(session.root);
     for (const client of clients) {
@@ -772,6 +786,7 @@ export async function startDaemon(config, {
       slot: slot.snapshot(),
       pace: pace.snapshot(), // what the Watcher's calls cost, and what Pair is not asking about
       decision: decision?.snapshot() ?? null, // whether the decision model is down, and how often the gate fell back
+      meaning: meaning.snapshot(), // search by meaning: its model, the embedder and each open project's index
       sessions: [...live.values()].map(session => ({
         root: session.root,
         role: session.role,
@@ -954,6 +969,9 @@ export async function startDaemon(config, {
     if (message.type === 'board_do') return boardDo(client, session, message);
     if (message.type === 'brief') return briefFrom(client, session, message);
     if (message.type === 'trail') return sendMessage(client.socket, session.trail());
+    if (message.type === 'meaning' && typeof message.query === 'string') return meaningSearch(client, session, message.query);
+    if (message.type === 'meaning_on') return meaningOn(client);
+    if (message.type === 'meaning_off') return meaningOff(client);
     if (message.type === 'forget_trail') return session.forgetTrail();
     if (message.type === 'runs') return session.runs().then(runs => sendMessage(client.socket, runs));
     if (message.type === 'release') return session.release();
@@ -977,6 +995,36 @@ export async function startDaemon(config, {
       session.receive({kind: 'hide', source: message.source, hidden: message.hidden !== false});
       return sendCard(client, session);
     }
+  }
+
+  /** A search by meaning from a Neovim: the ranked chunks, with absolute paths for the picker to open. */
+  async function meaningSearch(client, session, query) {
+    const answer = await meaning.search(session.root, query.trim());
+    sendMessage(client.socket, {...answer, root: session.root, results: answer.results.map(result => ({...result, path: join(session.root, result.file)}))});
+  }
+
+  /** `:Pair find on`: the model's one download, told as it goes, then the open projects' indexes. */
+  async function meaningOn(client) {
+    const tell = text => sendMessage(client.socket, {type: 'meaning_state', ...meaning.snapshot(), text});
+    let told = 0;
+    tell('Downloading EmbeddingGemma 2 for search by meaning (165 MB, once)…');
+    try {
+      await meaning.turnOn([...live.keys()], {progress: bytes => {
+        if (bytes - told < 32 << 20) return;
+        told = bytes;
+        tell(`Downloading EmbeddingGemma 2: ${Math.round(bytes / (1 << 20))} of 157 MiB…`);
+      }});
+    } catch (error) {
+      return tell(`Search by meaning stays off: ${error.message}`);
+    }
+    for (const session of live.values()) session.ledger.add('downloaded', 'EmbeddingGemma 2 for search by meaning (165 MB, SHA-256 checked); indexing this project in the background');
+    tell('Search by meaning is on: Pair indexes this project in the background.');
+  }
+
+  /** `:Pair find off`: the embedder stops, and its model and indexes leave Pair's data folder. */
+  async function meaningOff(client) {
+    await meaning.turnOff();
+    sendMessage(client.socket, {type: 'meaning_state', ...meaning.snapshot(), text: 'Search by meaning is off: its model and indexes are deleted.'});
   }
 
   /** The context card for the Neovim that asked, with git and the board read again when they are not fresh. */
@@ -1085,6 +1133,7 @@ export async function startDaemon(config, {
       await new Promise(resolve => server.close(resolve));
       await rebuilt;
       for (const session of live.values()) session.gen.close(); // a request waiting for an answer would hold the Partner open
+      await meaning.close();
       await models.partner.close();
       store.close();
       owner.release();

@@ -9,6 +9,19 @@ release is cut.
 
 ### Added
 
+- **Search by meaning.** `Alt-s` (or `:Pair find <words>`) searches the project by what you mean, not only the exact
+  words: "how long to wait before trying again" finds `nextDelay(attempt)`. The closest chunks of code show in
+  Telescope, else snacks.picker, else fzf-lua, best first, and open at their line. Ranking is hybrid, as in lfm-pixel:
+  EmbeddingGemma 2 (text, 270M, Apache-2.0, 256 numbers a chunk) for meaning and BM25 for the words, fused by
+  reciprocal rank. The index is built in the background on two cores at low priority, from the files git lists
+  (`.gitignore` respected), kept in Pair's data folder and never in the project, and updated on save, embedding only
+  changed chunks; on Pair's own repository, 3,830 chunks in 8.5 minutes the first time, 3.9 MB, and a search in 25 to
+  85 ms. It is off until you say yes to the model's one download (165 MB, pinned revision, SHA-256 checked), the only
+  network it uses; the model runs on LiteRT-LM in a small Python helper (`pip install litert-lm-api==0.19.0`).
+  `:Pair find off` deletes it again, `"meaning": false` turns it off for good, `pair doctor` reports it, and the ledger
+  books each build and search. With it on, the search trail's remark also gets the code closest to what each of your
+  searches means; when Pair speaks is unchanged. See [meaning.md](docs/meaning.md).
+
 - **Pair works on herdr-core and Shepherdr 2.1 as on herdr and Shepherdr 2.0**, and tells which one it is in from the
   terminal's environment, with nothing to configure (`HERDR_SOCKET_PATH` for herdr; `HC_SOCKET` and `HC_TERMINAL_ID`
   for herdr-core). On herdr-core, `pair` opens the chat in a terminal beside yours in the Herdr window; Pair watches
