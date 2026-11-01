@@ -228,7 +228,16 @@ local function snacks(query)
   live = Live.new(function()
     live.answered = live.query
     if live.resume then return live.resume() end -- the finder waits for its words
-    if current and not current.closed then current:find({refresh = true}) end -- meaning's hits, below what the list shows
+    if not current or current.closed then return end
+    -- Meaning's hits, below what the list shows; the item you are on stays the one you are on.
+    local on = current:current()
+    local want = on and on.value and key(on.value)
+    current:find({refresh = true, on_done = function()
+      if not want or current.closed then return end
+      for index, item in ipairs(current:items()) do
+        if item.value and key(item.value) == want then return current.list:view(index) end
+      end
+    end})
   end)
   current = Snacks.picker({
     title = 'Find by meaning and words',
@@ -272,9 +281,10 @@ local function fzflua(query)
   local ok, fzf = pcall(require, 'fzf-lua')
   if not ok then return false end
   local line = function(item) return ('%s:%d:1:%s'):format(vim.fn.fnamemodify(item.path, ':~:.'), item.line or item.from, item.head or '') end
-  local latest = 0
+  local latest, last_prompt = 0, query
   fzf.fzf_live(function(args)
     local prompt = vim.trim((type(args) == 'table' and args[1] or args) or '')
+    last_prompt = prompt
     latest = latest + 1
     local mine = latest
     -- fzf reloads on every key: the words come at once, and meaning's hits after them once typing stops, in the same
@@ -283,6 +293,7 @@ local function fzflua(query)
       if prompt == '' then return fzf_cb() end
       local words = {}
       ask(prompt, 'words', function(message)
+        if mine ~= latest then return fzf_cb() end -- fzf reloaded for newer words meanwhile
         words = message.results or {}
         for _, item in ipairs(words) do fzf_cb(line(item)) end
         vim.defer_fn(function()
@@ -302,7 +313,14 @@ local function fzflua(query)
     prompt = 'Find> ', query = query, previewer = 'builtin', file_icons = false, git_icons = false,
     winopts = {title = ' Find by meaning and words '},
     exec_empty_query = false,
-    actions = {['default'] = require('fzf-lua.actions').file_edit, ['ctrl-q'] = require('fzf-lua.actions').file_sel_to_qf},
+    actions = {
+      ['default'] = function(selected, opts)
+        local file, row = (selected[1] or ''):match('^(.-):(%d+):')
+        if file then chosen(last_prompt, {{file = vim.fn.fnamemodify(file, ':.'), line = tonumber(row), head = selected[1]:match('^.-:%d+:%d+:(.*)$')}}) end
+        require('fzf-lua.actions').file_edit(selected, opts)
+      end,
+      ['ctrl-q'] = require('fzf-lua.actions').file_sel_to_qf,
+    },
   })
   return true
 end

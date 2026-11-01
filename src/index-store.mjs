@@ -10,7 +10,7 @@ import {appendFileSync, mkdirSync, readFileSync, rmSync, statSync} from 'node:fs
 import {basename, dirname, join} from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 
-const SCHEMA = 2;
+const SCHEMA = 3;
 
 const git = (args, cwd) => new Promise(resolve => {
   execFile('git', args, {cwd}, (error, stdout) => resolve(error ? null : stdout.trim()));
@@ -76,7 +76,8 @@ export class IndexStore {
       this.db.exec('DROP TABLE IF EXISTS vectors; DROP TABLE IF EXISTS files; DROP TABLE IF EXISTS pieces; DROP TABLE IF EXISTS words; DROP TABLE IF EXISTS meta');
       this.db.exec(`
         CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT) WITHOUT ROWID;
-        CREATE TABLE vectors (model TEXT NOT NULL, hash TEXT NOT NULL, vector BLOB NOT NULL, PRIMARY KEY (model, hash)) WITHOUT ROWID;
+        CREATE TABLE vectors (model TEXT NOT NULL, hash TEXT NOT NULL, vector BLOB NOT NULL); -- rows of 1 KB and more: no WITHOUT ROWID
+        CREATE UNIQUE INDEX vectors_key ON vectors (model, hash);
         CREATE TABLE files (tree TEXT NOT NULL, file TEXT NOT NULL, size INTEGER, mtime REAL, skipped INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (tree, file)) WITHOUT ROWID;
         CREATE TABLE pieces (id INTEGER PRIMARY KEY, tree TEXT NOT NULL, file TEXT NOT NULL, line INTEGER NOT NULL, last INTEGER NOT NULL, hash TEXT NOT NULL, kind TEXT, name TEXT);
         CREATE INDEX pieces_file ON pieces (tree, file);
@@ -202,6 +203,11 @@ export class IndexStore {
 
   touch() { this.meta('updatedAt', Date.now()); }
 
+  /** The write-ahead log folded into the file and emptied: after a build, it would otherwise stay as big as the build. */
+  checkpoint() {
+    try { this.db.exec('PRAGMA wal_checkpoint(TRUNCATE)'); } catch {}
+  }
+
   /** The file's size on disk (with its write-ahead log) and when a vector last came. */
   stats() {
     let bytes = 0;
@@ -223,7 +229,7 @@ export class IndexStore {
   close() {
     if (this.closed) return;
     this.closed = true;
-    try { this.db.exec('PRAGMA wal_checkpoint(TRUNCATE)'); } catch {}
+    this.checkpoint();
     this.db.close();
   }
 }

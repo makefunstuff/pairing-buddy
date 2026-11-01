@@ -95,7 +95,7 @@ export function parseInput(line) {
   if (command === '/drive!') return {type: 'drive', text: arg, keep: true};
   if (command === '/end') return {type: 'end'};
   if (command === '/today') return {type: 'today'};
-  if (command === '/find' && arg) return {type: 'find', query: arg};
+  if (command === '/find') return arg ? {type: 'find', query: arg} : {local: 'help'};
   if (command === '/agents') return {type: 'agents'};
   if (command === '/cancel') return {type: 'cancel'};
   if (command === '/undo') return {type: 'undo_last'};

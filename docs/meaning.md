@@ -1,5 +1,5 @@
 ---
-description: "Find code as quickly as ripgrep but with loose words: a live picker in Telescope, snacks.picker or fzf-lua, the word search on every key and a local embedding index merged in as you pause."
+description: "Find code as quickly as ripgrep with loose words: a live picker, words on every key and meaning from a local index as you pause."
 ---
 
 # Search by meaning

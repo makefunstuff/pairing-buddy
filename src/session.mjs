@@ -2101,10 +2101,12 @@ export class PairSession {
   /** The index's answer for `query`, within `path`, as file:line lines; it needs no pane. */
   async searchByMeaning(query, path = '.', {gen = false} = {}) {
     if (!gen && !['scout', 'driver'].includes(this.role)) throw new Error('Searching needs the Scout role; the user can switch with /scout.');
-    const answer = await this.findCode(query).catch(error => ({results: [], problem: error.message}));
     const within = path === '.' ? '' : path.replace(/^\.\//, '').replace(/\/$/, '');
+    // Within a path, more of the ranking is looked through: what ranks lower in the project may be first there.
+    const answer = await this.findCode(query, {limit: within ? 300 : 30}).catch(error => ({results: [], problem: error.message}));
     const results = answer.results.filter(result => !within || result.file === within || result.file.startsWith(`${within}/`)).slice(0, 12);
-    const how = answer.state === 'on' && !answer.problem ? 'by meaning and words' : `by words only (${answer.problem ?? 'no embedding model: :Pair find on adds one'})`;
+    const how = answer.state === 'on' && !answer.problem ? 'by meaning and words'
+      : `by words only (${answer.problem ?? (answer.state === 'disabled' ? 'search by meaning is off in the config' : 'no embedding model: :Pair find on adds one')})`;
     if (!results.length) return `Pair's index has nothing ${how} for "${query}".`;
     const lines = results.map(result => `${result.file}:${result.line}: ${result.head}${result.name ? `  (${result.name})` : ''}`);
     return `Pair's index, ${how}, best first:\n${lines.join('\n')}\n\nRead the best ones before you answer; name the places (file:line).`;

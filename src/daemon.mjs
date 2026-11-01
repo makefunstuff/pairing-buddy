@@ -473,7 +473,7 @@ export async function startDaemon(config, {
         notify: (role, message) => notify(session, role, message),
         requestEditor: message => requestEditor(session, message),
         meaningHits: query => meaning.trailHits(root, query), // the search trail's "by meaning" lines
-        findCode: query => meaning.search(root, query), // Scout's and the Driver's search, by meaning
+        findCode: (query, options) => meaning.search(root, query, options), // Scout's and the Driver's search, by meaning
         log: line => log(`[${basename(root)}] ${line}`),
       });
       session.panes = new Terminals({editors: () => editorsOf(session), ask: askEditor, watch: () => watches.get(root) ?? null});

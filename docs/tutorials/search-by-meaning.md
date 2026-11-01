@@ -1,5 +1,5 @@
 ---
-description: "Find code when you do not know what it is called: Alt-s is a live picker, the words on every key and the meaning as you pause, in Telescope, snacks.picker or fzf-lua."
+description: "Find code when you do not know what it is called: Alt-s, a live picker with your words on every key and their meaning as you pause."
 ---
 
 # Search by meaning

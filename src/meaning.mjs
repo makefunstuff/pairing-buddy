@@ -114,8 +114,8 @@ class Lines {
  * `id`, `document(file, text)`, `query(text)` and `embed(texts, {urgent})`.
  */
 export class ProjectIndex {
-  constructor({root, store, embedder, treeSitter, log = () => {}, now = Date.now, onProgress = () => {}}) {
-    Object.assign(this, {root, store, embedder, treeSitter, log, now, onProgress});
+  constructor({root, store, embedder, treeSitter, log = () => {}, now = Date.now, onProgress = () => {}, embedding = () => true}) {
+    Object.assign(this, {root, store, embedder, treeSitter, log, now, onProgress, embedding});
     this.files = new Map(); // relative path -> {size, mtimeMs, skipped}, as last read
     this.byFile = new Map(); // relative path -> its pieces
     this.vectors = new Map(); // hash -> Float32Array, of the embedder's model
@@ -215,6 +215,7 @@ export class ProjectIndex {
           const pieces = piecesOf(text, found.get(join(this.root, file))).map(piece => ({
             ...piece, hash: pieceHash(file, piece.text), words: words(`${file} ${piece.name ?? ''} ${piece.text}`).join(' '),
           }));
+          for (const old of this.byFile.get(file) ?? []) this.documents.delete(old.hash); // a text gone from the file
           const stored = this.store.putFile(this.root, file, {size: info.size, mtimeMs: info.mtimeMs}, pieces);
           this.files.set(file, {size: info.size, mtimeMs: info.mtimeMs, skipped: false});
           this.byFile.set(file, stored);
@@ -222,7 +223,8 @@ export class ProjectIndex {
             if (this.vectors.has(piece.hash)) return;
             const shared = this.store.vector(this.model, piece.hash); // made in another worktree of the repository
             if (shared) this.vectors.set(piece.hash, shared);
-            else this.documents.set(piece.hash, this.embedder.document(file, piece.text));
+            // Kept to embed soon, only while there is a model: words alone read the file again when it comes.
+            else if (this.embedding()) this.documents.set(piece.hash, this.embedder.document(file, piece.text));
           });
         }
         this.reading.done = Math.min(total, start + PARSE_GROUP);
@@ -254,18 +256,29 @@ export class ProjectIndex {
 
   /** Embeds the next few pieces waiting; false when none waits. The list of those is made again once it runs out, or the files change. */
   async step() {
+    if (this.closed) return false;
     if (!this.waiting?.length) this.waiting = this.pending();
     const waiting = this.waiting; // a file read meanwhile makes a new list; this batch keeps to its own
     const batch = [];
+    const stale = new Set();
     while (waiting.length && batch.length < (this.embedder.batch ?? BATCH)) {
       const piece = waiting.shift();
       if (this.vectors.has(piece.hash)) continue;
+      const shared = this.store.vector(this.model, piece.hash); // another worktree embedded it meanwhile
+      if (shared) {
+        this.vectors.set(piece.hash, shared);
+        this.matrix = null;
+        continue;
+      }
       const document = await this.documentOf(piece);
-      if (document === null) continue;
-      batch.push({hash: piece.hash, document});
+      if (document === null) stale.add(piece.file);
+      else batch.push({hash: piece.hash, document});
     }
-    if (!batch.length) return false;
+    // A file changed since it was read: read again now, its pieces wait in the next list.
+    for (const file of stale) await this.saved(file).catch(() => {});
+    if (!batch.length) return stale.size > 0 && !this.closed;
     const vectors = await this.embed(batch.map(item => item.document));
+    if (this.closed) return false; // the session ended, or the index is being made again: its file is closed
     const entries = batch.map((item, i) => [item.hash, vectors[i]]);
     this.store.putVectors(this.model, entries);
     for (const [hash, vector] of entries) {
@@ -320,7 +333,8 @@ export class ProjectIndex {
   async headOf(piece) {
     const lines = await this.lines.get(piece.file);
     const body = lines?.slice(piece.from - 1, piece.to) ?? [];
-    let at = body.findIndex(line => line.trim() && !COMMENT.test(line));
+    const prose = /\.(md|markdown|txt|rst)$/i.test(piece.file); // a heading is no comment there
+    let at = body.findIndex(line => line.trim() && (prose || !COMMENT.test(line)));
     if (at < 0) at = Math.max(0, body.findIndex(line => line.trim()));
     return {line: piece.from + at, head: (body[at] ?? '').trim().slice(0, HEAD_CHARS)};
   }
@@ -349,8 +363,8 @@ export class ProjectIndex {
   async search(query, {limit = 30} = {}) {
     // Asked even before anything is embedded: an embedder that cannot run is found now, and said.
     const [q] = await this.embed([this.embedder.query(query)], {urgent: true});
-    const meaning = q ? this.meaningRanking(q) : [];
-    const keyword = this.wordRanking(query);
+    const meaning = q ? this.meaningRanking(q, Math.max(LIST, limit)) : [];
+    const keyword = this.wordRanking(query, Math.max(LIST, limit));
     const similarity = new Map(meaning);
     const keywordSet = new Set(keyword);
     const ranked = fuse([meaning.map(([piece]) => piece), keyword]).slice(0, limit);
@@ -367,6 +381,7 @@ export class ProjectIndex {
 }
 
 const seconds = ms => `${Math.round(ms / 1000)} s`;
+const UNOPENED = 'the search index cannot be opened (the daemon\'s log says why): :Pair index rebuild makes it again';
 
 /**
  * Search by meaning for the daemon. The word search works once a project has a session; meaning needs a model: the
@@ -392,8 +407,9 @@ export class Meaning {
     this.problem = null; // why the embedder cannot run, until the next try
     this.problemAt = 0;
     this.working = false;
-    this.timer = setInterval(() => this.rescan(), RESCAN_MS);
+    this.timer = setInterval(() => this.rescan().catch(error => log(`meaning: ${error.message}`)), RESCAN_MS);
     this.timer.unref?.();
+    rm(join(meaningDir(dataDir), 'index'), {recursive: true, force: true}).catch(() => {}); // PAIR-5's, before SQLite
   }
 
   /** 'disabled', 'off' (words only: no model yet), 'downloading' or 'on'. */
@@ -417,7 +433,7 @@ export class Meaning {
     if (this.disabled) return null;
     this.wanted.add(root);
     if (this.indexes.has(root)) return this.indexes.get(root);
-    const index = new ProjectIndex({root, store: null, embedder: this.embedder, treeSitter: this.treeSitter, log: this.log, now: this.now, onProgress: how => this.tell(root, how)});
+    const index = new ProjectIndex({root, store: null, embedder: this.embedder, treeSitter: this.treeSitter, log: this.log, now: this.now, onProgress: how => this.tell(root, how), embedding: () => this.state === 'on'});
     this.indexes.set(root, index);
     index.loaded = (async () => {
       const place = await indexPlace({dataDir: this.dataDir, root, where: this.config?.index});
@@ -433,9 +449,17 @@ export class Meaning {
       index.store.prune(index.model);
       if (first) {
         const {chunks, embedded} = index.progress();
-        this.tell(root, {phase: this.state === 'on' && embedded < chunks ? 'embedding' : 'done', done: embedded, total: chunks});
+        index.told = this.state === 'on' && embedded < chunks;
+        this.tell(root, {phase: index.told ? 'embedding' : 'done', done: embedded, total: chunks});
       }
-    }).then(() => { this.work(); }, error => this.log(`meaning: ${root}: ${error.message}`));
+    }).then(() => { this.work(); }, error => {
+      // An index file that cannot be opened (or read): this project goes without, and the next search tries again.
+      this.log(`meaning: ${root}: ${error.message}`);
+      index.closed = true;
+      index.store?.release();
+      if (this.indexes.get(root) === index) this.indexes.delete(root);
+      index.failure = error;
+    });
     return index;
   }
 
@@ -445,8 +469,9 @@ export class Meaning {
     const index = this.indexes.get(root);
     if (!index) return;
     this.indexes.delete(root);
+    index.closed = true; // a batch under way is dropped, not written to a closed file
     await index.ready;
-    index.store?.release();
+    if (!index.failure) index.store?.release();
   }
 
   /** A file saved in Neovim at `root`: its changed pieces are embedded again. */
@@ -462,9 +487,16 @@ export class Meaning {
   async rescan() {
     for (const index of [...this.indexes.values()]) {
       await index.ready;
-      if (this.indexes.get(index.root) !== index) continue;
-      await index.scan().catch(() => {});
-      index.store.prune(index.model);
+      if (this.indexes.get(index.root) !== index || index.closed) continue;
+      try {
+        await index.scan();
+        if (!index.closed) {
+          index.store.prune(index.model);
+          index.store.checkpoint();
+        }
+      } catch (error) {
+        this.log(`meaning: ${index.root}: ${error.message}`);
+      }
     }
     this.work();
   }
@@ -492,10 +524,21 @@ export class Meaning {
           while (this.indexes.get(index.root) === index && await index.step()) {
             if (build.chunks >= BOOKED_PIECES && this.now() - build.toldAt > PROGRESS_MS) {
               build.toldAt = this.now();
+              index.told = true;
               this.tell(index.root, {phase: 'embedding', done: index.vectors.size, total: total()});
             }
           }
-          if (this.indexes.get(index.root) !== index || build.chunks < BOOKED_PIECES) continue;
+          if (this.indexes.get(index.root) !== index) continue;
+          if (build.chunks < BOOKED_PIECES) {
+            if (index.told && !index.pending().length) { // the editors heard it start: they hear it end
+              index.told = false;
+              const {chunks, embedded} = index.progress();
+              this.tell(index.root, {phase: 'done', done: embedded, total: chunks});
+            }
+            continue;
+          }
+          index.told = false;
+          index.store.checkpoint();
           const {files, chunks, embedded, bytes} = index.progress();
           this.tell(index.root, {phase: 'done', done: embedded, total: chunks});
           this.book(index.root, 'indexed', `indexed ${build.chunks} piece${build.chunks === 1 ? '' : 's'} by meaning in ${seconds(this.now() - build.startedAt)}: ${files} files, ${chunks} pieces, ${Math.round(bytes / 1024)} KB`);
@@ -515,7 +558,11 @@ export class Meaning {
   async indexOf(root) {
     const index = this.open(root);
     if (!index) return null;
-    await index.loaded;
+    try {
+      await index.loaded; // what is on disk; a scan under way is not waited for
+    } catch {
+      return null; // its file cannot be opened: said in the log, tried again at the next search
+    }
     if (!this.working) index.ready.then(() => this.work()); // pieces still waiting (the model came since) are embedded
     return index;
   }
@@ -530,7 +577,7 @@ export class Meaning {
   async words(root, query, {limit = 30} = {}) {
     const answer = {phase: 'words', query, state: this.state, results: []};
     const index = await this.indexOf(root);
-    if (!index) return answer;
+    if (!index) return this.disabled ? answer : {...answer, problem: UNOPENED};
     answer.results = await index.wordSearch(query, {limit});
     return Object.assign(answer, this.about(index));
   }
@@ -540,6 +587,7 @@ export class Meaning {
     const answer = {phase: 'meaning', query, state: this.state, results: []};
     if (this.state !== 'on') return answer;
     const index = await this.indexOf(root);
+    if (!index) return {...answer, problem: UNOPENED};
     const started = this.now();
     try {
       answer.results = await index.meaningSearch(query, {limit});
@@ -570,7 +618,7 @@ export class Meaning {
     const state = this.state;
     const answer = {query, state, results: []};
     const index = await this.indexOf(root);
-    if (!index) return answer;
+    if (!index) return this.disabled ? answer : {...answer, problem: UNOPENED};
     const started = this.now();
     if (state !== 'on') answer.results = await index.wordSearch(query, {limit});
     else {
@@ -599,11 +647,12 @@ export class Meaning {
 
   /** `:Pair index rebuild`: the repository's index file is deleted and made again from the files, every vector too. */
   async rebuild(root) {
-    const index = await this.indexOf(root);
-    if (!index) return null;
-    await index.ready;
-    const path = index.store.path;
-    const roots = [...this.indexes.values()].filter(each => each.store?.path === path).map(each => each.root);
+    if (this.disabled) return null;
+    const index = this.indexes.get(root);
+    if (index) await index.ready;
+    // Its file, though it could not be opened: a broken one is what a rebuild is for.
+    const path = index?.store?.path ?? (await indexPlace({dataDir: this.dataDir, root, where: this.config?.index})).path;
+    const roots = [...new Set([root, ...[...this.indexes.values()].filter(each => each.store?.path === path).map(each => each.root)])];
     for (const each of roots) await this.leave(each);
     removeIndex(path);
     for (const each of roots) this.open(each);
@@ -645,9 +694,10 @@ export class Meaning {
     this.problem = null;
     const paths = new Set();
     for (const index of indexes) {
+      index.closed = true;
       await index.ready;
       if (index.store) paths.add(index.store.path);
-      index.store?.release();
+      if (!index.failure) index.store?.release();
     }
     for (const path of paths) removeIndex(path);
     await removeModel(this.dataDir);

@@ -263,6 +263,71 @@ test('"index": "project" keeps it in .pair/ of the repository, listed in .git/in
   }
 });
 
+test('an index file that cannot be opened: the words say so, the rescan goes on, and :Pair index rebuild makes it again', async () => {
+  const root = project();
+  const dataDir = scratch('meaning-data-');
+  const {path} = await indexPlace({dataDir, root});
+  mkdirSync(join(dataDir, 'index'), {recursive: true});
+  writeFileSync(path, 'not a database, not at all, but long enough to be read as one '.repeat(100));
+  const logged = [];
+  const meaning = new Meaning({dataDir, embedder: fakeEmbedder(), log: line => logged.push(line)});
+  try {
+    const answer = await meaning.words(root, 'quantity');
+    assert.match(answer.problem, /cannot be opened .*:Pair index rebuild/);
+    await meaning.rescan(); // once crashed the daemon
+    assert.ok(logged.some(line => line.includes(root)));
+    await meaning.rebuild(root);
+    await meaning.indexes.get(root).ready;
+    assert.equal((await meaning.words(root, 'quantity')).results[0].file, 'src/cart.js');
+  } finally {
+    await meaning.close();
+  }
+});
+
+test('a session that ends while its batch embeds: the batch is dropped, and the other projects build on', async () => {
+  const one = project();
+  const two = project();
+  const dataDir = scratch('meaning-data-');
+  fakeModel(dataDir);
+  const embedder = fakeEmbedder();
+  const embed = embedder.embed;
+  embedder.embed = async (texts, options) => { await new Promise(resolve => setTimeout(resolve, 20)); return embed(texts, options); };
+  const meaning = new Meaning({dataDir, embedder});
+  try {
+    meaning.open(one);
+    await until(() => embedder.calls.length > 0, 'a batch under way');
+    await meaning.leave(one);
+    meaning.open(two);
+    await embedded(meaning, two);
+    assert.equal(meaning.problem, null);
+  } finally {
+    await meaning.close();
+  }
+});
+
+test('without a model the index keeps no text of the code in memory; Scout\'s search asks it by meaning, within a path', async () => {
+  const root = project();
+  const dataDir = scratch('meaning-data-');
+  const meaning = new Meaning({dataDir, embedder: fakeEmbedder()});
+  try {
+    meaning.open(root);
+    await meaning.indexes.get(root).ready;
+    assert.equal(meaning.indexes.get(root).documents.size, 0);
+    fakeModel(dataDir);
+    await meaning.turnOn();
+    await embedded(meaning, root);
+    const {PairSession} = await import('../src/session.mjs');
+    const session = Object.assign(Object.create(PairSession.prototype), {role: 'scout', record: {root}, findCode: (query, options) => meaning.search(root, query, options)});
+    const answer = await session.searchByMeaning('try again when sending fails', 'src');
+    assert.match(answer, /^Pair's index, by meaning and words, best first:\nsrc\/deliver\.js:1: export function deliver\(job\) \{/);
+    assert.doesNotMatch(answer, /NOTES\.md/, 'only within the path');
+    const navigator = Object.assign(Object.create(PairSession.prototype), {role: 'navigator', record: {root}, findCode: () => null});
+    await assert.rejects(navigator.searchByMeaning('x'), /needs the Scout role/);
+  } finally {
+    await meaning.close();
+  }
+});
+
 test('the brute-force search over every vector stays quick for many pieces', () => {
   const pieces = Array.from({length: 20_000}, (_, i) => ({id: i, file: 'f.js', from: i + 1, to: i + 1, hash: `h${i}`}));
   const index = new ProjectIndex({root: '/project', store: null, embedder: {id: 'fake'}});
