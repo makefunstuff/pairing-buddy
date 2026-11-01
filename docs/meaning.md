@@ -84,8 +84,9 @@ On a small project of code (`test/live/meaning.test.mjs`) it put the right file 
 - **Built in the background**, once a project has a session: in batches of four chunks, on two cores (`meaning.threads`)
   at low priority (`nice 10`). A search goes before the batches still waiting, so it waits for one batch at most.
 - **Kept up to date.** A save re-reads that file and embeds only its changed chunks; each chunk is known by its text's
-  hash, so a restart or a moved function embeds nothing twice (the index keeps the chunks the project has now, so
-  a branch you left long ago may need some again). Changes made outside Neovim (a checkout, a pull) are found when
+  hash (with its file's path), so a restart embeds nothing twice and an unchanged chunk is never embedded again;
+  code moved to another file, or that shifts where chunks start, is (the index keeps the chunks the project has now,
+  so a branch you left long ago may need some again too). Changes made outside Neovim (a checkout, a pull) are found when
   the session loads and every ten minutes.
 - **Up to 20,000 chunks a project**, about 45 minutes of a first build: past that, the files left are not indexed,
   and the picker says so. A folder that is no git repository is still indexed by ripgrep's list, within the same cap.

@@ -166,9 +166,16 @@ test('Meaning: off without its model; on, it builds in the background, searches,
     await meaning.search(root, 'cart'); // the embedder answers again: the problem is gone
     assert.equal(meaning.problem, null);
     const lines = booked.length;
+    const index = meaning.indexes.get(root);
+    let writes = 0;
+    const write = index.write.bind(index);
+    index.write = () => { writes += 1; return write(); };
     await meaning.saved(root, join(root, 'src', 'cart.js'));
     await until(() => !meaning.working && meaning.indexes.get(root).pending().length === 0, 'the saved chunk embedded');
     assert.equal(booked.slice(lines).filter(entry => entry.kind === 'indexed').length, 0, 'a save\'s one chunk gets no ledger line of its own');
+    assert.equal(writes, 0, 'nor a rewrite of the whole index');
+    await meaning.rescan();
+    assert.equal(writes, 1, 'the next rescan writes it down');
     assert.equal(await meaning.turnOn([root]), false, 'on again downloads nothing');
     await meaning.turnOff();
     assert.equal(meaning.state, 'off');
@@ -224,6 +231,19 @@ test('the model is downloaded once, at its pinned revision, and kept only if its
   await assert.rejects(meaning.turnOn([]), /not the pinned/);
   assert.equal(meaning.state, 'off');
   await meaning.close();
+  let open;
+  const gated = new Meaning({dataDir, embedder: fakeEmbedder(), fetch: (url, {signal}) => new Promise((resolve, reject) => {
+    open = () => resolve(new Response(body));
+    signal.addEventListener('abort', () => reject(signal.reason));
+  })});
+  const on = assert.rejects(gated.turnOn([]), /turned off/);
+  await until(() => open, 'the download to start');
+  assert.equal(gated.state, 'downloading');
+  await gated.turnOff();
+  await on;
+  assert.equal(gated.state, 'off', 'off during the download stops it');
+  assert.ok(!existsSync(modelPath(dataDir)) && !existsSync(`${modelPath(dataDir)}.part`));
+  await gated.close();
   const disabled = new Meaning({dataDir, config: false, embedder: fakeEmbedder()});
   assert.equal(disabled.state, 'disabled');
   await assert.rejects(disabled.turnOn([]), /turned off in the config/);

@@ -254,7 +254,6 @@ export class ProjectIndex {
     batch.forEach((chunk, i) => this.vectors.set(chunk.hash, vectors[i]));
     for (const chunk of batch) chunk.document = null; // its text is in its file; only the words stay, for keywords
     this.dirty = true;
-    if (this.now() - this.savedAt > SAVE_MS) await this.save().catch(error => this.log(`meaning: ${this.path} not written: ${error.message}`));
     return true;
   }
 
@@ -342,6 +341,7 @@ export class Meaning {
     // The helper's Python is looked for each time it starts: a venv made while the daemon runs is found.
     this.embedder = embedder ?? new Embedder({python: () => pythonOf(config, dataDir), model: modelPath(dataDir), threads: config?.threads, log});
     this.indexes = new Map(); // root -> ProjectIndex
+    this.wanted = new Set(); // the roots with a session, opened once search by meaning is on
     this.downloading = null; // {bytes} while the model comes
     this.problem = null; // why the embedder cannot run, until the next try
     this.problemAt = 0;
@@ -359,6 +359,7 @@ export class Meaning {
 
   /** The project at `root` has a session: its index loads, is looked over and builds in the background. */
   open(root) {
+    this.wanted.add(root);
     if (this.state !== 'on' || this.indexes.has(root)) return;
     const index = new ProjectIndex({root, path: indexPath(this.dataDir, root), embed: (texts, options) => this.embedder.embed(texts, options), log: this.log, now: this.now});
     this.indexes.set(root, index);
@@ -367,6 +368,7 @@ export class Meaning {
 
   /** The session at `root` ended: what was built is written down, and the index leaves memory. */
   async leave(root) {
+    this.wanted.delete(root);
     const index = this.indexes.get(root);
     if (!index) return;
     this.indexes.delete(root);
@@ -388,26 +390,39 @@ export class Meaning {
     for (const index of this.indexes.values()) {
       await index.ready;
       await index.scan().catch(() => {});
+      if (index.dirty && !this.working) await index.save().catch(() => {}); // a save's few chunks, written down now
     }
     this.work();
   }
 
-  /** Embeds what waits, one batch at a time, project after project; stops at a problem with the embedder. */
+  /**
+   * Embeds what waits, one batch at a time, project after project, and again while any project has chunks waiting
+   * (a save elsewhere meanwhile); stops at a problem with the embedder. A build of BOOKED_CHUNKS or more is written
+   * down every SAVE_MS and at its end, with a ledger line; a save's few chunks are written down by the next rescan,
+   * or when the session ends.
+   */
   async work() {
     if (this.working || this.state !== 'on') return;
     if (this.problem && this.now() - this.problemAt < RESCAN_MS) return;
     this.working = true;
     this.problem = null;
+    const write = index => index.save().catch(error => this.log(`meaning: ${index.path} not written: ${error.message}`));
     try {
-      for (const index of [...this.indexes.values()]) {
-        const waiting = index.pending().length;
-        if (!waiting) continue;
-        const build = {startedAt: this.now(), chunks: waiting};
-        while (this.indexes.get(index.root) === index && await index.step());
-        if (this.indexes.get(index.root) !== index || build.chunks < BOOKED_CHUNKS) continue; // a save's few chunks: written down later
-        await index.save().catch(error => this.log(`meaning: ${index.path} not written: ${error.message}`));
-        const {files, chunks, bytes} = index.progress();
-        this.book(index.root, 'indexed', `indexed ${build.chunks} chunk${build.chunks === 1 ? '' : 's'} by meaning in ${seconds(this.now() - build.startedAt)}: ${files} files, ${chunks} chunks, ${Math.round(bytes / 1024)} KB`);
+      for (let more = true, passes = 0; more && passes < 10; passes++) { // a few passes at most: never a loop
+        more = false;
+        for (const index of [...this.indexes.values()]) {
+          const waiting = index.pending().length;
+          if (!waiting) continue;
+          more = true;
+          const build = {startedAt: this.now(), chunks: waiting};
+          while (this.indexes.get(index.root) === index && await index.step()) {
+            if (build.chunks >= BOOKED_CHUNKS && this.now() - index.savedAt > SAVE_MS) await write(index);
+          }
+          if (this.indexes.get(index.root) !== index || build.chunks < BOOKED_CHUNKS) continue;
+          await write(index);
+          const {files, chunks, bytes} = index.progress();
+          this.book(index.root, 'indexed', `indexed ${build.chunks} chunk${build.chunks === 1 ? '' : 's'} by meaning in ${seconds(this.now() - build.startedAt)}: ${files} files, ${chunks} chunks, ${Math.round(bytes / 1024)} KB`);
+        }
       }
     } catch (error) {
       this.problem = error.message;
@@ -459,19 +474,25 @@ export class Meaning {
     if (this.downloading) return this.downloading.done.then(() => false);
     this.problem = null;
     if (modelReady(this.dataDir)) {
-      for (const root of roots) this.open(root);
+      for (const root of new Set([...this.wanted, ...roots])) this.open(root);
+      this.work(); // a build a problem stopped goes on
       return false;
     }
-    this.downloading = {bytes: 0};
-    this.downloading.done = downloadModel(this.dataDir, {fetch: this.fetch, progress: bytes => { this.downloading.bytes = bytes; progress(bytes); }})
+    const abort = new AbortController();
+    this.downloading = {bytes: 0, abort};
+    this.downloading.done = downloadModel(this.dataDir, {fetch: this.fetch, signal: abort.signal, progress: bytes => { this.downloading.bytes = bytes; progress(bytes); }})
       .finally(() => { this.downloading = null; });
     await this.downloading.done;
-    for (const root of roots) this.open(root);
+    for (const root of new Set([...this.wanted, ...roots])) this.open(root); // sessions started meanwhile too
     return true;
   }
 
   /** Off again: the helper stops, and the model and every index leave Pair's data folder. */
   async turnOff() {
+    if (this.downloading) { // a download under way stops, and leaves nothing
+      this.downloading.abort.abort(new Error('search by meaning was turned off'));
+      await this.downloading.done.catch(() => {});
+    }
     for (const root of [...this.indexes.keys()]) this.indexes.delete(root);
     this.embedder.fail(new Error('search by meaning was turned off')); // a batch under way is dropped, not waited for
     this.problem = null;

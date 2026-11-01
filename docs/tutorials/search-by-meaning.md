@@ -22,7 +22,7 @@ python3 -m venv ~/.local/state/pairing-buddy/meaning/venv
 
 ## 2. Turn it on
 
-In Neovim, in your project, press `Alt-s`. Pair asks once whether to download the model (165 MB from Hugging Face,
+In Neovim, in your project, press `Alt-s`. Pair asks whether to download the model (165 MB from Hugging Face,
 checked by its SHA-256); choose `Download`. Neovim says when it is there, and Pair indexes the project in
 the background, on two cores at low priority. A project the size of Pair's own (540 files) takes about eight minutes
 the first time; after that, a save only embeds the chunks you changed.

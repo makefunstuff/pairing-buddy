@@ -61,13 +61,15 @@ export function modelReady(dataDir) {
 
 /**
  * Downloads the model into `dataDir`, once: the pinned revision from Hugging Face, written to a .part file while its
- * SHA-256 is taken, and moved into place only if it matches. `progress(bytes)` hears how far it got.
+ * SHA-256 is taken, and moved into place only if it matches. `progress(bytes)` hears how far it got; `signal` stops it.
  */
-export async function downloadModel(dataDir, {fetch = globalThis.fetch, progress = () => {}, model = MODEL, stallMs = STALL_MS} = {}) {
+export async function downloadModel(dataDir, {fetch = globalThis.fetch, progress = () => {}, model = MODEL, stallMs = STALL_MS, signal = null} = {}) {
   await mkdir(meaningDir(dataDir), {recursive: true, mode: 0o700});
   const path = modelPath(dataDir);
   const part = `${path}.part`;
   const abort = new AbortController();
+  if (signal?.aborted) throw signal.reason;
+  signal?.addEventListener('abort', () => abort.abort(signal.reason), {once: true}); // turned off meanwhile
   let stall;
   const waiting = () => {
     clearTimeout(stall);

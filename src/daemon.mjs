@@ -1006,6 +1006,7 @@ export async function startDaemon(config, {
   /** `:Pair find on`: the model's one download, told as it goes, then the open projects' indexes. */
   async function meaningOn(client) {
     const tell = text => sendMessage(client.socket, {type: 'meaning_state', ...meaning.snapshot(), text});
+    if (meaning.state === 'disabled') return tell('Search by meaning is off in the config ("meaning": false).');
     if (meaning.state === 'on') {
       await meaning.turnOn([...live.keys()]);
       return tell('Search by meaning is already on: its model is here, and Pair indexes the open projects in the background.');
