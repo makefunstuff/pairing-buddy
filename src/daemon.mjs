@@ -1008,14 +1008,14 @@ export async function startDaemon(config, {
     const tell = text => sendMessage(client.socket, {type: 'meaning_state', ...meaning.snapshot(), text});
     if (meaning.state === 'disabled') return tell('Search by meaning is off in the config ("meaning": false).');
     if (meaning.state === 'on') {
-      await meaning.turnOn([...live.keys()]);
+      await meaning.turnOn();
       return tell('Search by meaning is already on: its model is here, and Pair indexes the open projects in the background.');
     }
     let told = 0;
     tell('Downloading EmbeddingGemma 2 for search by meaning (165 MB, once)…');
     let downloaded;
     try {
-      downloaded = await meaning.turnOn([...live.keys()], {progress: bytes => {
+      downloaded = await meaning.turnOn({progress: bytes => {
         if (bytes - told < 32 << 20) return;
         told = bytes;
         tell(`Downloading EmbeddingGemma 2: ${Math.round(bytes / (1 << 20))} of 157 MiB…`);

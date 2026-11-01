@@ -35,14 +35,16 @@ test('EmbeddingGemma 2 finds code from questions worded unlike it', {skip, timeo
   for (const [file, text] of Object.entries(FILES)) writeFileSync(join(root, file), text);
   execFileSync('git', ['init', '-q'], {cwd: root});
   const dataDir = process.env.PAIR_LIVE_MEANING_DATA ?? scratch('meaning-live-data-');
-  const booked = [];
-  const meaning = new Meaning({dataDir, config: process.env.PAIR_LIVE_MEANING_PYTHON ? {python: process.env.PAIR_LIVE_MEANING_PYTHON} : {}, book: (where, kind, text) => booked.push(text), log: line => console.log(line)});
+    const meaning = new Meaning({dataDir, config: process.env.PAIR_LIVE_MEANING_PYTHON ? {python: process.env.PAIR_LIVE_MEANING_PYTHON} : {}, log: line => console.log(line)});
   try {
-    await meaning.turnOn([root]);
-    const end = Date.now() + 120_000;
-    while (!booked.some(text => text.startsWith('indexed')) && Date.now() < end) await new Promise(resolve => setTimeout(resolve, 200));
+    meaning.open(root); // the project has a session
+    await meaning.turnOn();
+    const started = Date.now();
+    await meaning.indexes.get(root).ready;
+    const built = () => !meaning.working && meaning.indexes.get(root).pending().length === 0;
+    while (!built() && !meaning.problem && Date.now() - started < 120_000) await new Promise(resolve => setTimeout(resolve, 200));
     assert.ok(!meaning.problem, meaning.problem ?? '');
-    console.log(booked.find(text => text.startsWith('indexed')), `· ${Math.round(meaning.embedder.msPerText)} ms a chunk`);
+    console.log(`indexed ${meaning.indexes.get(root).progress().chunks} chunks in ${Date.now() - started} ms · ${Math.round(meaning.embedder.msPerText)} ms a chunk`);
     let top1 = 0;
     for (const [question, file] of QUESTIONS) {
       const started = Date.now();

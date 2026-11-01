@@ -176,7 +176,7 @@ test('Meaning: off without its model; on, it builds in the background, searches,
     assert.equal(writes, 0, 'nor a rewrite of the whole index');
     await meaning.rescan();
     assert.equal(writes, 1, 'the next rescan writes it down');
-    assert.equal(await meaning.turnOn([root]), false, 'on again downloads nothing');
+    assert.equal(await meaning.turnOn(), false, 'on again downloads nothing');
     await meaning.turnOff();
     assert.equal(meaning.state, 'off');
     assert.ok(!existsSync(modelPath(dataDir)) && !existsSync(indexPath(dataDir, root)), 'off deletes the model and the indexes');
@@ -228,7 +228,7 @@ test('the model is downloaded once, at its pinned revision, and kept only if its
   assert.ok(!existsSync(`${modelPath(dataDir)}.part`), 'a stalled download leaves nothing');
 
   const meaning = new Meaning({dataDir, embedder: fakeEmbedder(), fetch: async () => new Response(body)});
-  await assert.rejects(meaning.turnOn([]), /not the pinned/);
+  await assert.rejects(meaning.turnOn(), /not the pinned/);
   assert.equal(meaning.state, 'off');
   await meaning.close();
   let open;
@@ -236,7 +236,7 @@ test('the model is downloaded once, at its pinned revision, and kept only if its
     open = () => resolve(new Response(body));
     signal.addEventListener('abort', () => reject(signal.reason));
   })});
-  const on = assert.rejects(gated.turnOn([]), /turned off/);
+  const on = assert.rejects(gated.turnOn(), /turned off/);
   await until(() => open, 'the download to start');
   assert.equal(gated.state, 'downloading');
   await gated.turnOff();
@@ -246,7 +246,7 @@ test('the model is downloaded once, at its pinned revision, and kept only if its
   await gated.close();
   const disabled = new Meaning({dataDir, config: false, embedder: fakeEmbedder()});
   assert.equal(disabled.state, 'disabled');
-  await assert.rejects(disabled.turnOn([]), /turned off in the config/);
+  await assert.rejects(disabled.turnOn(), /turned off in the config/);
   await disabled.close();
 });
 

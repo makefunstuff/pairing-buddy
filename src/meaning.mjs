@@ -134,6 +134,7 @@ export class ProjectIndex {
   async load() {
     if (this.loaded) return;
     this.loaded = true;
+    this.savedAt = this.now(); // a build writes down after SAVE_MS of it, not at its first batch
     let bytes;
     try { bytes = await readFile(this.path); } catch { return; }
     try {
@@ -157,6 +158,7 @@ export class ProjectIndex {
   }
 
   async write() {
+    const changes = this.changes;
     const hashes = [...new Set([...this.files.values()].flatMap(file => file.chunks.map(chunk => chunk.hash)))].filter(hash => this.vectors.has(hash));
     const header = Buffer.from(JSON.stringify({model: MODEL.revision, dimensions: DIMENSIONS, root: this.root, hashes, savedAt: this.now()}));
     const vectors = new Float32Array(hashes.length * DIMENSIONS);
@@ -167,7 +169,7 @@ export class ProjectIndex {
     const part = `${this.path}.part`;
     await writeFile(part, Buffer.concat([Buffer.from(MAGIC), length, header, Buffer.from(vectors.buffer)]), {mode: 0o600});
     await rename(part, this.path);
-    this.dirty = false;
+    this.dirty = this.changes !== changes; // vectors that came in during the write still need one
     this.savedAt = this.now();
   }
 
@@ -252,6 +254,7 @@ export class ProjectIndex {
     if (!batch.length) return false;
     const vectors = await this.embed(batch.map(chunk => chunk.document));
     batch.forEach((chunk, i) => this.vectors.set(chunk.hash, vectors[i]));
+    this.changes = (this.changes ?? 0) + 1;
     for (const chunk of batch) chunk.document = null; // its text is in its file; only the words stay, for keywords
     this.dirty = true;
     return true;
@@ -390,7 +393,7 @@ export class Meaning {
     for (const index of this.indexes.values()) {
       await index.ready;
       await index.scan().catch(() => {});
-      if (index.dirty && !this.working) await index.save().catch(() => {}); // a save's few chunks, written down now
+      if (index.dirty) await index.save().catch(() => {}); // a save's few chunks, written down now
     }
     this.work();
   }
@@ -466,15 +469,15 @@ export class Meaning {
   }
 
   /**
-   * Downloads the model, once, then indexes the projects that have a session (`roots`). Resolves true when it
+   * Downloads the model, once, then indexes the projects that have a session now. Resolves true when it
    * downloaded, false when the model was already there.
    */
-  async turnOn(roots = [], {progress = () => {}} = {}) {
+  async turnOn({progress = () => {}} = {}) {
     if (this.disabled) throw new Error('search by meaning is turned off in the config ("meaning": false)');
     if (this.downloading) return this.downloading.done.then(() => false);
     this.problem = null;
     if (modelReady(this.dataDir)) {
-      for (const root of new Set([...this.wanted, ...roots])) this.open(root);
+      for (const root of [...this.wanted]) this.open(root);
       this.work(); // a build a problem stopped goes on
       return false;
     }
@@ -483,7 +486,7 @@ export class Meaning {
     this.downloading.done = downloadModel(this.dataDir, {fetch: this.fetch, signal: abort.signal, progress: bytes => { this.downloading.bytes = bytes; progress(bytes); }})
       .finally(() => { this.downloading = null; });
     await this.downloading.done;
-    for (const root of new Set([...this.wanted, ...roots])) this.open(root); // sessions started meanwhile too
+    for (const root of [...this.wanted]) this.open(root); // the sessions open now, started meanwhile too
     return true;
   }
 
@@ -493,9 +496,11 @@ export class Meaning {
       this.downloading.abort.abort(new Error('search by meaning was turned off'));
       await this.downloading.done.catch(() => {});
     }
-    for (const root of [...this.indexes.keys()]) this.indexes.delete(root);
+    const writing = [...this.indexes.values()].map(index => index.saving.catch(() => {}));
+    this.indexes.clear();
     this.embedder.fail(new Error('search by meaning was turned off')); // a batch under way is dropped, not waited for
     this.problem = null;
+    await Promise.all(writing); // a write under way lands before the folder goes, not after
     await removeModel(this.dataDir);
     await rm(join(meaningDir(this.dataDir), 'index'), {recursive: true, force: true});
   }
