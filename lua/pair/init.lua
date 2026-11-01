@@ -1044,14 +1044,17 @@ local function send_accent()
 end
 
 local function hello()
-  -- herdr's socket lets the daemon see your other agents, also when no chat pane runs; the herdr pane this Neovim
-  -- runs in, if any, lets Pair show things in the Neovim whose pane has focus.
-  local herdr = vim.env.HERDR_SOCKET_PATH and {socket = vim.env.HERDR_SOCKET_PATH} or nil
+  -- herdr's or herdr-core's socket lets the daemon see your other agents, also when no chat pane runs; the herdr pane
+  -- or herdr-core terminal this Neovim runs in, if any, lets Pair show things in the Neovim whose pane has focus.
+  local core = vim.env.HC_SOCKET ~= '' and vim.env.HC_SOCKET or vim.env.HC_TERMINAL_SOCKET
+  local herdr = (vim.env.HERDR_SOCKET_PATH or '') ~= '' and {kind = 'herdr', socket = vim.env.HERDR_SOCKET_PATH}
+    or ((core or '') ~= '' and (vim.env.HC_TERMINAL_ID or '') ~= '') and {kind = 'core', socket = core, session = vim.env.HC_SESSION, appHome = vim.env.HERDR_APP_HOME}
+    or nil
   -- The tmux pane it runs in, if any, lets Pair watch that tmux session's panes (src/tmux.mjs). Its pid names its
   -- own terminals, where the Driver's `type` may go (pane.lua).
   local tmux = vim.env.TMUX and vim.env.TMUX_PANE and {socket = vim.env.TMUX:match('^[^,]*'), pane = vim.env.TMUX_PANE} or nil
   send({
-    type = 'hello', role = 'editor', cwd = vim.fn.getcwd(), herdr = herdr, pane = vim.env.HERDR_PANE_ID, tmux = tmux, pid = vim.fn.getpid(),
+    type = 'hello', role = 'editor', cwd = vim.fn.getcwd(), herdr = herdr, pane = herdr and (herdr.kind == 'core' and vim.env.HC_TERMINAL_ID or vim.env.HERDR_PANE_ID) or nil, tmux = tmux, pid = vim.fn.getpid(),
     buffers = true,
   })
   send_accent()

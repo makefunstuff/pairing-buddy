@@ -142,7 +142,7 @@ test('the board is read through its command and git, herdr through agent.list; f
   const logged = [];
   const agents = new AgentBoard({board: board.command, onChange: change => changes.push(change), log: line => logged.push(line), pollMs: 60_000});
   try {
-    agents.useHerdr(join(dir, 'herdr.sock'));
+    agents.useHerdr({socket: join(dir, 'herdr.sock')});
     await agents.poll();
     assert.deepEqual(agents.items.map(item => [item.key, item.where, item.pane]), [['task:SHO-7', worktree, 'w7:p1'], ['task:SHO-6', null, null]],
       'its worktree, found by its branch, and the pane of the agent there');
@@ -189,7 +189,7 @@ test('what a task left behind: its report and pull request, its branch\'s diff a
   const herdr = await fakeHerdr(join(dir, 'herdr.sock'), {agents: [{pane_id: 'w9:p1', cwd: '/home/me/notes', agent: 'pi', agent_status: 'idle'}]});
   const agents = new AgentBoard({board: board.command, pollMs: 60_000});
   try {
-    agents.useHerdr(join(dir, 'herdr.sock'));
+    agents.useHerdr({socket: join(dir, 'herdr.sock')});
     await agents.poll();
     assert.deepEqual(await agents.leftBehind('task:SHO-7', 'open'), {links: [
       {label: 'its report', url: '/data/a1/1.html'},
@@ -219,7 +219,7 @@ test('without a board, herdr\'s agents are still read and relayed; a board that 
   const logged = [];
   const agents = new AgentBoard({board: join(dir, 'no-such-board'), onChange: change => changes.push(change), log: line => logged.push(line)});
   try {
-    agents.useHerdr(join(dir, 'herdr.sock'));
+    agents.useHerdr({socket: join(dir, 'herdr.sock')});
     await agents.poll();
     herdr.agents[0].agent_status = 'idle';
     await agents.poll();
@@ -247,7 +247,7 @@ test('while no session listens there is no baseline: what changed meanwhile is n
   const changes = [];
   const agents = new AgentBoard({board: null, wanted: () => wanted, onChange: change => changes.push(change)});
   try {
-    agents.useHerdr(join(dir, 'herdr.sock'));
+    agents.useHerdr({socket: join(dir, 'herdr.sock')});
     await agents.poll();
     wanted = false; // the last session ended
     await agents.poll();

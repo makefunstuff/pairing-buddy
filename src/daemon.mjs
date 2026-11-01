@@ -17,6 +17,7 @@ import {MODEL_ROLES, ModelHealth} from './health.mjs';
 import {NoteMargin} from './margin.mjs';
 import {oneAnswer} from './note-reading.mjs';
 import {HerdrPanes} from './herdr.mjs';
+import {CorePaneHost, CorePanes, HerdrApp} from './herdr-core.mjs';
 import {followLoaded, shareServer} from './loaded-model.mjs';
 import {DETAIL_KEPT_MS} from './ledger.mjs';
 import {Listener} from './listen.mjs';
@@ -85,6 +86,7 @@ const defaultLog = line => process.stderr.write(`${timestamp()} ${line}\n`);
 export async function startDaemon(config, {
   configFile = null, modelsFor = createPairModels, pairModels = modelsFor(config), decisionFor = createDecisionModel, probe, log = defaultLog, keepWarmMs = KEEP_WARM_MS,
   idleEndMs = IDLE_END_MS, aloneEndMs = ALONE_END_MS, agentsPollMs, taskChangesPollMs = TASK_CHANGES_MS,
+  appCommand = 'herdr-app', // the Herdr window's command, for herdr-core's focus and agents
 } = {}) {
   mkdirSync(config.dataDir, {recursive: true, mode: 0o700});
   mkdirSync(join(config.dataDir, 'runs'), {recursive: true}); // the output of the tests run on save, one file per session
@@ -150,7 +152,7 @@ export async function startDaemon(config, {
 
   // Your other agents, read from the board and herdr; each session relays their news at its breakpoints.
   const agents = config.agents
-    ? new AgentBoard({board: config.board, pollMs: agentsPollMs, log, wanted: () => [...clients].some(client => client.session), onChange: change => { for (const relay of relays.values()) relay.hear(change); }})
+    ? new AgentBoard({board: config.board, pollMs: agentsPollMs, appCommand, log, wanted: () => [...clients].some(client => client.session), onChange: change => { for (const relay of relays.values()) relay.hear(change); }})
     : null;
 
   // What the board's working tasks of each repo change on their branches, read while a Neovim is connected (overlap.mjs).
@@ -511,13 +513,25 @@ export async function startDaemon(config, {
     session.scout ??= scoutPane(session, new EditorPaneHost({editors: () => editorsOf(session), ask: askEditor}));
   }
 
-  /** A chat pane in herdr: Pair's pane moves there, and its PaneWatch watches herdr's panes too. */
+  /**
+   * A chat pane in herdr, or a chat terminal in herdr-core (`herdr.kind`, see herdrOf): Pair's pane moves there, and
+   * its PaneWatch watches herdr's panes, or the terminals of the chat's space in the Herdr window, too.
+   */
   function watchHerdr(session, herdr) {
     if (!herdr?.socket || paneSources.get(session.root)?.herdr) return;
     session.scout?.close().catch(() => {}); // a pane it had in Neovim before the herdr chat pane came
-    session.scout = scoutPane(session, new HerdrPaneHost({socketPath: herdr.socket, workspaceId: herdr.workspace, besidePane: herdr.pane}));
+    const host = herdr.kind === 'core'
+      ? new CorePaneHost({socketPath: herdr.socket, besidePane: herdr.pane, root: session.root})
+      : new HerdrPaneHost({socketPath: herdr.socket, workspaceId: herdr.workspace, besidePane: herdr.pane});
+    session.scout = scoutPane(session, host);
     watchPanes(session, {herdr, chatPane: herdr.pane});
-    log(`[${basename(session.root)}] watching herdr workspace ${herdr.workspace}`);
+    log(`[${basename(session.root)}] watching ${herdr.kind === 'core' ? `herdr-core terminal ${herdr.pane}'s space` : `herdr workspace ${herdr.workspace}`}`);
+  }
+
+  /** The source of the user's panes in herdr or herdr-core. */
+  function herdrSource(herdr) {
+    if (herdr.kind !== 'core') return new HerdrPanes({socketPath: herdr.socket, workspaceId: herdr.workspace});
+    return new CorePanes({socketPath: herdr.socket, chatPane: herdr.pane, app: new HerdrApp({command: appCommand, env: {HC_SESSION: herdr.session, HERDR_APP_HOME: herdr.appHome}})});
   }
 
   /**
@@ -532,7 +546,7 @@ export async function startDaemon(config, {
     paneSources.set(session.root, wanted);
     watches.get(session.root)?.stop();
     const sources = [];
-    if (wanted.herdr) sources.push(new HerdrPanes({socketPath: wanted.herdr.socket, workspaceId: wanted.herdr.workspace}));
+    if (wanted.herdr) sources.push(herdrSource(wanted.herdr));
     if (wanted.tmux) sources.push(new TmuxPanes({socketPath: wanted.tmux.socket, pane: wanted.tmux.pane}));
     sources.push(new NvimPanes({editors: () => editorsOf(session), ask: askEditor}));
     const sessionLog = line => log(`[${basename(session.root)}] ${line}`);
@@ -624,7 +638,7 @@ export async function startDaemon(config, {
     if (client.role === 'editor') for (const files of session.gen.reopen()) sendMessage(client.socket, files);
     // And the code taken from /gen that is not the user's yet: ┊ again on its lines, found by their text.
     if (client.role === 'editor') sendMessage(client.socket, {type: 'gen_marks', marks: session.gen.allMarks(), all: true});
-    if (message.herdr?.socket) agents?.useHerdr(message.herdr.socket);
+    if (message.herdr?.socket) agents?.useHerdr(message.herdr);
     const relayed = relays.get(session.root)?.last;
     if (client.role === 'editor' && relayed) sendMessage(client.socket, relayed);
     if (client.role === 'editor' && session.lateForEditors) {

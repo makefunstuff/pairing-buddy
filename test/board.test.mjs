@@ -3,7 +3,7 @@ import {execFileSync} from 'node:child_process';
 import {mkdirSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {test} from 'node:test';
-import {artifactIds, Board, boardContext, boardLaunch, boardTitle, branchNumber, commandLine, madeBy, parseSpaces, PICKS, spaceFor} from '../src/board.mjs';
+import {artifactIds, Board, boardContext, boardLaunch, boardTitle, branchNumber, commandLine, madeBy, outsideSession, parseSpaces, PICKS, spaceFor} from '../src/board.mjs';
 import {projectContext} from '../src/project-context.mjs';
 import {fakeShepherdr} from './fake-shepherdr.mjs';
 import {scratch} from './temp.mjs';
@@ -53,6 +53,7 @@ test('a task\'s report: the list names the space it is kept in, and only show sa
   const list = 'a7  v2  BDY-7 research report  · pairing-buddy · 1h\na3  v1  Plan  · pairing-buddy · 2h\n';
   assert.deepEqual(artifactIds(list), ['a7', 'a3']);
   assert.deepEqual(artifactIds('No artifacts here yet.'), []);
+  assert.deepEqual(artifactIds('3e62ac61 v1 PAIR-1: Proof\n67baddc7 v12 PAIR-2: Proof'), ['3e62ac61', '67baddc7'], 'Shepherdr 2.1\'s lines, one space apart');
   const show = 'a7 “BDY-7 research report” in pairing-buddy: v2, 1h ago by BDY-7 agent. Its Send and notes go to BDY-7 agent.\n'
     + 'HTML: /home/me/.shepherdr/artifacts/a7/2.html\nData: none\nCopy them to edit; shepherdr artifact update a7 makes the new version.\n'
     + 'Versions:\n  v2  1h  BDY-7 agent  fixed the chart\n  v1  2h  BDY-7 agent';
@@ -127,6 +128,42 @@ test('the board is read through its command: spaces, tasks of a space, a task in
   assert.ok(board.calls().every(([verb, sub]) => ['space list', 'task list', 'task show', 'artifact list', 'artifact show', 'task add'].includes(`${verb} ${sub}`)), 'read, and the one add');
 });
 
+test('Shepherdr 2.1: tasks in pages, JSON spaces, task show in pieces, its artifact lines, add without "Added"', async () => {
+  const dir = scratch('pair-board-');
+  const tasks = Array.from({length: 5}, (_, i) => ({id: `SHO-${i + 1}`, title: `Task ${i + 1}`, status: 'work', place: 'p:here:shop'}));
+  const board = fakeShepherdr(dir, {
+    version: '2.1', pageSize: 2, showMax: 300,
+    spaces: [{name: 'shop', key: 'SHO', path: '/src/shop'}],
+    tasks: [
+      ...tasks,
+      {id: 'SHO-7', title: 'Read every run', status: 'ready', place: 'p:here:shop', branch: 'work/7-read', pr: {number: 12, url: 'https://github.com/o/shop/pull/12'},
+        desc: 'Read every run. '.repeat(700), said: 'Runs are read.', facts: 'PR #12 · checks passed', outcome: 'done'},
+      {id: 'FAR-1', title: 'Far away', status: 'work', place: 'p:far:web'},
+    ],
+    artifacts: [{id: '67baddc7', title: 'SHO-7: Proof', space: 'shop', by: 'SHO-7 agent', html: '/data/67/1.html'}],
+  });
+  const shepherdr = new Board(board.command);
+  assert.deepEqual(await shepherdr.spaces(), [{name: 'shop', key: 'SHO', path: '/src/shop', github: null, machine: 'here'}], 'the home space left out');
+  const listed = await shepherdr.tasks();
+  assert.equal(shepherdr.version, '2.1');
+  assert.deepEqual(listed.map(task => task.id), ['SHO-1', 'SHO-2', 'SHO-3', 'SHO-4', 'SHO-5', 'SHO-7', 'FAR-1'], 'every page, two tasks at a time');
+  assert.deepEqual(listed.map(task => task.machine), [null, null, null, null, null, null, 'far'], 'only another machine\'s task is far');
+  assert.equal(listed[0].title, 'Task 1', 'its name is the title');
+  assert.ok(board.calls().some(args => args.includes('--after')), 'read on with --after');
+  const shown = await shepherdr.show('SHO-7');
+  assert.deepEqual({...shown, brief: shown.brief.length}, {
+    id: 'SHO-7', title: 'Read every run', status: 'ready', sub: '', machine: null, space: 'shop', branch: 'work/7-read', pr: 'https://github.com/o/shop/pull/12',
+    outcome: 'done', said: 'Runs are read.', facts: 'PR #12 · checks passed', brief: 'Read every run. '.repeat(700).trim().length,
+  }, 'put together from its pieces');
+  assert.ok(board.calls().some(args => args.includes('--revision')), 'read in pieces');
+  assert.equal(await shepherdr.report('SHO-7', {space: 'shop'}), '/data/67/1.html');
+  const added = await shepherdr.add(shepherdr.addWords({title: 'CSV export', brief: 'b', space: 'shop'}));
+  assert.equal(added.id, 'SHO-90');
+  await assert.rejects(shepherdr.run(['task', 'archive', 'SHO-7']), /Only a coordinator/, 'its refusal is the error');
+  board.set({version: '2.1', outside: true});
+  await assert.rejects(shepherdr.tasks(), error => outsideSession(error.message), 'outside its sessions it answers nobody');
+});
+
 test('the context card\'s board: the space of the repo, the branch\'s task with its pull request, the others counted', async () => {
   const dir = scratch('pair-board-');
   const repo = join(dir, 'shop');
@@ -158,6 +195,7 @@ test('the context card\'s board: the space of the repo, the branch\'s task with 
 test('the board\'s agent launches are told apart from the user\'s commands', () => {
   assert.equal(boardLaunch('claude --session-id 1 --settings /home/u/.shepherdr/hooks/BDY-7-agent.settings.json'), true);
   assert.equal(boardLaunch('claude --append-system-prompt-file /home/u/.shepherdr/box/prompts/BDY-7.md'), true);
+  assert.equal(boardLaunch('claude --settings /home/u/.shepherdr/sessions/cdc2.settings.json --append-system-prompt-file /home/u/.shepherdr/sessions/cdc2.instructions.md -- Brief'), true, 'as Shepherdr 2.1 starts one');
   assert.equal(boardLaunch('claude'), false);
   assert.equal(boardLaunch('make test'), false);
   assert.equal(boardLaunch('shepherdr task tell BDY-25 go'), false, 'the user working the board is the user');

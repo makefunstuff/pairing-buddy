@@ -16,6 +16,7 @@ import {LEVELS} from './config.mjs';
 import {ledgerText} from './ledger.mjs';
 import {readMessages, sendMessage} from './protocol.mjs';
 import {tmuxOf} from './tmux.mjs';
+import {herdrOf} from './herdr-core.mjs';
 
 /** The commands of the chat, as [name, arguments, what it does]: the help, the menu `/` opens, and Tab complete them. */
 export const COMMANDS = [
@@ -169,9 +170,7 @@ function linkDaemon(socketPath, on, {cwd = process.cwd(), env = process.env} = {
     role: 'chat',
     cwd,
     resume,
-    herdr: env.HERDR_SOCKET_PATH
-      ? {socket: env.HERDR_SOCKET_PATH, workspace: env.HERDR_WORKSPACE_ID, pane: env.HERDR_PANE_ID}
-      : null,
+    herdr: herdrOf(env), // herdr's pane or herdr-core's terminal the chat runs in, if any
     tmux: tmuxOf(env),
   });
   link.send = message => sendMessage(link.socket, message);

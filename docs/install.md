@@ -9,7 +9,8 @@ description: "Install Pair: what it needs, the daemon and the Neovim plugin, a c
 - Node.js 22.19 or newer
 - Neovim 0.11 or newer
 - [herdr](https://herdr.dev), the best home for Pair: the chat pane beside Neovim, your terminals watched with their
-  output, Scout's pane below the chat. Without it all of Pair still works inside Neovim
+  output, Scout's pane below the chat. The older herdr (panes) and herdr-core with the Herdr window (terminals) both
+  work, told apart by themselves ([herdr.md](herdr.md#which-herdr)). Without either, all of Pair still works inside Neovim
   ([neovim.md](neovim.md#without-herdr)).
 - For Scout: `bash` and [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg`); optionally [bubblewrap](https://github.com/containers/bubblewrap) (`bwrap`), to run Pair's commands in [a sandbox](scout.md#the-sandbox)
 - Optional, for the [context card](neovim.md#what-it-knows-the-context-card), the goal and

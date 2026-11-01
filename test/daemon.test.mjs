@@ -10,6 +10,7 @@ import {startDaemon} from '../src/daemon.mjs';
 import {requestDaemon} from '../src/protocol.mjs';
 import {openStore} from '../src/store.mjs';
 import {client} from './daemon-client.mjs';
+import {fakeApp, fakeCore} from './fake-core.mjs';
 import {fakeHerdr} from './fake-herdr.mjs';
 import {scratch} from './temp.mjs';
 
@@ -194,6 +195,45 @@ test('in Scout, Pair runs tests in its own pane, asks before deleting and is ref
     chat.close();
     await daemon.close();
     await herdr.close();
+  }
+});
+
+test('in a herdr-core terminal, Scout runs tests in a terminal the core starts beside the chat', {timeout: 20_000}, async () => {
+  const project = scratch('pair-project-');
+  const config = testConfig(scratch('pair-data-'));
+  const dir = scratch('pair-core-');
+  const coreSocket = join(dir, 'core.sock');
+  const core = await fakeCore(coreSocket, {commands: {'npm test': {output: 'Tests: 1 passed, 1 total', exit: 0}}});
+  mkdirSync(join(dir, 'app'));
+  const app = fakeApp(join(dir, 'app'));
+  const {partner, pairModels} = scriptedModels();
+  const daemon = await startDaemon(config, {pairModels, probe: answers, log: () => {}, appCommand: app.command});
+  const editor = client(config.socket, {type: 'hello', role: 'editor', cwd: project});
+  const chat = client(config.socket, {type: 'hello', role: 'chat', cwd: project, herdr: {kind: 'core', socket: coreSocket, pane: 't2', session: null, appHome: null}});
+  try {
+    await chat.next(message => message.type === 'welcome');
+    chat.send({type: 'goal', text: 'pass the tests'});
+    chat.send({type: 'role', role: 'scout'});
+    await editor.next(message => message.type === 'role' && message.role === 'scout');
+    let results;
+    partner.setResponses([
+      fauxAssistantMessage([fauxToolCall('run', {command: 'npm test'})], {stopReason: 'toolUse'}),
+      context => { results = context.messages.filter(message => message.role === 'toolResult').map(message => message.content[0].text); return fauxAssistantMessage([fauxText('All pass.')]); },
+    ]);
+    chat.send({type: 'ask', text: 'run the tests'});
+    await chat.next(message => message.text === 'All pass.');
+    assert.match(results.at(-1), /^exit 0/);
+    const [scout] = core.started;
+    assert.equal(scout.labels['herdr.space'], 'sp1', 'in the chat\'s space of the window');
+    assert.deepEqual(core.sent.map(([, text]) => text), ['npm test'], 'only Pair\'s own terminal was typed into');
+    chat.send({type: 'role', role: 'navigator'});
+    await editor.next(message => message.type === 'role' && message.role === 'navigator');
+    assert.equal([...core.terminals.values()].at(-1).state, 'finished', 'Pair\'s terminal ends with the switch back');
+  } finally {
+    editor.close();
+    chat.close();
+    await daemon.close();
+    await core.close();
   }
 });
 

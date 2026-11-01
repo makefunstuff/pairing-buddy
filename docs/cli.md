@@ -4,8 +4,9 @@
 
 ## `pair`
 
-Opens the chat pane next to the current herdr pane, starting the daemon if it is not running. Outside herdr it runs
-the chat right there, like `pair chat`.
+Opens the chat pane next to the current herdr pane, starting the daemon if it is not running. In a herdr-core terminal
+that the Herdr window shows, the core starts the chat in a terminal of the same space and tab, beside it
+([herdr.md](herdr.md#herdr-core-and-the-herdr-window)). Anywhere else it runs the chat right there, like `pair chat`.
 
 ## `pair chat`
 

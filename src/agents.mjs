@@ -1,12 +1,14 @@
-// Your other agents, in one place: the tasks of the work board (Shepherdr) and the agents running in herdr's panes,
-// polled every few seconds. Pair only reads them: the board through board.mjs, herdr through `agent.list`, and git for
-// where each task's worktree is. What it does is focus an agent's pane, and find what a task left behind (its report
+// Your other agents, in one place: the tasks of the work board (Shepherdr) and the agents running in herdr's panes or
+// herdr-core's terminals, polled every few seconds. Pair only reads them: the board through board.mjs, herdr through
+// `agent.list`, herdr-core through `terminal.list` (herdr-core.mjs), and git for where each task's worktree is. What it
+// does is focus an agent's pane (herdr-core's through the Herdr window), and find what a task left behind (its report
 // or pull request, its branch's diff, its worktree) when you ask.
 import {existsSync} from 'node:fs';
 import {basename} from 'node:path';
 import {Board} from './board.mjs';
 import {gitBaseBranch, gitBranchDiff, gitWorktrees} from './git.mjs';
 import {herdrRequest} from './herdr.mjs';
+import {coreAgents, HerdrApp} from './herdr-core.mjs';
 
 const POLL_MS = 5000;
 const RECENT_MS = 12 * 3600_000; // a task you saw finish stays in the list this long
@@ -29,10 +31,14 @@ export function taskStatus(task) {
   return ['work', 'merging'].includes(task.status) ? 'working' : 'waiting';
 }
 
-/** What a herdr agent's lifecycle state means: a question or approval on its screen, at work, or finished. */
+/**
+ * What a herdr agent's lifecycle state means: a question or approval on its screen, at work, or finished. herdr-core's
+ * agents may also say `error`.
+ */
 export function agentStatus(agent) {
   if (agent.agent_status === 'blocked') return 'needs';
   if (agent.agent_status === 'working') return 'working';
+  if (agent.agent_status === 'error') return 'failed';
   return 'done'; // idle, done, unknown: it waits for input
 }
 
@@ -90,12 +96,12 @@ async function inTurns(items, each) {
 export class AgentBoard {
   /**
    * `board` is the board's command (`shepherdr`), or null for none. `onChange({news, gone})` hears what changed after
-   * each poll. herdr's agents are read once `useHerdr(socket)` names herdr's socket. Nothing is polled while
+   * each poll. herdr's agents are read once `useHerdr({kind, socket})` names herdr's or herdr-core's socket. Nothing is polled while
    * `wanted()` says no session listens.
    */
-  constructor({board = 'shepherdr', onChange = () => {}, wanted = () => true, log = () => {}, pollMs = POLL_MS}) {
-    Object.assign(this, {board, onChange, wanted, log, pollMs});
-    this.socketPath = null;
+  constructor({board = 'shepherdr', onChange = () => {}, wanted = () => true, log = () => {}, pollMs = POLL_MS, appCommand = 'herdr-app'}) {
+    Object.assign(this, {board, onChange, wanted, log, pollMs, appCommand});
+    this.herdr = null; // {kind: 'herdr'|'core', socket, app}: where the agents are read
     this.items = null; // the last poll's list; null before the first, and again while no session listens
     this.read = {board: [], herdr: [], spaces: []}; // what each source last answered
     this.spacesAt = 0;
@@ -110,8 +116,15 @@ export class AgentBoard {
     return this.adapter;
   }
 
-  useHerdr(socketPath) {
-    this.socketPath ??= socketPath;
+  /** The first chat in herdr or herdr-core says where (`herdr`, from herdrOf): its agents are read from then on. */
+  useHerdr(herdr) {
+    if (this.herdr || !herdr?.socket) return;
+    this.herdr = {kind: herdr.kind ?? 'herdr', socket: herdr.socket, app: herdr.kind === 'core' ? new HerdrApp({command: this.appCommand, env: {HC_SESSION: herdr.session, HERDR_APP_HOME: herdr.appHome}}) : null};
+  }
+
+  readAgents() {
+    const {kind, socket} = this.herdr;
+    return kind === 'core' ? coreAgents(socket) : herdrRequest(socket, 'agent.list').then(({agents}) => agents);
   }
 
   start() {
@@ -163,7 +176,7 @@ export class AgentBoard {
       await this.source('spaces', () => board.spaces());
       this.spacesAt = Date.now();
     }
-    const agents = this.socketPath ? await this.source('herdr', async () => (await herdrRequest(this.socketPath, 'agent.list')).agents) : [];
+    const agents = this.herdr ? await this.source('herdr', () => this.readAgents()) : [];
     const tasks = await this.inFull(listed);
     const items = agentItems({tasks, agents});
     if (this.items) {
@@ -214,11 +227,12 @@ export class AgentBoard {
     return (this.items ?? []).filter(item => item.kind !== 'task' || item.status !== 'done' || now - (this.finished.get(item.key) ?? 0) < RECENT_MS);
   }
 
-  /** Brings the agent's pane to the front in herdr; false when it has no pane open now. */
+  /** Brings the agent's pane to the front in herdr, or in the Herdr window for herdr-core; false when it has none. */
   async focus(key) {
     const item = this.items?.find(other => other.key === key);
-    if (!item?.pane || !this.socketPath) return false;
-    await herdrRequest(this.socketPath, 'agent.focus', {target: item.pane});
+    if (!item?.pane || !this.herdr) return false;
+    if (this.herdr.kind === 'core') await this.herdr.app.focus(item.pane);
+    else await herdrRequest(this.herdr.socket, 'agent.focus', {target: item.pane});
     return true;
   }
 

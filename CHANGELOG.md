@@ -9,6 +9,17 @@ release is cut.
 
 ### Added
 
+- **Pair works on herdr-core and Shepherdr 2.1 as on herdr and Shepherdr 2.0**, and tells which one it is in from the
+  terminal's environment, with nothing to configure (`HERDR_SOCKET_PATH` for herdr; `HC_SOCKET` and `HC_TERMINAL_ID`
+  for herdr-core). On herdr-core, `pair` opens the chat in a terminal beside yours in the Herdr window; Pair watches
+  the terminals of that space, takes the focus from the window (`herdr-app status`), runs Scout and the tests on save
+  in a terminal of its own, lists the terminals that report their status as your other agents, and `Alt-a` shows one
+  in the window. `pair doctor` says which herdr it found and which Shepherdr answers. The board reads 2.1's task
+  pages, its JSON spaces, its long `task show` in pieces, its artifact lines and its `task add` answer. What differs,
+  and what Pair cannot do on herdr-core (the Driver's `type`; focus without the window; Shepherdr 2.1 outside its
+  sessions), is in [herdr.md](docs/herdr.md#herdr-core-and-the-herdr-window), [agents.md](docs/agents.md#shepherdr-20-and-21)
+  and [limitations.md](docs/limitations.md#herdr-core).
+
 - **Pair reads along: a "fresh code" moment.** When you finish a function or hunk of three lines or more (you save, or
   move away from it for a while), the Watcher reads just those lines for a likely bug, and if it clears the bar Pair says one line
   at your next break, before a test finds it. Bugs only, not style; never while you type; the same speak gate, talk

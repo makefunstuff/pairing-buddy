@@ -941,7 +941,7 @@ test('without Pair\'s pane, a save says once in the chat why the tests did not r
   pair.receive({kind: 'save', file: join(root, 'a.go')});
   await until(() => sent.length >= 3, 'both saves');
   assert.deepEqual(sent.filter(message => message.to === 'chat').map(message => message.text), [
-    'Pair could not run `go test ./...`: tests on save need Pair\'s own pane: run `pair` inside herdr, or :Pair start in Neovim.',
+    'Pair could not run `go test ./...`: tests on save need Pair\'s own pane: run `pair` inside herdr or a Herdr window (herdr-core), or :Pair start in Neovim.',
   ]);
   assert.deepEqual(tests().at(-1), {to: 'editors', type: 'tests', state: 'error', label: 'go test ./...', text: 'needs herdr or Neovim'});
 });

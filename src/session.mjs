@@ -1464,13 +1464,13 @@ export class PairSession {
   }
 
   /**
-   * Switches Pair's role; true when it did. Scout needs Pair's own pane (in herdr or Neovim), which opens with the switch
+   * Switches Pair's role; true when it did. Scout needs Pair's own pane (in herdr, herdr-core or Neovim), which opens with the switch
    * and closes with the switch back to Navigator. Driver needs Neovim, where any key takes the wheel back. `quiet`:
    * the chat gets no role line (a one-step hand-over, whose edit and check say enough).
    */
   async setRole(role, {quiet = false} = {}) {
     if (role === 'scout' && !this.scout) {
-      this.message('system', 'Scout needs its own pane: run `pair` inside herdr, or :Pair start in Neovim.');
+      this.message('system', 'Scout needs its own pane: run `pair` inside herdr or a Herdr window (herdr-core), or :Pair start in Neovim.');
       return false;
     }
     if (role === 'scout') {
@@ -2065,7 +2065,7 @@ export class PairSession {
   async inPane(command, {gen = false, shown = null} = {}) {
     // Also covers a turn that started as Scout when the user has switched back since: its pane is closed.
     if (!gen && !['scout', 'driver'].includes(this.role)) throw new Error('Searching and running need the Scout role; the user can switch with /scout.');
-    if (!this.scout) throw new Error('Pair has no pane of its own: run `pair` inside herdr, or :Pair start in Neovim');
+    if (!this.scout) throw new Error('Pair has no pane of its own: run `pair` inside herdr or a Herdr window (herdr-core), or :Pair start in Neovim');
     if (!gen && ++this.paneUses > PANE_USES_PER_TURN) throw new Error(`That is ${PANE_USES_PER_TURN} commands for this question. Answer with what you found.`);
     const result = await this.scout.run(command, {shown});
     this.receive({kind: 'scout_run', cmd: shown ?? command, exit: result.exit, output: result.output});
