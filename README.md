@@ -116,6 +116,8 @@ your keys and logins).
   file, undo the request as one; Pair's own edits carry their origin, and taken code is marked `┊` until you own it;
   `/gen board` hands a request to the board as a task, its brief built from yours, and `:Pair review` opens a task's
   branch as a review to keep pieces of
+- [Search by meaning](docs/meaning.md): `Alt-s` finds code by what you mean, not only its words, in Telescope,
+  snacks.picker or fzf-lua, from a local EmbeddingGemma 2 index Pair builds in the background
 - [Push-to-talk](docs/voice.md): ask aloud, heard by whisper.cpp on your CPU or an OpenRouter model, with answers
   read aloud when you are away
 - [Models and providers](docs/models.md): local servers, API keys, subscription logins, one model for both roles,

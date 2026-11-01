@@ -21,6 +21,7 @@ The pictures are the plugin and the daemon as shipped, in a clean Neovim with th
 - **[The board: hand a task over, review it back](board.md)**, 6 minutes: how do I hand a big job to the board, and review it back?
 - **[Several worktrees](worktrees.md)**, 3 minutes: how do I work on two things in one repository at once?
 - **[Voice](voice.md)**, 5 minutes: how do I ask Pair aloud?
+- **[Search by meaning](search-by-meaning.md)**, 3 minutes: how do I find code when I do not know what it is called?
 
 The whole reference starts at [How it works](../how-it-works.md); every key is in the
 [Neovim plugin reference](../neovim-plugin.md#keys) and every command in [Commands](../cli.md).

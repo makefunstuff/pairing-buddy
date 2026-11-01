@@ -14,6 +14,7 @@ import {coreRequest, coreStatus, herdrOf, HerdrApp, SPACE} from './herdr-core.mj
 import {listModels, shareServer, SWAP_FACTOR, SWAP_MS} from './loaded-model.mjs';
 import {createDecider, probeDecision} from './decision.mjs';
 import {createDecisionModel, createPairModels, knownProviders} from './models.mjs';
+import {meaningDir, MODEL, modelReady, pythonOf, RUNTIME, runtimeOf} from './embedder.mjs';
 import {FAST_MS, SLOW_MS} from './pace.mjs';
 import {levelGroups, probeModel, probeThinking} from './probe.mjs';
 import {requestDaemon} from './protocol.mjs';
@@ -66,6 +67,7 @@ export async function* doctor({
   if (keyVariables(config).length) yield keysCheck(keyVariables(config), env, serviceEnv);
   yield paneCheck(config.scoutPane);
   yield await voiceCheck(config.voice);
+  yield await meaningCheck(config, status);
   yield* modelChecks(config, status, credentials);
   yield await decisionCheck(config, status, credentials);
 }
@@ -263,6 +265,37 @@ export async function voiceCheck(voice, found = name => onPath(name, process.env
     if (speech) reads = `, and \`${speech}\` reads answers aloud when you are away`;
   }
   return ok('voice', `${records} records, ${hears}${reads}`);
+}
+
+/** What to run for search by meaning's runtime: a venv in Pair's data folder, where Pair looks for it. */
+export const runtimeInstall = dataDir => {
+  const venv = join(meaningDir(dataDir), 'venv');
+  return `python3 -m venv ${tilde(venv)} && ${tilde(venv)}/bin/pip install ${RUNTIME}`;
+};
+
+/**
+ * Search by meaning (see meaning.mjs): off is fine, and says what turning it on takes; on, its model must be the
+ * checked download and its Python must have LiteRT-LM. With the daemon running, each open project's index too.
+ */
+export async function meaningCheck(config, status, {runtime = runtimeOf} = {}) {
+  if (config.meaning === false) return ok('meaning', 'search by meaning is off in the config ("meaning": false)');
+  const python = pythonOf(config.meaning, config.dataDir);
+  const found = await runtime(python);
+  const has = found.version ? `LiteRT-LM ${found.version} in ${tilde(python)}` : null;
+  if (!modelReady(config.dataDir)) {
+    const needs = has ? `${has} is ready` : `it also needs LiteRT-LM: ${runtimeInstall(config.dataDir)}`;
+    return ok('meaning', `search by meaning is off: :Pair find on downloads ${MODEL.name} (165 MB, once); ${needs}`);
+  }
+  if (!has) return fail('meaning', `${MODEL.name} is downloaded, but ${found.problem}: ${runtimeInstall(config.dataDir)} (or set meaning.python)`);
+  const live = status?.meaning;
+  const model = `${MODEL.name} (revision ${MODEL.revision.slice(0, 7)}, SHA-256 checked) on ${has}`;
+  if (live?.problem) return warn('meaning', `${model}, but the embedder fails: ${live.problem}`);
+  const indexes = (live?.indexes ?? []).map(index => {
+    const share = index.chunks ? Math.floor(100 * index.embedded / index.chunks) : 100;
+    return `${basename(index.root)}: ${count(index.files, 'file')}, ${count(index.chunks, 'chunk')}${share < 100 ? ` (${share}% built)` : ''}, ${(index.bytes / (1 << 20)).toFixed(1)} MB`;
+  });
+  const speed = live?.msPerChunk ? `, ${Math.round(live.msPerChunk)} ms a chunk` : '';
+  return ok('meaning', `${model}${indexes.length ? `; ${indexes.join('; ')}` : ''}${speed}`);
 }
 
 const DOCTOR_OPENROUTER_MS = 10_000;

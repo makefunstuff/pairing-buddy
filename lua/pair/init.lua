@@ -21,6 +21,7 @@ local genfiles = require('pair.genfiles')
 local gentry = require('pair.gentry')
 local listen = require('pair.listen')
 local margin = require('pair.margin')
+local meaning = require('pair.meaning')
 local owning = require('pair.owning')
 local pane = require('pair.pane')
 local merge = require('pair.merge')
@@ -39,7 +40,8 @@ local ns = draw.ns
 -- Alt-j goes where Pair points. Alt-u and Alt-n rate Pair's last unasked remark: useful, or noise. Hold Alt-t to
 -- speak to Pair (push-to-talk, see listen.lua). Alt-a goes to the agent whose news Pair relayed. Alt-? asks for the
 -- idea behind Pair's words under your line, and then opens its link to the docs. In a note's margin, Alt-d logs a
--- decision and Alt-l opens the code a mark links to. Alt-g asks Pair for code (/gen, see gen.lua).
+-- decision and Alt-l opens the code a mark links to. Alt-g asks Pair for code (/gen, see gen.lua). Alt-s searches
+-- the project by meaning (see meaning.lua).
 local config = {
   socket = nil, debounce_ms = 2000, max_points = 5, motion = true, glyphs = {},
   accept_key = '<M-y>', jump_key = '<M-j>', useful_key = '<M-u>', noise_key = '<M-n>', listen_key = '<M-t>',
@@ -53,6 +55,8 @@ local config = {
   agents_open_key = '<M-o>', -- on the relayed line of a board task: opens its report or pull request
   agents_review_key = '<M-r>', -- on the relayed line of a board task ready to merge: its branch as a review
   gen_key = '<M-g>', -- asks Pair for code, in Normal and Visual mode
+  meaning_key = '<M-s>', -- searches the project by meaning; in Visual mode, for the selected words
+  meaning_picker = 'auto', -- or 'telescope', 'snacks', 'fzf-lua', 'select': where search by meaning shows what it found
   gen_input = 'ui', -- or 'cmdline': the request and its questions always on Neovim's own prompt, not vim.ui's
   gen_preview_lines = 30, -- a /gen block taller than this shows in a preview window
   try_run_key = '<LocalLeader>r', -- in a /gen try's sample: runs it again in Pair's pane; in a scaffold's copy: checks it
@@ -1242,6 +1246,8 @@ local handlers = {
   end,
   context = card.update,
   trail = function(message) trail.show(message, function() send({type = 'forget_trail'}) end) end,
+  meaning = meaning.on_results,
+  meaning_state = meaning.on_state,
   margin = margin.show,
   decision_log = margin.log,
   tasks = function(message) tasks.show(message, send) end,
@@ -1514,6 +1520,14 @@ local commands = {
   end,
   jump = function() M.jump() end,
   trail = function() send({type = 'trail'}) end,
+  -- Search by meaning: `:Pair find <words>` (without words it asks for them); `:Pair find on` downloads its model
+  -- once and indexes the project, `:Pair find off` deletes them again.
+  find = function(arg)
+    if not M.connect() then return vim.notify('Pair: not connected; :Pair find again once it is', vim.log.levels.WARN) end
+    if arg == 'on' then return meaning.on() end
+    if arg == 'off' then return meaning.off() end
+    meaning.find(arg)
+  end,
   runs = function() send({type = 'runs'}) end,
   accept = M.accept,
   dismiss = M.dismiss,
@@ -1650,6 +1664,7 @@ function M.setup(opts)
   owning.setup({send = send, event = event, redraw_status = redraw_status, connected = function() return state.channel ~= nil end})
   gentry.setup({send = send, run_key = config.try_run_key})
   overlap.setup({send = send, winbar = config.board_winbar})
+  meaning.setup({picker = config.meaning_picker}, {send = send})
   style.apply()
   local group = vim.api.nvim_create_augroup('pair', {clear = true})
   local function restyle()
@@ -1710,6 +1725,17 @@ function M.setup(opts)
         end
         gen.ask('', range, false)
       end, {desc = 'Ask Pair for code (/gen)'})
+    end
+  end
+  -- Alt-s searches the project by meaning: for words you type, or in Visual mode the selected ones; only where it is free.
+  for _, mode in ipairs({'n', 'x'}) do
+    if config.meaning_key and config.meaning_key ~= '' and vim.fn.maparg(config.meaning_key, mode) == '' then
+      vim.keymap.set(mode, config.meaning_key, function()
+        if not state.channel then return vim.notify('Pair: not connected, so no search by meaning; :Pair start connects') end
+        local words = mode == 'x' and meaning.selected() or ''
+        if mode == 'x' then vim.cmd('normal! \27') end
+        meaning.find(words)
+      end, {desc = 'Search the project by meaning (Pair)'})
     end
   end
   -- Push-to-talk, in Normal mode and, about the selected lines, in Visual mode; only where the key is free.

@@ -19,7 +19,7 @@ why while the daemon keeps the config it runs. Run `pair doctor` after a change 
 - **Between turns**: new `model` or `models` entries (and their thinking levels). An answer under way finishes on
   the old model; the next one is the new model's, in the same conversation.
 - **For new sessions**: `level` and `sessionRoots`. An open session keeps its own level; `/level` changes it.
-- **After a restart only**: `socket`, `dataDir`, `scoutPane`, and turning `agents` on or off.
+- **After a restart only**: `socket`, `dataDir`, `scoutPane`, `meaning`, and turning `agents` on or off.
 
 ## Settings
 
@@ -38,6 +38,7 @@ why while the daemon keeps the config it runs. Run `pair doctor` after a change 
 | `sessionRoots` | `[]` | Folders that are projects of their own, for a monorepo ([session roots](#session-roots)) |
 | `agents` | `true` | The relay of your other agents' news, from herdr and the `board`: `false` turns it off ([agents.md](agents.md#configure)) |
 | `voice` | off | Push-to-talk with whisper.cpp or OpenRouter ([below](#voice), [voice.md](voice.md)) |
+| `meaning` | `{}` | [Search by meaning](meaning.md): the Python that runs its embedder and the cores it may use, or `false` to turn it off for good ([below](#meaning)). It is on once its model is downloaded (`:Pair find on`) |
 | `scoutPane` | see [below](#scoutpane) | Pair's own pane: your rc file and the sandbox ([scout.md](scout.md#pairs-pane)) |
 | `taskCommand` | none | What `:Pair tasks` runs for each task you say yes to, as a list of words with `{title}` and `{description}`, never through a shell, for example `["gh", "issue", "create", "--title", "{title}", "--body", "{description}"]`. Without it, the tasks are copied as a checklist ([notes.md](notes.md#tasks-only-when-you-ask)) |
 | `gen` | see [below](#gen) | What one `/gen` request may do at most, its brief's note, and how long a try's folder stays and whether its runs reach the network ([gen.md](gen.md)) |
@@ -178,6 +179,18 @@ Off until set. Set up in [voice.md](voice.md#setup).
 | `baseUrl` | `"https://openrouter.ai/api/v1"` | Where the API is |
 
 At least one of `hear` and `speak` is needed.
+
+## `meaning`
+
+[Search by meaning](meaning.md) is off until its model is downloaded (the first `Alt-s` asks, or `:Pair find on`);
+these fields only say how it runs.
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `python` | `<dataDir>/meaning/venv/bin/python` if it is there, else `python3` | The Python whose `litert-lm-api` runs the embedder ([meaning.md](meaning.md#turn-it-on)) |
+| `threads` | `2` | The cores the embedder may use while it indexes and searches, at low priority |
+
+`"meaning": false` turns search by meaning off for good: nothing is downloaded or indexed, and `Alt-s` says so.
 
 ## Session roots
 

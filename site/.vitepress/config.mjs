@@ -109,6 +109,7 @@ export default defineConfig({
         {text: 'The board and its review', link: '/tutorials/board'},
         {text: 'Several worktrees', link: '/tutorials/worktrees'},
         {text: 'Voice', link: '/tutorials/voice'},
+        {text: 'Search by meaning', link: '/tutorials/search-by-meaning'},
       ]},
       {text: 'Models', items: [
         {text: 'Models and providers', link: '/models'},
@@ -130,6 +131,7 @@ export default defineConfig({
         {text: 'Notes in the margin', link: '/notes'},
         {text: 'The blank page', link: '/blank-page'},
         {text: 'Push-to-talk', link: '/voice'},
+        {text: 'Search by meaning', link: '/meaning'},
         {text: 'Your other agents', link: '/agents'},
         {text: 'Memory and feedback', link: '/memory'},
         {text: 'Tone', link: '/tone'},

@@ -308,6 +308,21 @@ function boardCommand(raw = 'shepherdr') {
 }
 
 /**
+ * Search by meaning (see meaning.mjs): false turns it off for good; else `{python, threads}`, the Python whose
+ * litert-lm-api runs the embedder (else a venv in Pair's data folder, else python3) and the cores it may use.
+ * It is on once its model is downloaded (`:Pair find on`).
+ */
+function meaningConfig(raw = {}) {
+  if (raw === false) return false;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('config: meaning must be false or an object, for example {"threads": 2}');
+  const {python, threads, ...rest} = raw;
+  if (Object.keys(rest).length) throw new Error(`config: meaning has no ${Object.keys(rest).join(', ')} (only python and threads)`);
+  if (python !== undefined && (typeof python !== 'string' || !python.trim())) throw new Error('config: meaning.python must be the path of a Python with litert-lm-api');
+  if (threads !== undefined && !(Number.isInteger(threads) && threads > 0)) throw new Error('config: meaning.threads must be a whole number above 0');
+  return {...(python ? {python: python.trim()} : {}), ...(threads ? {threads} : {})};
+}
+
+/**
  * `sessionRoots` lists the folders that each have their own session, for a monorepo where the git root is too coarse:
  * a folder, or `<folder>/*` for every folder in it.
  */
@@ -343,6 +358,7 @@ export function parseConfig(raw, {windows = {}} = {}) {
     socket: raw.socket ?? defaultSocketPath(),
     dataDir: raw.dataDir ?? join(xdg('XDG_STATE_HOME', '.local/state'), 'pairing-buddy'),
     testOnSave: testCommands(raw.testOnSave),
+    meaning: meaningConfig(raw.meaning), // search by meaning's Python and cores, or false (see meaning.mjs)
     sessionRoots: sessionRoots(raw.sessionRoots),
     scoutPane: scoutPaneConfig(raw.scoutPane), // Pair's pane: your rc file and the sandbox (see scout-shell.mjs)
     voice: voiceConfig(raw.voice), // push-to-talk; null when off (see voice.mjs)

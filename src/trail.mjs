@@ -71,20 +71,24 @@ const rg = (root, args) => new Promise(resolve => {
 /**
  * What the project has for each query of `trail`: file names and lines that contain its words, as ripgrep finds
  * them without regard to case. The Partner of a Navigator cannot search, and the words the code does not have
- * are half the story.
+ * are half the story. With search by meaning on, `meaning(query)` adds the chunks closest to what the words mean
+ * (see meaning.mjs): where the thing is when the code calls it something else.
  */
-export async function trailMatches(root, trail) {
+export async function trailMatches(root, trail, {meaning = null} = {}) {
   const queries = [...new Set(trail.map(search => search.query.trim()).filter(Boolean))];
   const files = (await rg(root, ['--files'])) ?? [];
+  let byMeaning = false;
   const lines = await Promise.all(queries.map(async query => {
     const named = files.filter(file => file.toLowerCase().includes(query.toLowerCase())).slice(0, MATCH_LINES);
     const found = await rg(root, ['--fixed-strings', '--ignore-case', '--line-number', '--no-heading', '--color', 'never',
       '--max-columns', '160', '--max-count', '2', '--', query, '.']);
-    if (!found) return `"${query}": could not search`;
+    const near = (await meaning?.(query).catch(() => null) ?? []).map(hit => `  by meaning: ${hit.file}:${hit.from}-${hit.to} ${hit.head}`);
+    if (near.length) byMeaning = true;
+    if (!found) return [`"${query}": could not search`, ...near].join('\n');
     const matches = found.slice(0, MATCH_LINES).map(line => `  ${line.replace(/^\.\//, '')}`);
     const more = found.length > MATCH_LINES ? `  (${found.length - MATCH_LINES} more)` : null;
-    if (!named.length && !matches.length) return `"${query}": nothing in the project`;
-    return [`"${query}":${named.length ? ` files ${named.join(', ')}` : ''}`, ...matches, ...(more ? [more] : [])].join('\n');
+    if (!named.length && !matches.length) return [`"${query}": nothing in the project`, ...near].join('\n');
+    return [`"${query}":${named.length ? ` files ${named.join(', ')}` : ''}`, ...matches, ...(more ? [more] : []), ...near].join('\n');
   }));
-  return `What the project has for those words (ripgrep, any case):\n${lines.join('\n')}`;
+  return `What the project has for those words (ripgrep, any case${byMeaning ? '; "by meaning": the chunks closest to what the words mean' : ''}):\n${lines.join('\n')}`;
 }

@@ -165,6 +165,16 @@ the work board.
   `Esc` in fzf-lua's default setup, which hides the picker, a resumed picker with fewer words, grep words with
   punctuation as you gave them, grep_cWORD and grep_cword, what you opened, and fzf-lua set to end fzf, in fzf's own
   bottom-up layout with a `>` pointer, where a result line starts like the prompt.
+- **Search by meaning.** Chunks of at most 60 lines and 1,500 characters cut at a blank line, identifiers split into
+  words, reciprocal rank fusion; the files git lists without what `.gitignore` leaves out, pictures or lockfiles; a
+  question worded unlike the code finding it by meaning and a word only the code has by keywords; the index kept in
+  the data folder, nothing embedded again after a restart, a save embedding only the changed chunk; off without the
+  model and nothing indexed, the build and the search in the ledger, the keywords still ranking (and the picker
+  saying why) when the embedder fails; the model kept only when its SHA-256 matches the pinned one; the helper loaded
+  once, a search going before the batches waiting, a missing runtime named; the trail's "by meaning" lines; the
+  config and `pair doctor`. In a headless Neovim, `Alt-s` offering the download and a no downloading nothing, `:Pair
+  find` opening the chosen chunk at its line through `vim.ui.select`, and a stand-in Telescope getting each chunk's
+  file and line. A fake embedder stands in for the model (`test/meaning.test.mjs`, `test/meaning-nvim.test.mjs`).
 - **The context card and no ceremony.** The board task matched by repo and number (never another repo's task of the
   same number, nor a version branch), the board's agent launches left out of your commands, each source's rows and
   budget, a hidden source left out of what the Partner gets and raising no remark (no failed command with a hidden
@@ -322,6 +332,12 @@ mostly did, and twice it did not (a C file that needed `_POSIX_C_SOURCE` for `cl
 **The search trail.** `test/live/trail.test.mjs` plays the captures' Go project with a red test and three searches;
 the cue has to name the real cause in the code's own words. The trail alone, without the failing test, is run too,
 for the record.
+
+**Search by meaning.** `test/live/meaning.test.mjs` runs EmbeddingGemma 2 on LiteRT-LM for real when
+`PAIR_LIVE_MEANING=1`: no stack and no keys, only the model's download (into `PAIR_LIVE_MEANING_DATA`, else a temp
+folder) and `litert-lm-api` in `PAIR_LIVE_MEANING_PYTHON` (else the venv in that folder, else `python3`). It indexes six
+small files and asks six questions worded unlike them; each file has to come in the first three, and it prints each
+rank, how long a chunk and a search took.
 
 **The context card.** `test/live/context.test.mjs` gives the Partner a board task, buffers and a search: it has to
 name the task, know nothing of the search while the editor source is hidden, and name the file the search opened once

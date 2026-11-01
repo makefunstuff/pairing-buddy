@@ -20,6 +20,7 @@ description: "What Pair keeps and where: logins in auth.json, the rest in its da
 | `gen/` | The folders of [/gen try](gen.md#samples-gen-try-and-keep) samples, `gen/<project>-<hash>/try/<n>/`: what the model wrote and what its runs left there; and the copies of the project [/gen scaffold](gen.md#many-files-gen-scaffold) builds in, `gen/<project>-<hash>/<n>/` (with its manifest `<n>.json`), or with `--branch` a git worktree there. Each try or copy goes once it has not changed, run or been used for `gen.keepTries` days (7), or when you delete it (`x`); a worktree only when you delete it (`git worktree remove` works too). Safe to delete, apart from a worktree with commits of yours |
 | `panes/` | Pair's own pane: its shell's output log and each command's exit code, one folder per pane, removed when the pane closes ([herdr.md](herdr.md#pairs-own-pane-exact)) |
 | `voice/` | A [push-to-talk](voice.md) recording, only while whisper.cpp reads it (OpenRouter's is kept in memory only) |
+| `meaning/` | [Search by meaning](meaning.md), once you turn it on: its model (`embeddinggemma-2-text-270m.litertlm`, 165 MB, with its checksum note), each project's index in `meaning/index/` (256 numbers per chunk of code, about 1 KB, with the chunks' hashes, never their text), and the `venv/` for its runtime if you made it there. `:Pair find off` deletes the model and the indexes |
 | `daemon.log` | The daemon's log, when `pair` started it (under systemd it goes to the journal, under launchd to `~/Library/Logs/pairing-buddy.log`) |
 | `daemon.lock` | Makes sure one daemon owns the files above |
 
@@ -33,7 +34,8 @@ chose says (add only, add and delegate, delegate with a plan first, or delegate 
 archives the task, each on the pick that names it, and [`/brief sync`](gen.md#keeping-the-task-in-step-brief-sync)
 tells the branch's task what changed in the brief, on its pick too. What the board's working tasks change is read with
 git, never changed. Nothing leaves your machine
-except the requests to the model endpoints you configured (OpenRouter's voice too, when you set it), `gh pr view` for the
+except the requests to the model endpoints you configured (OpenRouter's voice too, when you set it), search by meaning's one
+model download from Hugging Face when you say yes to it ([meaning.md](meaning.md#why-this-model-and-runtime)), `gh pr view` for the
 [context card](neovim.md#what-it-knows-the-context-card) when `gh` is installed and, for a login, to the provider's
 sign-in service. Those requests carry your code: the Watcher gets each moment's text (your edits, a command's
 output, a test's failure), and the Partner the files and lines it reads, the diffs it suggests and your questions. With

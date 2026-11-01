@@ -40,9 +40,10 @@ export const runIn = cwd => command => new Promise(resolve => {
  * Partner's model can think. `voice` is the config's. `knownKeys`
  * (labels such as M-j) are the keys the plugin remembers you have used, which show without their first-use hints.
  * `setup` is more of the plugin's options, as Lua table fields. `board` is a fake board's command (none by default).
+ * `meaningWith` is search by meaning's fetch and embedder (see meaning.mjs).
  * `stop()` ends them all.
  */
-export async function pairInNvim(goal, {testOnSave, runs = false, thinks = false, voice, rtp = [], knownKeys = [], setup = '', board = null} = {}) {
+export async function pairInNvim(goal, {testOnSave, runs = false, thinks = false, voice, rtp = [], knownKeys = [], setup = '', board = null, meaningWith = {}} = {}) {
   const project = realpathSync(scratch('pair-nvim-'));
   writeFileSync(join(project, 'a.js'), 'const x = 1\nconst y = 2\nconst z = 3\n');
   const dataDir = scratch('pair-data-');
@@ -61,7 +62,7 @@ export async function pairInNvim(goal, {testOnSave, runs = false, thinks = false
   models.setProvider(watcher.provider);
   models.setProvider(partner.provider);
   const pairModels = {models, watcher: watcher.getModel(), partner: partner.getModel()};
-  let daemon = await startDaemon(config, {pairModels, probe: answers, log: () => {}});
+  let daemon = await startDaemon(config, {pairModels, probe: answers, log: () => {}, meaningWith});
   const herdrSocket = join(dataDir, 'herdr.sock');
   const herdr = await fakeHerdr(herdrSocket, {commands: testOnSave || runs ? runIn(project) : {}});
 
@@ -99,7 +100,7 @@ export async function pairInNvim(goal, {testOnSave, runs = false, thinks = false
     async restartDaemon({downMs = 0, probe = answers} = {}) {
       await daemon.close();
       await sleep(downMs);
-      daemon = await startDaemon(config, {pairModels, probe, log: () => {}});
+      daemon = await startDaemon(config, {pairModels, probe, log: () => {}, meaningWith});
     },
     async stop() {
       chat.destroy();
