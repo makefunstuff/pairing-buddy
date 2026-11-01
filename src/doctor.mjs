@@ -8,7 +8,9 @@ import {authPath, configPath, mostThinking, oneAtATime, replyTokens, sameModel, 
 import {SMALL_CONTEXT} from './context.mjs';
 import {loadSizedConfig} from './context-window.mjs';
 import {fileCredentialStore, readableByOthers} from './credentials.mjs';
+import {Board, outsideSession} from './board.mjs';
 import {herdrRequest} from './herdr.mjs';
+import {coreRequest, coreStatus, herdrOf, HerdrApp, SPACE} from './herdr-core.mjs';
 import {listModels, shareServer, SWAP_FACTOR, SWAP_MS} from './loaded-model.mjs';
 import {createDecider, probeDecision} from './decision.mjs';
 import {createDecisionModel, createPairModels, knownProviders} from './models.mjs';
@@ -59,6 +61,7 @@ export async function* doctor({
   yield connected ? ok('plugin', 'loaded in the connected Neovims') : pluginCheck(await nvimPlugin(env));
   if (status) yield editorsCheck(status);
   yield await herdrCheck(env);
+  yield await boardCheck(config.board, env);
   if (existsSync(auth)) yield loginsCheck(auth);
   if (keyVariables(config).length) yield keysCheck(keyVariables(config), env, serviceEnv);
   yield paneCheck(config.scoutPane);
@@ -141,18 +144,59 @@ export function editorsCheck(status) {
   return ok('neovim', `${count} connected, in ${connected.map(session => basename(session.root)).join(', ')}`);
 }
 
-export async function herdrCheck(env) {
-  if (!env.HERDR_SOCKET_PATH) {
-    return onPath('herdr', env)
-      ? warn('herdr', 'not checked here: run `pair doctor` in a herdr pane to check it')
+/**
+ * Which herdr this terminal is in, from its environment alone (herdrOf): herdr's pane (the older herdr, with panes and
+ * workspaces) or herdr-core's terminal (the newer one, `hc`), and whether it answers. In herdr-core, also whether the
+ * Herdr window shows this terminal (`app`, a HerdrApp): without it there is no focus and no pane beside the chat.
+ */
+export async function herdrCheck(env, {app = new HerdrApp({env: {HC_SESSION: env.HC_SESSION, HERDR_APP_HOME: env.HERDR_APP_HOME}})} = {}) {
+  const herdr = herdrOf(env);
+  if (!herdr) {
+    const installed = ['herdr', 'hc', 'herdr-core'].filter(name => onPath(name, env));
+    return installed.length
+      ? warn('herdr', `not checked here: run \`pair doctor\` in a herdr pane or a herdr-core terminal to check it (${installed.join(', ')} installed)`)
       : warn('herdr', 'not installed: Pair works without it, with `:Pair chat` in Neovim or `pair chat` in any terminal');
   }
   const started = Date.now();
+  if (herdr.kind === 'herdr') {
+    try {
+      const {panes} = await herdrRequest(herdr.socket, 'pane.list', {workspace_id: herdr.workspace});
+      return ok('herdr', `herdr (panes, HERDR_SOCKET_PATH) answers in ${Date.now() - started} ms, ${panes.length} panes in this workspace`);
+    } catch (error) {
+      return fail('herdr', `herdr (panes) does not answer on its socket (${error.message})`);
+    }
+  }
+  let status, here;
   try {
-    const {panes} = await herdrRequest(env.HERDR_SOCKET_PATH, 'pane.list', {workspace_id: env.HERDR_WORKSPACE_ID});
-    return ok('herdr', `answers in ${Date.now() - started} ms, ${panes.length} panes in this workspace`);
+    status = await coreStatus(herdr.socket);
+    here = await coreRequest(herdr.socket, 'terminal.get', {terminal: herdr.pane});
   } catch (error) {
-    return fail('herdr', `does not answer on its socket (${error.message})`);
+    return fail('herdr', `herdr-core (terminals, HC_SOCKET) does not answer on its socket (${error.message})`);
+  }
+  const found = `herdr-core ${status.version} (terminals, session ${herdr.session ?? 'default'}) answers in ${Date.now() - started} ms, ${count(status.live ?? 0, 'live terminal')}`;
+  const space = here.labels?.[SPACE];
+  if (!space) return warn('herdr', `${found}; no Herdr window shows terminal ${herdr.pane}: \`pair\` opens the chat right here, and Pair sees none of your other terminals`);
+  const focus = await app.focused(space).then(() => '`herdr-app status` answers for its focus', () => 'its focus cannot be read (`herdr-app status` does not answer), so Pair takes none of your terminals for the one you are in');
+  return ok('herdr', `${found}; the Herdr window shows terminal ${herdr.pane}, and ${focus}. The Driver cannot type into herdr-core terminals`);
+}
+
+/**
+ * Which Shepherdr the board's `command` is, by what `task list` answers: 2.0 (a list) or 2.1 (pages), 2.1 refusing
+ * outside the sessions it starts, or none installed.
+ */
+export async function boardCheck(command, env = process.env) {
+  if (!command) return ok('board', 'off ("board": null in the config)');
+  if (!command.includes('/') && !onPath(command, env)) return ok('board', `no Shepherdr (${command} is not installed): Pair works without a board`);
+  const board = new Board(command);
+  try {
+    const tasks = await board.tasks();
+    return ok('board', `Shepherdr ${board.version} (${command}): ${count(tasks.length, 'task')} not archived`);
+  } catch (error) {
+    if (error.code === 'ENOENT') return ok('board', `no Shepherdr (${command} is not installed): Pair works without a board`);
+    if (outsideSession(error.message)) {
+      return warn('board', `Shepherdr 2.1 (${command}) answers only inside the agent sessions it starts: Pair reads no tasks here, and a board pick's command is refused the same way`);
+    }
+    return warn('board', `${command} fails, so Pair reads no board: ${error.message.split('\n')[0]}`);
   }
 }
 

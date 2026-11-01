@@ -15,6 +15,7 @@ import {startDaemon} from '../src/daemon.mjs';
 import {doctor, nvimHasPlugin, tilde} from '../src/doctor.mjs';
 import {gitRoot} from '../src/git.mjs';
 import {herdrRequest} from '../src/herdr.mjs';
+import {herdrOf, openCoreChat} from '../src/herdr-core.mjs';
 import {terminalInteraction} from '../src/prompt.mjs';
 import {requestDaemon, sendMessage} from '../src/protocol.mjs';
 import {keyVariables, storeServiceEnv} from '../src/service-env.mjs';
@@ -90,7 +91,9 @@ async function ensureDaemon(config) {
   }
   mkdirSync(config.dataDir, {recursive: true, mode: 0o700});
   const log = openSync(join(config.dataDir, 'daemon.log'), 'a');
-  spawn(process.execPath, ['--disable-warning=ExperimentalWarning', SCRIPT, 'supervise'], {detached: true, stdio: ['ignore', log, log]}).unref();
+  // Never a Shepherdr agent session's own credential or routing: the daemon is yours, not that agent's.
+  const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith('SHEPHERDR_')));
+  spawn(process.execPath, ['--disable-warning=ExperimentalWarning', SCRIPT, 'supervise'], {detached: true, stdio: ['ignore', log, log], env}).unref();
   if (!(await waitFor(() => reachable(config.socket)))) throw new Error(`The daemon did not start; see ${join(config.dataDir, 'daemon.log')}`);
 }
 
@@ -268,10 +271,19 @@ async function runSupervised() {
   await supervisor.finished;
 }
 
+/**
+ * `pair`: the chat in a pane of its own beside this one, in herdr (a split) or in the Herdr window of herdr-core (a
+ * terminal the core starts in this terminal's space and tab); anywhere else, in this terminal.
+ */
 async function openChatPane(config) {
   await ensureDaemon(config);
-  if (!process.env.HERDR_ENV) return runChat(config.socket, {dataDir: config.dataDir});
+  const herdr = herdrOf(process.env);
   const env = Object.fromEntries(['PAIR_CONFIG', 'PAIR_SOCKET', 'PAIR_AUTH'].filter(name => process.env[name]).map(name => [name, process.env[name]]));
+  if (herdr?.kind === 'core') {
+    if (await openCoreChat(herdr, {argv: [process.execPath, SCRIPT, 'chat'], cwd: process.cwd(), env})) return;
+    return runChat(config.socket, {dataDir: config.dataDir}); // no Herdr window shows this terminal
+  }
+  if (!process.env.HERDR_ENV) return runChat(config.socket, {dataDir: config.dataDir});
   const {pane} = await herdrRequest(process.env.HERDR_SOCKET_PATH, 'pane.split', {
     target_pane_id: process.env.HERDR_PANE_ID, direction: 'right', ratio: 0.7, cwd: process.cwd(), env, focus: false,
   });
@@ -286,7 +298,7 @@ function report(args) {
   }});
   // The shell's pid names the terminal outside herdr: a Neovim :terminal's or a tmux pane's (src/pane-watch.mjs).
   const hook = {
-    cwd: process.cwd(), pane: process.env.HERDR_PANE_ID ?? null, tmux: process.env.TMUX_PANE ?? null,
+    cwd: process.cwd(), pane: process.env.HERDR_PANE_ID || process.env.HC_TERMINAL_ID || null, tmux: process.env.TMUX_PANE ?? null,
     shell: Number(values.shell) || null, keys: values.keys === true,
   };
   const message = values.ready ? {type: 'shell', ...hook}

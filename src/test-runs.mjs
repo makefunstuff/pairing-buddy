@@ -91,7 +91,7 @@ export class TestRuns {
     const saved = this.lastSaved;
     this.pending.clear();
     const pane = this.pane();
-    if (!pane) return this.report({state: 'error', label: this.label, saved, error: 'tests on save need Pair\'s own pane: run `pair` inside herdr, or :Pair start in Neovim', short: 'needs herdr or Neovim'});
+    if (!pane) return this.report({state: 'error', label: this.label, saved, error: 'tests on save need Pair\'s own pane: run `pair` inside herdr or a Herdr window (herdr-core), or :Pair start in Neovim', short: 'needs herdr or Neovim'});
     const controller = new AbortController();
     this.running = {stop: () => controller.abort()};
     const whole = this.wholeNext;

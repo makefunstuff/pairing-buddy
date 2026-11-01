@@ -1,6 +1,15 @@
 # What Pair gets from herdr
 
-Pair uses herdr's socket API (protocol 22, herdr 0.9.5) to see the user's terminal panes, to open its chat pane and to run Scout's commands in a pane of its own. This note lists what the API offers, what Pair does with it, what Pair does where it falls short, and what herdr would need to add.
+Pair uses herdr's socket API (protocol 22, herdr 0.9.5) to see the user's terminal panes, to open its chat pane and to run Scout's commands in a pane of its own. This note lists what the API offers, what Pair does with it, what Pair does where it falls short, and what herdr would need to add. The newer herdr, herdr-core with its `hc` command and the Herdr window, works differently; [its own section](#herdr-core-and-the-herdr-window) says how Pair uses it.
+
+## Which herdr
+
+Pair tells them apart by the environment of the terminal it starts in, with nothing to configure:
+
+- **herdr** (0.9.5, panes and workspaces): `HERDR_SOCKET_PATH`, `HERDR_WORKSPACE_ID`, `HERDR_PANE_ID`. It goes with Shepherdr 2.0.
+- **herdr-core** (`hc`, terminals such as `t6f`): `HC_SOCKET` (or `HC_TERMINAL_SOCKET`) and `HC_TERMINAL_ID`, with `HC_SESSION`. It goes with Shepherdr 2.1.
+
+When both are set (herdr started in a herdr-core terminal), herdr's panes are the inner ones and win. `pair doctor` says which one it found and whether it answers.
 
 ## What the API offers and how Pair uses it
 
@@ -64,3 +73,34 @@ A concrete proposal, in the API's own terms. Each part stands alone; the first d
 2. **Input activity.** `pane.input` events `{pane_id, at}` for keys and pastes from a client, at most a few a second, never with the keys themselves; or `last_input_at` in `pane.list` and `pane.get`. Pair would use it for the typing pause and the take-back in every pane, not only the focused one.
 3. **Output changes as a subscription.** `pane.output_changed` `{pane_id, revision}` subscribable per pane or per workspace, at most a few a second, and a foreground-process change in `pane.updated`. Pair would then poll nothing. The smallest step is already in the schema: `events.wait` with `{event: "pane_output_changed", pane_id, min_revision}`, answered once the pane's output revision passes `min_revision`, with `pane.read` returning that same output revision.
 4. **Longer reads.** `pane.read` with more than 1000 lines, or with a start line or revision to read from. Less needed with 1.
+
+## herdr-core and the Herdr window
+
+herdr-core (`hc`, checked against 0.1.16) runs terminals and keeps them alive; it has no panes, workspaces or focus.
+The Herdr window (`herdr-app`) shows a core's terminals in spaces, tabs and panes, and a terminal it shows carries the
+labels `herdr.space` and `herdr.tab`. The core's socket answers JSON-RPC 2.0, one request per line, in the same shape
+as herdr's, so Pair talks to both the same way ([src/herdr-core.mjs](../src/herdr-core.mjs)).
+
+| Need | herdr | herdr-core | How Pair does it on herdr-core |
+| --- | --- | --- | --- |
+| The user's terminals | the panes of the chat's workspace (`pane.list`) | `terminal.list` with the chat's `herdr.space` label | The terminals of the chat's space in the window. A chat no window shows (a core used without the window) has none |
+| Which one has focus | pushed (`pane.focused` events) | none; the window knows it | `herdr-app status` (its `space` and `focused_pane`, mapped to a terminal by `herdr-app ls`), twice a second while the session runs (less and less often, up to every 10 s, while no window answers); a window that shows another space gives no focus. Without a window, no terminal has focus |
+| Scrolled up | pushed (`pane.scroll_changed`) | none | never: a terminal counts as not scrolled |
+| Terminals coming, going, changing | pushed | pushed (`events.subscribe` with the space's label) | each event makes Pair look again |
+| The command running | `pane.process_info` | `foreground` in `terminal.get` (its pid is not the terminal's own program) | the same polling and shell hook as on herdr |
+| A command's output | `pane.read`, at most 1000 lines | `terminal.read`: the screen plus history | the same: cut from the line the command was typed on |
+| The chat pane | `pane.split` and `pane.send_text` | `terminal.run` with the window's labels | `pair` starts `pair chat` in a terminal of the same space and tab, which the window shows beside it; without a window, the chat runs in place |
+| Pair's own pane (Scout, tests on save) | `pane.split`, labelled `pair scout` | `terminal.run` with a line, labelled `pair.scout=<project>` | the terminal's program is Scout's shell; commands go in with `terminal.send` (pasted, then Enter), Ctrl-U and Ctrl-C with `terminal.keys`; closed with `terminal.kill` |
+| The Driver's `type` | `pane.send_text` without Enter | `terminal.send` always presses Enter | **not available**: a herdr-core terminal is never offered as the Driver's target, so nothing typed there runs |
+| Your other agents | `agent.list` | terminals whose program reports its status (OSC 7501: idle, working, done, blocked, error) | listed from `terminal.list` across the core, and Shepherdr 2.1's core beside it (below); `error` shows as failed |
+| Bring an agent to the front | `agent.focus` | none; the window does it | `herdr-app do agent.focus --terminal <t>` |
+| The shell hook's pane | `HERDR_PANE_ID` | `HC_TERMINAL_ID` | the hook reports either, and the terminal is also found by its shell's pid |
+
+`herdr-app` talks to the window that runs and never opens one; `HERDR_APP_HOME` of the chat's terminal picks the
+window, and a window that shows another space gives no focus.
+
+Shepherdr 2.1 runs its tasks' agents in a core session of its own, `shepherdr` (`<runtime>/herdr-core/shepherdr.sock`),
+which no window of the default session shows. When that socket is beside the chat's, Pair lists its agents too
+(`shepherdr:t5j`, titled by their `where` label, such as `pairing-buddy / PAIR-3`), read only; `Alt-a` cannot bring
+one to the front. A Shepherdr started with another `--core-session` is not found. Pair's sandbox hides the core's socket
+from Scout's commands, as it hides herdr's.

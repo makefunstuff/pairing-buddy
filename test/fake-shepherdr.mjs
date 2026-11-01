@@ -14,7 +14,7 @@ const fail = text => { process.stdout.write(text + '\n'); process.exit(1); };
 if (state.down) { process.stderr.write('Shepherdr is not running here\n'); process.exit(2); }
 // Options as Shepherdr's own parser (server/live/args.ts) reads them: --name=value, else --name and the next word,
 // unless it is a flag, the last word, or the next word starts with -- (then --name is a flag, without its value).
-const FLAGS = new Set(['json', 'later', 'archived', 'force']);
+const FLAGS = new Set(['json', 'later', 'archived', 'force']); // 2.1's --after and --from take a value
 const opts = {}, flags = new Set(), words = [];
 for (let i = 0; i < args.length; i++) {
   const a = args[i];
@@ -28,6 +28,55 @@ for (let i = 0; i < args.length; i++) {
 const opt = name => opts[name] ?? null;
 const spaceOf = task => task.place.split(':').slice(2).join(':');
 const [a0, a1, a2] = words;
+// Shepherdr 2.1 (state.version '2.1'), as its core CLI answers (server/core/tasks.ts, places.ts): JSON spaces, task
+// pages, task show in pieces past 24 KB, artifacts one space apart, and nothing at all outside its own sessions.
+if (state.version === '2.1') {
+  if (state.outside) { process.stderr.write('This standalone command has no legacy HTTP routing. Use the owning authenticated agent helper, or open the app. Use hc for core terminals and agents.\n'); process.exit(1); }
+  const machineOf = t => t.place.split(':')[1];
+  if (a0 === 'space' && a1 === 'list') {
+    const home = {id: 'p:here:~', name: 'home', home: true, machine: 'here', folder: '/home/me', base: 'main', prefix: 'TASK', mode: 'regular'};
+    out(JSON.stringify([home, ...state.spaces.map(s => ({id: 'p:here:' + s.name, machine: 'here', name: s.name, folder: s.path, base: 'main', prefix: s.key, mode: 'regular'}))], null, 2));
+  }
+  if (a0 === 'task' && a1 === 'list') {
+    const space = opt('space');
+    const tasks = state.tasks.filter(t => !t.archived && (!space || spaceOf(t) === space));
+    const size = state.pageSize ?? 50;
+    const start = opt('after') ? tasks.findIndex(t => t.id === opt('after')) + 1 : 0;
+    const rows = tasks.slice(start, start + size).map(t => ({id: t.id, name: t.title.slice(0, 32), status: t.status, place: t.place, machine: machineOf(t), sub: t.sub}));
+    out(JSON.stringify({tasks: rows, total: tasks.length, next: start + rows.length < tasks.length ? rows.at(-1).id : undefined}, null, 2));
+  }
+  if (a0 === 'task' && a1 === 'show') {
+    const t = state.tasks.find(each => each.id === a2);
+    if (!t) fail('No such task or unsupported task command');
+    const view = {id: t.id, localId: t.id, name: t.title, desc: t.desc ?? '', place: t.place, machine: machineOf(t), folder: '/wt/' + t.id, branch: t.branch, status: t.status, pr: t.pr, outcome: t.outcome, said: t.said, facts: t.facts, state: 'Working'};
+    const bytes = Buffer.from(JSON.stringify(view));
+    if (bytes.length <= (state.showMax ?? 24000) && opt('from') === null) out(JSON.stringify(view, null, 2));
+    const from = Number(opt('from') ?? 0), end = Math.min(bytes.length, from + 8192);
+    out(JSON.stringify({id: t.id, status: t.status, data: bytes.subarray(from, end).toString('utf8'), from, totalBytes: bytes.length, revision: 'r1', nextFrom: end < bytes.length ? end : undefined}));
+  }
+  if (a0 === 'artifact' && a1 === 'list') {
+    const space = opt('space');
+    // The oldest first, as 2.1 keeps them (store.all, ORDER BY rowid).
+    out((state.artifacts ?? []).filter(a => !space || a.space === space).reverse().map(a => a.id + ' v1 ' + a.title).join('\n') || 'No artifacts here yet.');
+  }
+  if (a0 === 'artifact' && a1 === 'show') {
+    const a = (state.artifacts ?? []).find(each => each.id === a2);
+    if (!a) fail('No such artifact');
+    out(a.id + ' “' + a.title + '” v1\nHTML: ' + a.html + '\nData: none\nVersions:\nv1 ' + a.by);
+  }
+  if (a0 === 'task' && a1 === 'add') {
+    const name = opt('space') ?? state.spaces[0].name;
+    const space = state.spaces.find(s => s.name === name);
+    if (!space) fail('Choose an unambiguous space within this session’s scope');
+    const id = space.key + '-' + (state.next ?? 90);
+    state.next = (state.next ?? 90) + 1;
+    state.tasks.push({id, title: a2, status: flags.has('later') ? 'todo' : 'work', place: 'p:here:' + space.name, desc: opt('brief')});
+    writeFileSync(dir + '/state.json', JSON.stringify(state));
+    out(id + ': ' + a2 + '\nBranch: work/' + id + '\nWorktree: /wt/' + id + '\nCore terminal: starting');
+  }
+  if (a0 === 'task' && a1 === 'tell') out('Saved for delivery through core');
+  if (a0 === 'task' && a1 === 'archive') fail('Only a coordinator changes this task control, when the human asks');
+}
 if (a0 === 'space' && a1 === 'list') out(['~  (home space)  /home/me', ...state.spaces.map(s => s.name + '  ' + s.key + '  ' + s.path + (s.github ? '  github:' + s.github : ''))].join('\n'));
 if (a0 === 'task' && a1 === 'list') {
   const space = opt('space');
@@ -81,7 +130,8 @@ fail('shepherdr (fake): no ' + args.join(' '));
 
 /**
  * Writes the fake board into `dir`, its state `state` ({spaces, tasks, artifacts}): {command, set(state), calls()},
- * where calls() lists the argument lists it got. Each task is {id, title, status, sub, place: 'p:here:<space>',
+ * where calls() lists the argument lists it got. `version: '2.1'` answers as Shepherdr 2.1 does (`outside: true`, as
+ * it does outside its own sessions; `pageSize`, `showMax` to make its pages small). Each task is {id, title, status, sub, place: 'p:here:<space>',
  * branch, pr: {number, url}, desc, said, facts}; each artifact {id, title, space, by: 'BDY-7 agent', html}, newest first.
  */
 export function fakeShepherdr(dir, state) {

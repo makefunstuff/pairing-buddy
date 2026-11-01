@@ -26,7 +26,7 @@ stand-ins: their agents move on once you start typing.*
   for you, and its question or title. `+2` says two more came at the same time; they are in the list. Then the keys:
   `M-a` for any line, and `M-o opens` for a board task's (the words go once you have used it).
 - **`Alt-a`** (`<M-a>`, the `agents_key` option) brings that agent's herdr pane to the front: herdr switches to
-  its workspace and tab. The line goes once you have been there, or when it is no longer true (someone answered the
+  its workspace and tab (on herdr-core, the Herdr window shows the agent: `herdr-app do agent.focus`). The line goes once you have been there, or when it is no longer true (someone answered the
   question, the task was merged). When the agent has no pane any more (a finished task's agent is gone), `Alt-a`
   puts the line away. A line that asks nothing of you (done, failed) also goes by itself after two minutes; one that
   needs you or is ready to merge stays.
@@ -135,11 +135,14 @@ pick that names them, and [`/brief sync`](gen.md#keeping-the-task-in-step-brief-
 too. Pair never runs `shepherdr merge`.
 
 - **herdr's agents**: `agent.list` over herdr's socket, which Pair knows from the chat pane, or from Neovim when it
-  runs in herdr. Every agent herdr recognises, in any workspace.
+  runs in herdr. Every agent herdr recognises, in any workspace. On herdr-core, the terminals of the chat's (or
+  Neovim's) core whose program reports what it does (`terminal.list`, OSC 7501): `blocked` needs you, `working`
+  works, `error` failed, the rest wait for you ([herdr.md](herdr.md#herdr-core-and-the-herdr-window)).
 - **The board**, if [Shepherdr](https://github.com/eliasstravik/shepherdr) (its command `shepherdr`) is
   installed, through its command with a list of words, never a shell: `shepherdr task list --json` for each task's
   status and status line, `shepherdr task show <id> --json` for its space, branch and pull request (read again only
-  when its status line changes), and `shepherdr space list` (every minute) for each space's folder. The task's
+  when its status line changes), and `shepherdr space list` (every minute) for each space's folder. Shepherdr 2.0
+  and 2.1 both answer ([below](#shepherdr-20-and-21)). The task's
   worktree is the one git lists for its branch (`git worktree list`), and its pane is that of the herdr agent working
   there. A task's own agents (the agent and its reviewer, in the task's worktree) show as the task, not twice.
 - A session opened in a task's own worktree leaves that task out: it does not tell an agent about itself.
@@ -148,6 +151,25 @@ Both are read every 5 seconds while a Neovim or chat pane is connected, and not 
 tasks change is read every 30 seconds ([above](#tasks-working-on-your-files)). A source that fails
 (no board installed, Shepherdr not running, herdr closed) is logged once and keeps what it last answered (nothing,
 for a board that is not installed), so the other source is still read and relayed.
+
+### Shepherdr 2.0 and 2.1
+
+Pair tells them apart by what `task list --json` answers, and reads both:
+
+| | Shepherdr 2.0 (on herdr, data in `~/.herdr`) | Shepherdr 2.1 (on herdr-core, `SHEPHERDR_HOME`) |
+| --- | --- | --- |
+| Who it answers | anyone with its command | only the agent sessions it starts: elsewhere it refuses (`no legacy HTTP routing`), and Pair reads no board ([limitations](limitations.md#the-board)) |
+| `task list --json` | a list of tasks, with `title` | a page `{tasks, total, next}` of at most 50, with `name`; Pair reads on with `--after <next>` |
+| A task's machine | named only for another machine's task | named for every task: Pair takes the machines of `space list` for this one |
+| `task show --json` | the task | the task, or past 24 KB pieces `{data, nextFrom, revision}`, read on with `--from` and `--revision` |
+| `space list` | lines `name  KEY  /path` | JSON `[{name, prefix, folder, machine, home}]` |
+| `artifact list` | `a7  v2  title  · space · 1h` | `3e62ac61 v1 title` |
+| `artifact show` | `… by BDY-7 agent.` and `  v1  2h  BDY-7 agent` | `v1 BDY-7 agent` |
+| `task add` | `Added BDY-7: title…` | `BDY-7: title` and its branch, worktree and terminal |
+| `task archive` | anyone | a coordinator only |
+| An agent's launch | `--settings ~/.shepherdr/…/hooks/…` | `--settings ~/.shepherdr/sessions/…` |
+
+The task statuses (`need`, `ready`, `merging`, `work`, `queued`, `todo`, `done`) are the same in both.
 
 ## Configure
 

@@ -142,7 +142,7 @@ test('the board is read through its command and git, herdr through agent.list; f
   const logged = [];
   const agents = new AgentBoard({board: board.command, onChange: change => changes.push(change), log: line => logged.push(line), pollMs: 60_000});
   try {
-    agents.useHerdr(join(dir, 'herdr.sock'));
+    agents.useHerdr({socket: join(dir, 'herdr.sock')});
     await agents.poll();
     assert.deepEqual(agents.items.map(item => [item.key, item.where, item.pane]), [['task:SHO-7', worktree, 'w7:p1'], ['task:SHO-6', null, null]],
       'its worktree, found by its branch, and the pane of the agent there');
@@ -189,7 +189,7 @@ test('what a task left behind: its report and pull request, its branch\'s diff a
   const herdr = await fakeHerdr(join(dir, 'herdr.sock'), {agents: [{pane_id: 'w9:p1', cwd: '/home/me/notes', agent: 'pi', agent_status: 'idle'}]});
   const agents = new AgentBoard({board: board.command, pollMs: 60_000});
   try {
-    agents.useHerdr(join(dir, 'herdr.sock'));
+    agents.useHerdr({socket: join(dir, 'herdr.sock')});
     await agents.poll();
     assert.deepEqual(await agents.leftBehind('task:SHO-7', 'open'), {links: [
       {label: 'its report', url: '/data/a1/1.html'},
@@ -212,6 +212,27 @@ test('what a task left behind: its report and pull request, its branch\'s diff a
   }
 });
 
+test('Shepherdr 2.1: what task show says (branch, pull request, full title) is not lost to the list\'s row', async () => {
+  const dir = realpathSync(scratch('pair-board-'));
+  const {repo, worktree} = taskRepo(dir);
+  const title = 'Read every run, and every one of its retries too';
+  const board = fakeShepherdr(dir, {
+    version: '2.1', spaces: [{name: 'shop', key: 'SHO', path: repo}],
+    tasks: [{id: 'SHO-7', title, status: 'ready', place: 'p:here:shop', branch: 'work/7-read-every-run', pr: {number: 12, url: 'https://github.com/o/shop/pull/12'}}],
+    artifacts: [{id: '67baddc7', title: 'SHO-7: Proof', space: 'shop', by: 'SHO-7 agent', html: '/data/67/1.html'}],
+  });
+  const agents = new AgentBoard({board: board.command, pollMs: 60_000});
+  await agents.poll();
+  const [item] = agents.items;
+  assert.deepEqual([item.title, item.branch, item.pr, item.where, item.machine], [title, 'work/7-read-every-run', 'https://github.com/o/shop/pull/12', worktree, null]);
+  await agents.poll();
+  assert.equal(agents.items[0].branch, 'work/7-read-every-run', 'and at the next poll, when task show is not read again');
+  assert.deepEqual(await agents.leftBehind('task:SHO-7', 'open'), {links: [
+    {label: 'its report', url: '/data/67/1.html'}, {label: 'its pull request #12', url: 'https://github.com/o/shop/pull/12'},
+  ]});
+  assert.match((await agents.leftBehind('task:SHO-7', 'diff')).diff, /^\+func Every\(\) \{\}$/m);
+});
+
 test('without a board, herdr\'s agents are still read and relayed; a board that comes and goes keeps its last list', async () => {
   const dir = scratch('pair-board-');
   const herdr = await fakeHerdr(join(dir, 'herdr.sock'), {agents: [{pane_id: 'w2:p1', cwd: '/home/me/notes', agent: 'pi', agent_status: 'working'}]});
@@ -219,7 +240,7 @@ test('without a board, herdr\'s agents are still read and relayed; a board that 
   const logged = [];
   const agents = new AgentBoard({board: join(dir, 'no-such-board'), onChange: change => changes.push(change), log: line => logged.push(line)});
   try {
-    agents.useHerdr(join(dir, 'herdr.sock'));
+    agents.useHerdr({socket: join(dir, 'herdr.sock')});
     await agents.poll();
     herdr.agents[0].agent_status = 'idle';
     await agents.poll();
@@ -247,7 +268,7 @@ test('while no session listens there is no baseline: what changed meanwhile is n
   const changes = [];
   const agents = new AgentBoard({board: null, wanted: () => wanted, onChange: change => changes.push(change)});
   try {
-    agents.useHerdr(join(dir, 'herdr.sock'));
+    agents.useHerdr({socket: join(dir, 'herdr.sock')});
     await agents.poll();
     wanted = false; // the last session ended
     await agents.poll();

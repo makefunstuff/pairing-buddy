@@ -40,6 +40,11 @@ export class Terminals {
     return found;
   }
 
+  /** Whether the Driver's `type` can reach terminal `pane`: not a herdr-core terminal, which types only with Enter. */
+  canType(pane) {
+    return this.watch()?.source.canType?.(pane) !== false;
+  }
+
   /** Types `text` at the prompt of terminal `pane`. Enter stays with the user. */
   async type(pane, text) {
     if (!plainLine(text)) throw new Error('Only one line of plain text can be typed');

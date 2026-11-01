@@ -1,6 +1,6 @@
 # Scout
 
-As Scout, Pair investigates for you in its own pane (in herdr, or without it a `:terminal` in Neovim, see [neovim.md](neovim.md#without-herdr)): it searches the project, runs the tests, looks at `git log` and `git diff`. Every command is typed into that pane, so you see what runs and what it prints; the result also goes back to the model. Scout never types into your own panes (only the Driver's `type` does, after your yes and without Enter; see [driver.md](driver.md)).
+As Scout, Pair investigates for you in its own pane (in herdr, a terminal of its own beside the chat in herdr-core's Herdr window, or without either a `:terminal` in Neovim, see [neovim.md](neovim.md#without-herdr)): it searches the project, runs the tests, looks at `git log` and `git diff`. Every command is typed into that pane, so you see what runs and what it prints; the result also goes back to the model. Scout never types into your own panes (only the Driver's `type` does, after your yes and without Enter; see [driver.md](driver.md)).
 
 Switch with `/scout` and `/navigate` in the chat, or `:Pair scout` and `:Pair navigate` in Neovim. Navigator is the default, and a new session always starts in it. While you hand Pair the wheel, the Driver has `search` and `run` too, in the same pane, under the same policy and limits.
 
