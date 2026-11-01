@@ -71,7 +71,8 @@ Write down four facts for the steps below:
    Watcher question is a request, so a small local or cheap Watcher next to a cloud Partner saves money.
 2. **Optional parts** (each one is optional; Pair works without all of them):
    - [herdr](https://herdr.dev), the terminal workspace that is Pair's best home (chat pane beside Neovim, your
-     terminals watched). Without it, everything runs inside Neovim and tmux.
+     terminals watched): the older herdr (panes) or herdr-core with the Herdr window (terminals), told apart by
+     themselves ([herdr.md](docs/herdr.md#which-herdr)). Without it, everything runs inside Neovim and tmux.
    - ripgrep (`rg`) for Scout's code search, and on Linux bubblewrap (`bwrap`) to run Pair's commands in a sandbox.
      Recommended.
    - The shell hook, which tells Pair the exit codes of the commands you run (one line in the shell rc file).
@@ -196,7 +197,7 @@ Install only what the human chose in step 2, with their yes to sudo.
 | ripgrep (recommended) | `rg --version \| head -1` | `ripgrep 1…` or newer | package `ripgrep` (all package managers above) |
 | bubblewrap (Linux only, recommended) | `bwrap --version` | `bubblewrap 0.…` | package `bubblewrap` |
 | tmux (without herdr) | `tmux -V` | `tmux 3.…` | package `tmux` |
-| herdr | `herdr --version` | `herdr 0.9.5` or newer | see [herdr.dev](https://herdr.dev); ask the human if it offers more than one way |
+| herdr | `herdr --version`, or `command -v hc` for herdr-core | `herdr 0.9.5` or newer, or a path | see [herdr.dev](https://herdr.dev); ask the human if it offers more than one way |
 | Push-to-talk | (step 9) | | see [voice.md](docs/voice.md#setup) |
 
 `bash` is needed too and is there on every supported system (`bash --version`). bubblewrap may be installed and still
@@ -336,8 +337,8 @@ again). Then pick a model with the human from `pair auth models PROVIDER`:
 "model": {"provider": "PROVIDER", "model": "a-model-id"}
 ```
 
-A provider entry takes no `api`, `baseUrl` or key fields: its key always comes from `pair auth login` (the service
-does not see a key in your shell's environment).
+A provider entry takes no `api`, `baseUrl` or key fields: under the service its key comes from `pair auth login`
+(the service does not see a key in your shell's environment).
 
 **c. A subscription login.** The same as b., but at `pair auth login PROVIDER` the human chooses the subscription,
 reads the terms line it prints, and signs in in the browser (on a machine without one, the copy-code or device-code
@@ -526,6 +527,9 @@ expected and fine on a fresh setup:
 - `! service  no systemd or launchd here …` (service: none)
 - `! neovim   none connected …` (no Neovim is open; 8.2 connects one)
 - `! herdr    not installed …` or `not checked here …` (without herdr, or not run inside it)
+- `! herdr    herdr-core …; no Herdr window shows terminal …` (a herdr-core terminal the Herdr window does not show)
+- `! board    Shepherdr 2.1 (shepherdr) answers only inside the agent sessions it starts …` (Shepherdr 2.1, run
+  outside its sessions)
 - `! pane     no sandbox …` (no bubblewrap, or it cannot run here)
 
 Fix any other line and run it again, until `exit=0`:
@@ -615,10 +619,12 @@ Tell the human how to start:
 
 Only those the human chose in step 2.
 
-**herdr.** Installed in 3.6. Run `pair doctor` inside a herdr pane; expected `✓ herdr    answers in … ms, … panes in
-this workspace`. Nothing to configure: `pair` in a herdr pane opens the chat beside it. The work board,
-Shepherdr (`shepherdr`), and its task for the branch (the goal) are read when `shepherdr` is on the daemon's `PATH`
-([agents.md](docs/agents.md)).
+**herdr.** Installed in 3.6. Run `pair doctor` inside a herdr pane; expected `✓ herdr    herdr (panes, …) answers in …
+ms, … panes in this workspace`, or in a herdr-core terminal `✓ herdr    herdr-core … (terminals, …) answers in … ms, …;
+the Herdr window shows terminal …`. Nothing to configure: `pair` in a herdr pane opens the chat beside it, and in
+herdr-core in a terminal the Herdr window shows. The work board, Shepherdr (`shepherdr`), and its task for the branch
+(the goal) are read when `shepherdr` is on the daemon's `PATH`; Shepherdr 2.1 answers only inside the agent sessions
+it starts, and `pair doctor`'s board line says which ([agents.md](docs/agents.md)).
 
 **The shell hook.** It tells Pair each command you run and its exit code. **Check:** `grep -s 'pair shell-hook' "$rc"`
 (`rc` from step 3.1; for fish, `~/.config/fish/config.fish`). **Do**, if it prints nothing, back up the rc file and add one line at its end:

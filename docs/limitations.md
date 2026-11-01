@@ -11,8 +11,8 @@ These need a change in herdr itself. The [shell hook](cli.md#pair-shell-hook) ta
 terminals that have it: commands, their start, end and exit code, and in zsh your typing come from the hook.
 
 - **No command boundaries or exit codes without the hook.** In a herdr pane without it, Pair learns that a command
-  ran by watching it, so a command shorter than about a second can be missed, and success or failure is guessed from
-  the output. [#22](https://github.com/makefunstuff/pairing-buddy/issues/22)
+  ran by watching the pane: in the focused pane even a short one is caught, but one that starts and ends between two
+  looks at a pane without focus is missed, and success or failure is guessed from the output. [#22](https://github.com/makefunstuff/pairing-buddy/issues/22)
 - **A command's output is cut from the screen text**, also with the hook: from the line the command was typed on, at
   most 1000 lines, so a very long output loses its beginning. Pair's own pane is not affected: its shell writes each
   output to a file. [#23](https://github.com/makefunstuff/pairing-buddy/issues/23)
@@ -73,7 +73,8 @@ stay herdr's:
   --json` answers); herdr-projects 1.x, the board before it, is not read any more.
 - **Shepherdr 2.1 answers only inside the agent sessions it starts.** From your own shell or Pair's daemon its command
   refuses (`no legacy HTTP routing`), so Pair reads no board there: the relay shows the agents of herdr-core only
-  (yours, and Shepherdr's from its own `shepherdr` core session, as agents, not tasks), the context card has no task, and a board pick's command fails with that refusal. `pair doctor` says so. In 2.1 only a
+  (yours, and Shepherdr's from its own `shepherdr` core session, as agents, not tasks, read only: `Alt-a` cannot bring
+  one to the front, and a Shepherdr started with another `--core-session` is not found), the context card has no task, and a board pick's command fails with that refusal. `pair doctor` says so. In 2.1 only a
   coordinator archives a task, so a review's archive is refused too.
 - **A task's report is found by the words of `shepherdr artifact list` and `artifact show`**, which have no JSON: the
   list names the space an artifact is kept in, not the task, so Pair asks the space's newest 20 who made them (`by

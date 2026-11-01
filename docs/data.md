@@ -6,7 +6,8 @@ description: "What Pair keeps and where: logins in auth.json, the rest in its da
 
 - **Logins and keys** live next to the config, readable by you only ([models.md](models.md#logins-and-keys)):
   `auth.json` (logins and stored keys; `$PAIR_AUTH` moves it), `service.env` (the variables your entries name in
-  `apiKeyEnv`, stored by `pair setup` for the service) and `device-id` (the id "Sign in with ChatGPT" is given).
+  `apiKeyEnv`, stored by `pair setup` for the service) and `device-id` (the id "Sign in with ChatGPT" is given; it
+  sits next to `auth.json` and moves with it).
 - **Everything else** lives in the data directory: `~/.local/state/pairing-buddy` by default, or under
   `$XDG_STATE_HOME`, or `dataDir` in the config.
 

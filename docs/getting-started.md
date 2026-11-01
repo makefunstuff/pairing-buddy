@@ -10,7 +10,8 @@ with pictures of what you should see, read [the first ten minutes](tutorials/fir
 - Node.js 22.19 or newer, and Neovim 0.11 or newer.
 - A model: a local OpenAI-compatible server (llama.cpp, Ollama, vLLM, LM Studio), an API key for a provider, or a
   subscription login where the provider allows it ([Models and providers](models.md)).
-- Optional: [herdr](https://herdr.dev), the best home for Pair. Without it, everything runs inside Neovim and tmux
+- Optional: [herdr](https://herdr.dev) (the older herdr, or herdr-core with the Herdr window), the best home for
+  Pair. Without it, everything runs inside Neovim and tmux
   ([Workflows](workflows.md#with-or-without-herdr)).
 - For Scout: `bash` and ripgrep (`rg`); bubblewrap (`bwrap`) if you want its commands in a sandbox.
 
@@ -64,7 +65,8 @@ The daemon takes the change as you save; no restart. Two models, logins and keys
 pair doctor
 ```
 
-One line per part (config, service, daemon, plugin, Neovim, herdr, models), each with the fix when something is
+One line per part (config, service, daemon, plugin, Neovim, herdr, the board, logins and keys, Pair's pane, voice,
+the models and the decision model), each with the fix when something is
 wrong. See [Troubleshooting](troubleshooting.md) for what each line means.
 
 Optional: add the shell hook to your shell's rc file, so Pair gets every command you run in your terminals with its
