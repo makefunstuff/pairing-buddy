@@ -38,11 +38,12 @@ function M.off()
   deps.send({type = 'meaning_off'})
 end
 
---- The one download, asked once each time search by meaning is off: nothing comes without your yes.
+--- The one download, offered at each search while search by meaning is off: nothing comes without your yes.
 local function offer()
   local choice = vim.fn.confirm(
     'Search by meaning needs its model, EmbeddingGemma 2 (165 MB from Hugging Face, once, checked by its SHA-256).\n'
-      .. 'Then Pair indexes the project in the background, in its own data folder. Download it now?',
+      .. 'Then Pair indexes the project in the background, in its own data folder. It runs on LiteRT-LM, which you\n'
+      .. 'install with pip once (`pair doctor` says how). Download the model now?',
     '&Download\n&Not now', 2)
   if choice == 1 then M.on() end
 end
@@ -114,6 +115,9 @@ function M.on_results(message)
   if message.state == 'off' then return offer() end
   if message.state == 'disabled' then return vim.notify('Pair: search by meaning is off in the config ("meaning": false)') end
   if message.state == 'downloading' then return vim.notify('Pair: its model is still downloading; :Pair find again in a moment') end
+  if message.capped then
+    vim.notify(('Pair: the project has more than %d chunks; the files past them are left out of the index'):format(message.capped), vim.log.levels.WARN)
+  end
   if message.problem then
     vim.notify('Pair: only the words ranked, not their meaning: ' .. message.problem .. ' (`pair doctor` says more)', vim.log.levels.WARN)
   end

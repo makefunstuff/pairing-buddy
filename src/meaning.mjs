@@ -18,6 +18,8 @@ export const CHUNK = {lines: 60, chars: 1500}; // about 400 tokens at most: unde
 const MAX_FILE_BYTES = 512 * 1024;
 const MAX_LINE_AVERAGE = 300; // minified or generated: no lines worth reading
 const BATCH = 4; // chunks per embedder call: a search waits for at most one batch
+export const MAX_CHUNKS = 20_000; // per project, about 45 min of a first build on two cores; files past it are left out
+const BOOKED_CHUNKS = 10; // a build this big gets its own ledger line; a save's few chunks do not
 const SAVE_MS = 30_000; // a build in progress is written down this often, so a restart keeps most of it
 export const RESCAN_MS = 10 * 60_000;
 const HEAD_CHARS = 100;
@@ -45,7 +47,8 @@ export function indexable(path) {
 /** The project's files to index, relative to `root`: git's list without what it ignores, else ripgrep's, else none. */
 export async function projectFiles(root) {
   const git = await run('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], root);
-  const listed = git !== null ? git.split('\0') : (await run('rg', ['--files', '--null'], root))?.split('\0') ?? [];
+  // Without git, ripgrep keeps to .gitignore only when told to.
+  const listed = git !== null ? git.split('\0') : (await run('rg', ['--files', '--null', '--no-require-git'], root))?.split('\0') ?? [];
   return [...new Set(listed.filter(Boolean))].filter(indexable).sort();
 }
 
@@ -121,6 +124,10 @@ export class ProjectIndex {
     this.scannedAt = 0;
     this.dirty = false; // vectors not yet written down
     this.savedAt = 0;
+    this.skipped = new Map(); // files read and found not worth indexing (binary, minified): path -> {size, mtimeMs}
+    this.waiting = null; // the chunks still without a vector, worked through by step(); null once the files change
+    this.saving = Promise.resolve(); // one write of the index file at a time
+    this.capped = false; // the project has more chunks than MAX_CHUNKS: some files are left out
   }
 
   /** The vectors written down before, if any were made by this model; a file another model wrote is left to be made again. */
@@ -143,8 +150,13 @@ export class ProjectIndex {
     }
   }
 
-  /** Writes the vectors of the project's chunks down, in one go: a crash leaves the last whole file. */
-  async save() {
+  /** Writes the vectors of the project's chunks down, in one go: a crash leaves the last whole file. One at a time. */
+  save() {
+    this.saving = this.saving.catch(() => {}).then(() => this.write());
+    return this.saving;
+  }
+
+  async write() {
     const hashes = [...new Set([...this.files.values()].flatMap(file => file.chunks.map(chunk => chunk.hash)))].filter(hash => this.vectors.has(hash));
     const header = Buffer.from(JSON.stringify({model: MODEL.revision, dimensions: DIMENSIONS, root: this.root, hashes, savedAt: this.now()}));
     const vectors = new Float32Array(hashes.length * DIMENSIONS);
@@ -166,14 +178,22 @@ export class ProjectIndex {
     try { info = await stat(path); } catch { return this.files.delete(file); }
     const known = this.files.get(file);
     if (known && known.size === info.size && known.mtimeMs === info.mtimeMs) return;
+    const skipped = this.skipped.get(file);
+    if (!known && skipped && skipped.size === info.size && skipped.mtimeMs === info.mtimeMs) return;
+    this.waiting = null;
     if (!info.isFile() || info.size > MAX_FILE_BYTES || !indexable(file)) return this.files.delete(file);
     let text;
     try { text = await readFile(path, 'utf8'); } catch { return this.files.delete(file); }
     const lines = text.split('\n').length;
-    if (text.slice(0, 8192).includes('\0') || text.length / lines > MAX_LINE_AVERAGE) return this.files.delete(file);
+    if (text.slice(0, 8192).includes('\0') || text.length / lines > MAX_LINE_AVERAGE) {
+      this.skipped.set(file, {size: info.size, mtimeMs: info.mtimeMs});
+      return this.files.delete(file);
+    }
     const chunks = chunkText(text).map(chunk => {
       const document = documentText(file, chunk.text);
-      return {file, from: chunk.from, to: chunk.to, hash: hashOf(document), document, head: headOf(chunk.text), words: words(`${file} ${chunk.text}`)};
+      const hash = hashOf(document);
+      // A chunk's text is kept only until it has its vector; the keywords need its words alone.
+      return {file, from: chunk.from, to: chunk.to, hash, document: this.vectors.has(hash) ? null : document, head: headOf(chunk.text), words: words(`${file} ${chunk.text}`)};
     });
     this.files.set(file, {size: info.size, mtimeMs: info.mtimeMs, chunks});
   }
@@ -183,7 +203,14 @@ export class ProjectIndex {
     const listed = await projectFiles(this.root);
     const keep = new Set(listed);
     for (const file of this.files.keys()) if (!keep.has(file)) this.files.delete(file);
-    for (const file of listed) await this.read(file);
+    let count = 0;
+    this.capped = false;
+    for (const file of listed) {
+      if (count >= MAX_CHUNKS && !this.files.has(file)) { this.capped = true; continue; }
+      await this.read(file);
+      count += this.files.get(file)?.chunks.length ?? 0;
+    }
+    this.waiting = null;
     this.scannedAt = this.now();
     this.keywords = null;
   }
@@ -208,24 +235,26 @@ export class ProjectIndex {
     const done = [...hashes].filter(hash => this.vectors.has(hash)).length;
     let bytes = 0;
     try { bytes = statSync(this.path).size; } catch {}
-    return {root: this.root, files: this.files.size, chunks: hashes.size, embedded: done, bytes};
+    return {root: this.root, files: this.files.size, chunks: hashes.size, embedded: done, bytes, capped: this.capped};
   }
 
-  /** Embeds the next few chunks waiting; false when none waits. */
+  /** Embeds the next few chunks waiting; false when none waits. The list of those is made once per change of the files. */
   async step() {
+    this.waiting ??= this.pending();
     const batch = [];
     const seen = new Set();
-    for (const chunk of this.pending()) {
-      if (seen.has(chunk.hash)) continue;
+    while (this.waiting.length && batch.length < BATCH) {
+      const chunk = this.waiting.shift();
+      if (seen.has(chunk.hash) || this.vectors.has(chunk.hash)) continue;
       seen.add(chunk.hash);
       batch.push(chunk);
-      if (batch.length === BATCH) break;
     }
     if (!batch.length) return false;
     const vectors = await this.embed(batch.map(chunk => chunk.document));
     batch.forEach((chunk, i) => this.vectors.set(chunk.hash, vectors[i]));
+    for (const chunk of batch) chunk.document = null; // its text is in its file; only the words stay, for keywords
     this.dirty = true;
-    if (this.now() - this.savedAt > SAVE_MS) await this.save();
+    if (this.now() - this.savedAt > SAVE_MS) await this.save().catch(error => this.log(`meaning: ${this.path} not written: ${error.message}`));
     return true;
   }
 
@@ -283,7 +312,8 @@ export class ProjectIndex {
    * `{file, from, to, head, meaning, keyword}` (`meaning` its similarity, or null for a chunk not embedded yet).
    */
   async search(query, {limit = 30} = {}) {
-    const [q] = this.vectors.size ? await this.embed([queryText(query)], {urgent: true}) : [null];
+    // Asked even before anything is embedded: an embedder that cannot run is found now, and said.
+    const [q] = await this.embed([queryText(query)], {urgent: true});
     const meaning = q ? this.meaningRanking(q) : [];
     const keyword = this.keywordRanking(query);
     const similarity = new Map(meaning.map(([chunk, score]) => [chunk, score]));
@@ -309,13 +339,13 @@ export class Meaning {
   constructor({dataDir, config = {}, log = () => {}, book = () => {}, fetch = globalThis.fetch, embedder = null, now = Date.now}) {
     Object.assign(this, {dataDir, config, log, book, fetch, now});
     this.disabled = config === false;
-    this.embedder = embedder ?? new Embedder({python: pythonOf(config, dataDir), model: modelPath(dataDir), threads: config?.threads, log});
+    // The helper's Python is looked for each time it starts: a venv made while the daemon runs is found.
+    this.embedder = embedder ?? new Embedder({python: () => pythonOf(config, dataDir), model: modelPath(dataDir), threads: config?.threads, log});
     this.indexes = new Map(); // root -> ProjectIndex
     this.downloading = null; // {bytes} while the model comes
     this.problem = null; // why the embedder cannot run, until the next try
     this.problemAt = 0;
     this.working = false;
-    this.builds = new Map(); // root -> {startedAt, chunks}: a build that started, for its ledger line
     this.timer = setInterval(() => this.rescan(), RESCAN_MS);
     this.timer.unref?.();
   }
@@ -374,8 +404,8 @@ export class Meaning {
         if (!waiting) continue;
         const build = {startedAt: this.now(), chunks: waiting};
         while (this.indexes.get(index.root) === index && await index.step());
-        if (this.indexes.get(index.root) !== index) continue;
-        await index.save();
+        if (this.indexes.get(index.root) !== index || build.chunks < BOOKED_CHUNKS) continue; // a save's few chunks: written down later
+        await index.save().catch(error => this.log(`meaning: ${index.path} not written: ${error.message}`));
         const {files, chunks, bytes} = index.progress();
         this.book(index.root, 'indexed', `indexed ${build.chunks} chunk${build.chunks === 1 ? '' : 's'} by meaning in ${seconds(this.now() - build.startedAt)}: ${files} files, ${chunks} chunks, ${Math.round(bytes / 1024)} KB`);
       }
@@ -403,13 +433,14 @@ export class Meaning {
         this.problem = null;
         this.work();
       }
+      if (index.capped) answer.capped = MAX_CHUNKS;
     } catch (error) {
       // The embedder cannot run: the keywords still rank, and the picker says why meaning is missing.
       this.problem = error.message;
       this.problemAt = this.now();
+      answer.problem = error.message;
       answer.results = index.keywordRanking(query, limit ?? 30).map(chunk => ({file: chunk.file, from: chunk.from, to: chunk.to, head: chunk.head, meaning: null, keyword: true}));
     }
-    if (this.problem) answer.problem = this.problem; // also when the build stopped before this search asked the embedder
     const {chunks, embedded} = index.progress();
     Object.assign(answer, {ms: this.now() - started, chunks, embedded});
     const top = answer.results[0];
@@ -419,26 +450,31 @@ export class Meaning {
     return answer;
   }
 
-  /** Downloads the model, once, then indexes the projects that have a session (`roots`). */
+  /**
+   * Downloads the model, once, then indexes the projects that have a session (`roots`). Resolves true when it
+   * downloaded, false when the model was already there.
+   */
   async turnOn(roots = [], {progress = () => {}} = {}) {
     if (this.disabled) throw new Error('search by meaning is turned off in the config ("meaning": false)');
-    if (this.downloading) return this.downloading.done;
+    if (this.downloading) return this.downloading.done.then(() => false);
+    this.problem = null;
     if (modelReady(this.dataDir)) {
       for (const root of roots) this.open(root);
-      return;
+      return false;
     }
     this.downloading = {bytes: 0};
     this.downloading.done = downloadModel(this.dataDir, {fetch: this.fetch, progress: bytes => { this.downloading.bytes = bytes; progress(bytes); }})
       .finally(() => { this.downloading = null; });
     await this.downloading.done;
-    this.problem = null;
     for (const root of roots) this.open(root);
+    return true;
   }
 
   /** Off again: the helper stops, and the model and every index leave Pair's data folder. */
   async turnOff() {
     for (const root of [...this.indexes.keys()]) this.indexes.delete(root);
-    this.embedder.stopHelper();
+    this.embedder.fail(new Error('search by meaning was turned off')); // a batch under way is dropped, not waited for
+    this.problem = null;
     await removeModel(this.dataDir);
     await rm(join(meaningDir(this.dataDir), 'index'), {recursive: true, force: true});
   }
@@ -446,7 +482,8 @@ export class Meaning {
   /** The index's ranking of `query` in `root` for the search trail: the top chunks, or null when it has none. */
   async trailHits(root, query, limit = 2) {
     const index = this.indexes.get(root);
-    if (this.state !== 'on' || !index || !index.vectors.size || this.problem) return null;
+    // Only while the helper runs: the trail does not wait for it to load.
+    if (this.state !== 'on' || !index || !index.vectors.size || this.problem || !this.embedder.runtime) return null;
     await index.ready;
     const hits = (await index.search(query, {limit})).filter(result => result.meaning !== null);
     this.book(root, 'searched', `by meaning "${query}", for the search trail: ${hits.map(hit => `${hit.file}:${hit.from}`).join(', ') || 'nothing close'}`);
@@ -457,7 +494,7 @@ export class Meaning {
   snapshot() {
     return {
       state: this.state, model: MODEL.name, revision: MODEL.revision, problem: this.problem, downloading: this.downloading?.bytes ?? null,
-      python: this.embedder.python, runtime: this.embedder.runtime?.runtime ?? null, msPerChunk: this.embedder.msPerText,
+      python: typeof this.embedder.python === 'function' ? this.embedder.python() : this.embedder.python, runtime: this.embedder.runtime?.runtime ?? null, msPerChunk: this.embedder.msPerText,
       indexes: [...this.indexes.values()].map(index => index.progress()),
     };
   }

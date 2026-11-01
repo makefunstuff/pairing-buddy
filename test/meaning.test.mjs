@@ -137,18 +137,19 @@ test('Meaning: off without its model; on, it builds in the background, searches,
     assert.equal(meaning.indexes.size, 0, 'nothing is indexed while it is off');
     assert.equal((await meaning.search(root, 'retry')).state, 'off');
 
+    for (let i = 0; i < 10; i++) writeFileSync(join(root, `note${i}.md`), `Note ${i} about the release.\n`);
     fakeModel(dataDir);
     assert.equal(meaning.state, 'on');
     meaning.open(root);
     await until(() => booked.some(entry => entry.kind === 'indexed'), 'the build\'s ledger line');
     assert.equal(booked[0].where, root);
-    assert.match(booked[0].text, /^indexed 4 chunks by meaning in \d+ s: 4 files, 4 chunks, \d+ KB$/);
+    assert.match(booked[0].text, /^indexed 14 chunks by meaning in \d+ s: 14 files, 14 chunks, \d+ KB$/);
     assert.ok(embedder.calls.every(call => !call.urgent), 'the build\'s batches are not urgent');
 
     const answer = await meaning.search(root, 'what does the cart cost');
     assert.equal(answer.state, 'on');
     assert.deepEqual(answer.results.slice(0, 2).map(result => result.file).sort(), ['NOTES.md', 'src/cart.js'], 'the code and the note about prices');
-    assert.deepEqual([answer.chunks, answer.embedded], [4, 4]);
+    assert.deepEqual([answer.chunks, answer.embedded], [14, 14]);
     const searched = booked.find(entry => entry.kind === 'searched');
     assert.match(searched.text, /^by meaning "what does the cart cost": \d+ results?, first (src\/cart\.js|NOTES\.md):1$/);
     assert.match(searched.options.detail.output, /src\/cart\.js:1-4 /);
@@ -159,10 +160,40 @@ test('Meaning: off without its model; on, it builds in the background, searches,
     assert.equal(fallback.results[0].file, 'src/cart.js', 'and the words still rank');
     assert.equal(await meaning.trailHits(root, 'retry'), null, 'the trail leaves meaning out while the embedder fails');
 
-    assert.equal(meaning.snapshot().indexes[0].chunks, 4);
+    assert.equal(meaning.snapshot().indexes[0].chunks, 14);
+    writeFileSync(join(root, 'src', 'cart.js'), `${PRICES}// changed\n`);
+    embedder.failWith = null;
+    await meaning.search(root, 'cart'); // the embedder answers again: the problem is gone
+    assert.equal(meaning.problem, null);
+    const lines = booked.length;
+    await meaning.saved(root, join(root, 'src', 'cart.js'));
+    await until(() => !meaning.working && meaning.indexes.get(root).pending().length === 0, 'the saved chunk embedded');
+    assert.equal(booked.slice(lines).filter(entry => entry.kind === 'indexed').length, 0, 'a save\'s one chunk gets no ledger line of its own');
+    assert.equal(await meaning.turnOn([root]), false, 'on again downloads nothing');
     await meaning.turnOff();
     assert.equal(meaning.state, 'off');
     assert.ok(!existsSync(modelPath(dataDir)) && !existsSync(indexPath(dataDir, root)), 'off deletes the model and the indexes');
+  } finally {
+    await meaning.close();
+  }
+});
+
+test('an embedder that cannot run from the start: the search still says why meaning is missing', async () => {
+  const root = project();
+  const dataDir = scratch('meaning-data-');
+  fakeModel(dataDir);
+  const embedder = fakeEmbedder();
+  embedder.failWith = 'python3 has no litert-lm-api';
+  const meaning = new Meaning({dataDir, embedder});
+  try {
+    meaning.open(root);
+    await meaning.indexes.get(root).ready;
+    await until(() => meaning.problem, 'the build to stop at the embedder');
+    for (let i = 0; i < 2; i++) {
+      const answer = await meaning.search(root, 'quantity');
+      assert.equal(answer.problem, 'python3 has no litert-lm-api');
+      assert.equal(answer.results[0].file, 'src/cart.js');
+    }
   } finally {
     await meaning.close();
   }
@@ -183,6 +214,11 @@ test('the model is downloaded once, at its pinned revision, and kept only if its
   assert.ok(existsSync(modelPath(dataDir)));
   assert.ok(!modelReady(dataDir), 'only the pinned checksum counts as the model');
   await assert.rejects(downloadModel(dataDir, {fetch: async () => new Response('gone', {status: 404})}), /answered 404/);
+  const stalled = async (url, {signal}) => new Response(new ReadableStream({
+    start(controller) { controller.enqueue(new Uint8Array(3)); signal.addEventListener('abort', () => controller.error(signal.reason)); },
+  }));
+  await assert.rejects(downloadModel(dataDir, {fetch: stalled, stallMs: 50}), /got nothing for 0.05 s/);
+  assert.ok(!existsSync(`${modelPath(dataDir)}.part`), 'a stalled download leaves nothing');
 
   const meaning = new Meaning({dataDir, embedder: fakeEmbedder(), fetch: async () => new Response(body)});
   await assert.rejects(meaning.turnOn([]), /not the pinned/);

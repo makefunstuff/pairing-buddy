@@ -1006,10 +1006,15 @@ export async function startDaemon(config, {
   /** `:Pair find on`: the model's one download, told as it goes, then the open projects' indexes. */
   async function meaningOn(client) {
     const tell = text => sendMessage(client.socket, {type: 'meaning_state', ...meaning.snapshot(), text});
+    if (meaning.state === 'on') {
+      await meaning.turnOn([...live.keys()]);
+      return tell('Search by meaning is already on: its model is here, and Pair indexes the open projects in the background.');
+    }
     let told = 0;
     tell('Downloading EmbeddingGemma 2 for search by meaning (165 MB, once)…');
+    let downloaded;
     try {
-      await meaning.turnOn([...live.keys()], {progress: bytes => {
+      downloaded = await meaning.turnOn([...live.keys()], {progress: bytes => {
         if (bytes - told < 32 << 20) return;
         told = bytes;
         tell(`Downloading EmbeddingGemma 2: ${Math.round(bytes / (1 << 20))} of 157 MiB…`);
@@ -1017,13 +1022,17 @@ export async function startDaemon(config, {
     } catch (error) {
       return tell(`Search by meaning stays off: ${error.message}`);
     }
-    for (const session of live.values()) session.ledger.add('downloaded', 'EmbeddingGemma 2 for search by meaning (165 MB, SHA-256 checked); indexing this project in the background');
+    if (downloaded) {
+      for (const session of live.values()) session.ledger.add('downloaded', 'EmbeddingGemma 2 for search by meaning (165 MB, SHA-256 checked); indexing this project in the background');
+    }
     tell('Search by meaning is on: Pair indexes this project in the background.');
   }
 
   /** `:Pair find off`: the embedder stops, and its model and indexes leave Pair's data folder. */
   async function meaningOff(client) {
+    const was = meaning.state;
     await meaning.turnOff();
+    if (was === 'on') for (const session of live.values()) session.ledger.add('deleted', 'search by meaning\'s model and indexes (:Pair find off)');
     sendMessage(client.socket, {type: 'meaning_state', ...meaning.snapshot(), text: 'Search by meaning is off: its model and indexes are deleted.'});
   }
 

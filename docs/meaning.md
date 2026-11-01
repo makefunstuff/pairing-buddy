@@ -33,7 +33,8 @@ python3 -m venv ~/.local/state/pairing-buddy/meaning/venv
 ```
 
 It needs Python 3.10 or later; LiteRT-LM has wheels for Linux (x86-64 and ARM64) and macOS on Apple silicon.
-Any other Python with `litert-lm-api` works too: set `"meaning": {"python": "/path/to/python"}` in the
+Pair looks for it each time the helper starts, so no restart is needed after you install it; the next search uses
+it. Any other Python with `litert-lm-api` works too: set `"meaning": {"python": "/path/to/python"}` in the
 [config](config.md#meaning). `pair doctor` says what is missing, with the line to run:
 
 ```
@@ -83,8 +84,11 @@ On a small project of code (`test/live/meaning.test.mjs`) it put the right file 
 - **Built in the background**, once a project has a session: in batches of four chunks, on two cores (`meaning.threads`)
   at low priority (`nice 10`). A search goes before the batches still waiting, so it waits for one batch at most.
 - **Kept up to date.** A save re-reads that file and embeds only its changed chunks; each chunk is known by its text's
-  hash, so a restart, a moved function or a branch switch back embeds nothing twice. Changes made outside Neovim (a
-  checkout, a pull) are found when the session loads and every ten minutes.
+  hash, so a restart or a moved function embeds nothing twice (the index keeps the chunks the project has now, so
+  a branch you left long ago may need some again). Changes made outside Neovim (a checkout, a pull) are found when
+  the session loads and every ten minutes.
+- **Up to 20,000 chunks a project**, about 45 minutes of a first build: past that, the files left are not indexed,
+  and the picker says so. A folder that is no git repository is still indexed by ripgrep's list, within the same cap.
 - **Kept in Pair's data folder**, `meaning/index/<hash of the project's path>.idx`, never in the project: 256 numbers
   (1 KB) per chunk. A build in progress is written down every 30 s, so a restart keeps most of it.
 - **The helper stops** after three minutes with nothing to embed, and gives its memory back (about 320 to 490 MB
@@ -105,14 +109,17 @@ On this repository (539 files, 4 MB of code and docs, on a Ryzen 5 9600X):
 When you hunt for something in your pickers and it is not there under your words, Pair's [search
 trail](neovim.md#the-search-trail) remark already gets what ripgrep finds for each of your searches. With search by
 meaning on, it also gets the two chunks closest to what each search means, as `by meaning: worker.go:30-58 …` lines:
-where the thing is when the code calls it something else. That changes what Pair knows when it speaks, not when it
+where the thing is when the code calls it something else, while its helper runs (the trail never waits for it to
+load). That changes what Pair knows when it speaks, not when it
 speaks: the speak gate, the talk budget and the wait for your break are the same as for every trail.
 
 ## In the ledger
 
-`:Pair today` lists each build (`indexed 3830 chunks by meaning in 507 s: 539 files, 3830 chunks, 3991 KB`), each
+`:Pair today` lists each build of ten chunks or more (`indexed 3830 chunks by meaning in 507 s: 539 files, 3830 chunks,
+3991 KB`; a save's few chunks get no line of their own), each
 search (`searched by meaning "how long to wait": 30 results, first src/backoff.js:1`, `⏎` shows the ranking with each
-chunk's similarity and whether your words matched), each lookup for the search trail, and the model's download.
+chunk's similarity and whether your words matched), each lookup for the search trail, the model's download, and
+`:Pair find off` deleting it.
 
 ## Why this model and runtime
 

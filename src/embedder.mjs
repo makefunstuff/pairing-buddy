@@ -31,6 +31,7 @@ const HELPER = fileURLToPath(new URL('./embed-helper.py', import.meta.url));
 const IDLE_MS = 3 * 60_000; // the helper holds ~320 MB; it goes once nothing was embedded for this long
 const START_MS = 60_000;
 const BATCH_MS = 120_000; // one batch is a few texts; past this the helper is stuck
+const STALL_MS = 60_000; // a download that gets no bytes for this long is given up
 
 // The prompts EmbeddingGemma was trained with: a chunk of the project, and a search for one.
 export const documentText = (title, text) => `title: ${title || 'none'} | text: ${text}`;
@@ -62,16 +63,27 @@ export function modelReady(dataDir) {
  * Downloads the model into `dataDir`, once: the pinned revision from Hugging Face, written to a .part file while its
  * SHA-256 is taken, and moved into place only if it matches. `progress(bytes)` hears how far it got.
  */
-export async function downloadModel(dataDir, {fetch = globalThis.fetch, progress = () => {}, model = MODEL} = {}) {
+export async function downloadModel(dataDir, {fetch = globalThis.fetch, progress = () => {}, model = MODEL, stallMs = STALL_MS} = {}) {
   await mkdir(meaningDir(dataDir), {recursive: true, mode: 0o700});
   const path = modelPath(dataDir);
   const part = `${path}.part`;
-  const response = await fetch(modelUrl(model), {redirect: 'follow'});
-  if (!response.ok || !response.body) throw new Error(`Hugging Face answered ${response.status} for ${model.file}`);
+  const abort = new AbortController();
+  let stall;
+  const waiting = () => {
+    clearTimeout(stall);
+    stall = setTimeout(() => abort.abort(new Error(`the download got nothing for ${stallMs / 1000} s`)), stallMs);
+  };
+  waiting();
+  const response = await fetch(modelUrl(model), {redirect: 'follow', signal: abort.signal}).catch(error => { clearTimeout(stall); throw abort.signal.reason ?? error; });
+  if (!response.ok || !response.body) {
+    clearTimeout(stall);
+    throw new Error(`Hugging Face answered ${response.status} for ${model.file}`);
+  }
   const hash = createHash('sha256');
   let bytes = 0;
   const body = Readable.fromWeb(response.body);
   body.on('data', chunk => {
+    waiting();
     hash.update(chunk);
     bytes += chunk.length;
     progress(bytes);
@@ -83,7 +95,9 @@ export async function downloadModel(dataDir, {fetch = globalThis.fetch, progress
     await rename(part, path);
   } catch (error) {
     await rm(part, {force: true});
-    throw error;
+    throw abort.signal.aborted ? abort.signal.reason : error;
+  } finally {
+    clearTimeout(stall);
   }
   const stat = statSync(path);
   writeFileSync(checkedPath(dataDir), JSON.stringify({sha256: model.sha256, size: stat.size, mtimeMs: stat.mtimeMs, revision: model.revision}), {mode: 0o600});
@@ -128,6 +142,7 @@ const vectorOf = text => {
  * Float32Array per text; a helper that cannot start rejects every waiting batch with why.
  */
 export class Embedder {
+  /** `python` is a path, or a function that finds one each time the helper starts. */
   constructor({python, model, threads = THREADS, maxTokens = MAX_TOKENS, idleMs = IDLE_MS, log = () => {}, helper = HELPER}) {
     Object.assign(this, {python, model, threads, maxTokens, idleMs, log, helper});
     this.child = null;
@@ -165,7 +180,8 @@ export class Embedder {
   }
 
   start() {
-    const child = spawn(this.python, ['-I', this.helper, this.model, String(this.threads), String(this.maxTokens)], {stdio: ['pipe', 'pipe', 'pipe']});
+    const python = typeof this.python === 'function' ? this.python() : this.python;
+    const child = spawn(python, ['-I', this.helper, this.model, String(this.threads), String(this.maxTokens)], {stdio: ['pipe', 'pipe', 'pipe']});
     this.child = child;
     let stderr = '';
     const startTimer = setTimeout(() => this.fail(new Error('the embedder did not load its model within a minute')), START_MS);
@@ -173,7 +189,7 @@ export class Embedder {
     child.stdin.on('error', () => {});
     child.on('error', error => {
       clearTimeout(startTimer);
-      this.fail(new Error(error.code === 'ENOENT' ? `${this.python} is not there` : error.message));
+      this.fail(new Error(error.code === 'ENOENT' ? `${python} is not there` : error.message));
     });
     child.on('exit', code => {
       clearTimeout(startTimer);
@@ -185,7 +201,7 @@ export class Embedder {
       if (this.child !== child) return;
       if (message.fatal) {
         clearTimeout(startTimer);
-        return this.fail(new Error(/No module named 'litert_lm'/.test(message.fatal) ? `${this.python} has no ${RUNTIME.split('==')[0]}` : message.fatal));
+        return this.fail(new Error(/No module named 'litert_lm'/.test(message.fatal) ? `${python} has no ${RUNTIME.split('==')[0]}` : message.fatal));
       }
       if (message.ready) {
         clearTimeout(startTimer);

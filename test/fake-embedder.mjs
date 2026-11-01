@@ -43,6 +43,7 @@ export function fakeEmbedder() {
       return texts.map(fakeVector);
     },
     stopHelper() {},
+    fail() {},
     close() {},
   };
   return embedder;
