@@ -83,7 +83,8 @@ test('the user\'s terminals are those of the chat\'s space; the focus is the win
   core.done('t1');
   await until(() => of('command_end').length === 1, 'the end of npm test');
   assert.deepEqual(of('command_end')[0], {kind: 'command_end', pane: 't1', cmd: 'node /usr/bin/npm test', exit: null, output: '> p@1.0.0 test\nnot ok 1 - adds'});
-  // The Driver's type: herdr-core types only with Enter, so it is refused, and nothing is typed.
+  // The Driver's type: herdr-core types only with Enter, so no terminal of it is offered, and nothing is typed.
+  assert.deepEqual(watch.terminals(), []);
   await assert.rejects(watch.type('t1', 'npm test'), /cannot type into its terminals/);
   assert.deepEqual(core.sent, []);
   assert.ok(core.subscribers.size >= 1, 'terminals coming and going come pushed');
@@ -154,10 +155,12 @@ test('herdr-core\'s agents: the terminals that say what they do, focused through
 test('pair in a herdr-core terminal: the chat starts beside it in the window, or here without one', async t => {
   const {socketPath, core} = await setUp(t);
   const herdr = {kind: 'core', socket: socketPath, pane: 't1'};
-  assert.equal(await openCoreChat(herdr, {argv: ['node', 'pair.mjs', 'chat'], cwd: '/src/shop', env: {PAIR_SOCKET: '/run/pair.sock'}}), true);
-  assert.deepEqual(core.started.at(-1), {argv: ['node', 'pair.mjs', 'chat'], cwd: '/src/shop', env: {PAIR_SOCKET: '/run/pair.sock'}, labels: {'herdr.space': SPACE_ID, 'herdr.tab': TAB_ID}, no_parent: true, no_notify: true});
+  assert.equal(await openCoreChat(herdr, {argv: ['node', 'pair.mjs', 'chat'], cwd: '/src/shop', env: {PAIR_SOCKET: '/run/pair.sock'}, shell: {TERM: 'xterm-ghostty', HOME: '/home/me'}}), true);
+  assert.deepEqual(core.started.at(-1), {argv: ['node', 'pair.mjs', 'chat'], cwd: '/src/shop', env: {TERM: 'xterm-ghostty', PAIR_SOCKET: '/run/pair.sock'}, labels: {'herdr.space': SPACE_ID, 'herdr.tab': TAB_ID}, no_parent: true, no_notify: true});
   assert.equal(await openCoreChat({...herdr, pane: 't4'}, {argv: ['x'], cwd: '/'}), false, 't4 is in no window');
   assert.equal(core.started.length, 1);
+  core.refuseRun = true;
+  assert.equal(await openCoreChat(herdr, {argv: ['x'], cwd: '/'}), false, 'a core that refuses: the chat runs here');
 });
 
 test('pair doctor names the herdr it is in: herdr-core with or without the window, herdr, or none', async t => {
@@ -185,4 +188,24 @@ test('a core that does not answer at first is tried again, and its terminals are
   await until(() => core.subscribers.size === 1, 'the event stream, started again by itself');
   assert.deepEqual((await source.list()).map(each => each.pane).sort(), ['t1', 't2']);
   source.stop();
+});
+
+test('Shepherdr 2.1\'s agents, in its own core session beside yours, are listed too, read only', async t => {
+  const dir = tempDir(t, 'pair-core-');
+  const mine = await fakeCore(join(dir, 'default.sock'));
+  const theirs = await fakeCore(join(dir, 'shepherdr.sock'));
+  t.after(async () => { await mine.close(); await theirs.close(); });
+  theirs.terminals.get('t4').labels = {where: 'shop / SHO-7'};
+  theirs.terminals.get('t4').status = {state: 'blocked', app: 'claude-code', msg: 'Merge SHO-7?'};
+  mkdirSync(join(dir, 'app'));
+  const app = fakeApp(join(dir, 'app'));
+  const board = new AgentBoard({board: null, pollMs: 60_000, appCommand: app.command});
+  board.useHerdr({kind: 'core', socket: join(dir, 'default.sock')});
+  await board.look();
+  assert.deepEqual(board.list().map(item => [item.key, item.title, item.status]), [
+    ['agent:t4', 'claude-code in me', 'working'], ['agent:shepherdr:t4', 'shop / SHO-7', 'needs'],
+  ]);
+  assert.equal(await board.focus('agent:shepherdr:t4'), false, 'no window of yours shows it');
+  assert.ok(!app.calls().some(args => args[0] === 'do'));
+  assert.deepEqual(theirs.calls, ['terminal.list'], 'only read');
 });

@@ -74,6 +74,7 @@ export async function fakeCore(socketPath, {commands = {}} = {}) {
     // The screen has empty rows below the prompt, as a real one does.
     'terminal.read': ({terminal, lines}) => ({text: `${get(terminal).lines.slice(-lines).join('\n')}\n\n\n`, complete: true, how: 'history'}),
     'terminal.run': params => {
+      if (fake.refuseRun) throw Object.assign(new Error('the core refused'), {kind: 'spawn_failed'});
       started.push(params);
       const address = `t${next++}`;
       add(address, {labels: params.labels ?? {}, argv: params.argv?.length ? params.argv : ['sh', '-c', params.line]});
@@ -111,7 +112,8 @@ export async function fakeCore(socketPath, {commands = {}} = {}) {
     }
   }));
   await new Promise(resolve => server.listen(socketPath, resolve));
-  return {
+  const fake = {
+    refuseRun: false, // terminal.run fails
     terminals, sent, keys, started, calls, subscribers,
     run(address, argv) {
       get(address).foreground = {pid: pids++, name: argv[0], argv, cwd: '/home/me'};
@@ -125,6 +127,7 @@ export async function fakeCore(socketPath, {commands = {}} = {}) {
       return new Promise(resolve => server.close(resolve));
     },
   };
+  return fake;
 }
 
 const APP = String.raw`#!/usr/bin/env node

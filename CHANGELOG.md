@@ -13,8 +13,9 @@ release is cut.
   terminal's environment, with nothing to configure (`HERDR_SOCKET_PATH` for herdr; `HC_SOCKET` and `HC_TERMINAL_ID`
   for herdr-core). On herdr-core, `pair` opens the chat in a terminal beside yours in the Herdr window; Pair watches
   the terminals of that space, takes the focus from the window (`herdr-app status`), runs Scout and the tests on save
-  in a terminal of its own, lists the terminals that report their status as your other agents, and `Alt-a` shows one
-  in the window. `pair doctor` says which herdr it found and which Shepherdr answers. The board reads 2.1's task
+  in a terminal of its own, lists the terminals that report their status as your other agents (Shepherdr 2.1's too, from its
+  own `shepherdr` core session), and `Alt-a` shows one in the window. A daemon `pair` starts never takes a Shepherdr
+  agent session's credential. `pair doctor` says which herdr it found and which Shepherdr answers. The board reads 2.1's task
   pages, its JSON spaces, its long `task show` in pieces, its artifact lines and its `task add` answer. What differs,
   and what Pair cannot do on herdr-core (the Driver's `type`; focus without the window; Shepherdr 2.1 outside its
   sessions), is in [herdr.md](docs/herdr.md#herdr-core-and-the-herdr-window), [agents.md](docs/agents.md#shepherdr-20-and-21)

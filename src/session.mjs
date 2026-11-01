@@ -2262,6 +2262,7 @@ export class PairSession {
     if (!plainLine(text)) return 'Refused: type takes one line of plain text, and the user presses Enter.';
     const pane = this.state.terminalPane;
     if (!this.panes || !pane) return 'No terminal pane of the user is known yet; say the command instead.';
+    if (this.panes.canType?.(pane) === false) return 'Pair cannot type into this terminal: herdr-core types only with Enter. Say the command instead.';
     const policy = commandPolicy(text);
     if (policy.verdict === 'refuse') {
       this.ledger.add('refused', text, {data: {note: policy.reason}});

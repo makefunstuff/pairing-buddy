@@ -30,7 +30,7 @@ terminals that have it: commands, their start, end and exit code, and in zsh you
 The newer herdr ([herdr.md](herdr.md#herdr-core-and-the-herdr-window)) lacks what these need:
 
 - **The Driver cannot type into a herdr-core terminal.** The core types only with Enter (`terminal.send`), so Pair
-  refuses rather than run what it would type. In Neovim's `:terminal` buffers and tmux panes it still types.
+  never offers one as the Driver's target rather than run what it would type. In Neovim's `:terminal` buffers and tmux panes it still types.
 - **The focus comes from the Herdr window**, asked twice a second; without the window (a core used on its own, as
   Shepherdr 2.1's session is), no terminal has focus, so Pair takes no typing pause or short commands from the
   screen there, and `pair` opens the chat in the terminal it runs in. The shell hook still reports commands.
@@ -72,8 +72,8 @@ stay herdr's:
 - **Shepherdr only.** The board is read through `shepherdr`, Shepherdr 2.0 or 2.1 (told apart by what `task list
   --json` answers); herdr-projects 1.x, the board before it, is not read any more.
 - **Shepherdr 2.1 answers only inside the agent sessions it starts.** From your own shell or Pair's daemon its command
-  refuses (`no legacy HTTP routing`), so Pair reads no board there: the relay shows herdr-core's agents only, the
-  context card has no task, and a board pick's command fails with that refusal. `pair doctor` says so. In 2.1 only a
+  refuses (`no legacy HTTP routing`), so Pair reads no board there: the relay shows the agents of herdr-core only
+  (yours, and Shepherdr's from its own `shepherdr` core session, as agents, not tasks), the context card has no task, and a board pick's command fails with that refusal. `pair doctor` says so. In 2.1 only a
   coordinator archives a task, so a review's archive is refused too.
 - **A task's report is found by the words of `shepherdr artifact list` and `artifact show`**, which have no JSON: the
   list names the space an artifact is kept in, not the task, so Pair asks the space's newest 20 who made them (`by

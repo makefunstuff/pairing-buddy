@@ -6,7 +6,9 @@
 // (`terminal.read`), as a herdr pane does, but nothing says it scrolled, and the core cannot type without pressing
 // Enter: the Driver's `type` does not reach a herdr-core terminal.
 import {execFile} from 'node:child_process';
+import {existsSync} from 'node:fs';
 import {connect} from 'node:net';
+import {dirname, join} from 'node:path';
 import {readMessages, sendMessage} from './protocol.mjs';
 
 export const SPACE = 'herdr.space'; // the window's space a terminal is shown in
@@ -223,6 +225,11 @@ export class CorePanes {
     return coreCommand(await this.request('terminal.get', {terminal: pane}));
   }
 
+  /** The Driver's `type` cannot reach these terminals (see send), so none is offered as its target. */
+  canType() {
+    return false;
+  }
+
   /** Its last `lines` lines: the screen, with history above it, without the empty rows below the prompt. */
   async read(pane, lines) {
     const {text} = await this.request('terminal.read', {terminal: pane, lines});
@@ -287,15 +294,27 @@ export class CorePaneHost {
 /**
  * The agents of a core as herdr's `agent.list` has them (agents.mjs): the terminals whose program says what it does
  * (OSC 7501: idle, working, done, blocked or error), each `{pane_id, name, cwd, agent, agent_status, title,
- * terminal_title_stripped}`.
+ * terminal_title_stripped}`. `prefix` goes before each address, for another core's agents (`shepherdr:t5j`); a
+ * terminal's `where` label (Shepherdr's "pairing-buddy / PAIR-3") is its title.
  */
-export async function coreAgents(socketPath) {
+export async function coreAgents(socketPath, {prefix = ''} = {}) {
   const {terminals} = await coreRequest(socketPath, 'terminal.list', {});
   return terminals.filter(terminal => terminal.state === 'live' && terminal.status?.state).map(terminal => ({
-    pane_id: terminal.address, name: terminal.name ?? null, cwd: terminal.foreground?.cwd ?? terminal.cwd ?? null,
+    pane_id: `${prefix}${terminal.address}`, name: terminal.name ?? null, cwd: terminal.foreground?.cwd ?? terminal.cwd ?? null,
     agent: terminal.status.app || terminal.foreground?.name || 'agent', agent_status: terminal.status.state,
-    title: terminal.status.title || '', terminal_title_stripped: terminal.status.msg || terminal.title || '',
+    title: terminal.labels?.where || terminal.status.title || '', terminal_title_stripped: terminal.status.msg || terminal.title || '',
   }));
+}
+
+export const SHEPHERDR_CORE = 'shepherdr'; // the core session Shepherdr 2.1 runs its agents in, by default
+
+/**
+ * Shepherdr 2.1's own core, beside the chat's core `socketPath` (`<runtime>/herdr-core/shepherdr.sock`), when it is
+ * another one and there; else null. Shepherdr's agents run there, and no Herdr window of the default session shows them.
+ */
+export function shepherdrCore(socketPath) {
+  const path = join(dirname(socketPath), `${SHEPHERDR_CORE}.sock`);
+  return path !== socketPath && existsSync(path) ? path : null;
 }
 
 /**
@@ -303,12 +322,13 @@ export async function coreAgents(socketPath) {
  * tab of the Herdr window, which shows it beside this one. False when no window shows this terminal: the chat then
  * runs right here.
  */
-export async function openCoreChat(herdr, {argv, cwd, env = {}}) {
+export async function openCoreChat(herdr, {argv, cwd, env = {}, shell = process.env}) {
   const here = await coreRequest(herdr.socket, 'terminal.get', {terminal: herdr.pane}).catch(() => null);
   const shown = Object.fromEntries([SPACE, TAB].filter(key => here?.labels?.[key]).map(key => [key, here.labels[key]]));
   if (!shown[SPACE]) return false;
-  await coreRequest(herdr.socket, 'terminal.run', {argv, cwd, env, labels: shown, no_parent: true, no_notify: true});
-  return true;
+  // The core starts it with the core's environment: the terminal's own (TERM, LANG, …) go on top, as a shell would have them.
+  const own = Object.fromEntries(['TERM', 'COLORTERM', 'TERM_PROGRAM', 'LANG', 'LC_ALL', 'PATH'].filter(name => shell[name]).map(name => [name, shell[name]]));
+  return coreRequest(herdr.socket, 'terminal.run', {argv, cwd, env: {...own, ...env}, labels: shown, no_parent: true, no_notify: true}).then(() => true, () => false);
 }
 
 /** What `pair doctor` says of a core: its version and terminals. */

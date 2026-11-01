@@ -8,7 +8,7 @@ import {basename} from 'node:path';
 import {Board} from './board.mjs';
 import {gitBaseBranch, gitBranchDiff, gitWorktrees} from './git.mjs';
 import {herdrRequest} from './herdr.mjs';
-import {coreAgents, HerdrApp} from './herdr-core.mjs';
+import {coreAgents, HerdrApp, shepherdrCore, SHEPHERDR_CORE} from './herdr-core.mjs';
 
 const POLL_MS = 5000;
 const RECENT_MS = 12 * 3600_000; // a task you saw finish stays in the list this long
@@ -122,9 +122,16 @@ export class AgentBoard {
     this.herdr = {kind: herdr.kind ?? 'herdr', socket: herdr.socket, app: herdr.kind === 'core' ? new HerdrApp({command: this.appCommand, env: {HC_SESSION: herdr.session, HERDR_APP_HOME: herdr.appHome}}) : null};
   }
 
-  readAgents() {
+  /**
+   * herdr's agents, or those of the chat's core and of Shepherdr 2.1's own core beside it (`shepherdr:t5j`), where it
+   * runs its tasks' agents.
+   */
+  async readAgents() {
     const {kind, socket} = this.herdr;
-    return kind === 'core' ? coreAgents(socket) : herdrRequest(socket, 'agent.list').then(({agents}) => agents);
+    if (kind !== 'core') return (await herdrRequest(socket, 'agent.list')).agents;
+    const shepherdr = shepherdrCore(socket);
+    const theirs = shepherdr ? await coreAgents(shepherdr, {prefix: `${SHEPHERDR_CORE}:`}).catch(() => []) : [];
+    return [...await coreAgents(socket), ...theirs];
   }
 
   start() {
@@ -231,6 +238,7 @@ export class AgentBoard {
   async focus(key) {
     const item = this.items?.find(other => other.key === key);
     if (!item?.pane || !this.herdr) return false;
+    if (this.herdr.kind === 'core' && item.pane.startsWith(`${SHEPHERDR_CORE}:`)) return false; // no window of yours shows it
     if (this.herdr.kind === 'core') await this.herdr.app.focus(item.pane);
     else await herdrRequest(this.herdr.socket, 'agent.focus', {target: item.pane});
     return true;

@@ -91,7 +91,9 @@ async function ensureDaemon(config) {
   }
   mkdirSync(config.dataDir, {recursive: true, mode: 0o700});
   const log = openSync(join(config.dataDir, 'daemon.log'), 'a');
-  spawn(process.execPath, ['--disable-warning=ExperimentalWarning', SCRIPT, 'supervise'], {detached: true, stdio: ['ignore', log, log]}).unref();
+  // Never a Shepherdr agent session's own credential or routing: the daemon is yours, not that agent's.
+  const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith('SHEPHERDR_')));
+  spawn(process.execPath, ['--disable-warning=ExperimentalWarning', SCRIPT, 'supervise'], {detached: true, stdio: ['ignore', log, log], env}).unref();
   if (!(await waitFor(() => reachable(config.socket)))) throw new Error(`The daemon did not start; see ${join(config.dataDir, 'daemon.log')}`);
 }
 

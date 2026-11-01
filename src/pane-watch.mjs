@@ -94,6 +94,7 @@ export class Panes {
     return null;
   }
 
+  canType(pane) { return this.sourceOf(pane).canType?.(pane) !== false; }
   commandOf(pane) { return this.sourceOf(pane).commandOf(pane); }
   read(pane, lines) { return this.sourceOf(pane).read(pane, lines); }
   send(pane, text) { return this.sourceOf(pane).send(pane, text); }
@@ -402,9 +403,9 @@ export class PaneWatch {
     await this.source.send(pane, text);
   }
 
-  /** The ids of the user's terminal panes seen so far. */
+  /** The ids of the user's terminal panes seen so far, which the Driver's `type` can reach (not herdr-core's). */
   terminals() {
-    return [...this.panes.keys()].filter(pane => this.targetOf(pane) === 'terminal');
+    return [...this.panes.keys()].filter(pane => this.targetOf(pane) === 'terminal' && this.source.canType?.(pane) !== false);
   }
 
   isUsers(pane) {

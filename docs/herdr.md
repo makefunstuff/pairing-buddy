@@ -91,11 +91,16 @@ as herdr's, so Pair talks to both the same way ([src/herdr-core.mjs](../src/herd
 | A command's output | `pane.read`, at most 1000 lines | `terminal.read`: the screen plus history | the same: cut from the line the command was typed on |
 | The chat pane | `pane.split` and `pane.send_text` | `terminal.run` with the window's labels | `pair` starts `pair chat` in a terminal of the same space and tab, which the window shows beside it; without a window, the chat runs in place |
 | Pair's own pane (Scout, tests on save) | `pane.split`, labelled `pair scout` | `terminal.run` with a line, labelled `pair.scout=<project>` | the terminal's program is Scout's shell; commands go in with `terminal.send` (pasted, then Enter), Ctrl-U and Ctrl-C with `terminal.keys`; closed with `terminal.kill` |
-| The Driver's `type` | `pane.send_text` without Enter | `terminal.send` always presses Enter | **not available**: Pair refuses to type into a herdr-core terminal rather than run what it typed |
-| Your other agents | `agent.list` | terminals whose program reports its status (OSC 7501: idle, working, done, blocked, error) | listed from `terminal.list` across the core; `error` shows as failed |
+| The Driver's `type` | `pane.send_text` without Enter | `terminal.send` always presses Enter | **not available**: a herdr-core terminal is never offered as the Driver's target, so nothing typed there runs |
+| Your other agents | `agent.list` | terminals whose program reports its status (OSC 7501: idle, working, done, blocked, error) | listed from `terminal.list` across the core, and Shepherdr 2.1's core beside it (below); `error` shows as failed |
 | Bring an agent to the front | `agent.focus` | none; the window does it | `herdr-app do agent.focus --terminal <t>` |
 | The shell hook's pane | `HERDR_PANE_ID` | `HC_TERMINAL_ID` | the hook reports either, and the terminal is also found by its shell's pid |
 
-`herdr-app` talks to the window that runs and never opens one; `HC_SESSION` and `HERDR_APP_HOME` of the chat's
-terminal pick the window, and a window that shows another space gives no focus. Pair's sandbox hides the core's socket
+`herdr-app` talks to the window that runs and never opens one; `HERDR_APP_HOME` of the chat's terminal picks the
+window, and a window that shows another space gives no focus.
+
+Shepherdr 2.1 runs its tasks' agents in a core session of its own, `shepherdr` (`<runtime>/herdr-core/shepherdr.sock`),
+which no window of the default session shows. When that socket is beside the chat's, Pair lists its agents too
+(`shepherdr:t5j`, titled by their `where` label, such as `pairing-buddy / PAIR-3`), read only; `Alt-a` cannot bring
+one to the front. A Shepherdr started with another `--core-session` is not found. Pair's sandbox hides the core's socket
 from Scout's commands, as it hides herdr's.
