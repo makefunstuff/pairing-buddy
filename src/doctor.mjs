@@ -14,7 +14,7 @@ import {coreRequest, coreStatus, herdrOf, HerdrApp, SPACE} from './herdr-core.mj
 import {listModels, shareServer, SWAP_FACTOR, SWAP_MS} from './loaded-model.mjs';
 import {createDecider, probeDecision} from './decision.mjs';
 import {createDecisionModel, createPairModels, knownProviders} from './models.mjs';
-import {HttpEmbedder, meaningDir, MODEL, modelReady, pythonOf, RUNTIME, runtimeOf} from './embedder.mjs';
+import {Embedder, HttpEmbedder, meaningDir, MODEL, modelPath, modelReady, pythonOf, queryText, RUNTIME, runtimeOf} from './embedder.mjs';
 import {FAST_MS, SLOW_MS} from './pace.mjs';
 import {levelGroups, probeModel, probeThinking} from './probe.mjs';
 import {requestDaemon} from './protocol.mjs';
@@ -311,7 +311,21 @@ function indexesText(config, live) {
  * fine, and says what turning it on takes; on, EmbeddingGemma 2 must be the checked download and its Python must have
  * LiteRT-LM. Then each index: with the daemon running, the open projects'; else the files in Pair's data folder.
  */
-export async function meaningCheck(config, status, {runtime = runtimeOf, fetch = globalThis.fetch} = {}) {
+/** Whether EmbeddingGemma 2 answers: its helper loads the model and embeds one word, then stops. `{ms}` or `{problem}`. */
+export async function gemmaAnswers(config) {
+  const embedder = new Embedder({python: pythonOf(config.meaning, config.dataDir), model: modelPath(config.dataDir), threads: 1});
+  const started = Date.now();
+  try {
+    await embedder.embed([queryText('ping')]);
+    return {ms: Date.now() - started};
+  } catch (error) {
+    return {problem: error.message};
+  } finally {
+    embedder.close();
+  }
+}
+
+export async function meaningCheck(config, status, {runtime = runtimeOf, fetch = globalThis.fetch, answers = gemmaAnswers} = {}) {
   if (config.meaning === false) return ok('meaning', 'search by meaning is off in the config ("meaning": false)');
   const live = status?.meaning;
   if (config.embedding) {
@@ -334,8 +348,10 @@ export async function meaningCheck(config, status, {runtime = runtimeOf, fetch =
     return ok('meaning', `words only: :Pair find on downloads ${MODEL.name} (165 MB, once) for meaning, or set an "embedding" model; ${needs}${indexesText(config, live)}`);
   }
   if (!has) return fail('meaning', `${MODEL.name} is downloaded, but ${found.problem}: ${runtimeInstall(config.dataDir)} (or set meaning.python)`);
-  const model = `${MODEL.name} (revision ${MODEL.revision.slice(0, 7)}, SHA-256 checked) on ${has}`;
-  if (live?.problem) return warn('meaning', `${model}, but the embedder fails: ${live.problem}`);
+  const answered = await answers(config);
+  if (answered.problem) return fail('meaning', `${MODEL.name} on ${has} does not answer: ${answered.problem}`);
+  const model = `${MODEL.name} (revision ${MODEL.revision.slice(0, 7)}, SHA-256 checked) on ${has} answers (${answered.ms} ms with loading)`;
+  if (live?.problem) return warn('meaning', `${model}, but the index's embedding fails: ${live.problem}`);
   const speed = live?.msPerChunk ? `, ${Math.round(live.msPerChunk)} ms a piece` : '';
   return ok('meaning', `${model}${indexesText(config, live)}${speed}`);
 }

@@ -94,7 +94,7 @@ If an answer needs a search or a test run, say so in one sentence: the user can 
   what the user expects. Do not run them yourself: until the user saves, the file on disk still has the old code.
   When your answer ends, the user has the wheel again, unless they let you keep it.
 - To put a command in the user's terminal, call type: they confirm it and press Enter themselves.
-- search and run work in your own pane, as for Scout.`,
+- search and run work in your own pane, as for Scout; search with meaning: true finds code by what it does.`,
   gen: `Your role now: gen. The user asked you for code with /gen, and this conversation is that one request.
 - You never change the user's text. You call propose with the code, and the user takes it into their buffer with one key, or not.
 - First read the lines around the place, so your line numbers and indentation are right.

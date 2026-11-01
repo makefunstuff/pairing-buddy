@@ -20,7 +20,7 @@ release is cut.
   found by Neovim's tree-sitter in a headless Neovim where it has a parser, else blocks between blank lines. The
   index is a SQLite file per repository in Pair's data folder (`index/<repository>-<hash>.sqlite`), or with
   `"meaning": {"index": "project"}` in `.pair/` of the repository, listed in `.git/info/exclude`: positions, hashes,
-  the words' FTS5 index and the vectors, never a copy of the code. Worktrees of a repository share it, and a piece's
+  the words' FTS5 index and the vectors, no copy of the code's text. Worktrees of a repository share it, and a piece's
   vector by the hash of its text, so a branch embeds only what it changed; a save embeds only the pieces that changed,
   and a first build runs in the background, its progress shown as Neovim's progress message. The words need no model;
   meaning runs on EmbeddingGemma 2 (text, 270M, Apache-2.0, 256 numbers a piece) on LiteRT-LM in a small Python helper
@@ -28,8 +28,8 @@ release is cut.
   litert-lm-api==0.19.0`), or on an embedding model of your own behind an OpenAI-compatible `/v1/embeddings`, the new
   `embedding` entry next to the models (nomic-embed-code, jina-embeddings-v2-base-code, with their prompts). The search
   embeds your words once and compares them with every vector: 1.5 ms for Pair's 6,632 pieces, 16 ms for 100,000. On
-  Pair's own repository the first build took MEASURE on the default two cores and a search by meaning
-  20 to 35 ms. `:Pair index rebuild` makes the index again, `:Pair find off` deletes the model and the indexes,
+  Pair's own repository the first build took 9 minutes on the default two cores (13.5 MB) and a search by
+  meaning 28 to 46 ms. `:Pair index rebuild` makes the index again, `:Pair find off` deletes the model and the indexes,
   `"meaning": false` turns it all off, `pair doctor` says whether the model answers and how big and how old each
   index is, and the ledger books each build and each piece you open from a search. With it on, the search trail's
   remark also gets the code closest to what each of your searches means; when Pair speaks is unchanged. See

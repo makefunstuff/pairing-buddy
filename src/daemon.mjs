@@ -1015,7 +1015,7 @@ export async function startDaemon(config, {
     const query = message.query.trim();
     const answer = message.phase === 'words' ? await meaning.words(session.root, query)
       : message.phase === 'meaning' ? await meaning.meaningOnly(session.root, query)
-        : await meaning.search(session.root, query);
+        : await meaning.search(session.root, query, {book: message.select !== true}); // a pick from vim.ui.select is booked as one
     sendMessage(client.socket, {
       type: 'found', ...(message.id !== undefined ? {id: message.id} : {}), ...answer, root: session.root,
       results: answer.results.map(result => ({...result, path: join(session.root, result.file)})),
@@ -1039,6 +1039,10 @@ export async function startDaemon(config, {
       await meaning.turnOn();
       return tell('Search by meaning is already on: its model is here, and Pair indexes the open projects in the background.');
     }
+    if (config.embedding) { // nothing to download: the config's model is asked again
+      await meaning.turnOn();
+      return tell(`Search by meaning is on, with ${meaning.modelName}: Pair indexes this project in the background.`);
+    }
     let told = 0;
     tell('Downloading EmbeddingGemma 2 for search by meaning (165 MB, once)…');
     let downloaded;
@@ -1061,8 +1065,9 @@ export async function startDaemon(config, {
   async function meaningOff(client) {
     const was = meaning.state;
     await meaning.turnOff();
-    if (was === 'on') for (const session of live.values()) session.ledger.add('deleted', 'search by meaning\'s model and indexes (:Pair find off)');
-    sendMessage(client.socket, {type: 'meaning_state', ...meaning.snapshot(), text: 'Search by meaning is off: its model and indexes are deleted.'});
+    if (was === 'on') for (const session of live.values()) session.ledger.add('deleted', `search by meaning's ${config.embedding ? 'indexes' : 'model and indexes'} (:Pair find off)`);
+    const text = config.embedding ? 'Search by meaning is off: its indexes are deleted, and the embedding model is not asked until :Pair find on.' : 'Search by meaning is off: its model and indexes are deleted.';
+    sendMessage(client.socket, {type: 'meaning_state', ...meaning.snapshot(), text});
   }
 
   /** The context card for the Neovim that asked, with git and the board read again when they are not fresh. */

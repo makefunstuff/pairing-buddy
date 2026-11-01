@@ -7,8 +7,8 @@ description: "Find code as quickly as ripgrep with loose words: a live picker, w
 You know what the code does, not what it calls it. Press `Alt-s` and type "method that removes user": the picker
 works like `live_grep`. On every key it shows the pieces of code that have your words, with identifiers split
 (`removeUserFromTeam` is also remove, user, from and team), comments and strings too. Stop typing for 150 ms and the
-pieces closest to what you mean join the list below them: `teams.js:42 export function dropMember(team, id)`, though
-it says neither "remove" nor "user". Nothing you already see moves. `Enter` opens a piece at its line, and in
+pieces closest to what you mean join the list below them: in Pair's own code, `src/auth.mjs:46 export async function
+logout({id, credentials})` first, though it says neither "remove" nor "user". Nothing you already see moves. `Enter` opens a piece at its line, and in
 Telescope `<C-q>` sends the hits to the quickfix list.
 
 The word search works on its own, with no model at all. Meaning needs an embedding model: EmbeddingGemma 2, which
@@ -82,8 +82,9 @@ questions.
 - **Shared by worktrees.** A piece is known by the hash of its path and text, and its vector is kept by that hash and
   the model: the worktrees of one repository share one index file, and a branch embeds only what it changed.
 - **Up to 20,000 pieces a project**: past that, the files left are not indexed, and the picker says so.
-- **What it keeps: positions and vectors, no code.** A SQLite file per repository (worktrees share it): each piece's
-  file, lines, hash, kind and name, an FTS5 index of its words without the text they came from, and a vector per hash
+- **What it keeps: positions and vectors, no copy of the code.** A SQLite file per repository (worktrees share it):
+  each piece's file, lines, hash, kind and name, an FTS5 index of its words (lower case and stemmed, with where each
+  stands, so not secret: no punctuation, but their order could be read back) without the text itself, and a vector per hash
   (256 numbers, 1 KB, for EmbeddingGemma). The lines shown are read from your files.
 - **Where.** In Pair's data folder, `index/<repository>-<hash>.sqlite`, by default: nothing goes in the repository.
   With `"meaning": {"index": "project"}` in the [config](config.md#meaning) it is `.pair/index.sqlite` in the
@@ -96,10 +97,10 @@ On this repository (550 files, 4 MB of code and docs, on a Ryzen 5 9600X), with 
 
 | | |
 | --- | --- |
-| Words index | 6,632 pieces in 1.1 s; a word search in 1 to 4 ms |
-| First vectors | MEASURE |
-| Index on disk | MEASURE |
-| Meaning | MEASURE once the embedder runs (the query's vector, then 2 ms to compare); under a second more when it has to start |
+| Words index | 6,639 pieces from 549 files in 1.1 s; a word search in 1 to 4 ms |
+| First vectors | 6,639 pieces in 9 min 11 s, 83 ms a piece on the default two cores (5 min on six) |
+| Index on disk | 13.5 MB (6.8 MB of it vectors) |
+| Meaning | 28 to 46 ms once the embedder runs (the query's vector, then 1.5 ms to compare); under a second more when it has to start |
 | A save | the file's changed pieces, a fraction of a second each |
 
 ## Another embedding model
@@ -131,8 +132,8 @@ wait for your break are the same as for every trail.
 
 ## In the ledger
 
-`:Pair today` lists each build of ten pieces or more (`indexed 6632 pieces by meaning in 420 s: 550 files, 6632
-pieces, 11000 KB`; a save's few pieces get no line of their own), each piece you open from a picker (`searched by
+`:Pair today` lists each build of ten pieces or more (`indexed 6639 pieces by meaning in 551 s: 549 files, 6639
+pieces, 13780 KB`; a save's few pieces get no line of their own), each piece you open from a picker (`searched by
 meaning "method that removes user" in the picker: 1 result, first src/teams.js:42`), each `/find` and `search` tool
 search (`⏎` shows the ranking with each piece's similarity and whether your words matched), each lookup for the
 search trail, `:Pair index rebuild`, the model's download, and `:Pair find off` deleting it. The words you type on
@@ -178,11 +179,12 @@ it. Any other Python with `litert-lm-api` works too: set `"meaning": {"python": 
 index is:
 
 ```
-✓ meaning  EmbeddingGemma 2 (text, 270M) (revision 9be6e8b, SHA-256 checked) on LiteRT-LM 0.19.0 in ~/.local/state/pairing-buddy/meaning/venv/bin/python; pairing-buddy: 550 files, 6632 pieces, 11.2 MB, updated 4 min ago, 63 ms a piece
+✓ meaning  EmbeddingGemma 2 (text, 270M) (revision 9be6e8b, SHA-256 checked) on LiteRT-LM 0.19.0 in ~/.local/state/pairing-buddy/meaning/venv/bin/python; pairing-buddy: 549 files, 6639 pieces, 13.5 MB, updated 4 min ago, 83 ms a piece
 ```
 
 ## Turn it off
 
 `:Pair find off` stops the embedder and deletes EmbeddingGemma and every index (in Pair's data folder, and the open
-projects' `.pair/index.sqlite`); the word index is made again, in seconds, at the next search. `"meaning": false` in
+projects' `.pair/index.sqlite`); the word index is made again, in seconds, at the next search. With an `embedding`
+model, it is not asked again until `:Pair find on`. `"meaning": false` in
 the [config](config.md#meaning) turns it all off for good: `Alt-s` then says so, and nothing is downloaded or indexed.

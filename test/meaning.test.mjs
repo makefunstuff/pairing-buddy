@@ -6,7 +6,7 @@
 // EmbeddingGemma 2, and a fake server for the /v1/embeddings (see fake-embedder.mjs).
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync} from 'node:fs';
+import {chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, utimesSync, writeFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {join} from 'node:path';
 import {test} from 'node:test';
@@ -328,6 +328,78 @@ test('without a model the index keeps no text of the code in memory; Scout\'s se
   }
 });
 
+test('a save during a scan: one read at a time, and the newer text is the one kept', async () => {
+  const root = project();
+  const dataDir = scratch('meaning-data-');
+  const meaning = new Meaning({dataDir, embedder: fakeEmbedder()});
+  try {
+    meaning.open(root);
+    const index = meaning.indexes.get(root);
+    await index.ready;
+    const sitter = index.treeSitter;
+    const definitions = sitter.definitions.bind(sitter);
+    let slow = true;
+    sitter.definitions = async paths => { if (slow) { slow = false; await new Promise(resolve => setTimeout(resolve, 100)); } return definitions(paths); };
+    writeFileSync(join(root, 'src', 'cart.js'), 'export const middleName = 1;\n');
+    const scanning = index.scan();
+    await new Promise(resolve => setTimeout(resolve, 20));
+    writeFileSync(join(root, 'src', 'cart.js'), '\n\nexport const newestName = 2;\n');
+    await Promise.all([scanning, meaning.saved(root, join(root, 'src', 'cart.js'))]);
+    const [hit] = (await meaning.words(root, 'newestName')).results;
+    assert.deepEqual([hit?.file, hit?.line], ['src/cart.js', 3]);
+    assert.deepEqual((await meaning.words(root, 'middleName')).results, []);
+  } finally {
+    await meaning.close();
+  }
+});
+
+test('a file changed without a new size or time is read again once, never in a loop', async () => {
+  const root = project();
+  const dataDir = scratch('meaning-data-');
+  const meaning = new Meaning({dataDir, embedder: fakeEmbedder()});
+  try {
+    meaning.open(root);
+    const index = meaning.indexes.get(root);
+    await index.ready;
+    const path = join(root, 'src', 'cart.js');
+    const {atime, mtime} = statSync(path);
+    writeFileSync(path, PRICES.replace('cents', 'pence'));
+    utimesSync(path, atime, mtime);
+    fakeModel(dataDir);
+    await meaning.turnOn();
+    await embedded(meaning, root);
+    assert.equal((await meaning.words(root, 'pence')).results[0].file, 'src/cart.js', 'read again: its new words');
+  } finally {
+    await meaning.close();
+  }
+});
+
+test(':Pair find off with an embedding model keeps it off until :Pair find on', async () => {
+  const server = await fakeEmbeddingServer();
+  const root = project();
+  const dataDir = scratch('meaning-data-');
+  const meaning = new Meaning({dataDir, embedding: {api: 'openai', baseUrl: server.baseUrl, model: 'jina-embeddings-v2-base-code'}});
+  try {
+    meaning.open(root);
+    await embedded(meaning, root);
+    await meaning.turnOff();
+    assert.equal(meaning.state, 'off');
+    const asked = server.requests.length;
+    meaning.open(root); // the word index, made again from the files
+    await meaning.indexes.get(root).ready;
+    const answer = await meaning.search(root, 'quantity');
+    assert.equal(answer.state, 'off');
+    assert.equal(answer.results[0].file, 'src/cart.js', 'the words still work');
+    await new Promise(resolve => setTimeout(resolve, 50));
+    assert.equal(server.requests.length, asked, 'nothing is embedded');
+    await meaning.turnOn();
+    assert.equal(meaning.state, 'on');
+  } finally {
+    await meaning.close();
+    server.close();
+  }
+});
+
 test('the brute-force search over every vector stays quick for many pieces', () => {
   const pieces = Array.from({length: 20_000}, (_, i) => ({id: i, file: 'f.js', from: i + 1, to: i + 1, hash: `h${i}`}));
   const index = new ProjectIndex({root: '/project', store: null, embedder: {id: 'fake'}});
@@ -523,12 +595,15 @@ test('pair doctor: off says what turning it on takes; on, the runtime must be th
   assert.equal(broken.level, 'fail');
   assert.match(broken.text, /is downloaded, but python3 has no litert-lm-api/);
   const status = {meaning: {state: 'on', problem: null, msPerChunk: 140.4, indexes: [{root: '/src/shop', files: 12, chunks: 40, embedded: 30, bytes: 1 << 20, updatedAt: Date.now() - 3 * 3600_000}]}};
-  const on = await meaningCheck(config, status, {runtime: there});
+  const mute = await meaningCheck(config, status, {runtime: there, answers: async () => ({problem: 'the embedder stopped (exit 1)'})});
+  assert.equal(mute.level, 'fail');
+  assert.match(mute.text, /does not answer: the embedder stopped/);
+  const on = await meaningCheck(config, status, {runtime: there, answers: async () => ({ms: 412})});
   assert.equal(on.level, 'ok');
-  assert.match(on.text, /revision 9be6e8b, SHA-256 checked\) on LiteRT-LM 0\.19\.0 in python3; shop: 12 files, 40 pieces \(75% embedded\), 1\.0 MB, updated 3 h ago, 140 ms a piece$/);
+  assert.match(on.text, /revision 9be6e8b, SHA-256 checked\) on LiteRT-LM 0\.19\.0 in python3 answers \(412 ms with loading\); shop: 12 files, 40 pieces \(75% embedded\), 1\.0 MB, updated 3 h ago, 140 ms a piece$/);
   mkdirSync(join(dataDir, 'index'));
   writeFileSync(join(dataDir, 'index', 'shop-0123abcd.sqlite'), Buffer.alloc(2 << 20));
-  assert.match((await meaningCheck(config, null, {runtime: there})).text, /; shop: 2\.0 MB, updated just now$/, 'without the daemon, the files in Pair\'s data folder');
+  assert.match((await meaningCheck(config, null, {runtime: there, answers: async () => ({ms: 1})})).text, /; shop: 2\.0 MB, updated just now$/, 'without the daemon, the files in Pair\'s data folder');
 
   const server = await fakeEmbeddingServer();
   try {

@@ -69,6 +69,15 @@ export class IndexStore {
     this.path = path;
     mkdirSync(dirname(path), {recursive: true, mode: 0o700});
     this.db = new DatabaseSync(path);
+    try {
+      this.setUp();
+    } catch (error) {
+      this.db.close(); // not a database, or not writable: closed now, not when collected
+      throw error;
+    }
+  }
+
+  setUp() {
     this.db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 5000');
     const version = this.db.prepare('PRAGMA user_version').get().user_version;
     if (version !== SCHEMA) {
@@ -135,6 +144,7 @@ export class IndexStore {
     return this.transaction(() => {
       this.dropPieces(tree, file);
       this.statements.putFile.run(tree, file, size, mtimeMs, skipped ? 1 : 0);
+      this.touch();
       return pieces.map(piece => {
         const {lastInsertRowid} = this.statements.putPiece.run(tree, file, piece.from, piece.to, piece.hash, piece.kind ?? null, piece.name ?? null);
         this.statements.putWords.run(lastInsertRowid, piece.words);

@@ -29,7 +29,7 @@ for meaning, or set an "embedding" model; LiteRT-LM 0.19.0 in … is ready`.
 
 Then `:Pair find on` downloads the model (165 MB from Hugging Face, checked by its SHA-256), and Pair embeds the
 project in the background, on two cores at low priority; Neovim shows how far as a progress message. A project the
-size of Pair's own (550 files) takes a quarter of an hour the first time; after that, a save only embeds the pieces
+size of Pair's own (550 files) takes about nine minutes the first time; after that, a save only embeds the pieces
 you changed. (Already running an embedding model, in llama.cpp or Ollama? Put it in the config as `embedding` instead:
 [another embedding model](../meaning.md#another-embedding-model).)
 
