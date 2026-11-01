@@ -53,7 +53,7 @@ test('no docs page wraps a code span onto a line that starts with <', () => {
     let previous = '';
     for (const [i, line] of readFileSync(new URL(file, docs), 'utf8').split('\n').entries()) {
       if (/^\s*(```|~~~)/.test(line)) fenced = !fenced;
-      else if (!fenced && line.startsWith('<'))
+      else if (!fenced && /^ {0,3}</.test(line))
         assert.ok((previous.match(/`/g) ?? []).length % 2 === 0, `${file}:${i + 1} starts a code span's second line with <`);
       previous = fenced ? '' : line;
     }
