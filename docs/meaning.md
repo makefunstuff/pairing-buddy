@@ -49,7 +49,7 @@ best pieces come with its "No matches." ([scout.md](scout.md)).
   lfm-pixel: a question in other words than the code's finds nothing here and is left to its meaning, and a name only
   the code has finds its piece. It is a SQLite FTS5 index: a few milliseconds a key on this repository.
 - **Meaning, once you pause.** Your words are embedded once (as `task: search result | query: …` for EmbeddingGemma)
-  and compared with every piece's vector, brute force: 1.5 ms for this repository's 6,600 pieces, 16 ms for 100,000
+  and compared with every piece's vector, brute force: 1.5 ms for this repository's 6,639 pieces, 16 ms for 100,000
   (62 ms at 768 numbers a piece), so there is no approximate index to keep. The closest, within 0.1 of the best (unrelated code scores close
   too, so a fixed cut-off would not do).
 - **Fused, where one list is asked for.** `/find`, `vim.ui.select` and the `search` tool score each piece
@@ -69,8 +69,8 @@ questions.
 - **Pieces.** Each function, class and method with the comments right above it (its doc comment), found by
   Neovim's tree-sitter where Neovim has a parser for the file's language: Pair runs a headless Neovim without your
   config (`nvim -u NONE -l`), with the parsers Neovim ships and those your Neovim has (it tells Pair at connect). A
-  class longer than 60 lines becomes its head and its methods; a function longer than that, or 1,500 characters
-  (about 400 tokens), is cut at blank lines. The lines between definitions, and whole files with no parser (or no
+  definition longer than 60 lines becomes its head and the definitions inside it (a class's methods); one with none,
+  or longer than 1,500 characters (about 400 tokens), is cut at blank lines. The lines between definitions, and whole files with no parser (or no
   Neovim), go in blocks cut at blank lines. Markdown's parser makes each section a piece.
 - **Built in the background**, once a project has a session: its words first (this repository's 550 files in about a
   second), then its vectors in batches of four, on two cores (`meaning.threads`) at low priority (`nice 10`). A search
@@ -80,7 +80,8 @@ questions.
   outside Neovim (a checkout, a pull) are found when the session loads and every ten minutes. A file's pieces whose
   text changed meanwhile are read again before they are embedded.
 - **Shared by worktrees.** A piece is known by the hash of its path and text, and its vector is kept by that hash and
-  the model: the worktrees of one repository share one index file, and a branch embeds only what it changed.
+  the model: the worktrees of one repository share one index file, and a worktree on another branch embeds only what that branch changed (switching branches in one worktree embeds again
+  what the old branch had and the new one lacks, once the index looks the project over).
 - **Up to 20,000 pieces a project**: past that, the files left are not indexed, and the picker says so.
 - **What it keeps: positions and vectors, no copy of the code.** A SQLite file per repository (worktrees share it):
   each piece's file, lines, hash, kind and name, an FTS5 index of its words (lower case and stemmed, with where each

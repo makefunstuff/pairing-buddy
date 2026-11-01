@@ -95,14 +95,14 @@ class Lines {
     let info;
     try { info = await stat(join(this.root, file)); } catch { return null; }
     const known = this.files.get(file);
-    if (known?.mtimeMs === info.mtimeMs) {
+    if (known?.mtimeMs === info.mtimeMs && known.size === info.size) {
       this.files.delete(file);
       this.files.set(file, known);
       return known.lines;
     }
     let text;
     try { text = await readFile(join(this.root, file), 'utf8'); } catch { return null; }
-    this.files.set(file, {mtimeMs: info.mtimeMs, lines: text.split('\n')});
+    this.files.set(file, {mtimeMs: info.mtimeMs, size: info.size, lines: text.split('\n')});
     if (this.files.size > this.size) this.files.delete(this.files.keys().next().value);
     return this.files.get(file).lines;
   }
@@ -607,6 +607,7 @@ export class Meaning {
     } catch {
       return null; // its file cannot be opened: said in the log, tried again at the next search
     }
+    if (index.closed) return null; // its scan failed and closed it: tried again a minute later
     if (!this.working) index.ready.then(() => this.work()); // pieces still waiting (the model came since) are embedded
     return index;
   }
@@ -747,7 +748,7 @@ export class Meaning {
       if (!index.failure) index.store?.release();
     }
     for (const path of paths) removeIndex(path);
-    await removeModel(this.dataDir);
+    if (!this.embedding) await removeModel(this.dataDir); // the config's model is not Pair's to delete, nor is it asked any more
     await rm(join(this.dataDir, 'index'), {recursive: true, force: true});
     if (this.embedding) {
       await mkdir(meaningDir(this.dataDir), {recursive: true, mode: 0o700});

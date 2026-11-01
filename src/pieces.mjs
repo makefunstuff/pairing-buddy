@@ -133,7 +133,7 @@ export class TreeSitter {
         if (error.code === 'ENOENT') this.missing = true;
         done();
       });
-      child.on('exit', done);
+      child.on('close', done); // once its output is read too, not only when it exits
       child.stdin.on('error', () => {});
       readMessages(child.stdout, message => {
         const path = paths[message.id];

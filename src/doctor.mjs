@@ -306,11 +306,6 @@ function indexesText(config, live) {
   return indexes.length ? `; ${indexes.join('; ')}` : '';
 }
 
-/**
- * Search by meaning (see meaning.mjs). With an "embedding" model, it must answer: one text is embedded. Else off is
- * fine, and says what turning it on takes; on, EmbeddingGemma 2 must be the checked download and its Python must have
- * LiteRT-LM. Then each index: with the daemon running, the open projects'; else the files in Pair's data folder.
- */
 /** Whether EmbeddingGemma 2 answers: its helper loads the model and embeds one word, then stops. `{ms}` or `{problem}`. */
 export async function gemmaAnswers(config) {
   const embedder = new Embedder({python: pythonOf(config.meaning, config.dataDir), model: modelPath(config.dataDir), threads: 1});
@@ -325,9 +320,17 @@ export async function gemmaAnswers(config) {
   }
 }
 
+/**
+ * Search by meaning (see meaning.mjs). With an "embedding" model, it must answer: one text is embedded. Else off is
+ * fine, and says what turning it on takes; on, EmbeddingGemma 2 must be the checked download and its Python must have
+ * LiteRT-LM. Then each index: with the daemon running, the open projects'; else the files in Pair's data folder.
+ */
 export async function meaningCheck(config, status, {runtime = runtimeOf, fetch = globalThis.fetch, answers = gemmaAnswers} = {}) {
   if (config.meaning === false) return ok('meaning', 'search by meaning is off in the config ("meaning": false)');
   const live = status?.meaning;
+  if (config.embedding && (live?.state === 'off' || existsSync(join(meaningDir(config.dataDir), 'off')))) {
+    return ok('meaning', `words only: :Pair find off turned the ${config.embedding.model} embedding model off, :Pair find on asks it again${indexesText(config, live)}`);
+  }
   if (config.embedding) {
     const started = Date.now();
     const embedder = new HttpEmbedder({entry: config.embedding, apiKey: () => apiKeyOf(config.embedding), fetch, timeoutMs: 15_000});
