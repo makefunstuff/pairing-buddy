@@ -396,8 +396,8 @@ export class PairSession {
    * where `genScaffold` says ('tree', Pair's copy, or 'worktree'); /gen board composes a task for `genBoard`, the
    * board's command.
    */
-  constructor({record, store, partner, score, pace = null, decision = () => null, typingPauseMs, notify, requestEditor, previousNote = null, lastSession = null, autoTune = false, health = {ok: () => true}, testOnSave = null, checkOutput = null, genLimits, genBrief, genDir = null, genKeepTries, genNetwork = false, genSandbox = 'auto', genScaffold, genBoard = null, askModel = null, threadModel = askModel, proposing = true, meaningHits = null, log = () => {}, now = Date.now}) {
-    Object.assign(this, {record, store, partner, score, pace, decision, typingPauseMs, notify, requestEditor, previousNote, lastSession, autoTune, health, askModel, threadModel, proposing, meaningHits, log, now});
+  constructor({record, store, partner, score, pace = null, decision = () => null, typingPauseMs, notify, requestEditor, previousNote = null, lastSession = null, autoTune = false, health = {ok: () => true}, testOnSave = null, checkOutput = null, genLimits, genBrief, genDir = null, genKeepTries, genNetwork = false, genSandbox = 'auto', genScaffold, genBoard = null, askModel = null, threadModel = askModel, proposing = true, meaningHits = null, findCode = null, log = () => {}, now = Date.now}) {
+    Object.assign(this, {record, store, partner, score, pace, decision, typingPauseMs, notify, requestEditor, previousNote, lastSession, autoTune, health, askModel, threadModel, proposing, meaningHits, findCode, log, now});
     this.sorted = new Map(); // trigger key -> {at, sort}: what the decision model sorted it as lately
     this.told = new Map(); // trigger key -> what the decision model was told about it first, for the decisions log
     this.checkOutput = checkOutput ?? join(tmpdir(), `pair-check-${process.pid}-${record.id}`, 'check.out'); // its copy of the project goes next to it
@@ -2073,9 +2073,14 @@ export class PairSession {
     return result;
   }
 
-  /** rg in Pair's pane, in the project; a /gen scaffold (`cwd`) searches its copy of it. */
-  async search({pattern, path = '.'}, {gen = false, cwd = null} = {}) {
+  /**
+   * rg in Pair's pane, in the project; a /gen scaffold (`cwd`) searches its copy of it. With `meaning`, Pair's index of
+   * the project instead (see meaning.mjs): the pieces of code closest to what the words mean, and those with the words.
+   * When rg finds nothing for plain words, the index is asked too.
+   */
+  async search({pattern, path = '.', meaning = false}, {gen = false, cwd = null} = {}) {
     if (!(await insideRoot(cwd ?? this.root, path))) return `Cannot search ${path}: not inside the project`;
+    if (meaning && this.findCode && !cwd) return this.searchByMeaning(pattern, path, {gen});
     // Always with a path: rg without one searches its stdin when that is not a terminal.
     const rg = `rg --line-number --no-heading --color never --max-columns 200 --max-count 20 -- ${shellQuote(pattern)} ${shellQuote(path)}`;
     // In a subshell: the pane's own directory stays the project.
@@ -2083,10 +2088,28 @@ export class PairSession {
     const lines = result.output.split('\n');
     const found = result.exit === 0 ? `${lines.length} ${lines.length === 1 ? 'match' : 'matches'}` : result.exit === 1 ? 'no matches' : `exit ${result.exit}`;
     this.ledger.add('searched', `${pattern}${path === '.' ? '' : ` in ${path}`}`, {data: {note: found}, detail: {output: keptOutput(result.output)}});
-    if (result.exit === 1) return 'No matches.';
+    if (result.exit === 1) {
+      // Words the code does not have may still be what it does.
+      if (this.findCode && !cwd && /^[\p{L}\p{N}_ '-]+$/u.test(pattern) && /\s/.test(pattern.trim())) return `No matches.\n\n${await this.searchByMeaning(pattern, path, {gen})}`;
+      return 'No matches.';
+    }
     const more = lines.length > SEARCH_LINES ? `\n(${lines.length - SEARCH_LINES} more lines; search a narrower path)` : '';
     // Small models follow an instruction next to the result far better than one in the system prompt.
     return `${result.exit === 0 ? '' : `exit ${result.exit}\n`}${lines.slice(0, SEARCH_LINES).join('\n')}${more}\n\nName these places (file:line) in your answer.`;
+  }
+
+  /** The index's answer for `query`, within `path`, as file:line lines; it needs no pane. */
+  async searchByMeaning(query, path = '.', {gen = false} = {}) {
+    if (!gen && !['scout', 'driver'].includes(this.role)) throw new Error('Searching needs the Scout role; the user can switch with /scout.');
+    const within = path === '.' ? '' : path.replace(/^\.\//, '').replace(/\/$/, '');
+    // Within a path, more of the ranking is looked through: what ranks lower in the project may be first there.
+    const answer = await this.findCode(query, {limit: within ? 300 : 30}).catch(error => ({results: [], problem: error.message}));
+    const results = answer.results.filter(result => !within || result.file === within || result.file.startsWith(`${within}/`)).slice(0, 12);
+    const how = answer.state === 'on' && !answer.problem ? 'by meaning and words'
+      : `by words only (${answer.problem ?? (answer.state === 'disabled' ? 'search by meaning is off in the config' : 'no embedding model: :Pair find on adds one')})`;
+    if (!results.length) return `Pair's index has nothing ${how} for "${query}".`;
+    const lines = results.map(result => `${result.file}:${result.line}: ${result.head}${result.name ? `  (${result.name})` : ''}`);
+    return `Pair's index, ${how}, best first:\n${lines.join('\n')}\n\nRead the best ones before you answer; name the places (file:line).`;
   }
 
   async run({command, unsaved = false}) {

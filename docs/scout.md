@@ -63,7 +63,8 @@ The trade-offs:
 
 | Tool | What is typed in the pane |
 | --- | --- |
-| `search(pattern, path?)` | `rg --line-number --no-heading --color never --max-columns 200 --max-count 20 -- '<pattern>' '<path>'` (the path defaults to `.` and must be inside the project), and the model sees the first 50 lines |
+| `search(pattern, path?)` | `rg --line-number --no-heading --color never --max-columns 200 --max-count 20 -- '<pattern>' '<path>'` (the path defaults to `.` and must be inside the project), and the model sees the first 50 lines. When ripgrep finds nothing for plain words, the model also gets the [search index](meaning.md)'s best pieces for them |
+| `search(pattern, path?, meaning: true)` | Nothing: Pair's [search index](meaning.md) answers instead of ripgrep, meaning and words fused, its best twelve pieces within the path as `file:line` lines, for "where do we …" in the user's words |
 | `run(command)` | The command line as given, after the command policy allowed it; the model sees the exit code, the parsed test results and the last 3000 characters of output |
 
 ## The command policy

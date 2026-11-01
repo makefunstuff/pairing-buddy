@@ -308,18 +308,42 @@ function boardCommand(raw = 'shepherdr') {
 }
 
 /**
- * Search by meaning (see meaning.mjs): false turns it off for good; else `{python, threads}`, the Python whose
- * litert-lm-api runs the embedder (else a venv in Pair's data folder, else python3) and the cores it may use.
- * It is on once its model is downloaded (`:Pair find on`).
+ * Search by meaning (see meaning.mjs): false turns it off for good; else `{python, threads, index}`, the Python whose
+ * litert-lm-api runs EmbeddingGemma 2 (else a venv in Pair's data folder, else python3), the cores it may use, and
+ * where the index lives: "data" (Pair's data folder, the default) or "project" (.pair/ in the repository).
+ * It is on once its model is downloaded (`:Pair find on`), or at once with an "embedding" model.
  */
 function meaningConfig(raw = {}) {
   if (raw === false) return false;
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('config: meaning must be false or an object, for example {"threads": 2}');
-  const {python, threads, ...rest} = raw;
-  if (Object.keys(rest).length) throw new Error(`config: meaning has no ${Object.keys(rest).join(', ')} (only python and threads)`);
+  const {python, threads, index, ...rest} = raw;
+  if (Object.keys(rest).length) throw new Error(`config: meaning has no ${Object.keys(rest).join(', ')} (only python, threads and index)`);
   if (python !== undefined && (typeof python !== 'string' || !python.trim())) throw new Error('config: meaning.python must be the path of a Python with litert-lm-api');
   if (threads !== undefined && !(Number.isInteger(threads) && threads > 0)) throw new Error('config: meaning.threads must be a whole number above 0');
-  return {...(python ? {python: python.trim()} : {}), ...(threads ? {threads} : {})};
+  if (index !== undefined && !['data', 'project'].includes(index)) throw new Error('config: meaning.index must be "data" (Pair\'s data folder) or "project" (.pair/ in the repository)');
+  return {...(python ? {python: python.trim()} : {}), ...(threads ? {threads} : {}), ...(index ? {index} : {})};
+}
+
+/**
+ * The optional `embedding` entry, next to the models: an embedding model behind an OpenAI-compatible `/v1/embeddings`
+ * (`"api": "openai"` at a `baseUrl`, its key as a model's), which search by meaning uses instead of EmbeddingGemma 2.
+ * `queryPrefix` and `documentPrefix` are the prompts it was trained with, where Pair does not know them; `dimensions`
+ * asks a model that can for shorter vectors. null without one.
+ */
+export function embeddingConfig(entry, name = 'embedding') {
+  if (entry === undefined || entry === null) return null;
+  if (typeof entry !== 'object' || Array.isArray(entry)) throw new Error(`config: ${name} must be a model entry, for example {"api": "openai", "baseUrl": "http://127.0.0.1:8080/v1", "model": "jina-embeddings-v2-base-code"}`);
+  if (entry.provider !== undefined) throw new Error(`config: ${name} takes an "api": "openai" at a "baseUrl", not a provider`);
+  if (entry.api !== 'openai') throw new Error(`config: ${name}.api must be "openai": an OpenAI-compatible /v1/embeddings`);
+  if (typeof entry.baseUrl !== 'string' || !entry.baseUrl) throw new Error(`config: ${name}.baseUrl is missing`);
+  if (typeof entry.model !== 'string' || !entry.model) throw new Error(`config: ${name}.model is missing`);
+  const keys = ['auth', 'apiKey', 'apiKeyFile', 'apiKeyEnv'].filter(field => entry[field] !== undefined);
+  if (keys.length > 1) throw new Error(`config: ${name} takes one of ${keys.join(', ')}`);
+  for (const field of ['queryPrefix', 'documentPrefix']) {
+    if (entry[field] !== undefined && typeof entry[field] !== 'string') throw new Error(`config: ${name}.${field} must be text`);
+  }
+  if (entry.dimensions !== undefined && !(Number.isInteger(entry.dimensions) && entry.dimensions > 0)) throw new Error(`config: ${name}.dimensions must be a whole number above 0`);
+  return {...entry};
 }
 
 /**
@@ -369,6 +393,7 @@ export function parseConfig(raw, {windows = {}} = {}) {
     agents: raw.agents ?? true, // relays your other agents' news (see agents.mjs)
     models,
     decision: decisionConfig(raw.decision), // the gate's decision model, or null (see decision.mjs)
+    embedding: embeddingConfig(raw.embedding), // search by meaning's model at a /v1/embeddings, or null for EmbeddingGemma 2
   };
 }
 

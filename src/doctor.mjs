@@ -1,10 +1,10 @@
 // `pair doctor`: checks each part Pair needs, one line each, and says what is wrong in plain words.
 import {execFile} from 'node:child_process';
-import {existsSync, mkdtempSync, rmSync} from 'node:fs';
+import {existsSync, mkdtempSync, readdirSync, rmSync, statSync} from 'node:fs';
 import {homedir, tmpdir} from 'node:os';
 import {basename, delimiter, dirname, join} from 'node:path';
 import {credentialState} from './auth.mjs';
-import {authPath, configPath, mostThinking, oneAtATime, replyTokens, sameModel, sameServer, whereIs} from './config.mjs';
+import {apiKeyOf, authPath, configPath, mostThinking, oneAtATime, replyTokens, sameModel, sameServer, whereIs} from './config.mjs';
 import {SMALL_CONTEXT} from './context.mjs';
 import {loadSizedConfig} from './context-window.mjs';
 import {fileCredentialStore, readableByOthers} from './credentials.mjs';
@@ -14,7 +14,7 @@ import {coreRequest, coreStatus, herdrOf, HerdrApp, SPACE} from './herdr-core.mj
 import {listModels, shareServer, SWAP_FACTOR, SWAP_MS} from './loaded-model.mjs';
 import {createDecider, probeDecision} from './decision.mjs';
 import {createDecisionModel, createPairModels, knownProviders} from './models.mjs';
-import {meaningDir, MODEL, modelReady, pythonOf, RUNTIME, runtimeOf} from './embedder.mjs';
+import {Embedder, HttpEmbedder, meaningDir, MODEL, modelPath, modelReady, pythonOf, queryText, RUNTIME, runtimeOf} from './embedder.mjs';
 import {FAST_MS, SLOW_MS} from './pace.mjs';
 import {levelGroups, probeModel, probeThinking} from './probe.mjs';
 import {requestDaemon} from './protocol.mjs';
@@ -273,29 +273,90 @@ export const runtimeInstall = dataDir => {
   return `python3 -m venv ${tilde(venv)} && ${tilde(venv)}/bin/pip install ${RUNTIME}`;
 };
 
+/** How long ago `at` was, for people: "4 min ago", "3 h ago", "2 days ago". */
+export function ago(at, now = Date.now()) {
+  const minutes = Math.max(0, Math.round((now - at) / 60_000));
+  if (minutes < 1) return 'just now';
+  if (minutes < 90) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  return hours < 36 ? `${hours} h ago` : `${Math.round(hours / 24)} days ago`;
+}
+
+/** The index files in Pair's data folder, when the daemon does not run to say: `{name, bytes, updatedAt}`. */
+function indexFiles(dataDir) {
+  try {
+    return readdirSync(join(dataDir, 'index')).filter(name => name.endsWith('.sqlite')).map(name => {
+      const path = join(dataDir, 'index', name);
+      const sizes = ['', '-wal'].map(suffix => { try { return statSync(`${path}${suffix}`); } catch { return null; } }).filter(Boolean);
+      return {name: name.replace(/-[0-9a-f]{8}\.sqlite$/, ''), bytes: sizes.reduce((sum, each) => sum + each.size, 0), updatedAt: Math.max(...sizes.map(each => each.mtimeMs))};
+    });
+  } catch {
+    return [];
+  }
+}
+
+/** Each index: its project, how far it is built, its size and how long since a vector came. */
+function indexesText(config, live) {
+  const indexes = live?.indexes?.length ? live.indexes.map(index => {
+    const share = index.chunks ? Math.floor(100 * index.embedded / index.chunks) : 100;
+    const built = live.state === 'on' && share < 100 ? ` (${share}% embedded)` : '';
+    const age = index.updatedAt ? `, updated ${ago(index.updatedAt)}` : '';
+    return `${basename(index.root)}: ${count(index.files, 'file')}, ${count(index.chunks, 'piece')}${built}, ${(index.bytes / (1 << 20)).toFixed(1)} MB${age}`;
+  }) : indexFiles(config.dataDir).map(index => `${index.name}: ${(index.bytes / (1 << 20)).toFixed(1)} MB, updated ${ago(index.updatedAt)}`);
+  return indexes.length ? `; ${indexes.join('; ')}` : '';
+}
+
+/** Whether EmbeddingGemma 2 answers: its helper loads the model and embeds one word, then stops. `{ms}` or `{problem}`. */
+export async function gemmaAnswers(config) {
+  const embedder = new Embedder({python: pythonOf(config.meaning, config.dataDir), model: modelPath(config.dataDir), threads: 1});
+  const started = Date.now();
+  try {
+    await embedder.embed([queryText('ping')]);
+    return {ms: Date.now() - started};
+  } catch (error) {
+    return {problem: error.message};
+  } finally {
+    embedder.close();
+  }
+}
+
 /**
- * Search by meaning (see meaning.mjs): off is fine, and says what turning it on takes; on, its model must be the
- * checked download and its Python must have LiteRT-LM. With the daemon running, each open project's index too.
+ * Search by meaning (see meaning.mjs). With an "embedding" model, it must answer: one text is embedded. Else off is
+ * fine, and says what turning it on takes; on, EmbeddingGemma 2 must be the checked download and its Python must have
+ * LiteRT-LM. Then each index: with the daemon running, the open projects'; else the files in Pair's data folder.
  */
-export async function meaningCheck(config, status, {runtime = runtimeOf} = {}) {
+export async function meaningCheck(config, status, {runtime = runtimeOf, fetch = globalThis.fetch, answers = gemmaAnswers} = {}) {
   if (config.meaning === false) return ok('meaning', 'search by meaning is off in the config ("meaning": false)');
+  const live = status?.meaning;
+  if (config.embedding && (live?.state === 'off' || existsSync(join(meaningDir(config.dataDir), 'off')))) {
+    return ok('meaning', `words only: :Pair find off turned the ${config.embedding.model} embedding model off, :Pair find on asks it again${indexesText(config, live)}`);
+  }
+  if (config.embedding) {
+    const started = Date.now();
+    const embedder = new HttpEmbedder({entry: config.embedding, apiKey: () => apiKeyOf(config.embedding), fetch, timeoutMs: 15_000});
+    try {
+      const [vector] = await embedder.embed([embedder.query('ping')]);
+      const model = `${config.embedding.model} at ${config.embedding.baseUrl} answers (${vector.length} numbers, ${Date.now() - started} ms)`;
+      if (live?.problem) return warn('meaning', `${model}, but the index's embedding fails: ${live.problem}`);
+      return ok('meaning', `${model}${indexesText(config, live)}`);
+    } catch (error) {
+      return fail('meaning', `${error.message}: search by meaning has the word search only (embedding in the config)`);
+    }
+  }
   const python = pythonOf(config.meaning, config.dataDir);
   const found = await runtime(python);
   const has = found.version ? `LiteRT-LM ${found.version} in ${tilde(python)}` : null;
   if (!modelReady(config.dataDir)) {
     const needs = has ? `${has} is ready` : `it also needs LiteRT-LM: ${runtimeInstall(config.dataDir)}`;
-    return ok('meaning', `search by meaning is off: :Pair find on downloads ${MODEL.name} (165 MB, once); ${needs}`);
+    return ok('meaning', `words only: :Pair find on downloads ${MODEL.name} (165 MB, once) for meaning, or set an "embedding" model; ${needs}${indexesText(config, live)}`);
   }
   if (!has) return fail('meaning', `${MODEL.name} is downloaded, but ${found.problem}: ${runtimeInstall(config.dataDir)} (or set meaning.python)`);
-  const live = status?.meaning;
-  const model = `${MODEL.name} (revision ${MODEL.revision.slice(0, 7)}, SHA-256 checked) on ${has}`;
-  if (live?.problem) return warn('meaning', `${model}, but the embedder fails: ${live.problem}`);
-  const indexes = (live?.indexes ?? []).map(index => {
-    const share = index.chunks ? Math.floor(100 * index.embedded / index.chunks) : 100;
-    return `${basename(index.root)}: ${count(index.files, 'file')}, ${count(index.chunks, 'chunk')}${share < 100 ? ` (${share}% built)` : ''}, ${(index.bytes / (1 << 20)).toFixed(1)} MB`;
-  });
-  const speed = live?.msPerChunk ? `, ${Math.round(live.msPerChunk)} ms a chunk` : '';
-  return ok('meaning', `${model}${indexes.length ? `; ${indexes.join('; ')}` : ''}${speed}`);
+  const answered = await answers(config);
+  if (answered.problem) return fail('meaning', `${MODEL.name} on ${has} does not answer: ${answered.problem}`);
+  const model = `${MODEL.name} (revision ${MODEL.revision.slice(0, 7)}, SHA-256 checked) on ${has} answers (${answered.ms} ms with loading)`;
+  if (live?.problem) return warn('meaning', `${model}, but the index's embedding fails: ${live.problem}`);
+  const speed = live?.msPerChunk ? `, ${Math.round(live.msPerChunk)} ms a piece` : '';
+  return ok('meaning', `${model}${indexesText(config, live)}${speed}`);
 }
 
 const DOCTOR_OPENROUTER_MS = 10_000;

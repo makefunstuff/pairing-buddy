@@ -282,11 +282,12 @@ all of this off.
 
 ## Search by meaning
 
-When you know what the code does but not what it calls it, `Alt-s` (or `:Pair find <words>`) searches the project by
-meaning: "how long to wait before trying again" finds `nextDelay(attempt)`. The closest chunks of code show in
-Telescope, snacks.picker or fzf-lua, best first, and `Enter` opens one at its line. It runs on your machine, from an
-index Pair builds in the background in its own data folder; it is off until you say yes to its model's one download.
-How it ranks, what the index holds and what it costs are in [Search by meaning](meaning.md).
+When you know what the code does but not what it calls it, `Alt-s` (or `:Pair find [words]`) opens a live picker in
+Telescope, snacks.picker or fzf-lua, used like `live_grep`: the pieces of code with your words show on every key
+(identifiers split, comments and strings too), and once you pause, those closest to what you mean join below them.
+`Enter` opens one at its line, `<C-q>` sends them to quickfix. The words need no model; meaning runs on your machine
+once you say yes to EmbeddingGemma 2's one download (`:Pair find on`), or on an embedding model of your own. How it
+ranks, what the index holds and what it costs are in [Search by meaning](meaning.md).
 
 ## The held thought
 

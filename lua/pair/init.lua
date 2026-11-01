@@ -57,6 +57,7 @@ local config = {
   gen_key = '<M-g>', -- asks Pair for code, in Normal and Visual mode
   meaning_key = '<M-s>', -- searches the project by meaning; in Visual mode, for the selected words
   meaning_picker = 'auto', -- or 'telescope', 'snacks', 'fzf-lua', 'select': where search by meaning shows what it found
+  meaning_debounce_ms = 150, -- how long typing stops before the picker asks for meaning too (the words come on every key)
   gen_input = 'ui', -- or 'cmdline': the request and its questions always on Neovim's own prompt, not vim.ui's
   gen_preview_lines = 30, -- a /gen block taller than this shows in a preview window
   try_run_key = '<LocalLeader>r', -- in a /gen try's sample: runs it again in Pair's pane; in a scaffold's copy: checks it
@@ -1060,6 +1061,7 @@ local function hello()
   send({
     type = 'hello', role = 'editor', cwd = vim.fn.getcwd(), herdr = herdr, pane = herdr and (herdr.kind == 'core' and vim.env.HC_TERMINAL_ID or vim.env.HERDR_PANE_ID) or nil, tmux = tmux, pid = vim.fn.getpid(),
     buffers = true,
+    parsers = vim.api.nvim_get_runtime_file('parser/*', true), -- tree-sitter's, to cut the project into functions for search
   })
   send_accent()
 end
@@ -1246,7 +1248,8 @@ local handlers = {
   end,
   context = card.update,
   trail = function(message) trail.show(message, function() send({type = 'forget_trail'}) end) end,
-  meaning = meaning.on_results,
+  found = function(message) if message.id then meaning.on_found(message) else meaning.on_select(message) end end,
+  index_progress = meaning.on_progress,
   meaning_state = meaning.on_state,
   margin = margin.show,
   decision_log = margin.log,
@@ -1520,13 +1523,18 @@ local commands = {
   end,
   jump = function() M.jump() end,
   trail = function() send({type = 'trail'}) end,
-  -- Search by meaning: `:Pair find <words>` (without words it asks for them); `:Pair find on` downloads its model
-  -- once and indexes the project, `:Pair find off` deletes them again.
+  -- Search by meaning: `:Pair find [words]` opens the live picker; `:Pair find on` downloads its model once and
+  -- embeds the project, `:Pair find off` deletes them again. `:Pair index rebuild` makes the index again from the files.
   find = function(arg)
     if not M.connect() then return vim.notify('Pair: not connected; :Pair find again once it is', vim.log.levels.WARN) end
     if arg == 'on' then return meaning.on() end
     if arg == 'off' then return meaning.off() end
     meaning.find(arg)
+  end,
+  index = function(arg)
+    if arg ~= 'rebuild' then return vim.notify('Pair: :Pair index rebuild makes the search index again from the files', vim.log.levels.WARN) end
+    if not M.connect() then return vim.notify('Pair: not connected; :Pair index rebuild again once it is', vim.log.levels.WARN) end
+    meaning.rebuild()
   end,
   runs = function() send({type = 'runs'}) end,
   accept = M.accept,
@@ -1664,7 +1672,7 @@ function M.setup(opts)
   owning.setup({send = send, event = event, redraw_status = redraw_status, connected = function() return state.channel ~= nil end})
   gentry.setup({send = send, run_key = config.try_run_key})
   overlap.setup({send = send, winbar = config.board_winbar})
-  meaning.setup({picker = config.meaning_picker}, {send = send})
+  meaning.setup({picker = config.meaning_picker, debounce_ms = config.meaning_debounce_ms}, {send = send})
   style.apply()
   local group = vim.api.nvim_create_augroup('pair', {clear = true})
   local function restyle()

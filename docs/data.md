@@ -20,14 +20,16 @@ description: "What Pair keeps and where: logins in auth.json, the rest in its da
 | `gen/` | The folders of [/gen try](gen.md#samples-gen-try-and-keep) samples, `gen/<project>-<hash>/try/<n>/`: what the model wrote and what its runs left there; and the copies of the project [/gen scaffold](gen.md#many-files-gen-scaffold) builds in, `gen/<project>-<hash>/<n>/` (with its manifest `<n>.json`), or with `--branch` a git worktree there. Each try or copy goes once it has not changed, run or been used for `gen.keepTries` days (7), or when you delete it (`x`); a worktree only when you delete it (`git worktree remove` works too). Safe to delete, apart from a worktree with commits of yours |
 | `panes/` | Pair's own pane: its shell's output log and each command's exit code, one folder per pane, removed when the pane closes ([herdr.md](herdr.md#pairs-own-pane-exact)) |
 | `voice/` | A [push-to-talk](voice.md) recording, only while whisper.cpp reads it (OpenRouter's is kept in memory only) |
-| `meaning/` | [Search by meaning](meaning.md), once you turn it on: its model (`embeddinggemma-2-text-270m.litertlm`, 165 MB, with its checksum note), each project's index in `meaning/index/` (256 numbers per chunk of code, about 1 KB, with the chunks' hashes, never their text), and the `venv/` for its runtime if you made it there. `:Pair find off` deletes the model and the indexes |
+| `index/` | [Search by meaning](meaning.md#the-index)'s index, a SQLite file per repository (`<repository>-<hash>.sqlite`), shared by its worktrees: each piece of code's file, lines, hash, kind and name, the FTS5 index of its words (lower case and stemmed, with their places, but not the text itself), and a vector per piece (256 numbers, about 1 KB, for EmbeddingGemma); no copy of the code. `:Pair find off` deletes them, `:Pair index rebuild` makes one again |
+| `meaning/` | [Search by meaning](meaning.md)'s EmbeddingGemma 2, once you turn it on: its model (`embeddinggemma-2-text-270m.litertlm`, 165 MB, with its checksum note), and the `venv/` for its runtime if you made it there. `:Pair find off` deletes the model |
 | `daemon.log` | The daemon's log, when `pair` started it (under systemd it goes to the journal, under launchd to `~/Library/Logs/pairing-buddy.log`) |
 | `daemon.lock` | Makes sure one daemon owns the files above |
 
 The [run log](exploration.md) (each build's and run's output and the lines you typed before it) is kept in the
 daemon's memory only, for the session.
 
-Nothing is written to your repository. The work board (Shepherdr) is read, and written to only when you pick it:
+Nothing is written to your repository, unless you put [search by meaning's index](meaning.md#the-index) there
+(`"meaning": {"index": "project"}`: `.pair/index.sqlite`, and `.pair/` in `.git/info/exclude`). The work board (Shepherdr) is read, and written to only when you pick it:
 [`/gen board`](gen.md#gen-board-a-task-for-the-board) adds one task, with its brief shown to you first, as the pick you
 chose says (add only, add and delegate, delegate with a plan first, or delegate for research only), and a task's
 [review](gen.md#reviewing-a-board-task-pair-review) tells its agent what you wrote, asks it to merge (a tell), or

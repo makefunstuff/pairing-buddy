@@ -259,7 +259,132 @@ export class Embedder {
   /** Average milliseconds a text took, or null before the first. */
   get msPerText() { return this.embedded ? this.embedMs / this.embedded : null; }
 
+  /** Whether a search gets its vector now, without waiting for the model to load: the search trail asks only then. */
+  get ready() { return !!this.runtime; }
+
+  /** The model's name in the index, so vectors of another model or revision are never compared with its own. */
+  get id() { return `embeddinggemma-2@${MODEL.revision.slice(0, 8)}/${DIMENSIONS}`; }
+
+  document(file, text) { return documentText(file, text); }
+
+  query(text) { return queryText(text); }
+
   close() {
     this.fail(new Error('the daemon stops'));
   }
+}
+
+// The prompts some code embedding models were trained with, by their name: a search, and a piece of code.
+const PROMPTS = [
+  [/nomic-embed-code/i, {query: 'Represent this query for searching relevant code: ', document: ''}],
+  [/nomic-embed-text/i, {query: 'search_query: ', document: 'search_document: '}],
+  [/embeddinggemma/i, {query: 'task: search result | query: ', document: 'title: none | text: '}],
+  [/qwen3-embedding/i, {query: 'Instruct: Given a question, find the code that answers it\nQuery: ', document: ''}],
+];
+const HTTP_BATCH = 16;
+const HTTP_MS = 60_000;
+
+/** The prompts for `model`: the config's, else those it was trained with, else none. */
+export function promptsOf(entry) {
+  const known = PROMPTS.find(([pattern]) => pattern.test(entry.model))?.[1] ?? {query: '', document: ''};
+  return {query: entry.queryPrefix ?? known.query, document: entry.documentPrefix ?? known.document};
+}
+
+/** `vector` at unit length, so similarity is a dot product as with EmbeddingGemma's. */
+const unit = vector => {
+  const norm = Math.hypot(...vector) || 1;
+  return Float32Array.from(vector, value => value / norm);
+};
+
+/**
+ * An embedding model behind an OpenAI-compatible `/v1/embeddings` (llama.cpp's server, Ollama, LM Studio, vLLM, a
+ * cloud API): the config's "embedding" entry, `{baseUrl, model, ...key}`. Like the helper, one request at a time, a
+ * search before the index's batches waiting. `apiKey()` reads the key each time, as the roles' models do.
+ */
+export class HttpEmbedder {
+  constructor({entry, apiKey = () => undefined, fetch = globalThis.fetch, log = () => {}, batch = HTTP_BATCH, timeoutMs = HTTP_MS}) {
+    Object.assign(this, {entry, apiKey, fetch, log, batch, timeoutMs});
+    this.prompts = promptsOf(entry);
+    this.queue = [];
+    this.running = false;
+    this.embedded = 0;
+    this.embedMs = 0;
+    this.runtime = {runtime: `${entry.model} at ${entry.baseUrl}`};
+    this.python = null;
+  }
+
+  get id() { return `${this.entry.model}${this.entry.dimensions ? `/${this.entry.dimensions}` : ''}`; }
+
+  get ready() { return true; }
+
+  get busy() { return this.running || this.queue.length > 0; }
+
+  get msPerText() { return this.embedded ? this.embedMs / this.embedded : null; }
+
+  document(file, text) { return `${this.prompts.document}${text}`; }
+
+  query(text) { return `${this.prompts.query}${text}`; }
+
+  embed(texts, {urgent = false} = {}) {
+    if (!texts.length) return Promise.resolve([]);
+    return new Promise((resolve, reject) => {
+      const batch = {texts, resolve, reject};
+      if (urgent) this.queue.unshift(batch);
+      else this.queue.push(batch);
+      this.next();
+    });
+  }
+
+  async next() {
+    if (this.running || !this.queue.length) return;
+    this.running = true;
+    const batch = this.queue.shift();
+    try {
+      const vectors = [];
+      for (let i = 0; i < batch.texts.length; i += this.batch) vectors.push(...await this.request(batch.texts.slice(i, i + this.batch)));
+      batch.resolve(vectors);
+    } catch (error) {
+      batch.reject(error);
+    } finally {
+      this.running = false;
+      this.next();
+    }
+  }
+
+  async request(input) {
+    const started = Date.now();
+    const key = this.apiKey();
+    const url = `${this.entry.baseUrl.replace(/\/+$/, '')}/embeddings`;
+    let response;
+    try {
+      response = await this.fetch(url, {
+        method: 'POST',
+        headers: {'content-type': 'application/json', ...(key ? {authorization: `Bearer ${key}`} : {})},
+        body: JSON.stringify({model: this.entry.model, input, ...(this.entry.dimensions ? {dimensions: this.entry.dimensions} : {})}),
+        signal: AbortSignal.timeout(this.timeoutMs),
+      });
+    } catch (error) {
+      throw new Error(`the embedding model at ${this.entry.baseUrl} did not answer: ${error.cause?.code ?? error.message}`);
+    }
+    const text = await response.text();
+    if (!response.ok) throw new Error(`the embedding model at ${this.entry.baseUrl} answered ${response.status}: ${text.slice(0, 200).trim()}`);
+    let data;
+    try { data = JSON.parse(text).data; } catch {}
+    if (!Array.isArray(data) || data.length !== input.length || data.some(item => !Array.isArray(item?.embedding))) {
+      throw new Error(`the embedding model at ${this.entry.baseUrl} answered no embeddings for ${input.length} text${input.length === 1 ? '' : 's'}`);
+    }
+    this.embedded += input.length;
+    this.embedMs += Date.now() - started;
+    return data.toSorted((a, b) => (a.index ?? 0) - (b.index ?? 0)).map(item => unit(item.embedding));
+  }
+
+  stopHelper() {}
+
+  fail(error) {
+    const batches = this.queue;
+    this.queue = [];
+    for (const batch of batches) batch.reject(error);
+  }
+
+  close() { this.fail(new Error('the daemon stops')); }
 }

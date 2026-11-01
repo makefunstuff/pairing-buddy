@@ -19,7 +19,7 @@ why while the daemon keeps the config it runs. Run `pair doctor` after a change 
 - **Between turns**: new `model` or `models` entries (and their thinking levels). An answer under way finishes on
   the old model; the next one is the new model's, in the same conversation.
 - **For new sessions**: `level` and `sessionRoots`. An open session keeps its own level; `/level` changes it.
-- **After a restart only**: `socket`, `dataDir`, `scoutPane`, `meaning`, and turning `agents` on or off.
+- **After a restart only**: `socket`, `dataDir`, `scoutPane`, `meaning`, `embedding`, and turning `agents` on or off.
 
 ## Settings
 
@@ -38,7 +38,8 @@ why while the daemon keeps the config it runs. Run `pair doctor` after a change 
 | `sessionRoots` | `[]` | Folders that are projects of their own, for a monorepo ([session roots](#session-roots)) |
 | `agents` | `true` | The relay of your other agents' news, from herdr and the `board`: `false` turns it off ([agents.md](agents.md#configure)) |
 | `voice` | off | Push-to-talk with whisper.cpp or OpenRouter ([below](#voice), [voice.md](voice.md)) |
-| `meaning` | `{}` | [Search by meaning](meaning.md): the Python that runs its embedder and the cores it may use, or `false` to turn it off for good ([below](#meaning)). It is on once its model is downloaded (`:Pair find on`) |
+| `meaning` | `{}` | [Search by meaning](meaning.md): the Python that runs EmbeddingGemma 2, the cores it may use and where the index lives, or `false` to turn it off for good ([below](#meaning)). Its word search works at once; meaning once its model is downloaded (`:Pair find on`) or with an `embedding` model |
+| `embedding` | none | An embedding model behind an OpenAI-compatible `/v1/embeddings` for [search by meaning](meaning.md#another-embedding-model), instead of EmbeddingGemma 2 ([below](#embedding)) |
 | `scoutPane` | see [below](#scoutpane) | Pair's own pane: your rc file and the sandbox ([scout.md](scout.md#pairs-pane)) |
 | `taskCommand` | none | What `:Pair tasks` runs for each task you say yes to, as a list of words with `{title}` and `{description}`, never through a shell, for example `["gh", "issue", "create", "--title", "{title}", "--body", "{description}"]`. Without it, the tasks are copied as a checklist ([notes.md](notes.md#tasks-only-when-you-ask)) |
 | `gen` | see [below](#gen) | What one `/gen` request may do at most, its brief's note, and how long a try's folder stays and whether its runs reach the network ([gen.md](gen.md)) |
@@ -182,15 +183,31 @@ At least one of `hear` and `speak` is needed.
 
 ## `meaning`
 
-[Search by meaning](meaning.md) is off until its model is downloaded (the first `Alt-s` asks, or `:Pair find on`);
-these fields only say how it runs.
+[Search by meaning](meaning.md)'s word search works once a project has a session; meaning needs EmbeddingGemma 2,
+downloaded once by `:Pair find on`, or an [`embedding`](#embedding) model. These fields say how it runs.
 
 | Field | Default | Meaning |
 | --- | --- | --- |
-| `python` | `<dataDir>/meaning/venv/bin/python` if it is there, else `python3` | The Python whose `litert-lm-api` runs the embedder ([meaning.md](meaning.md#turn-it-on)) |
-| `threads` | `2` | The cores the embedder may use while it indexes and searches, at low priority |
+| `python` | `<dataDir>/meaning/venv/bin/python` if it is there, else `python3` | The Python whose `litert-lm-api` runs EmbeddingGemma 2 ([meaning.md](meaning.md#turn-embeddinggemma-on)) |
+| `threads` | `2` | The cores EmbeddingGemma may use while it indexes and searches, at low priority |
+| `index` | `"data"` | Where the index lives: `"data"`, Pair's data folder (`index/<repository>-<hash>.sqlite`); or `"project"`, `.pair/index.sqlite` in the repository, with `.pair/` added to `.git/info/exclude` ([meaning.md](meaning.md#the-index)) |
 
 `"meaning": false` turns search by meaning off for good: nothing is downloaded or indexed, and `Alt-s` says so.
+
+## `embedding`
+
+An embedding model of your own for [search by meaning](meaning.md#another-embedding-model), next to the models: an
+`"api": "openai"` entry at a `baseUrl` that serves `/v1/embeddings` (llama.cpp's `llama-server --embeddings`, Ollama,
+LM Studio, vLLM, a cloud API), with its key as a [model entry](#model-entries)'s. Without it, EmbeddingGemma 2.
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `api` | | `"openai"` |
+| `baseUrl` | | Where its `/v1` is, for example `http://127.0.0.1:8080/v1` |
+| `model` | | Its name there, for example `jina-embeddings-v2-base-code` or `nomic-embed-code` |
+| `auth`, `apiKey`, `apiKeyFile`, `apiKeyEnv` | none | Its key, if it needs one: one of them |
+| `queryPrefix`, `documentPrefix` | the model's own, where Pair knows them | The prompts it was trained with, for a search and for a piece of code |
+| `dimensions` | the model's | Asks a model that can for shorter vectors |
 
 ## Session roots
 

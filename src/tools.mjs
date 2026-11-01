@@ -75,7 +75,8 @@ export const ROLE_PROMPTS = {
 If an answer needs a search or a test run, say so in one sentence: the user can switch you to Scout with /scout.`,
   scout: `Your role now: Scout. You have your own terminal pane next to the chat; the user sees everything you run there.
 - search finds text in the project. Use it for "where is", "who calls" and "where else": its file:line results are the answer,
-  so read a file only when the question needs more than where.
+  so read a file only when the question needs more than where. With meaning: true it finds code by what it does, for
+  "where do we ..." in the user's words, when you do not know what the code calls it.
 - run runs one shell command line in your pane, for example the tests, a build, git log or git diff.
 - Take small steps: one search or one command usually answers the question. Run only what the question needs.
 - Read-only, test and build commands run at once. Commands that write, delete or install ask the user first.
@@ -93,7 +94,7 @@ If an answer needs a search or a test run, say so in one sentence: the user can 
   what the user expects. Do not run them yourself: until the user saves, the file on disk still has the old code.
   When your answer ends, the user has the wheel again, unless they let you keep it.
 - To put a command in the user's terminal, call type: they confirm it and press Enter themselves.
-- search and run work in your own pane, as for Scout.`,
+- search and run work in your own pane, as for Scout; search with meaning: true finds code by what it does.`,
   gen: `Your role now: gen. The user asked you for code with /gen, and this conversation is that one request.
 - You never change the user's text. You call propose with the code, and the user takes it into their buffer with one key, or not.
 - First read the lines around the place, so your line numbers and indentation are right.
@@ -206,12 +207,13 @@ function tools(hands) {
     }),
     defineTool({
       name: 'search',
-      description: 'Search the project\'s files for a pattern with ripgrep, in your pane. Answers file:line:text lines.',
+      description: 'Search the project\'s files for a pattern with ripgrep, in your pane; or with meaning: true, Pair\'s index of the project for what loose words mean ("where a user is removed from a team"), when the code may call it something else. Answers file:line lines.',
       parameters: Type.Object({
-        pattern: Type.String({description: 'A regular expression, or plain words'}),
+        pattern: Type.String({description: 'A regular expression, or plain words; with meaning: true, what you look for in your own words'}),
         path: Type.Optional(Type.String({description: 'A file or directory relative to the project root; default: all of it'})),
+        meaning: Type.Optional(Type.Boolean({description: 'true searches by meaning and words in Pair\'s index instead of ripgrep'})),
       }),
-      execute: async (args, api) => text(await hands.search(api.conversationId, {pattern: args.pattern, path: args.path})),
+      execute: async (args, api) => text(await hands.search(api.conversationId, {pattern: args.pattern, path: args.path, meaning: args.meaning === true})),
     }),
     defineTool({
       name: 'run',

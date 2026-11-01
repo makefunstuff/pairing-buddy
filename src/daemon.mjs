@@ -157,11 +157,16 @@ export async function startDaemon(config, {
     ? new AgentBoard({board: config.board, pollMs: agentsPollMs, appCommand, log, wanted: () => [...clients].some(client => client.session), onChange: change => { for (const relay of relays.values()) relay.hear(change); }})
     : null;
 
-  // Search by meaning (meaning.mjs): the index of each project with a session, built in the background once its model
-  // is downloaded; its builds and searches go to that project's ledger.
+  // Search by meaning (meaning.mjs): the index of each project with a session, its words at once and its vectors in the
+  // background once it has a model; its builds and searches go to that project's ledger, and how far a build is to its
+  // Neovims.
   const meaning = new Meaning({
-    dataDir: config.dataDir, config: config.meaning, log,
+    dataDir: config.dataDir, config: config.meaning, embedding: config.embedding, log,
     book: (root, kind, text, options) => live.get(root)?.ledger.add(kind, text, options),
+    progress: (root, how) => {
+      const session = live.get(root);
+      if (session) for (const client of clientsOf(session, 'editor')) sendMessage(client.socket, {type: 'index_progress', ...how});
+    },
     ...meaningWith,
   });
 
@@ -468,6 +473,7 @@ export async function startDaemon(config, {
         notify: (role, message) => notify(session, role, message),
         requestEditor: message => requestEditor(session, message),
         meaningHits: query => meaning.trailHits(root, query), // the search trail's "by meaning" lines
+        findCode: (query, options) => meaning.search(root, query, options), // Scout's and the Driver's search, by meaning
         log: line => log(`[${basename(root)}] ${line}`),
       });
       session.panes = new Terminals({editors: () => editorsOf(session), ask: askEditor, watch: () => watches.get(root) ?? null});
@@ -628,6 +634,7 @@ export async function startDaemon(config, {
     client.pane = message.pane ?? (message.tmux?.pane ? tmuxPane(message.tmux.pane) : null);
     client.pid = message.pid ?? null; // a Neovim's, which names its terminals (terminals.mjs)
     client.buffers = message.buffers === true; // a plugin that lists its unsaved buffers; an older one never answers
+    meaning.useParsers(message.parsers); // a Neovim's tree-sitter parsers cut its project's files into functions
     client.session = await loadSession(await rootOf(message.cwd));
     const {session} = client;
     sendMessage(client.socket, {
@@ -969,7 +976,9 @@ export async function startDaemon(config, {
     if (message.type === 'board_do') return boardDo(client, session, message);
     if (message.type === 'brief') return briefFrom(client, session, message);
     if (message.type === 'trail') return sendMessage(client.socket, session.trail());
-    if (message.type === 'meaning' && typeof message.query === 'string') return meaningSearch(client, session, message.query);
+    if (message.type === 'find' && typeof message.query === 'string') return find(client, session, message);
+    if (message.type === 'find_chosen' && typeof message.query === 'string') return meaning.booked(session.root, message.query, message.results ?? [], ' in the picker');
+    if (message.type === 'index_rebuild') return indexRebuild(client, session);
     if (message.type === 'meaning_on') return meaningOn(client);
     if (message.type === 'meaning_off') return meaningOff(client);
     if (message.type === 'forget_trail') return session.forgetTrail();
@@ -997,10 +1006,29 @@ export async function startDaemon(config, {
     }
   }
 
-  /** A search by meaning from a Neovim: the ranked chunks, with absolute paths for the picker to open. */
-  async function meaningSearch(client, session, query) {
-    const answer = await meaning.search(session.root, query.trim());
-    sendMessage(client.socket, {...answer, root: session.root, results: answer.results.map(result => ({...result, path: join(session.root, result.file)}))});
+  /**
+   * A search of the project: a Neovim's picker asks for the words on every key (`phase` "words") and for the meaning
+   * once typing stops ("meaning"), each answer with its `id`; the chat's /find asks for both, fused. Each result has
+   * its absolute path, for the picker to open.
+   */
+  async function find(client, session, message) {
+    const query = message.query.trim();
+    const answer = message.phase === 'words' ? await meaning.words(session.root, query)
+      : message.phase === 'meaning' ? await meaning.meaningOnly(session.root, query)
+        : await meaning.search(session.root, query, {book: message.select !== true}); // a pick from vim.ui.select is booked as one
+    sendMessage(client.socket, {
+      type: 'found', ...(message.id !== undefined ? {id: message.id} : {}), ...answer, root: session.root,
+      results: answer.results.map(result => ({...result, path: join(session.root, result.file)})),
+    });
+  }
+
+  /** `:Pair index rebuild`: the project's index made again from its files, in the background. */
+  async function indexRebuild(client, session) {
+    const tell = text => sendMessage(client.socket, {type: 'meaning_state', ...meaning.snapshot(), text});
+    if (meaning.state === 'disabled') return tell('Search by meaning is off in the config ("meaning": false).');
+    const path = await meaning.rebuild(session.root);
+    session.ledger.add('indexed', `rebuilding the search index (:Pair index rebuild): ${path}`);
+    tell(`Rebuilding the search index from the files${meaning.state === 'on' ? ', every vector too' : ''}; the word search works again in a few seconds.`);
   }
 
   /** `:Pair find on`: the model's one download, told as it goes, then the open projects' indexes. */
@@ -1010,6 +1038,10 @@ export async function startDaemon(config, {
     if (meaning.state === 'on') {
       await meaning.turnOn();
       return tell('Search by meaning is already on: its model is here, and Pair indexes the open projects in the background.');
+    }
+    if (config.embedding) { // nothing to download: the config's model is asked again
+      await meaning.turnOn();
+      return tell(`Search by meaning is on, with ${meaning.modelName}: Pair indexes this project in the background.`);
     }
     let told = 0;
     tell('Downloading EmbeddingGemma 2 for search by meaning (165 MB, once)…');
@@ -1033,8 +1065,9 @@ export async function startDaemon(config, {
   async function meaningOff(client) {
     const was = meaning.state;
     await meaning.turnOff();
-    if (was === 'on') for (const session of live.values()) session.ledger.add('deleted', 'search by meaning\'s model and indexes (:Pair find off)');
-    sendMessage(client.socket, {type: 'meaning_state', ...meaning.snapshot(), text: 'Search by meaning is off: its model and indexes are deleted.'});
+    if (was === 'on') for (const session of live.values()) session.ledger.add('deleted', `search by meaning's ${config.embedding ? 'indexes' : 'model and indexes'} (:Pair find off)`);
+    const text = config.embedding ? 'Search by meaning is off: its indexes are deleted, and the embedding model is not asked until :Pair find on.' : 'Search by meaning is off: its model and indexes are deleted.';
+    sendMessage(client.socket, {type: 'meaning_state', ...meaning.snapshot(), text});
   }
 
   /** The context card for the Neovim that asked, with git and the board read again when they are not fresh. */
