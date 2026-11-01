@@ -54,9 +54,10 @@ open): ✓ 1 … · → 2 … (next)`, so "what's left?" is answered from them, 
 Each of these lines is an unasked remark: it costs the [talk budget](how-it-works.md) like any other, and with the
 budget spent, a proposal waits unsaid until the budget allows (`p` still shows it): until Pair has said it, it is only
 a proposal, kept out of the `Plan` line, the done checks and the debrief. A landing is still checked at your break and
-its steps marked done at once; only the "done" line waits for the budget, for up to half an hour. The ledger (`/today`) records each line said, each one held back or let go, and each change to the
-steps. The plan lives in the session
-only: never in `NOTES.md`, the brief or your files, and it is gone when the session ends.
+its steps marked done at once; only the "done" line waits for the budget, for up to half an hour. The ledger
+(`/today`) records each line said, each one held back or let go (a change of plan lets a held one go), and each
+change to the steps. The plan lives in the session only: never in `NOTES.md`, the brief or your files, and it is
+gone when the session ends.
 
 **What you just changed.** Each of Pair's turns (a remark, a question, `/drive`, an explanation) also carries the lines
 you changed since Pair's last turn, read from your buffer as they are now (up to 60 lines, the newest first), with the

@@ -1233,9 +1233,12 @@ export class PairSession {
     if (!from) this.message('system', `Goal: ${goal}`, {goal: 'set'}); // the full pane has it in its header
     // A new goal ends the old goal's steps: they would be judged against work that is no longer the goal.
     if (this.thread.steps.length) {
+      const proposal = this.thread.proposed;
+      this.letGoUnsaid('a new goal');
       this.thread.drop();
       this.planChanged();
-      this.ledger.add('plan', 'dropped the steps: a new goal');
+      if (proposal) this.ledger.quiet('plan', 'the steps proposed for the old goal, not said: a new goal');
+      else this.ledger.add('plan', 'dropped the steps: a new goal');
     }
     this.askForPlan(goal);
   }
@@ -1268,6 +1271,7 @@ export class PairSession {
 
   /** The user's own steps (`a; b; c`): they replace Pair's; fewer than two drop the plan. */
   setPlan(text) {
+    this.letGoUnsaid('you set new steps');
     if (!this.thread.set(parseSteps(text), {keepDone: true})) return this.dropPlan();
     this.planChanged();
     this.ledger.add('plan', `your steps: ${planText(this.thread.steps)}`);
@@ -1275,11 +1279,18 @@ export class PairSession {
   }
 
   dropPlan() {
+    this.letGoUnsaid('you dropped the steps');
     const had = this.thread.steps.length > 0;
     this.thread.drop();
     this.planChanged();
     if (had) this.ledger.add('plan', 'you dropped the steps');
     this.message('system', had ? 'Steps dropped. /plan <a; b; c> sets new ones.' : 'No steps to drop. /plan <a; b; c> sets some.');
+  }
+
+  /** A "done" line the budget held back that a change of plan makes old news: booked, never said. */
+  letGoUnsaid(why) {
+    const line = this.thread.takeUnsaid();
+    if (line) this.ledger.quiet('plan', `"${line}" not said: ${why}`, {budget: true});
   }
 
   /** What the chat shows of the plan: the steps on the line `p` puts, and Pair's "Now" lines. */
@@ -1332,8 +1343,9 @@ export class PairSession {
     const retry = this.planRetry;
     if (retry && (this.state.goal !== retry.goal || this.thread.steps.length)) this.planRetry = null;
     else if (retry && now - retry.at >= PLAN_RETRY_MS && this.health.ok()) this.askForPlan(retry.goal);
-    const old = this.thread.expired(now);
-    if (old) this.ledger.quiet('plan', `${old.what}: ${old.line ? `"${old.line}" not said` : 'not checked'} in ${LANDED_KEPT_MS / 60_000} min, let go`, {budget: true});
+    for (const old of this.thread.expired(now)) {
+      this.ledger.quiet('plan', `${old.what}: ${old.line ? `"${old.line}" not said` : 'not checked'} in ${LANDED_KEPT_MS / 60_000} min, let go`, {budget: true});
+    }
     const proposed = this.thread.proposed;
     if (proposed) {
       if (!this.threadMaySpeak(proposed.at, now)) return;
@@ -1348,15 +1360,13 @@ export class PairSession {
       this.planChanged({proposed: true});
       return;
     }
-    const landed = this.thread.due(now);
-    if (!landed || !this.threadMaySpeak(landed.at, now)) return;
-    if (landed.line) { // checked already, its steps marked done: only the line waited for the budget
-      if (!this.budget.allows(now).ok) return;
-      this.thread.landed = null;
-      this.sayThread(landed.line, landed.what);
+    const unsaid = this.thread.unsaid; // steps marked done already: only their line waited for the budget
+    if (unsaid && this.budget.allows(now).ok && this.threadMaySpeak(unsaid.at, now)) {
+      this.sayThread(this.thread.takeUnsaid(), unsaid.what);
       return;
     }
-    if (!this.threadModel) return;
+    const landed = this.thread.due(now);
+    if (!landed || !this.threadModel || !this.threadMaySpeak(landed.at, now)) return;
     this.threading = true;
     let numbers;
     try {
@@ -1367,11 +1377,14 @@ export class PairSession {
     }
     if (this.thread.landed !== landed) return; // a newer landing, or a new plan, came meanwhile: looked at next
     if (!this.threadMaySpeak(landed.at, this.now())) return; // the user started typing while the model thought: it waits
-    const line = this.thread.done(numbers);
+    // Done now, in the Now lines; the line waits for the budget, along with any held back before.
+    const line = this.thread.done(numbers, {hold: landed});
     if (!line) return this.ledger.quiet('plan', `${landed.what}: no step done yet`);
     this.planChanged();
-    if (this.budget.allows(this.now()).ok) return void this.sayThread(line, landed.what);
-    this.thread.landed = {...landed, line}; // done now, in the Now lines; the line waits for the budget
+    if (this.budget.allows(this.now()).ok) {
+      const {what} = this.thread.unsaid;
+      return void this.sayThread(this.thread.takeUnsaid(), what);
+    }
     this.ledger.quiet('plan', `${landed.what}: "${line}" held back, the talk budget is spent`, {budget: true});
   }
 

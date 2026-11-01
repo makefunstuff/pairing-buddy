@@ -40,7 +40,8 @@ export function parseDone(text, count) {
 export class Thread {
   constructor() {
     this.steps = []; // {text, done}
-    this.landed = null; // the latest step that may have landed and is not said yet: {what, at, line once checked}
+    this.landed = null; // the latest step that may have landed and is not checked yet: {what, at}
+    this.unsaid = null; // steps a landing finished whose line the budget held back: {steps, what, at}
     this.proposed = null; // Pair's steps, not said yet: {at}, said at the user's next break
     this.version = 0; // each new plan or drop: a model answer about an older one is let go
   }
@@ -56,6 +57,7 @@ export class Thread {
     const done = new Set(keepDone ? this.steps.filter(step => step.done).map(step => step.text) : []);
     this.steps = steps.length >= STEPS.min ? steps.slice(0, STEPS.max).map(text => ({text, done: done.has(text)})) : [];
     this.landed = null;
+    this.unsaid = null;
     this.proposed = null;
     this.version += 1;
     return this.steps.length > 0;
@@ -64,6 +66,7 @@ export class Thread {
   drop() {
     this.steps = [];
     this.landed = null;
+    this.unsaid = null;
     this.proposed = null;
     this.version += 1;
   }
@@ -73,26 +76,46 @@ export class Thread {
     if (this.next) this.landed = {what, at};
   }
 
-  /** The landing to check or say at a break at `now`, or null: it has a line, or the plan an open step; it is not old. */
+  /** The landing to check at a break at `now`, or null: the plan has an open step, and the landing is not old. */
   due(now) {
-    return this.landed && (this.landed.line || this.next) && now - this.landed.at <= LANDED_KEPT_MS ? this.landed : null;
+    return this.next && this.landed && now - this.landed.at <= LANDED_KEPT_MS ? this.landed : null;
   }
 
-  /** The landing that got too old to say at `now`, which it lets go; null when none did. */
+  /** What got too old to say at `now`, which it lets go: [{what, line}], line null for a landing not checked. */
   expired(now) {
-    const old = this.landed && now - this.landed.at > LANDED_KEPT_MS ? this.landed : null;
-    if (old) this.landed = null;
+    const old = [];
+    if (this.landed && now - this.landed.at > LANDED_KEPT_MS) old.push({what: this.landed.what, line: null});
+    if (this.unsaid && now - this.unsaid.at > LANDED_KEPT_MS) old.push({what: this.unsaid.what, line: this.takeUnsaid()});
+    if (old.some(({line}) => !line)) this.landed = null;
     return old;
   }
 
-  /** Marks steps `numbers` done; returns the line to say, or null when none was open. Ends the landing. */
-  done(numbers) {
+  /**
+   * Marks steps `numbers` done; returns the line to say, or null when none was open. Ends the landing. With `hold`, the
+   * steps join the line the budget holds back (takeUnsaid says them all, with what is next by then).
+   */
+  done(numbers, {hold = null} = {}) {
     this.landed = null;
     const newly = numbers.map(n => this.steps[n - 1]).filter(step => step && !step.done);
     if (!newly.length) return null;
     for (const step of newly) step.done = true;
-    const said = newly.map(step => step.text).join(', ');
+    if (hold) {
+      const before = this.unsaid;
+      this.unsaid = {steps: [...(before?.steps ?? []), ...newly], what: before ? `${before.what}; ${hold.what}` : hold.what, at: before?.at ?? hold.at};
+    }
+    return this.line(newly);
+  }
+
+  line(steps) {
+    const said = steps.map(step => step.text).join(', ');
     return this.next ? `done: ${said}; next: ${this.next.text}` : `done: ${said}; that was the last step.`;
+  }
+
+  /** The line held back, as it reads now, which it ends; null when none. */
+  takeUnsaid() {
+    const unsaid = this.unsaid;
+    this.unsaid = null;
+    return unsaid ? this.line(unsaid.steps) : null;
   }
 
   /** What the done check asks the model: the plan, then the debrief's facts of the session so far. */

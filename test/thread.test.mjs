@@ -224,6 +224,40 @@ test('a landing that finished no step says nothing; with the budget spent, it ma
   assert.equal(held.models.length, 1, 'not checked again');
 });
 
+test('a held "done" line survives the next landing, gathers its steps, and a change of plan books it let go', async () => {
+  const {pair, actions, said, advance, at} = session({done: 'done: 1'});
+  pair.setPlan('a; b; c');
+  pair.budget.spend(at());
+  pair.thread.land('`npm test` passes again', at());
+  advance(MIN);
+  await pair.tick();
+  await checked(pair);
+  pair.thread.land('a commit', at()); // the usual order: green, then commit
+  advance(1000);
+  await pair.tick();
+  await checked(pair);
+  assert.ok(actions.some(action => /a commit: no step done yet/.test(JSON.stringify(action))));
+  pair.threadModel = async () => 'done: 2';
+  pair.thread.land('code taken', at());
+  advance(1000);
+  await pair.tick();
+  await checked(pair);
+  assert.deepEqual(said(), []);
+  advance(3 * MIN);
+  await pair.tick();
+  assert.deepEqual(said(), ['done: a, b; next: c'], 'both steps, with what is next by then');
+
+  pair.budget.spend(at());
+  pair.threadModel = async () => 'done: 3';
+  pair.thread.land('a commit', at());
+  advance(MIN);
+  await pair.tick();
+  await checked(pair);
+  pair.dropPlan();
+  assert.ok(actions.some(action => /done: c; that was the last step\W+ not said: you dropped the steps/.test(JSON.stringify(action))));
+  assert.equal(pair.thread.unsaid, null);
+});
+
 test('a landing held past half an hour is let go, and the ledger says so', async () => {
   const {pair, actions, models, advance, at} = session();
   pair.setPlan('a; b');
