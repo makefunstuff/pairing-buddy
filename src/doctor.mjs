@@ -176,7 +176,7 @@ export async function herdrCheck(env, {app = new HerdrApp({env: {HC_SESSION: env
   const found = `herdr-core ${status.version} (terminals, session ${herdr.session ?? 'default'}) answers in ${Date.now() - started} ms, ${count(status.live ?? 0, 'live terminal')}`;
   const space = here.labels?.[SPACE];
   if (!space) return warn('herdr', `${found}; no Herdr window shows terminal ${herdr.pane}: \`pair\` opens the chat right here, and Pair sees none of your other terminals`);
-  const focus = await app.focused(space).then(() => 'its focus is read', () => 'its focus cannot be read (`herdr-app status` does not answer), so Pair takes none of your terminals for the one you are in');
+  const focus = await app.focused(space).then(() => '`herdr-app status` answers for its focus', () => 'its focus cannot be read (`herdr-app status` does not answer), so Pair takes none of your terminals for the one you are in');
   return ok('herdr', `${found}; the Herdr window shows terminal ${herdr.pane}, and ${focus}. The Driver cannot type into herdr-core terminals`);
 }
 
@@ -190,13 +190,13 @@ export async function boardCheck(command, env = process.env) {
   const board = new Board(command);
   try {
     const tasks = await board.tasks();
-    return ok('board', `Shepherdr ${board.version} (${command}): ${count(tasks.length, 'open task')}`);
+    return ok('board', `Shepherdr ${board.version} (${command}): ${count(tasks.length, 'task')} not archived`);
   } catch (error) {
     if (error.code === 'ENOENT') return ok('board', `no Shepherdr (${command} is not installed): Pair works without a board`);
     if (outsideSession(error.message)) {
-      return warn('board', `Shepherdr 2.1 (${command}) answers only inside the agent sessions it starts: Pair reads no tasks here, and a board pick gives you its command to run there`);
+      return warn('board', `Shepherdr 2.1 (${command}) answers only inside the agent sessions it starts: Pair reads no tasks here, and a board pick's command is refused the same way`);
     }
-    return fail('board', `${command} fails: ${error.message.split('\n')[0]}`);
+    return warn('board', `${command} fails, so Pair reads no board: ${error.message.split('\n')[0]}`);
   }
 }
 

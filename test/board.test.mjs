@@ -140,7 +140,10 @@ test('Shepherdr 2.1: tasks in pages, JSON spaces, task show in pieces, its artif
         desc: 'Read every run. '.repeat(700), said: 'Runs are read.', facts: 'PR #12 · checks passed', outcome: 'done'},
       {id: 'FAR-1', title: 'Far away', status: 'work', place: 'p:far:web'},
     ],
-    artifacts: [{id: '67baddc7', title: 'SHO-7: Proof', space: 'shop', by: 'SHO-7 agent', html: '/data/67/1.html'}],
+    artifacts: [ // newest first: the fake lists them oldest first, as 2.1 does
+      {id: '67baddc7', title: 'SHO-7: Proof', space: 'shop', by: 'SHO-7 agent', html: '/data/67/1.html'},
+      {id: '3e62ac61', title: 'SHO-7: Old proof', space: 'shop', by: 'SHO-7 agent', html: '/data/3e/1.html'},
+    ],
   });
   const shepherdr = new Board(board.command);
   assert.deepEqual(await shepherdr.spaces(), [{name: 'shop', key: 'SHO', path: '/src/shop', github: null, machine: 'here'}], 'the home space left out');
@@ -156,7 +159,7 @@ test('Shepherdr 2.1: tasks in pages, JSON spaces, task show in pieces, its artif
     outcome: 'done', said: 'Runs are read.', facts: 'PR #12 · checks passed', brief: 'Read every run. '.repeat(700).trim().length,
   }, 'put together from its pieces');
   assert.ok(board.calls().some(args => args.includes('--revision')), 'read in pieces');
-  assert.equal(await shepherdr.report('SHO-7', {space: 'shop'}), '/data/67/1.html');
+  assert.equal(await shepherdr.report('SHO-7', {space: 'shop'}), '/data/67/1.html', 'its newest, though 2.1 lists it last');
   const added = await shepherdr.add(shepherdr.addWords({title: 'CSV export', brief: 'b', space: 'shop'}));
   assert.equal(added.id, 'SHO-90');
   await assert.rejects(shepherdr.run(['task', 'archive', 'SHO-7']), /Only a coordinator/, 'its refusal is the error');

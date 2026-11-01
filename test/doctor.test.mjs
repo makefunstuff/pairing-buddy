@@ -9,11 +9,12 @@ import {createModels, fauxProvider, InMemoryCredentialStore, ModelsError} from '
 import {loadConfig, oneAtATime, parseConfig} from '../src/config.mjs';
 import {startDaemon} from '../src/daemon.mjs';
 import {fileCredentialStore} from '../src/credentials.mjs';
-import {contextCheck, daemonCheck, doctor, loginCheck, loginsCheck, paneCheck, rolesCheck, serviceCheck, subscriptionCheck, swapCheck} from '../src/doctor.mjs';
+import {boardCheck, contextCheck, daemonCheck, doctor, loginCheck, loginsCheck, paneCheck, rolesCheck, serviceCheck, subscriptionCheck, swapCheck} from '../src/doctor.mjs';
 import {sendMessage} from '../src/protocol.mjs';
 import {launchd} from '../src/launchd.mjs';
 import {systemd} from '../src/systemd.mjs';
 import {VERSION} from '../src/version.mjs';
+import {fakeShepherdr} from './fake-shepherdr.mjs';
 import {scratch} from './temp.mjs';
 
 /**
@@ -276,4 +277,19 @@ test('two models on one server: the swap check tells a reload from a server that
   assert.match(reloads.text, /^the server reloads when the roles switch: the Watcher took 9\.0 s right after the Partner and 0\.4 s next\. Give both roles one model/);
   assert.equal((await swapCheck({}, timed(600, 500))).level, 'ok');
   assert.equal((await swapCheck({}, timed(3000, 2800))).level, 'ok', 'slow each time is no reload');
+});
+
+test('the board check names the Shepherdr that answers: 2.0, 2.1, 2.1 outside its sessions, one down, or none', async () => {
+  const board = fakeShepherdr(scratch('pair-doctor-board-'), {spaces: [{name: 'shop', key: 'SHO', path: '/src/shop'}], tasks: [{id: 'SHO-1', title: 'A', status: 'work', place: 'p:here:shop'}]});
+  assert.deepEqual(await boardCheck(board.command), {level: 'ok', name: 'board', text: `Shepherdr 2.0 (${board.command}): 1 task not archived`});
+  board.set({version: '2.1', spaces: [{name: 'shop', key: 'SHO', path: '/src/shop'}], tasks: [{id: 'SHO-1', title: 'A', status: 'work', place: 'p:here:shop'}]});
+  assert.match((await boardCheck(board.command)).text, /^Shepherdr 2\.1 \(.*\): 1 task not archived$/);
+  board.set({version: '2.1', outside: true});
+  const outside = await boardCheck(board.command);
+  assert.equal(outside.level, 'warn');
+  assert.match(outside.text, /answers only inside the agent sessions it starts/);
+  board.set({down: true});
+  assert.equal((await boardCheck(board.command)).level, 'warn', 'the board is optional: one that is down is no failure');
+  assert.match((await boardCheck('shepherdr', {PATH: ''})).text, /^no Shepherdr/);
+  assert.match((await boardCheck(null)).text, /^off/);
 });

@@ -12,8 +12,8 @@ Start with `pair doctor`. It checks every part, one line each, and names the fix
 ✓ daemon   version 0.11.0, up 42 min, 2 sessions
 ✓ plugin   your Neovim config loads it
 ✓ neovim   2 connected, in shop, blog
-✓ herdr    herdr-core 0.1.16 (terminals, session default) answers in 2 ms, 3 live terminals; the Herdr window shows terminal t1q, and its focus is read. ...
-✓ board    Shepherdr 2.0 (shepherdr): 4 open tasks
+✓ herdr    herdr-core 0.1.16 (terminals, session default) answers in 2 ms, 3 live terminals; the Herdr window shows terminal t1q, and `herdr-app status` answers for its focus. ...
+✓ board    Shepherdr 2.0 (shepherdr): 4 tasks not archived
 ! watcher  your-small-model at http://localhost:8080/v1 answers, but takes 2.4 s: the Watcher scores every candidate remark and should take about 1 s. ...
 ✓ partner  your-larger-model at http://localhost:8081/v1 answers in 1.1 s
 ```
@@ -26,7 +26,7 @@ Start with `pair doctor`. It checks every part, one line each, and names the fix
 | plugin | Neovim, started headless with your config, loads the plugin |
 | neovim | How many Neovims are connected, in which projects |
 | herdr | Which herdr this terminal is in, by its environment: herdr (panes) or herdr-core (terminals), and that it answers on its socket; for herdr-core, whether the Herdr window shows this terminal and gives its focus (only checked when run inside one of them) |
-| board | Which Shepherdr the board's command is (2.0 or 2.1, by what `task list` answers), how many open tasks it has, or that 2.1 refuses outside its own sessions |
+| board | Which Shepherdr the board's command is (2.0 or 2.1, by what `task list` answers), how many tasks it has that are not archived, or that 2.1 refuses outside its own sessions |
 | logins | `auth.json` is readable by you only (shown when there is one) |
 | keys | The environment variables your model entries (and `voice.openrouter`) name in `apiKeyEnv` are set, and stored in `service.env` for the service (shown when there are any) |
 | pane | Pair's pane: the `scoutPane.rc` file is there, and whether its commands run in the bubblewrap sandbox |

@@ -160,7 +160,9 @@ export class Board {
    * (a task's artifacts are kept in its space); null when it made none.
    */
   async report(id, {space = null} = {}) {
-    const ids = artifactIds(await this.run(['artifact', 'list', ...(space ? [`--space=${space}`] : [])]));
+    const listed = await this.run(['artifact', 'list', ...(space ? [`--space=${space}`] : [])]);
+    // 2.1 lists the oldest first (its lines one space apart, `3e62ac61 v1 …`); 2.0 the newest.
+    const ids = /^\S+ v\d+(?: |$)/m.test(listed) ? artifactIds(listed).reverse() : artifactIds(listed);
     for (const artifact of ids.slice(0, REPORTS_LOOKED_AT)) {
       const shown = await this.run(['artifact', 'show', artifact]);
       if (madeBy(shown, id)) return shown.match(/^HTML: (.+)$/m)?.[1].trim() ?? null;

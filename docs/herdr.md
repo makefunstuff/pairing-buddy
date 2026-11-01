@@ -84,7 +84,7 @@ as herdr's, so Pair talks to both the same way ([src/herdr-core.mjs](../src/herd
 | Need | herdr | herdr-core | How Pair does it on herdr-core |
 | --- | --- | --- | --- |
 | The user's terminals | the panes of the chat's workspace (`pane.list`) | `terminal.list` with the chat's `herdr.space` label | The terminals of the chat's space in the window. A chat no window shows (a core used without the window) has none |
-| Which one has focus | pushed (`pane.focused` events) | none; the window knows it | `herdr-app status` (its `focused_pane`, mapped to a terminal by `herdr-app ls`), twice a second, only while the window shows the chat's space. Without a window, no terminal has focus |
+| Which one has focus | pushed (`pane.focused` events) | none; the window knows it | `herdr-app status` (its `space` and `focused_pane`, mapped to a terminal by `herdr-app ls`), twice a second while the session runs; a window that shows another space gives no focus. Without a window, no terminal has focus |
 | Scrolled up | pushed (`pane.scroll_changed`) | none | never: a terminal counts as not scrolled |
 | Terminals coming, going, changing | pushed | pushed (`events.subscribe` with the space's label) | each event makes Pair look again |
 | The command running | `pane.process_info` | `foreground` in `terminal.get` (its pid is not the terminal's own program) | the same polling and shell hook as on herdr |

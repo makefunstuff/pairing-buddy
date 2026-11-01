@@ -159,14 +159,24 @@ export class CorePanes {
 
   start(look, reportScroll, failure) {
     this.stopped = false;
-    this.spaceOf().then(space => {
-      if (this.stopped || !space) return look();
-      this.stream = coreEvents(this.socketPath, {labels: {[SPACE]: space}}, {onEvent: () => look(), onStart: () => look(), onError: failure});
-      this.followFocus(look);
-    }, error => {
+    Object.assign(this, {look, failure});
+    this.begin().catch(error => failure(error));
+  }
+
+  /**
+   * Once the chat's space is known: the events of its terminals and the window's focus. A start that failed (the core
+   * did not answer) is tried again at the next look.
+   */
+  async begin({looking = false} = {}) {
+    if (this.stream || this.stopped) return;
+    const space = await this.spaceOf().catch(error => {
       this.space = undefined; // asked again at the next look
-      failure(error);
+      throw error;
     });
+    if (this.stream || this.stopped) return;
+    if (!space) return looking ? undefined : this.look();
+    this.stream = coreEvents(this.socketPath, {labels: {[SPACE]: space}}, {onEvent: () => this.look(), onStart: () => this.look(), onError: this.failure});
+    this.followFocus(this.look);
   }
 
   /** The window says nothing when its focus moves: it is asked every focusMs, and a move makes PaneWatch look. */
@@ -188,6 +198,7 @@ export class CorePanes {
   }
 
   async list() {
+    if (this.space === undefined) await this.begin({looking: true});
     const space = await this.spaceOf();
     if (!space) return [];
     const {terminals} = await this.request('terminal.list', {labels: {[SPACE]: space}});

@@ -165,7 +165,7 @@ test('pair doctor names the herdr it is in: herdr-core with or without the windo
   const env = {HC_SOCKET: socketPath, HC_TERMINAL_ID: 't1', PATH: ''};
   const shown = await herdrCheck(env, {app: herdrApp});
   assert.equal(shown.level, 'ok');
-  assert.match(shown.text, /^herdr-core 0\.1\.16 \(terminals, session default\) answers in \d+ ms, 4 live terminals; the Herdr window shows terminal t1, and its focus is read/);
+  assert.match(shown.text, /^herdr-core 0\.1\.16 \(terminals, session default\) answers in \d+ ms, 4 live terminals; the Herdr window shows terminal t1, and `herdr-app status` answers for its focus/);
   app.set({window: false});
   assert.match((await herdrCheck(env, {app: herdrApp})).text, /its focus cannot be read/);
   const alone = await herdrCheck({...env, HC_TERMINAL_ID: 't4'}, {app: herdrApp});
@@ -173,4 +173,16 @@ test('pair doctor names the herdr it is in: herdr-core with or without the windo
   assert.match(alone.text, /no Herdr window shows terminal t4/);
   assert.equal((await herdrCheck({...env, HC_SOCKET: '/nowhere.sock'})).level, 'fail');
   assert.match((await herdrCheck({PATH: ''})).text, /^not installed/);
+});
+
+test('a core that does not answer at first is tried again, and its terminals are watched once it does', async t => {
+  const {socketPath, core, herdrApp} = await setUp(t);
+  const source = new CorePanes({socketPath: `${socketPath}.not-yet`, chatPane: 't2', app: herdrApp, focusMs: 100});
+  const failures = [];
+  source.start(() => {}, () => {}, error => failures.push(error));
+  await until(() => failures.length === 1, 'the failed start');
+  source.socketPath = socketPath; // the core is back
+  assert.deepEqual((await source.list()).map(each => each.pane).sort(), ['t1', 't2']);
+  await until(() => core.subscribers.size === 1, 'the event stream');
+  source.stop();
 });

@@ -56,7 +56,8 @@ if (state.version === '2.1') {
   }
   if (a0 === 'artifact' && a1 === 'list') {
     const space = opt('space');
-    out((state.artifacts ?? []).filter(a => !space || a.space === space).map(a => a.id + ' v1 ' + a.title).join('\n') || 'No artifacts');
+    // The oldest first, as 2.1 keeps them (store.all, ORDER BY rowid).
+    out((state.artifacts ?? []).filter(a => !space || a.space === space).reverse().map(a => a.id + ' v1 ' + a.title).join('\n') || 'No artifacts here yet.');
   }
   if (a0 === 'artifact' && a1 === 'show') {
     const a = (state.artifacts ?? []).find(each => each.id === a2);
