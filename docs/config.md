@@ -13,7 +13,7 @@ The daemon takes a change as you save the file (also through a symlink), without
 and Neovim what it reloaded. It checks the new config as at start: one with an error is not taken, and the chat says
 why while the daemon keeps the config it runs. Run `pair doctor` after a change to check the models.
 
-- **At once**: the typing pause, `autoTune`, `keepWarm`, `watcherPace`, the `decision` model, `testOnSave`, `voice`,
+- **At once**: the typing pause, `autoTune`, `plan`, `keepWarm`, `watcherPace`, the `decision` model, `testOnSave`, `voice`,
   `taskCommand`, `gen` and `board`, in open sessions too (a `/gen` request already running keeps the limits it
   started with).
 - **Between turns**: new `model` or `models` entries (and their thinking levels). An answer under way finishes on
@@ -29,6 +29,7 @@ why while the daemon keeps the config it runs. Run `pair doctor` after a change 
 | `models` | | `{"watcher": ..., "partner": ...}`, a model entry for each role; `"watcher": "same as partner"` is the same as one `model`. Set `model` or `models`, not both |
 | `level` | `"normal"` | How often Pair speaks unasked: `quiet`, `normal` or `chatty` ([talk levels](#talk-levels)) |
 | `autoTune` | `true` | Your feedback tunes the bars and budget ([memory.md](memory.md#learning-when-to-talk)) |
+| `plan` | `true` | Pair proposes the goal's steps and says what is done and next ([the thread](memory.md#the-thread-done-and-next)); `false` proposes none, and `/plan` still sets your own |
 | `keepWarm` | `true` for a Watcher with `"api": "openai"`, else `false` | While you work, ask the Watcher's model for one token every 4 minutes, so a server that unloads idle models keeps it loaded ([watcher.md](watcher.md#keep-warm)) |
 | `watcherPace` | `true` | While the Watcher's calls take 1.5 s or more (the median of its last calls), ask about fewer kinds of moment: the ones you can see for yourself go first and, with `autoTune` on, those whose remarks you dismiss before those you keep. Every kind comes back once calls take 1 s or less. `false` asks about every kind however slow the server is ([watcher.md](watcher.md#when-the-server-is-slow)) |
 | `decision` | none | A decision (classifier) model the speak gate asks whether a remark is worth it, with probabilities: TypeSafe's Jev, Cloudflare's Clef, OpenAI's Decisions API, or a gateway of your own. Without it the Watcher's score and the bar decide ([decision.md](decision.md#configure)) |

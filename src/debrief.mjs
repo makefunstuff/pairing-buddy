@@ -58,15 +58,17 @@ export function keptChanges(actions) {
 const list = items => items.map(item => `\n- ${item}`).join('');
 
 /**
- * What the Partner is asked at the end. `stopped` is where the user was, {file, line, text}, or null; `failing`
- * the tests failing now; `changes` git status --short.
+ * What happened in the session so far, as lines of facts: the debrief's at the end, and during the session what the
+ * thread's done check reads (see thread.mjs). `stopped` is where the user was, {file, line, text}, or null; `failing`
+ * the tests failing now; `changes` git status --short; `plan` the thread's steps (Thread.summary), or null.
  */
-export function debriefInput({goal, wins, kept = [], commits = [], changes = null, stopped = null, failing = []}) {
+export function factLines({goal, wins, kept = [], commits = [], changes = null, stopped = null, failing = [], plan = null}) {
   const lines = changes ? changes.split('\n') : [];
   const shown = lines.length > NOTE_CHANGES ? [...lines.slice(0, NOTE_CHANGES), `(${lines.length - NOTE_CHANGES} more)`] : lines;
   const {tests, commands} = wins.green;
-  const facts = [
+  return [
     `Goal: ${goal ?? '(not set)'}`,
+    plan && `The session's plan (✓ done, → next, ○ open): ${plan}`,
     tests.length && `Tests that failed during the session and pass now: ${tests.join(', ')}`,
     commands.length && `Commands that pass again after failing: ${commands.map(cmd => `\`${cmd}\``).join(', ')}`,
     wins.moved.length && `Numbers that moved the right way:${list(wins.moved)}`,
@@ -75,14 +77,18 @@ export function debriefInput({goal, wins, kept = [], commits = [], changes = nul
     failing.length && `Still failing: ${failing.join(', ')}`,
     `Uncommitted changes (git status): ${shown.length ? `\n${shown.join('\n')}` : 'none'}`,
     stopped && `Where the user stopped: ${stopped.file}:${stopped.line}: ${stopped.text.trim()}`,
-  ];
+  ].filter(Boolean);
+}
+
+/** What the Partner is asked at the end, from the session's facts (see factLines). */
+export function debriefInput(facts) {
   return `[end] The session is over. Write its debrief for the next session in this project, in plain text, in exactly this form:
 ✓ <something that is now true> (one to three of these lines, from the facts below)
 ○ open: <something left open> (none to two of these lines)
 Tomorrow, first: <the one concrete step to start with>, in <file>:<line>.
 Say what the code does now, not how it was found. No heading, no other lines and no tool calls.
 
-${facts.filter(Boolean).join('\n')}`;
+${factLines(facts).join('\n')}`;
 }
 
 const FIRST = /^\W*tomorrow,?\s*first\W*\s*(.+)$/i;

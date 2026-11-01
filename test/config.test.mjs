@@ -35,6 +35,13 @@ test('watcherPace is on unless turned off, and takes only true or false', () => 
   assert.throws(() => parseConfig({...model, watcherPace: 'off'}), /watcherPace must be true or false/);
 });
 
+test('plan is on unless turned off, and takes only true or false', () => {
+  const model = {model: {api: 'openai', baseUrl: 'http://x/v1', model: 'm'}};
+  assert.equal(parseConfig(model).plan, true);
+  assert.equal(parseConfig({...model, plan: false}).plan, false);
+  assert.throws(() => parseConfig({...model, plan: 'off'}), /plan must be true or false/);
+});
+
 test('a broken config says which file and why', () => {
   const path = join(scratch('pair-config-'), 'config.json');
   writeFileSync(path, '{"level": "normal",, }');

@@ -49,7 +49,7 @@ async function pairWithoutHerdr(t, {testOnSave} = {}) {
     socket: join(dataDir, 'pair.sock'),
     testOnSave: testOnSave ? {[project]: testOnSave} : undefined,
     scoutPane: {sandbox: false},
-    agents: false,
+    agents: false, plan: false,
     board: null,
     models: {watcher: {api: 'openai', baseUrl: 'http://unused', model: 'w'}, partner: {api: 'openai', baseUrl: 'http://unused', model: 'p'}},
   };

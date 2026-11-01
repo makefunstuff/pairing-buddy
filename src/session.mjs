@@ -8,11 +8,11 @@ import {momentState, pastVerdicts} from './decision.mjs';
 import {checkCommand, judge, markOf, parseHandOver, targetsOf} from './check.mjs';
 import {commandPolicy} from './command-policy.mjs';
 import {contextCard} from './context-card.mjs';
-import {debriefInput, firstPlace, heading, keptChanges, lessonLine, parseDebrief, Wins} from './debrief.mjs';
+import {debriefInput, factLines, firstPlace, heading, keptChanges, lessonLine, parseDebrief, Wins} from './debrief.mjs';
 import {Delight, LONG_RED_MS} from './delight.mjs';
 import {describeState} from './describe.mjs';
 import {insideRoot, MAX_LINES, newProjectFile, numberedLines, projectFile, readProjectPath} from './files.mjs';
-import {byUser, editOrigin, failed, fold, initialState} from './fold.mjs';
+import {byUser, editOrigin, failed, fold, initialState, userEdits} from './fold.mjs';
 import {decide} from './gate.mjs';
 import {Gen} from './gen.mjs';
 import {gist} from './gist.mjs';
@@ -31,6 +31,7 @@ import {tmpdir} from 'node:os';
 import {asksBack, oneQuestion, PROSE_CHECKS} from './prose-triggers.mjs';
 import {parseTestOutput, testSummary} from './test-output.mjs';
 import {TestRuns, treeOf} from './test-runs.mjs';
+import {DONE_PROMPT, LANDED_KEPT_MS, parseDone, parseSteps, PLAN_PROMPT, planText, stepsLine, Thread} from './thread.mjs';
 import {named} from './terminals.mjs';
 import {currentTrail, trailMatches, trailSummary} from './trail.mjs';
 import {detectTriggers, freshCodeIn, TRIGGER_KINDS} from './triggers.mjs';
@@ -216,6 +217,8 @@ export function selectionInput({file, from, to}, text) {
 
 const NAME_CHARS = 32; // of a failing test's name in the statusline
 const LATE_QUESTION_CHARS = 60; // of the question a late answer names
+const PLAN_RETRY_MS = 60_000; // a plan proposal or done check that failed is asked again after this
+const CHANGED_LINES = 60; // of the lines the user changed since the Partner's last turn, it gets this many
 
 /** Whether a finished test run failed: its exit code, a timeout, a failing test or a crash (a sanitizer's, also with exit 0) say so. */
 const isRed = ({exit, timedOut, tests, reading}) => exit !== 0 || timedOut || !!tests?.failedCount || !!reading?.crash;
@@ -347,6 +350,21 @@ export function cleanNote(text) {
 /** Whether `file`, relative to the project root, lies outside it. */
 const outsideRoot = file => file === '..' || file.startsWith(`..${sep}`) || isAbsolute(file);
 
+/**
+ * Where the lines of `edit` are in `lines` now: found by their words, the place nearest to where they were, since an
+ * edit above them moves them; a deletion (from > to) by its number. Null when the words are no longer there.
+ */
+function placeNow(lines, edit) {
+  if (edit.from > edit.to) return {from: Math.min(edit.from, lines.length), to: Math.min(edit.from, lines.length) - 1};
+  const words = edit.text.split('\n');
+  let best = null;
+  for (let i = 0; i + words.length <= lines.length; i++) {
+    if (!words.every((word, j) => lines[i + j] === word)) continue;
+    if (best === null || Math.abs(i + 1 - edit.from) < Math.abs(best + 1 - edit.from)) best = i;
+  }
+  return best === null ? null : {from: best + 1, to: Math.min(lines.length, best + 1 + edit.to - edit.from)};
+}
+
 // What the user does, unlike what Pair, herdr's focus or the LSP report: a session nobody uses never ends by itself.
 const USER_EVENTS = new Set(['typing', 'edit', 'enter', 'cursor', 'scroll', 'save', 'command_end', 'search']);
 // Of those, the ones that are work, not only looking around: a session with none of them has nothing to debrief.
@@ -378,8 +396,8 @@ export class PairSession {
    * where `genScaffold` says ('tree', Pair's copy, or 'worktree'); /gen board composes a task for `genBoard`, the
    * board's command.
    */
-  constructor({record, store, partner, score, pace = null, decision = () => null, typingPauseMs, notify, requestEditor, previousNote = null, lastSession = null, autoTune = false, health = {ok: () => true}, testOnSave = null, checkOutput = null, genLimits, genBrief, genDir = null, genKeepTries, genNetwork = false, genSandbox = 'auto', genScaffold, genBoard = null, askModel = null, log = () => {}, now = Date.now}) {
-    Object.assign(this, {record, store, partner, score, pace, decision, typingPauseMs, notify, requestEditor, previousNote, lastSession, autoTune, health, log, now});
+  constructor({record, store, partner, score, pace = null, decision = () => null, typingPauseMs, notify, requestEditor, previousNote = null, lastSession = null, autoTune = false, health = {ok: () => true}, testOnSave = null, checkOutput = null, genLimits, genBrief, genDir = null, genKeepTries, genNetwork = false, genSandbox = 'auto', genScaffold, genBoard = null, askModel = null, threadModel = askModel, proposing = true, log = () => {}, now = Date.now}) {
+    Object.assign(this, {record, store, partner, score, pace, decision, typingPauseMs, notify, requestEditor, previousNote, lastSession, autoTune, health, askModel, threadModel, proposing, log, now});
     this.sorted = new Map(); // trigger key -> {at, sort}: what the decision model sorted it as lately
     this.told = new Map(); // trigger key -> what the decision model was told about it first, for the decisions log
     this.checkOutput = checkOutput ?? join(tmpdir(), `pair-check-${process.pid}-${record.id}`, 'check.out'); // its copy of the project goes next to it
@@ -449,6 +467,10 @@ export class PairSession {
     this.printed = new Map(); // run number -> how many lines of its output the user's debug lines printed
     this.runLineShown = null; // the statusline's line about the last run (see showRunLine)
     this.wins = new Wins(); // what went right, for the debrief
+    this.thread = new Thread(); // the goal as steps, done and next (see thread.mjs)
+    this.threading = false; // a landing is being checked
+    this.planRetry = null; // a plan proposal that failed, to ask again: {goal, at}
+    this.toldAt = null; // when the Partner's last turn started: the user's edits since are news to it (see changedSince)
     this.breaks = new Breaks(); // when a break is due, at the next natural end
     this.pickedUp = false; // the morning pick-up ran, or this session carries straight on from the last
     this.firstStep = null; // the user's own first step for next time (/first), for this session's debrief
@@ -514,10 +536,15 @@ export class PairSession {
     if (event.kind === 'typing' && event.source === 'terminal' && this.role === 'driver') this.takeBack().catch(error => this.log(`take-back: ${error.message}`));
     if (event.kind === 'command_end') {
       const red = failed(this.state.commands.at(-1));
+      const wasRed = this.wins.commands.get((event.cmd ?? '').trim()) === 'red';
       this.wins.command(event.cmd ?? '', red);
+      if (wasRed && !red) this.thread.land(`\`${event.cmd.trim()}\` passes again`, folded.at);
       this.delighted(this.delight.command({cmd: event.cmd ?? '', failed: red, output: event.output}, folded.at));
     }
-    if (event.kind === 'context' && last && event.git?.last && event.git.last !== last) this.breakHint('committed');
+    if (event.kind === 'context' && last && event.git?.last && event.git.last !== last) {
+      this.breakHint('committed');
+      this.thread.land('a commit', folded.at);
+    }
     if (this.state.run !== run) this.showRun(this.state.run);
     if (this.state.runs !== runs) this.showRunLine(this.state.runs.at(-1));
   }
@@ -637,6 +664,7 @@ export class PairSession {
     // The chat hears of a run when it turns red or green, or finds new failures; a run like the last one is no news.
     if (red && (!this.wasRed || (run.tests && this.state.tests.newly.length))) this.message('system', `\`${spokenCommand(run.label)}\` after you saved ${run.saved}: ${summaryOf(run, text)}`);
     else if (!red && this.wasRed) this.message('system', `\`${spokenCommand(run.label)}\` passes again${moment?.lasted >= LONG_RED_MS ? `, after ${Math.round(moment.lasted / 60_000)} min of red` : ''}: ${text}.`);
+    if (!red && this.wasRed) this.thread.land(`\`${spokenCommand(run.label)}\` passes again`, this.now());
     this.wasRed = red;
     this.delighted(moment);
   }
@@ -718,6 +746,7 @@ export class PairSession {
     this.countActive();
     this.breaks.saw(this.lastActivity());
     this.showDue();
+    this.threadDue().catch(error => this.log(`plan: ${error.message}`));
     if (this.ticking || this.role === 'driver' || !this.health.ok()) return;
     const now = this.now();
     // While :Pair new asks its questions, the note they are in is no place for remarks.
@@ -1086,6 +1115,9 @@ export class PairSession {
    */
   async talk(input, options = {}, answering = null) {
     this.busy = true;
+    // Every turn carries what the user changed since the last: a remark, a question, /drive or a teach.
+    if (typeof input === 'string') input = `${input}${await this.changedSince()}`;
+    this.toldAt = this.now();
     this.spoke = false;
     this.said = false;
     this.failed = false;
@@ -1194,11 +1226,215 @@ export class PairSession {
 
   /** The goal the user set, or one taken `from` the board task or the branch, which the greeting names. */
   setGoal(goal, from = null) {
+    const same = goal === this.state.goal;
     this.store.setGoal(this.id, goal);
     this.receive({kind: 'goal', text: goal});
     this.goalFrom = from;
     this.notify('chat', {type: 'goal', goal}); // the chat pane's header
     if (!from) this.message('system', `Goal: ${goal}`, {goal: 'set'}); // the full pane has it in its header
+    // A new goal ends the old goal's steps: they would be judged against work that is no longer the goal.
+    if (same && (this.thread.steps.length || this.planRetry)) return; // the same goal again keeps its steps
+    if (this.thread.steps.length) {
+      const proposal = this.thread.proposed;
+      this.letGoUnsaid('a new goal');
+      this.thread.drop();
+      this.planChanged();
+      if (proposal) this.ledger.quiet('plan', 'the steps proposed for the old goal, not said: a new goal');
+      else this.ledger.add('plan', 'dropped the steps: a new goal');
+    }
+    this.askForPlan(goal);
+  }
+
+  /** Asks for the goal's steps; a call that fails (or gives way to a question) is asked again a minute later. */
+  askForPlan(goal) {
+    this.planRetry = null;
+    this.proposePlan(goal).catch(error => {
+      this.log(`plan: ${error.message}`);
+      if (this.state.goal === goal) this.planRetry = {goal, at: this.now()};
+    });
+  }
+
+  /**
+   * Pair proposes the goal as two to four steps, in one line of its own, said at the user's next break (see
+   * threadDue): kept unless the user edits (/plan, `p` in the chat) or drops them (/plan off). The line counts against
+   * the talk budget like any remark; with none left, the steps wait unsaid (the chat's `p` still shows them), and until
+   * Pair has said them they are only a proposal: not in the models' Now lines, the done checks or the debrief.
+   * Steps the user set while the model thought, or a newer goal, win over its answer.
+   */
+  async proposePlan(goal) {
+    if (!this.threadModel || !this.proposing) return; // the config's "plan": false
+    const version = this.thread.version;
+    const steps = parseSteps(await this.threadModel(PLAN_PROMPT, `Goal: ${goal}`));
+    if (this.state.goal !== goal || this.thread.version !== version) return; // a newer goal, or the user's own steps
+    if (!this.thread.set(steps)) return this.ledger.quiet('plan', 'the goal is too small for steps');
+    this.thread.proposed = {at: this.now()};
+    this.notify('chat', {type: 'plan', steps: this.planSteps()}); // `p` has them; the models get them once said
+  }
+
+  /** The user's own steps (`a; b; c`): they replace Pair's; fewer than two drop the plan. */
+  setPlan(text) {
+    this.letGoUnsaid('you set new steps');
+    if (!this.thread.set(parseSteps(text), {keepDone: true})) return this.dropPlan();
+    this.planChanged();
+    this.ledger.add('plan', `your steps: ${planText(this.thread.steps)}`);
+    this.message('system', `Steps: ${stepsLine(this.thread.steps)}`);
+  }
+
+  dropPlan() {
+    this.letGoUnsaid('you dropped the steps');
+    const had = this.thread.steps.length > 0;
+    this.thread.drop();
+    this.planChanged();
+    if (had) this.ledger.add('plan', 'you dropped the steps');
+    this.message('system', had ? 'Steps dropped. /plan <a; b; c> sets new ones.' : 'No steps to drop. /plan <a; b; c> sets some.');
+  }
+
+  /** A "done" line the budget held back that a change of plan makes old news: booked, never said. */
+  letGoUnsaid(why) {
+    const line = this.thread.takeUnsaid();
+    if (line) this.ledger.quiet('plan', `"${line}" not said: ${why}`, {budget: true});
+  }
+
+  /** What the chat shows of the plan: the steps on the line `p` puts, and Pair's "Now" lines. */
+  planChanged({proposed = false} = {}) {
+    this.receive({kind: 'plan', text: this.thread.summary()});
+    this.notify('chat', {type: 'plan', steps: this.planSteps(), ...(proposed ? {proposed} : {})});
+  }
+
+  /** The steps as /plan takes them, or null: what the chat's `p` puts on the line. */
+  planSteps() {
+    return this.thread.steps.length ? planText(this.thread.steps) : null;
+  }
+
+  /** /plan alone: the steps, done and next. */
+  showPlan() {
+    this.message('system', this.thread.summary() ?? 'No steps. /plan <a; b; c> sets some.');
+  }
+
+  /**
+   * A line of the thread, Pair's own unasked words: said only when the budget allows, and then paid for; in the
+   * ledger either way. Returns whether it was said.
+   */
+  sayThread(text, why) {
+    if (!this.budget.allows(this.now()).ok) {
+      this.ledger.quiet('plan', `${why}, not said: the talk budget is spent`, {budget: true});
+      return false;
+    }
+    this.budget.spend(this.now());
+    this.message('pair', text, {plan: true});
+    this.notify('editor', {type: 'delight', text, calm: true}); // Neovim says it too, under the cursor, as a break hint
+    this.ledger.add('said', text, {data: {note: why}, detail: {words: text}});
+    return true;
+  }
+
+  /** Whether the thread may speak now: at a break since `since`, with Pair, the model and the user all free. */
+  threadMaySpeak(since, now) {
+    if (this.threading || this.busy || this.gen.running || this.role === 'driver' || this.blankPage?.open || !this.health.ok()) return false;
+    return !this.typing() && this.breakpoints.last(this.state, now) >= since;
+  }
+
+  /**
+   * At the user's next break: Pair's proposed steps are said, and a step that may have landed (tests green, code taken,
+   * a commit) is checked against the debrief's facts of the session so far, and Pair says "done: X; next: Y". A
+   * landing that finished no step says nothing. With the budget spent, the steps a landing finished are marked done
+   * at once and only its line waits, up to LANDED_KEPT_MS; a proposal waits too, and landings wait behind it. The
+   * ledger books each line held back, and each one let go.
+   */
+  async threadDue() {
+    const now = this.now();
+    const retry = this.planRetry;
+    if (retry && (this.state.goal !== retry.goal || this.thread.steps.length)) this.planRetry = null;
+    else if (retry && now - retry.at >= PLAN_RETRY_MS && this.health.ok()) this.askForPlan(retry.goal);
+    for (const old of this.thread.expired(now)) {
+      this.ledger.quiet('plan', `${old.what}: ${old.line ? `"${old.line}" not said` : 'not checked'} in ${LANDED_KEPT_MS / 60_000} min, let go`, {budget: true});
+    }
+    const proposed = this.thread.proposed;
+    if (proposed) {
+      if (!this.threadMaySpeak(proposed.at, now)) return;
+      const line = `Steps: ${stepsLine(this.thread.steps)}`;
+      if (!this.budget.allows(now).ok) {
+        if (!proposed.held) this.ledger.quiet('plan', `proposed the steps, held back: the talk budget is spent (${line})`, {budget: true});
+        proposed.held = true;
+        return;
+      }
+      this.thread.proposed = null;
+      this.sayThread(line, 'proposed the steps');
+      this.planChanged({proposed: true});
+      return;
+    }
+    const unsaid = this.thread.unsaid; // steps marked done already: only their line waited for the budget
+    if (unsaid && this.budget.allows(now).ok && this.threadMaySpeak(unsaid.at, now)) {
+      this.sayThread(this.thread.takeUnsaid(), unsaid.what);
+      return;
+    }
+    const landed = this.thread.due(now);
+    if (!landed || !this.threadModel || (landed.retryAt ?? 0) > now || !this.threadMaySpeak(landed.at, now)) return;
+    this.threading = true;
+    let numbers;
+    try {
+      const facts = factLines({...(await this.debriefFacts()), stopped: null});
+      numbers = parseDone(await this.threadModel(DONE_PROMPT, this.thread.doneInput(facts)), this.thread.steps.length);
+    } catch (error) { // a check that failed is asked again a minute later, as a proposal is, until the landing is old
+      this.log(`plan: ${error.message}`);
+      landed.retryAt = this.now() + PLAN_RETRY_MS;
+      return;
+    } finally {
+      this.threading = false;
+    }
+    if (this.thread.landed !== landed) return; // a newer landing, or a new plan, came meanwhile: looked at next
+    if (!this.threadMaySpeak(landed.at, this.now())) return; // the user started typing while the model thought: it waits
+    // Done now, in the Now lines; the line waits for the budget, along with any held back before.
+    const line = this.thread.done(numbers, {hold: landed});
+    if (!line) return this.ledger.quiet('plan', `${landed.what}: no step done yet`);
+    this.planChanged();
+    if (this.budget.allows(this.now()).ok) {
+      const {what} = this.thread.unsaid;
+      return void this.sayThread(this.thread.takeUnsaid(), what);
+    }
+    this.ledger.quiet('plan', `${landed.what}: "${line}" held back, the talk budget is spent`, {budget: true});
+  }
+
+  /**
+   * The lines the user changed since the Partner's last turn, as they are now: its conversation holds its earlier reads
+   * of the files, and a suggestion made from one would put back what the user just fixed. '' when none.
+   */
+  async changedSince() {
+    if (this.toldAt === null) return '';
+    const edits = userEdits(this.state).filter(edit => edit.at > this.toldAt && edit.file && !outsideRoot(edit.file));
+    const files = new Map(); // file -> {lines: as they are now, shown: the line numbers picked}
+    let left = CHANGED_LINES;
+    for (const edit of edits.toReversed()) { // newest first: what the cap cuts is the oldest
+      if (left <= 0) break;
+      if (!files.has(edit.file)) {
+        const path = await projectFile(this.root, edit.file).catch(() => null);
+        const text = path && (await this.bufferText(path).catch(() => null));
+        files.set(edit.file, typeof text === 'string' ? {lines: text.split('\n'), shown: new Set()} : null);
+      }
+      const file = files.get(edit.file);
+      const place = file && placeNow(file.lines, edit);
+      if (!place) continue; // its lines changed again since: a newer edit shows them
+      for (let line = Math.max(1, place.from - 1); line <= Math.min(file.lines.length, place.to + 1) && left > 0; line++) {
+        if (!file.shown.has(line)) left -= 1;
+        file.shown.add(line);
+      }
+    }
+    const parts = [];
+    for (const [name, file] of files) {
+      if (!file?.shown.size) continue;
+      const numbers = [...file.shown].sort((x, y) => x - y);
+      let run = [];
+      const flush = () => {
+        if (run.length) parts.push(`${name}:${run[0]}-${run.at(-1)}\n${run.map(line => `${line}: ${file.lines[line - 1]}`).join('\n')}`);
+        run = [];
+      };
+      for (const line of numbers) {
+        if (run.length && line !== run.at(-1) + 1) flush();
+        run.push(line);
+      }
+      flush();
+    }
+    if (!parts.length) return '';
+    return `\n\nThe user changed these lines since your last turn; they are now as below, and any earlier read of them is stale:\n${parts.join('\n\n')}`;
   }
 
   /** What the context card shows: the goal, and every source with what it sends (see context-card.mjs). */
@@ -1477,7 +1713,7 @@ export class PairSession {
     const since = this.record.started_at;
     const [changes, commits, stopped] = await Promise.all([gitStatus(this.root), gitCommitsSince(this.root, since), this.stoppedAt()]);
     const failing = this.state.tests?.failedCount ? this.state.tests.failed : [];
-    return {goal: this.state.goal, wins: this.wins, kept: keptChanges(this.store.actions(this.root, since)), commits, changes, stopped, failing};
+    return {goal: this.state.goal, plan: this.thread.proposed ? null : this.thread.summary(), wins: this.wins, kept: keptChanges(this.store.actions(this.root, since)), commits, changes, stopped, failing};
   }
 
   /** Where the user was: their cursor, else their last edit, with the code on that line; null when unknown. */
@@ -1584,8 +1820,12 @@ export class PairSession {
   applied(id, before, after, {piece, from, to} = {}) {
     const action = this.store.action(id);
     if (action?.root !== this.root || !Array.isArray(before) || !Array.isArray(after)) return;
-    if (action.kind === 'generated' && Number.isInteger(piece)) return this.gen.taken(id, piece, {before, after, from, to});
+    if (action.kind === 'generated' && Number.isInteger(piece)) {
+      this.thread.land('the user took code /gen made', this.now());
+      return this.gen.taken(id, piece, {before, after, from, to});
+    }
     if (action.kind !== 'suggested') return;
+    this.thread.land(`the user took Pair's suggestion: ${action.text}`, this.now());
     this.ledger.update(id, {state: 'applied', data: {undo: true}, detail: {patch: {file: action.data.place.file, before, after}}});
     this.notify('chat', {type: 'applied', action: id});
   }

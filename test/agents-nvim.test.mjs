@@ -60,7 +60,7 @@ test('another agent\'s news waits for your save, shows as one line in the status
   const board = fake.command;
 
   const config = parseConfig({
-    dataDir, socket: join(dataDir, 'pair.sock'), typingPauseMs: 400, board,
+    dataDir, socket: join(dataDir, 'pair.sock'), typingPauseMs: 400, board, plan: false,
     models: {watcher: {api: 'openai', baseUrl: 'http://unused', model: 'w'}, partner: {api: 'openai', baseUrl: 'http://unused', model: 'p'}},
   });
   const watcher = fauxProvider({provider: 'faux-watcher'});

@@ -223,7 +223,7 @@ test('end to end with Neovim alone: :Pair end, the panel, CursorHold and quittin
   const root = project();
   const dataDir = scratch('pair-data-');
   const config = parseConfig({
-    dataDir, socket: join(dataDir, 'pair.sock'), agents: false, board: null,
+    dataDir, socket: join(dataDir, 'pair.sock'), agents: false, plan: false, board: null,
     models: {watcher: {api: 'openai', baseUrl: 'http://unused', model: 'w'}, partner: {api: 'openai', baseUrl: 'http://unused', model: 'p'}},
   });
   const watcher = fauxProvider({provider: 'faux-watcher'});

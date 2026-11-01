@@ -44,7 +44,7 @@ test('the decision model lets a failure through without the Watcher, logs it, an
   const project = scratch('pair-project-');
   const dataDir = scratch('pair-data-');
   const config = parseConfig({
-    dataDir, socket: join(dataDir, 'pair.sock'), typingPauseMs: 50, agents: false, keepWarm: false,
+    dataDir, socket: join(dataDir, 'pair.sock'), typingPauseMs: 50, agents: false, plan: false, keepWarm: false,
     models: {watcher: {api: 'openai', baseUrl: 'http://unused', model: 'w'}, partner: {api: 'openai', baseUrl: 'http://unused', model: 'p'}},
     decision: {api: 'system-one', baseUrl: 'http://unused', model: 'fake-jev', timeoutMs: 500},
   });
@@ -104,7 +104,7 @@ test('without a decision entry the daemon builds no decision model and the gate 
   const project = scratch('pair-project-');
   const dataDir = scratch('pair-data-');
   const config = parseConfig({
-    dataDir, socket: join(dataDir, 'pair.sock'), typingPauseMs: 50, agents: false, keepWarm: false,
+    dataDir, socket: join(dataDir, 'pair.sock'), typingPauseMs: 50, agents: false, plan: false, keepWarm: false,
     models: {watcher: {api: 'openai', baseUrl: 'http://unused', model: 'w'}, partner: {api: 'openai', baseUrl: 'http://unused', model: 'p'}},
   });
   const {watcher, pairModels} = scriptedModels();

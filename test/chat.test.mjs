@@ -149,7 +149,7 @@ test('the chat pane waits through a daemon restart and carries on, without showi
   const dir = scratch('pair-chat-');
   const path = join(dir, 'config.json');
   const entry = {api: 'openai', baseUrl: 'http://unused', model: 'm'};
-  writeFileSync(path, JSON.stringify({dataDir: dir, socket: join(dir, 'pair.sock'), agents: false, models: {watcher: entry, partner: entry}}));
+  writeFileSync(path, JSON.stringify({dataDir: dir, socket: join(dir, 'pair.sock'), agents: false, plan: false, models: {watcher: entry, partner: entry}}));
   const config = loadConfig(path);
   const partner = fauxProvider();
   const models = createModels();
@@ -189,7 +189,7 @@ test('from the chat pane, an older remark is rated from /remarks, and + still ra
   const dir = realpathSync(scratch('pair-chat-'));
   const path = join(dir, 'config.json');
   const entry = {api: 'openai', baseUrl: 'http://unused', model: 'm'};
-  writeFileSync(path, JSON.stringify({dataDir: dir, socket: join(dir, 'pair.sock'), agents: false, models: {watcher: entry, partner: entry}}));
+  writeFileSync(path, JSON.stringify({dataDir: dir, socket: join(dir, 'pair.sock'), agents: false, plan: false, models: {watcher: entry, partner: entry}}));
   const config = loadConfig(path);
   const partner = fauxProvider();
   const models = createModels();

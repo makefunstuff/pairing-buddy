@@ -20,6 +20,50 @@ The chat says where the goal came from (`Goal, from the board task HKD-7: Retrie
 (`shepherdr space list`, `shepherdr task list --space <space> --json`, `shepherdr task show <id> --json`);
 `"board": null` in the config turns that off.
 
+## The thread: done and next
+
+Once the session has a goal, Pair proposes it as two to four steps, in one line of its own, at your next break (not
+while you type, nor among `:Pair new`'s questions):
+
+```
+pair  Steps: 1 the cart tests pass · 2 the bogo code works
+      ·· p edits the steps · /plan off drops them
+```
+
+You keep them by doing nothing. `p` alone on the line, then `Enter`, puts `/plan the cart tests pass; the bogo code
+works` on the line to edit and send (a step you keep word for word stays done); `/plan a; b; c` sets steps of your own,
+`/plan off` drops them, and `/plan` alone shows them, done and next. A goal too small for two steps gets none, and a new
+goal drops the old goal's steps. Steps you set win over a proposal Pair is still thinking about. `"plan": false` in
+the [config](config.md) turns the proposals off; `/plan` still sets steps of your own.
+
+When a step may have landed (a test run or a command that failed passes again, you take a suggestion or code from
+`/gen`, you commit), Pair waits for your next break and then checks it against the same facts the
+[debrief](#the-session-note-the-days-end-debrief) is written from: the tests and commands that went green, Pair's
+changes you kept, the commits and `git status`. Only a step those facts show done counts, and Pair says one line:
+
+```
+pair  done: the cart tests pass; next: the bogo code works
+```
+
+Neovim shows the line too, under your cursor, for a moment, as it does a break hint: without the chat pane open you
+still hear it.
+
+A landing that finished no step says nothing. The steps go with every question and remark as `Plan (✓ done, → next, ○
+open): ✓ 1 … · → 2 … (next)`, so "what's left?" is answered from them, and the debrief reads them too.
+
+Each of these lines is an unasked remark: it costs the [talk budget](how-it-works.md) like any other, and with the
+budget spent, a proposal waits unsaid until the budget allows (`p` still shows it): until Pair has said it, it is only
+a proposal, kept out of the `Plan` line, the done checks and the debrief. A landing is still checked at your break and
+its steps marked done at once; only the "done" line waits for the budget, for up to half an hour. The ledger
+(`/today`) records each line said, each one held back or let go (a change of plan lets a held one go), and each
+change to the steps. The plan lives in the session only: never in `NOTES.md`, the brief or your files, and it is
+gone when the session ends.
+
+**What you just changed.** Each of Pair's turns (a remark, a question, `/drive`, an explanation) also carries the lines
+you changed since Pair's last turn, read from your buffer as they are now (up to 60 lines, the newest first), with the
+words "any earlier read of them is stale". Pair's conversation holds what it read before, and without them a suggestion
+could put back a bug you had just fixed.
+
 A session ends by itself, and writes its note:
 
 - after 45 minutes in which you neither typed, edited, moved or scrolled in Neovim, ran a command nor asked anything;
@@ -36,7 +80,7 @@ it first, and a session that ends otherwise takes it along, so the next one star
 
 `/end` in the chat (or `:Pair end`) ends the session, and so does Pair [by itself](#no-ceremony-a-session-starts-and-ends-by-itself). Pair then asks the Partner for the debrief, in a fixed form: one to three `✓` lines on what is now true, up to two `○ open:` lines on what is left, and `Tomorrow, first: <step>, in <file>:<line>.` With the request it gets the facts, so even a small model writes from what happened rather than from memory:
 
-- the goal;
+- the goal, and the session's [steps](#the-thread-done-and-next), done and open;
 - the tests that failed during the session and pass now, the commands that pass again after failing, and the numbers that moved the right way;
 - Pair's changes you kept (suggestions you took, edits you did not undo) and the session's commits (`git log`);
 - the tests still failing, `git status --short` (the first 20 lines), and where your cursor was, with the code on that line.

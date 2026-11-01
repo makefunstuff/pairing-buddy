@@ -26,6 +26,7 @@ const lastKey = (state, now) => `Last keystroke: ${state.lastKeyAt ? ago(now, st
 export function describeState(state, now) {
   const lines = [];
   lines.push(`Goal: ${state.goal ?? '(not set)'}`);
+  if (state.plan) lines.push(`Plan (✓ done, → next, ○ open): ${state.plan}`);
   lines.push(...contextLines(state)); // the board, git and where the user has been: what the context card shows
   if (state.file) lines.push(currentFile(state));
   const edits = state.edits.slice(-5).map(edit => `${edit.file}:${edit.from}-${edit.to} (${ago(now, edit.at)}${byUser(edit) ? '' : `, by ${originName(edit.origin)}`})`);
@@ -48,6 +49,7 @@ export function describeState(state, now) {
 /** What the Watcher sees: just enough to judge a trigger, since every token here costs latency on each event. */
 export function describeBriefly(state, now) {
   const lines = [`Goal: ${state.goal ?? '(not set)'}`];
+  if (state.plan) lines.push(`Plan: ${state.plan}`);
   if (state.file) lines.push(currentFile(state));
   if (state.focus.target !== 'unknown') lines.push(looking(state));
   lines.push(lastKey(state, now));

@@ -45,7 +45,7 @@ test('after two reload-slow Watcher calls that follow Partner turns, the Watcher
   const project = scratch('pair-project-');
   const dataDir = scratch('pair-data-');
   const entry = model => ({api: 'openai', baseUrl: server.url, model, contextWindow: 32768});
-  const config = parseConfig({dataDir, socket: join(dataDir, 'pair.sock'), typingPauseMs: 50, keepWarm: false,
+  const config = parseConfig({dataDir, socket: join(dataDir, 'pair.sock'), typingPauseMs: 50, keepWarm: false, plan: false,
     models: {watcher: entry('small'), partner: {...entry('large'), reasoning: false}}});
   const logged = [];
   const daemon = await startDaemon(config, {probe: async () => ({ok: true}), log: line => logged.push(line)});

@@ -31,7 +31,7 @@ function testConfig(dataDir, settings = {}) {
     dataDir,
     socket: join(dataDir, 'pair.sock'),
     typingPauseMs: 50,
-    agents: false, // never the real board of the machine running the tests
+    agents: false, plan: false, // never the real board of the machine running the tests
     models: {watcher: {api: 'openai', baseUrl: 'http://unused', model: 'w'}, partner: {api: 'openai', baseUrl: 'http://unused', model: 'p'}},
   });
 }

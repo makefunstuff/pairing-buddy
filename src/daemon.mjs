@@ -259,11 +259,11 @@ export async function startDaemon(config, {
    * The Partner's model reads a note, outside its conversation, in the slot like a turn: a reading nobody `asked`
    * for gives way to the user's questions, and its cancel is no sign that the model is down.
    */
-  function askNoteModel(systemPrompt, content, {asked = false} = {}) {
+  function askNoteModel(systemPrompt, content, {asked = false, report = true} = {}) {
     const controller = new AbortController();
     const read = () => oneAnswer({models: models.pairModels.models, model: models.pairModels.partner, signal: controller.signal}, systemPrompt, content).then(
-      text => { health.report('partner'); return text; },
-      error => { if (!controller.signal.aborted) health.report('partner', error.message); throw error; },
+      text => { if (report) health.report('partner'); return text; },
+      error => { if (report && !controller.signal.aborted) health.report('partner', error.message); throw error; },
     );
     return slot.turn({conversation: null, asked, cancel: async () => controller.abort()}, read);
   }
@@ -320,6 +320,7 @@ export async function startDaemon(config, {
     for (const session of live.values()) {
       session.typingPauseMs = config.typingPauseMs;
       session.autoTune = config.autoTune;
+      session.proposing = config.plan;
       session.setTestOnSave(testOnSaveOf(session.root, session.id));
       session.gen.limits = config.gen.limits; // a request already running keeps the limits it started with
       session.gen.briefName = config.gen.brief;
@@ -443,6 +444,7 @@ export async function startDaemon(config, {
         previousNote: store.previousNote(root, record.id),
         lastSession: store.lastSession(root, record.id),
         autoTune: config.autoTune,
+        proposing: config.plan,
         typingPauseMs: config.typingPauseMs,
         testOnSave: testOnSaveOf(root, record.id),
         checkOutput: join(config.dataDir, 'runs', `${record.id}.check.out`), // the hand-over's check: writable in the sandbox too
@@ -450,6 +452,7 @@ export async function startDaemon(config, {
         genBrief: config.gen.brief,
         genDir: join(config.dataDir, 'gen'), genKeepTries: config.gen.keepTries, genNetwork: config.gen.network, genSandbox: config.scoutPane.sandbox, genScaffold: config.gen.scaffold, genBoard: config.board,
         askModel: (systemPrompt, content) => askNoteModel(systemPrompt, content, {asked: true}), // the /gen brief's checks
+        threadModel: (systemPrompt, content) => askNoteModel(systemPrompt, content, {report: false}), // the plan's steps and done checks: unasked, they give way, and a failure is asked again, not a model down
         notify: (role, message) => notify(session, role, message),
         requestEditor: message => requestEditor(session, message),
         log: line => log(`[${basename(root)}] ${line}`),
@@ -600,7 +603,7 @@ export async function startDaemon(config, {
     client.session = await loadSession(await rootOf(message.cwd));
     const {session} = client;
     sendMessage(client.socket, {
-      type: 'welcome', root: session.root, goal: session.state.goal, level: session.budget.level, role: session.role, keep: session.keepWheel, models: health.snapshot(),
+      type: 'welcome', root: session.root, goal: session.state.goal, plan: session.planSteps(), level: session.budget.level, role: session.role, keep: session.keepWheel, models: health.snapshot(),
       accent: session.accent, model: sessionPartner.modelName(), muted: [...session.muted], board: boardCounts(session.state.board),
     });
     // The chat pane's status row starts from what Pair does now, and how much it looked at so far.
@@ -883,6 +886,9 @@ export async function startDaemon(config, {
     if (message.type === 'suggestion_gone' && Number.isInteger(message.action)) return notify(session, 'chat', {type: 'suggestion_gone', action: message.action});
     if (message.type === 'go' && typeof message.file === 'string') return relayToEditor(session, {type: 'go', file: resolve(session.root, message.file), line: Number(message.line) || 1});
     if (message.type === 'goal') return session.setGoal(message.text);
+    if (message.type === 'plan' && typeof message.text === 'string') return session.setPlan(message.text);
+    if (message.type === 'plan_off') return session.dropPlan();
+    if (message.type === 'plan_show') return session.showPlan();
     if (message.type === 'first' && typeof message.text === 'string' && message.text.trim()) return session.setFirst(message.text.trim());
     if (message.type === 'level') return session.setLevel(message.level);
     if (message.type === 'role' && ROLES.includes(message.role)) return session.setRole(message.role);
