@@ -215,7 +215,7 @@ The first request that runs against `NOTES.md` without your pinning it says so o
 
 | You | What it does |
 | --- | --- |
-| `/brief`, or `:Pair brief` outside a note | Says what the brief is now: `The brief: NOTES.md + goal "orders API" + board task SHO-12` |
+| `/brief`, or `:Pair brief` outside a note | Says what the brief is now: `The brief: NOTES.md + goal "orders API" + board task SHO-12 with its brief (NOTES.md by default, gen.brief). /brief <note> pins another note; /brief off leaves the note out.` |
 | `/brief docs/orders.md`, `:Pair brief docs/orders.md`, or `:Pair brief` in a Markdown buffer | Pins that note as the brief's note |
 | `/brief off`, `:Pair brief off` | Leaves the note out: the brief is the goal and the board task. `/brief <note>` pins one again |
 | `/brief sync`, `:Pair brief sync` | On a board task's branch: how the brief differs from the task's brief on the board, and one offer ([below](#keeping-the-task-in-step-brief-sync)) |
@@ -763,7 +763,7 @@ request's number; `agent` is what the agent said when it was ready; each other p
 what is not proven, a failure it put first) is a `·` line. A task without facts shows `no review in its facts`.
 
 **≠ brief on the branch.** The [brief's check](#the-debrief--brief-and--guessed) runs on the branch, after the list
-opens (`≠ brief: checking…` until it is done): the goal, the reviewed task and your note against what the branch
+opens (`≠ brief: checking the branch against the brief…` until it is done): the goal, the reviewed task and your note against what the branch
 changed, each change with three lines around it and its own line numbers in the file, so a change at line 380 of a long
 file is read as `big.js:380`. It reads the changes of the first 20 files in the list's order, at most 80 lines of
 one change and 600 in all. What holds up is listed on top, under the reviewer's lines, as for a request; `≠1` marks its
@@ -798,7 +798,8 @@ on its own file.
 
 **Then the branch.** Once you kept pieces of it, merging the whole branch would bring them in twice. Pair says so
 when you keep the first one, in the list too, and offers `archive SHO-80` with `A`. The review stays as you left it:
-opened again while the branch has no new commit, it is the same review; after a new commit it is a new one.
+opened again within seven days while the branch has no new commit, it is the same review; after a new commit, or
+later, it is a new one.
 
 **Each board command on a pick that names it.** `t`, `a` and `A` ask first, in a `vim.ui.select` dialog, and each
 offers to copy the command (to the `"` and `+` registers) instead:
@@ -872,7 +873,7 @@ The daemon keeps the origin with each edit. An edit Pair made:
   move the current file, and counts neither as active time nor as you using the session (which ends after you are
   away long enough). The plugin sends no "still typing" signal for it.
 - **is still an edit.** The Partner sees it among the recent edits as `a.js:2-2 (3 s ago, by Pair)`, or `by Pair
-  (gen #3)`, the decision model as `"by": "pair"`, and the run log counts it as a change of the code. A `regression`
+  (gen #3)`, the decision model as `"by"` with its origin (`"pair"`, `"gen:#3"`, `"board:SHO-80"`), and the run log counts it as a change of the code. A `regression`
   (the tests on save fail where they passed) still speaks, whoever made the change.
 
 ### Edits outside the project

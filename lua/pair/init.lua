@@ -454,8 +454,8 @@ local function clear_suggestions()
   for _, suggestion in ipairs(vim.list_slice(suggestions.all())) do drop_suggestion(suggestion) end
 end
 
---- The suggestion :Pair accept and :Pair dismiss act on: the one under your cursor, else the newest in this buffer,
---- else the one the jump key goes to, else the newest.
+--- The suggestion :Pair accept and :Pair dismiss act on: the one under your cursor, else the one the jump key goes
+--- to, else the newest.
 local function picked()
   local buf = vim.api.nvim_get_current_buf()
   local here = suggestions.at(buf, vim.api.nvim_win_get_cursor(0)[1] - 1)

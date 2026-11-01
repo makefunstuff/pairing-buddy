@@ -68,8 +68,8 @@ you think, and take the keyboard only when you hand it over. Pair aims for that:
 
 You need Node.js 22.19+, Neovim 0.11+, and a model: a local OpenAI-compatible server, an API key for any provider
 [pi-ai](https://www.npmjs.com/package/@earendil-works/pi-ai) supports, or a subscription login where the provider
-allows it. [herdr](https://herdr.dev) is the best home for Pair; without it, everything runs inside Neovim and
-tmux.
+allows it. [herdr](https://herdr.dev) (the older herdr, or herdr-core with the Herdr window) is the best home for
+Pair; without it, everything runs inside Neovim and tmux.
 
 ```sh
 npm install -g github:makefunstuff/pairing-buddy   # puts `pair` on your PATH

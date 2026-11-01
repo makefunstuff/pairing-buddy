@@ -55,7 +55,7 @@ line: `Enter goes · o report or PR · d diff · t terminal · r review · q clo
 | --- | --- | --- |
 | needs you | the task needs you (Shepherdr's Needs you): a question, a permission, a login, a plan to approve | the agent shows a question or an approval (`blocked`) |
 | ready to merge | its work is done and waits to be merged (Ready) | |
-| failed | the task ended without its work done | |
+| failed | the task ended without its work done | a herdr-core agent reports `error` |
 | done / finished | merged, or closed with nothing to merge | the agent went from working to idle |
 | working | at work, or merging | the agent works |
 | waiting | To do (it waits for a go) or Queued (it waits for room, or for other tasks) | |

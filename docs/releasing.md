@@ -28,7 +28,8 @@ npm version 0.12.0 --no-git-tag-version
 ```
 
 The docs show the version too: the README's "Version 0.11" line, and examples in
-[Troubleshooting](troubleshooting.md) (`pair doctor`'s output) and INSTALL.md (`npm ls -g` and `pair doctor`). Update
+[Troubleshooting](troubleshooting.md) (`pair doctor`'s output), [the command reference](cli.md) (`pair --version`)
+and INSTALL.md (`npm ls -g` and `pair doctor`). Update
 those as well. `git grep -nE '\b0\.11\b' -- ':!*package-lock.json' ':!CHANGELOG.md'` finds them, in both the
 `0.11` and the `0.11.0` form (some hits, such as a Neovim version, are not Pair's).
 

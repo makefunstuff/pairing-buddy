@@ -23,14 +23,20 @@ the work board.
   another workspace) and the heuristics on pane text; the shell hooks (bash, and zsh and fish where installed): each
   command's start and end, numbered, a start that arrives after its end, nothing written to the terminal, zsh's keys
   to the socket at most twice a second (and only where zle's hooks are there), no polling of a hooked zsh pane at its
-  prompt, and an editor that opens late in a hooked command.
+  prompt, and an editor that opens late in a hooked command. The same against a fake herdr-core
+  ([test/fake-core.mjs](../test/fake-core.mjs)): herdr told from herdr-core by the environment, the terminals of the
+  chat's space with the Herdr window's focus and none without a window, a terminal started later, Pair's own
+  terminal (its commands pasted with Enter, found again after a restart), `pair` starting the chat beside you or in
+  place, `pair doctor`'s herdr line, a core retried until it answers, and Shepherdr 2.1's agents from its own core,
+  read only.
 - **Without herdr**, in a headless Neovim: Scout's pane and the tests on save as a `:terminal` there, the Driver's
   `type` into the `:terminal` you used last or another one named in the answer, `:Pair chat`, and a command you run
   in your own `:terminal`, seen running and with its output, and with the bash hook its exit code. In a real tmux
   server with a client attached: focus, typing, a command seen running with its output, the Driver's text, the
   shell's foreground command by `/proc` and by `ps`, and the daemon watching the tmux session of a chat pane.
 - **The board** against a fake `shepherdr` ([test/fake-shepherdr.mjs](../test/fake-shepherdr.mjs)), never your
-  own Shepherdr: its spaces, tasks, a task in full and its report read through the adapter; the context card's task
+  own Shepherdr, answering as Shepherdr 2.0 or 2.1 (2.1's pages, its refusal outside its sessions, its artifacts
+  oldest first): its spaces, tasks, a task in full and its report read through the adapter; the context card's task
   and the chat header's counts; the relay's news, a task's worktree found by its branch in a real git repo, and what
   it left behind (report and pull request, its branch's diff, its worktree); `/gen board`'s brief built from yours
   (the note's lines with `file:line`, the files, the tests, a check's open questions, a note not committed copied
@@ -112,6 +118,11 @@ the work board.
   daemon restart, end to end in the chat pane); an edit where a remark pointed counting it useful (not Pair's edits, not where you were editing already, not past ten minutes, never over your own verdict), ignored remarks counting as not useful and seen ones as neither; the tuning
   and its bounds, per project with the fallback to all; active time, reading included (scrolling reported from a
   headless Neovim); `pair stats` and `pair stats --project`.
+- **The thread** (`test/thread.test.mjs`). The steps from the model's lines or your semicolons (`/plan`, `/plan off`,
+  `p` to edit them, your own steps winning), proposed at a break within the talk budget, marked done from the
+  session's facts and said as done and next, a held line let go after half an hour, a failed proposal or check asked
+  again a minute later, none with `"plan": false`, and the lines you changed given to the next question as they are
+  now.
 - **The tone.** The checker the live tests use (praise, apology, filler, emoji, `!` outside code, headings and lists,
   words over the limit), the tone in the Partner's instructions, and teaching: the Partner asked about the words
   shown, the idea and its link apart for the editor, `?` in the chat about Pair's last words.
@@ -274,6 +285,8 @@ Stacks can name a `provider` too, with its login or key from `pair auth`. Withou
   the Navigator suggesting instead of editing.
 - **Memory:** a session note that names the goal, the change and the loose end; the next session answering "what did
   we leave open?" from it; the note not turning a noise moment into a remark.
+- **The thread** (`test/live/thread.test.mjs`): a goal coming back as two to four steps, and a step marked done only
+  when the session's facts show it.
 - **The day's end and the pick-up** (`test/live/day.test.mjs`): the debrief keeping its form (a `✓` line and a
   first step whose place is a file in the project), and the next morning's line being one short line of the model's.
 - **Builds and runs** (`test/live/runs.test.mjs`): a C program built and run for real with `cc`. A segfault gets a

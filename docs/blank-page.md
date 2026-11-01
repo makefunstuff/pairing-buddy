@@ -82,8 +82,8 @@ The two files come from the stack your words name:
 | C3 | `Makefile` (`make run` calls c3c) and `main.c3` |
 | Odin | `Makefile` (`make run` calls odin) and `main.odin` |
 | Zig | `Makefile` (`make run` calls zig) and `main.zig` |
-| Go (with a capital), golang, `go.mod`, `go run`, "in go" | `go.mod` and `main.go` (`go run .`) |
-| JavaScript, JS, TypeScript, node.js, "node script", "in node" | `package.json` (a `start` script, no dependencies) and `main.js` |
+| Go (with a capital), golang, `go.mod`, `go run`, `go build`, `go test`, "in go", "with go", "using go" | `go.mod` and `main.go` (`go run .`) |
+| JavaScript, JS, TypeScript, TS, node.js, Deno, Bun, "node script" (or program, cli, tool, app, toy, project, server, only), "in node", "with node", "using node" | `package.json` (a `start` script, no dependencies) and `main.js` |
 
 "go" and "node" are plain English too ("files go to the trash", "each node of the tree"), so only these forms name
 the stack. When your words name two stacks, the one named first counts. For any other stack, the rule is the same:
