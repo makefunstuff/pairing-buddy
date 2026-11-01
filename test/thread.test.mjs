@@ -98,15 +98,26 @@ test('a goal gets its steps in one line of Pair\'s at the next break, which cost
   assert.match(pair.state.plan, /→ 1 the cart tests pass/);
 });
 
-test('with the budget spent, the steps are kept unsaid; a goal too small for steps gets none', async () => {
+test('with the budget spent, the steps wait unsaid and are no plan yet; a goal too small for steps gets none', async () => {
   const spent = session();
   spent.pair.budget.spend(spent.at());
   spent.pair.setGoal('a goal');
   await settle();
   await spent.pair.tick();
+  spent.pair.thread.land('a commit', spent.at());
+  await spent.pair.tick();
   assert.deepEqual(spent.said(), []);
-  assert.ok(spent.actions.some(action => action.kind === 'quiet' && /proposed the steps, not said/.test(JSON.stringify(action))));
-  assert.equal(spent.pair.planSteps(), 'the cart tests pass; the bogo code works');
+  const held = spent.actions.filter(action => action.kind === 'quiet' && /proposed the steps, held back/.test(JSON.stringify(action)));
+  assert.equal(held.length, 1, 'booked once');
+  assert.match(JSON.stringify(held[0]), /the cart tests pass · 2 the bogo code works/, 'the steps themselves in the ledger');
+  assert.equal(spent.pair.planSteps(), 'the cart tests pass; the bogo code works', 'p still shows them');
+  assert.equal(spent.pair.state.plan ?? null, null, 'not in the models\' Now lines until said');
+  assert.equal(spent.models.length, 1, 'no done check of steps the user has not heard');
+  assert.equal((await spent.pair.debriefFacts()).plan, null, 'nor in the debrief');
+  spent.advance(4 * MIN);
+  await spent.pair.tick();
+  assert.deepEqual(spent.said(), ['Steps: 1 the cart tests pass · 2 the bogo code works']);
+  assert.match(spent.pair.state.plan, /→ 1 the cart tests pass/);
   const small = session({plan: 'NONE'});
   small.pair.setGoal('rename a variable');
   await settle();
@@ -184,7 +195,7 @@ test('going green says done and next at the next break, from the session\'s fact
   assert.equal(models.length, 2, 'said once');
 });
 
-test('a landing that finished no step says nothing; one the budget holds back waits for it', async () => {
+test('a landing that finished no step says nothing; with the budget spent, it marks its steps done and its line waits', async () => {
   const none = session({done: 'NONE'});
   none.pair.setPlan('a; b');
   none.pair.thread.land('a commit', none.at());
@@ -201,13 +212,16 @@ test('a landing that finished no step says nothing; one the budget holds back wa
   held.pair.thread.land('a commit', held.at());
   held.advance(MIN);
   await held.pair.tick();
+  await checked(held.pair);
   await held.pair.tick();
-  assert.equal(held.models.length, 0, 'the budget holds it');
-  assert.equal(held.actions.filter(action => /held back, the talk budget/.test(JSON.stringify(action))).length, 1, 'booked once');
+  assert.equal(held.models.length, 1, 'checked at the break, budget or not');
+  assert.deepEqual(held.said(), []);
+  assert.match(held.pair.state.plan, /✓ 1 a · → 2 b/, 'done at once in the Now lines');
+  assert.equal(held.actions.filter(action => /done: a; next: b\W+ held back, the talk budget/.test(JSON.stringify(action))).length, 1, 'booked once');
   held.advance(3 * MIN);
   await held.pair.tick();
-  await checked(held.pair);
   assert.deepEqual(held.said(), ['done: a; next: b']);
+  assert.equal(held.models.length, 1, 'not checked again');
 });
 
 test('a landing held past half an hour is let go, and the ledger says so', async () => {

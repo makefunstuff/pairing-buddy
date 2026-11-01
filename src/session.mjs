@@ -1252,7 +1252,8 @@ export class PairSession {
   /**
    * Pair proposes the goal as two to four steps, in one line of its own, said at the user's next break (see
    * threadDue): kept unless the user edits (/plan, `p` in the chat) or drops them (/plan off). The line counts against
-   * the talk budget like any remark; with none left, the steps are kept unsaid, and the chat's `p` still shows them.
+   * the talk budget like any remark; with none left, the steps wait unsaid (the chat's `p` still shows them), and until
+   * Pair has said them they are only a proposal: not in the models' Now lines, the done checks or the debrief.
    * Steps the user set while the model thought, or a newer goal, win over its answer.
    */
   async proposePlan(goal) {
@@ -1262,7 +1263,7 @@ export class PairSession {
     if (this.state.goal !== goal || this.thread.version !== version) return; // a newer goal, or the user's own steps
     if (!this.thread.set(steps)) return this.ledger.quiet('plan', 'the goal is too small for steps');
     this.thread.proposed = {at: this.now()};
-    this.planChanged();
+    this.notify('chat', {type: 'plan', steps: this.planSteps()}); // `p` has them; the models get them once said
   }
 
   /** The user's own steps (`a; b; c`): they replace Pair's; fewer than two drop the plan. */
@@ -1322,8 +1323,9 @@ export class PairSession {
   /**
    * At the user's next break: Pair's proposed steps are said, and a step that may have landed (tests green, code taken,
    * a commit) is checked against the debrief's facts of the session so far, and Pair says "done: X; next: Y". A
-   * landing that finished no step says nothing. One the budget holds back waits, up to LANDED_KEPT_MS; the ledger
-   * books each one held back, and each one let go.
+   * landing that finished no step says nothing. With the budget spent, the steps a landing finished are marked done
+   * at once and only its line waits, up to LANDED_KEPT_MS; a proposal waits too, and landings wait behind it. The
+   * ledger books each line held back, and each one let go.
    */
   async threadDue() {
     const now = this.now();
@@ -1331,21 +1333,30 @@ export class PairSession {
     if (retry && (this.state.goal !== retry.goal || this.thread.steps.length)) this.planRetry = null;
     else if (retry && now - retry.at >= PLAN_RETRY_MS && this.health.ok()) this.askForPlan(retry.goal);
     const old = this.thread.expired(now);
-    if (old) this.ledger.quiet('plan', `${old.what}: not checked in ${LANDED_KEPT_MS / 60_000} min, let go`, {budget: true});
+    if (old) this.ledger.quiet('plan', `${old.what}: ${old.line ? `"${old.line}" not said` : 'not checked'} in ${LANDED_KEPT_MS / 60_000} min, let go`, {budget: true});
     const proposed = this.thread.proposed;
-    if (proposed && this.threadMaySpeak(proposed.at, now)) {
+    if (proposed) {
+      if (!this.threadMaySpeak(proposed.at, now)) return;
+      const line = `Steps: ${stepsLine(this.thread.steps)}`;
+      if (!this.budget.allows(now).ok) {
+        if (!proposed.held) this.ledger.quiet('plan', `proposed the steps, held back: the talk budget is spent (${line})`, {budget: true});
+        proposed.held = true;
+        return;
+      }
       this.thread.proposed = null;
-      const said = this.sayThread(`Steps: ${stepsLine(this.thread.steps)}`, 'proposed the steps');
-      this.planChanged({proposed: said});
+      this.sayThread(line, 'proposed the steps');
+      this.planChanged({proposed: true});
       return;
     }
     const landed = this.thread.due(now);
-    if (!landed || !this.threadModel || !this.threadMaySpeak(landed.at, now)) return;
-    if (!this.budget.allows(now).ok) {
-      if (!landed.held) this.ledger.quiet('plan', `${landed.what}: held back, the talk budget is spent`, {budget: true});
-      landed.held = true;
+    if (!landed || !this.threadMaySpeak(landed.at, now)) return;
+    if (landed.line) { // checked already, its steps marked done: only the line waited for the budget
+      if (!this.budget.allows(now).ok) return;
+      this.thread.landed = null;
+      this.sayThread(landed.line, landed.what);
       return;
     }
+    if (!this.threadModel) return;
     this.threading = true;
     let numbers;
     try {
@@ -1355,12 +1366,13 @@ export class PairSession {
       this.threading = false;
     }
     if (this.thread.landed !== landed) return; // a newer landing, or a new plan, came meanwhile: looked at next
-    // While the model thought, a remark may have taken the budget, or the user started typing: the landing waits.
-    if (!this.budget.allows(this.now()).ok || !this.threadMaySpeak(landed.at, this.now())) return;
+    if (!this.threadMaySpeak(landed.at, this.now())) return; // the user started typing while the model thought: it waits
     const line = this.thread.done(numbers);
     if (!line) return this.ledger.quiet('plan', `${landed.what}: no step done yet`);
     this.planChanged();
-    this.sayThread(line, landed.what);
+    if (this.budget.allows(this.now()).ok) return void this.sayThread(line, landed.what);
+    this.thread.landed = {...landed, line}; // done now, in the Now lines; the line waits for the budget
+    this.ledger.quiet('plan', `${landed.what}: "${line}" held back, the talk budget is spent`, {budget: true});
   }
 
   /**
@@ -1682,7 +1694,7 @@ export class PairSession {
     const since = this.record.started_at;
     const [changes, commits, stopped] = await Promise.all([gitStatus(this.root), gitCommitsSince(this.root, since), this.stoppedAt()]);
     const failing = this.state.tests?.failedCount ? this.state.tests.failed : [];
-    return {goal: this.state.goal, plan: this.thread.summary(), wins: this.wins, kept: keptChanges(this.store.actions(this.root, since)), commits, changes, stopped, failing};
+    return {goal: this.state.goal, plan: this.thread.proposed ? null : this.thread.summary(), wins: this.wins, kept: keptChanges(this.store.actions(this.root, since)), commits, changes, stopped, failing};
   }
 
   /** Where the user was: their cursor, else their last edit, with the code on that line; null when unknown. */

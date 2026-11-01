@@ -52,8 +52,9 @@ A landing that finished no step says nothing. The steps go with every question a
 open): ✓ 1 … · → 2 … (next)`, so "what's left?" is answered from them, and the debrief reads them too.
 
 Each of these lines is an unasked remark: it costs the [talk budget](how-it-works.md) like any other, and with the
-budget spent, a proposal is kept unsaid (`p` still shows it) and a "done" line waits until the budget allows, for up
-to half an hour. The ledger (`/today`) records each line said, each one held back or let go, and each change to the
+budget spent, a proposal waits unsaid until the budget allows (`p` still shows it): until Pair has said it, it is only
+a proposal, kept out of the `Plan` line, the done checks and the debrief. A landing is still checked at your break and
+its steps marked done at once; only the "done" line waits for the budget, for up to half an hour. The ledger (`/today`) records each line said, each one held back or let go, and each change to the
 steps. The plan lives in the session
 only: never in `NOTES.md`, the brief or your files, and it is gone when the session ends.
 
