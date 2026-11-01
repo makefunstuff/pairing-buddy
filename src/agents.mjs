@@ -216,7 +216,11 @@ export class AgentBoard {
       }
     });
     const spaces = new Map(this.read.spaces.map(space => [space.name, space]));
-    const full = listed.map(task => ({...this.shown.get(task.id)?.task, ...task}));
+    // The list's row has the fresher status; `task show` the full title (2.1's list cuts it to 32 characters).
+    const full = listed.map(task => {
+      const shown = this.shown.get(task.id)?.task;
+      return {...shown, ...task, title: shown?.title ?? task.title};
+    });
     const folders = [...new Set(full.filter(task => task.branch && task.status !== 'done').map(task => spaces.get(task.space)?.path).filter(Boolean))];
     const worktrees = new Map(await Promise.all(folders.map(async path => [path, await gitWorktrees(path)])));
     return full.map(task => {

@@ -16,6 +16,7 @@ export const TAB = 'herdr.tab';
 const SCOUT = 'pair.scout'; // the label of Pair's own terminal: its project's folder
 const FOCUS_MS = 500; // the window's focus is asked for this often, as herdr's focused pane is looked at
 const RETRY_MS = 2000;
+const FOCUS_IDLE_MS = 10_000;
 const APP_MS = 2000;
 
 /**
@@ -192,12 +193,14 @@ export class CorePanes {
   /** The window says nothing when its focus moves: it is asked every focusMs, and a move makes PaneWatch look. */
   followFocus(look) {
     if (this.stopped) return;
-    this.app.focused(this.space).catch(() => null).then(focus => {
+    // Without a window (or herdr-app), it is asked less and less often, up to every FOCUS_IDLE_MS.
+    this.app.focused(this.space).then(focus => ({focus}), () => ({focus: null, failed: true})).then(({focus, failed}) => {
+      this.waitMs = failed ? Math.min(FOCUS_IDLE_MS, (this.waitMs ?? this.focusMs) * 2) : this.focusMs;
       if (focus !== this.focus) {
         this.focus = focus;
         look();
       }
-      if (!this.stopped) this.timer = setTimeout(() => this.followFocus(look), this.focusMs);
+      if (!this.stopped) this.timer = setTimeout(() => this.followFocus(look), this.waitMs);
     });
   }
 

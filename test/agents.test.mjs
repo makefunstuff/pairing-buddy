@@ -212,6 +212,27 @@ test('what a task left behind: its report and pull request, its branch\'s diff a
   }
 });
 
+test('Shepherdr 2.1: what task show says (branch, pull request, full title) is not lost to the list\'s row', async () => {
+  const dir = realpathSync(scratch('pair-board-'));
+  const {repo, worktree} = taskRepo(dir);
+  const title = 'Read every run, and every one of its retries too';
+  const board = fakeShepherdr(dir, {
+    version: '2.1', spaces: [{name: 'shop', key: 'SHO', path: repo}],
+    tasks: [{id: 'SHO-7', title, status: 'ready', place: 'p:here:shop', branch: 'work/7-read-every-run', pr: {number: 12, url: 'https://github.com/o/shop/pull/12'}}],
+    artifacts: [{id: '67baddc7', title: 'SHO-7: Proof', space: 'shop', by: 'SHO-7 agent', html: '/data/67/1.html'}],
+  });
+  const agents = new AgentBoard({board: board.command, pollMs: 60_000});
+  await agents.poll();
+  const [item] = agents.items;
+  assert.deepEqual([item.title, item.branch, item.pr, item.where, item.machine], [title, 'work/7-read-every-run', 'https://github.com/o/shop/pull/12', worktree, null]);
+  await agents.poll();
+  assert.equal(agents.items[0].branch, 'work/7-read-every-run', 'and at the next poll, when task show is not read again');
+  assert.deepEqual(await agents.leftBehind('task:SHO-7', 'open'), {links: [
+    {label: 'its report', url: '/data/67/1.html'}, {label: 'its pull request #12', url: 'https://github.com/o/shop/pull/12'},
+  ]});
+  assert.match((await agents.leftBehind('task:SHO-7', 'diff')).diff, /^\+func Every\(\) \{\}$/m);
+});
+
 test('without a board, herdr\'s agents are still read and relayed; a board that comes and goes keeps its last list', async () => {
   const dir = scratch('pair-board-');
   const herdr = await fakeHerdr(join(dir, 'herdr.sock'), {agents: [{pane_id: 'w2:p1', cwd: '/home/me/notes', agent: 'pi', agent_status: 'working'}]});

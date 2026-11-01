@@ -42,7 +42,7 @@ if (state.version === '2.1') {
     const tasks = state.tasks.filter(t => !t.archived && (!space || spaceOf(t) === space));
     const size = state.pageSize ?? 50;
     const start = opt('after') ? tasks.findIndex(t => t.id === opt('after')) + 1 : 0;
-    const rows = tasks.slice(start, start + size).map(t => ({id: t.id, name: t.title, status: t.status, place: t.place, machine: machineOf(t), sub: t.sub}));
+    const rows = tasks.slice(start, start + size).map(t => ({id: t.id, name: t.title.slice(0, 32), status: t.status, place: t.place, machine: machineOf(t), sub: t.sub}));
     out(JSON.stringify({tasks: rows, total: tasks.length, next: start + rows.length < tasks.length ? rows.at(-1).id : undefined}, null, 2));
   }
   if (a0 === 'task' && a1 === 'show') {

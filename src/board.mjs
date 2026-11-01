@@ -39,13 +39,14 @@ export function boardRun(command, args, {cwd, timeoutMs = TIMEOUT_MS} = {}) {
 const spaceOf = place => (typeof place === 'string' && place.startsWith('p:') ? place.split(':').slice(2).join(':') : null);
 
 /**
- * A task as Pair keeps it: {id, title, status, sub, machine}, and from `task show` also {space, branch, pr, outcome,
+ * A task as Pair keeps it: {id, title, status, sub, machine}, its `space` where the row names its place, and from `task show` also {space, branch, pr, outcome,
  * said, facts, brief}: what its agent said when it reported ready, its facts line (PR · commit · checks · review · not
  * proven), and its brief (`desc`, "No brief yet." for none).
  */
 function taskOf(raw) {
   const task = {id: raw.id, title: raw.title ?? raw.name ?? raw.id, status: raw.status, sub: raw.sub ?? '', machine: raw.machine ?? null};
-  if ('place' in raw || 'branch' in raw) {
+  if ('place' in raw) task.space = spaceOf(raw.place); // 2.1's list rows have it too, and nothing more
+  if ('branch' in raw || 'desc' in raw) { // `task show`'s
     const text = value => (typeof value === 'string' && value.trim() ? value.trim() : null);
     Object.assign(task, {
       space: spaceOf(raw.place), branch: raw.branch ?? null, pr: raw.pr?.url ?? null, outcome: raw.outcome ?? null,
