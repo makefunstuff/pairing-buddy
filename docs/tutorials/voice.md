@@ -1,11 +1,23 @@
 # Voice
 
-Hold `Alt-t` in Neovim, ask aloud, let go: Pair answers under the line you asked on. Hearing runs on your CPU with
-whisper.cpp, or through OpenRouter. Voice is off until you set it up; this takes about five minutes.
+Hold `Alt-t` in Neovim, ask aloud, let go: Pair answers under the line you asked on, and can answer aloud too.
+Hearing and speaking run on your CPU with LFM3-Omni, one model for both, by default; whisper.cpp or OpenRouter can hear
+instead. Voice is off until you set it up; this takes about five minutes and one 4.0 GB download.
 
 ## 1. Choose who hears you
 
-- **whisper.cpp, on your machine.** Nothing leaves it. Build it once:
+- **LFM3-Omni, on your machine.** Nothing leaves it. It hears well (2% of words wrong on human speech) and reads
+  answers aloud in a natural voice. It needs a 4.0 GB download that Pair makes only when you say so, 8.2 GB of disk in
+  all, and up to 6 GB of memory while it speaks. Install its Python once:
+
+  ```sh
+  python3 -m venv ~/.local/state/pairing-buddy/meaning/venv
+  ~/.local/state/pairing-buddy/meaning/venv/bin/pip install litert-lm-api==0.19.0 ai-edge-litert==2.3.0 numpy==2.5.4 tokenizers==0.23.3
+  ```
+
+  This is the same Python as search by meaning's; if you made it already, run only the `pip install` line.
+
+- **whisper.cpp, on your machine.** Smaller (142 MB) and lighter, and it reads nothing aloud by itself. Build it once:
 
   ```sh
   git clone --depth 1 https://github.com/ggml-org/whisper.cpp ~/src/whisper.cpp
@@ -21,6 +33,22 @@ whisper.cpp, or through OpenRouter. Voice is off until you set it up; this takes
 You also need a recorder: `pw-record`, `parec` or `arecord`, which most desktops have.
 
 ## 2. Add it to the config
+
+For LFM3-Omni:
+
+```jsonc
+"voice": {}
+```
+
+Then, in Neovim, download it once:
+
+```
+:Pair voice on
+```
+
+Neovim says what comes and how big before it starts (`Downloading LFM3-Omni-2B for voice: 4.0 GB from Hugging
+Face …`), then how far it is. It takes a minute or two on a fast line. `:Pair voice off` stops it, or deletes the model
+later.
 
 For whisper.cpp:
 
@@ -43,7 +71,8 @@ For OpenRouter (the key in a file, or `apiKeyEnv`, or `auth` after `pair auth lo
 }
 ```
 
-`speak` is optional: it reads short answers aloud, and only when you are away from the editor.
+Short answers are read aloud only when you are away from the editor: LFM3-Omni does it by default, OpenRouter with
+`speak`, whisper.cpp not at all.
 
 ## 3. Check it
 
@@ -51,8 +80,9 @@ For OpenRouter (the key in a file, or `apiKeyEnv`, or `auth` after `pair auth lo
 pair doctor
 ```
 
-The `voice` line says what records and what hears: for whisper.cpp it hears a second of silence and says how long it
-took, for OpenRouter it asks whether the key and the models are taken. It records nothing and sends no audio.
+The `voice` line says what records and what hears: LFM3-Omni and whisper.cpp hear a second of silence and say how long
+it took, OpenRouter is asked whether the key and the models are taken. It records nothing, sends no audio and
+downloads nothing; without LFM3-Omni's files yet, it says to run `:Pair voice on`.
 
 ## 4. Ask
 
@@ -67,10 +97,25 @@ took, for OpenRouter it asks whether the key and the models are taken. It record
 
 ![Hold Alt-t: a meter under your line; let go: the words Pair heard, then its answer in their place](../images/push-to-talk.gif)
 
+The first question after the download takes about 15 s to hear, while LFM3-Omni packs its weights for your CPU, once.
+From then on a short question is heard in about a second and a half.
+
 If your terminal makes holding awkward, tap `Alt-t` instead: Pair listens until you press it again, and the line
 says `M-t again to ask`. Or set
 `listen_mode = 'toggle'` in the plugin's setup: press to start, press again to ask. `:Pair listen` works without the
 key.
+
+## 5. Talk with it
+
+To hear every answer, not only when you are away, add `"talk": true`:
+
+```jsonc
+"voice": {"talk": true}
+```
+
+Ask aloud, and Pair answers aloud under your line: the first words come a few seconds after the answer. Ask the next
+question the same way. Start typing, or press `Alt-t` again, and it stops at once. Only answers to what you asked are
+ever spoken; Pair's own remarks stay quiet text, as rare as before.
 
 ## More
 

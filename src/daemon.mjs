@@ -23,6 +23,9 @@ import {CorePaneHost, CorePanes, HerdrApp} from './herdr-core.mjs';
 import {followLoaded, shareServer} from './loaded-model.mjs';
 import {DETAIL_KEPT_MS} from './ledger.mjs';
 import {Listener} from './listen.mjs';
+import {downloadOmni, gb, OMNI, OmniVoice, omniMissing, omniReady, removeOmni} from './omni.mjs';
+import {pythonOf} from './embedder.mjs';
+import {usesOmni} from './voice.mjs';
 import {Meaning} from './meaning.mjs';
 import {createDecisionModel, createPairModels} from './models.mjs';
 import {acquireOwner} from './owner.mjs';
@@ -94,6 +97,7 @@ export async function startDaemon(config, {
   idleEndMs = IDLE_END_MS, aloneEndMs = ALONE_END_MS, agentsPollMs, taskChangesPollMs = TASK_CHANGES_MS,
   appCommand = 'herdr-app', // the Herdr window's command, for herdr-core's focus and agents
   meaningWith = {}, // tests' fetch and embedder for search by meaning (see meaning.mjs)
+  omniWith = {}, // tests' LFM3-Omni for voice (see omni.mjs): {voice, fetch, free, files}
 } = {}) {
   mkdirSync(config.dataDir, {recursive: true, mode: 0o700});
   mkdirSync(join(config.dataDir, 'runs'), {recursive: true}); // the output of the tests run on save, one file per session
@@ -174,6 +178,10 @@ export async function startDaemon(config, {
     },
     ...meaningWith,
   });
+
+  // Voice's LFM3-Omni (omni.mjs): one helper for every session, started on first use; its download is `:Pair voice on`.
+  const omni = omniWith.voice ?? new OmniVoice({python: () => pythonOf(config.meaning, config.dataDir), dataDir: config.dataDir, threads: config.voice?.threads, log});
+  let omniDownload = null; // {abort, done} while its files come
 
   // What the board's working tasks of each repo change on their branches, read while a Neovim is connected (overlap.mjs).
   const taskChanges = new TaskChanges({board: config.board, log});
@@ -357,6 +365,7 @@ export async function startDaemon(config, {
     if (changed.includes('voice')) {
       for (const listener of listeners.values()) listener.close();
       listeners.clear();
+      omni.threads = config.voice?.threads ?? omni.threads;
     }
     if (nextModels) await rebuildModels(nextModels);
     const now = changed.filter(field => !RESTART_FIELDS.includes(field));
@@ -520,6 +529,7 @@ export async function startDaemon(config, {
     session.receive(event);
     if (event.kind === 'save' && typeof event.file === 'string') meaning.saved(session.root, event.file).catch(error => log(`meaning: ${error.message}`));
     if (event.kind === 'command_end') refreshContext(session);
+    if (event.kind === 'typing' || event.kind === 'edit') listeners.get(session.root)?.typed(); // speech stops as you type
     if (event.kind === 'focus' && event.target === 'editor') herdrFocus(clientsOf(session, 'editor'), event.pane);
   }
 
@@ -590,7 +600,7 @@ export async function startDaemon(config, {
     if (!config.voice) return null;
     if (!listeners.has(session.root)) {
       listeners.set(session.root, new Listener({
-        voice: config.voice, session, dir: join(config.dataDir, 'voice'),
+        voice: config.voice, session, dir: join(config.dataDir, 'voice'), omni: usesOmni(config.voice) ? omni : null,
         ask: (text, selection) => session.ask(text, selection, {question: true}),
         log: line => log(`[${basename(session.root)}] ${line}`),
       }));
@@ -986,6 +996,8 @@ export async function startDaemon(config, {
     if (message.type === 'index_rebuild') return indexRebuild(client, session);
     if (message.type === 'meaning_on') return meaningOn(client);
     if (message.type === 'meaning_off') return meaningOff(client);
+    if (message.type === 'voice_on') return voiceOn(client);
+    if (message.type === 'voice_off') return voiceOff(client);
     if (message.type === 'forget_trail') return session.forgetTrail();
     if (message.type === 'runs') return session.runs().then(runs => sendMessage(client.socket, runs));
     if (message.type === 'release') return session.release();
@@ -1096,6 +1108,44 @@ export async function startDaemon(config, {
     sendMessage(client.socket, {type: 'meaning_state', ...meaning.snapshot(), text});
   }
 
+  /** `:Pair voice on`: LFM3-Omni's one download (4.0 GB), said up front and told as it goes, then booked. */
+  async function voiceOn(client) {
+    const tell = text => sendMessage(client.socket, {type: 'voice_state', text});
+    if (omniReady(config.dataDir)) return tell(`LFM3-Omni is here: ${usesOmni(config.voice) ? 'voice uses it' : 'set "voice": {} in the config to hear and speak with it'}.`);
+    if (omniDownload) return tell('LFM3-Omni is downloading already.');
+    const missing = omniMissing(config.dataDir);
+    tell(`Downloading LFM3-Omni-2B for voice: ${gb(missing)} from Hugging Face (${OMNI.repo}, pinned, SHA-256 checked), once; :Pair voice off stops it and deletes it.`);
+    const abort = new AbortController();
+    let told = 0;
+    omniDownload = {abort};
+    try {
+      await downloadOmni(config.dataDir, {
+        fetch: omniWith.fetch, free: omniWith.free, files: omniWith.files, signal: abort.signal,
+        progress: (bytes, total) => {
+          if (bytes - told < 256e6) return;
+          told = bytes;
+          tell(`Downloading LFM3-Omni: ${gb(bytes)} of ${gb(total)}…`);
+        },
+      });
+    } catch (error) {
+      return tell(`LFM3-Omni is not downloaded: ${error.message}`);
+    } finally {
+      omniDownload = null;
+    }
+    for (const session of live.values()) session.ledger.add('downloaded', `LFM3-Omni-2B for voice (${gb(missing)}, revision ${OMNI.revision.slice(0, 7)}, SHA-256 checked)`);
+    tell(`LFM3-Omni is here: ${usesOmni(config.voice) ? 'hold the listen key and speak' : 'set "voice": {} in the config to hear and speak with it'}.`);
+  }
+
+  /** `:Pair voice off`: the helper stops, a download stops, and LFM3-Omni's files leave Pair's data folder. */
+  async function voiceOff(client) {
+    omniDownload?.abort.abort(new Error('voice was turned off (:Pair voice off)'));
+    omni.fail(new Error('LFM3-Omni was deleted (:Pair voice off)'));
+    const had = omniMissing(config.dataDir) < OMNI.bytes;
+    await removeOmni(config.dataDir);
+    if (had) for (const session of live.values()) session.ledger.add('deleted', 'LFM3-Omni-2B, voice\'s model (:Pair voice off)');
+    sendMessage(client.socket, {type: 'voice_state', text: `LFM3-Omni is deleted${usesOmni(config.voice) ? ': :Pair voice on downloads it again' : ''}.`});
+  }
+
   /** The context card for the Neovim that asked, with git and the board read again when they are not fresh. */
   async function sendCard(client, session) {
     await refreshContext(session, CONTEXT_FRESH_MS);
@@ -1198,6 +1248,8 @@ export async function startDaemon(config, {
       agents?.stop();
       for (const watch of watches.values()) watch.stop();
       for (const listener of listeners.values()) listener.close();
+      omniDownload?.abort.abort(new Error('the daemon stops'));
+      omni.close();
       for (const client of clients) client.socket.destroy();
       await new Promise(resolve => server.close(resolve));
       await rebuilt;

@@ -101,7 +101,10 @@
   // "decision": {"provider": "openrouter", "model": "typesafe/jev-1.14", "timeoutMs": 1500},
   // Or a gateway: {"api": "openai" (OpenAI's Decisions API), "system-one" or "llama-cpp", "baseUrl": "...", "model": "..."}
 
-  // Push-to-talk: hold Alt-t in Neovim and ask aloud. whisper.cpp writes it down on the CPU (see docs/voice.md).
+  // Push-to-talk: hold Alt-t in Neovim and ask aloud. LFM3-Omni hears and reads answers aloud on the CPU, after
+  // :Pair voice on downloads it (4.0 GB, once; see docs/voice.md). "talk": true reads every answer aloud.
+  // "voice": {},
+  // Or whisper.cpp hears, on the CPU:
   // "voice": {
   //   "model": "~/src/whisper.cpp/models/ggml-base.en.bin",
   //   "whisper": "whisper-cli",            // the program, on PATH or a path

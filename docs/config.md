@@ -37,7 +37,7 @@ why while the daemon keeps the config it runs. Run `pair doctor` after a change 
 | `testOnSave` | none | A test command per project folder, run when you save ([below](#testonsave), [tests-on-save.md](tests-on-save.md)) |
 | `sessionRoots` | `[]` | Folders that are projects of their own, for a monorepo ([session roots](#session-roots)) |
 | `agents` | `true` | The relay of your other agents' news, from herdr and the `board`: `false` turns it off ([agents.md](agents.md#configure)) |
-| `voice` | off | Push-to-talk with whisper.cpp or OpenRouter ([below](#voice), [voice.md](voice.md)) |
+| `voice` | off | Push-to-talk and spoken answers with LFM3-Omni, whisper.cpp or OpenRouter ([below](#voice), [voice.md](voice.md)) |
 | `meaning` | `{}` | [Search by meaning](meaning.md): the Python that runs EmbeddingGemma 2, the cores it may use and where the index lives, or `false` to turn it off for good ([below](#meaning)). Its word search works at once; meaning once its model is downloaded (`:Pair find on`) or with an `embedding` model |
 | `embedding` | none | An embedding model behind an OpenAI-compatible `/v1/embeddings` for [search by meaning](meaning.md#another-embedding-model), instead of EmbeddingGemma 2 ([below](#embedding)) |
 | `scoutPane` | see [below](#scoutpane) | Pair's own pane: your rc file and the sandbox ([scout.md](scout.md#pairs-pane)) |
@@ -155,17 +155,20 @@ can commit as it is. `--branch` and `--copy` in the request choose for one reque
 
 ## `voice`
 
-Off until set. Set up in [voice.md](voice.md#setup).
+Off until set. `"voice": {}` (or `true`) hears and reads answers aloud with LFM3-Omni on your CPU, once
+`:Pair voice on` has downloaded it. Set up in [voice.md](voice.md#setup).
 
 | Field | Default | Meaning |
 | --- | --- | --- |
-| `model` | (needed, unless `openrouter.hear` is set) | The whisper.cpp model file, like `ggml-base.en.bin` |
+| `model` | none: LFM3-Omni hears | A whisper.cpp model file, like `ggml-base.en.bin`: whisper.cpp hears instead |
 | `whisper` | `"whisper-cli"` | The whisper.cpp program, on `PATH` or a path |
-| `threads` | `4` | CPU threads whisper uses |
-| `language` | `"en"` | What you speak (`auto` with a multilingual model) |
+| `threads` | `4` | CPU threads LFM3-Omni or whisper uses |
+| `language` | `"en"` | What you speak (`auto` with a multilingual whisper model) |
 | `record` | the first recorder found | A shell command that writes raw 16-bit little-endian mono at 16 kHz to stdout |
-| `speak` | none | A shell command that reads the answer from stdin and says it; without one (or `openrouter.speak`) nothing is read aloud |
-| `play` | `mpv`, else `ffplay` | A shell command that plays OpenRouter's audio from stdin |
+| `speak` | `"omni"` when LFM3-Omni hears, else none | `"omni"` (LFM3-Omni reads answers aloud), `false` (nothing is read aloud), or a shell command that reads the answer from stdin and says it |
+| `talk` | `false` | `true`: every answer to a spoken question is read aloud, at the editor too, not only when you are away |
+| `omni` | `{"voice": "female"}` | LFM3-Omni's voice: `"female"` or `"male"` |
+| `play` | `mpv`, else `ffplay`, else `pw-play`, else `aplay` | A shell command that plays LFM3-Omni's or OpenRouter's audio from stdin (`pw-play` and `aplay` for LFM3-Omni's WAV only) |
 | `maxSeconds` | `60` | The longest recording |
 | `openrouter` | none | Hearing and reading aloud through OpenRouter, below |
 
@@ -174,7 +177,7 @@ Off until set. Set up in [voice.md](voice.md#setup).
 | Field | Default | Meaning |
 | --- | --- | --- |
 | `apiKeyFile`, `apiKeyEnv`, `auth`, `apiKey` | (one needed) | The OpenRouter key, as in a model entry |
-| `hear` | none | A transcription model, like `"openai/whisper-large-v3-turbo"`: it hears instead of whisper.cpp (then `model` is not taken) |
+| `hear` | none | A transcription model, like `"openai/whisper-large-v3-turbo"`: it hears instead of LFM3-Omni (then `model` is not taken) |
 | `speak` | none | `{"model": ..., "voice": ...}`, a speech model and one of its voices, with optional `"format"` (`"mp3"`, the default, or `"wav"`) and `"speed"`: it reads answers aloud instead of a `speak` command (then `speak` is not taken) |
 | `timeoutMs` | `30000` | How long Pair waits for OpenRouter before it says so |
 | `baseUrl` | `"https://openrouter.ai/api/v1"` | Where the API is |

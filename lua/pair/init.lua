@@ -1251,6 +1251,7 @@ local handlers = {
   found = function(message) if message.id then meaning.on_found(message) else meaning.on_select(message) end end,
   index_progress = meaning.on_progress,
   meaning_state = meaning.on_state,
+  voice_state = function(message) if message.text then vim.notify('Pair: ' .. message.text) end end,
   margin = margin.show,
   decision_log = margin.log,
   tasks = function(message) tasks.show(message, send) end,
@@ -1630,6 +1631,13 @@ local commands = {
   chat = function()
     M.connect()
     pane.chat(config.socket or default_socket())
+  end,
+  -- Voice's local model: `:Pair voice on` downloads LFM3-Omni once (4.0 GB, said before it starts), `:Pair voice off`
+  -- deletes it.
+  voice = function(arg)
+    if arg ~= 'on' and arg ~= 'off' then return vim.notify('Pair: :Pair voice on downloads LFM3-Omni for voice, :Pair voice off deletes it', vim.log.levels.WARN) end
+    if not M.connect() then return vim.notify('Pair: not connected; :Pair voice ' .. arg .. ' again once it is', vim.log.levels.WARN) end
+    send({type = 'voice_' .. arg})
   end,
   -- Like a tap of the listen key: Pair listens until the next :Pair listen. `:Pair listen cancel` drops it.
   listen = function(arg, selection)

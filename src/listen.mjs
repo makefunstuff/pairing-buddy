@@ -1,18 +1,21 @@
-// Push-to-talk for one session: records while the user holds the listen key in Neovim, has whisper.cpp (or OpenRouter)
-// write down what they said, asks Pair that, and reads the answer aloud only when they are away from the editor.
-// What fails (no microphone, OpenRouter's timeout or error) shows in the editor and in the chat.
+// Push-to-talk for one session: records while the user holds the listen key in Neovim, has LFM3-Omni (or whisper.cpp,
+// or OpenRouter) write down what they said, asks Pair that, and reads the answer aloud only when they are away from the
+// editor, or, with `voice.talk`, always: you talk, Pair answers in speech. Only answers to what you asked are ever
+// spoken; typing or the key again stops it. What fails (no microphone, no model yet, OpenRouter's timeout or error)
+// shows in the editor and in the chat.
 import {mkdirSync} from 'node:fs';
-import {recorderOf, Recording, speak, speakable, speaks, transcribe, whisperPrompt} from './voice.mjs';
+import {omniMissingWhy, recorderOf, Recording, speak, speakable, speaks, transcribe, whisperPrompt} from './voice.mjs';
 
 const sentence = text => `${text.replace(/[.\s]+$/, '')}.`;
 
 export class Listener {
   /**
    * `voice` is the config's (see voice.mjs), `dir` where a recording is kept while whisper reads it. `ask(text,
-   * selection)` asks Pair and resolves with its words. `transcribeWith` and `speakWith` are for tests.
+   * selection)` asks Pair and resolves with its words. `omni` is the daemon's LFM3-Omni (omni.mjs), when voice uses it.
+   * `transcribeWith` and `speakWith` are for tests.
    */
-  constructor({voice, session, dir, recorder = recorderOf(voice), ask, transcribeWith = transcribe, speakWith = speak, log = () => {}}) {
-    Object.assign(this, {voice, session, dir, recorder, ask, transcribeWith, speakWith, log});
+  constructor({voice, session, dir, recorder = recorderOf(voice), ask, omni = null, transcribeWith = transcribe, speakWith = speak, log = () => {}}) {
+    Object.assign(this, {voice, session, dir, recorder, ask, omni, transcribeWith, speakWith, log});
     mkdirSync(dir, {recursive: true, mode: 0o700});
     this.recording = null; // {recording, send, selection, timer} while the key is held
     this.focused = true; // Neovim has the terminal's focus
@@ -24,6 +27,11 @@ export class Listener {
   focus(on) {
     this.focused = on;
     if (on) this.hush();
+  }
+
+  /** The user typed or edited: what is being read aloud stops, as you take the word back. */
+  typed() {
+    this.hush();
   }
 
   /** Away from the editor: Neovim lost the focus, or herdr shows another workspace. */
@@ -39,6 +47,9 @@ export class Listener {
     if (this.recording) this.cancel();
     this.hush();
     if (!this.recorder) return send({type: 'heard', error: 'no recorder found: install pipewire (pw-record), pulseaudio-utils (parec) or alsa-utils (arecord), or set voice.record'});
+    // Without its model, LFM3-Omni could not hear what you say: told before you speak, not after.
+    const missing = this.voice.hear === 'omni' && omniMissingWhy(this.omni);
+    if (missing) return send({type: 'heard', error: missing});
     const recording = new Recording(this.recorder, {onLevel: level => send({type: 'listening', level})});
     const timer = setTimeout(() => this.stop(), this.voice.maxSeconds * 1000);
     this.recording = {recording, send, selection, timer, owner};
@@ -62,7 +73,7 @@ export class Listener {
       send({type: 'heard', state: 'hearing'});
       const started = Date.now();
       this.hearing = hearing;
-      text = await this.transcribeWith(this.voice, pcm, {dir: this.dir, prompt: whisperPrompt(this.session.state), signal: hearing.signal})
+      text = await this.transcribeWith(this.voice, pcm, {dir: this.dir, prompt: whisperPrompt(this.session.state), signal: hearing.signal, omni: this.omni})
         .finally(() => { if (this.hearing === hearing) this.hearing = null; });
       if (hearing.signal.aborted) return; // voice went off meanwhile
       this.log(`heard ${(recording.ms / 1000).toFixed(1)} s of speech in ${Date.now() - started} ms`);
@@ -80,9 +91,10 @@ export class Listener {
       return '';
     });
     send({type: 'answer', text: words, pointed: Boolean(this.session.target)}); // then the jump key goes there
-    if (words && this.away && speaks(this.voice)) {
+    if (words && (this.away || this.voice.talk) && speaks(this.voice) && !this.recording) {
       this.silence = this.speakWith(this.voice, speakable(words), {
         log: this.log,
+        omni: this.omni,
         failed: why => this.session.message('system', `Pair could not read its answer aloud: ${sentence(why)}`),
       });
     }

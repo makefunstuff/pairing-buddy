@@ -76,7 +76,7 @@ Write down four facts for the steps below:
    - ripgrep (`rg`) for Scout's code search, and on Linux bubblewrap (`bwrap`) to run Pair's commands in a sandbox.
      Recommended.
    - The shell hook, which tells Pair the exit codes of the commands you run (one line in the shell rc file).
-   - Push-to-talk (whisper.cpp and a recorder).
+   - Push-to-talk (LFM3-Omni's 4.0 GB download, or whisper.cpp, and a recorder).
 3. **May you use `sudo`** to install packages with the package manager? Without it, step 3 installs Node.js and
    Neovim into `~/.local` instead.
 
@@ -642,9 +642,10 @@ prints `hook-ok`.
 network off`. If bubblewrap cannot run here, it says so; then `"scoutPane": {"sandbox": false}` in the config
 silences the warning (commands then run unsandboxed, after the command policy).
 
-**Push-to-talk.** Follow [voice.md](docs/voice.md#setup): build whisper.cpp for the CPU, a recorder (`pw-record`,
-`parec` or `arecord`), and a `"voice"` entry in the config. Expected: `✓ voice  pw-record records, whisper.cpp hears
-a second in … s on the CPU`.
+**Push-to-talk.** Follow [voice.md](docs/voice.md#setup): LFM3-Omni's Python packages, a recorder (`pw-record`,
+`parec` or `arecord`), `"voice": {}` in the config, and `:Pair voice on` in Neovim, which downloads LFM3-Omni once
+(4.0 GB, said before it starts); or whisper.cpp built for the CPU instead. Expected: `✓ voice  pw-record records,
+LFM3-Omni-2B (int8) … hears a second in … s on the CPU, and it reads answers aloud …`.
 
 ## Upgrade
 

@@ -23,7 +23,8 @@ import {sandboxWorks} from './sandbox.mjs';
 import {keyVariables, readServiceEnv} from './service-env.mjs';
 import {serviceManager} from './service.mjs';
 import {VERSION} from './version.mjs';
-import {openrouterRequest, playerOf, RATE, recorderOf, transcribe} from './voice.mjs';
+import {gb, OMNI, OMNI_PACKAGES, OmniVoice, omniMissing, omniReady, omniRuntimeOf} from './omni.mjs';
+import {openrouterRequest, playerOf, RATE, recorderOf, transcribe, wavPlayerOf} from './voice.mjs';
 
 const WATCHER_MS = SLOW_MS; // the Watcher scores every candidate remark: about a second is the aim, and over this Pair asks about less
 const PARTNER_MS = 20_000;
@@ -68,7 +69,7 @@ export async function* doctor({
   if (existsSync(auth)) yield loginsCheck(auth);
   if (keyVariables(config).length) yield keysCheck(keyVariables(config), env, serviceEnv);
   yield paneCheck(config.scoutPane);
-  yield await voiceCheck(config.voice);
+  yield await voiceCheck(config.voice, undefined, {dataDir: config.dataDir, python: pythonOf(config.meaning, config.dataDir)});
   yield await meaningCheck(config, status);
   yield* modelChecks(config, status, credentials);
   yield await decisionCheck(config, status, credentials);
@@ -225,12 +226,13 @@ export function keysCheck(names, env, path) {
 }
 
 /**
- * Push-to-talk: a recorder; the whisper.cpp model and how long whisper takes for a second of audio on the CPU, or
- * OpenRouter's key and transcription model; and the speech command or OpenRouter's voice and a player, if one is set.
- * Nothing is recorded, and no audio goes to OpenRouter: it is asked about the key and its models only.
+ * Push-to-talk: a recorder; LFM3-Omni's files, its Python and how long it takes to hear a second, or the whisper.cpp
+ * model and how long whisper takes for a second of audio on the CPU, or OpenRouter's key and transcription model; and
+ * who reads answers aloud (LFM3-Omni, a speech command or OpenRouter's voice) with a player. Nothing is recorded, and
+ * no audio goes to OpenRouter: it is asked about the key and its models only. Nothing is downloaded either.
  */
-export async function voiceCheck(voice, found = name => onPath(name, process.env)) {
-  if (!voice) return ok('voice', 'off: to speak to Pair, set "voice" in the config (see docs/voice.md)');
+export async function voiceCheck(voice, found = name => onPath(name, process.env), {dataDir, python, runtime = omniRuntimeOf, hearSilence = omniHearsSilence} = {}) {
+  if (!voice) return ok('voice', 'off: to speak to Pair, set "voice": {} in the config (see docs/voice.md)');
   const recorder = recorderOf(voice, found);
   if (!recorder) return fail('voice', 'no recorder found: install pw-record (pipewire), parec (pulseaudio-utils) or arecord (alsa-utils), or set voice.record');
   const {openrouter} = voice;
@@ -239,9 +241,25 @@ export async function voiceCheck(voice, found = name => onPath(name, process.env
     const problem = await openrouterProblem(openrouter);
     if (problem) return problem;
   }
+  let omni = '';
+  if (voice.hear === 'omni' || voice.omniSpeaks) {
+    const uses = voice.hear === 'omni' ? (voice.omniSpeaks ? 'hear and read answers aloud' : 'hear') : 'read answers aloud';
+    const packages = await runtime(python);
+    const needs = packages.version ? '' : `; it also needs ${packages.problem.replace(/^.* has no /, '')}: ${omniInstall(dataDir)} (or set meaning.python)`;
+    if (!omniReady(dataDir)) {
+      const missing = omniMissing(dataDir);
+      return warn('voice', `${records} records; to ${uses}, :Pair voice on downloads ${OMNI.name} (${gb(missing)} from Hugging Face, once)${needs}`);
+    }
+    if (!packages.version) return fail('voice', `${OMNI.name} is downloaded, but ${packages.problem}: ${omniInstall(dataDir)} (or set meaning.python)`);
+    omni = `${OMNI.name} (revision ${OMNI.revision.slice(0, 7)}, SHA-256 checked) on LiteRT-LM ${packages.version} in ${tilde(python)}`;
+  }
   let hears;
   if (openrouter?.hear) hears = `OpenRouter's ${openrouter.hear} hears`;
-  else {
+  else if (voice.hear === 'omni') {
+    const heard = await hearSilence({python, dataDir, threads: voice.threads});
+    if (heard.problem) return fail('voice', `${omni} does not hear: ${heard.problem}`);
+    hears = `${omni} hears a second in ${seconds(heard.ms)} on the CPU`;
+  } else {
     if (!existsSync(voice.model)) return fail('voice', `no whisper.cpp model at ${tilde(voice.model)}: see docs/voice.md`);
     const dir = mkdtempSync(join(tmpdir(), 'pair-doctor-voice-'));
     const started = Date.now();
@@ -254,19 +272,46 @@ export async function voiceCheck(voice, found = name => onPath(name, process.env
     }
     hears = `whisper.cpp hears a second in ${seconds(Date.now() - started)} on the CPU`;
   }
+  const when = voice.talk ? 'after each spoken question' : 'when you are away';
+  const silent = voice.talk ? 'answers are not read aloud' : 'answers are not read aloud when you are away';
   let reads = '';
   if (openrouter?.speak) {
     const player = playerOf(voice, found);
     const {model, voice: name} = openrouter.speak;
-    if (!player) return warn('voice', `${records} records and ${hears}, but no player is found for OpenRouter's voice: install mpv or ffmpeg (ffplay), or set voice.play; answers are not read aloud when you are away`);
-    if (voice.play && !found(voice.play.trim().split(/\s+/)[0])) return warn('voice', `the player \`${voice.play.trim().split(/\s+/)[0]}\` is not on PATH: answers are not read aloud when you are away`);
-    reads = `, and OpenRouter's ${model} (${name}) reads answers aloud through ${voice.play ? 'your play command' : player[0]} when you are away`;
+    if (!player) return warn('voice', `${records} records and ${hears}, but no player is found for OpenRouter's voice: install mpv or ffmpeg (ffplay), or set voice.play; ${silent}`);
+    if (voice.play && !found(voice.play.trim().split(/\s+/)[0])) return warn('voice', `the player \`${voice.play.trim().split(/\s+/)[0]}\` is not on PATH: ${silent}`);
+    reads = `, and OpenRouter's ${model} (${name}) reads answers aloud through ${voice.play ? 'your play command' : player[0]} ${when}`;
+  } else if (voice.omniSpeaks) {
+    const player = wavPlayerOf(voice, found);
+    if (!player) return warn('voice', `${records} records and ${hears}, but no player is found for LFM3-Omni's voice: install mpv, ffmpeg (ffplay), pipewire (pw-play) or alsa-utils (aplay), or set voice.play; ${silent}`);
+    if (voice.play && !found(voice.play.trim().split(/\s+/)[0])) return warn('voice', `the player \`${voice.play.trim().split(/\s+/)[0]}\` is not on PATH: ${silent}`);
+    reads = `, and ${voice.hear === 'omni' ? 'it' : omni} reads answers aloud (${voice.omniVoice} voice) through ${voice.play ? 'your play command' : player[0]} ${when}`;
   } else {
     const speech = voice.speak?.trim().split(/\s+/)[0];
-    if (speech && !found(speech)) return warn('voice', `the speech command \`${speech}\` is not on PATH: answers are not read aloud when you are away`);
-    if (speech) reads = `, and \`${speech}\` reads answers aloud when you are away`;
+    if (speech && !found(speech)) return warn('voice', `the speech command \`${speech}\` is not on PATH: ${silent}`);
+    if (speech) reads = `, and \`${speech}\` reads answers aloud ${when}`;
   }
   return ok('voice', `${records} records, ${hears}${reads}`);
+}
+
+/** What to run for voice's LFM3-Omni: the packages in search by meaning's venv, where Pair looks for its Python. */
+export const omniInstall = dataDir => {
+  const venv = join(meaningDir(dataDir), 'venv');
+  return `python3 -m venv ${tilde(venv)} && ${tilde(venv)}/bin/pip install ${OMNI_PACKAGES.join(' ')}`;
+};
+
+/** LFM3-Omni hears a second of silence, in a helper of its own that stops after: {ms} or {problem}. */
+async function omniHearsSilence({python, dataDir, threads}) {
+  const omni = new OmniVoice({python, dataDir, threads, idleMs: 0});
+  const started = Date.now();
+  try {
+    await omni.hear(Buffer.alloc(RATE * 2));
+    return {ms: Date.now() - started};
+  } catch (error) {
+    return {problem: error.message};
+  } finally {
+    omni.close();
+  }
 }
 
 /**
