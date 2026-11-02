@@ -1020,7 +1020,7 @@ export async function startDaemon(config, {
 
   /**
    * A search of the project: a Neovim's picker asks for the words on every key (`phase` "words") and for the meaning
-   * once typing stops ("meaning"), and for its list reranked once that settles ("rerank", with the `results` it shows),
+   * once typing stops ("meaning"), and for the fused ranking's first pieces reranked once that settles ("rerank"),
    * each answer with its `id`; the chat's /find asks for both, fused (and reranked). Each result has
    * its absolute path, for the picker to open.
    */
@@ -1028,7 +1028,7 @@ export async function startDaemon(config, {
     const query = message.query.trim();
     const answer = message.phase === 'words' ? await meaning.words(session.root, query)
       : message.phase === 'meaning' ? await meaning.meaningOnly(session.root, query)
-      : message.phase === 'rerank' ? await meaning.rerank(session.root, query, message.results)
+      : message.phase === 'rerank' ? await meaning.rerank(session.root, query, {who: client})
         : await meaning.search(session.root, query, {book: message.select !== true}); // a pick from vim.ui.select is booked as one
     sendMessage(client.socket, {
       type: 'found', ...(message.id !== undefined ? {id: message.id} : {}), ...answer, root: session.root,

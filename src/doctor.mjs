@@ -127,7 +127,7 @@ export async function rerankCheck(config, status, credentials, {build = createDe
   }
   const live = status?.meaning?.rerank;
   const used = live?.calls ? `; since the daemon started it reranked ${live.calls - live.kept} of ${live.calls} search${live.calls === 1 ? '' : 'es'} and kept the order of ${live.kept}${live.down ? ` (last: ${live.down})` : ''}` : '';
-  const text = `${where} reranks ${entry.top} pieces in ${seconds(probe.ms)} (a search waits up to ${seconds(entry.timeoutMs)})${probe.right ? '' : ', but did not put the matching piece first in its check'}${login.note ? `; ${login.note}` : ''}${used}`;
+  const text = `${where} reranks ${probe.pieces} pieces in ${seconds(probe.ms)}${entry.top > probe.pieces ? ` (it is set to ${entry.top}: more take longer)` : ''} (a search waits up to ${seconds(entry.timeoutMs)})${probe.right ? '' : ', but did not put the matching piece first in its check'}${login.note ? `; ${login.note}` : ''}${used}`;
   return probe.right ? ok('rerank', text) : warn('rerank', text);
 }
 

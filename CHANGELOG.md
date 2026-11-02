@@ -12,10 +12,11 @@ release is cut.
 - **Search by meaning can rerank with a small decision model.** With a `rerank` entry next to `embedding` (a
   classifier such as LiquidAI's d1-2B behind llama.cpp's System One API, `"api": "system-one"`), the first ten pieces
   of a settled list go best first by the probability the model gives each as the one you are looking for: `/find`, the
-  `search` tool and `vim.ui.select` wait for it up to 3 s (`timeoutMs`), and the Telescope and snacks pickers reorder
-  once the list has stayed as it is for 400 ms after meaning came (`meaning_rerank_delay_ms`), never on a key, the
-  title saying `reranked by d1-2B`. A model that is down, slow or answers oddly keeps the order, and is not asked again
-  for a minute after a failure. On 32 labelled questions about Pair's own code and docs
+  `search` tool and `vim.ui.select` wait for it up to 3 s (`timeoutMs`), and in the Telescope and snacks pickers the
+  fused ranking's first ten go first in the model's order once the list has stayed as it is for 400 ms after meaning
+  came (`meaning_rerank_delay_ms`), never on a key, the piece you are on staying selected and the title saying
+  `reranked by d1-2B`. A model that is down, slow or answers oddly keeps the order, and is not asked again for a
+  minute after a failure; it gets one question at a time. On 32 labelled questions about Pair's own code and docs
   (`test/fixtures/rerank-queries.json`, `test/live/rerank.test.mjs`), d1-2B on a CPU raised recall@5 from 0.72 to
   0.81 and MRR from 0.50 to 0.73, in 2.4 s at the median. Off without the entry; `pair doctor` has a `rerank` line, and
   the ledger books each rerank with the order before and after.

@@ -3,6 +3,9 @@
 // list. One question names each of the top pieces as an answer, "which best matches the search?", and the pieces go
 // best first by the probability the model gives each; the rest of the list stays as it was.
 //
+// One rerank at a time: a model on a CPU may serve other work too, and a second question would only wait behind the
+// first. A rerank asked while one runs keeps its search's order ("busy").
+//
 // It is optional and never in the way: off unless the config has a "rerank" entry, asked only where a list is settled
 // (the pause after typing in a picker, /find, the search tool), within `timeoutMs`. A model that is down, slow, or
 // answers oddly (the wrong shape, or no preference at all) keeps the order the search gave. See docs/meaning.md.
@@ -75,7 +78,8 @@ export function reorder(results, values) {
 /**
  * The daemon's reranker over pi-ai's `models` and the config's `entry` (see config.mjs, rerankConfig). `rerank(query,
  * results, {texts, signal})` resolves `{ok: true, results, moved, ms}`, the list reordered, or `{ok: false, why, error,
- * ms, results}` with the list as it was: why is "down" (it failed lately), "timeout", "error", "malformed" or "flat".
+ * ms, results}` with the list as it was: why is "down" (it failed lately), "busy" (another rerank runs), "timeout",
+ * "error", "malformed", "flat" or "aborted" (its `signal`).
  * It never rejects and never waits past the entry's `timeoutMs`. A failure keeps it from being asked for a minute,
  * so a model that is off costs one wait, not one a search.
  */
@@ -86,10 +90,14 @@ export class Reranker {
     this.timeoutMs = entry.timeoutMs ?? RERANK_TIMEOUT_MS;
     this.down = null; // why it failed last, while it is not asked
     this.downAt = 0;
+    this.running = null; // the rerank under way, a promise that settles when it ends
     this.calls = 0;
     this.kept = 0; // how many reranks kept the order
     this.msTotal = 0;
   }
+
+  /** Whether a rerank would ask the model now: not within the minute after a failure. */
+  get available() { return !(this.down && this.now() - this.downAt < DOWN_MS); }
 
   /** The model, for people: "d1-2B at http://…". */
   get name() { return this.entry.provider ? `${this.entry.model} on ${this.entry.provider}` : `${this.entry.model} at ${this.entry.baseUrl}`; }
@@ -120,11 +128,14 @@ export class Reranker {
   async rerank(query, results, {texts, signal} = {}) {
     const n = Math.min(this.top, results.length, texts?.length ?? results.length);
     if (n < 2) return {ok: false, why: 'short', error: 'fewer than two pieces', ms: 0, results};
-    if (this.down && this.now() - this.downAt < DOWN_MS) return {ok: false, why: 'down', error: this.down, ms: 0, results};
+    if (!this.available) return {ok: false, why: 'down', error: this.down, ms: 0, results};
+    if (this.running) return {ok: false, why: 'busy', error: 'another rerank is under way', ms: 0, results};
+    const asking = this.ask(`Search: ${query}`, rerankQuestion((texts ?? results.map(result => pieceText(result))).slice(0, n)), {signal});
+    this.running = asking;
+    const asked = await asking.finally(() => { this.running = null; });
+    if (asked.why === 'aborted') return {...asked, results}; // no call: a newer search took its place
     this.calls += 1;
-    const asked = await this.ask(`Search: ${query}`, rerankQuestion((texts ?? results.map(result => pieceText(result))).slice(0, n)), {signal});
     this.msTotal += asked.ms;
-    if (asked.why === 'aborted') return {...asked, results};
     if (!asked.ok) return this.failed(asked, results);
     const found = probabilitiesOf(asked.answer, n);
     if (!found.values) {
@@ -157,7 +168,7 @@ export class Reranker {
     if (!asked.ok) return {ok: false, ms: asked.ms, error: asked.error};
     const found = probabilitiesOf(asked.answer, pieces.length);
     if (found.why === 'malformed') return {ok: false, ms: asked.ms, error: `its answer has ${found.error}`};
-    return {ok: true, ms: asked.ms, right: !!found.values && found.values.indexOf(Math.max(...found.values)) === 0};
+    return {ok: true, ms: asked.ms, pieces: pieces.length, right: !!found.values && found.values.indexOf(Math.max(...found.values)) === 0};
   }
 
   snapshot() {

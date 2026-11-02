@@ -120,7 +120,7 @@ test('Telescope, live: the words on every key, meaning below them once typing st
   }
 });
 
-test('Telescope with a "rerank" model: once the list settles its first pieces come back in the model\'s order, and the title says so', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
+test('Telescope with a "rerank" model: once the list settles the fused ranking\'s first pieces go first in the model\'s order, and the title says so', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
   const server = await fakeRerankServer({favourite: 'What the order comes to'});
   const {project, dataDir, watcher, messages, remote, send, stop} = await pairInNvim('deliver', {rtp: [fakeTelescope()], setup: 'meaning_debounce_ms = 100, meaning_rerank_delay_ms = 100', meaningWith: {embedder: fakeEmbedder(), reranker: fakeReranker(server.baseUrl)}});
   try {
@@ -137,7 +137,7 @@ test('Telescope with a "rerank" model: once the list settles its first pieces co
     const list = shown(remote);
     assert.equal(list[0], 'invoice.js:2  export function bill(order) {', 'the model\'s pick first');
     assert.ok(list.includes('cart.js:1  export function total(cart) {'), 'the word hit stays in the list');
-    assert.equal(remote('luaeval("_G.selected.display")'), list[0], 'the first was selected: the new first is');
+    assert.equal(remote('luaeval("_G.selected.display")'), 'cart.js:1  export function total(cart) {', 'the piece you were on stays selected: nothing moves under you');
     assert.equal(server.requests.length, 1, 'one rerank, once the list settled');
     assert.equal(server.requests[0].state, 'Search: tota');
     await until(() => {

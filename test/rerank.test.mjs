@@ -166,7 +166,7 @@ test('a model that is slow, down or answers oddly keeps the search\'s order; aft
   }
 });
 
-test('the picker\'s settled list: its pieces reranked, a newer rerank stops an older one, and pieces outside the project are left out', async () => {
+test('the picker\'s settled search: the fused ranking\'s first pieces reranked, and each Neovim\'s newer rerank stops its older one', async () => {
   const server = await fakeRerankServer({favourite: 'waiter', mode: 'slow', delayMs: 300});
   const root = project();
   const dataDir = scratch('rerank-data-');
@@ -177,19 +177,26 @@ test('the picker\'s settled list: its pieces reranked, a newer rerank stops an o
     await ready(meaning, root);
     const alone = await meaning.meaningOnly(root, 'price cents');
     assert.equal(alone.reranker, 'fake-d1', 'meaning\'s answer says a rerank may follow');
-    const shown = (await meaning.search(root, 'price cents', {rerank: false, book: false})).results;
-    const older = meaning.rerank(root, 'price', shown);
+    const fused = (await meaning.search(root, 'price cents', {rerank: false, book: false})).results;
+    const older = meaning.rerank(root, 'price', {who: 'nvim-1'});
     await new Promise(resolve => setTimeout(resolve, 50));
-    const newer = meaning.rerank(root, 'price cents', [...shown, {file: '../outside.js', from: 1, to: 2}, {file: '/etc/passwd', from: 1, to: 1}, {file: 'src/x.js', from: 'a', to: 2}]);
-    const [first, second] = await Promise.all([older, newer]);
-    assert.equal(first.rerank.why, 'aborted', 'the older one stops');
-    assert.equal(second.phase, 'rerank');
-    assert.equal(second.rerank.applied, true);
-    assert.equal(second.results[0].file, 'src/tip.js');
-    assert.equal(second.results.length, shown.length, 'only the project\'s pieces');
-    assert.deepEqual(booked.filter(entry => entry.kind === 'reranked').map(entry => entry.text.replace(/\d+ ms/, 'N ms').replace(/\(was .*\)/, '(was …)')), ['"price cents" in the picker with fake-d1 in N ms: ' + `${second.rerank.moved} of 4 moved, first now src/tip.js:2 (was …)`], 'the stopped one is not booked');
-    const none = await new Meaning({dataDir: scratch('rerank-none-'), embedder: fakeEmbedder()}).rerank(root, 'price', shown);
+    const other = meaning.rerank(root, 'price cents', {who: 'nvim-2'});
+    const newer = meaning.rerank(root, 'price cents', {who: 'nvim-1'});
+    const [first, second, third] = await Promise.all([older, other, newer]);
+    assert.equal(first.rerank.why, 'aborted', 'the same Neovim\'s older one stops');
+    assert.equal(second.rerank.applied, true, 'another Neovim\'s waits its turn, and is asked');
+    assert.equal(third.phase, 'rerank');
+    assert.equal(third.rerank.applied, true);
+    assert.equal(third.results[0].file, 'src/tip.js');
+    assert.deepEqual(third.results.map(result => result.file).sort(), fused.map(result => result.file).sort(), 'the fused ranking\'s pieces, as /find\'s');
+    assert.equal(booked.filter(entry => entry.kind === 'reranked' && entry.text.includes('in the picker')).length, 2, 'the stopped one is not booked');
+    assert.match(booked.find(entry => entry.kind === 'reranked').text, /^"price cents" in the picker with fake-d1 in \d+ ms: \d of 4 moved, first now src\/tip\.js:2 \(was src\/\w+\.js:2\)$/);
+    assert.equal(meaning.reranker.snapshot().calls, 2, 'the stopped one is no call');
+    const none = await new Meaning({dataDir: scratch('rerank-none-'), embedder: fakeEmbedder()}).rerank(root, 'price');
     assert.deepEqual([none.results, none.rerank], [[], null], 'without a reranker it reorders nothing');
+    server.set({mode: 'down'});
+    await meaning.search(root, 'price cents', {book: false});
+    assert.equal((await meaning.meaningOnly(root, 'price cents')).reranker, undefined, 'down: the picker is not told to ask for a minute');
   } finally {
     await meaning.close();
     await server.close();
@@ -219,6 +226,31 @@ test('pair doctor: off says how to add one; on, it reranks a search\'s worth of 
     assert.match(slow.text, /no answer within 100 ms\. Searches keep their own order; fewer pieces \("top", now 10\) or a higher "timeoutMs" lets it rerank$/);
     assert.match((await rerankCheck({...config, meaning: false}, null)).text, /search by meaning is off in the config/);
   } finally {
+    await server.close();
+  }
+});
+
+test('one rerank at a time: a search while one runs keeps its order, and a picker\'s reranks wait behind it, the latest only', async () => {
+  const server = await fakeRerankServer({favourite: 'waiter', mode: 'slow', delayMs: 200});
+  const root = project();
+  const dataDir = scratch('rerank-data-');
+  const meaning = new Meaning({dataDir, embedder: fakeEmbedder(), reranker: fakeReranker(server.baseUrl)});
+  try {
+    fakeModel(dataDir);
+    await ready(meaning, root);
+    const shown = (await meaning.search(root, 'price cents', {rerank: false, book: false})).results;
+    const first = meaning.search(root, 'price cents', {book: false});
+    await new Promise(resolve => setTimeout(resolve, 30));
+    const busy = await meaning.search(root, 'price cents', {book: false});
+    assert.equal(busy.rerank.why, 'busy', 'the model gets one question at a time');
+    assert.deepEqual(busy.results.map(result => result.file), shown.map(result => result.file));
+    const [a, b, c] = [meaning.rerank(root, 'a'), meaning.rerank(root, 'b'), meaning.rerank(root, 'price cents')];
+    assert.equal((await first).rerank.applied, true);
+    const answers = await Promise.all([a, b, c]);
+    assert.deepEqual(answers.map(answer => answer.rerank.why ?? 'applied'), ['aborted', 'aborted', 'applied'], 'only the latest is asked');
+    assert.equal(server.requests.length, 2, 'the first search\'s and the latest picker\'s');
+  } finally {
+    await meaning.close();
     await server.close();
   }
 });

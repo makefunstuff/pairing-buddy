@@ -73,15 +73,19 @@ It is asked only where a list is settled, never on a key:
 
 - **`/find` and the `search` tool** wait for it, up to `timeoutMs` (3 s), then answer; `/find`'s first line says
   `reranked by d1-2B`. The `search` tool within a path is not reranked: the project's first ten may be none of the path's.
-- **`vim.ui.select`** gets the reranked list, as `/find`.
 - **The live pickers** (Telescope and snacks.picker) show the words and then meaning as before, without waiting; once
-  the list has stayed as it is for `meaning_rerank_delay_ms` (400 ms) after meaning came, its first ten are reranked,
-  once. The title says `reranking` meanwhile and `reranked by d1-2B (2.4 s)` once it applied. A key before then drops
-  it. The piece you are on stays the one you are on, unless it was the first: then the new first one is. fzf-lua's list
-  only grows, so it is not reranked there.
+  the list has stayed as it is for `meaning_rerank_delay_ms` (400 ms) after meaning came, the fused ranking's first ten
+  (`/find`'s) go first, in the model's order, once; the rest of the list follows as it was. The title says `reranking`
+  meanwhile and `reranked by d1-2B (2.4 s)` once it applied. A key before then drops it. The piece you are on stays
+  the one you are on, wherever it moves. fzf-lua's list only grows, so it is not reranked there; nor is a picker's
+  list while search by meaning has no model (words only), though `/find` reranks the words then.
+- **`vim.ui.select`** waits for it too, as `/find`, and its prompt says `(reranked by d1-2B)` when it applied.
 
 A model that is down, slower than `timeoutMs`, or answers oddly (no probability for a piece, or none that stands out)
 leaves the order as it was, and after a failure it is not asked for a minute, so a model that is off costs one wait.
+It gets one question at a time: a search while a rerank runs keeps its order, and a picker's rerank waits for the one
+under way (a newer one in its place drops it). On a CPU the model's time is the rerank's; a model that serves other
+work too is better given an instance of its own if you search often.
 
 ```jsonc
 "rerank": {"api": "system-one", "baseUrl": "http://127.0.0.1:8080/v1", "model": "d1-2B"}
