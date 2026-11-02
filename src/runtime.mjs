@@ -164,11 +164,14 @@ export class Runtime {
     });
   }
 
-  /** `:Pair find off`: the venv goes if Pair made it, and any wheel a daemon that died left. Resolves true when the venv went. */
-  async remove() {
+  /**
+   * `:Pair find off`: the venv goes if Pair made it, and any wheel a daemon that died left. Resolves true when the venv
+   * went. `keep` keeps the venv: voice's LFM3-Omni runs in it too (omni.mjs).
+   */
+  async remove({keep = false} = {}) {
     const left = await readdir(meaningDir(this.dataDir)).catch(() => []);
     for (const name of left.filter(name => name.startsWith('wheel-'))) await rm(join(meaningDir(this.dataDir), name), {recursive: true, force: true});
-    if (!madeByPair(this.dataDir)) return false;
+    if (!madeByPair(this.dataDir) || keep) return false;
     await rm(venvPath(this.dataDir), {recursive: true, force: true});
     await rm(madePath(this.dataDir), {force: true});
     return true;

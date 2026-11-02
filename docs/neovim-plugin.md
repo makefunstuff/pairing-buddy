@@ -147,6 +147,7 @@ to standard ones and does not fade.
 | `:Pair end` | End the session now with its [debrief](neovim.md#the-morning-pick-up-and-the-days-end), which the next session in this project starts from (it also [ends by itself](memory.md#no-ceremony-a-session-starts-and-ends-by-itself)) |
 | `:Pair first <step>` | Tomorrow's first step, with a `file:line` to land on: it replaces the last debrief's in a session with no work yet, else this session's debrief takes it |
 | `:Pair listen [cancel]` | Push-to-talk without the key: works as a tap of `Alt-t`; `cancel` drops what is being recorded ([voice.md](voice.md)) |
+| `:Pair voice on` / `:Pair voice off` | Download LFM3-Omni for voice, once (4.0 GB, said before it starts) / stop the download or delete it ([voice.md](voice.md#1-lfm3-omni)) |
 | `:Pair chat` | The chat in a terminal buffer on the right, for Neovim without herdr ([without herdr](neovim.md#without-herdr)) |
 | `:Pair stop` | Disconnect this Neovim, and stop reconnecting |
 

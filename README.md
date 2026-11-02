@@ -120,8 +120,8 @@ your keys and logins).
   code by your words on every key and by what you mean as you pause, from a local index (EmbeddingGemma 2, or an
   embedding model of your own) Pair keeps up to date in the background, and optionally a small decision model that
   reranks a settled list's first pieces
-- [Push-to-talk](docs/voice.md): ask aloud, heard by whisper.cpp on your CPU or an OpenRouter model, with answers
-  read aloud when you are away
+- [Push-to-talk](docs/voice.md): ask aloud, heard by LFM3-Omni on your CPU (or whisper.cpp, or an OpenRouter model),
+  with answers read aloud when you are away, or always in talk
 - [Models and providers](docs/models.md): local servers, API keys, subscription logins, one model for both roles,
   and the optional [decision model](docs/decision.md)
 - Reference: [configuration](docs/config.md), [Neovim plugin](docs/neovim-plugin.md), [commands](docs/cli.md)

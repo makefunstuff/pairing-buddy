@@ -75,3 +75,9 @@ part of the repository.
 folder when you say yes, and the LiteRT-LM runtime (`litert-lm-api`, Apache-2.0), whose wheel from PyPI
 `:Pair find on` installs with pip into a venv in that folder, by the SHA-256 in `src/meaning-runtime.txt`. Neither is
 in the repository or the npm package.
+
+[Voice](docs/voice.md)'s LFM3-Omni-2B (`litert-community/LFM3-Omni-2B-LiteRT`, LFM Open License v1.0 for the weights,
+Apache-2.0 for its `runner/*.py`) is downloaded at run time into Pair's data folder when you say so (`:Pair voice on`),
+and so are its Python packages, LiteRT (`ai-edge-litert`, Apache-2.0), `ml-dtypes` (Apache-2.0), NumPy (BSD-3-Clause)
+and `tokenizers` (Apache-2.0), whose wheels from PyPI `:Pair voice on` installs into search by meaning's venv by the
+SHA-256 in `src/voice-runtime.txt`. None of them is in the repository or the npm package.

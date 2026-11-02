@@ -76,7 +76,7 @@ Write down four facts for the steps below:
    - ripgrep (`rg`) for Scout's code search, and on Linux bubblewrap (`bwrap`) to run Pair's commands in a sandbox.
      Recommended.
    - The shell hook, which tells Pair the exit codes of the commands you run (one line in the shell rc file).
-   - Push-to-talk (whisper.cpp and a recorder).
+   - Push-to-talk (LFM3-Omni's 4.0 GB download, or whisper.cpp, and a recorder).
    - Search by meaning (`Alt-s`): the word search needs nothing; for meaning, `:Pair find on` in Neovim fetches
      EmbeddingGemma 2 and LiteRT-LM itself, with Python 3.10+ and its venv module (`python3-venv` on Debian and
      Ubuntu), on Linux x86-64 or ARM64 or macOS on Apple silicon; or an embedding model of your own
@@ -647,9 +647,10 @@ prints `hook-ok`.
 network off`. If bubblewrap cannot run here, it says so; then `"scoutPane": {"sandbox": false}` in the config
 silences the warning (commands then run unsandboxed, after the command policy).
 
-**Push-to-talk.** Follow [voice.md](docs/voice.md#setup): build whisper.cpp for the CPU, a recorder (`pw-record`,
-`parec` or `arecord`), and a `"voice"` entry in the config. Expected: `✓ voice  pw-record records, whisper.cpp hears
-a second in … s on the CPU`.
+**Push-to-talk.** Follow [voice.md](docs/voice.md#setup): a recorder (`pw-record`, `parec` or `arecord`),
+`"voice": {}` in the config, and `:Pair voice on` in Neovim, which installs LFM3-Omni's Python packages and downloads
+the model once (42 MB and 4.0 GB, said before it starts); or whisper.cpp built for the CPU instead. Expected: `✓ voice  pw-record records,
+LFM3-Omni-2B (int8) … hears a second in … s on the CPU, and it reads answers aloud …`.
 
 **Search by meaning.** Tell the human to run `:Pair find on` in Neovim, their yes to the downloads: Pair installs LiteRT-LM in a
 venv of its own and downloads EmbeddingGemma 2 (165 MB), once ([meaning.md](docs/meaning.md)). Without a fitting
