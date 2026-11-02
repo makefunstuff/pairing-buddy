@@ -3,7 +3,8 @@
 -- pieces of code closest to what the words mean join the list below what it shows, so nothing you see moves (see
 -- src/meaning.mjs). Telescope, else snacks.picker, else fzf-lua, else vim.ui.select. Enter opens a piece at its line;
 -- in Telescope <C-q> sends the hits to the quickfix list. The words work without any model; meaning needs one:
--- :Pair find on downloads EmbeddingGemma 2 once, or an "embedding" model in the config. :Pair find off deletes them.
+-- :Pair find on installs LiteRT-LM and downloads EmbeddingGemma 2 once, or an "embedding" model in the config. :Pair
+-- find off deletes them.
 local M = {}
 
 local deps = {}
@@ -131,6 +132,7 @@ function Live:title()
   if info.state == 'off' then parts[#parts + 1] = 'words only: :Pair find on adds meaning'
   elseif info.state == 'disabled' then parts[#parts + 1] = 'off in the config: "meaning": false'
   elseif info.state == 'downloading' then parts[#parts + 1] = 'words only while its model downloads'
+  elseif info.state == 'installing' then parts[#parts + 1] = 'words only while LiteRT-LM installs'
   elseif info.problem then parts[#parts + 1] = 'words only: ' .. info.problem
   end
   if info.reading then

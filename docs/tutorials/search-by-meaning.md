@@ -16,22 +16,22 @@ meaning`: no model yet.
 
 ## 2. Add meaning
 
-Search by meaning runs its model, EmbeddingGemma 2, with LiteRT-LM in a small Python helper. Put it in a venv where
-Pair looks for it (Python 3.10 or later):
+Run `:Pair find on`. Search by meaning runs its model, EmbeddingGemma 2, with LiteRT-LM in a small Python helper, and
+Pair fetches both itself; it first says what and how big:
 
-```sh
-python3 -m venv ~/.local/state/pairing-buddy/meaning/venv
-~/.local/state/pairing-buddy/meaning/venv/bin/pip install litert-lm-api==0.19.0
+```
+Pair: Search by meaning: installing LiteRT-LM 0.19.0 (33 MB from PyPI, SHA-256 pinned) in a venv in Pair's data folder, then downloading EmbeddingGemma 2 (text, 270M) (165 MB from Hugging Face, SHA-256 checked), once…
 ```
 
-`pair doctor` checks it: `✓ meaning  words only: :Pair find on downloads EmbeddingGemma 2 (text, 270M) (165 MB, once)
-for meaning, or set an "embedding" model; LiteRT-LM 0.19.0 in … is ready`.
+It needs Python 3.10 or later on your machine; the venv is Pair's own, in its data folder, and pip installs only the
+one wheel, pinned by its SHA-256. Without such a Python (or on a machine LiteRT-LM has no wheel for), it says what to
+do in one line and the word search keeps working. Neovim shows how far each download is, and the ledger books both.
 
-Then `:Pair find on` downloads the model (165 MB from Hugging Face, checked by its SHA-256), and Pair embeds the
-project in the background, on two cores at low priority; Neovim shows how far as a progress message. A project the
-size of Pair's own (550 files) takes about nine minutes the first time; after that, a save only embeds the pieces
-you changed. (Already running an embedding model, in llama.cpp or Ollama? Put it in the config as `embedding` instead:
-[another embedding model](../meaning.md#another-embedding-model).)
+Then Pair embeds the project in the background, on two cores at low priority; Neovim shows how far as a progress
+message. A project the size of Pair's own (550 files) takes about nine minutes the first time; after that, a save
+only embeds the pieces you changed. (Already running an embedding model, in llama.cpp or Ollama? Put it in the config
+as `embedding` instead: [another embedding model](../meaning.md#another-embedding-model). Would rather install
+LiteRT-LM by hand, or have a Python with it already? See [turn EmbeddingGemma on](../meaning.md#turn-embeddinggemma-on).)
 
 ## 3. Search
 
@@ -48,8 +48,8 @@ list to quickfix. In Visual mode, `Alt-s` starts with the selected words; `:Pair
 
 ## 4. What it did
 
-`:Pair today` lists the index's build and each piece you opened from a search, and `⏎` on one shows the ranking: each
+`:Pair today` lists LiteRT-LM's install, the model's download, the index's build and each piece you opened from a search, and `⏎` on one shows the ranking: each
 piece's similarity to your words, and whether your words were in it.
 
-`:Pair find off` deletes the model and the indexes again. More, including how the two rankings meet and what the
+`:Pair find off` deletes the model, the indexes and the venv Pair made again. More, including how the two rankings meet and what the
 index holds, is in [Search by meaning](../meaning.md).

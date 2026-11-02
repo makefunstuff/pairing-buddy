@@ -18,6 +18,7 @@ import {Embedder, HttpEmbedder, meaningDir, MODEL, modelPath, modelReady, python
 import {FAST_MS, SLOW_MS} from './pace.mjs';
 import {levelGroups, probeModel, probeThinking} from './probe.mjs';
 import {requestDaemon} from './protocol.mjs';
+import {madeByPair, venvPython, wheelOf} from './runtime.mjs';
 import {sandboxWorks} from './sandbox.mjs';
 import {keyVariables, readServiceEnv} from './service-env.mjs';
 import {serviceManager} from './service.mjs';
@@ -36,6 +37,7 @@ const fail = (name, text) => ({level: 'fail', name, text});
 export const tilde = path => (path.startsWith(homedir()) ? `~${path.slice(homedir().length)}` : path);
 const seconds = ms => `${(ms / 1000).toFixed(1)} s`;
 const count = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`;
+const mib = bytes => Math.round((bytes ?? 0) / (1 << 20));
 const onPath = (name, env) => (env.PATH ?? '').split(delimiter).some(dir => existsSync(join(dir, name)));
 
 /** Every check, in order, as `{level: ok|warn|fail, name, text}`; yields each as soon as it is known. */
@@ -267,11 +269,17 @@ export async function voiceCheck(voice, found = name => onPath(name, process.env
   return ok('voice', `${records} records, ${hears}${reads}`);
 }
 
-/** What to run for search by meaning's runtime: a venv in Pair's data folder, where Pair looks for it. */
-export const runtimeInstall = dataDir => {
-  const venv = join(meaningDir(dataDir), 'venv');
-  return `python3 -m venv ${tilde(venv)} && ${tilde(venv)}/bin/pip install ${RUNTIME}`;
-};
+/**
+ * How search by meaning's runtime gets there: `:Pair find on` installs it in a venv of Pair's; the config's own
+ * meaning.python is the user's to fill.
+ */
+export const runtimeInstall = config => (config.meaning?.python
+  ? `${tilde(pythonOf(config.meaning, config.dataDir))} -m pip install ${RUNTIME}, or leave meaning.python out and :Pair find on installs it`
+  : wheelOf() ? `:Pair find on installs it (${Math.round(wheelOf().bytes / 1e6)} MB, in a venv in Pair's data folder)`
+    : `LiteRT-LM has no wheel for ${process.platform} ${process.arch}: set an "embedding" model instead`);
+
+/** Whose the Python with LiteRT-LM is, for people: Pair's venv says so. */
+const whose = (config, python) => (!config.meaning?.python && python === venvPython(config.dataDir) && madeByPair(config.dataDir) ? ' (the venv Pair made)' : '');
 
 /** How long ago `at` was, for people: "4 min ago", "3 h ago", "2 days ago". */
 export function ago(at, now = Date.now()) {
@@ -343,14 +351,19 @@ export async function meaningCheck(config, status, {runtime = runtimeOf, fetch =
       return fail('meaning', `${error.message}: search by meaning has the word search only (embedding in the config)`);
     }
   }
+  if (live?.state === 'installing' || live?.state === 'downloading') {
+    const what = live.state === 'installing' ? `installs LiteRT-LM (${mib(live.installing)} MiB so far)` : `downloads ${MODEL.name} (${mib(live.downloading)} of 157 MiB)`;
+    return ok('meaning', `words only while :Pair find on ${what}${indexesText(config, live)}`);
+  }
   const python = pythonOf(config.meaning, config.dataDir);
   const found = await runtime(python);
-  const has = found.version ? `LiteRT-LM ${found.version} in ${tilde(python)}` : null;
+  const has = found.version ? `LiteRT-LM ${found.version} in ${tilde(python)}${whose(config, python)}` : null;
   if (!modelReady(config.dataDir)) {
-    const needs = has ? `${has} is ready` : `it also needs LiteRT-LM: ${runtimeInstall(config.dataDir)}`;
-    return ok('meaning', `words only: :Pair find on downloads ${MODEL.name} (165 MB, once) for meaning, or set an "embedding" model; ${needs}${indexesText(config, live)}`);
+    const fetches = has || config.meaning?.python || !wheelOf() ? `downloads ${MODEL.name} (165 MB, once)` : `installs LiteRT-LM and downloads ${MODEL.name} (165 MB), once,`;
+    const needs = has ? `; ${has} is ready` : config.meaning?.python || !wheelOf() ? `; ${found.problem}: ${runtimeInstall(config)}` : '';
+    return ok('meaning', `words only: :Pair find on ${fetches} for meaning, or set an "embedding" model${needs}${indexesText(config, live)}`);
   }
-  if (!has) return fail('meaning', `${MODEL.name} is downloaded, but ${found.problem}: ${runtimeInstall(config.dataDir)} (or set meaning.python)`);
+  if (!has) return fail('meaning', `${MODEL.name} is downloaded, but ${found.problem}: ${runtimeInstall(config)}`);
   const answered = await answers(config);
   if (answered.problem) return fail('meaning', `${MODEL.name} on ${has} does not answer: ${answered.problem}`);
   const model = `${MODEL.name} (revision ${MODEL.revision.slice(0, 7)}, SHA-256 checked) on ${has} answers (${answered.ms} ms with loading)`;

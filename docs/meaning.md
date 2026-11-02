@@ -13,8 +13,8 @@ Telescope `<C-q>` sends the hits to the quickfix list.
 
 The word search works on its own, with no model at all. Meaning needs an embedding model: EmbeddingGemma 2, which
 Pair downloads once when you say so and runs on your machine, or a model of your own behind an OpenAI-compatible
-`/v1/embeddings` ([below](#another-embedding-model)). Nothing leaves the machine but EmbeddingGemma's one download,
-unless you point Pair at a server elsewhere.
+`/v1/embeddings` ([below](#another-embedding-model)). Nothing leaves the machine but EmbeddingGemma's one download and
+its runtime's, unless you point Pair at a server elsewhere.
 
 ## Search
 
@@ -22,7 +22,7 @@ unless you point Pair at a server elsewhere.
 | --- | --- |
 | `Alt-s` | Opens the live picker; in Visual mode, with the selected words typed in it |
 | `:Pair find [words]` | The same, with the words typed in it |
-| `:Pair find on` / `:Pair find off` | Download EmbeddingGemma 2 and embed the open projects / delete the model and every index |
+| `:Pair find on` / `:Pair find off` | Install LiteRT-LM, download EmbeddingGemma 2 and embed the open projects / delete the model, every index and the venv Pair made |
 | `:Pair index rebuild` | Make the project's index again from its files, every vector too |
 | `/find <words>` | In the [chat](chat.md): the ten best pieces, meaning and words fused, as `file:line` lines |
 
@@ -137,7 +137,8 @@ wait for your break are the same as for every trail.
 pieces, 13780 KB`; a save's few pieces get no line of their own), each piece you open from a picker (`searched by
 meaning "method that removes user" in the picker: 1 result, first src/teams.js:42`), each `/find` and `search` tool
 search (`⏎` shows the ranking with each piece's similarity and whether your words matched), each lookup for the
-search trail, `:Pair index rebuild`, the model's download, and `:Pair find off` deleting it. The words you type on
+search trail, `:Pair index rebuild`, LiteRT-LM's install (`⏎` shows the venv's Python), the model's download,
+and `:Pair find off` deleting them. The words you type on
 the way are not booked.
 
 ## Why this model and runtime
@@ -150,8 +151,8 @@ the way are not booked.
   native CPU kernels. The alternatives that run inside Node were tried on this repository: ONNX Runtime Web (the
   WebAssembly build) took 2.5 s a piece where LiteRT-LM takes 0.13 s, so the first index would take hours;
   `onnxruntime-node` downloads its CUDA libraries from NuGet when it is installed on Linux, a network step on every
-  `npm install` of Pair; and LiteRT-LM's own npm package is for the browser and WebGPU. A Python helper that you
-  install once costs Pair nothing for everyone who never turns it on.
+  `npm install` of Pair; and LiteRT-LM's own npm package is for the browser and WebGPU. A Python helper installed
+  when you turn it on costs Pair nothing for everyone who never does.
 - **The download.** The pinned revision `9be6e8b9` of
   [litert-community/embeddinggemma-2-text-270m-litert-lm](https://huggingface.co/litert-community/embeddinggemma-2-text-270m-litert-lm),
   file `embeddinggemma-2-text-270m.litertlm`, 164,626,432 bytes, written to a `.part` file while its SHA-256 is taken
@@ -160,32 +161,46 @@ the way are not booked.
 
 ### Turn EmbeddingGemma on
 
-The first time, `:Pair find on` asks nothing more and downloads it (165 MB from Hugging Face, once, checked by its
-SHA-256), then embeds the open projects in the background. Off by default, because a download and a few minutes of
-two cores for the first build are not something Pair should do by itself.
+`:Pair find on` asks nothing more: turning it on is the yes. It says once, up front, what it fetches and how big, then
+shows how far as it goes, as Neovim messages:
+
+1. **LiteRT-LM** 0.19.0, the runtime, unless the Python Pair would run already has that version. Pair makes a virtual
+   environment in its data folder, `~/.local/state/pairing-buddy/meaning/venv`, with the first `python3` (or
+   `python3.14` down to `python3.10`) that is 3.10 or later, on PATH or where Homebrew, python.org's installer, pyenv
+   and `~/.local/bin` keep them. It downloads the one wheel for your machine from PyPI (17 to 33 MB), kept only if its
+   SHA-256 is the one in Pair's lock file (`src/meaning-runtime.txt`), and pip installs it from that file into the
+   venv: no index, `--require-hashes`, no other package, nothing built from source. Nothing goes outside that folder.
+2. **EmbeddingGemma 2**, 165 MB from Hugging Face, once, checked by its SHA-256.
+
+Then Pair embeds the open projects in the background. It is off by default, because two downloads and a few minutes
+of two cores for the first build are not something Pair should do by itself. The ledger books what came.
 
 The model runs on [LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM), Google's on-device runtime, in a small
-Python helper Pair starts. Install it once, the way whisper.cpp is installed for [voice](voice.md): Pair looks for a
-virtual environment in its data folder first.
+Python helper Pair starts. LiteRT-LM has wheels for Linux (x86-64 and ARM64, glibc 2.27 or later) and macOS on Apple
+silicon. If Python 3.10 or later is missing, cannot make a venv (Debian and Ubuntu put that in `python3-venv`), or
+the machine has no wheel, `:Pair find on` says so in one line with what to do, leaves nothing behind, and the word
+search works as before. Any other Python with `litert-lm-api` works too: set `"meaning": {"python":
+"/path/to/python"}` in the [config](config.md#meaning). It wins: Pair installs nothing into it and never deletes it.
+
+If you would rather install it by hand (say, when PyPI is reached only through a proxy pip knows of), make the same
+venv yourself, and `:Pair find on` uses it as it is; it is yours, so `:Pair find off` leaves it. The lock file is
+`src/meaning-runtime.txt` in Pair's install (its npm package, or your plugin manager's checkout):
 
 ```sh
 python3 -m venv ~/.local/state/pairing-buddy/meaning/venv
-~/.local/state/pairing-buddy/meaning/venv/bin/pip install litert-lm-api==0.19.0
+~/.local/state/pairing-buddy/meaning/venv/bin/pip install --require-hashes -r <Pair's folder>/src/meaning-runtime.txt
 ```
 
-It needs Python 3.10 or later; LiteRT-LM has wheels for Linux (x86-64 and ARM64) and macOS on Apple silicon.
-Pair looks for it each time the helper starts, so no restart is needed after you install it; the next search uses
-it. Any other Python with `litert-lm-api` works too: set `"meaning": {"python": "/path/to/python"}` in the
-[config](config.md#meaning). `pair doctor` says what is missing, with the line to run, and how big and how old each
-index is:
+`pair doctor` says what is missing and what turning it on fetches, and how big and how old each index is:
 
 ```
-✓ meaning  EmbeddingGemma 2 (text, 270M) (revision 9be6e8b, SHA-256 checked) on LiteRT-LM 0.19.0 in ~/.local/state/pairing-buddy/meaning/venv/bin/python; pairing-buddy: 549 files, 6639 pieces, 13.5 MB, updated 4 min ago, 83 ms a piece
+✓ meaning  EmbeddingGemma 2 (text, 270M) (revision 9be6e8b, SHA-256 checked) on LiteRT-LM 0.19.0 in ~/.local/state/pairing-buddy/meaning/venv/bin/python (the venv Pair made); pairing-buddy: 549 files, 6639 pieces, 13.5 MB, updated 4 min ago, 83 ms a piece
 ```
 
 ## Turn it off
 
-`:Pair find off` stops the embedder and deletes EmbeddingGemma and every index (in Pair's data folder, and the open
-projects' `.pair/index.sqlite`); the word index is made again, in seconds, at the next search. With an `embedding`
-model, it is not asked again until `:Pair find on`. `"meaning": false` in
-the [config](config.md#meaning) turns it all off for good: `Alt-s` then says so, and nothing is downloaded or indexed.
+`:Pair find off` stops the embedder and deletes EmbeddingGemma, every index (in Pair's data folder, and the open
+projects' `.pair/index.sqlite`) and the venv with LiteRT-LM if Pair made it (never a venv you made, nor
+`meaning.python`); a download or install under way stops and leaves nothing. The word index is made again, in
+seconds, at the next search. With an `embedding` model, it is not asked again until `:Pair find on`. `"meaning":
+false` in the [config](config.md#meaning) turns it all off for good: `Alt-s` then says so, and nothing is downloaded or indexed.

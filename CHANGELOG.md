@@ -24,8 +24,7 @@ release is cut.
   vector by the hash of its text, so a worktree on another branch embeds only what that branch changed; a save embeds only the pieces that changed,
   and a first build runs in the background, its progress shown as Neovim's progress message. The words need no model;
   meaning runs on EmbeddingGemma 2 (text, 270M, Apache-2.0, 256 numbers a piece) on LiteRT-LM in a small Python helper
-  after its one download (`:Pair find on`, 165 MB, pinned revision, SHA-256 checked; `pip install
-  litert-lm-api==0.19.0`), or on an embedding model of your own behind an OpenAI-compatible `/v1/embeddings`, the new
+  after its one download (`:Pair find on`, 165 MB, pinned revision, SHA-256 checked), or on an embedding model of your own behind an OpenAI-compatible `/v1/embeddings`, the new
   `embedding` entry next to the models (nomic-embed-code, jina-embeddings-v2-base-code, with their prompts). The search
   embeds your words once and compares them with every vector: 1.5 ms for Pair's 6,639 pieces, 16 ms for 100,000. On
   Pair's own repository the first build took 9 minutes on the default two cores (13.5 MB) and a search by
@@ -34,6 +33,17 @@ release is cut.
   index is, and the ledger books each build and each piece you open from a search. With it on, the search trail's
   remark also gets the code closest to what each of your searches means; when Pair speaks is unchanged. See
   [meaning.md](docs/meaning.md).
+
+- **`:Pair find on` installs search by meaning's runtime itself.** No more `python3 -m venv` and `pip install` by
+  hand: it says up front what it fetches and how big (LiteRT-LM, 17 to 33 MB from PyPI, and EmbeddingGemma 2, 165 MB),
+  makes a venv in Pair's data folder (`meaning/venv`) with your Python 3.10 or later (on PATH, or Homebrew's, pyenv's
+  or `~/.local/bin`'s), downloads `litert-lm-api==0.19.0`'s wheel for your machine by its SHA-256, its progress shown
+  in Neovim as the model's download is, and pip installs it from that file (`src/meaning-runtime.txt`, no index,
+  `--require-hashes`, no other package). Without a Python 3.10+, its venv module or
+  a wheel for the machine, it says what to do in one line, leaves nothing behind, and the word search keeps working.
+  The ledger books the install, `:Pair find off` deletes the venv Pair made (never one you made, nor
+  `"meaning": {"python": …}`, which still wins and is never installed into), and `pair doctor` says what turning it
+  on fetches, and whose venv runs the model. Installing by hand stays possible ([meaning.md](docs/meaning.md#turn-embeddinggemma-on)).
 
 - **Pair works on herdr-core and Shepherdr 2.1 as on herdr and Shepherdr 2.0**, and tells which one it is in from the
   terminal's environment, with nothing to configure (`HERDR_SOCKET_PATH` for herdr; `HC_SOCKET` and `HC_TERMINAL_ID`

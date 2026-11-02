@@ -5,11 +5,14 @@
 // ranking, and choosing a piece opens it at its line. The daemon's fake embedder stands in for EmbeddingGemma 2.
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {mkdirSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdirSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {fauxAssistantMessage, fauxText} from '@earendil-works/pi-ai';
+import {pythonOf} from '../src/embedder.mjs';
+import {Runtime, WHEELS} from '../src/runtime.mjs';
 import {fakeEmbedder, fakeModel} from './fake-embedder.mjs';
+import {fakePython, fakeWheel} from './fake-python.mjs';
 import {hasNvim, pairInNvim, until} from './nvim-harness.mjs';
 import {scratch} from './temp.mjs';
 
@@ -175,6 +178,49 @@ test('/find in the chat: the fused ranking, with how it ranked', {skip: hasNvim 
     assert.equal(found.state, 'on');
     assert.equal(found.results[0].file, 'deliver.js');
     assert.equal(found.results[0].path, join(project, 'deliver.js'));
+  } finally {
+    await stop();
+  }
+});
+
+test(':Pair find on installs LiteRT-LM itself, says what comes and how big up front, tells how far, books it; off deletes Pair\'s venv', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
+  // The daemon's runtime, made once its data folder is known: with no Python first, then with a fake one.
+  let real = null;
+  const runtime = {bytes: WHEELS['linux x64'].bytes, check: () => real.check(), install: options => real.install(options), remove: () => real.remove()};
+  const {dataDir, messages, send, stop} = await pairInNvim('deliver', {meaningWith: {embedder: fakeEmbedder(), runtime}});
+  const said = () => messages.filter(message => message.type === 'meaning_state').map(message => message.text);
+  const served = fakeWheel({bytes: 9 << 20});
+  const runtimeWith = python => new Runtime({dataDir, python: () => pythonOf({}, dataDir), candidates: [python], ...served});
+  try {
+    fakeModel(dataDir); // the model is here: only LiteRT-LM is missing, as for someone who turned it on before
+    real = runtimeWith(join(scratch('no-python-'), 'python3'));
+    send({type: 'meaning_on'});
+    await until(() => said().some(text => /stays off/.test(text)), 'the failure');
+    assert.match(said()[0], /^Search by meaning: installing LiteRT-LM 0\.19\.0 \(33 MB from PyPI, SHA-256 pinned\) in a venv in Pair's data folder, once…$/, 'said once, up front, with its size');
+    assert.match(said().at(-1), /^Search by meaning stays off: LiteRT-LM needs Python 3\.10 or later, and there is no python3 on PATH: install one, or set "meaning": \{"python": …\} to a Python with litert-lm-api==0\.19\.0, or an "embedding" model\. The word search works as before\.$/);
+    assert.ok(!existsSync(join(dataDir, 'meaning', 'venv')));
+
+    messages.length = 0;
+    real = runtimeWith(fakePython({version: '3.12'}));
+    send({type: 'meaning_on'});
+    await until(() => said().some(text => /is on/.test(text)), 'search by meaning on');
+    assert.deepEqual(said(), [
+      'Search by meaning: installing LiteRT-LM 0.19.0 (33 MB from PyPI, SHA-256 pinned) in a venv in Pair\'s data folder, once…',
+      'Downloading LiteRT-LM 0.19.0: 8 of 9 MiB…',
+      'Search by meaning is on: Pair indexes this project in the background.',
+    ]);
+    await until(() => {
+      send({type: 'today'});
+      return JSON.stringify(messages.findLast(message => message.type === 'ledger') ?? {}).includes('LiteRT-LM 0.19.0 for search by meaning');
+    }, 'the install in the ledger');
+    const ledger = JSON.stringify(messages.findLast(message => message.type === 'ledger'));
+    assert.match(ledger, /"installed","text":"LiteRT-LM 0\.19\.0 for search by meaning, in a venv Pair made with Python 3\.12","more":true/, 'what came, and ⏎ shows where');
+
+    messages.length = 0;
+    send({type: 'meaning_off'});
+    await until(() => said().length, 'off');
+    assert.equal(said()[0], 'Search by meaning is off: its model and indexes, and the venv with LiteRT-LM that Pair made are deleted.');
+    assert.ok(!existsSync(join(dataDir, 'meaning', 'venv')), 'the venv Pair made is gone');
   } finally {
     await stop();
   }

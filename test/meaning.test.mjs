@@ -197,7 +197,7 @@ test('the index: SQLite in Pair\'s data folder, words without a model, meaning o
     assert.deepEqual(embedder.calls.slice(calls).flatMap(call => call.texts).map(text => text.replace(/^title: (\S+) .*$/s, '$1')), ['src/cart.js'], 'only the changed file\'s piece is embedded');
     await again.saved(root, join(root, 'secret.txt'));
     assert.ok(!again.indexes.get(root).files.has('secret.txt'), 'a file git ignores is not indexed when saved');
-    assert.equal(await again.turnOn(), false, 'on again downloads nothing');
+    assert.deepEqual(await again.turnOn(), {runtime: null, model: false}, 'on again downloads nothing');
     await again.turnOff();
     assert.equal(again.state, 'off');
     assert.ok(!existsSync(modelPath(dataDir)) && !existsSync(path), 'off deletes the model and the indexes');
@@ -589,11 +589,17 @@ test('pair doctor: off says what turning it on takes; on, the runtime must be th
   assert.equal((await meaningCheck({dataDir, meaning: false}, null, {runtime: there})).text, 'search by meaning is off in the config ("meaning": false)');
   const off = await meaningCheck(config, null, {runtime: none});
   assert.equal(off.level, 'ok');
-  assert.match(off.text, /^words only: :Pair find on downloads EmbeddingGemma 2 \(text, 270M\) \(165 MB, once\) for meaning, or set an "embedding" model; it also needs LiteRT-LM: python3 -m venv .*meaning\/venv && .*pip install litert-lm-api==0\.19\.0$/);
+  assert.equal(off.text, 'words only: :Pair find on installs LiteRT-LM and downloads EmbeddingGemma 2 (text, 270M) (165 MB), once, for meaning, or set an "embedding" model');
+  const ready = await meaningCheck(config, null, {runtime: there});
+  assert.match(ready.text, /^words only: :Pair find on downloads EmbeddingGemma 2 \(text, 270M\) \(165 MB, once\) for meaning, or set an "embedding" model; LiteRT-LM 0\.19\.0 in python3 is ready$/);
+  const own = await meaningCheck({dataDir, meaning: {python: '/opt/py/bin/python'}}, null, {runtime: async () => ({problem: '/opt/py/bin/python has no litert-lm-api'})});
+  assert.match(own.text, /; \/opt\/py\/bin\/python has no litert-lm-api: \/opt\/py\/bin\/python -m pip install litert-lm-api==0\.19\.0, or leave meaning\.python out and :Pair find on installs it$/, 'the config\'s own Python is the user\'s to fill');
+  const installing = await meaningCheck(config, {meaning: {state: 'installing', installing: 12 << 20, indexes: []}}, {runtime: none});
+  assert.equal(installing.text, 'words only while :Pair find on installs LiteRT-LM (12 MiB so far)');
   fakeModel(dataDir);
   const broken = await meaningCheck(config, null, {runtime: none});
   assert.equal(broken.level, 'fail');
-  assert.match(broken.text, /is downloaded, but python3 has no litert-lm-api/);
+  assert.match(broken.text, /is downloaded, but python3 has no litert-lm-api: (:Pair find on installs it \(\d+ MB, in a venv in Pair's data folder\)|LiteRT-LM has no wheel for .*)$/);
   const status = {meaning: {state: 'on', problem: null, msPerChunk: 140.4, indexes: [{root: '/src/shop', files: 12, chunks: 40, embedded: 30, bytes: 1 << 20, updatedAt: Date.now() - 3 * 3600_000}]}};
   const mute = await meaningCheck(config, status, {runtime: there, answers: async () => ({problem: 'the embedder stopped (exit 1)'})});
   assert.equal(mute.level, 'fail');

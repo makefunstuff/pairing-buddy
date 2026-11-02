@@ -3,6 +3,7 @@
 import {chmodSync, mkdirSync, unlinkSync} from 'node:fs';
 import {realpath} from 'node:fs/promises';
 import {createServer} from 'node:net';
+import {homedir} from 'node:os';
 import {basename, join, resolve} from 'node:path';
 import {AgentRelay, itemName} from './agent-relay.mjs';
 import {AgentBoard, STATUSES} from './agents.mjs';
@@ -10,6 +11,7 @@ import {oneAtATime} from './config.mjs';
 import {goalFromContext, SOURCES} from './context-card.mjs';
 import {loadSizedConfig} from './context-window.mjs';
 import {byUse, herdrFocus, noteEditor} from './editors.mjs';
+import {MODEL, RUNTIME} from './embedder.mjs';
 import {expireTries} from './gen-tree.mjs';
 import {gitRoot, repoNames} from './git.mjs';
 import {createDecider, DecisionModel} from './decision.mjs';
@@ -33,6 +35,7 @@ import {Pace} from './pace.mjs';
 import {probeModel} from './probe.mjs';
 import {projectContext} from './project-context.mjs';
 import {readMessages, sendMessage} from './protocol.mjs';
+import {RUNTIME_VERSION} from './runtime.mjs';
 import {configChanges, RESTART_FIELDS, watchConfig} from './reload.mjs';
 import {rememberScores} from './score-memory.mjs';
 import {ScoutPane} from './scout-pane.mjs';
@@ -76,6 +79,8 @@ export function healthNote(role, reason) {
 
 const timestamp = () => new Date().toTimeString().slice(0, 8);
 const defaultLog = line => process.stderr.write(`${timestamp()} ${line}\n`);
+const mb = bytes => Math.round(bytes / 1e6);
+const tilde = path => (path.startsWith(homedir()) ? `~${path.slice(homedir().length)}` : path);
 
 /**
  * `probe(role)` checks that a model answers (see probe.mjs); tests pass their own, a short `keepWarmMs`, a short
@@ -1031,42 +1036,63 @@ export async function startDaemon(config, {
     tell(`Rebuilding the search index from the files${meaning.state === 'on' ? ', every vector too' : ''}; the word search works again in a few seconds.`);
   }
 
-  /** `:Pair find on`: the model's one download, told as it goes, then the open projects' indexes. */
+  /**
+   * `:Pair find on`: LiteRT-LM's install and the model's download, each once and only if missing, said up front with
+   * their sizes and told as they go, then the open projects' indexes. What came goes in the ledger.
+   */
   async function meaningOn(client) {
     const tell = text => sendMessage(client.socket, {type: 'meaning_state', ...meaning.snapshot(), text});
     if (meaning.state === 'disabled') return tell('Search by meaning is off in the config ("meaning": false).');
-    if (meaning.state === 'on') {
-      await meaning.turnOn();
-      return tell('Search by meaning is already on: its model is here, and Pair indexes the open projects in the background.');
-    }
     if (config.embedding) { // nothing to download: the config's model is asked again
       await meaning.turnOn();
       return tell(`Search by meaning is on, with ${meaning.modelName}: Pair indexes this project in the background.`);
     }
-    let told = 0;
-    tell('Downloading EmbeddingGemma 2 for search by meaning (165 MB, once)…');
-    let downloaded;
+    if (meaning.state === 'installing' || meaning.state === 'downloading') { // said once already: this waits for it
+      await meaning.turnOn().catch(() => {});
+      return tell(meaning.state === 'on' ? 'Search by meaning is on: Pair indexes this project in the background.' : 'Search by meaning stays off: the :Pair find on under way did not finish.');
+    }
+    const needs = await meaning.needs();
+    if (!needs.runtime && !needs.model) {
+      await meaning.turnOn();
+      return tell('Search by meaning is already on: its model and LiteRT-LM are here, and Pair indexes the open projects in the background.');
+    }
+    const fetches = [
+      ...(needs.runtime?.bytes ? [`installing LiteRT-LM ${RUNTIME_VERSION} (${mb(needs.runtime.bytes)} MB from PyPI, SHA-256 pinned) in a venv in Pair's data folder`] : []),
+      ...(needs.model ? [`downloading ${MODEL.name} (${mb(MODEL.bytes)} MB from Hugging Face, SHA-256 checked)`] : []),
+    ];
+    // No wheel for this machine: turnOn says so at once, and nothing is promised first.
+    if (fetches.length && (!needs.runtime || needs.runtime.bytes)) tell(`Search by meaning: ${fetches.join(', then ')}, once…`);
+    const told = {runtime: 0, model: 0};
+    let done;
     try {
-      downloaded = await meaning.turnOn({progress: bytes => {
-        if (bytes - told < 32 << 20) return;
-        told = bytes;
-        tell(`Downloading EmbeddingGemma 2: ${Math.round(bytes / (1 << 20))} of 157 MiB…`);
+      done = await meaning.turnOn({progress: ({phase, bytes, total}) => {
+        if (bytes - told[phase] < (phase === 'runtime' ? 8 : 32) << 20) return;
+        told[phase] = bytes;
+        const what = `Downloading ${phase === 'runtime' ? `LiteRT-LM ${RUNTIME_VERSION}` : MODEL.name}`;
+        tell(`${what}: ${Math.round(bytes / (1 << 20))} of ${Math.round(total / (1 << 20))} MiB…`);
       }});
     } catch (error) {
-      return tell(`Search by meaning stays off: ${error.message}`);
+      return tell(`Search by meaning stays off: ${error.message.replace(/\.$/, '')}. The word search works as before.`);
     }
-    if (downloaded) {
-      for (const session of live.values()) session.ledger.add('downloaded', 'EmbeddingGemma 2 for search by meaning (165 MB, SHA-256 checked); indexing this project in the background');
+    if (done.runtime) {
+      const {python, version, pythonVersion, made} = done.runtime;
+      const where = made ? `a venv Pair made with Python ${pythonVersion}` : 'the venv already in Pair\'s data folder';
+      const detail = {output: `${RUNTIME}, its wheel from PyPI by the SHA-256 in src/meaning-runtime.txt\n${tilde(python)}${made ? '\n:Pair find off deletes this venv' : ''}`};
+      for (const session of live.values()) session.ledger.add('installed', `LiteRT-LM ${version} for search by meaning, in ${where}`, {detail});
+    }
+    if (done.model) {
+      for (const session of live.values()) session.ledger.add('downloaded', `${MODEL.name} for search by meaning (${mb(MODEL.bytes)} MB, SHA-256 checked); indexing this project in the background`);
     }
     tell('Search by meaning is on: Pair indexes this project in the background.');
   }
 
-  /** `:Pair find off`: the embedder stops, and its model and indexes leave Pair's data folder. */
+  /** `:Pair find off`: the embedder stops, and its model, indexes and the venv Pair made leave Pair's data folder. */
   async function meaningOff(client) {
     const was = meaning.state;
-    await meaning.turnOff();
-    if (was === 'on') for (const session of live.values()) session.ledger.add('deleted', `search by meaning's ${config.embedding ? 'indexes' : 'model and indexes'} (:Pair find off)`);
-    const text = config.embedding ? 'Search by meaning is off: its indexes are deleted, and the embedding model is not asked until :Pair find on.' : 'Search by meaning is off: its model and indexes are deleted.';
+    const {venv} = await meaning.turnOff();
+    const what = `${config.embedding ? 'indexes' : 'model and indexes'}${venv ? ', and the venv with LiteRT-LM that Pair made' : ''}`;
+    if (was === 'on' || venv) for (const session of live.values()) session.ledger.add('deleted', `search by meaning's ${what} (:Pair find off)`);
+    const text = config.embedding ? `Search by meaning is off: its ${what} are deleted, and the embedding model is not asked until :Pair find on.` : `Search by meaning is off: its ${what} are deleted.`;
     sendMessage(client.socket, {type: 'meaning_state', ...meaning.snapshot(), text});
   }
 

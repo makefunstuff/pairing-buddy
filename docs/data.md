@@ -21,7 +21,7 @@ description: "What Pair keeps and where: logins in auth.json, the rest in its da
 | `panes/` | Pair's own pane: its shell's output log and each command's exit code, one folder per pane, removed when the pane closes ([herdr.md](herdr.md#pairs-own-pane-exact)) |
 | `voice/` | A [push-to-talk](voice.md) recording, only while whisper.cpp reads it (OpenRouter's is kept in memory only) |
 | `index/` | [Search by meaning](meaning.md#the-index)'s index, a SQLite file per repository (`<repository>-<hash>.sqlite`), shared by its worktrees: each piece of code's file, lines, hash, kind and name, the FTS5 index of its words (lower case and stemmed, with their places, but not the text itself), and a vector per piece (256 numbers, about 1 KB, for EmbeddingGemma); no copy of the code. `:Pair find off` deletes them, `:Pair index rebuild` makes one again |
-| `meaning/` | [Search by meaning](meaning.md)'s EmbeddingGemma 2, once you turn it on: its model (`embeddinggemma-2-text-270m.litertlm`, 165 MB, with its checksum note), and the `venv/` for its runtime if you made it there. `:Pair find off` deletes the model |
+| `meaning/` | [Search by meaning](meaning.md)'s EmbeddingGemma 2, once you turn it on: its model (`embeddinggemma-2-text-270m.litertlm`, 165 MB, with its checksum note), and `venv/`, the venv with its runtime LiteRT-LM that `:Pair find on` makes (with a `venv-made-by-pair.json` note next to it) unless you made it there yourself. `:Pair find off` deletes the model and the venv Pair made |
 | `daemon.log` | The daemon's log, when `pair` started it (under systemd it goes to the journal, under launchd to `~/Library/Logs/pairing-buddy.log`) |
 | `daemon.lock` | Makes sure one daemon owns the files above |
 

@@ -344,9 +344,14 @@ for the record.
 
 **Search by meaning.** `test/live/meaning.test.mjs` runs EmbeddingGemma 2 on LiteRT-LM for real when
 `PAIR_LIVE_MEANING=1`: no stack and no keys, only the model's download (into `PAIR_LIVE_MEANING_DATA`, else a temp
-folder) and `litert-lm-api` in `PAIR_LIVE_MEANING_PYTHON` (else the venv in that folder, else `python3`). It indexes six
-small files and asks six questions worded unlike them; each file has to come in the first three, and it prints each
-rank, how long a chunk and a search took.
+folder) and `litert-lm-api` in `PAIR_LIVE_MEANING_PYTHON` (else the venv in that folder, which it installs as `:Pair
+find on` does when it is missing). It indexes six small files and asks six questions worded unlike them; each file
+has to come in the first three, and it prints each rank, how long a chunk and a search took.
+
+**Search by meaning's runtime.** `test/live/runtime.test.mjs` installs LiteRT-LM for real when `PAIR_LIVE_RUNTIME=1`,
+as `:Pair find on` does: your `python3` (3.10 or later) makes a venv in a temp folder, the wheel of
+`litert-lm-api==0.19.0` comes from PyPI (about 33 MB) and pip installs it with no index by the lock file's hashes,
+LiteRT-LM has to import, and the venv is deleted again. The suite's own tests use a fake Python (`test/fake-python.mjs`): no pip and no network.
 
 **The context card.** `test/live/context.test.mjs` gives the Partner a board task, buffers and a search: it has to
 name the task, know nothing of the search while the editor source is hidden, and name the file the search opened once
