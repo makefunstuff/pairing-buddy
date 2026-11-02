@@ -24,7 +24,7 @@ release is cut.
   vector by the hash of its text, so a worktree on another branch embeds only what that branch changed; a save embeds only the pieces that changed,
   and a first build runs in the background, its progress shown as Neovim's progress message. The words need no model;
   meaning runs on EmbeddingGemma 2 (text, 270M, Apache-2.0, 256 numbers a piece) on LiteRT-LM in a small Python helper
-  after its one download (`:Pair find on`, 165 MB, pinned revision, SHA-256 checked), or on an embedding model of your own behind an OpenAI-compatible `/v1/embeddings`, the new
+  after its one download (`:Pair find on`, 165 MB, pinned revision, SHA-256 checked, and LiteRT-LM installed in a venv of Pair's), or on an embedding model of your own behind an OpenAI-compatible `/v1/embeddings`, the new
   `embedding` entry next to the models (nomic-embed-code, jina-embeddings-v2-base-code, with their prompts). The search
   embeds your words once and compares them with every vector: 1.5 ms for Pair's 6,639 pieces, 16 ms for 100,000. On
   Pair's own repository the first build took 9 minutes on the default two cores (13.5 MB) and a search by

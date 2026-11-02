@@ -203,6 +203,7 @@ Install only what the human chose in step 2, with their yes to sudo.
 | tmux (without herdr) | `tmux -V` | `tmux 3.…` | package `tmux` |
 | herdr | `herdr --version`, or `command -v hc herdr-core` for herdr-core | `herdr 0.9.5` or newer, or a path | see [herdr.dev](https://herdr.dev); ask the human if it offers more than one way |
 | Push-to-talk | (step 9) | | see [voice.md](docs/voice.md#setup) |
+| Search by meaning | `python3 -c 'import sys, ensurepip, venv; print(sys.version_info >= (3, 10))'` | `True` | package `python3-venv` on Debian and Ubuntu; Pair fetches the rest in step 9 |
 
 `bash` is needed too and is there on every supported system (`bash --version`). bubblewrap may be installed and still
 not work (some containers forbid user namespaces); `pair doctor` tells, and Pair then runs without the sandbox.
@@ -650,6 +651,10 @@ silences the warning (commands then run unsandboxed, after the command policy).
 `parec` or `arecord`), and a `"voice"` entry in the config. Expected: `✓ voice  pw-record records, whisper.cpp hears
 a second in … s on the CPU`.
 
+**Search by meaning.** Tell the human to run `:Pair find on` in Neovim, their yes to the downloads: Pair installs LiteRT-LM in a
+venv of its own and downloads EmbeddingGemma 2 (165 MB), once ([meaning.md](docs/meaning.md)). Expected afterwards in
+`pair doctor`: `✓ meaning  EmbeddingGemma 2 … on LiteRT-LM … answers (… ms with loading)`.
+
 ## Upgrade
 
 ```sh
@@ -689,4 +694,4 @@ Then remove what step 7 added to the Neovim config (the spec file, the lines, or
 backups show what was there before), and the shell hook line from step 9. With the human's yes, the config, logins
 and data: `~/.config/pairing-buddy/` (holds `auth.json` with their logins and keys) and
 `~/.local/state/pairing-buddy/` (the sessions and their notes, and search by meaning's model, venv and indexes); with
-`"meaning": {"index": "project"}`, also `.pair/` in each repository and its line in `.git/info/exclude`.
+`"meaning": {"index": "project"}`, also `.pair/` in each repository and its lines in `.git/info/exclude`.

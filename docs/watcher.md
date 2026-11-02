@@ -47,7 +47,8 @@ Watcher judges drift (below), told what the file is about.
 ## Scores remembered
 
 The same moment twice gets the same score without a second request: the same failure under the same goal, the same
-file you moved into again. The Watcher answers at temperature 0, so it would give the same number. A score is kept for
+file you moved into again. The Watcher answers at temperature 0 (unless a Watcher entry's own `samplingParams` say otherwise), so it would
+give the same number. A score is kept for
 half an hour; a call that failed, gave no number or had to wait for the Partner is not kept.
 
 ## A short question, a short answer

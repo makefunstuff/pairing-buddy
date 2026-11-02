@@ -166,7 +166,7 @@ vim.o.statusline = "%f %m%=%{%v:lua.require'pair'.statusline()%}  %l:%c "
 | `● reading worker.go` | While Pair reads |
 | `⠹ pair · thinking` | While its model thinks |
 | `◉ pair · listening`, `⠹ pair · hearing` | While you hold the listen key, and while what you said is written down ([voice.md](voice.md)) |
-| `● pair · question 2 of a few`, `● pair · a suggestion` | While a [`:Pair new`](blank-page.md) question waits for your answer, and while its first slice is shown |
+| `● pair · what are we making`, `● pair · question 2 of a few`, `● pair · a suggestion` | While a [`:Pair new`](blank-page.md) question waits for your answer, and while its first slice is shown |
 | `● pair · held thought · M-j` | While a remark waits for your next break |
 | `● pair · gen #4 · generating · 21s`, `● pair · gen #4 asks · M-g`, `● pair · gen #5 waits for the one before`, `● pair · gen #4 ready · M-y takes · :Pair dismiss` | While a [/gen request](gen.md) runs, waits for your answer or its turn, and while its code waits to be taken |
 | `● pair · gen #4 · 2 to review · :Pair gen list`, `● pair · gen · 3 to review · :Pair gen list` | While new files of [/gen file](gen.md#new-files-gen-file) wait as buffers to review: of one request, or of several |
