@@ -119,10 +119,12 @@ In Neovim:
 :Pair voice on
 ```
 
-That is all: Pair installs what LFM3-Omni needs, once, and says first what comes and how big:
-`Voice: installing its Python packages (42 MB from PyPI, SHA-256 pinned, into search by meaning's venv), then
-LFM3-Omni-2B, 4.0 GB from Hugging Face (litert-community/LFM3-Omni-2B-LiteRT, pinned, SHA-256 checked), once; :Pair
-voice off stops it and deletes the model.` Then it tells how far it is, every GB.
+That is all: Pair installs what LFM3-Omni needs, once, and says first what comes and how big: `Voice: installing
+LiteRT-LM 0.19.0 (33 MB from PyPI, SHA-256 pinned) in a venv in Pair's data folder, as :Pair find on does, then
+voice's Python packages (42 MB from PyPI, SHA-256 pinned) into that venv, then LFM3-Omni-2B, 4.0 GB from Hugging Face
+(litert-community/LFM3-Omni-2B-LiteRT, pinned, SHA-256 checked), whose own speech loop (Python, Apache-2.0) runs as
+you, once; :Pair voice off stops it and deletes the model.` (without what is there already; the packages are 42 MB on
+Linux x86-64, 34 MB on ARM64 and 29 MB on macOS). Then it tells how far it is.
 
 - **Its Python.** LFM3-Omni runs in a small Python helper Pair starts, in the same venv as
   [search by meaning](meaning.md#turn-embeddinggemma-on)'s (`meaning/venv` in Pair's data folder), installed the same

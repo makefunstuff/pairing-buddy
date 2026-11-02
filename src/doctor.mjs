@@ -297,7 +297,7 @@ export async function voiceCheck(voice, found = name => onPath(name, process.env
 }
 
 /** How voice's packages get there: `:Pair voice on` installs them; the config's own meaning.python is the user's to fill. */
-const packagesHow = (meaning, python) => (meaning?.python ? omniInstall(tilde(python)) : ':Pair voice on installs them (42 MB from PyPI, SHA-256 pinned, into search by meaning\'s venv)');
+const packagesHow = (meaning, python) => (meaning?.python ? omniInstall(tilde(python)) : ':Pair voice on installs them (from PyPI, SHA-256 pinned, into search by meaning\'s venv)');
 
 /** LFM3-Omni hears a second of silence, in a helper of its own that stops after: {ms} or {problem}. */
 async function omniHearsSilence({python, dataDir, threads}) {

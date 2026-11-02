@@ -277,7 +277,7 @@ test('pair doctor with LFM3-Omni: not downloaded, no packages, and one that hear
   const voice = voiceConfig({});
   const notYet = await voiceCheck(voice, found, {dataDir, python: '/venv/bin/python', runtime: lacks, hearSilence: heard});
   assert.equal(notYet.level, 'warn');
-  assert.match(notYet.text, /:Pair voice on downloads LFM3-Omni-2B \(int8\) \(4\.0 GB from Hugging Face, once\); it also needs ai-edge-litert: :Pair voice on installs them \(42 MB from PyPI, SHA-256 pinned, into search by meaning's venv\)/);
+  assert.match(notYet.text, /:Pair voice on downloads LFM3-Omni-2B \(int8\) \(4\.0 GB from Hugging Face, once\); it also needs ai-edge-litert: :Pair voice on installs them \(from PyPI, SHA-256 pinned, into search by meaning's venv\)/);
   const own = await voiceCheck(voice, found, {dataDir, python: '/mine/python', meaning: {python: '/mine/python'}, runtime: lacks, hearSilence: heard});
   assert.match(own.text, /\/mine\/python -m pip install --require-hashes --no-deps --only-binary=:all: -r .*voice-runtime\.txt \(or leave meaning\.python out/, 'meaning.python is yours: the hashed line to run');
   fakeOmniFiles(dataDir);
@@ -321,7 +321,7 @@ test('the daemon: :Pair voice on says what and how big first, downloads, and boo
     sendMessage(editor, {type: 'voice_on'});
     await until(() => got.filter(message => message.type === 'voice_state').length >= 2, 'the download');
     const told = got.filter(message => message.type === 'voice_state').map(message => message.text);
-    assert.match(told[0], /^Voice: installing LFM3-Omni-2B, 4\.0 GB from Hugging Face \(litert-community\/LFM3-Omni-2B-LiteRT, pinned, SHA-256 checked\), once/);
+    assert.match(told[0], /^Voice: installing LFM3-Omni-2B, 4\.0 GB from Hugging Face \(litert-community\/LFM3-Omni-2B-LiteRT, pinned, SHA-256 checked\), whose own speech loop \(Python, Apache-2\.0\) runs as you, once/);
     assert.match(told.at(-1), /^LFM3-Omni is here/);
     assert.equal(readFileSync(join(omniDir(dir), 'LFM3-Omni-2B_int8.litertlm'), 'utf8'), 'weights');
     sendMessage(editor, {type: 'today'});
@@ -359,7 +359,8 @@ test(':Pair voice on installs voice\'s packages first, in search by meaning\'s v
       voice: {fail: () => {}, close: () => {}, dataDir: dir},
       runtime: async () => (has ? {version: '0.19.0'} : {problem: 'python3 has no ai-edge-litert'}),
       wheels: () => [{bytes: 30e6}, {bytes: 12e6}],
-      install: async options => { asked.push(options); has = true; return {python: '/venv/bin/python', version: '3.14', bytes: 42e6, wheels: ['ai_edge_litert.whl', 'numpy.whl']}; },
+      litert: async () => ({version: null}),
+      install: async options => { asked.push(options); has = true; return {python: '/venv/bin/python', version: '3.14', bytes: 42e6, wheels: ['ai_edge_litert.whl', 'numpy.whl'], litert: {python: '/venv/bin/python', version: '0.19.0', pythonVersion: '3.14', made: true}}; },
     },
   });
   try {
@@ -372,12 +373,14 @@ test(':Pair voice on installs voice\'s packages first, in search by meaning\'s v
     sendMessage(editor, {type: 'voice_on'});
     await until(() => got.filter(message => message.type === 'voice_state').length >= 2, 'the install');
     const told = got.filter(message => message.type === 'voice_state').map(message => message.text);
-    assert.equal(told[0], 'Voice: installing its Python packages (42 MB from PyPI, SHA-256 pinned, into search by meaning\'s venv), once; :Pair voice off stops it and deletes the model.');
+    assert.match(told[0], /^Voice: installing LiteRT-LM 0\.19\.0 \(\d+ MB from PyPI, SHA-256 pinned\) in a venv in Pair's data folder, as :Pair find on does, then voice's Python packages \(42 MB from PyPI, SHA-256 pinned\) into that venv, once; :Pair voice off/, 'LiteRT-LM and the venv are said too');
     assert.match(told.at(-1), /^LFM3-Omni is here: hold the listen key/);
     assert.ok(asked[0].runtime, 'through search by meaning\'s runtime (PAIR-8), which makes the venv');
     sendMessage(editor, {type: 'today'});
     await until(() => got.some(message => message.type === 'ledger'), 'the ledger');
-    assert.match(JSON.stringify(got.find(message => message.type === 'ledger')), /voice's Python packages \(42 MB, SHA-256 pinned\) in search by meaning's venv, Python 3\.14/);
+    const ledger = JSON.stringify(got.find(message => message.type === 'ledger'));
+    assert.match(ledger, /voice's Python packages \(42 MB, SHA-256 pinned\) in search by meaning's venv, Python 3\.14/);
+    assert.match(ledger, /LiteRT-LM 0\.19\.0 for voice, in a venv Pair made with Python 3\.14/, 'and LiteRT-LM\'s install');
     editor.destroy();
   } finally {
     await daemon.close();

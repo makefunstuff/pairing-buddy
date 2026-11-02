@@ -330,13 +330,13 @@ export const omniInstall = python => `${python} -m pip install --require-hashes 
  * Python and machine, each downloaded from PyPI by the SHA-256 in voice-runtime.txt, and pip with no index, every hash
  * required, no other package. With the config's meaning.python, Pair installs nothing there: it says what to run.
  * `progress(bytes, total)` hears the downloads; `signal` stops it. Resolves {python, version, bytes, wheels} or null
- * when everything was there. `check` and `wheelsOf` are for tests.
+ * when everything was there; `litert` is what `runtime.install()` resolved, when it ran. `check` and `wheelsOf` are for tests.
  */
 export async function installVoiceRuntime({dataDir, meaning = null, runtime, fetch = globalThis.fetch, progress = () => {}, signal = null, platform = process.platform, arch = process.arch, check = omniRuntimeOf, wheelsOf = voiceWheelsOf}) {
   const python = pythonOf(meaning, dataDir);
   if ((await check(python)).version) return null;
   if (meaning?.python) throw new Error(`${python} lacks voice's packages, and Pair installs nothing into meaning.python: ${omniInstall(python)}`);
-  if (!(await runtime.check()).version) await runtime.install({signal, progress: (bytes, total) => progress(bytes, total)});
+  const litert = (await runtime.check()).version ? null : await runtime.install({signal, progress: (bytes, total) => progress(bytes, total)});
   const venv = venvPython(dataDir);
   const {stdout, error} = await run(venv, ['-I', '-c', 'import sys; print("%d.%d" % sys.version_info[:2])']);
   if (error) throw new Error(`${venv} does not run: ${error.message}`);
@@ -364,5 +364,5 @@ export async function installVoiceRuntime({dataDir, meaning = null, runtime, fet
   }
   const found = await check(venv);
   if (!found.version) throw new Error(`pip installed voice's packages, but ${found.problem}`);
-  return {python: venv, version, bytes: total, wheels: wheels.map(wheel => wheel.url.split('/').at(-1))};
+  return {python: venv, version, bytes: total, wheels: wheels.map(wheel => wheel.url.split('/').at(-1)), litert};
 }

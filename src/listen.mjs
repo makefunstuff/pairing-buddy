@@ -97,7 +97,7 @@ export class Listener {
     });
     send({type: 'answer', text: words, pointed: Boolean(this.session.target)}); // then the jump key goes there
     // Read aloud when you are away, or in talk; never while you record again, or once you typed since you asked.
-    const typedSince = (this.typedAt ?? 0) > askedAt;
+    const typedSince = (this.typedAt ?? 0) >= askedAt;
     if (words && (this.away || this.voice.talk) && speaks(this.voice) && !this.recording && !typedSince) {
       this.silence = this.speakWith(this.voice, speakable(words), {
         log: this.log,

@@ -39,8 +39,8 @@ Then, in Neovim, install it once:
 :Pair voice on
 ```
 
-Neovim says what comes and how big before it starts (`Voice: installing its Python packages (42 MB from PyPI, …),
-then LFM3-Omni-2B, 4.0 GB from Hugging Face …`), then how far it is. It takes a minute or two on a fast line. The
+Neovim says what comes and how big before it starts (`Voice: installing … voice's Python packages (42 MB from PyPI,
+…), then LFM3-Omni-2B, 4.0 GB from Hugging Face …`), then how far it is. It takes a minute or two on a fast line. The
 packages go into the same venv as search by meaning's, by their pinned SHA-256. `:Pair voice off` stops it, or deletes the model
 later.
 
