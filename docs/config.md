@@ -21,7 +21,7 @@ why while the daemon keeps the config it runs. Run `pair doctor` after a change 
 - **For new sessions**: `level` and `sessionRoots`. An open session keeps its own level; `/level` changes it.
 - **After a restart only**: `socket`, `dataDir`, `meaning`, `embedding`, and turning `agents` on or off.
 - **Unsaid**: `scoutPane` is not named in the chat; a change of it alone waits for a restart, but saved with another
-  change it is taken at once, for Pair's panes opened from then on.
+  change it is taken at once, for Pair's panes opened from then on and `/gen`'s sandbox in open sessions.
 
 ## Settings
 
