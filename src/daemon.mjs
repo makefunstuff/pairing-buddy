@@ -102,7 +102,7 @@ export async function startDaemon(config, {
   appCommand = 'herdr-app', // the Herdr window's command, for herdr-core's focus and agents
   meaningWith = {}, // tests' fetch and embedder for search by meaning (see meaning.mjs)
   rerankerFor = (entries, logTo) => (entries.rerank ? new Reranker({...createDecisionModel(entries, {field: 'rerank'}), entry: entries.rerank, log: logTo}) : null),
-  omniWith = {}, // tests' LFM3-Omni for voice (see omni.mjs): {voice, fetch, free, files, runtime, litert, wheels, pythons, install}
+  omniWith = {}, // tests' LFM3-Omni for voice (see omni.mjs): {voice, fetch, free, files, runtime, litert, wheels, pythons, pythonsOn, install}
 } = {}) {
   mkdirSync(config.dataDir, {recursive: true, mode: 0o700});
   mkdirSync(join(config.dataDir, 'runs'), {recursive: true}); // the output of the tests run on save, one file per session
@@ -1146,7 +1146,7 @@ export async function startDaemon(config, {
     const litert = needsPackages && !(await (omniWith.litert ?? venvHasLiteRT)(config.dataDir));
     // No wheels for this machine or this Python: said before anything is downloaded, not after LiteRT-LM and its venv.
     // Without a fitting Python at all, runtime.install() says what is missing, also before it downloads anything.
-    const fits = voicePythonsOn();
+    const fits = (omniWith.pythonsOn ?? voicePythonsOn)();
     if (needsPackages && !fits.length) return tell(`Voice is not ready: voice's packages have no wheels for ${process.platform} ${process.arch}, only Linux (x86-64, ARM64) and macOS on Apple silicon. Nothing was downloaded.`);
     const venv = needsPackages ? await venvVersion(runtime, litert) : null;
     const wheels = venv?.version ? (omniWith.wheels ?? voiceWheelsOf)(venv.version) : null;

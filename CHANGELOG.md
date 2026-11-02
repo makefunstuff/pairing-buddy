@@ -91,7 +91,8 @@ release is cut.
   venv as `:Pair find on` makes them (33 MB, if search by meaning has not made them yet), voice's Python packages (42
   MB of wheels from PyPI, each by the SHA-256 in `src/voice-runtime.txt`, into that venv), then the model (4.0 GB from
   Hugging Face, pinned revision `a287b6e6`, each file SHA-256 checked), whose own Python speech loop runs as you; it
-  refuses without the disk room, and the ledger books each install as it lands; `:Pair voice off` deletes it. Measured
+  refuses without the disk room, and on a Python or machine voice's wheels do not fit (3.12 to 3.14 on Linux and
+  Apple silicon) before it downloads anything, saying what to do; the ledger books each install as it lands; `:Pair voice off` deletes it. Measured
   on a Ryzen 5 9600X: a 4 s question heard in about 1.4 s (0.28 to 0.35 s per second of speech), 2% of words wrong on
   a human recording and on neural narration, 14% on espeak-ng's robotic voice; speech at 1.15 s per second of speech,
   the first words about 4 s after the answer, a part at a time; 0.8 GB of memory while it only hears, about 6 GB once
