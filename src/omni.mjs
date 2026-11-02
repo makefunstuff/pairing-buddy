@@ -97,7 +97,7 @@ const LANGUAGES = {
   en: 'English', de: 'German', fr: 'French', es: 'Spanish', it: 'Italian', pt: 'Portuguese', nl: 'Dutch', pl: 'Polish',
   ru: 'Russian', uk: 'Ukrainian', ar: 'Arabic', zh: 'Chinese', ja: 'Japanese', ko: 'Korean', hi: 'Hindi', tr: 'Turkish',
 };
-export const languageName = code => LANGUAGES[code] ?? code;
+export const languageName = code => (code === 'auto' ? null : LANGUAGES[code] ?? code); // null: any language
 
 /**
  * The helper, started when voice first needs it. One request at a time, in order. `hear(pcm, {language, signal})`
@@ -140,11 +140,11 @@ export class OmniVoice {
     });
   }
 
-  speak(texts, {voice = 'female', onPart = () => {}} = {}) {
+  speak(texts, {voice = 'female', language = 'en', onPart = () => {}} = {}) {
     let job;
     const done = new Promise((resolve, reject) => {
       job = {
-        message: {op: 'speak', texts, voice},
+        message: {op: 'speak', texts, voice, language: languageName(language)},
         timeoutMs: PART_MS,
         resolve, reject,
         answer: message => {

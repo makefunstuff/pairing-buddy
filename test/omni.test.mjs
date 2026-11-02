@@ -77,6 +77,7 @@ test('LFM3-Omni\'s pinned files: one revision, 4.0 GB, the runner with them; lan
   assert.ok(OMNI.files.some(file => file.file === 'runner/speech.py'), 'the runner is pinned like the weights');
   assert.equal(languageName('en'), 'English');
   assert.equal(languageName('Swahili'), 'Swahili');
+  assert.equal(languageName('auto'), null, 'any language');
 });
 
 test('the helper hears, speaks a part at a time, stops speech when told, and goes once idle', async () => {
@@ -87,10 +88,10 @@ test('the helper hears, speaks a part at a time, stops speech when told, and goe
   try {
     assert.equal((await omni.hear(Buffer.alloc(RATE * 2), {language: 'de'})).trim(), 'heard 32000 bytes in German (3 threads, cache-a287b6e6)');
     const parts = [];
-    const speech = omni.speak(['One.', 'Two.', 'Three.'], {voice: 'male', onPart: wav => parts.push(wav.toString())});
+    const speech = omni.speak(['One.', 'Two.', 'Three.'], {voice: 'male', language: 'fr', onPart: wav => parts.push(wav.toString())});
     assert.deepEqual(await speech.done, {cancelled: false});
     assert.deepEqual(parts, ['One.', 'Two.', 'Three.']);
-    assert.match(readFileSync(log, 'utf8'), /"voice":"male"/);
+    assert.match(readFileSync(log, 'utf8'), /"voice":"male","language":"French"/);
 
     const cut = [];
     const stopped = omni.speak(['A.', 'B.', 'C.', 'D.'], {onPart: wav => cut.push(wav.toString())});
@@ -279,6 +280,8 @@ test('pair doctor with LFM3-Omni: not downloaded, no packages, and one that hear
   assert.equal(good.text, `pw-record records, LFM3-Omni-2B (int8) (revision ${OMNI.revision.slice(0, 7)}, SHA-256 checked) on LiteRT-LM 0.19.0 in /venv/bin/python hears a second in 1.2 s on the CPU, and it reads answers aloud (female voice) through mpv after each spoken question`);
   const broken = await voiceCheck(voice, found, {dataDir, python: '/venv/bin/python', runtime: has, hearSilence: async () => ({problem: 'the voice helper stopped'})});
   assert.match(broken.text, /does not hear: the voice helper stopped/);
+  const unused = await voiceCheck(null, found, {dataDir});
+  assert.match(unused.text, /^off: .*; LFM3-Omni \(4\.0 GB\) is downloaded but not used: :Pair voice off deletes it/);
 });
 
 test('the daemon: :Pair voice on says what and how big first, downloads, and books it; :Pair voice off deletes it', async () => {
@@ -297,7 +300,7 @@ test('the daemon: :Pair voice on says what and how big first, downloads, and boo
   const files = [pinned('LFM3-Omni-2B_int8.litertlm', 'weights')];
   const daemon = await startDaemon(config, {
     pairModels: {models, watcher: watcher.getModel(), partner: partner.getModel()}, probe: async () => ({ok: true}), log: () => {},
-    omniWith: {voice: omni, files, fetch: fakeHub({'LFM3-Omni-2B_int8.litertlm': 'weights'}), free: async () => 1e12},
+    omniWith: {voice: omni, files, fetch: fakeHub({'LFM3-Omni-2B_int8.litertlm': 'weights'}), free: async () => 1e12, runtime: async () => ({version: '0.19.0'})},
   });
   try {
     const editor = connect(config.socket);

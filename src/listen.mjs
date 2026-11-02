@@ -65,6 +65,7 @@ export class Listener {
     this.recording = null;
     clearTimeout(current.timer);
     const {recording, send, selection} = current;
+    const askedAt = Date.now(); // you let go: keys from here on mean you moved on
     let text;
     const hearing = new AbortController();
     try {
@@ -85,7 +86,6 @@ export class Listener {
     }
     send({type: 'heard', text});
     if (!text) return;
-    const askedAt = Date.now();
     // The answer replaces the heard words under the user's line; '' when Pair only pointed, or nothing came.
     const words = await this.ask(text, selection).catch(error => {
       this.log(`asking what was heard failed: ${error.message}`);

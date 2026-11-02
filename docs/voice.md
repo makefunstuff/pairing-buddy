@@ -133,7 +133,7 @@ model's own speech loop. `"meaning": {"python": "/path/to/python"}` names anothe
 
 Neovim says first what comes and how big: `Downloading LFM3-Omni-2B for voice: 4.0 GB from Hugging Face
 (litert-community/LFM3-Omni-2B-LiteRT, pinned, SHA-256 checked), once; :Pair voice off stops it and deletes it.`,
-then how far it is every 256 MB. It refuses to start when your disk has less room than the files and the packed
+then how far it is every GB. It refuses to start when your disk has less room than the files and the packed
 weights need (8.2 GB). The download goes to `voice/lfm3-omni/` in Pair's data folder, never to your project, and
 `:Pair today` lists it. `:Pair voice off` stops a download under way and deletes the model.
 
@@ -188,7 +188,8 @@ nothing.
 ```
 
 Without the model yet, the line says what `:Pair voice on` downloads, and the `pip install` line if a package is
-missing.
+missing; `:Pair voice on` says that line too, once the download is done. With LFM3-Omni downloaded but not used (voice
+off, or whisper.cpp hearing and nothing else reading), the line says so, and that `:Pair voice off` deletes it.
 
 All fields:
 
@@ -197,7 +198,7 @@ All fields:
 | `model` | none: LFM3-Omni hears | a whisper.cpp model file: whisper.cpp hears instead |
 | `whisper` | `whisper-cli` | the whisper.cpp program |
 | `threads` | `4` | CPU threads LFM3-Omni or whisper uses |
-| `language` | `en` | what you speak (`de`, `fr`, `es`, `ja` and others for LFM3-Omni; `auto` with a multilingual whisper model) |
+| `language` | `en` | what you speak, and the language LFM3-Omni reads answers in (`de`, `fr`, `es`, `ja` and others; `auto` for any language it hears, or with a multilingual whisper model) |
 | `record` | the first recorder found | a shell command that writes raw 16-bit little-endian mono at 16 kHz to stdout |
 | `speak` | `"omni"` when LFM3-Omni hears, else none | `"omni"`: LFM3-Omni reads answers aloud; `false`: nothing is; or a shell command that reads the answer from stdin and says it |
 | `talk` | `false` | `true`: every answer to a spoken question is read aloud, at the editor too ([Talk](#talk-you-ask-aloud-pair-answers-aloud)) |
@@ -294,7 +295,7 @@ holds holds; `listen_release_ms` must be longer than the time between two of its
 - **Code from the download runs.** The speech loop is the model card's own Python (`runner/speech.py`,
   `runner/lm_graph.py`, `runner/prompt.py`, Apache-2.0, 33 KB), which the helper loads from `voice/lfm3-omni/runner/`
   and runs as you, so speech works exactly as the model's authors tested it. Only those files at the pinned revision,
-  with their SHA-256 checked, are run; they import json, pathlib, time, collections, numpy, tokenizers and LiteRT, and
+  with their SHA-256 checked, are run, from their source, never a cached copy; they import json, pathlib, time, collections, numpy, tokenizers and LiteRT, and
   nothing that reaches the network. Read them there before you turn voice on, if you like.
 - **Hearing** is the `.litertlm` on LiteRT-LM, a fresh engine for each recording (LFM3 carries state from one
   conversation to the next, LiteRT-LM issue #3165), told `Perform ASR in English.` (your `language`).

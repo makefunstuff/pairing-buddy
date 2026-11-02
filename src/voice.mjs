@@ -501,7 +501,7 @@ export function speakOmni(voice, text, {log = () => {}, failed = () => {}, omni 
       next();
     });
   };
-  speech = omni.speak(sentencesOf(saidFiles(text)), {voice: voice.omniVoice, onPart: part => { waiting.push(part); next(); }});
+  speech = omni.speak(sentencesOf(saidFiles(text)), {voice: voice.omniVoice, language: voice.language, onPart: part => { waiting.push(part); next(); }});
   speech.done.catch(error => report(error.message));
   return stop;
 }

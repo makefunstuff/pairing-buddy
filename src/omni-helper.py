@@ -20,7 +20,6 @@ Reads nothing but MODEL_DIR, writes only CACHE_DIR, and has no network code: nei
 imports json, pathlib, time, collections, numpy, tokenizers and ai_edge_litert only, at the pinned revision).
 """
 import base64
-import importlib.util
 import io
 import json
 import os
@@ -29,11 +28,12 @@ import queue
 import sys
 import threading
 import time
+import types
 import wave
 
 GRAPHS = ("depth_step", "frame_embed", "codec_decoder_f12")
 ASR_SYSTEM = "Perform ASR in {language}."
-TTS_SYSTEM = "Perform TTS in American English using a {voice} voice."
+TTS_SYSTEM = "Perform TTS in {language} using a {voice} voice."  # the model card's form; English is "American English"
 MAX_FRAMES = 1024  # 80 ms a frame: a sentence of at most ~80 s
 
 
@@ -74,7 +74,7 @@ class Omni:
                        max_num_tokens=1024, cache_dir=self.cache) as engine:
             sampler = lm.SamplerConfig(top_k=1, top_p=1.0, temperature=0.0)
             conv = engine.create_conversation(sampler_config=sampler, max_output_tokens=400,
-                                              messages=[{"role": "system", "content": ASR_SYSTEM.format(language=language)}])
+                                              messages=[{"role": "system", "content": ASR_SYSTEM.format(language=language) if language else "Perform ASR."}])
             try:
                 reply = conv.send_message(lm.Message.user(lm.Contents.of(lm.Content.AudioBytes(wav_bytes(pcm, 16000)))))
             finally:
@@ -90,9 +90,12 @@ class Omni:
         from ai_edge_litert.options import CpuOptions, Options
 
         def runner(name):
-            spec = importlib.util.spec_from_file_location(f"pair_omni_{name}", self.root / "runner" / f"{name}.py")
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
+            # From its checked source, never a cached .pyc beside it (no checksum covers that)
+            path = self.root / "runner" / f"{name}.py"
+            module = types.ModuleType(f"pair_omni_{name}")
+            module.__file__ = str(path)
+            sys.modules[module.__name__] = module  # its dataclasses and the like look themselves up there
+            exec(compile(path.read_bytes(), str(path), "exec"), module.__dict__)
             return module
 
         speech, lm_graph, prompt = runner("speech"), runner("lm_graph"), runner("prompt")
@@ -121,11 +124,12 @@ class Omni:
         }
         return self.speaker
 
-    def speak(self, text, voice, cancelled, seed=0):
+    def speak(self, text, voice, language, cancelled, seed=0):
         """`text` as 16-bit PCM at the codec's rate; `cancelled()` is asked at every frame."""
         s = self.load_speaker()
         np, contract, tokens = s["np"], s["contract"], s["contract"]["tokens"]
-        ids = s["prompt"].ids(TTS_SYSTEM.format(voice=voice), [("text", text)]) + [tokens["audio_start"]]
+        spoken = "American English" if language in (None, "", "English") else language
+        ids = s["prompt"].ids(TTS_SYSTEM.format(language=spoken, voice=voice), [("text", text)]) + [tokens["audio_start"]]
 
         def frame(*_args, **_kwargs):
             if cancelled():
@@ -180,7 +184,7 @@ def main():
         try:
             if request["op"] == "hear":
                 started = time.perf_counter()
-                text = omni.hear(base64.b64decode(request["pcm"]), request.get("language") or "English")
+                text = omni.hear(base64.b64decode(request["pcm"]), request.get("language"))
                 say({"id": rid, "text": text, "ms": round(1000 * (time.perf_counter() - started))})
             elif request["op"] == "speak":
                 rate = None
@@ -188,7 +192,7 @@ def main():
                     if rid in cancelled:
                         break
                     started = time.perf_counter()
-                    pcm = omni.speak(text, request.get("voice") or "female", lambda: rid in cancelled)
+                    pcm = omni.speak(text, request.get("voice") or "female", request.get("language"), lambda: rid in cancelled)
                     rate = rate or omni.speaker["contract"]["codec"]["sample_rate"]
                     if pcm:
                         say({"id": rid, "part": part, "wav": base64.b64encode(wav_bytes(pcm, rate)).decode("ascii"),

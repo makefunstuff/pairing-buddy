@@ -24,7 +24,8 @@ import {followLoaded, shareServer} from './loaded-model.mjs';
 import {DETAIL_KEPT_MS} from './ledger.mjs';
 import {editOrigin} from './fold.mjs';
 import {Listener} from './listen.mjs';
-import {downloadOmni, gb, OMNI, OmniVoice, omniMissing, omniReady, removeOmni} from './omni.mjs';
+import {downloadOmni, gb, OMNI, OmniVoice, omniMissing, omniReady, omniRuntimeOf, removeOmni} from './omni.mjs';
+import {omniInstall} from './doctor.mjs';
 import {pythonOf} from './embedder.mjs';
 import {usesOmni} from './voice.mjs';
 import {Meaning} from './meaning.mjs';
@@ -98,7 +99,7 @@ export async function startDaemon(config, {
   idleEndMs = IDLE_END_MS, aloneEndMs = ALONE_END_MS, agentsPollMs, taskChangesPollMs = TASK_CHANGES_MS,
   appCommand = 'herdr-app', // the Herdr window's command, for herdr-core's focus and agents
   meaningWith = {}, // tests' fetch and embedder for search by meaning (see meaning.mjs)
-  omniWith = {}, // tests' LFM3-Omni for voice (see omni.mjs): {voice, fetch, free, files}
+  omniWith = {}, // tests' LFM3-Omni for voice (see omni.mjs): {voice, fetch, free, files, runtime}
 } = {}) {
   mkdirSync(config.dataDir, {recursive: true, mode: 0o700});
   mkdirSync(join(config.dataDir, 'runs'), {recursive: true}); // the output of the tests run on save, one file per session
@@ -1123,7 +1124,7 @@ export async function startDaemon(config, {
       await downloadOmni(config.dataDir, {
         fetch: omniWith.fetch, free: omniWith.free, files: omniWith.files, signal: abort.signal,
         progress: (bytes, total) => {
-          if (bytes - told < 256e6) return;
+          if (bytes - told < 1e9) return;
           told = bytes;
           tell(`Downloading LFM3-Omni: ${gb(bytes)} of ${gb(total)}…`);
         },
@@ -1134,6 +1135,9 @@ export async function startDaemon(config, {
       omniDownload = null;
     }
     for (const session of live.values()) session.ledger.add('downloaded', `LFM3-Omni-2B for voice (${gb(missing)}, revision ${OMNI.revision.slice(0, 7)}, SHA-256 checked)`);
+    const python = pythonOf(config.meaning, config.dataDir);
+    const packages = await (omniWith.runtime ?? omniRuntimeOf)(python);
+    if (!packages.version) return tell(`LFM3-Omni is here, but ${packages.problem}: ${omniInstall(config.dataDir, python)}`);
     tell(`LFM3-Omni is here: ${usesOmni(config.voice) ? 'hold the listen key and speak' : 'set "voice": {} in the config to hear and speak with it'}.`);
   }
 
