@@ -7,12 +7,13 @@ import {createDecisionModel} from '../src/models.mjs';
 import {Reranker} from '../src/rerank.mjs';
 
 /**
- * Starts the server: `{baseUrl, requests, set({favourite, mode, delayMs}), close()}`. `mode` is "ok", "down" (500),
+ * Starts the server: `{baseUrl, requests, flight, set({favourite, mode, delayMs}), close()}`. `mode` is "ok", "down" (500),
  * "malformed" (no probabilities), "flat" (all the same) or "slow" (waits `delayMs` first). `requests` lists each body.
  */
 export async function fakeRerankServer({favourite = '', mode = 'ok', delayMs = 0} = {}) {
   const state = {favourite, mode, delayMs};
   const requests = [];
+  const flight = {now: 0, most: 0}; // questions the server works on at once, and the most at any time
   const server = createServer((request, response) => {
     let body = '';
     request.on('data', chunk => { body += chunk; });
@@ -25,7 +26,10 @@ export async function fakeRerankServer({favourite = '', mode = 'ok', delayMs = 0
       if (request.method !== 'POST' || !request.url.endsWith('/systemone')) return send(404, {error: {message: 'File Not Found'}});
       const parsed = JSON.parse(body);
       requests.push(parsed);
+      flight.most = Math.max(flight.most, ++flight.now);
+      // It works on a question to its end, as a server that does not stop when the client goes.
       if (state.mode === 'slow') await new Promise(resolve => setTimeout(resolve, state.delayMs));
+      flight.now -= 1;
       if (state.mode === 'down') return send(500, {error: {message: 'the model is loading'}});
       const answers = {};
       for (const [name, question] of Object.entries(parsed.questions ?? {})) {
@@ -42,7 +46,7 @@ export async function fakeRerankServer({favourite = '', mode = 'ok', delayMs = 0
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const baseUrl = `http://127.0.0.1:${server.address().port}/v1`;
   return {
-    baseUrl, requests,
+    baseUrl, requests, flight,
     set(changes) { Object.assign(state, changes); },
     close: () => new Promise(resolve => { server.closeAllConnections(); server.close(resolve); }),
   };

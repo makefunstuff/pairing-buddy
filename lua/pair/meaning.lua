@@ -23,11 +23,11 @@ function M.setup(opts, d)
   deps = d
 end
 
---- Asks the daemon for one phase of a search, 'words', 'meaning' or 'rerank' (of `results`); `callback` gets its answer.
-local function ask(query, phase, callback, results)
+--- Asks the daemon for one phase of a search, 'words', 'meaning' or 'rerank'; `callback` gets its answer.
+local function ask(query, phase, callback)
   next_id = next_id + 1
   waiting[next_id] = callback
-  deps.send({type = 'find', id = next_id, query = query, phase = phase, results = results})
+  deps.send({type = 'find', id = next_id, query = query, phase = phase})
   return next_id
 end
 
@@ -196,6 +196,7 @@ end
 function Live:close()
   self.done = true
   self:stop_timer()
+  if self.reranking then deps.send({type = 'find', query = '', phase = 'cancel'}) end -- the model's answer is not wanted
 end
 
 --- The ledger hears what you chose, with what the search showed.

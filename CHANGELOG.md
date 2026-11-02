@@ -18,7 +18,7 @@ release is cut.
   `reranked by d1-2B`. A model that is down, slow or answers oddly keeps the order, and is not asked again for a
   minute after a failure; it gets one question at a time. On 32 labelled questions about Pair's own code and docs
   (`test/fixtures/rerank-queries.json`, `test/live/rerank.test.mjs`), d1-2B on a CPU raised recall@5 from 0.72 to
-  0.81 and MRR from 0.50 to 0.73, in 2.4 s at the median. Off without the entry; `pair doctor` has a `rerank` line, and
+  0.81 and MRR from 0.50 to 0.74, in 2.4 s at the median. Off without the entry; `pair doctor` has a `rerank` line, and
   the ledger books each rerank with the order before and after.
 - **Search by meaning, as quick as ripgrep with loose words.** `Alt-s` (or `:Pair find [words]`) opens a live
   picker in Telescope, else snacks.picker, else fzf-lua, used like `live_grep`: on every key, the pieces of code that

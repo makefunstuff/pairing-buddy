@@ -6,6 +6,7 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {mkdirSync, realpathSync, writeFileSync} from 'node:fs';
+import {createServer} from 'node:net';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {foundLines} from '../src/chat.mjs';
@@ -155,7 +156,7 @@ test('a model that is slow, down or answers oddly keeps the search\'s order; aft
       now += 61_000;
       const odd = await meaning.search(root, 'price cents');
       assert.deepEqual(odd.results.map(result => result.file), order, `${mode}: the order stays`);
-      assert.equal(odd.rerank.why, mode === 'flat' ? 'flat' : 'error', 'pi-ai takes an answer without probabilities for a failure');
+      assert.equal(odd.rerank.why, mode, 'an answer of the wrong shape (pi-ai checks it) or with no preference');
     }
     server.set({mode: 'ok'});
     assert.equal((await meaning.search(root, 'price cents')).rerank.applied, true, 'an odd answer costs that one rerank only');
@@ -183,7 +184,7 @@ test('the picker\'s settled search: the fused ranking\'s first pieces reranked, 
     const other = meaning.rerank(root, 'price cents', {who: 'nvim-2'});
     const newer = meaning.rerank(root, 'price cents', {who: 'nvim-1'});
     const [first, second, third] = await Promise.all([older, other, newer]);
-    assert.equal(first.rerank.why, 'aborted', 'the same Neovim\'s older one stops');
+    assert.equal(first.rerank.why, 'aborted', 'the same Neovim\'s older one is not used');
     assert.equal(second.rerank.applied, true, 'another Neovim\'s waits its turn, and is asked');
     assert.equal(third.phase, 'rerank');
     assert.equal(third.rerank.applied, true);
@@ -191,7 +192,7 @@ test('the picker\'s settled search: the fused ranking\'s first pieces reranked, 
     assert.deepEqual(third.results.map(result => result.file).sort(), fused.map(result => result.file).sort(), 'the fused ranking\'s pieces, as /find\'s');
     assert.equal(booked.filter(entry => entry.kind === 'reranked' && entry.text.includes('in the picker')).length, 2, 'the stopped one is not booked');
     assert.match(booked.find(entry => entry.kind === 'reranked').text, /^"price cents" in the picker with fake-d1 in \d+ ms: \d of 4 moved, first now src\/tip\.js:2 \(was src\/\w+\.js:2\)$/);
-    assert.equal(meaning.reranker.snapshot().calls, 2, 'the stopped one is no call');
+    assert.equal(meaning.reranker.snapshot().calls, 3, 'the older one was asked already: its answer is not used, the question not cut off');
     const none = await new Meaning({dataDir: scratch('rerank-none-'), embedder: fakeEmbedder()}).rerank(root, 'price');
     assert.deepEqual([none.results, none.rerank], [[], null], 'without a reranker it reorders nothing');
     server.set({mode: 'down'});
@@ -225,30 +226,65 @@ test('pair doctor: off says how to add one; on, it reranks a search\'s worth of 
     const slow = await rerankCheck(parseConfig({...MODELS, rerank: {api: 'system-one', baseUrl: server.baseUrl, model: 'fake-d1', timeoutMs: 100}}), null, {read: async () => null});
     assert.match(slow.text, /no answer within 100 ms\. Searches keep their own order; fewer pieces \("top", now 10\) or a higher "timeoutMs" lets it rerank$/);
     assert.match((await rerankCheck({...config, meaning: false}, null)).text, /search by meaning is off in the config/);
+
+    // While the daemon runs with this model, the daemon asks it, in turn with the searches' reranks.
+    const socket = join(scratch('rerank-socket-'), 'pair.sock');
+    const asked = [];
+    const daemon = createServer(stream => stream.on('data', data => {
+      asked.push(JSON.parse(String(data)));
+      stream.write(`${JSON.stringify({type: 'rerank_probe', ok: true, ms: 1200, pieces: 10, right: true})}\n`);
+    }));
+    await new Promise(resolve => daemon.listen(socket, resolve));
+    const before = server.requests.length;
+    const viaDaemon = await rerankCheck(config, {meaning: {rerank: {model: `fake-d1 at ${server.baseUrl}`, calls: 0}}}, {read: async () => null}, {socket});
+    daemon.close();
+    assert.deepEqual(asked.map(message => message.type), ['rerank_probe']);
+    assert.equal(server.requests.length, before, 'doctor sent no question of its own');
+    assert.match(viaDaemon.text, /reranks 10 pieces in 1\.2 s/);
   } finally {
     await server.close();
   }
 });
 
-test('one rerank at a time: a search while one runs keeps its order, and a picker\'s reranks wait behind it, the latest only', async () => {
+test('one rerank at a time on the server: a search while one runs keeps its order, and a picker\'s rerank waits its turn, the latest only', async () => {
   const server = await fakeRerankServer({favourite: 'waiter', mode: 'slow', delayMs: 200});
   const root = project();
   const dataDir = scratch('rerank-data-');
-  const meaning = new Meaning({dataDir, embedder: fakeEmbedder(), reranker: fakeReranker(server.baseUrl)});
+  const booked = [];
+  const meaning = new Meaning({dataDir, embedder: fakeEmbedder(), reranker: fakeReranker(server.baseUrl), book: (where, kind, text) => booked.push({kind, text})});
   try {
     fakeModel(dataDir);
     await ready(meaning, root);
     const shown = (await meaning.search(root, 'price cents', {rerank: false, book: false})).results;
-    const first = meaning.search(root, 'price cents', {book: false});
+    const find = meaning.search(root, 'price cents', {book: false});
     await new Promise(resolve => setTimeout(resolve, 30));
     const busy = await meaning.search(root, 'price cents', {book: false});
-    assert.equal(busy.rerank.why, 'busy', 'the model gets one question at a time');
+    assert.equal(busy.rerank.why, 'busy', 'a search does not wait for another\'s rerank');
     assert.deepEqual(busy.results.map(result => result.file), shown.map(result => result.file));
-    const [a, b, c] = [meaning.rerank(root, 'a'), meaning.rerank(root, 'b'), meaning.rerank(root, 'price cents')];
-    assert.equal((await first).rerank.applied, true);
-    const answers = await Promise.all([a, b, c]);
-    assert.deepEqual(answers.map(answer => answer.rerank.why ?? 'applied'), ['aborted', 'aborted', 'applied'], 'only the latest is asked');
-    assert.equal(server.requests.length, 2, 'the first search\'s and the latest picker\'s');
+    const older = meaning.rerank(root, 'price', {who: 'nvim'});
+    await new Promise(resolve => setTimeout(resolve, 50)); // the /find's rerank still runs
+    const newer = meaning.rerank(root, 'price cents', {who: 'nvim'});
+    const elsewhere = meaning.rerank(root, 'price cents', {who: 'other-nvim'});
+    assert.equal((await find).rerank.applied, true);
+    const [a, b, c] = await Promise.all([older, newer, elsewhere]);
+    assert.equal(a.rerank.why, 'aborted', 'a newer one from the same Neovim drops the one waiting');
+    assert.equal(b.rerank.applied, true);
+    assert.equal(c.rerank.applied, true, 'another Neovim\'s waits its turn');
+    assert.deepEqual(server.requests.map(request => request.state), ['Search: price cents', 'Search: price cents', 'Search: price cents'], 'the stale one never reached the model');
+    assert.equal(server.flight.most, 1, 'never two questions on the server at once');
+
+    const running = meaning.rerank(root, 'price', {who: 'nvim'});
+    await new Promise(resolve => setTimeout(resolve, 50));
+    meaning.dropRerank('nvim'); // a key in the picker while the model works
+    const dropped = await running;
+    assert.equal(dropped.rerank.why, 'aborted', 'the answer that came is not used');
+    assert.equal(server.flight.most, 1, 'and the question was not cut off: the server finished it first');
+    assert.ok(!booked.some(entry => /"price" in the picker/.test(entry.text)), 'nor booked');
+
+    await meaning.reranker.probe();
+    assert.equal(server.flight.most, 1);
+    meaning.reranker = null; // the config's rerank entry removed meanwhile
+    assert.deepEqual((await meaning.rerank(root, 'price', {who: 'nvim'})).rerank, null);
   } finally {
     await meaning.close();
     await server.close();

@@ -911,6 +911,8 @@ export async function startDaemon(config, {
   async function handle(client, message) {
     if (message.type === 'hello') return (client.ready = hello(client, message));
     if (message.type === 'status') return sendMessage(client.socket, status());
+    // pair doctor's check of the reranker, asked here so that it waits its turn with the searches' reranks.
+    if (message.type === 'rerank_probe') return sendMessage(client.socket, {type: 'rerank_probe', ...(meaning.reranker ? await meaning.reranker.probe() : {ok: false, error: 'the daemon has no reranker'})});
     if (message.type === 'command') return shellCommand(message);
     if (message.type === 'shell' || message.type === 'command_start') return shellStarted(message);
     if (message.type === 'typing') return shellTyping(message);
@@ -1025,6 +1027,9 @@ export async function startDaemon(config, {
    * its absolute path, for the picker to open.
    */
   async function find(client, session, message) {
+    // A key in a picker, or the picker closing: a rerank it asked for before is no longer wanted.
+    if (message.phase === 'words' || message.phase === 'cancel') meaning.dropRerank(client);
+    if (message.phase === 'cancel') return;
     const query = message.query.trim();
     const answer = message.phase === 'words' ? await meaning.words(session.root, query)
       : message.phase === 'meaning' ? await meaning.meaningOnly(session.root, query)

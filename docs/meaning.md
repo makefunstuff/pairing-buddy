@@ -83,9 +83,11 @@ It is asked only where a list is settled, never on a key:
 
 A model that is down, slower than `timeoutMs`, or answers oddly (no probability for a piece, or none that stands out)
 leaves the order as it was, and after a failure it is not asked for a minute, so a model that is off costs one wait.
-It gets one question at a time: a search while a rerank runs keeps its order, and a picker's rerank waits for the one
-under way (a newer one in its place drops it). On a CPU the model's time is the rerank's; a model that serves other
-work too is better given an instance of its own if you search often.
+It gets one question at a time, `pair doctor`'s check too while the daemon runs: a search while a rerank runs keeps its
+order, and a picker's rerank waits for the one under way. A question once sent is never cut off but by the timeout (a
+server would go on with it): a key, the picker closing, or a newer rerank from the same Neovim drop a rerank still
+waiting, and leave the answer of one under way unused. On a CPU the model's time is the rerank's; a model that serves
+other work too is better given an instance of its own if you search often.
 
 ```jsonc
 "rerank": {"api": "system-one", "baseUrl": "http://127.0.0.1:8080/v1", "model": "d1-2B"}
@@ -110,9 +112,9 @@ words fused.
 
 | | recall@5 | MRR |
 | --- | --- | --- |
-| All 32, before → after | 0.72 → 0.81 | 0.50 → 0.73 |
-| Code (25) | 0.76 → 0.84 | 0.59 → 0.78 |
-| Docs (7) | 0.57 → 0.71 | 0.17 → 0.57 |
+| All 32, before → after | 0.72 → 0.81 | 0.50 → 0.74 |
+| Code (25) | 0.76 → 0.84 | 0.59 → 0.77 |
+| Docs (7) | 0.57 → 0.71 | 0.17 → 0.64 |
 
 The rerank took 2.4 s at the median, 2.7 s at the 95th percentile, all 32 within the 3 s budget. Fewer characters a
 piece were quicker and ranked a little worse (100: 1.9 s, MRR 0.70); six pieces 1.6 s (MRR 0.70, recall@5 0.75); fifteen

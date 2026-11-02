@@ -77,9 +77,9 @@ export function reorder(results, values) {
 
 /**
  * The daemon's reranker over pi-ai's `models` and the config's `entry` (see config.mjs, rerankConfig). `rerank(query,
- * results, {texts, signal})` resolves `{ok: true, results, moved, ms}`, the list reordered, or `{ok: false, why, error,
+ * results, {texts, wait, prepare, stale})` resolves `{ok: true, results, moved, ms}`, the list reordered, or `{ok: false, why, error,
  * ms, results}` with the list as it was: why is "down" (it failed lately), "busy" (another rerank runs), "timeout",
- * "error", "malformed", "flat" or "aborted" (its `signal`).
+ * "error", "malformed", "flat" or "aborted" (`stale`).
  * It never rejects and never waits past the entry's `timeoutMs`. A failure keeps it from being asked for a minute,
  * so a model that is off costs one wait, not one a search.
  */
@@ -103,50 +103,75 @@ export class Reranker {
   get name() { return this.entry.provider ? `${this.entry.model} on ${this.entry.provider}` : `${this.entry.model} at ${this.entry.baseUrl}`; }
 
   /** Asks the model about one question: `{ok, answer, ms}` or `{ok: false, why, error, ms}`. */
-  async ask(state, question, {signal} = {}) {
+  async ask(state, question) {
     const started = this.now();
     const controller = new AbortController();
     let timer;
     const late = new Promise(resolve => { timer = setTimeout(() => { controller.abort(); resolve(null); }, this.timeoutMs); });
-    const options = {signal: signal ? AbortSignal.any([signal, controller.signal]) : controller.signal, maxRetries: 0, timeoutMs: this.timeoutMs};
+    const options = {signal: controller.signal, maxRetries: 0, timeoutMs: this.timeoutMs};
     const result = await Promise.race([
       this.models.classify(this.model, {state, questions: {best: question}}, options).catch(error => ({stopReason: 'error', errorMessage: String(error?.message ?? error)})),
       late,
     ]);
     clearTimeout(timer);
     const ms = this.now() - started;
-    if (signal?.aborted) return {ok: false, why: 'aborted', error: 'a newer search came', ms};
     if (!result) return {ok: false, why: 'timeout', error: `no answer within ${this.timeoutMs} ms`, ms};
     if (result.stopReason !== 'stop') {
       const timedOut = /timed out|abort/i.test(result.errorMessage ?? '');
+      // pi-ai checks the answer's shape: one of the wrong shape is an odd answer, not a model that is down.
+      if (!timedOut && /returned invalid|invalid (probabilit|confidence|choice)/i.test(result.errorMessage ?? '')) return {ok: false, why: 'malformed', error: result.errorMessage, ms};
       return {ok: false, why: timedOut ? 'timeout' : 'error', error: timedOut ? `no answer within ${this.timeoutMs} ms` : result.errorMessage ?? 'the model failed', ms};
     }
     return {ok: true, answer: result.answers?.best, ms};
   }
 
-  /** `results` reranked for `query`; `texts` are what the model reads of the first ones (pieceText each). */
-  async rerank(query, results, {texts, signal} = {}) {
-    const n = Math.min(this.top, results.length, texts?.length ?? results.length);
-    if (n < 2) return {ok: false, why: 'short', error: 'fewer than two pieces', ms: 0, results};
+  /**
+   * `results` reranked for `query`; `texts` are what the model reads of the first ones (pieceText each). With `wait`,
+   * a rerank under way is waited for, else this one is "busy". `prepare()`, when given, resolves `{results, texts}`
+   * once the model is this rerank's (a picker's ranking, read only then); `stale()` says the asker has moved on:
+   * checked before the model is asked and after, the answer is then "aborted". A question once sent is never cut off
+   * but by the timeout: the server would go on with it, and the model gets one question at a time.
+   */
+  async rerank(query, results, {texts, wait = false, prepare = null, stale = () => false} = {}) {
+    if (!prepare && Math.min(results.length, texts?.length ?? results.length) < 2) return {ok: false, why: 'short', error: 'fewer than two pieces', ms: 0, results};
     if (!this.available) return {ok: false, why: 'down', error: this.down, ms: 0, results};
-    if (this.running) return {ok: false, why: 'busy', error: 'another rerank is under way', ms: 0, results};
-    const asking = this.ask(`Search: ${query}`, rerankQuestion((texts ?? results.map(result => pieceText(result))).slice(0, n)), {signal});
-    this.running = asking;
-    const asked = await asking.finally(() => { this.running = null; });
-    if (asked.why === 'aborted') return {...asked, results}; // no call: a newer search took its place
-    this.calls += 1;
-    this.msTotal += asked.ms;
-    if (!asked.ok) return this.failed(asked, results);
-    const found = probabilitiesOf(asked.answer, n);
-    if (!found.values) {
-      this.kept += 1;
-      if (found.why === 'malformed') this.log(`reranker: ${found.error}; the search's order stays`);
-      return {ok: false, why: found.why, error: found.error, ms: asked.ms, results};
+    if (this.running && !wait) return {ok: false, why: 'busy', error: 'another rerank is under way', ms: 0, results};
+    while (this.running) await this.running;
+    const aborted = {ok: false, why: 'aborted', error: 'a newer search came', ms: 0, results};
+    if (stale()) return aborted;
+    if (!this.available) return {ok: false, why: 'down', error: this.down, ms: 0, results};
+    let release;
+    this.running = new Promise(resolve => { release = resolve; }); // taken before anything is awaited: no other rerank slips in
+    try {
+      if (prepare) ({results, texts} = await prepare());
+      aborted.results = results;
+      if (stale()) return aborted;
+      const n = Math.min(this.top, results.length, texts?.length ?? results.length);
+      if (n < 2) return {ok: false, why: 'short', error: 'fewer than two pieces', ms: 0, results};
+      const asked = await this.ask(`Search: ${query}`, rerankQuestion((texts ?? results.map(result => pieceText(result))).slice(0, n)));
+      this.calls += 1;
+      this.msTotal += asked.ms;
+      if (!asked.ok && asked.why === 'malformed') {
+        this.kept += 1;
+        this.log(`reranker: ${asked.error}; the search's order stays`);
+        return {...asked, results};
+      }
+      if (!asked.ok) return this.failed(asked, results);
+      const found = probabilitiesOf(asked.answer, n);
+      if (!found.values) {
+        this.kept += 1;
+        if (found.why === 'malformed') this.log(`reranker: ${found.error}; the search's order stays`);
+        return {ok: false, why: found.why, error: found.error, ms: asked.ms, results};
+      }
+      this.down = null;
+      if (stale()) return {...aborted, ms: asked.ms};
+      const reordered = reorder(results, found.values);
+      const moved = reordered.slice(0, n).filter((result, i) => result.file !== results[i].file || result.from !== results[i].from).length;
+      return {ok: true, results: reordered, moved, ms: asked.ms};
+    } finally {
+      this.running = null;
+      release();
     }
-    this.down = null;
-    const reordered = reorder(results, found.values);
-    const moved = reordered.slice(0, n).filter((result, i) => result !== results[i] && (result.file !== results[i].file || result.from !== results[i].from)).length;
-    return {ok: true, results: reordered, moved, ms: asked.ms};
   }
 
   failed(asked, results) {
@@ -164,7 +189,10 @@ export class Reranker {
    */
   async probe() {
     const pieces = PROBE_PIECES.slice(0, Math.max(2, Math.min(this.top, PROBE_PIECES.length)));
-    const asked = await this.ask('Search: add two numbers', rerankQuestion(pieces));
+    while (this.running) await this.running; // one question at a time, a check's too
+    let release;
+    this.running = new Promise(resolve => { release = resolve; });
+    const asked = await this.ask('Search: add two numbers', rerankQuestion(pieces)).finally(() => { this.running = null; release(); });
     if (!asked.ok) return {ok: false, ms: asked.ms, error: asked.error};
     const found = probabilitiesOf(asked.answer, pieces.length);
     if (found.why === 'malformed') return {ok: false, ms: asked.ms, error: `its answer has ${found.error}`};

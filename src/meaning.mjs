@@ -438,8 +438,7 @@ const UNOPENED = 'the search index cannot be opened (the daemon\'s log says why)
 export class Meaning {
   constructor({dataDir, config = {}, embedding = null, reranker = null, log = () => {}, book = () => {}, progress = () => {}, fetch = globalThis.fetch, embedder = null, runtime = null, treeSitter = null, now = Date.now}) {
     Object.assign(this, {dataDir, config, embedding, reranker, log, book, fetch, now});
-    this.reranking = new Map(); // a Neovim -> {turn, controller}: its latest picker rerank, which stops its older ones
-    this.pickerReranks = Promise.resolve(); // the pickers' reranks, one after the other
+    this.reranking = new Map(); // a Neovim -> the turn of its latest picker rerank: an older one is stale
     this.tell = progress;
     this.disabled = config === false;
     this.parsers = []; // the tree-sitter parsers of the user's Neovim, as it says at its hello
@@ -664,59 +663,62 @@ export class Meaning {
 
   /**
    * `results` (a search's, best first) with the reranker's order for their first pieces: `{results, rerank}`, where
-   * `rerank` says what happened (`{model, ms, applied, moved}`, or with `why` the order was kept), or is null without
-   * a reranker. The model reads each piece's text from the files.
+   * `rerank` says what happened (`{model, top, ms, applied, moved}`, or with `why` the order was kept), or is null
+   * without a reranker. The model reads each piece's text from the files. `options` go to the reranker's rerank.
    */
-  async reranked(index, query, results, {signal} = {}) {
-    if (!this.reranker || results.length < 2) return {results, rerank: null};
-    const texts = await Promise.all(results.slice(0, this.reranker.top).map(async result => pieceText(result, await index.textOf(result, SNIPPET_CHARS))));
-    const done = await this.reranker.rerank(query, results, {texts, signal});
-    const rerank = {model: this.reranker.entry.model, ms: done.ms, applied: done.ok, ...(done.ok ? {moved: done.moved} : {why: done.why, problem: done.error})};
+  async reranked(index, query, results, options = {}) {
+    const reranker = this.reranker;
+    if (!reranker || (!options.prepare && results.length < 2)) return {results, rerank: null};
+    const textsOf = list => Promise.all(list.slice(0, reranker.top).map(async result => pieceText(result, await index.textOf(result, SNIPPET_CHARS))));
+    const done = options.prepare
+      ? await reranker.rerank(query, [], {...options, prepare: async () => { const list = await options.prepare(); return {results: list, texts: await textsOf(list)}; }})
+      : await reranker.rerank(query, results, {...options, texts: await textsOf(results)});
+    const rerank = {model: reranker.entry.model, top: reranker.top, ms: done.ms, applied: done.ok, ...(done.ok ? {moved: done.moved} : {why: done.why, problem: done.error})};
     return {results: done.results, rerank};
   }
 
   /**
    * A picker's search, settled (typing stopped and meaning came): the fused ranking's first pieces, as /find's,
    * reranked, for the picker to put first. `{phase: 'rerank', query, results, rerank}`. `who` is the asking Neovim: its
-   * newer rerank stops its older one (`rerank.why` "aborted", not booked), and every rerank waits for the one under way.
+   * newer rerank, or its next key (`dropRerank`), makes this one stale ("aborted", not booked). It waits its turn for
+   * the model; its ranking is read once the model is its.
    */
   async rerank(root, query, {who = null} = {}) {
     const answer = {phase: 'rerank', query, state: this.state, results: [], rerank: null};
-    const index = this.reranker ? await this.indexOf(root) : null;
+    const reranker = this.reranker;
+    const index = reranker ? await this.indexOf(root) : null;
     if (!index) return answer;
-    const mine = this.reranking.get(who) ?? {turn: 0, controller: null};
-    this.reranking.set(who, mine);
-    const turn = ++mine.turn;
-    mine.controller?.abort();
-    const aborted = {model: this.reranker.entry.model, ms: 0, applied: false, why: 'aborted', problem: 'a newer search came'};
-    // The pickers' reranks go one after the other, each after any /find's under way.
-    const run = this.pickerReranks.then(async () => {
-      if (turn !== mine.turn) return {...answer, rerank: aborted};
-      while (this.reranker.running) await this.reranker.running.catch(() => {});
-      const controller = mine.controller = new AbortController();
-      let before;
+    const turn = (this.reranking.get(who) ?? 0) + 1;
+    this.reranking.set(who, turn);
+    let before = [];
+    const prepare = async () => {
       try {
-        before = this.state === 'on' ? await index.search(query, {limit: this.reranker.top}) : await index.wordSearch(query, {limit: this.reranker.top});
+        before = this.state === 'on' ? await index.search(query, {limit: reranker.top}) : await index.wordSearch(query, {limit: reranker.top});
       } catch {
-        before = await index.wordSearch(query, {limit: this.reranker.top});
+        before = await index.wordSearch(query, {limit: reranker.top});
       }
-      const done = {...answer, ...await this.reranked(index, query, before, {signal: controller.signal})};
-      if (mine.controller === controller) mine.controller = null;
-      if (turn === mine.turn) this.reranking.delete(who);
-      if (done.rerank && done.rerank.why !== 'aborted') this.bookRerank(root, query, before, done, ' in the picker');
-      return done;
-    });
-    this.pickerReranks = run.catch(() => {});
-    return run;
+      return before;
+    };
+    const stale = () => this.reranking.get(who) !== turn || this.reranker !== reranker;
+    const done = await this.reranked(index, query, [], {wait: true, prepare, stale});
+    if (this.reranking.get(who) === turn) this.reranking.delete(who);
+    Object.assign(answer, {results: done.results, rerank: done.rerank});
+    if (done.rerank && done.rerank.why !== 'aborted') this.bookRerank(root, query, before, answer, ' in the picker');
+    return answer;
+  }
+
+  /** The picker of `who` moved on (a key, or it closed): its rerank waiting or under way is not used. */
+  dropRerank(who) {
+    if (this.reranking.has(who)) this.reranking.set(who, this.reranking.get(who) + 1);
   }
 
   /** A rerank in the ledger: what moved, or why the order stayed, with the order before and after behind ⏎. */
   bookRerank(root, query, before, {results, rerank}, how = '') {
     const at = result => `${result.file}:${result.line}`;
     const text = rerank.applied
-      ? `"${query}"${how} with ${rerank.model} in ${rerank.ms} ms: ${rerank.moved ? `${rerank.moved} of ${Math.min(before.length, this.reranker.top)} moved${at(results[0]) !== at(before[0]) ? `, first now ${at(results[0])} (was ${at(before[0])})` : ''}` : 'the order stayed'}`
+      ? `"${query}"${how} with ${rerank.model} in ${rerank.ms} ms: ${rerank.moved ? `${rerank.moved} of ${Math.min(before.length, rerank.top)} moved${at(results[0]) !== at(before[0]) ? `, first now ${at(results[0])} (was ${at(before[0])})` : ''}` : 'the order stayed'}`
       : `"${query}"${how}: kept the search's order, ${rerank.model} ${rerank.why === 'timeout' ? 'too slow' : rerank.why === 'flat' ? 'saw no piece stand out' : rerank.why === 'down' ? 'not answering lately' : rerank.why === 'busy' ? 'busy with another search' : 'failed'} (${rerank.problem})`;
-    const lines = list => list.slice(0, this.reranker.top).map(result => `${at(result)}${result.rerank !== undefined ? `  ${result.rerank}` : ''}  ${result.head}`).join('\n');
+    const lines = list => list.slice(0, rerank.top).map(result => `${at(result)}${result.rerank !== undefined ? `  ${result.rerank}` : ''}  ${result.head}`).join('\n');
     this.book(root, 'reranked', text, {detail: {output: rerank.applied ? `before:\n${lines(before)}\n\nafter (the model's probability):\n${lines(results)}` : lines(before)}});
   }
 

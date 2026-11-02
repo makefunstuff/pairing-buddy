@@ -107,7 +107,7 @@ export async function decisionCheck(config, status, credentials, {build = create
  * Search by meaning's reranker (see rerank.mjs): none is fine, the searches keep their own order. One is asked a
  * search's question of as many small pieces; failing, or slower than its timeoutMs, is a failure: it never reorders.
  */
-export async function rerankCheck(config, status, credentials, {build = createDecisionModel} = {}) {
+export async function rerankCheck(config, status, credentials, {build = createDecisionModel, socket = config.socket} = {}) {
   const entry = config.rerank;
   if (!entry) return ok('rerank', 'off: searches keep the order of meaning and words; a "rerank" decision model reorders their first pieces (docs/meaning.md#rerank)');
   if (config.meaning === false) return ok('rerank', `${whereIs(entry)} is set, but search by meaning is off in the config ("meaning": false)`);
@@ -120,7 +120,9 @@ export async function rerankCheck(config, status, credentials, {build = createDe
   }
   const login = await loginCheck(entry, reranker.models, credentials);
   if (login.error) return fail('rerank', `${where}: ${login.error}`);
-  const probe = await reranker.probe();
+  // While the daemon runs with this model, it asks: the model gets one question at a time, Pair's searches' and this.
+  const daemonHas = status?.meaning?.rerank?.model === reranker.name;
+  const probe = daemonHas ? await requestDaemon(socket, {type: 'rerank_probe'}).catch(error => ({ok: false, error: error.message})) : await reranker.probe();
   if (!probe.ok) {
     return fail('rerank', `${where} fails: ${probe.error}. Searches keep their own order`
       + `${/within/.test(probe.error) ? `; fewer pieces ("top", now ${entry.top}) or a higher "timeoutMs" lets it rerank` : ''}`);
