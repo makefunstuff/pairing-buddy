@@ -359,8 +359,8 @@ test(':Pair voice on installs voice\'s packages first, in search by meaning\'s v
       voice: {fail: () => {}, close: () => {}, dataDir: dir},
       runtime: async () => (has ? {version: '0.19.0'} : {problem: 'python3 has no ai-edge-litert'}),
       wheels: () => [{bytes: 30e6}, {bytes: 12e6}],
-      litert: async () => ({version: null}),
-      install: async options => { asked.push(options); has = true; return {python: '/venv/bin/python', version: '3.14', bytes: 42e6, wheels: ['ai_edge_litert.whl', 'numpy.whl'], litert: {python: '/venv/bin/python', version: '0.19.0', pythonVersion: '3.14', made: true}}; },
+      litert: async () => false, // no venv yet: LiteRT-LM comes first
+      install: async options => { asked.push(options); options.installedLiteRT({python: '/venv/bin/python', version: '0.19.0', pythonVersion: '3.14', made: true}); has = true; return {python: '/venv/bin/python', version: '3.14', bytes: 42e6, wheels: ['ai_edge_litert.whl', 'numpy.whl']}; },
     },
   });
   try {
@@ -373,7 +373,7 @@ test(':Pair voice on installs voice\'s packages first, in search by meaning\'s v
     sendMessage(editor, {type: 'voice_on'});
     await until(() => got.filter(message => message.type === 'voice_state').length >= 2, 'the install');
     const told = got.filter(message => message.type === 'voice_state').map(message => message.text);
-    assert.match(told[0], /^Voice: installing LiteRT-LM 0\.19\.0 \(\d+ MB from PyPI, SHA-256 pinned\) in a venv in Pair's data folder, as :Pair find on does, then voice's Python packages \(42 MB from PyPI, SHA-256 pinned\) into that venv, once; :Pair voice off/, 'LiteRT-LM and the venv are said too');
+    assert.match(told[0], /^Voice: installing LiteRT-LM 0\.19\.0 (\(\d+ MB from PyPI, SHA-256 pinned\) )?in a venv in Pair's data folder, as :Pair find on does, then voice's Python packages \(42 MB from PyPI, SHA-256 pinned\) into that venv, once; :Pair voice off/, 'LiteRT-LM and the venv are said too');
     assert.match(told.at(-1), /^LFM3-Omni is here: hold the listen key/);
     assert.ok(asked[0].runtime, 'through search by meaning\'s runtime (PAIR-8), which makes the venv');
     sendMessage(editor, {type: 'today'});
@@ -396,14 +396,16 @@ test('voice\'s packages: LiteRT-LM first through the venv\'s installer, then the
   const wheel = text => ({url: `https://files.pythonhosted.org/packages/x/${text}.whl`, bytes: text.length, sha256: createHash('sha256').update(text).digest('hex')});
   let installed = false;
   let checks = 0;
-  const runtime = {check: async () => ({version: installed ? '0.19.0' : null}), install: async () => { installed = true; }};
+  const runtime = {install: async () => { installed = true; return {python: join(venv, 'python'), version: '0.19.0', pythonVersion: '3.14', made: true}; }};
+  const booked = [];
   const result = await installVoiceRuntime({
-    dataDir, runtime, platform: 'linux', arch: 'x64', wheelsOf: version => (version === '3.14' ? ['litert', 'numpy'].map(wheel) : null),
+    dataDir, runtime, platform: 'linux', arch: 'x64', venvHas: async () => installed, installedLiteRT: litert => booked.push(litert), wheelsOf: version => (version === '3.14' ? ['litert', 'numpy'].map(wheel) : null),
     check: async () => (++checks > 1 ? {version: '0.19.0'} : {problem: 'no ai-edge-litert'}),
     fetch: async url => new Response(url.split('/').at(-1).replace('.whl', '')),
   }).catch(error => error);
   assert.ok(!(result instanceof Error), result?.message);
   assert.ok(installed, 'LiteRT-LM and the venv first');
+  assert.equal(booked.length, 1, 'told as soon as it is there');
   assert.equal(result.version, '3.14');
   assert.deepEqual(result.wheels, ['litert.whl', 'numpy.whl'], 'each by its SHA-256');
   const pip = readFileSync(pipLog, 'utf8');

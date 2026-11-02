@@ -76,12 +76,13 @@ release is cut.
 - **Voice with LFM3-Omni, on your CPU: it hears you and answers aloud.** LFM3-Omni-2B, one model that hears and speaks
   (the one lfm-pixel uses for dictation, read-aloud and Talk), is now voice's default: `"voice": {}` hears
   push-to-talk with it and reads answers aloud with it when you are away, offline, through LiteRT-LM and LiteRT in a
-  Python helper. `:Pair voice on` installs it all, once, and says what and how big first: its Python packages (42 MB
-  of wheels from PyPI, each by the SHA-256 in `src/voice-runtime.txt`, into search by meaning's venv, made as `:Pair
-  find on` makes it), then the model (4.0 GB from Hugging Face, pinned revision `a287b6e6`, each file SHA-256
-  checked); it refuses without the disk room, and the ledger books both; `:Pair voice off` deletes it. Measured on a
-  Ryzen 5 9600X: a 4 s question heard in about 1.4 s (0.28 to 0.35 s per second of speech), 2% of words wrong on a
-  human recording and on neural narration, 14% on espeak-ng's robotic voice; speech at 1.15 s per second of speech,
+  Python helper. `:Pair voice on` installs it all, once, and says what and how big first: LiteRT-LM 0.19.0 and its
+  venv as `:Pair find on` makes them (33 MB, if search by meaning has not made them yet), voice's Python packages (42
+  MB of wheels from PyPI, each by the SHA-256 in `src/voice-runtime.txt`, into that venv), then the model (4.0 GB from
+  Hugging Face, pinned revision `a287b6e6`, each file SHA-256 checked), whose own Python speech loop runs as you; it
+  refuses without the disk room, and the ledger books each install as it lands; `:Pair voice off` deletes it. Measured
+  on a Ryzen 5 9600X: a 4 s question heard in about 1.4 s (0.28 to 0.35 s per second of speech), 2% of words wrong on
+  a human recording and on neural narration, 14% on espeak-ng's robotic voice; speech at 1.15 s per second of speech,
   the first words about 4 s after the answer, a part at a time; 0.8 GB of memory while it only hears, about 6 GB once
   it has spoken, given back after three idle minutes. `"talk": true` makes voice a conversation: every answer to a
   question you asked aloud is read aloud, at the editor too; typing or the key stops it, and Pair's unasked remarks

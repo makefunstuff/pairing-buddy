@@ -25,7 +25,7 @@ import {followLoaded, shareServer} from './loaded-model.mjs';
 import {DETAIL_KEPT_MS} from './ledger.mjs';
 import {editOrigin} from './fold.mjs';
 import {Listener} from './listen.mjs';
-import {downloadOmni, gb, installVoiceRuntime, OMNI, OmniVoice, omniInstall, omniMissing, omniReady, omniRuntimeOf, removeOmni, voiceWheelsOf} from './omni.mjs';
+import {downloadOmni, gb, installVoiceRuntime, OMNI, OmniVoice, omniInstall, omniMissing, omniReady, omniRuntimeOf, removeOmni, venvHasLiteRT, voiceWheelsOf} from './omni.mjs';
 import {pythonOf} from './embedder.mjs';
 import {usesOmni} from './voice.mjs';
 import {Meaning} from './meaning.mjs';
@@ -1128,12 +1128,12 @@ export async function startDaemon(config, {
     // meaning.python is the user's: Pair installs nothing there, and says what to run before it downloads anything.
     if (needsPackages && config.meaning?.python) return tell(`Voice is not ready: ${python} lacks voice's packages, and Pair installs nothing into meaning.python: ${omniInstall(python)}.`);
     const runtime = meaning.runtime ?? new Runtime({dataDir: config.dataDir, python: () => pythonOf(config.meaning, config.dataDir), log});
-    const litert = needsPackages && !(await (omniWith.litert ?? (() => runtime.check()))()).version;
+    const litert = needsPackages && !(await (omniWith.litert ?? venvHasLiteRT)(config.dataDir));
     const wheels = needsPackages ? (omniWith.wheels ?? voiceWheelsOf)(await venvVersion()) : null;
     const mb = bytes => Math.round(bytes / 1e6);
     const fetches = [
       ...(litert ? [`LiteRT-LM ${RUNTIME_VERSION}${runtime.bytes ? ` (${mb(runtime.bytes)} MB from PyPI, SHA-256 pinned)` : ''} in a venv in Pair's data folder, as :Pair find on does`] : []),
-      ...(needsPackages ? [`voice's Python packages${wheels ? ` (${mb(wheels.reduce((sum, wheel) => sum + wheel.bytes, 0))} MB from PyPI, SHA-256 pinned)` : ''} into that venv`] : []),
+      ...(needsPackages ? [`voice's Python packages${wheels ? ` (${mb(wheels.reduce((sum, wheel) => sum + wheel.bytes, 0))} MB from PyPI, SHA-256 pinned)` : ''} into ${litert ? 'that venv' : 'search by meaning\'s venv'}`] : []),
       ...(missing ? [`LFM3-Omni-2B, ${gb(missing)} from Hugging Face (${OMNI.repo}, pinned, SHA-256 checked), whose own speech loop (Python, Apache-2.0) runs as you`] : []),
     ];
     tell(`Voice: installing ${fetches.join(', then ')}, once; :Pair voice off stops it and deletes the model.`);
@@ -1145,16 +1145,16 @@ export async function startDaemon(config, {
       told = bytes;
       tell(`Downloading ${what}: ${what === 'LFM3-Omni' ? `${gb(bytes)} of ${gb(total)}` : `${Math.round(bytes / 1e6)} of ${Math.round(total / 1e6)} MB`}…`);
     };
+    // LiteRT-LM and the venv are booked as soon as they are there, whatever comes after.
+    const bookLiteRT = ({python: venv, version, pythonVersion, made}) => {
+      const detail = {output: `${RUNTIME}, its wheel from PyPI by the SHA-256 in src/meaning-runtime.txt\n${tilde(venv)}${made ? '\n:Pair find off keeps this venv while LFM3-Omni is here' : ''}`};
+      for (const session of live.values()) session.ledger.add('installed', `LiteRT-LM ${version} for voice, in ${made ? `a venv Pair made with Python ${pythonVersion}` : 'the venv already in Pair\'s data folder'}`, {detail});
+    };
     try {
       const installed = await (omniWith.install ?? installVoiceRuntime)({
         dataDir: config.dataDir, meaning: config.meaning, runtime,
-        fetch: omniWith.fetch, signal: abort.signal, progress: progress('voice\'s packages'), check,
+        fetch: omniWith.fetch, signal: abort.signal, progress: progress('voice\'s packages'), check, installedLiteRT: bookLiteRT,
       });
-      if (installed?.litert) {
-        const {python: venv, version, pythonVersion, made} = installed.litert;
-        const detail = {output: `${RUNTIME}, its wheel from PyPI by the SHA-256 in src/meaning-runtime.txt\n${tilde(venv)}${made ? '\n:Pair find off keeps this venv while LFM3-Omni is here' : ''}`};
-        for (const session of live.values()) session.ledger.add('installed', `LiteRT-LM ${version} for voice, in ${made ? `a venv Pair made with Python ${pythonVersion}` : 'the venv already in Pair\'s data folder'}`, {detail});
-      }
       if (installed) {
         const detail = {output: `${installed.wheels.join('\n')}\nfrom PyPI by the SHA-256 in src/voice-runtime.txt, into ${tilde(installed.python)}`};
         for (const session of live.values()) session.ledger.add('installed', `voice's Python packages (${Math.round(installed.bytes / 1e6)} MB, SHA-256 pinned) in search by meaning's venv, Python ${installed.version}`, {detail});

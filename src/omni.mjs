@@ -5,11 +5,11 @@
 // helper (src/omni-helper.py) runs it in that venv, started on first use and stopped once idle, which gives its memory
 // back.
 import {execFile, spawn} from 'node:child_process';
-import {readFileSync} from 'node:fs';
+import {existsSync, readFileSync} from 'node:fs';
 import {mkdir, mkdtemp, rm, statfs} from 'node:fs/promises';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {downloadFile, downloadModel, fileReady, meaningDir, pythonOf, RUNTIME} from './embedder.mjs';
+import {downloadFile, downloadModel, fileReady, meaningDir, pythonOf, RUNTIME, runtimeOf} from './embedder.mjs';
 import {venvPython} from './runtime.mjs';
 import {readMessages} from './protocol.mjs';
 
@@ -316,6 +316,9 @@ export function omniRuntimeOf(python) {
   }));
 }
 
+/** Whether search by meaning's venv is there with LiteRT-LM in it. */
+export const venvHasLiteRT = async dataDir => existsSync(venvPython(dataDir)) && Boolean((await runtimeOf(venvPython(dataDir))).version);
+
 /** The wheels voice's packages need for `pythonVersion` ("3.14") on this machine, or null when PyPI has none. */
 export const voiceWheelsOf = (pythonVersion, platform = process.platform, arch = process.arch) => VOICE_WHEELS[`${platform} ${arch} ${pythonVersion.replace('.', '')}`] ?? null;
 
@@ -330,13 +333,17 @@ export const omniInstall = python => `${python} -m pip install --require-hashes 
  * Python and machine, each downloaded from PyPI by the SHA-256 in voice-runtime.txt, and pip with no index, every hash
  * required, no other package. With the config's meaning.python, Pair installs nothing there: it says what to run.
  * `progress(bytes, total)` hears the downloads; `signal` stops it. Resolves {python, version, bytes, wheels} or null
- * when everything was there; `litert` is what `runtime.install()` resolved, when it ran. `check` and `wheelsOf` are for tests.
+ * when everything was there; `litert` is what `runtime.install()` resolved, when it ran, also told to `installedLiteRT`
+ * at once (a failure after it leaves the venv, which is then booked all the same). `check`, `venvHas` and `wheelsOf`
+ * are for tests.
  */
-export async function installVoiceRuntime({dataDir, meaning = null, runtime, fetch = globalThis.fetch, progress = () => {}, signal = null, platform = process.platform, arch = process.arch, check = omniRuntimeOf, wheelsOf = voiceWheelsOf}) {
+export async function installVoiceRuntime({dataDir, meaning = null, runtime, fetch = globalThis.fetch, progress = () => {}, signal = null, platform = process.platform, arch = process.arch, check = omniRuntimeOf, venvHas = venvHasLiteRT, wheelsOf = voiceWheelsOf, installedLiteRT = () => {}}) {
   const python = pythonOf(meaning, dataDir);
   if ((await check(python)).version) return null;
   if (meaning?.python) throw new Error(`${python} lacks voice's packages, and Pair installs nothing into meaning.python: ${omniInstall(python)}`);
-  const litert = (await runtime.check()).version ? null : await runtime.install({signal, progress: (bytes, total) => progress(bytes, total)});
+  // The venv itself, not whatever Python stands in while it is missing (python3 may have LiteRT-LM of its own).
+  const litert = (await venvHas(dataDir)) ? null : await runtime.install({signal, progress: (bytes, total) => progress(bytes, total)});
+  if (litert) installedLiteRT(litert);
   const venv = venvPython(dataDir);
   const {stdout, error} = await run(venv, ['-I', '-c', 'import sys; print("%d.%d" % sys.version_info[:2])']);
   if (error) throw new Error(`${venv} does not run: ${error.message}`);
