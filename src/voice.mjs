@@ -8,6 +8,7 @@ import {unlink, writeFile} from 'node:fs/promises';
 import {homedir} from 'node:os';
 import {delimiter, join} from 'node:path';
 import {apiKeyOf} from './config.mjs';
+import {gb, OMNI, omniReady} from './omni.mjs';
 
 export const RATE = 16_000; // whisper.cpp takes 16 kHz mono
 const CHUNK_BYTES = RATE / 10 * 2; // a tenth of a second of 16-bit samples: one step of the level meter
@@ -31,39 +32,60 @@ const PLAYERS = [
   ['ffplay', '-nodisp', '-autoexit', '-loglevel', 'quiet', '-'],
 ];
 
+// Players for LFM3-Omni's WAV from stdin: those for OpenRouter's, then the audio server's and ALSA's own.
+const WAV_PLAYERS = [...PLAYERS, ['pw-play', '-'], ['aplay', '-q', '-']];
+
 const expand = path => path.replace(/^~(?=\/|$)/, homedir());
 const onPath = name => (process.env.PATH ?? '').split(delimiter).some(dir => existsSync(join(dir, name)));
 
 /**
- * The config's `voice`: null (voice is off) or `{model, whisper, threads, language, record, speak, play, maxSeconds,
- * openrouter}`. `record`, `speak` and `play` are shell commands; without `record`, the first recorder found on PATH is
- * used. `openrouter` is null, or where OpenRouter hears (`hear`, a transcription model) and speaks (`speak`, a voice):
- * see openrouterConfig.
+ * The config's `voice`: null (voice is off) or `{hear, model, whisper, threads, language, record, speak, omniSpeaks,
+ * omniVoice, talk, play, maxSeconds, openrouter}`. `hear` says who hears: 'omni' (LFM3-Omni, the default), 'whisper'
+ * (with `model`, a whisper.cpp model) or 'openrouter' (with `openrouter.hear`). `record`, `speak` and `play` are shell
+ * commands; without `record`, the first recorder found on PATH is used. `omniSpeaks` is true when LFM3-Omni reads
+ * answers aloud: `"speak": "omni"`, or by default when it hears and no other voice is set (`"speak": false` for none).
+ * `talk` reads every answer to a spoken question aloud, at the editor too. `openrouter` is null, or where OpenRouter
+ * hears (`hear`, a transcription model) and speaks (`speak`, a voice): see openrouterConfig.
  */
 export function voiceConfig(raw) {
   if (raw === undefined || raw === null || raw === false) return null;
+  if (raw === true) raw = {};
   if (typeof raw !== 'object' || Array.isArray(raw)) throw new Error('config: voice must be an object (see docs/voice.md)');
   const openrouter = openrouterConfig(raw.openrouter);
-  if (!openrouter?.hear && (typeof raw.model !== 'string' || !raw.model)) {
-    throw new Error('config: voice.model must be the path of a whisper.cpp model, like ggml-base.en.bin, or voice.openrouter.hear an OpenRouter transcription model');
+  if (raw.model !== undefined && (typeof raw.model !== 'string' || !raw.model)) {
+    throw new Error('config: voice.model must be the path of a whisper.cpp model, like ggml-base.en.bin (or leave it out for LFM3-Omni)');
   }
   if (openrouter?.hear && raw.model !== undefined) throw new Error('config: voice takes one of model (whisper.cpp) and openrouter.hear');
-  if (openrouter?.speak && raw.speak !== undefined) throw new Error('config: voice takes one of speak (a command) and openrouter.speak');
-  for (const field of ['model', 'whisper', 'language', 'record', 'speak', 'play']) {
+  if (openrouter?.speak && raw.speak !== undefined) throw new Error('config: voice takes one of speak (a command, "omni" or false) and openrouter.speak');
+  for (const field of ['model', 'whisper', 'language', 'record', 'play']) {
     if (raw[field] !== undefined && (typeof raw[field] !== 'string' || !raw[field].trim())) throw new Error(`config: voice.${field} must be a string`);
   }
+  if (raw.speak !== undefined && raw.speak !== false && (typeof raw.speak !== 'string' || !raw.speak.trim())) throw new Error('config: voice.speak must be a command, "omni" or false');
+  if (raw.talk !== undefined && typeof raw.talk !== 'boolean') throw new Error('config: voice.talk must be true or false');
+  const omni = raw.omni ?? {};
+  if (typeof omni !== 'object' || Array.isArray(omni)) throw new Error('config: voice.omni must be {"voice": "female"} or {"voice": "male"}');
+  if (omni.voice !== undefined && !['female', 'male'].includes(omni.voice)) throw new Error('config: voice.omni.voice must be "female" or "male"');
+  const hear = openrouter?.hear ? 'openrouter' : raw.model !== undefined ? 'whisper' : 'omni';
+  const omniSpeaks = raw.speak === 'omni' || (raw.speak === undefined && !openrouter?.speak && hear === 'omni');
   return {
+    hear,
     whisper: expand(raw.whisper ?? 'whisper-cli'),
     threads: raw.threads ?? 4,
     language: raw.language ?? 'en',
     record: raw.record ?? null,
-    speak: raw.speak ?? null,
+    speak: typeof raw.speak === 'string' && raw.speak !== 'omni' ? raw.speak : null,
+    omniSpeaks,
+    omniVoice: omni.voice ?? 'female',
+    talk: raw.talk ?? false,
     play: raw.play ?? null,
     maxSeconds: raw.maxSeconds ?? 60,
     model: raw.model === undefined ? null : expand(raw.model),
     openrouter,
   };
 }
+
+/** Whether voice needs LFM3-Omni: it hears, or reads answers aloud. */
+export const usesOmni = voice => Boolean(voice && (voice.hear === 'omni' || voice.omniSpeaks));
 
 /**
  * `voice.openrouter`: null, or `{hear, speak: {model, voice, format, speed}, baseUrl, timeoutMs}` with the key in one of
@@ -114,8 +136,14 @@ export function playerOf(voice, found = onPath) {
   return PLAYERS.find(([name]) => found(name)) ?? null;
 }
 
-/** Whether answers are read aloud when you are away: a speech command or an OpenRouter voice is set. */
-export const speaks = voice => Boolean(voice.speak || voice.openrouter?.speak);
+/** The player for LFM3-Omni's WAV: the configured one run by sh, else the first one found on PATH, else null. */
+export function wavPlayerOf(voice, found = onPath) {
+  if (voice.play) return ['sh', '-c', voice.play];
+  return WAV_PLAYERS.find(([name]) => found(name)) ?? null;
+}
+
+/** Whether answers are read aloud when you are away: a speech command, LFM3-Omni or an OpenRouter voice is set. */
+export const speaks = voice => Boolean(voice.speak || voice.omniSpeaks || voice.openrouter?.speak);
 
 /** How loud `pcm` (16-bit samples) is, in dB below full scale; -Infinity for silence. */
 export function loudness(pcm) {
@@ -220,12 +248,18 @@ export function cleanTranscript(text) {
 }
 
 /**
- * The words in `pcm`: by OpenRouter's transcription model when `voice.openrouter.hear` names one, else by whisper.cpp
- * on the CPU. `prompt` names what the user works on, so whisper hears its words: file names and the goal. `dir` is
- * where the WAV file is kept while whisper reads it. `signal` stops a request to OpenRouter.
+ * The words in `pcm`: by OpenRouter's transcription model when `voice.openrouter.hear` names one, by LFM3-Omni (`omni`,
+ * an omni.mjs OmniVoice) when it hears, else by whisper.cpp on the CPU. `prompt` names what the user works on, so
+ * whisper hears its words: file names and the goal. `dir` is where the WAV file is kept while whisper reads it.
+ * `signal` stops a request to OpenRouter or LFM3-Omni.
  */
-export async function transcribe(voice, pcm, {dir, prompt = '', signal} = {}) {
+export async function transcribe(voice, pcm, {dir, prompt = '', signal, omni = null} = {}) {
   if (voice.openrouter?.hear) return transcribeOpenRouter(voice, pcm, {signal});
+  if (voice.hear === 'omni') {
+    const missing = omniMissingWhy(omni);
+    if (missing) throw new Error(missing);
+    return cleanTranscript(await omni.hear(pcm, {language: voice.language, signal}));
+  }
   const file = join(dir, `heard-${process.pid}-${Date.now()}.wav`);
   await writeFile(file, wav(pcm), {mode: 0o600});
   const args = ['-m', voice.model, '-f', file, '-l', voice.language, '-t', String(voice.threads), '--no-gpu', '-nt', '-np'];
@@ -313,6 +347,13 @@ export async function openrouterRequest(openrouter, path, body, {signal, read = 
   }
 }
 
+/** Why LFM3-Omni cannot hear or speak yet, or null when its files are here. */
+export function omniMissingWhy(omni) {
+  if (!omni) return 'LFM3-Omni is not set up';
+  if (!omniReady(omni.dataDir)) return `LFM3-Omni is not downloaded: :Pair voice on downloads it (${gb(OMNI.bytes)} from Hugging Face, once)`;
+  return null;
+}
+
 /** What whisper is told the user works on: a sentence works better than a list of words. */
 export function whisperPrompt({file, goal}) {
   if (!file && !goal) return '';
@@ -344,25 +385,33 @@ export function speakable(text) {
 }
 
 /**
- * Says `text` with OpenRouter's voice when `voice.openrouter.speak` names one, else with the configured speech command
- * (text on stdin); returns a function that stops it. `failed(why)` hears of a failure, not of a stop.
+ * Says `text` with OpenRouter's voice when `voice.openrouter.speak` names one, with LFM3-Omni (`omni`) when it reads
+ * aloud, else with the configured speech command (text on stdin); returns a function that stops it. `failed(why)` hears of a failure, not of a stop.
  */
-export function speak(voice, text, {log = () => {}, failed = () => {}} = {}) {
+export function speak(voice, text, {log = () => {}, failed = () => {}, omni = null} = {}) {
   if (voice.openrouter?.speak) return speakOpenRouter(voice, text, {log, failed});
+  if (voice.omniSpeaks) return speakOmni(voice, text, {log, failed, omni});
   const report = why => { log(`speaking failed: ${why}`); failed(why); };
   return play(['sh', '-c', voice.speak], `${text}\n`, report);
 }
 
 /**
  * Runs `command` with `input` on its stdin, in its own process group (a pipeline stops as a whole); returns a function
- * that stops it. `report(why)` hears when it fails.
+ * that stops it. `report(why)` hears when it fails (once), `ended(ok)` when it is done, or failed (`ok` false).
  */
-function play([command, ...args], input, report) {
+function play([command, ...args], input, report, ended = () => {}) {
   const child = spawn(command, args, {stdio: ['pipe', 'ignore', 'pipe'], detached: true});
   let stderr = '';
+  let failed = false;
   child.stderr.on('data', data => { stderr = (stderr + data).slice(-300); });
-  child.on('error', error => report(error.code === 'ENOENT' ? `${command} not found` : error.message));
-  child.on('close', code => { if (code) report(stderr.trim().split('\n').at(-1) || `${command} exited with ${code}`); });
+  child.on('error', error => {
+    failed = true;
+    report(error.code === 'ENOENT' ? `${command} not found` : error.message);
+  });
+  child.on('close', (code, signal) => {
+    if (code && !failed) report(stderr.trim().split('\n').at(-1) || `${command} exited with ${code}`);
+    if (!signal) ended(!failed && !code); // not when it was stopped
+  });
   child.stdin.on('error', () => {});
   child.stdin.end(input);
   return () => stopGroup(child);
@@ -394,4 +443,65 @@ export function speakOpenRouter(voice, text, {log = () => {}, failed = () => {},
     stopped.abort();
     stopPlayer?.();
   };
+}
+
+/**
+ * `text` in parts of a sentence or more for LFM3-Omni, each at least `min` characters where it can. A long first
+ * sentence is cut at its first comma past half of `min`: speech takes LFM3-Omni longer than it lasts, so the first part is
+ * short, to be heard sooner.
+ */
+export function sentencesOf(text, min = 40) {
+  const parts = [];
+  for (const sentence of text.split(/(?<=[.!?;:])\s+/).filter(Boolean)) {
+    if (parts.length && parts.at(-1).length < min) parts[parts.length - 1] += ` ${sentence}`;
+    else parts.push(sentence);
+  }
+  const comma = parts[0]?.length > 1.5 * min ? parts[0].indexOf(', ', min / 2) : -1;
+  if (comma > 0 && comma < parts[0].length - min / 2) parts.splice(0, 1, parts[0].slice(0, comma + 1), parts[0].slice(comma + 2));
+  return parts;
+}
+
+// A file's extension as LFM3-Omni says it: "retry dot c", where "retry.c" comes out as "C retry, C".
+const EXTENSION = /\b([\w-]+)\.(c|h|cc|cpp|hpp|go|rs|py|rb|js|mjs|cjs|ts|tsx|jsx|lua|java|kt|swift|sh|sql|css|html|md|json|toml|yaml|yml)\b/g;
+export const saidFiles = text => text.replace(EXTENSION, '$1 dot $2');
+
+/**
+ * Says `text` with LFM3-Omni, a part at a time: the first part plays while the next is made. Returns a function that
+ * stops it, whether speech is still being made or playing.
+ */
+export function speakOmni(voice, text, {log = () => {}, failed = () => {}, omni = null, player = wavPlayerOf(voice)} = {}) {
+  let stopped = false;
+  const report = why => {
+    if (stopped) return;
+    log(`speaking failed: ${why}`);
+    failed(why);
+  };
+  const missing = omniMissingWhy(omni);
+  if (missing) {
+    report(missing);
+    return () => {};
+  }
+  if (!player) {
+    report('no player found for LFM3-Omni\'s voice: install mpv, ffmpeg (ffplay), pipewire (pw-play) or alsa-utils (aplay), or set voice.play');
+    return () => {};
+  }
+  const waiting = [];
+  let playing = null;
+  let speech = null;
+  const stop = () => {
+    stopped = true;
+    speech?.stop();
+    playing?.();
+  };
+  const next = () => {
+    if (stopped || playing || !waiting.length) return;
+    playing = play(player, waiting.shift(), report, played => {
+      playing = null;
+      if (!played) return stop(); // once the player fails, the rest is neither made nor played
+      next();
+    });
+  };
+  speech = omni.speak(sentencesOf(saidFiles(text)), {voice: voice.omniVoice, language: voice.language, onPart: part => { waiting.push(part); next(); }});
+  speech.done.catch(error => report(error.message));
+  return stop;
 }

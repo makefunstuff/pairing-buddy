@@ -14,7 +14,8 @@ import {initialState} from '../src/fold.mjs';
 import {voiceCheck} from '../src/doctor.mjs';
 import {Listener} from '../src/listen.mjs';
 import {keyVariables} from '../src/service-env.mjs';
-import {cleanTranscript, loudness, meterLevel, playerOf, RATE, recorderOf, Recording, speak, speakable, speakOpenRouter, speaks, transcribe, voiceConfig, wav, whisperPrompt} from '../src/voice.mjs';
+import {OMNI, omniDir} from '../src/omni.mjs';
+import {cleanTranscript, loudness, meterLevel, playerOf, RATE, recorderOf, Recording, speak, speakable, speakOmni, speakOpenRouter, speaks, sentencesOf, transcribe, usesOmni, voiceConfig, wav, wavPlayerOf, whisperPrompt} from '../src/voice.mjs';
 import {scratch} from './temp.mjs';
 
 /** Whether a process whose command line has `marker` runs. */
@@ -32,13 +33,27 @@ const toneCommand = (seconds, {amplitude = 8000} = {}) => `node -e '
     if (++n >= ${seconds * 10}) clearInterval(timer);
   }, 100);'`;
 
-test('voice config: off without one; a model is needed; paths expand and defaults fill in', () => {
+test('voice config: off without one; LFM3-Omni by default; a whisper.cpp model; paths expand and defaults fill in', () => {
   assert.equal(voiceConfig(undefined), null);
-  assert.throws(() => voiceConfig({}), /voice\.model/);
-  assert.throws(() => voiceConfig({model: 'm.bin', speak: 3}), /voice\.speak must be a string/);
+  assert.throws(() => voiceConfig({model: 'm.bin', speak: 3}), /voice\.speak must be a command, "omni" or false/);
   const voice = voiceConfig({model: '~/models/ggml-base.en.bin'});
   assert.match(voice.model, /^\/.*\/models\/ggml-base\.en\.bin$/);
-  assert.deepEqual({...voice, model: undefined}, {whisper: 'whisper-cli', threads: 4, language: 'en', record: null, speak: null, play: null, maxSeconds: 60, model: undefined, openrouter: null});
+  assert.deepEqual({...voice, model: undefined}, {hear: 'whisper', whisper: 'whisper-cli', threads: 4, language: 'en', record: null, speak: null, omniSpeaks: false, omniVoice: 'female', talk: false, play: null, maxSeconds: 60, model: undefined, openrouter: null});
+  assert.equal(speaks(voice), false, 'whisper.cpp alone reads nothing aloud, as before');
+
+  const omni = voiceConfig({});
+  assert.deepEqual(voiceConfig(true), omni);
+  assert.equal(omni.hear, 'omni');
+  assert.equal(omni.omniSpeaks, true, 'LFM3-Omni hears and reads aloud');
+  assert.equal(usesOmni(omni), true);
+  assert.equal(voiceConfig({speak: false}).omniSpeaks, false);
+  assert.equal(speaks(voiceConfig({speak: false})), false);
+  assert.equal(voiceConfig({speak: 'espeak-ng'}).omniSpeaks, false, 'a speech command of your own reads instead');
+  const whisperOmni = voiceConfig({model: 'm.bin', speak: 'omni', talk: true, omni: {voice: 'male'}});
+  assert.deepEqual([whisperOmni.hear, whisperOmni.omniSpeaks, whisperOmni.speak, whisperOmni.talk, whisperOmni.omniVoice], ['whisper', true, null, true, 'male']);
+  assert.equal(usesOmni(voice), false);
+  assert.throws(() => voiceConfig({omni: {voice: 'robot'}}), /"female" or "male"/);
+  assert.throws(() => voiceConfig({talk: 'yes'}), /voice\.talk must be true or false/);
 });
 
 test('voice config with OpenRouter: one key, a model to hear with or a voice, and no second way to do either', () => {
@@ -51,7 +66,8 @@ test('voice config with OpenRouter: one key, a model to hear with or a voice, an
   assert.deepEqual(spoken.openrouter.speak, {model: 'x-ai/grok-voice-tts-1.0', voice: 'eve', format: 'mp3'});
   assert.equal(spoken.openrouter.hear, null);
   assert.equal(speaks(spoken), true);
-  assert.throws(() => voiceConfig({openrouter: {...key, speak: {model: 'x', voice: 'eve'}}}), /voice\.model/, 'whisper.cpp hears without hear');
+  const omniHears = voiceConfig({openrouter: {...key, speak: {model: 'x', voice: 'eve'}}});
+  assert.deepEqual([omniHears.hear, omniHears.omniSpeaks], ['omni', false], 'LFM3-Omni hears without hear; OpenRouter reads');
   assert.throws(() => voiceConfig({openrouter: {hear: 'm'}}), /needs its key/);
   assert.throws(() => voiceConfig({openrouter: {...key, apiKeyEnv: 'K', hear: 'm'}}), /takes one of apiKeyFile, apiKeyEnv/);
   assert.throws(() => voiceConfig({model: 'm.bin', openrouter: key}), /needs "hear"/);

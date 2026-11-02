@@ -92,7 +92,10 @@ the work board.
   words judged by the Partner's `✓`, and a picture the run writes going to the model. The project on disk stays as it
   was.
 - **Push-to-talk** without Neovim: the recorder (levels, a pipeline stopped as a whole, a failing recorder said at
-  once), whisper.cpp's flags and text, and what is read aloud, only when you are away.
+  once), whisper.cpp's flags and text, and what is read aloud, only when you are away. LFM3-Omni with a fake helper
+  and a fake Hugging Face: its pinned download (a wrong SHA-256 is not kept, no room no start), hearing and speech a
+  part at a time, a stop at the next part, talk at the editor stopped by typing, `pair doctor`, and `:Pair voice on`
+  saying the size first and booking it.
 - **The held thought's rules** without Neovim: which triggers wait, each breakpoint, a thought dropped once the error
   is fixed or you left the file, one held at a time. Also the chat pane's true-colour lines and wrapping.
 - **The chat pane.** Its editor (words, lines, history, the word Tab completes), the terminal's keys (modifiers,
@@ -381,6 +384,12 @@ Details in [tone.md](tone.md).
 model (and `PAIR_LIVE_WHISPER` the program, if it is not `whisper-cli` on `PATH`): espeak-ng and FFmpeg play a
 spoken question into the recorder, whisper.cpp hears it on the CPU, and the stack's model answers through the daemon.
 It prints what was heard and how long each step took.
+
+**LFM3-Omni.** `test/live/omni.test.mjs` runs with `PAIR_LIVE_OMNI=1`, local and with no keys: it downloads LFM3-Omni
+(4.0 GB, pinned, SHA-256 checked) into `PAIR_LIVE_OMNI_DATA` (or a temp folder), with the helper's packages in
+`PAIR_LIVE_OMNI_PYTHON`. It hears five coding questions spoken by espeak-ng, five lines of the docs video's narration
+and the model card's human recording, then reads an answer aloud and hears it back. It prints the words it got wrong,
+the time per second of speech and the helper's memory.
 
 **One model.** A stack with `"model"` in place of `watcher` and `partner` runs every test with one model in both
 roles, and also `test/live/one-model.test.mjs`: the daemon end to end behind a local proxy that lets one request

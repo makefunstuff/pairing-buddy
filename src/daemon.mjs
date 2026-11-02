@@ -1,6 +1,7 @@
 // The long-lived daemon: one Unix socket for Neovim, the chat pane and the shell hook; one session per project,
 // shared by every Neovim and chat pane open in it.
-import {chmodSync, mkdirSync, unlinkSync} from 'node:fs';
+import {execFile} from 'node:child_process';
+import {chmodSync, existsSync, mkdirSync, unlinkSync} from 'node:fs';
 import {realpath} from 'node:fs/promises';
 import {createServer} from 'node:net';
 import {homedir} from 'node:os';
@@ -22,7 +23,11 @@ import {HerdrPanes} from './herdr.mjs';
 import {CorePaneHost, CorePanes, HerdrApp} from './herdr-core.mjs';
 import {followLoaded, shareServer} from './loaded-model.mjs';
 import {DETAIL_KEPT_MS} from './ledger.mjs';
+import {editOrigin} from './fold.mjs';
 import {Listener} from './listen.mjs';
+import {downloadOmni, gb, installVoiceRuntime, OMNI, OmniVoice, omniInstall, omniMissing, omniReady, omniRuntimeOf, removeOmni, venvHasLiteRT, voicePythonsOn, voiceWheelsOf} from './omni.mjs';
+import {pythonOf} from './embedder.mjs';
+import {usesOmni} from './voice.mjs';
 import {Meaning} from './meaning.mjs';
 import {createDecisionModel, createPairModels} from './models.mjs';
 import {acquireOwner} from './owner.mjs';
@@ -36,7 +41,7 @@ import {probeModel} from './probe.mjs';
 import {projectContext} from './project-context.mjs';
 import {readMessages, sendMessage} from './protocol.mjs';
 import {Reranker} from './rerank.mjs';
-import {RUNTIME_VERSION} from './runtime.mjs';
+import {findPython, madeByPair, Runtime, RUNTIME_VERSION, venvPython} from './runtime.mjs';
 import {configChanges, RESTART_FIELDS, watchConfig} from './reload.mjs';
 import {rememberScores} from './score-memory.mjs';
 import {ScoutPane} from './scout-pane.mjs';
@@ -97,6 +102,7 @@ export async function startDaemon(config, {
   appCommand = 'herdr-app', // the Herdr window's command, for herdr-core's focus and agents
   meaningWith = {}, // tests' fetch and embedder for search by meaning (see meaning.mjs)
   rerankerFor = (entries, logTo) => (entries.rerank ? new Reranker({...createDecisionModel(entries, {field: 'rerank'}), entry: entries.rerank, log: logTo}) : null),
+  omniWith = {}, // tests' LFM3-Omni for voice (see omni.mjs): {voice, fetch, free, files, runtime, litert, wheels, pythons, pythonsOn, install}
 } = {}) {
   mkdirSync(config.dataDir, {recursive: true, mode: 0o700});
   mkdirSync(join(config.dataDir, 'runs'), {recursive: true}); // the output of the tests run on save, one file per session
@@ -178,6 +184,11 @@ export async function startDaemon(config, {
     },
     ...meaningWith,
   });
+
+  // Voice's LFM3-Omni (omni.mjs): one helper for every session, started on first use; its download is `:Pair voice on`.
+  meaning.keepVenv = () => omniReady(config.dataDir); // :Pair find off leaves the venv to voice while LFM3-Omni is here
+  const omni = omniWith.voice ?? new OmniVoice({python: () => pythonOf(config.meaning, config.dataDir), dataDir: config.dataDir, threads: config.voice?.threads, log});
+  let omniDownload = null; // {abort, done} while its files come
 
   // What the board's working tasks of each repo change on their branches, read while a Neovim is connected (overlap.mjs).
   const taskChanges = new TaskChanges({board: config.board, log});
@@ -365,6 +376,7 @@ export async function startDaemon(config, {
     if (changed.includes('voice')) {
       for (const listener of listeners.values()) listener.close();
       listeners.clear();
+      omni.threads = config.voice?.threads ?? omni.threads;
     }
     if (nextModels) await rebuildModels(nextModels);
     const now = changed.filter(field => !RESTART_FIELDS.includes(field));
@@ -528,6 +540,7 @@ export async function startDaemon(config, {
     session.receive(event);
     if (event.kind === 'save' && typeof event.file === 'string') meaning.saved(session.root, event.file).catch(error => log(`meaning: ${error.message}`));
     if (event.kind === 'command_end') refreshContext(session);
+    if (event.kind === 'typing' || (event.kind === 'edit' && editOrigin(event.origin) === 'user')) listeners.get(session.root)?.typed({keys: event.kind === 'typing'}); // speech stops as you type, not as Pair does
     if (event.kind === 'focus' && event.target === 'editor') herdrFocus(clientsOf(session, 'editor'), event.pane);
   }
 
@@ -598,7 +611,7 @@ export async function startDaemon(config, {
     if (!config.voice) return null;
     if (!listeners.has(session.root)) {
       listeners.set(session.root, new Listener({
-        voice: config.voice, session, dir: join(config.dataDir, 'voice'),
+        voice: config.voice, session, dir: join(config.dataDir, 'voice'), omni: usesOmni(config.voice) ? omni : null,
         ask: (text, selection) => session.ask(text, selection, {question: true}),
         log: line => log(`[${basename(session.root)}] ${line}`),
       }));
@@ -996,6 +1009,8 @@ export async function startDaemon(config, {
     if (message.type === 'index_rebuild') return indexRebuild(client, session);
     if (message.type === 'meaning_on') return meaningOn(client);
     if (message.type === 'meaning_off') return meaningOff(client);
+    if (message.type === 'voice_on') return voiceOn(client);
+    if (message.type === 'voice_off') return voiceOff(client);
     if (message.type === 'forget_trail') return session.forgetTrail();
     if (message.type === 'runs') return session.runs().then(runs => sendMessage(client.socket, runs));
     if (message.type === 'release') return session.release();
@@ -1111,6 +1126,97 @@ export async function startDaemon(config, {
     sendMessage(client.socket, {type: 'meaning_state', ...meaning.snapshot(), text});
   }
 
+  /**
+   * `:Pair voice on`: what comes said up front, then voice's Python packages (in search by meaning's venv, PAIR-8's
+   * install path: LiteRT-LM first if it lacks it) and LFM3-Omni's one download (4.0 GB), each told as it goes and
+   * booked.
+   */
+  async function voiceOn(client) {
+    const tell = text => sendMessage(client.socket, {type: 'voice_state', text});
+    if (omniDownload) return tell('LFM3-Omni is downloading already.');
+    const missing = omniMissing(config.dataDir);
+    const python = pythonOf(config.meaning, config.dataDir);
+    const check = omniWith.runtime ?? omniRuntimeOf;
+    const needsPackages = !(await check(python)).version;
+    const ready = `LFM3-Omni is here: ${usesOmni(config.voice) ? 'hold the listen key and speak' : 'set "voice": {} in the config to hear and speak with it'}.`;
+    if (!missing && !needsPackages) return tell(ready);
+    // meaning.python is the user's: Pair installs nothing there, and says what to run before it downloads anything.
+    if (needsPackages && config.meaning?.python) return tell(`Voice is not ready: ${python} lacks voice's packages, and Pair installs nothing into meaning.python: ${omniInstall(python)}.`);
+    const runtime = meaning.runtime ?? new Runtime({dataDir: config.dataDir, python: () => pythonOf(config.meaning, config.dataDir), log});
+    const litert = needsPackages && !(await (omniWith.litert ?? venvHasLiteRT)(config.dataDir));
+    // No wheels for this machine or this Python: said before anything is downloaded, not after LiteRT-LM and its venv.
+    // Without a fitting Python at all, runtime.install() says what is missing, also before it downloads anything.
+    const fits = (omniWith.pythonsOn ?? voicePythonsOn)();
+    if (needsPackages && !fits.length) return tell(`Voice is not ready: voice's packages have no wheels for ${process.platform} ${process.arch}, only Linux (x86-64, ARM64) and macOS on Apple silicon. Nothing was downloaded.`);
+    const venv = needsPackages ? await venvVersion(runtime, litert, fits) : null;
+    const wheels = venv?.version ? (omniWith.wheels ?? voiceWheelsOf)(venv.version) : null;
+    if (venv?.version && !wheels) {
+      const again = !venv.kept ? '' : !madeByPair(config.dataDir) ? ', then remove search by meaning\'s venv, which Pair did not make' : omniReady(config.dataDir) ? ', then :Pair voice off and :Pair find off, so Pair makes its venv again with it' : ', then :Pair find off, so Pair makes its venv again with it';
+      return tell(`Voice is not ready: voice's packages have wheels for Python ${fits[0]} to ${fits.at(-1)} here; ${venv.kept ? 'search by meaning\'s venv runs' : 'the Python Pair would make its venv with is'} Python ${venv.version}. Install Python ${fits[0]} or newer (python3.${fits[0].split('.')[1]} is enough)${again}, then :Pair voice on again. Nothing was downloaded.`);
+    }
+    const mb = bytes => Math.round(bytes / 1e6);
+    const fetches = [
+      ...(litert ? [`LiteRT-LM ${RUNTIME_VERSION}${runtime.bytes ? ` (${mb(runtime.bytes)} MB from PyPI, SHA-256 pinned)` : ''} in a venv in Pair's data folder, as :Pair find on does`] : []),
+      ...(needsPackages ? [`voice's Python packages${wheels ? ` (${mb(wheels.reduce((sum, wheel) => sum + wheel.bytes, 0))} MB from PyPI, SHA-256 pinned)` : ''} into ${litert ? 'that venv' : 'search by meaning\'s venv'}`] : []),
+      ...(missing ? [`LFM3-Omni-2B, ${gb(missing)} from Hugging Face (${OMNI.repo}, pinned, SHA-256 checked), whose own speech loop (Python, Apache-2.0) runs as you`] : []),
+    ];
+    tell(`Voice: installing ${fetches.join(', then ')}, once; :Pair voice off stops it and deletes the model.`);
+    const abort = new AbortController();
+    omniDownload = {abort};
+    let told = 0;
+    const progress = what => (bytes, total) => {
+      if (bytes - told < (what === 'LFM3-Omni' ? 1e9 : 16e6)) return;
+      told = bytes;
+      tell(`Downloading ${what}: ${what === 'LFM3-Omni' ? `${gb(bytes)} of ${gb(total)}` : `${Math.round(bytes / 1e6)} of ${Math.round(total / 1e6)} MB`}…`);
+    };
+    // LiteRT-LM and the venv are booked as soon as they are there, whatever comes after.
+    const bookLiteRT = ({python: venv, version, pythonVersion, made}) => {
+      const detail = {output: `${RUNTIME}, its wheel from PyPI by the SHA-256 in src/meaning-runtime.txt\n${tilde(venv)}${made ? '\n:Pair find off keeps this venv while LFM3-Omni is here' : ''}`};
+      for (const session of live.values()) session.ledger.add('installed', `LiteRT-LM ${version} for voice, in ${made ? `a venv Pair made with Python ${pythonVersion}` : 'the venv already in Pair\'s data folder'}`, {detail});
+    };
+    try {
+      const installed = await (omniWith.install ?? installVoiceRuntime)({
+        dataDir: config.dataDir, meaning: config.meaning, runtime,
+        fetch: omniWith.fetch, signal: abort.signal, progress: progress('voice\'s packages'), check, installedLiteRT: bookLiteRT,
+      });
+      if (installed) {
+        const detail = {output: `${installed.wheels.join('\n')}\nfrom PyPI by the SHA-256 in src/voice-runtime.txt, into ${tilde(installed.python)}`};
+        for (const session of live.values()) session.ledger.add('installed', `voice's Python packages (${Math.round(installed.bytes / 1e6)} MB, SHA-256 pinned) in search by meaning's venv, Python ${installed.version}`, {detail});
+      }
+      told = 0;
+      if (missing) {
+        await downloadOmni(config.dataDir, {fetch: omniWith.fetch, free: omniWith.free, files: omniWith.files, signal: abort.signal, progress: progress('LFM3-Omni')});
+        for (const session of live.values()) session.ledger.add('downloaded', `LFM3-Omni-2B for voice (${gb(missing)}, revision ${OMNI.revision.slice(0, 7)}, SHA-256 checked)`);
+      }
+    } catch (error) {
+      return tell(`Voice is not ready: ${error.message.replace(/\.$/, '')}.`);
+    } finally {
+      omniDownload = null;
+    }
+    tell(ready);
+  }
+
+  /**
+   * The Python version voice's packages would go to ({version: "3.14", kept}): search by meaning's venv when
+   * runtime.install() keeps it (it has LiteRT-LM, or Pair did not make it), else the Python runtime.install() would
+   * make it with, one of `prefer` first; version is undefined when there is none, which runtime.install() then explains.
+   */
+  async function venvVersion(runtime, litert, prefer) {
+    const python = venvPython(config.dataDir);
+    if (!existsSync(python) || (litert && madeByPair(config.dataDir))) return {version: (await findPython(omniWith.pythons ?? runtime.candidates, prefer)).version, kept: false};
+    return new Promise(resolve => execFile(python, ['-I', '-c', 'import sys; print("%d.%d" % sys.version_info[:2])'], {timeout: 20_000}, (error, stdout) => resolve({version: error ? undefined : stdout.trim(), kept: true})));
+  }
+
+  /** `:Pair voice off`: the helper stops, a download stops, and LFM3-Omni's files leave Pair's data folder. */
+  async function voiceOff(client) {
+    omniDownload?.abort.abort(new Error('voice was turned off (:Pair voice off)'));
+    omni.fail(new Error('LFM3-Omni was deleted (:Pair voice off)'));
+    const had = omniMissing(config.dataDir) < OMNI.bytes;
+    await removeOmni(config.dataDir);
+    if (had) for (const session of live.values()) session.ledger.add('deleted', 'LFM3-Omni-2B, voice\'s model (:Pair voice off)');
+    sendMessage(client.socket, {type: 'voice_state', text: `LFM3-Omni is deleted${usesOmni(config.voice) ? ': :Pair voice on downloads it again' : ''}.`});
+  }
+
   /** The context card for the Neovim that asked, with git and the board read again when they are not fresh. */
   async function sendCard(client, session) {
     await refreshContext(session, CONTEXT_FRESH_MS);
@@ -1214,6 +1320,8 @@ export async function startDaemon(config, {
       agents?.stop();
       for (const watch of watches.values()) watch.stop();
       for (const listener of listeners.values()) listener.close();
+      omniDownload?.abort.abort(new Error('the daemon stops'));
+      omni.close();
       for (const client of clients) client.socket.destroy();
       await new Promise(resolve => server.close(resolve));
       await rebuilt;

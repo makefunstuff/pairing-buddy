@@ -53,9 +53,10 @@ Ping-pong works too: write a failing test, say "your turn".
 
 ## Voice
 
-Hold `Alt-t` in Neovim (or tap it twice), ask aloud, let go. whisper.cpp writes it down on your CPU in about half a second, and the
-answer comes under your line. It is read aloud only if you are away from the editor when it comes. Off until you
-set [`voice`](config.md#voice) ([voice.md](voice.md)).
+Hold `Alt-t` in Neovim (or tap it twice), ask aloud, let go. LFM3-Omni writes it down on your CPU in about a second and
+a half (or whisper.cpp, or OpenRouter), and the answer comes under your line. It is read aloud only if you are away
+from the editor when it comes, or always with `"talk": true`. Off until you set [`voice`](config.md#voice)
+([voice.md](voice.md)).
 
 ## The day around it
 

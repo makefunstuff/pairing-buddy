@@ -9,7 +9,7 @@ import {createHash} from 'node:crypto';
 import {createWriteStream, existsSync, readFileSync, statSync, writeFileSync} from 'node:fs';
 import {mkdir, rename, rm} from 'node:fs/promises';
 import {homedir} from 'node:os';
-import {join} from 'node:path';
+import {dirname, join} from 'node:path';
 import {Readable} from 'node:stream';
 import {pipeline} from 'node:stream/promises';
 import {fileURLToPath} from 'node:url';
@@ -43,17 +43,20 @@ export const modelUrl = (model = MODEL) => `https://huggingface.co/${model.repo}
 /** Where Pair keeps search by meaning's model, indexes and the helper's Python (runtime.mjs). */
 export const meaningDir = dataDir => join(dataDir, 'meaning');
 export const modelPath = dataDir => join(meaningDir(dataDir), MODEL.file);
-const checkedPath = dataDir => `${modelPath(dataDir)}.sha256`;
+const checkedPath = path => `${path}.sha256`;
 
 /**
  * Whether the model is in `dataDir` as downloaded and checked: its checksum was taken when it came, and kept next to
  * it with the file's size and time, so a start does not read 165 MB again; a file changed since is not trusted.
  */
-export function modelReady(dataDir) {
+export const modelReady = dataDir => fileReady(modelPath(dataDir), MODEL);
+
+/** Whether `path` is `model`'s file as downloaded and checked by downloadModel (see modelReady). */
+export function fileReady(path, model) {
   try {
-    const stat = statSync(modelPath(dataDir));
-    const checked = JSON.parse(readFileSync(checkedPath(dataDir), 'utf8'));
-    return checked.sha256 === MODEL.sha256 && checked.size === stat.size && checked.mtimeMs === stat.mtimeMs;
+    const stat = statSync(path);
+    const checked = JSON.parse(readFileSync(checkedPath(path), 'utf8'));
+    return checked.sha256 === model.sha256 && checked.size === stat.size && checked.mtimeMs === stat.mtimeMs;
   } catch {
     return false;
   }
@@ -108,20 +111,20 @@ export async function downloadFile(url, path, {sha256: pinned, what, fetch = glo
 
 /**
  * Downloads the model into `dataDir`, once: the pinned revision from Hugging Face, kept only if its SHA-256 matches
- * (downloadFile). `progress(bytes)` hears how far it got; `signal` stops it.
+ * (downloadFile). `progress(bytes)` hears how far it got; `signal` stops it. Another pinned file (`model`: {repo,
+ * revision, file, sha256}) goes to `path`, as voice's LFM3-Omni does (omni.mjs).
  */
-export async function downloadModel(dataDir, {fetch = globalThis.fetch, progress = () => {}, model = MODEL, stallMs = STALL_MS, signal = null} = {}) {
-  await mkdir(meaningDir(dataDir), {recursive: true, mode: 0o700});
-  const path = modelPath(dataDir);
+export async function downloadModel(dataDir, {fetch = globalThis.fetch, progress = () => {}, model = MODEL, path = modelPath(dataDir), stallMs = STALL_MS, signal = null} = {}) {
+  await mkdir(dirname(path), {recursive: true, mode: 0o700});
   await downloadFile(modelUrl(model), path, {sha256: model.sha256, what: model.file, fetch, progress, stallMs, signal});
   const stat = statSync(path);
-  writeFileSync(checkedPath(dataDir), JSON.stringify({sha256: model.sha256, size: stat.size, mtimeMs: stat.mtimeMs, revision: model.revision}), {mode: 0o600});
+  writeFileSync(checkedPath(path), JSON.stringify({sha256: model.sha256, size: stat.size, mtimeMs: stat.mtimeMs, revision: model.revision}), {mode: 0o600});
 }
 
 /** Takes the model out of `dataDir`, with its checksum: search by meaning is off again until the next download. */
 export async function removeModel(dataDir) {
   await rm(modelPath(dataDir), {force: true});
-  await rm(checkedPath(dataDir), {force: true});
+  await rm(checkedPath(modelPath(dataDir)), {force: true});
   await rm(`${modelPath(dataDir)}.part`, {force: true});
 }
 

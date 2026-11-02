@@ -84,6 +84,26 @@ release is cut.
   session so far and says at your next break `done: X; next: Y`. The steps go with every question, so "what's left?"
   is answered from them. Each line costs the talk budget like a remark, and the ledger books each one; the plan lives
   in the session only, never in `NOTES.md` or the brief.
+- **Voice with LFM3-Omni, on your CPU: it hears you and answers aloud.** LFM3-Omni-2B, one model that hears and speaks
+  (the one lfm-pixel uses for dictation, read-aloud and Talk), is now voice's default: `"voice": {}` hears
+  push-to-talk with it and reads answers aloud with it when you are away, offline, through LiteRT-LM and LiteRT in a
+  Python helper. `:Pair voice on` installs it all, once, and says what and how big first: LiteRT-LM 0.19.0 and its
+  venv as `:Pair find on` makes them (33 MB, if search by meaning has not made them yet), voice's Python packages (42
+  MB of wheels from PyPI, each by the SHA-256 in `src/voice-runtime.txt`, into that venv), then the model (4.0 GB from
+  Hugging Face, pinned revision `a287b6e6`, each file SHA-256 checked), whose own Python speech loop runs as you. It
+  makes the venv with a Python voice's wheels fit (3.12 to 3.14, on Linux and Apple silicon) when you have one, and
+  says before it downloads anything when you have none, or not the disk room, with what to do. The ledger books each
+  install as it lands; `:Pair voice off` deletes it. Measured
+  on a Ryzen 5 9600X: a 4 s question heard in about 1.4 s (0.28 to 0.35 s per second of speech), 2% of words wrong on
+  a human recording and on neural narration, 14% on espeak-ng's robotic voice; speech at 1.15 s per second of speech,
+  the first words about 4 s after the answer, a part at a time; 0.8 GB of memory while it only hears, about 6 GB once
+  it has spoken, given back after three idle minutes. `"talk": true` makes voice a conversation: every answer to a
+  question you asked aloud is read aloud, at the editor too; typing or the key stops it, and Pair's unasked remarks
+  are never spoken, so the speak gate and the talk budget are as before. `"speak": false` keeps it silent, `"speak":
+  "omni"` lets it read with whisper.cpp hearing, `"omni": {"voice": "male"}` picks the other voice. whisper.cpp
+  (`model`) and OpenRouter stay as they were. `pair doctor` says what is missing, with the line to run, and how long a
+  second of speech takes to hear
+  ([docs/voice.md](https://github.com/makefunstuff/pairing-buddy/blob/main/docs/voice.md)).
 
 ### Changed
 
