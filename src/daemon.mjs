@@ -41,7 +41,7 @@ import {probeModel} from './probe.mjs';
 import {projectContext} from './project-context.mjs';
 import {readMessages, sendMessage} from './protocol.mjs';
 import {Reranker} from './rerank.mjs';
-import {Runtime, RUNTIME_VERSION, venvPython} from './runtime.mjs';
+import {findPython, Runtime, RUNTIME_VERSION, venvPython} from './runtime.mjs';
 import {configChanges, RESTART_FIELDS, watchConfig} from './reload.mjs';
 import {rememberScores} from './score-memory.mjs';
 import {ScoutPane} from './scout-pane.mjs';
@@ -1144,7 +1144,10 @@ export async function startDaemon(config, {
     if (needsPackages && config.meaning?.python) return tell(`Voice is not ready: ${python} lacks voice's packages, and Pair installs nothing into meaning.python: ${omniInstall(python)}.`);
     const runtime = meaning.runtime ?? new Runtime({dataDir: config.dataDir, python: () => pythonOf(config.meaning, config.dataDir), log});
     const litert = needsPackages && !(await (omniWith.litert ?? venvHasLiteRT)(config.dataDir));
-    const wheels = needsPackages ? (omniWith.wheels ?? voiceWheelsOf)(await venvVersion()) : null;
+    const pythonVersion = needsPackages ? await venvVersion(runtime) : '';
+    const wheels = needsPackages ? (omniWith.wheels ?? voiceWheelsOf)(pythonVersion) : null;
+    // No wheels for this Python: said before anything is downloaded, not after LiteRT-LM and its venv.
+    if (needsPackages && !wheels) return tell(`Voice is not ready: voice's packages have wheels for Python 3.12 to 3.14 on Linux (x86-64, ARM64) and macOS on Apple silicon; ${existsSync(venvPython(config.dataDir)) ? 'search by meaning\'s venv runs' : 'the Python Pair would make its venv with is'} ${pythonVersion ? `Python ${pythonVersion}` : 'missing'} on ${process.platform} ${process.arch}. Install Python 3.12 or newer as python3 (then :Pair find off, if Pair made that venv), then :Pair voice on again. Nothing was downloaded.`);
     const mb = bytes => Math.round(bytes / 1e6);
     const fetches = [
       ...(litert ? [`LiteRT-LM ${RUNTIME_VERSION}${runtime.bytes ? ` (${mb(runtime.bytes)} MB from PyPI, SHA-256 pinned)` : ''} in a venv in Pair's data folder, as :Pair find on does`] : []),
@@ -1187,9 +1190,10 @@ export async function startDaemon(config, {
     tell(ready);
   }
 
-  /** The Python version of search by meaning's venv, or of the python3 that would make it ("3.14"), or "". */
-  async function venvVersion() {
-    const python = existsSync(venvPython(config.dataDir)) ? venvPython(config.dataDir) : 'python3';
+  /** The Python version of search by meaning's venv, or of the Python `runtime.install()` would make it with ("3.14"), or "". */
+  async function venvVersion(runtime) {
+    if (!existsSync(venvPython(config.dataDir))) return (await findPython(runtime.candidates)).version ?? '';
+    const python = venvPython(config.dataDir);
     return new Promise(resolve => execFile(python, ['-I', '-c', 'import sys; print("%d.%d" % sys.version_info[:2])'], {timeout: 20_000}, (error, stdout) => resolve(error ? '' : stdout.trim())));
   }
 

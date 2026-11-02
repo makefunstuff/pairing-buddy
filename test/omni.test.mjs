@@ -387,6 +387,49 @@ test(':Pair voice on installs voice\'s packages first, in search by meaning\'s v
   }
 });
 
+test(':Pair voice on with a Python voice has no wheels for refuses before it downloads anything', async () => {
+  const dir = scratch('omni-nowheels-');
+  const config = parseConfig({
+    dataDir: dir, socket: join(dir, 'pair.sock'), agents: false, plan: false,
+    models: {watcher: {api: 'openai', baseUrl: 'http://unused', model: 'w'}, partner: {api: 'openai', baseUrl: 'http://unused', model: 'p'}},
+    voice: {},
+  });
+  const watcher = fauxProvider({provider: 'faux-w'});
+  const partner = fauxProvider({provider: 'faux-p'});
+  const models = createModels();
+  models.setProvider(watcher.provider);
+  models.setProvider(partner.provider);
+  const asked = [];
+  const daemon = await startDaemon(config, {
+    pairModels: {models, watcher: watcher.getModel(), partner: partner.getModel()}, probe: async () => ({ok: true}), log: () => {},
+    omniWith: {
+      voice: {fail: () => {}, close: () => {}, dataDir: dir},
+      runtime: async () => ({problem: 'python3 has no ai-edge-litert'}),
+      wheels: () => null, // say, Python 3.11
+      litert: async () => false,
+      install: async options => { asked.push(options); return null; },
+      fetch: async () => { asked.push('fetch'); throw new Error('no download'); },
+    },
+  });
+  try {
+    const editor = connect(config.socket);
+    await new Promise(resolve => editor.on('connect', resolve));
+    const got = [];
+    readMessages(editor, message => got.push(message));
+    sendMessage(editor, {type: 'hello', role: 'editor', cwd: dir});
+    await until(() => got.length > 0, 'the session');
+    sendMessage(editor, {type: 'voice_on'});
+    await until(() => got.some(message => message.type === 'voice_state'), 'the answer');
+    const told = got.filter(message => message.type === 'voice_state').map(message => message.text);
+    assert.equal(told.length, 1, 'no "installing" line first');
+    assert.match(told[0], /^Voice is not ready: voice's packages have wheels for Python 3\.12 to 3\.14 .*Nothing was downloaded\.$/);
+    assert.deepEqual(asked, [], 'neither LiteRT-LM, the venv, the wheels nor the model');
+    editor.destroy();
+  } finally {
+    await daemon.close();
+  }
+});
+
 test('voice\'s packages: LiteRT-LM first through the venv\'s installer, then the wheels by their hashes, pip with no index; never into meaning.python', async () => {
   const dataDir = scratch('omni-venv-');
   const venv = join(dataDir, 'meaning', 'venv', 'bin');
