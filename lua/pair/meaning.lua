@@ -2,17 +2,18 @@
 -- word search answers (identifiers split, comments and strings too), and once you stop typing for `debounce_ms` the
 -- pieces of code closest to what the words mean join the list below what it shows, so nothing you see moves (see
 -- src/meaning.mjs). Telescope, else snacks.picker, else fzf-lua, else vim.ui.select. Enter opens a piece at its line;
--- in Telescope <C-q> sends the hits to the quickfix list. The words work without any model; meaning needs one:
+-- <C-q> sends the hits to the quickfix list. The words work without any model; meaning needs one:
 -- :Pair find on installs LiteRT-LM and downloads EmbeddingGemma 2 once, or an "embedding" model in the config. :Pair
--- find off deletes them. With a "rerank" decision model in the config, once a list has stayed as it is for
--- `rerank_delay_ms` after meaning came, the fused ranking's first pieces (as /find's) go first, in the model's order,
--- once; the title says so. The piece you are on stays the one you are on.
+-- find off deletes them. With a "rerank" decision model in the config, as soon as meaning came (after
+-- `rerank_delay_ms`, none by default) the fused ranking's first pieces (as /find's) are reranked in the background and
+-- go first, in the model's order, once they come; the title says so. The piece you are on stays the one you are on. A
+-- quickfix list sent while the rerank runs gets its order in place when it comes, unless you changed it meanwhile.
 local M = {}
 
 local deps = {}
 local picker = 'auto' -- or 'telescope', 'snacks', 'fzf-lua', 'select'
 local debounce_ms = 150
-local rerank_delay_ms = 400 -- after meaning came, how long the list must stay as it is before it is reranked
+local rerank_delay_ms = 0 -- after meaning came, how long the list must stay as it is before it is reranked
 local next_id = 0
 local waiting = {} -- request id -> what to do with the daemon's answer
 
@@ -56,6 +57,52 @@ local function key(item) return item.file .. ':' .. item.from end
 
 local function label(item)
   return ('%s:%d  %s'):format(item.file, item.line or item.from, item.head or '')
+end
+
+--- `items` with the rerank's `results` first, in the model's order, and the rest as they were. With `only`, the
+--- results not among `items` are left out: a quickfix list keeps the pieces it had.
+local function reranked(items, results, only)
+  local out, placed, has = {}, {}, {}
+  for _, item in ipairs(items) do has[key(item)] = true end
+  for _, item in ipairs(results) do
+    if not placed[key(item)] and (not only or has[key(item)]) then
+      out[#out + 1] = item
+      placed[key(item)] = true
+    end
+  end
+  for _, item in ipairs(items) do
+    if not placed[key(item)] then out[#out + 1] = item end
+  end
+  return out
+end
+
+local function by(rerank) return rerank and rerank.applied and (' (reranked by %s)'):format(rerank.model) or '' end
+
+--- Sends `items`, the list a search for `query` shows, to a new quickfix list and opens it. `rerank` is what the
+--- picker's rerank said, if it came. Returns `later(message)`, for a rerank still to come: its order replaces that
+--- same list in place, unless you changed it, or made another list, meanwhile; the title then says who reranked it.
+local function to_quickfix(query, items, rerank)
+  local function entry(item) return {filename = item.path, lnum = item.line or item.from, col = 1, text = item.head or '', user_data = key(item)} end
+  local title = 'Find: ' .. query
+  vim.api.nvim_exec_autocmds('QuickFixCmdPre', {})
+  vim.fn.setqflist({}, ' ', {title = title .. by(rerank), items = vim.tbl_map(entry, items)})
+  vim.api.nvim_exec_autocmds('QuickFixCmdPost', {})
+  vim.cmd('botright copen')
+  local list = vim.fn.getqflist({id = 0, changedtick = 0})
+  return function(message)
+    local results = message.results or {}
+    if not (message.rerank and message.rerank.applied and #results > 0) then return end -- the order stays
+    local now = vim.fn.getqflist({id = 0})
+    local it = vim.fn.getqflist({id = list.id, changedtick = 0, idx = 0, items = 0})
+    if now.id ~= list.id or it.id ~= list.id or it.changedtick ~= list.changedtick then return end -- yours now
+    local on = it.items[it.idx] and it.items[it.idx].user_data -- the entry you are on stays the one you are on
+    local order = reranked(items, results, true)
+    local idx = 1
+    for index, item in ipairs(order) do
+      if key(item) == on then idx = index end
+    end
+    vim.fn.setqflist({}, 'r', {id = list.id, title = title .. by(message.rerank), items = vim.tbl_map(entry, order), idx = idx})
+  end
 end
 
 --- A live search: `set(query)` on every key; `changed()` is called each time its list grows or starts over.
@@ -105,42 +152,40 @@ function Live:ask_meaning(query)
   self.meaning_id = meaning_id
 end
 
---- Once the list has stayed as it is a while: the fused ranking's first pieces, reranked, go first, once.
+--- Once meaning came (and the list stayed as it is `rerank_delay_ms`): the fused ranking's first pieces are reranked in
+--- the background, and go first once they come. A key before then drops it.
 function Live:settle(query)
   self:stop_timer()
+  if rerank_delay_ms <= 0 then return self:rerank(query) end
   self.timer = vim.uv.new_timer()
   self.timer:start(rerank_delay_ms, 0, vim.schedule_wrap(function()
     self:stop_timer()
     if self.done or self.query ~= query then return end
-    local rerank_id
-    self.reranking = true
-    self.changed(self, 'reranking')
-    rerank_id = ask(query, 'rerank', function(message)
-      if self.done or self.rerank_id ~= rerank_id then return end
-      self.reranking = false
-      self.rerank_info = message.rerank
-      local results = message.results or {}
-      if message.rerank and message.rerank.applied and #results > 0 then
-        local items, placed = {}, {}
-        for _, item in ipairs(results) do
-          items[#items + 1] = item
-          placed[key(item)] = true
-        end
-        for _, item in ipairs(self.items) do
-          if not placed[key(item)] then items[#items + 1] = item end
-        end
-        self.items = items
-      end
-      self.changed(self, 'rerank')
-    end)
-    self.rerank_id = rerank_id
-    -- An answer that never comes (the daemon restarted) leaves the title as it was, not "reranking".
-    vim.defer_fn(function()
-      if self.done or self.rerank_id ~= rerank_id or not self.reranking then return end
-      self.reranking, self.rerank_id = false, nil -- an answer that comes later is not used
-      self.changed(self, 'reranking')
-    end, 10000)
+    self:rerank(query)
   end))
+end
+
+function Live:rerank(query)
+  local rerank_id
+  self.reranking = true
+  self.changed(self, 'reranking')
+  rerank_id = ask(query, 'rerank', function(message)
+    if self.rerank_id ~= rerank_id then return end
+    self.reranking = false
+    self.rerank_info = message.rerank
+    local results = message.results or {}
+    if message.rerank and message.rerank.applied and #results > 0 then self.items = reranked(self.items, results) end
+    if self.sent then self.sent(message) end -- the quickfix list it was sent to while it ran
+    self.sent = nil
+    if not self.done then self.changed(self, 'rerank') end
+  end)
+  self.rerank_id = rerank_id
+  -- An answer that never comes (the daemon restarted) leaves the title as it was, not "reranking".
+  vim.defer_fn(function()
+    if self.rerank_id ~= rerank_id or not self.reranking then return end
+    self.reranking, self.rerank_id, self.sent = false, nil, nil -- an answer that comes later is not used
+    if not self.done then self.changed(self, 'reranking') end
+  end, 10000)
 end
 
 function Live:set(query)
@@ -202,7 +247,20 @@ end
 function Live:close()
   self.done = true
   self:stop_timer()
-  if self.reranking then deps.send({type = 'find', query = '', phase = 'cancel'}) end -- the model's answer is not wanted
+  -- The model's answer is not wanted, unless the list went to quickfix meanwhile.
+  if self.reranking and not self.sent then deps.send({type = 'find', query = '', phase = 'cancel'}) end
+end
+
+--- <C-q>: the list as the picker shows it to quickfix, in the reranked order if it came; if it is still running, its
+--- order replaces that list in place when it comes. `items` are the ones you selected, if any; `close` closes the picker.
+function Live:to_quickfix(items, close)
+  local query = self.query or ''
+  items = items and #items > 0 and items or (self.answered == self.query and self.items or {})
+  local pending = self.reranking and #items > 1
+  if pending then self.sent = function() end end -- so that closing the picker does not cancel the rerank
+  close()
+  local later = to_quickfix(query, items, self.rerank_info)
+  if pending and self.sent then self.sent = later end
 end
 
 --- The ledger hears what you chose, with what the search showed.
@@ -257,13 +315,17 @@ local function telescope(query)
     finder = finder,
     sorter = sorters.highlighter_only({}), -- Pair's order, not Telescope's
     previewer = conf.grep_previewer({}),
-    attach_mappings = function(prompt_bufnr)
+    attach_mappings = function(prompt_bufnr, map)
       actions.select_default:enhance({pre = function()
         local selected = action_state.get_selected_entry()
         if selected then chosen(live.query, {selected.value}) end
       end})
       actions.close:enhance({post = function() live:close() end})
-      return true -- <C-q> sends the hits to quickfix, as in any picker
+      -- <C-q> sends the hits to quickfix, as in any picker, in the reranked order: now, or once the rerank comes.
+      for _, mode in ipairs({'i', 'n'}) do
+        map(mode, '<C-q>', function() live:to_quickfix(nil, function() actions.close(prompt_bufnr) end) end)
+      end
+      return true
     end,
   })
   current:register_completion_callback(function(self)
@@ -292,6 +354,10 @@ local function snacks(query)
     -- Meaning's hits, below what the list shows; the item you are on stays the one you are on.
     local on = current:current()
     local want = on and on.value and key(on.value)
+    -- Its place in the new list, set before the list is drawn again, so the cursor never shows on another piece.
+    for index, item in ipairs(live.items) do
+      if want and key(item) == want then pcall(current.list.set_target, current.list, index, nil, {force = true}) end
+    end
     current:find({refresh = true, on_done = function()
       if not want or current.closed then return end
       for index, item in ipairs(current:items()) do
@@ -333,6 +399,12 @@ local function snacks(query)
       if item then open(item.value) end
     end,
     on_close = function() live:close() end,
+    actions = {
+      -- <C-q>: the items you selected, else the list, to quickfix in the reranked order: now, or once the rerank comes.
+      qflist = function(p)
+        live:to_quickfix(vim.tbl_map(function(item) return item.value end, p:selected()), function() p:close() end)
+      end,
+    },
   })
   return true
 end
@@ -342,6 +414,11 @@ local function fzflua(query)
   if not ok then return false end
   local line = function(item) return ('%s:%d:1:%s'):format(vim.fn.fnamemodify(item.path, ':~:.'), item.line or item.from, item.head or '') end
   local latest, last_prompt = 0, query
+  local pieces, reranker = {}, false -- each line shown -> its piece, and whether the daemon has a rerank model, for ctrl-q
+  local function show(fzf_cb, item)
+    pieces[line(item)] = item
+    fzf_cb(line(item))
+  end
   fzf.fzf_live(function(args)
     local prompt = vim.trim((type(args) == 'table' and args[1] or args) or '')
     last_prompt = prompt
@@ -355,14 +432,15 @@ local function fzflua(query)
       ask(prompt, 'words', function(message)
         if mine ~= latest then return fzf_cb() end -- fzf reloaded for newer words meanwhile
         words = message.results or {}
-        for _, item in ipairs(words) do fzf_cb(line(item)) end
+        for _, item in ipairs(words) do show(fzf_cb, item) end
         vim.defer_fn(function()
           if mine ~= latest then return fzf_cb() end
           ask(prompt, 'meaning', function(answer)
+            reranker = answer.reranker ~= nil
             local shown = {}
             for _, each in ipairs(words) do shown[key(each)] = true end
             for _, item in ipairs(answer.results or {}) do
-              if not shown[key(item)] then fzf_cb(line(item)) end
+              if not shown[key(item)] then show(fzf_cb, item) end
             end
             fzf_cb()
           end)
@@ -372,6 +450,7 @@ local function fzflua(query)
   end, {
     prompt = 'Find> ', query = query, previewer = 'builtin', file_icons = false, git_icons = false,
     winopts = {title = ' Find by meaning and words '},
+    fzf_opts = {['--multi'] = true},
     exec_empty_query = false,
     actions = {
       ['default'] = function(selected, opts)
@@ -379,7 +458,15 @@ local function fzflua(query)
         if file then chosen(last_prompt, {{file = vim.fn.fnamemodify(file, ':.'), line = tonumber(row), head = selected[1]:match('^.-:%d+:%d+:(.*)$')}}) end
         require('fzf-lua.actions').file_edit(selected, opts)
       end,
-      ['ctrl-q'] = require('fzf-lua.actions').file_sel_to_qf,
+      -- The list (all of it, as <C-q> in Telescope) to quickfix. It only grows here, so it is not reranked while fzf is
+      -- open; the quickfix list is, in place, once the rerank comes.
+      ['ctrl-q'] = {prefix = 'select-all', fn = function(selected, opts)
+        local items = {}
+        for _, each in ipairs(selected) do items[#items + 1] = pieces[each] end
+        if #items ~= #selected then return require('fzf-lua.actions').file_sel_to_qf(selected, opts) end
+        local later = to_quickfix(last_prompt, items)
+        if reranker and #items > 1 then ask(last_prompt, 'rerank', later) end
+      end},
     },
   })
   return true

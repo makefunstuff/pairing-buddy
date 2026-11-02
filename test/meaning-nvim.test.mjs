@@ -12,8 +12,9 @@ import {fauxAssistantMessage, fauxText} from '@earendil-works/pi-ai';
 import {pythonOf} from '../src/embedder.mjs';
 import {Runtime, WHEELS} from '../src/runtime.mjs';
 import {fakeEmbedder, fakeModel} from './fake-embedder.mjs';
-import {fakeRerankChain, fakeRerankServer} from './fake-reranker.mjs';
+import {fakeRerankChain, fakeReranker, fakeRerankServer} from './fake-reranker.mjs';
 import {fakePython, fakeWheel} from './fake-python.mjs';
+import {fzfLua} from './fzf-lua.mjs';
 import {hasNvim, pairInNvim, until} from './nvim-harness.mjs';
 import {scratch} from './temp.mjs';
 
@@ -24,7 +25,7 @@ const INVOICE = '// What the order comes to.\nexport function bill(order) {\n  r
 /**
  * A Telescope that runs a picker's finder as the real one does: `_G.type_prompt(text)` types a prompt, and
  * `refresh` runs the finder again for it; `_G.telescoped` keeps the spec's title, sorter and previewer, the
- * entries shown, and how many times they were made.
+ * entries shown, how many times they were made, the picker's own mappings (`maps.i['<C-q>']`) and whether it closed.
  */
 function fakeTelescope() {
   const dir = scratch('meaning-telescope-');
@@ -32,7 +33,7 @@ function fakeTelescope() {
   const module = (name, body) => writeFileSync(join(dir, 'lua', 'telescope', `${name}.lua`), body);
   module('pickers', `return {new = function(_, spec)
     local picker = {prompt = spec.default_text or '', callbacks = {}, prompt_border = {change_title = function(_, title) _G.telescoped.title = title end}}
-    _G.telescoped = {title = spec.prompt_title, sorter = spec.sorter and spec.sorter.highlighter_only, previewer = spec.previewer ~= nil, shown = {}, runs = 0}
+    _G.telescoped = {title = spec.prompt_title, sorter = spec.sorter and spec.sorter.highlighter_only, previewer = spec.previewer ~= nil, shown = {}, runs = 0, maps = {i = {}, n = {}}}
     function picker:run()
       local shown = {}
       spec.finder(self.prompt, function(entry) shown[#shown + 1] = entry end, function()
@@ -42,7 +43,7 @@ function fakeTelescope() {
         for _, callback in ipairs(self.callbacks) do callback(self) end
       end)
     end
-    function picker:find() spec.attach_mappings(1); self:run() end
+    function picker:find() spec.attach_mappings(1, function(mode, lhs, action) _G.telescoped.maps[mode][lhs] = action end); self:run() end
     function picker:refresh() self:run() end
     function picker:register_completion_callback(callback) table.insert(self.callbacks, callback) end
     picker.manager = {num_results = function() return #_G.telescoped.shown end, get_entry = function(_, i) return _G.telescoped.shown[i] end}
@@ -55,8 +56,12 @@ function fakeTelescope() {
   module('sorters', 'return {highlighter_only = function() return {highlighter_only = true} end}');
   module('config', 'return {values = {grep_previewer = function() return {} end}}');
   module('actions/state', 'return {get_selected_entry = function() return _G.selected end}');
-  module('actions', `local enhance = function() return {enhance = function() end} end
-    return {select_default = {enhance = function() end}, close = {enhance = function() end}}`);
+  module('actions', `local post
+    local close = setmetatable({enhance = function(_, how) post = how.post end}, {__call = function()
+      _G.telescoped.closed = true
+      if post then post() end
+    end})
+    return {select_default = {enhance = function() end}, close = close}`);
   return dir;
 }
 
@@ -150,6 +155,162 @@ test('Telescope with "rerank" models: once the list settles the fused ranking\'s
     await stop();
     await server.close();
     await down.close();
+  }
+});
+
+/** The current quickfix list: its id, title, how many lists the stack has, and each entry as file:line. */
+function quickfix(remote) {
+  remote('execute("lua _G.qf = function() local l = vim.fn.getqflist({id = 0, title = 0, items = 0}); l.stack = vim.fn.getqflist({nr = [[$]]}).nr; l.files = vim.tbl_map(function(e) return vim.fn.fnamemodify(vim.fn.bufname(e.bufnr), [[:t]]) .. [[:]] .. e.lnum end, l.items); l.items = nil; return l end")');
+  return JSON.parse(remote('json_encode(luaeval("_G.qf()"))'));
+}
+
+const BILL = 'invoice.js:2  export function bill(order) {';
+const TOTAL = 'cart.js:1  export function total(cart) {';
+
+/** Pair in Neovim with the fake Telescope and a slow fake reranker that favours the bill: the index built. */
+async function slowRerank(delayMs) {
+  const server = await fakeRerankServer({favourite: 'What the order comes to', mode: 'slow', delayMs});
+  const pair = await pairInNvim('deliver', {rtp: [fakeTelescope()], setup: 'meaning_debounce_ms = 100', meaningWith: {embedder: fakeEmbedder(), reranker: fakeReranker(server.baseUrl)}});
+  pair.watcher.setResponses(Array.from({length: 10}, () => fauxAssistantMessage([fauxText('0')])));
+  await withCode(pair.project, pair.remote);
+  fakeModel(pair.dataDir);
+  await built(pair.send, pair.messages);
+  server.requests.length = 0;
+  pair.remote('execute("Pair find")');
+  await until(() => pair.remote('luaeval("_G.telescoped ~= nil")') === 'true', 'the Telescope picker');
+  const title = () => pair.remote('luaeval("_G.telescoped.title")');
+  return {...pair, server, title, async stop() { await pair.stop(); await server.close(); }};
+}
+
+test('Telescope, the rerank in the background: typing goes on, a key drops a stale one, and its order comes in place with the piece you are on still selected', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
+  const {remote, send, messages, server, title, stop} = await slowRerank(1500);
+  try {
+    remote('luaeval("_G.type_prompt(\'tota\')")');
+    await until(() => /reranking/.test(title()), 'the rerank to start once meaning came');
+    await until(() => server.requests.length === 1, 'the model asked as soon as meaning came, with no delay');
+    assert.equal(shown(remote)[0], TOTAL, 'meanwhile the list is as the words and meaning left it');
+    remote('luaeval("_G.type_prompt(\'price\')")'); // a key while the model works: answered at once, not after it
+    await until(() => shown(remote).some(each => each.startsWith('invoice.js')), 'the new words, while the model still works');
+    remote('luaeval("_G.type_prompt(\'tota\')")');
+    await until(() => /reranking/.test(title()), 'a new rerank for the new prompt');
+    remote('luaeval("(function() _G.selected = _G.telescoped.shown[1] end)()")'); // you are on the word hit
+    await until(() => /reranked by fake-d1/.test(title()), 'the rerank', 10_000);
+    const list = shown(remote);
+    assert.equal(list[0], BILL, 'the model\'s pick first, the list redrawn in place');
+    assert.ok(list.includes(TOTAL));
+    assert.equal(remote('luaeval("_G.selected.display")'), TOTAL, 'the piece you were on is still the one selected, wherever it moved');
+    await until(() => {
+      send({type: 'today'});
+      return JSON.stringify(messages.findLast(message => message.type === 'ledger') ?? {}).includes('\\"tota\\" in the picker with fake-d1');
+    }, 'the rerank in the ledger');
+    const ledger = JSON.stringify(messages.findLast(message => message.type === 'ledger'));
+    assert.ok(!ledger.includes('\\"price\\" in the picker'), 'the one a key dropped is not booked, nor used');
+  } finally {
+    await stop();
+  }
+});
+
+test('Telescope <C-q>: the reranked order if it came; if it is still running, quickfix now and the same list reordered in place when it comes', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
+  const {remote, server, title, stop} = await slowRerank(1500);
+  try {
+    remote('luaeval("_G.type_prompt(\'tota\')")');
+    await until(() => /reranking/.test(title()), 'the rerank to start');
+    remote('luaeval("_G.telescoped.maps.i[\'<C-q>\']()")');
+    assert.equal(remote('luaeval("_G.telescoped.closed")'), 'true', 'the picker closes');
+    const now = quickfix(remote);
+    assert.equal(now.title, 'Find: tota');
+    assert.equal(now.files[0], 'cart.js:1', 'at once, in the order the picker showed');
+    assert.equal(remote('&buftype'), 'quickfix', 'and it opens');
+    await until(() => /reranked/.test(quickfix(remote).title), 'the rerank to reorder it', 10_000);
+    const after = quickfix(remote);
+    assert.equal(after.title, 'Find: tota (reranked by fake-d1)');
+    assert.equal(after.id, now.id, 'the same list');
+    assert.equal(after.stack, now.stack, 'no new list on the stack');
+    assert.equal(after.files[0], 'invoice.js:2', 'in the model\'s order');
+    assert.deepEqual([...after.files].sort(), [...now.files].sort(), 'the same entries, none added');
+    assert.equal(server.requests.length, 1, 'the rerank the picker started, not a second one');
+
+    // Sent once the rerank came: the reranked order straight away.
+    remote('execute("cclose | Pair find")');
+    remote('luaeval("_G.type_prompt(\'tota\')")');
+    await until(() => /reranked by/.test(title()), 'the rerank', 10_000);
+    remote('luaeval("_G.telescoped.maps.n[\'<C-q>\']()")');
+    const sent = quickfix(remote);
+    assert.equal(sent.title, 'Find: tota (reranked by fake-d1)');
+    assert.equal(sent.files[0], 'invoice.js:2');
+  } finally {
+    await stop();
+  }
+});
+
+test('Telescope <C-q> while the rerank runs: a quickfix list you changed or replaced meanwhile is left as it is', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
+  const {remote, server, title, stop} = await slowRerank(1500);
+  // The model answered, and Neovim had the time to hear it.
+  const answered = async () => {
+    await until(() => server.requests.length > 0 && server.flight.now === 0, 'the model to answer', 10_000);
+    await new Promise(resolve => setTimeout(resolve, 500));
+    server.requests.length = 0;
+  };
+  try {
+    remote('luaeval("_G.type_prompt(\'tota\')")');
+    await until(() => /reranking/.test(title()), 'the rerank to start');
+    remote('luaeval("_G.telescoped.maps.i[\'<C-q>\']()")');
+    const sent = quickfix(remote);
+    remote('execute("call setqflist([{\'filename\': \'a.js\', \'lnum\': 2, \'text\': \'mine\'}], \'a\')")'); // you add to it
+    await answered();
+    const changed = quickfix(remote);
+    assert.equal(changed.id, sent.id);
+    assert.equal(changed.title, 'Find: tota', 'not reranked: the list is yours now');
+    assert.deepEqual(changed.files, [...sent.files, 'a.js:2']);
+
+    remote('execute("cclose | Pair find")');
+    remote('luaeval("_G.type_prompt(\'tota\')")');
+    await until(() => /reranking/.test(title()), 'the next rerank to start');
+    remote('luaeval("_G.telescoped.maps.i[\'<C-q>\']()")');
+    const second = quickfix(remote);
+    remote('execute("call setqflist([], \' \', {\'title\': \'other\', \'items\': [{\'filename\': \'a.js\', \'lnum\': 1, \'text\': \'other\'}]})")'); // a new list
+    await answered();
+    assert.equal(quickfix(remote).title, 'other', 'the list you made stays the current one');
+    const old = JSON.parse(remote(`json_encode(getqflist({'id': ${second.id}, 'title': 0}))`));
+    assert.equal(old.title, 'Find: tota', 'and the one Pair sent is not reordered behind your back');
+  } finally {
+    await stop();
+  }
+});
+
+const fzf = hasNvim ? fzfLua() : {skip: 'nvim not installed'};
+test('fzf-lua ctrl-q: the list goes to quickfix at once, and the rerank\'s order replaces it in place when it comes', {skip: fzf.skip ?? false, timeout: 60_000}, async () => {
+  const server = await fakeRerankServer({favourite: 'What the order comes to', mode: 'slow', delayMs: 1000});
+  const {project, dataDir, watcher, messages, remote, keys, send, stop} = await pairInNvim('deliver', {rtp: [fzf.dir], setup: "meaning_picker = 'fzf-lua', meaning_debounce_ms = 100", meaningWith: {embedder: fakeEmbedder(), reranker: fakeReranker(server.baseUrl)}});
+  const screen = () => JSON.parse(remote('json_encode(getline(1, "$"))'));
+  try {
+    watcher.setResponses(Array.from({length: 10}, () => fauxAssistantMessage([fauxText('0')])));
+    await withCode(project, remote);
+    fakeModel(dataDir);
+    await built(send, messages);
+    remote(`luaeval("require('fzf-lua').setup({}) and 0 or 0")`);
+    server.requests.length = 0;
+    remote('execute("Pair find")');
+    await until(() => remote('&filetype') === 'fzf' && screen().some(line => /\d+\/\d+/.test(line)), 'fzf');
+    keys('tota');
+    await until(Object.assign(() => screen().some(line => /\b[2-9]\/\d+/.test(line)) && screen().some(line => line.includes('invoice.js')), {last: () => screen().join('\n')}), 'the words and meaning');
+    assert.equal(server.requests.length, 0, 'the list only grows in fzf-lua: not reranked while it is open');
+    keys('<C-q>'); // all of the list, as in Telescope
+    await until(() => remote('&buftype') === 'quickfix', 'the quickfix list');
+    const sent = quickfix(remote);
+    assert.equal(sent.title, 'Find: tota');
+    assert.equal(sent.files.length, 4, 'all of the list');
+    assert.equal(sent.files[0], 'cart.js:1', 'in the order fzf showed it');
+    await until(() => /reranked/.test(quickfix(remote).title), 'the rerank to reorder it', 10_000);
+    const after = quickfix(remote);
+    assert.equal(after.title, 'Find: tota (reranked by fake-d1)');
+    assert.equal(after.id, sent.id, 'the same list');
+    assert.equal(after.stack, sent.stack);
+    assert.equal(after.files[0], 'invoice.js:2');
+    assert.deepEqual([...after.files].sort(), [...sent.files].sort(), 'the lines it had, no others');
+  } finally {
+    await stop();
+    await server.close();
   }
 });
 

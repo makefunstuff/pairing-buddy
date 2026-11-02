@@ -46,6 +46,11 @@ Your words find nothing; stop typing, and the closest pieces join the list a mom
 list to quickfix. In Visual mode, `Alt-s` starts with the selected words; `:Pair find <words>` works too, and
 `/find <words>` in the chat.
 
+With a [`rerank` model](../meaning.md#rerank) in the config, the title says `reranking` once meaning came, and a moment
+later the model's pick moves to the top while you stay on the piece you were on: you can go on typing or moving
+meanwhile. Press `<C-q>` before it comes and the quickfix list opens at once, then takes the model's order in place,
+its title saying `(reranked by d1-2B)`; change that list first and Pair leaves it as it is.
+
 ## 4. What it did
 
 `:Pair today` lists LiteRT-LM's install, the model's download, the index's build and each piece you opened from a search, and `⏎` on one shows the ranking: each
