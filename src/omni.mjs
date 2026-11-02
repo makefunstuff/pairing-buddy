@@ -346,7 +346,7 @@ export async function installVoiceRuntime({dataDir, meaning = null, runtime, fet
   if ((await check(python)).version) return null;
   if (meaning?.python) throw new Error(`${python} lacks voice's packages, and Pair installs nothing into meaning.python: ${omniInstall(python)}`);
   // The venv itself, not whatever Python stands in while it is missing (python3 may have LiteRT-LM of its own).
-  const litert = (await venvHas(dataDir)) ? null : await runtime.install({signal, progress: (bytes, total) => progress(bytes, total)});
+  const litert = (await venvHas(dataDir)) ? null : await runtime.install({signal, progress: (bytes, total) => progress(bytes, total), prefer: voicePythonsOn(platform, arch)});
   if (litert) installedLiteRT(litert);
   const venv = venvPython(dataDir);
   const {stdout, error} = await run(venv, ['-I', '-c', 'import sys; print("%d.%d" % sys.version_info[:2])']);

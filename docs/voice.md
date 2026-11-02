@@ -133,9 +133,10 @@ Linux x86-64, 34 MB on ARM64 and 29 MB on macOS). Then it tells how far it is.
   one in Pair's lock file (`src/voice-runtime.txt`), and pip installs them from those files: no index,
   `--require-hashes`, no other package, nothing built. LiteRT (`ai-edge-litert`, with `ml-dtypes`) runs the speech
   graphs, numpy and tokenizers the model's own speech loop. PyPI has these wheels for Python 3.12 to 3.14 on Linux
-  (x86-64, ARM64) and macOS on Apple silicon. With an older Python, or on another machine, `:Pair voice on` says so
-  before it downloads anything, with what to do: install Python 3.12 or newer as `python3`, then `:Pair find off`
-  (after `:Pair voice off`, while LFM3-Omni's model is here) so that Pair makes its venv again with it.
+  (x86-64, ARM64) and macOS on Apple silicon, so Pair makes the venv with one of those when you have one (say
+  `python3.12` beside an older `python3`). With none, or on another machine, `:Pair voice on` says so before it
+  downloads anything, with what to do: install Python 3.12 or newer, then `:Pair find off` (after `:Pair voice off`,
+  while LFM3-Omni's model is here) if the venv Pair made has an older one, so that it makes it again.
   `:Pair find off` leaves the venv while LFM3-Omni is here. With `"meaning": {"python": …}`, that Python is yours:
   Pair installs nothing into it, and `:Pair voice on` and `pair doctor` say the `pip install --require-hashes` line to
   run.

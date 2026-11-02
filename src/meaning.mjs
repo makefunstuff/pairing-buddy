@@ -16,6 +16,7 @@ import {isAbsolute, join, relative} from 'node:path';
 import {apiKeyOf} from './config.mjs';
 import {downloadModel, Embedder, HttpEmbedder, meaningDir, MODEL, modelPath, modelReady, pythonOf, removeModel} from './embedder.mjs';
 import {IndexStore, indexPlace, removeIndex} from './index-store.mjs';
+import {voicePythonsOn} from './omni.mjs';
 import {Runtime, RUNTIME_VERSION} from './runtime.mjs';
 import {piecesOf, TreeSitter} from './pieces.mjs';
 import {pieceText, SNIPPET_CHARS} from './rerank.mjs';
@@ -830,7 +831,8 @@ export class Meaning {
       let runtime = null;
       if (needs.runtime) {
         told('runtime', 0, needs.runtime.bytes);
-        runtime = await this.runtime.install({signal: abort.signal, progress: (bytes, total) => told('runtime', bytes, total)});
+        // A Python voice's packages fit, when there is one: voice shares this venv (omni.mjs).
+        runtime = await this.runtime.install({signal: abort.signal, progress: (bytes, total) => told('runtime', bytes, total), prefer: voicePythonsOn()});
         this.log(`meaning: installed ${runtime.version} of LiteRT-LM in ${runtime.python}`);
       }
       if (needs.model) {

@@ -452,18 +452,18 @@ async function voiceOnWith(prefix, pythons, {venv = null, made = false, litert =
 test(':Pair voice on with a Python voice has no wheels for refuses before it downloads anything, naming that Python', async () => {
   const {told, asked} = await voiceOnWith('omni-nowheels-', dir => [probedPython(dir, '3.11')], {pythonsOn: () => ['3.12', '3.13', '3.14']});
   assert.equal(told.length, 1, 'no "installing" line first');
-  assert.match(told[0], /^Voice is not ready: voice's packages have wheels for Python 3\.12 to 3\.14 here; the Python Pair would make its venv with is Python 3\.11\. Install Python 3\.12 or newer as python3, then :Pair voice on again\. Nothing was downloaded\.$/);
+  assert.match(told[0], /^Voice is not ready: voice's packages have wheels for Python 3\.12 to 3\.14 here; the Python Pair would make its venv with is Python 3\.11\. Install Python 3\.12 or newer \(python3\.12 is enough\), then :Pair voice on again\. Nothing was downloaded\.$/);
   assert.deepEqual(asked, [], 'neither LiteRT-LM, the venv, the wheels nor the model');
 });
 
 test(':Pair voice on with a venv that stays says how to make it again, and that Pair did not make it', async () => {
   const end = /, then :Pair voice on again\. Nothing was downloaded\.$/;
   const theirs = await voiceOnWith('omni-theirs-', () => [], {venv: '3.11'});
-  assert.match(theirs.told[0], /search by meaning's venv runs Python 3\.11\. Install Python 3\.12 or newer as python3 \(and remove search by meaning's venv, which Pair did not make\), then/);
+  assert.match(theirs.told[0], /search by meaning's venv runs Python 3\.11\. Install Python 3\.12 or newer \(python3\.12 is enough\), then remove search by meaning's venv, which Pair did not make, then/);
   const kept = await voiceOnWith('omni-kept-', () => [], {venv: '3.11', made: true, litert: true});
-  assert.match(kept.told[0], /runs Python 3\.11\. Install Python 3\.12 or newer as python3, then :Pair voice off and :Pair find off, so Pair makes its venv again with it, then/, ':Pair find off keeps the venv while the model is here');
+  assert.match(kept.told[0], /runs Python 3\.11\. Install Python 3\.12 or newer \(python3\.12 is enough\), then :Pair voice off and :Pair find off, so Pair makes its venv again with it, then/, ':Pair find off keeps the venv while the model is here');
   const bare = await voiceOnWith('omni-bare-', () => [], {venv: '3.11', made: true, litert: true, model: false});
-  assert.match(bare.told[0], /runs Python 3\.11\. Install Python 3\.12 or newer as python3, then :Pair find off, so Pair makes its venv again with it, then/);
+  assert.match(bare.told[0], /runs Python 3\.11\. Install Python 3\.12 or newer \(python3\.12 is enough\), then :Pair find off, so Pair makes its venv again with it, then/);
   for (const {told, asked} of [theirs, kept, bare]) {
     assert.match(told[0], end);
     assert.deepEqual(asked, []);
@@ -474,6 +474,11 @@ test(':Pair voice on on a machine voice\'s packages have no wheels for says so b
   const {told, asked} = await voiceOnWith('omni-nomachine-', dir => [probedPython(dir, '3.13')], {pythonsOn: () => []});
   assert.match(told[0], /^Voice is not ready: voice's packages have no wheels for \S+ \S+, only Linux \(x86-64, ARM64\) and macOS on Apple silicon\. Nothing was downloaded\.$/);
   assert.deepEqual(asked, []);
+});
+
+test(':Pair voice on makes the venv with a Python voice\'s packages fit, also when python3 is older', async () => {
+  const {asked} = await voiceOnWith('omni-newer-', dir => [probedPython(dir, '3.11'), probedPython(dir, '3.13')], {pythonsOn: () => ['3.12', '3.13', '3.14']});
+  assert.deepEqual(asked, ['install'], 'not refused: python3.13 is there');
 });
 
 test(':Pair voice on with no Python that makes a venv leaves it to runtime.install(), which says what is missing', async () => {

@@ -62,9 +62,13 @@ export const wheelOf = (platform = process.platform, arch = process.arch) => WHE
 
 const run = (file, args, options = {}) => new Promise(resolve => execFile(file, args, {timeout: PROBE_MS, ...options}, (error, stdout, stderr) => resolve({error, stdout, stderr})));
 
-/** The first of `candidates` that is 3.10 or later and can make a venv: `{python, version}`, or `{problem}` saying what to do. */
-export async function findPython(candidates = pythons()) {
+/**
+ * The first of `candidates` that is 3.10 or later and can make a venv, one whose version is in `prefer` ("3.12") first
+ * when there is one: `{python, version}`, or `{problem}` saying what to do.
+ */
+export async function findPython(candidates = pythons(), prefer = []) {
   let seen = null;
+  let first = null;
   for (const python of candidates) {
     if (python.includes('/') && !existsSync(python)) continue;
     const {error, stdout} = await run(python, ['-I', '-c', PROBE]);
@@ -72,9 +76,11 @@ export async function findPython(candidates = pythons()) {
     const [version, venv] = stdout.trim().split('\n');
     const [major, minor] = version.split('.').map(Number);
     const fits = major === 3 && minor >= 10;
-    if (fits && venv === 'venv') return {python, version};
+    if (fits && venv === 'venv' && (!prefer.length || prefer.includes(version))) return {python, version};
+    if (fits && venv === 'venv') first ??= {python, version};
     if (!seen || (fits && !seen.fits)) seen = {python, version, fits};
   }
+  if (first) return first;
   if (!seen) return {problem: `LiteRT-LM needs Python 3.10 or later, and there is no python3 on PATH: install one, ${ELSE}`};
   if (!seen.fits) return {problem: `LiteRT-LM needs Python 3.10 or later, and ${seen.python} is ${seen.version}: install a newer one, ${ELSE}`};
   return {problem: `${seen.python} (Python ${seen.version}) cannot make a venv: install its venv module (python3-venv on Debian and Ubuntu), ${ELSE}`};
@@ -109,9 +115,10 @@ export class Runtime {
    * Installs LiteRT-LM into the venv in Pair's data folder: made with the first Python 3.10+ (or the venv the user
    * made there, kept as theirs), then the wheel downloaded and pip with the lock file. `progress(bytes, total)` hears
    * the download; `signal` stops it, and a venv Pair made is deleted again whenever the install fails. Resolves
-   * `{python, version, pythonVersion, made}`.
+   * `{python, version, pythonVersion, made}`. A new venv is made with a Python whose version is in `prefer` when
+   * there is one (voice's packages have wheels for some only).
    */
-  async install({progress = () => {}, signal = null} = {}) {
+  async install({progress = () => {}, signal = null, prefer = []} = {}) {
     if (!this.wheel) throw new Error(`LiteRT-LM has no wheel for ${this.platform} (it has Linux x86-64 and ARM64, and macOS on Apple silicon): set an "embedding" model instead`);
     const venv = venvPath(this.dataDir);
     const python = venvPython(this.dataDir);
@@ -123,7 +130,7 @@ export class Runtime {
     let pythonVersion = null;
     try {
       if (made) {
-        const found = await findPython(this.candidates);
+        const found = await findPython(this.candidates, prefer);
         if (found.problem) throw new Error(found.problem);
         ({python: base, version: pythonVersion} = found);
         writeFileSync(madePath(this.dataDir), JSON.stringify({runtime: RUNTIME, python: base, pythonVersion, installing: true}), {mode: 0o600});

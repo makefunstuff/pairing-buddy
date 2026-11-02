@@ -38,6 +38,15 @@ test('findPython: the first 3.10 or later that can make a venv, else one line sa
   assert.match((await findPython([old, bare])).problem, /python3 \(Python 3\.12\) cannot make a venv: install its venv module \(python3-venv on Debian and Ubuntu\)/, 'a 3.10+ without venv says more than an old one');
 });
 
+test('findPython prefers a Python voice\'s packages fit, else the first that fits LiteRT-LM', async () => {
+  const system = fakePython({version: '3.11'});
+  const newer = fakePython({version: '3.12'});
+  const bare = fakePython({version: '3.13', venv: false});
+  assert.deepEqual(await findPython([system, bare, newer], ['3.12', '3.13', '3.14']), {python: newer, version: '3.12'}, 'python3.12 beside a system python3 3.11');
+  assert.deepEqual(await findPython([system], ['3.12', '3.13', '3.14']), {python: system, version: '3.11'}, 'none preferred: the first that fits, as before');
+  assert.deepEqual(await findPython([system, newer]), {python: system, version: '3.11'}, 'no preference: python3 first, as before');
+});
+
 test('install: a venv in Pair\'s data folder, the wheel downloaded by its hash with its progress, pip with no index by the lock file\'s hashes, and a note that Pair made it', async () => {
   const dataDir = scratch('runtime-data-');
   const served = fakeWheel({bytes: 3 << 20});

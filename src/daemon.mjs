@@ -1148,11 +1148,11 @@ export async function startDaemon(config, {
     // Without a fitting Python at all, runtime.install() says what is missing, also before it downloads anything.
     const fits = (omniWith.pythonsOn ?? voicePythonsOn)();
     if (needsPackages && !fits.length) return tell(`Voice is not ready: voice's packages have no wheels for ${process.platform} ${process.arch}, only Linux (x86-64, ARM64) and macOS on Apple silicon. Nothing was downloaded.`);
-    const venv = needsPackages ? await venvVersion(runtime, litert) : null;
+    const venv = needsPackages ? await venvVersion(runtime, litert, fits) : null;
     const wheels = venv?.version ? (omniWith.wheels ?? voiceWheelsOf)(venv.version) : null;
     if (venv?.version && !wheels) {
-      const again = !venv.kept ? '' : !madeByPair(config.dataDir) ? ' (and remove search by meaning\'s venv, which Pair did not make)' : omniReady(config.dataDir) ? ', then :Pair voice off and :Pair find off, so Pair makes its venv again with it' : ', then :Pair find off, so Pair makes its venv again with it';
-      return tell(`Voice is not ready: voice's packages have wheels for Python ${fits[0]} to ${fits.at(-1)} here; ${venv.kept ? 'search by meaning\'s venv runs' : 'the Python Pair would make its venv with is'} Python ${venv.version}. Install Python ${fits[0]} or newer as python3${again}, then :Pair voice on again. Nothing was downloaded.`);
+      const again = !venv.kept ? '' : !madeByPair(config.dataDir) ? ', then remove search by meaning\'s venv, which Pair did not make' : omniReady(config.dataDir) ? ', then :Pair voice off and :Pair find off, so Pair makes its venv again with it' : ', then :Pair find off, so Pair makes its venv again with it';
+      return tell(`Voice is not ready: voice's packages have wheels for Python ${fits[0]} to ${fits.at(-1)} here; ${venv.kept ? 'search by meaning\'s venv runs' : 'the Python Pair would make its venv with is'} Python ${venv.version}. Install Python ${fits[0]} or newer (python3.${fits[0].split('.')[1]} is enough)${again}, then :Pair voice on again. Nothing was downloaded.`);
     }
     const mb = bytes => Math.round(bytes / 1e6);
     const fetches = [
@@ -1199,11 +1199,11 @@ export async function startDaemon(config, {
   /**
    * The Python version voice's packages would go to ({version: "3.14", kept}): search by meaning's venv when
    * runtime.install() keeps it (it has LiteRT-LM, or Pair did not make it), else the Python runtime.install() would
-   * make it with; version is undefined when there is none, which runtime.install() then explains.
+   * make it with, one of `prefer` first; version is undefined when there is none, which runtime.install() then explains.
    */
-  async function venvVersion(runtime, litert) {
+  async function venvVersion(runtime, litert, prefer) {
     const python = venvPython(config.dataDir);
-    if (!existsSync(python) || (litert && madeByPair(config.dataDir))) return {version: (await findPython(omniWith.pythons ?? runtime.candidates)).version, kept: false};
+    if (!existsSync(python) || (litert && madeByPair(config.dataDir))) return {version: (await findPython(omniWith.pythons ?? runtime.candidates, prefer)).version, kept: false};
     return new Promise(resolve => execFile(python, ['-I', '-c', 'import sys; print("%d.%d" % sys.version_info[:2])'], {timeout: 20_000}, (error, stdout) => resolve({version: error ? undefined : stdout.trim(), kept: true})));
   }
 
