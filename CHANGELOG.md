@@ -36,9 +36,10 @@ release is cut.
 
 - **`:Pair find on` installs search by meaning's runtime itself.** No more `python3 -m venv` and `pip install` by
   hand: it says up front what it fetches and how big (LiteRT-LM, 17 to 33 MB from PyPI, and EmbeddingGemma 2, 165 MB),
-  makes a venv in Pair's data folder (`meaning/venv`) with your Python 3.10 or later, and pip installs
-  `litert-lm-api==0.19.0` into it by the SHA-256 of its wheels (`src/meaning-runtime.txt`, `--require-hashes`, no
-  other package), its progress shown in Neovim as the model's download is. Without a Python 3.10+, its venv module or
+  makes a venv in Pair's data folder (`meaning/venv`) with your Python 3.10 or later (on PATH, or Homebrew's, pyenv's
+  or `~/.local/bin`'s), downloads `litert-lm-api==0.19.0`'s wheel for your machine by its SHA-256, its progress shown
+  in Neovim as the model's download is, and pip installs it from that file (`src/meaning-runtime.txt`, no index,
+  `--require-hashes`, no other package). Without a Python 3.10+, its venv module or
   a wheel for the machine, it says what to do in one line, leaves nothing behind, and the word search keeps working.
   The ledger books the install, `:Pair find off` deletes the venv Pair made (never one you made, nor
   `"meaning": {"python": …}`, which still wins and is never installed into), and `pair doctor` says what turning it

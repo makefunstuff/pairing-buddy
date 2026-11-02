@@ -24,7 +24,7 @@ Pair: Search by meaning: installing LiteRT-LM 0.19.0 (33 MB from PyPI, SHA-256 p
 ```
 
 It needs Python 3.10 or later on your machine; the venv is Pair's own, in its data folder, and pip installs only the
-one wheel pinned by its SHA-256. Without such a Python (or on a machine LiteRT-LM has no wheel for), it says what to
+one wheel, pinned by its SHA-256. Without such a Python (or on a machine LiteRT-LM has no wheel for), it says what to
 do in one line and the word search keeps working. Neovim shows how far each download is, and the ledger books both.
 
 Then Pair embeds the project in the background, on two cores at low priority; Neovim shows how far as a progress

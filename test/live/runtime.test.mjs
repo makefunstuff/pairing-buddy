@@ -1,6 +1,6 @@
 // Search by meaning's runtime installed for real, as `:Pair find on` does it: set PAIR_LIVE_RUNTIME=1 to run it. Your
-// python3 (3.10 or later) makes a venv in a temp data folder and pip installs litert-lm-api==0.19.0 from PyPI by the
-// lock file's hashes (about 33 MB); then LiteRT-LM has to import, and `:Pair find off`'s remove deletes the venv.
+// python3 (3.10 or later) makes a venv in a temp data folder, its wheel comes from PyPI (about 33 MB) and pip installs it by the
+// lock file's hashes; then LiteRT-LM has to import, and `:Pair find off`'s remove deletes the venv.
 import assert from 'node:assert/strict';
 import {existsSync} from 'node:fs';
 import {test} from 'node:test';
@@ -18,7 +18,7 @@ test('LiteRT-LM installs into a venv of Pair\'s by its pinned hashes, imports, a
   const done = await runtime.install({progress: (bytes, total) => {
     if (bytes - last < 8 << 20 && bytes !== total) return;
     last = bytes;
-    console.log(`pip: ${Math.round(bytes / (1 << 20))} of ${Math.round(total / (1 << 20))} MiB`);
+    console.log(`wheel: ${Math.round(bytes / (1 << 20))} of ${Math.round(total / (1 << 20))} MiB`);
   }});
   console.log(`installed LiteRT-LM ${done.version} with Python ${done.pythonVersion} in ${Math.round((Date.now() - started) / 1000)} s: ${done.python}`);
   assert.equal(done.python, venvPython(dataDir));

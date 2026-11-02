@@ -72,5 +72,6 @@ part of the repository.
 
 [Search by meaning](docs/meaning.md) uses two things Pair does not ship: its model, EmbeddingGemma 2 (text, 270M,
 `litert-community/embeddinggemma-2-text-270m-litert-lm`, Apache-2.0), which Pair downloads at run time into its data
-folder when you say yes, and the LiteRT-LM runtime (`litert-lm-api`, Apache-2.0), which you install with pip. Neither
-is in the repository or the npm package.
+folder when you say yes, and the LiteRT-LM runtime (`litert-lm-api`, Apache-2.0), whose wheel from PyPI
+`:Pair find on` installs with pip into a venv in that folder, by the SHA-256 in `src/meaning-runtime.txt`. Neither is
+in the repository or the npm package.

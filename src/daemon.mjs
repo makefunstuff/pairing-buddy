@@ -1056,14 +1056,15 @@ export async function startDaemon(config, {
       ...(needs.runtime?.bytes ? [`installing LiteRT-LM ${RUNTIME_VERSION} (${mb(needs.runtime.bytes)} MB from PyPI, SHA-256 pinned) in a venv in Pair's data folder`] : []),
       ...(needs.model ? [`downloading ${MODEL.name} (${mb(MODEL.bytes)} MB from Hugging Face, SHA-256 checked)`] : []),
     ];
-    if (fetches.length) tell(`Search by meaning: ${fetches.join(', then ')}, once…`);
+    // No wheel for this machine: turnOn says so at once, and nothing is promised first.
+    if (fetches.length && (!needs.runtime || needs.runtime.bytes)) tell(`Search by meaning: ${fetches.join(', then ')}, once…`);
     const told = {runtime: 0, model: 0};
     let done;
     try {
       done = await meaning.turnOn({progress: ({phase, bytes, total}) => {
         if (bytes - told[phase] < (phase === 'runtime' ? 8 : 32) << 20) return;
         told[phase] = bytes;
-        const what = phase === 'runtime' ? `Installing LiteRT-LM ${RUNTIME_VERSION}` : `Downloading ${MODEL.name}`;
+        const what = `Downloading ${phase === 'runtime' ? `LiteRT-LM ${RUNTIME_VERSION}` : MODEL.name}`;
         tell(`${what}: ${Math.round(bytes / (1 << 20))} of ${Math.round(total / (1 << 20))} MiB…`);
       }});
     } catch (error) {
@@ -1072,7 +1073,7 @@ export async function startDaemon(config, {
     if (done.runtime) {
       const {python, version, pythonVersion, made} = done.runtime;
       const where = made ? `a venv Pair made with Python ${pythonVersion}` : 'the venv already in Pair\'s data folder';
-      const detail = {output: `${RUNTIME}, from PyPI, by the SHA-256 in src/meaning-runtime.txt\n${tilde(python)}${made ? '\n:Pair find off deletes this venv' : ''}`};
+      const detail = {output: `${RUNTIME}, its wheel from PyPI by the SHA-256 in src/meaning-runtime.txt\n${tilde(python)}${made ? '\n:Pair find off deletes this venv' : ''}`};
       for (const session of live.values()) session.ledger.add('installed', `LiteRT-LM ${version} for search by meaning, in ${where}`, {detail});
     }
     if (done.model) {

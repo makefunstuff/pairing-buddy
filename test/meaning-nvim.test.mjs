@@ -12,7 +12,7 @@ import {fauxAssistantMessage, fauxText} from '@earendil-works/pi-ai';
 import {pythonOf} from '../src/embedder.mjs';
 import {Runtime, WHEELS} from '../src/runtime.mjs';
 import {fakeEmbedder, fakeModel} from './fake-embedder.mjs';
-import {fakePython} from './fake-python.mjs';
+import {fakePython, fakeWheel} from './fake-python.mjs';
 import {hasNvim, pairInNvim, until} from './nvim-harness.mjs';
 import {scratch} from './temp.mjs';
 
@@ -186,10 +186,11 @@ test('/find in the chat: the fused ranking, with how it ranked', {skip: hasNvim 
 test(':Pair find on installs LiteRT-LM itself, says what comes and how big up front, tells how far, books it; off deletes Pair\'s venv', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
   // The daemon's runtime, made once its data folder is known: with no Python first, then with a fake one.
   let real = null;
-  const runtime = {bytes: WHEELS['linux x64'], check: () => real.check(), install: options => real.install(options), remove: () => real.remove()};
+  const runtime = {bytes: WHEELS['linux x64'].bytes, check: () => real.check(), install: options => real.install(options), remove: () => real.remove()};
   const {dataDir, messages, send, stop} = await pairInNvim('deliver', {meaningWith: {embedder: fakeEmbedder(), runtime}});
   const said = () => messages.filter(message => message.type === 'meaning_state').map(message => message.text);
-  const runtimeWith = python => new Runtime({dataDir, python: () => pythonOf({}, dataDir), pythons: [python], platform: 'linux', arch: 'x64'});
+  const served = fakeWheel({bytes: 9 << 20});
+  const runtimeWith = python => new Runtime({dataDir, python: () => pythonOf({}, dataDir), candidates: [python], ...served});
   try {
     fakeModel(dataDir); // the model is here: only LiteRT-LM is missing, as for someone who turned it on before
     real = runtimeWith(join(scratch('no-python-'), 'python3'));
@@ -200,12 +201,12 @@ test(':Pair find on installs LiteRT-LM itself, says what comes and how big up fr
     assert.ok(!existsSync(join(dataDir, 'meaning', 'venv')));
 
     messages.length = 0;
-    real = runtimeWith(fakePython({version: '3.12', bytes: 9 << 20}));
+    real = runtimeWith(fakePython({version: '3.12'}));
     send({type: 'meaning_on'});
     await until(() => said().some(text => /is on/.test(text)), 'search by meaning on');
     assert.deepEqual(said(), [
       'Search by meaning: installing LiteRT-LM 0.19.0 (33 MB from PyPI, SHA-256 pinned) in a venv in Pair\'s data folder, once…',
-      'Installing LiteRT-LM 0.19.0: 8 of 9 MiB…',
+      'Downloading LiteRT-LM 0.19.0: 8 of 9 MiB…',
       'Search by meaning is on: Pair indexes this project in the background.',
     ]);
     await until(() => {

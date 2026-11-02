@@ -164,11 +164,12 @@ the way are not booked.
 `:Pair find on` asks nothing more: turning it on is the yes. It says once, up front, what it fetches and how big, then
 shows how far as it goes, as Neovim messages:
 
-1. **LiteRT-LM**, the runtime, unless the Python Pair would run already has it. Pair makes a virtual environment in
-   its data folder, `~/.local/state/pairing-buddy/meaning/venv`, with the first `python3` (or `python3.14` down to
-   `python3.10`) that is 3.10 or later, and pip installs `litert-lm-api==0.19.0` into it: one wheel, 17 to 33 MB from
-   PyPI, which pip keeps only if its SHA-256 is one of those in Pair's lock file (`src/meaning-runtime.txt`,
-   `--require-hashes`, with no other package and nothing built from source). Nothing goes outside that folder.
+1. **LiteRT-LM** 0.19.0, the runtime, unless the Python Pair would run already has that version. Pair makes a virtual
+   environment in its data folder, `~/.local/state/pairing-buddy/meaning/venv`, with the first `python3` (or
+   `python3.14` down to `python3.10`) that is 3.10 or later, on PATH or where Homebrew, python.org's installer, pyenv
+   and `~/.local/bin` keep them. It downloads the one wheel for your machine from PyPI (17 to 33 MB), kept only if its
+   SHA-256 is the one in Pair's lock file (`src/meaning-runtime.txt`), and pip installs it from that file into the
+   venv: no index, `--require-hashes`, no other package, nothing built from source. Nothing goes outside that folder.
 2. **EmbeddingGemma 2**, 165 MB from Hugging Face, once, checked by its SHA-256.
 
 Then Pair embeds the open projects in the background. It is off by default, because two downloads and a few minutes
@@ -181,12 +182,13 @@ the machine has no wheel, `:Pair find on` says so in one line with what to do, l
 search works as before. Any other Python with `litert-lm-api` works too: set `"meaning": {"python":
 "/path/to/python"}` in the [config](config.md#meaning). It wins: Pair installs nothing into it and never deletes it.
 
-If you would rather install it by hand (say, behind a proxy pip needs told about), make the same venv yourself, and
-`:Pair find on` uses it as it is; it is yours, so `:Pair find off` leaves it:
+If you would rather install it by hand (say, when PyPI is reached only through a proxy pip knows of), make the same
+venv yourself, and `:Pair find on` uses it as it is; it is yours, so `:Pair find off` leaves it. The lock file is
+`src/meaning-runtime.txt` in Pair's install (its npm package, or your plugin manager's checkout):
 
 ```sh
 python3 -m venv ~/.local/state/pairing-buddy/meaning/venv
-~/.local/state/pairing-buddy/meaning/venv/bin/pip install --require-hashes -r src/meaning-runtime.txt  # from Pair's checkout
+~/.local/state/pairing-buddy/meaning/venv/bin/pip install --require-hashes -r <Pair's folder>/src/meaning-runtime.txt
 ```
 
 `pair doctor` says what is missing and what turning it on fetches, and how big and how old each index is:

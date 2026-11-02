@@ -2,7 +2,7 @@
 // measured (LFMP-10). The model is downloaded once, at a pinned revision, and kept only if its SHA-256 matches; nothing
 // else reaches the network. LiteRT-LM runs it natively in a small Python helper (src/embed-helper.py) that the daemon
 // starts on first use, at low priority, and stops once it has been idle a while; the helper needs `litert-lm-api` in
-// the Python that runs it, installed by the user like whisper.cpp for voice. Each text becomes 256 numbers of unit
+// the Python that runs it, which `:Pair find on` installs in a venv of Pair's (runtime.mjs). Each text becomes 256 numbers of unit
 // length, so similarity is a dot product.
 import {spawn, execFile} from 'node:child_process';
 import {createHash} from 'node:crypto';
@@ -40,7 +40,7 @@ export const queryText = query => `task: search result | query: ${query}`;
 const expand = path => path.replace(/^~(?=\/|$)/, homedir());
 export const modelUrl = (model = MODEL) => `https://huggingface.co/${model.repo}/resolve/${model.revision}/${model.file}`;
 
-/** Where Pair keeps search by meaning's model, indexes and (if the user makes one there) the helper's Python. */
+/** Where Pair keeps search by meaning's model, indexes and the helper's Python (runtime.mjs). */
 export const meaningDir = dataDir => join(dataDir, 'meaning');
 export const modelPath = dataDir => join(meaningDir(dataDir), MODEL.file);
 const checkedPath = dataDir => `${modelPath(dataDir)}.sha256`;
@@ -60,12 +60,10 @@ export function modelReady(dataDir) {
 }
 
 /**
- * Downloads the model into `dataDir`, once: the pinned revision from Hugging Face, written to a .part file while its
- * SHA-256 is taken, and moved into place only if it matches. `progress(bytes)` hears how far it got; `signal` stops it.
+ * Downloads `url` to `path`, once: written to a .part file while its SHA-256 is taken, and moved into place only if it
+ * is `sha256`. `progress(bytes)` hears how far it got; `signal` stops it; `what` names it in what goes wrong.
  */
-export async function downloadModel(dataDir, {fetch = globalThis.fetch, progress = () => {}, model = MODEL, stallMs = STALL_MS, signal = null} = {}) {
-  await mkdir(meaningDir(dataDir), {recursive: true, mode: 0o700});
-  const path = modelPath(dataDir);
+export async function downloadFile(url, path, {sha256: pinned, what, fetch = globalThis.fetch, progress = () => {}, stallMs = STALL_MS, signal = null}) {
   const part = `${path}.part`;
   const abort = new AbortController();
   if (signal?.aborted) throw signal.reason;
@@ -76,10 +74,15 @@ export async function downloadModel(dataDir, {fetch = globalThis.fetch, progress
     stall = setTimeout(() => abort.abort(new Error(`the download got nothing for ${stallMs / 1000} s`)), stallMs);
   };
   waiting();
-  const response = await fetch(modelUrl(model), {redirect: 'follow', signal: abort.signal}).catch(error => { clearTimeout(stall); throw abort.signal.reason ?? error; });
+  const host = new URL(url).host;
+  const response = await fetch(url, {redirect: 'follow', signal: abort.signal}).catch(error => {
+    clearTimeout(stall);
+    if (abort.signal.aborted) throw abort.signal.reason;
+    throw new Error(`${host} could not be reached for ${what} (${error.cause?.code ?? error.message}): check the network, or its proxy`);
+  });
   if (!response.ok || !response.body) {
     clearTimeout(stall);
-    throw new Error(`Hugging Face answered ${response.status} for ${model.file}`);
+    throw new Error(`${host} answered ${response.status} for ${what}`);
   }
   const hash = createHash('sha256');
   let bytes = 0;
@@ -93,7 +96,7 @@ export async function downloadModel(dataDir, {fetch = globalThis.fetch, progress
   try {
     await pipeline(body, createWriteStream(part, {mode: 0o600}));
     const sha256 = hash.digest('hex');
-    if (sha256 !== model.sha256) throw new Error(`the download's SHA-256 is ${sha256}, not the pinned ${model.sha256}: not kept`);
+    if (sha256 !== pinned) throw new Error(`the download's SHA-256 is ${sha256}, not the pinned ${pinned}: not kept`);
     await rename(part, path);
   } catch (error) {
     await rm(part, {force: true});
@@ -101,6 +104,16 @@ export async function downloadModel(dataDir, {fetch = globalThis.fetch, progress
   } finally {
     clearTimeout(stall);
   }
+}
+
+/**
+ * Downloads the model into `dataDir`, once: the pinned revision from Hugging Face, kept only if its SHA-256 matches
+ * (downloadFile). `progress(bytes)` hears how far it got; `signal` stops it.
+ */
+export async function downloadModel(dataDir, {fetch = globalThis.fetch, progress = () => {}, model = MODEL, stallMs = STALL_MS, signal = null} = {}) {
+  await mkdir(meaningDir(dataDir), {recursive: true, mode: 0o700});
+  const path = modelPath(dataDir);
+  await downloadFile(modelUrl(model), path, {sha256: model.sha256, what: model.file, fetch, progress, stallMs, signal});
   const stat = statSync(path);
   writeFileSync(checkedPath(dataDir), JSON.stringify({sha256: model.sha256, size: stat.size, mtimeMs: stat.mtimeMs, revision: model.revision}), {mode: 0o600});
 }
@@ -113,8 +126,8 @@ export async function removeModel(dataDir) {
 }
 
 /**
- * The Python that runs the helper: the config's `meaning.python`, else a venv the user made at
- * <dataDir>/meaning/venv (see docs/meaning.md), else python3 on PATH.
+ * The Python that runs the helper: the config's `meaning.python`, else the venv at <dataDir>/meaning/venv (that
+ * `:Pair find on` makes, or the user did), else python3 on PATH.
  */
 export function pythonOf(meaning, dataDir) {
   if (meaning?.python) return expand(meaning.python);

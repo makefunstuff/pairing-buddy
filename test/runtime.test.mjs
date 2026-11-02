@@ -1,21 +1,22 @@
 // Search by meaning's runtime, installed by `:Pair find on` (runtime.mjs): the first Python 3.10+ that can make a venv,
-// the venv in Pair's data folder, pip with the lock file's hashes and its progress, the note that Pair made the venv,
+// the venv in Pair's data folder, the wheel downloaded by its SHA-256 with its progress, pip with no index and the lock
+// file's hashes, the note that Pair made the venv,
 // and what goes wrong said in one line with what to do, leaving nothing half made. `:Pair find off` deletes only the
 // venv Pair made. Meaning's turnOn and turnOff around it, and the lock file itself. A fake Python stands in for the
 // user's (fake-python.mjs): no real Python, pip or network.
 import assert from 'node:assert/strict';
-import {existsSync, mkdirSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {pythonOf, RUNTIME} from '../src/embedder.mjs';
 import {Meaning} from '../src/meaning.mjs';
-import {findPython, LOCK, madeByPair, Runtime, venvPath, venvPython, WHEELS} from '../src/runtime.mjs';
+import {findPython, LOCK, madeByPair, pythons, Runtime, venvPath, venvPython, WHEELS} from '../src/runtime.mjs';
 import {fakeEmbedder, fakeModel} from './fake-embedder.mjs';
-import {fakePython} from './fake-python.mjs';
+import {fakePython, fakeWheel} from './fake-python.mjs';
 import {scratch} from './temp.mjs';
 
 const missing = () => join(scratch('no-python-'), 'python3');
-const runtimeIn = (dataDir, python, options = {}) => new Runtime({dataDir, python: () => pythonOf({}, dataDir), pythons: [python], platform: 'linux', arch: 'x64', ...options});
+const runtimeIn = (dataDir, python, options = {}) => new Runtime({dataDir, python: () => pythonOf({}, dataDir), candidates: [python], ...fakeWheel(), ...options});
 
 test('the lock file pins litert-lm-api by the SHA-256 of each wheel PyPI has, the one RUNTIME the helper needs', () => {
   const lock = readFileSync(LOCK, 'utf8');
@@ -37,42 +38,46 @@ test('findPython: the first 3.10 or later that can make a venv, else one line sa
   assert.match((await findPython([old, bare])).problem, /python3 \(Python 3\.12\) cannot make a venv: install its venv module \(python3-venv on Debian and Ubuntu\)/, 'a 3.10+ without venv says more than an old one');
 });
 
-test('install: a venv in Pair\'s data folder, pip by the lock file\'s hashes and nothing else, its progress, and a note that Pair made it', async () => {
+test('install: a venv in Pair\'s data folder, the wheel downloaded by its hash with its progress, pip with no index by the lock file\'s hashes, and a note that Pair made it', async () => {
   const dataDir = scratch('runtime-data-');
-  const runtime = runtimeIn(dataDir, fakePython({version: '3.12', bytes: 3 << 20}));
-  assert.equal(runtime.bytes, WHEELS['linux x64']);
+  const served = fakeWheel({bytes: 3 << 20});
+  const runtime = runtimeIn(dataDir, fakePython({version: '3.12'}), served);
+  assert.equal(new Runtime({dataDir, platform: 'linux', arch: 'x64'}).bytes, WHEELS['linux x64'].bytes);
   assert.match((await runtime.check()).problem, /python3 is not there|has no litert-lm-api/, 'nothing yet');
   const heard = [];
   const done = await runtime.install({progress: (bytes, total) => heard.push([bytes, total])});
   assert.deepEqual(done, {python: venvPython(dataDir), version: '0.19.0', pythonVersion: '3.12', made: true});
   assert.equal(venvPath(dataDir), join(dataDir, 'meaning', 'venv'));
   const pip = JSON.parse(readFileSync(join(venvPath(dataDir), 'pip.json'), 'utf8'));
-  for (const flag of ['--require-hashes', '--no-deps', '--only-binary=:all:', '--no-input']) assert.ok(pip.args.includes(flag), flag);
+  for (const flag of ['--no-index', '--require-hashes', '--no-deps', '--only-binary=:all:', '--no-input']) assert.ok(pip.args.includes(flag), flag);
   assert.deepEqual(pip.args.slice(-2), ['-r', LOCK]);
-  assert.ok(pip.args.includes('raw'), 'pip 24.1 or later prints its progress a line at a time');
+  assert.deepEqual(pip.wheels, ['litert_lm_api-0.19.0-py3-none-manylinux_2_27_x86_64.whl'], 'pip gets the downloaded wheel, and only it');
+  assert.deepEqual(served.fetched, [served.wheel.url]);
+  assert.ok(!readdirSync(join(dataDir, 'meaning')).some(name => name.startsWith('wheel-')), 'the downloaded wheel is not kept');
   assert.equal(pip.noInput, '1');
   assert.deepEqual(heard.at(-1), [3 << 20, 3 << 20]);
-  assert.ok(heard.length >= 3);
+  assert.deepEqual(heard.map(([bytes]) => bytes), [1 << 20, 2 << 20, 3 << 20], 'told as it comes, whatever pip\'s version');
   assert.equal(madeByPair(dataDir).runtime, RUNTIME);
   assert.equal(madeByPair(dataDir).pythonVersion, '3.12');
   assert.deepEqual(await runtime.check(), {version: '0.19.0'}, 'the helper\'s Python has it now');
   assert.equal(pythonOf({}, dataDir), venvPython(dataDir));
   assert.equal(await runtime.remove(), true);
   assert.ok(!existsSync(venvPath(dataDir)), 'Pair\'s venv goes');
-
-  const older = runtimeIn(scratch('runtime-data-'), fakePython({pip: '23.0.1'}));
-  await older.install();
-  assert.ok(!JSON.parse(readFileSync(join(venvPath(older.dataDir), 'pip.json'), 'utf8')).args.includes('raw'), 'an older pip gets no --progress-bar raw');
+  assert.equal(madeByPair(dataDir), null, 'and its note');
 });
 
 test('install fails in one line and leaves no venv: no wheel, no Python, pip refusing, or turned off meanwhile', async () => {
   const dataDir = scratch('runtime-data-');
-  await assert.rejects(runtimeIn(dataDir, fakePython(), {platform: 'darwin', arch: 'x64'}).install(), /^Error: LiteRT-LM has no wheel for darwin x64 \(it has Linux x86-64 and ARM64, and macOS on Apple silicon\): set an "embedding" model instead$/);
+  await assert.rejects(runtimeIn(dataDir, fakePython(), {wheel: undefined, platform: 'darwin', arch: 'x64'}).install(), /^Error: LiteRT-LM has no wheel for darwin x64 \(it has Linux x86-64 and ARM64, and macOS on Apple silicon\): set an "embedding" model instead$/);
   await assert.rejects(runtimeIn(dataDir, missing()).install(), /needs Python 3\.10 or later, and there is no python3 on PATH/);
   assert.ok(!existsSync(venvPath(dataDir)));
   await assert.rejects(runtimeIn(dataDir, fakePython({pipError: 'ERROR: THESE PACKAGES DO NOT MATCH THE HASHES FROM THE REQUIREMENTS FILE.'})).install(), /^Error: pip refused litert-lm-api==0\.19\.0: its SHA-256 is not the pinned one/);
   assert.ok(!existsSync(venvPath(dataDir)), 'a venv Pair made is deleted when pip fails');
-  await assert.rejects(runtimeIn(dataDir, fakePython({pipError: 'ERROR: No matching distribution found for litert-lm-api==0.19.0'})).install(), /pip found no litert-lm-api==0\.19\.0 wheel for this machine \(Linux needs glibc 2\.27 or later\)/);
+  await assert.rejects(runtimeIn(dataDir, fakePython({pipError: 'ERROR: litert_lm_api-0.19.0-py3-none-manylinux_2_27_x86_64.whl is not a supported wheel on this platform.'})).install(), /pip says LiteRT-LM's wheel does not fit this machine \(Linux needs glibc 2\.27 or later\)/);
+  await assert.rejects(runtimeIn(dataDir, fakePython(), fakeWheel({fail: 'ENOTFOUND'})).install(), /^Error: files\.pythonhosted\.org could not be reached for litert-lm-api==0\.19\.0 \(ENOTFOUND\): check the network, or its proxy$/, 'offline is said as offline');
+  const bad = fakeWheel();
+  await assert.rejects(runtimeIn(dataDir, fakePython(), {...bad, wheel: {...bad.wheel, sha256: '0'.repeat(64)}}).install(), /SHA-256 is [0-9a-f]{64}, not the pinned 0{64}: not kept/);
+  assert.ok(!existsSync(venvPath(dataDir)) && madeByPair(dataDir) === null, 'a venv Pair made is deleted when the download fails');
   const abort = new AbortController();
   const hung = runtimeIn(dataDir, fakePython({pipHangs: true})).install({signal: abort.signal});
   const end = Date.now() + 5000;
@@ -87,7 +92,7 @@ test('a venv the user made in Pair\'s data folder is used and kept: pip fills it
   const runtime = runtimeIn(dataDir, fakePython());
   // The venv as the old docs said to make it, still without litert-lm-api: a venv without Pair's note.
   await runtimeIn(dataDir, fakePython()).install();
-  rmSync(join(venvPath(dataDir), 'pair-made.json'));
+  rmSync(join(dataDir, 'meaning', 'venv-made-by-pair.json'));
   rmSync(join(venvPath(dataDir), 'installed'));
   assert.equal(madeByPair(dataDir), null);
   const done = await runtime.install();
@@ -100,10 +105,10 @@ test('a venv the user made in Pair\'s data folder is used and kept: pip fills it
 test('turnOn installs LiteRT-LM before the model, says so in its state, and turnOff deletes Pair\'s venv but never meaning.python', async () => {
   const dataDir = scratch('meaning-data-');
   fakeModel(dataDir); // the model is here already: only the runtime is missing
-  const runtime = runtimeIn(dataDir, fakePython({bytes: 2 << 20}));
+  const runtime = runtimeIn(dataDir, fakePython(), fakeWheel({bytes: 2 << 20}));
   const meaning = new Meaning({dataDir, embedder: fakeEmbedder(), runtime});
   try {
-    assert.deepEqual(await meaning.needs(), {runtime: {bytes: WHEELS['linux x64']}, model: false});
+    assert.deepEqual(await meaning.needs(), {runtime: {bytes: 2 << 20}, model: false});
     const states = [];
     const done = await meaning.turnOn({progress: how => states.push([how.phase, meaning.state, meaning.snapshot().installing])});
     assert.equal(done.runtime.made, true);
@@ -133,7 +138,7 @@ test('turnOn installs LiteRT-LM before the model, says so in its state, and turn
   mkdirSync(join(own, 'bin'));
   writeFileSync(python, '');
   const config = {python};
-  const withOwn = new Meaning({dataDir, config, embedder: fakeEmbedder(), runtime: new Runtime({dataDir, python: () => pythonOf(config, dataDir), pythons: [missing()]})});
+  const withOwn = new Meaning({dataDir, config, embedder: fakeEmbedder(), runtime: new Runtime({dataDir, python: () => pythonOf(config, dataDir), candidates: [missing()]})});
   try {
     fakeModel(dataDir);
     assert.deepEqual(await withOwn.needs(), {runtime: null, model: false}, 'the config\'s Python wins: nothing to install');
@@ -143,4 +148,25 @@ test('turnOn installs LiteRT-LM before the model, says so in its state, and turn
   } finally {
     await withOwn.close();
   }
+});
+
+test('an older LiteRT-LM is installed again; off deletes Pair\'s venv with an "embedding" model too; Pythons PATH may lack are tried', async () => {
+  const dataDir = scratch('meaning-data-');
+  fakeModel(dataDir);
+  const runtime = runtimeIn(dataDir, fakePython());
+  const older = {...runtime, bytes: runtime.bytes, check: async () => ({version: '0.18.1'})};
+  const meaning = new Meaning({dataDir, embedder: fakeEmbedder(), runtime: older});
+  assert.deepEqual(await meaning.needs(), {runtime: {bytes: runtime.bytes}, model: false}, 'not the pinned version: installed again');
+  await meaning.close();
+
+  await runtime.install();
+  const withModel = new Meaning({dataDir, embedding: {api: 'openai', baseUrl: 'http://127.0.0.1:9/v1', model: 'm'}, embedder: fakeEmbedder(), runtime});
+  assert.deepEqual(await withModel.needs(), {runtime: null, model: false}, 'nothing to install for an "embedding" model');
+  assert.deepEqual(await withModel.turnOff(), {venv: true}, 'but the venv Pair made before goes');
+  assert.ok(!existsSync(venvPath(dataDir)));
+  await withModel.close();
+
+  const tried = pythons('/home/u');
+  assert.equal(tried[0], 'python3');
+  for (const place of ['/opt/homebrew/bin/python3', '/usr/local/bin/python3.12', '/home/u/.pyenv/shims/python3', '/home/u/.local/bin/python3']) assert.ok(tried.includes(place), place);
 });

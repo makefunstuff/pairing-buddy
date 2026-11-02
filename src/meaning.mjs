@@ -15,7 +15,7 @@ import {isAbsolute, join, relative} from 'node:path';
 import {apiKeyOf} from './config.mjs';
 import {downloadModel, Embedder, HttpEmbedder, meaningDir, MODEL, modelPath, modelReady, pythonOf, removeModel} from './embedder.mjs';
 import {IndexStore, indexPlace, removeIndex} from './index-store.mjs';
-import {Runtime} from './runtime.mjs';
+import {Runtime, RUNTIME_VERSION} from './runtime.mjs';
 import {piecesOf, TreeSitter} from './pieces.mjs';
 
 const MAX_FILE_BYTES = 512 * 1024;
@@ -435,7 +435,8 @@ export class Meaning {
       ? new HttpEmbedder({entry: embedding, apiKey: () => apiKeyOf(embedding), fetch, log})
       : new Embedder({python: () => pythonOf(config, dataDir), model: modelPath(dataDir), threads: config?.threads, log}));
     // LiteRT-LM, for EmbeddingGemma: installed by turnOn, but never for the config's own meaning.python.
-    this.runtime = runtime ?? (embedding || embedder ? null : new Runtime({dataDir, python: () => pythonOf(config, dataDir), log}));
+    // With an "embedding" model it installs nothing, but :Pair find off still deletes a venv Pair made before.
+    this.runtime = runtime ?? (embedder ? null : new Runtime({dataDir, python: () => pythonOf(config, dataDir), fetch, log}));
     this.treeSitter = treeSitter ?? new TreeSitter({parsers: () => this.parsers, log});
     this.indexes = new Map(); // root -> ProjectIndex
     this.failures = new Map(); // root -> {at, index}: an index file that could not be opened lately
@@ -718,7 +719,7 @@ export class Meaning {
     const model = !modelReady(this.dataDir);
     if (!this.runtime || this.config?.python) return {runtime: null, model}; // the config's Python is the user's to fill
     const found = await this.runtime.check();
-    return {runtime: found.version ? null : {bytes: this.runtime.bytes}, model};
+    return {runtime: found.version === RUNTIME_VERSION ? null : {bytes: this.runtime.bytes}, model}; // an older one is installed again
   }
 
   /**
@@ -782,7 +783,7 @@ export class Meaning {
     }
     for (const path of paths) removeIndex(path);
     if (!this.embedding) await removeModel(this.dataDir); // the config's model is not Pair's to delete, nor is it asked any more
-    const venv = !this.embedding && !!await this.runtime?.remove(); // only a venv Pair made: never meaning.python
+    const venv = !!await this.runtime?.remove(); // only a venv Pair made: never meaning.python
     await rm(join(this.dataDir, 'index'), {recursive: true, force: true});
     if (this.embedding) {
       await mkdir(meaningDir(this.dataDir), {recursive: true, mode: 0o700});

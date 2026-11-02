@@ -18,7 +18,7 @@ import {Embedder, HttpEmbedder, meaningDir, MODEL, modelPath, modelReady, python
 import {FAST_MS, SLOW_MS} from './pace.mjs';
 import {levelGroups, probeModel, probeThinking} from './probe.mjs';
 import {requestDaemon} from './protocol.mjs';
-import {madeByPair, venvPython, wheelBytes} from './runtime.mjs';
+import {madeByPair, venvPython, wheelOf} from './runtime.mjs';
 import {sandboxWorks} from './sandbox.mjs';
 import {keyVariables, readServiceEnv} from './service-env.mjs';
 import {serviceManager} from './service.mjs';
@@ -275,7 +275,7 @@ export async function voiceCheck(voice, found = name => onPath(name, process.env
  */
 export const runtimeInstall = config => (config.meaning?.python
   ? `${tilde(pythonOf(config.meaning, config.dataDir))} -m pip install ${RUNTIME}, or leave meaning.python out and :Pair find on installs it`
-  : wheelBytes() ? `:Pair find on installs it (${Math.round(wheelBytes() / 1e6)} MB, in a venv in Pair's data folder)`
+  : wheelOf() ? `:Pair find on installs it (${Math.round(wheelOf().bytes / 1e6)} MB, in a venv in Pair's data folder)`
     : `LiteRT-LM has no wheel for ${process.platform} ${process.arch}: set an "embedding" model instead`);
 
 /** Whose the Python with LiteRT-LM is, for people: Pair's venv says so. */
@@ -359,8 +359,8 @@ export async function meaningCheck(config, status, {runtime = runtimeOf, fetch =
   const found = await runtime(python);
   const has = found.version ? `LiteRT-LM ${found.version} in ${tilde(python)}${whose(config, python)}` : null;
   if (!modelReady(config.dataDir)) {
-    const fetches = has || config.meaning?.python ? `downloads ${MODEL.name} (165 MB, once)` : `installs LiteRT-LM and downloads ${MODEL.name} (165 MB), once,`;
-    const needs = has ? `; ${has} is ready` : config.meaning?.python ? `; ${found.problem}: ${runtimeInstall(config)}` : '';
+    const fetches = has || config.meaning?.python || !wheelOf() ? `downloads ${MODEL.name} (165 MB, once)` : `installs LiteRT-LM and downloads ${MODEL.name} (165 MB), once,`;
+    const needs = has ? `; ${has} is ready` : config.meaning?.python || !wheelOf() ? `; ${found.problem}: ${runtimeInstall(config)}` : '';
     return ok('meaning', `words only: :Pair find on ${fetches} for meaning, or set an "embedding" model${needs}${indexesText(config, live)}`);
   }
   if (!has) return fail('meaning', `${MODEL.name} is downloaded, but ${found.problem}: ${runtimeInstall(config)}`);
