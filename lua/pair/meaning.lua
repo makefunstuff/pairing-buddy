@@ -189,7 +189,12 @@ function Live:title()
   if self.meaning_info and self.meaning_info.ms then parts[#parts + 1] = ('%d ms'):format(self.meaning_info.ms) end
   local rerank = self.rerank_info
   if self.reranking then parts[#parts + 1] = 'reranking'
-  elseif rerank and rerank.applied then parts[#parts + 1] = ('reranked by %s (%.1f s)'):format(rerank.model, (rerank.ms or 0) / 1000)
+  elseif rerank and rerank.applied then
+    -- The models before it in the config's list that did not answer: "reranked by d1-2B (2.4 s; d3-flash not answering)".
+    local passed = {}
+    for _, skip in ipairs(rerank.skipped or {}) do passed[#passed + 1] = skip.model end
+    parts[#parts + 1] = ('reranked by %s (%.1f s%s)'):format(rerank.model, (rerank.ms or 0) / 1000,
+      #passed > 0 and ('; %s not answering'):format(table.concat(passed, ', ')) or '')
   end
   return #parts > 0 and ('Find (%s)'):format(table.concat(parts, ' · ')) or 'Find by meaning and words'
 end

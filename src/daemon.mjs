@@ -29,7 +29,7 @@ import {downloadOmni, gb, installVoiceRuntime, OMNI, OmniVoice, omniInstall, omn
 import {pythonOf} from './embedder.mjs';
 import {usesOmni} from './voice.mjs';
 import {Meaning} from './meaning.mjs';
-import {createDecisionModel, createPairModels} from './models.mjs';
+import {createDecisionModel, createPairModels, createRerankEndpoints} from './models.mjs';
 import {acquireOwner} from './owner.mjs';
 import {EditorPaneHost, HerdrPaneHost} from './pane-hosts.mjs';
 import {Panes, PaneWatch} from './pane-watch.mjs';
@@ -94,14 +94,14 @@ const tilde = path => (path.startsWith(homedir()) ? `~${path.slice(homedir().len
  * change. With `configFile`, the daemon takes changes to it as they are
  * saved (see reload.mjs); `modelsFor(config)` builds the models of a config, at start and after a change, and
  * `decisionFor(config)` its decision model (`{models, model}`, or null; see decision.mjs), and `rerankerFor(config)`
- * search by meaning's reranker (a Reranker, or null; see rerank.mjs).
+ * search by meaning's reranker (a Reranker over its models, or null; see rerank.mjs).
  */
 export async function startDaemon(config, {
   configFile = null, modelsFor = createPairModels, pairModels = modelsFor(config), decisionFor = createDecisionModel, probe, log = defaultLog, keepWarmMs = KEEP_WARM_MS,
   idleEndMs = IDLE_END_MS, aloneEndMs = ALONE_END_MS, agentsPollMs, taskChangesPollMs = TASK_CHANGES_MS,
   appCommand = 'herdr-app', // the Herdr window's command, for herdr-core's focus and agents
   meaningWith = {}, // tests' fetch and embedder for search by meaning (see meaning.mjs)
-  rerankerFor = (entries, logTo) => (entries.rerank ? new Reranker({...createDecisionModel(entries, {field: 'rerank'}), entry: entries.rerank, log: logTo}) : null),
+  rerankerFor = (entries, logTo) => (entries.rerank ? new Reranker({endpoints: createRerankEndpoints(entries), log: logTo}) : null),
   omniWith = {}, // tests' LFM3-Omni for voice (see omni.mjs): {voice, fetch, free, files, runtime, litert, wheels, pythons, pythonsOn, install}
 } = {}) {
   mkdirSync(config.dataDir, {recursive: true, mode: 0o700});

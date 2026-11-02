@@ -221,7 +221,8 @@ under the service, use `auth`, `apiKeyFile` or `apiKey`). Without it, EmbeddingG
 A decision model that [reranks](meaning.md#rerank) search by meaning's first pieces once a
 list is settled: `/find`, the `search` tool, `vim.ui.select`, and a live picker after you stop typing. A
 [decision entry](decision.md#configure) (a `provider` and one of its classifiers, or an `api` at a `baseUrl`), with
-two fields of its own. Without it, searches keep the order of meaning and words. A change is taken without a restart.
+two fields of its own; or a list of them, best first. Without it, searches keep the order of meaning and words. A
+change is taken without a restart.
 
 | Field | Default | Meaning |
 | --- | --- | --- |
@@ -230,10 +231,21 @@ two fields of its own. Without it, searches keep the order of meaning and words.
 | `model` | | Its name there, for example `d1-2B` |
 | `auth`, `apiKey`, `apiKeyFile`, `apiKeyEnv` | none | Its key, if it needs one: one of them |
 | `top` | `10` | How many of the first pieces it reads and reorders, 2 to 30. Each costs the model time |
-| `timeoutMs` | `3000` | How long a search waits for it; slower, the order stays |
+| `timeoutMs` | `3000`; `1000` for one another follows | How long a search waits for it; slower, the next in the list is asked, or the order stays |
 
 ```jsonc
 "rerank": {"api": "system-one", "baseUrl": "http://127.0.0.1:8080/v1", "model": "d1-2B"}
+```
+
+A list asks its first model that has not failed within the last minute, and the next when that one fails or is slower
+than its `timeoutMs`: a fast model on a GPU that is not always up, then one on the CPU that is. Each has its own
+`top` and `timeoutMs`:
+
+```jsonc
+"rerank": [
+  {"api": "system-one", "baseUrl": "http://127.0.0.1:8081/v1", "model": "gpu-decision-model", "top": 15},
+  {"api": "system-one", "baseUrl": "http://127.0.0.1:8080/v1", "model": "d1-2B"}
+]
 ```
 
 ## Session roots

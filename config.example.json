@@ -64,6 +64,11 @@
   // search tool, a picker after you stop typing), such as LiquidAI's d1-2B on llama.cpp. A search waits "timeoutMs" for
   // it at most; down or slow, the order stays (see docs/meaning.md#rerank).
   // "rerank": {"api": "system-one", "baseUrl": "http://127.0.0.1:8080/v1", "model": "d1-2B", "top": 10, "timeoutMs": 3000},
+  // Or a list, best first: a GPU's model when it is up (waited for 1 s), else the CPU's.
+  // "rerank": [
+  //   {"api": "system-one", "baseUrl": "http://127.0.0.1:8081/v1", "model": "gpu-model", "top": 15, "timeoutMs": 1000},
+  //   {"api": "system-one", "baseUrl": "http://127.0.0.1:8080/v1", "model": "d1-2B"}
+  // ],
 
   // Pair's own pane, where Scout's commands and the tests on save run (see docs/scout.md#pairs-pane): your rc file
   // for its aliases, functions and PATH (true is ~/.bashrc), and the bubblewrap sandbox: "auto" where bwrap works,

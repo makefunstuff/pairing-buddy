@@ -3,7 +3,7 @@
 // text. It favours the answers whose text has `favourite`; `mode` makes it slow, fail, or answer oddly.
 import {createServer} from 'node:http';
 import {rerankConfig} from '../src/config.mjs';
-import {createDecisionModel} from '../src/models.mjs';
+import {createRerankEndpoints} from '../src/models.mjs';
 import {Reranker} from '../src/rerank.mjs';
 
 /**
@@ -53,10 +53,15 @@ export async function fakeRerankServer({favourite = '', mode = 'ok', delayMs = 0
 }
 
 /** The config's `rerank` entry for the fake at `baseUrl`, parsed as the daemon parses it. */
-export const fakeRerankEntry = (baseUrl, extra = {}) => rerankConfig({api: 'system-one', baseUrl, model: 'fake-d1', ...extra});
+export const fakeRerankEntry = (baseUrl, extra = {}) => rerankConfig({api: 'system-one', baseUrl, model: 'fake-d1', ...extra})[0];
 
 /** A Reranker on the fake at `baseUrl`, built as the daemon builds one. */
 export function fakeReranker(baseUrl, extra = {}, options = {}) {
-  const entry = fakeRerankEntry(baseUrl, extra);
-  return new Reranker({...createDecisionModel({rerank: entry}, {field: 'rerank', credentials: {read: async () => null}}), entry, ...options});
+  return fakeRerankChain([{baseUrl, ...extra}], options);
+}
+
+/** A Reranker on a list of fakes, best first: each `{baseUrl, model, ...}` a "rerank" entry of the list. */
+export function fakeRerankChain(entries, options = {}) {
+  const rerank = rerankConfig(entries.length > 1 ? entries.map(entry => ({api: 'system-one', model: 'fake-d1', ...entry})) : {api: 'system-one', model: 'fake-d1', ...entries[0]});
+  return new Reranker({endpoints: createRerankEndpoints({rerank}, {credentials: {read: async () => null}}), ...options});
 }

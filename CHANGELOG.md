@@ -20,6 +20,13 @@ release is cut.
   (`test/fixtures/rerank-queries.json`, `test/live/rerank.test.mjs`), d1-2B on a CPU raised recall@5 from 0.72 to
   0.81 and MRR from 0.47 to 0.71, in 2.4 s at the median within the 3 s budget. Off without the entry; `pair doctor` has a `rerank` line, and
   the ledger books each rerank with the order before and after.
+- **The reranker can be a list of models, best first.** `"rerank": [gpu, cpu]` asks a fast model on a GPU first,
+  waited for 1 s by default, and the next when it is down, fails or is slow; one that failed rests for a minute, so a
+  search pays its wait once, not every time. Each has its own `top` and `timeoutMs`, and it is still one question at a
+  time. The picker's title (`reranked by d1-2B (2.4 s; gpu-model not answering)`), `/find`, `pair doctor` and the
+  ledger name the model that answered and the ones before it that did not. On the same 32 questions, d3-flash on a GPU
+  reranked 15 pieces in 0.25 s at the median (0.28 s at the 95th percentile): recall@5 0.72 → 0.84 and MRR
+  0.47 → 0.75, where d1-2B on the CPU took 2.4 s for 0.81 and 0.71.
 - **Search by meaning, as quick as ripgrep with loose words.** `Alt-s` (or `:Pair find [words]`) opens a live
   picker in Telescope, else snacks.picker, else fzf-lua, used like `live_grep`: on every key, the pieces of code that
   have your words (identifiers split, so `removeUserFromTeam` is remove, user, from and team; words stemmed; comments

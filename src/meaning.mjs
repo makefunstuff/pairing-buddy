@@ -660,13 +660,14 @@ export class Meaning {
       this.failed(error);
       answer.problem = error.message;
     }
-    return Object.assign(answer, {ms: this.now() - started}, this.about(index), this.reranker?.available ? {reranker: this.reranker.entry.model} : {});
+    return Object.assign(answer, {ms: this.now() - started}, this.about(index), this.reranker?.available ? {reranker: this.reranker.model} : {});
   }
 
   /**
    * `results` (a search's, best first) with the reranker's order for their first pieces: `{results, rerank}`, where
-   * `rerank` says what happened (`{model, top, ms, applied, moved}`, or with `why` the order was kept), or is null
-   * without a reranker. The model reads each piece's text from the files. `options` go to the reranker's rerank.
+   * `rerank` says what happened (`{model, top, ms, applied, moved}`, `model` the one that answered, or with `why` the
+   * order was kept, `model` the one that failed last), with `skipped`, the models before it that failed or rest
+   * (`{model, why, problem}` each), or is null without a reranker. The model reads each piece's text from the files. `options` go to the reranker's rerank.
    */
   async reranked(index, query, results, options = {}) {
     const reranker = this.reranker;
@@ -675,7 +676,11 @@ export class Meaning {
     const done = options.prepare
       ? await reranker.rerank(query, [], {...options, prepare: async () => { const list = await options.prepare(); return {results: list, texts: await textsOf(list)}; }})
       : await reranker.rerank(query, results, {...options, texts: await textsOf(results)});
-    const rerank = {model: reranker.entry.model, top: reranker.top, ms: done.ms, applied: done.ok, ...(done.ok ? {moved: done.moved} : {why: done.why, problem: done.error})};
+    const skipped = (done.skipped ?? []).map(skip => ({model: skip.model, why: skip.why, problem: skip.error}));
+    const rerank = {
+      model: done.model ?? reranker.model, top: done.top ?? reranker.top, ms: done.ms, applied: done.ok,
+      ...(done.ok ? {moved: done.moved} : {why: done.why, problem: done.error}), ...(skipped.length ? {skipped} : {}),
+    };
     return {results: done.results, rerank};
   }
 
@@ -720,12 +725,17 @@ export class Meaning {
     this.reranking.delete(who);
   }
 
-  /** A rerank in the ledger: what moved, or why the order stayed, with the order before and after behind ⏎. */
+  /** A rerank in the ledger: what moved, or why the order stayed, with the order before and after behind ⏎. Each model that failed
+   * before the one that answered is named, with why. */
   bookRerank(root, query, before, {results, rerank}, how = '') {
+    const failure = why => (why === 'timeout' ? 'too slow' : why === 'flat' ? 'saw no piece stand out' : why === 'down' ? 'not answering lately' : why === 'busy' ? 'busy with another search'
+      : why === 'short' ? 'had too little to rank' : why === 'malformed' ? 'answered oddly' : 'failed');
     const at = result => `${result.file}:${result.line}`;
+    // The models asked before, or not asked while they rest: "after d3-flash too slow (no answer within 1000 ms)".
+    const earlier = rerank.skipped?.length ? ` (after ${rerank.skipped.map(skip => `${skip.model} ${failure(skip.why)} (${skip.problem})`).join(', ')})` : '';
     const text = rerank.applied
-      ? `"${query}"${how} with ${rerank.model} in ${rerank.ms} ms: ${rerank.moved ? `${rerank.moved} of ${Math.min(before.length, rerank.top)} moved${at(results[0]) !== at(before[0]) ? `, first now ${at(results[0])} (was ${at(before[0])})` : ''}` : 'the order stayed'}`
-      : `"${query}"${how}: kept the search's order, ${rerank.model} ${rerank.why === 'timeout' ? 'too slow' : rerank.why === 'flat' ? 'saw no piece stand out' : rerank.why === 'down' ? 'not answering lately' : rerank.why === 'busy' ? 'busy with another search' : rerank.why === 'short' ? 'had too little to rank' : rerank.why === 'malformed' ? 'answered oddly' : 'failed'} (${rerank.problem})`;
+      ? `"${query}"${how} with ${rerank.model}${earlier} in ${rerank.ms} ms: ${rerank.moved ? `${rerank.moved} of ${Math.min(before.length, rerank.top)} moved${at(results[0]) !== at(before[0]) ? `, first now ${at(results[0])} (was ${at(before[0])})` : ''}` : 'the order stayed'}`
+      : `"${query}"${how}: kept the search's order, ${rerank.model} ${failure(rerank.why)} (${rerank.problem})${earlier}`;
     const lines = list => list.slice(0, rerank.top).map(result => `${at(result)}${result.rerank !== undefined ? `  ${result.rerank}` : ''}  ${result.head}`).join('\n');
     this.book(root, 'reranked', text, {detail: {output: rerank.applied ? `before:\n${lines(before)}\n\nafter (the model's probability):\n${lines(results)}` : lines(before)}});
   }
