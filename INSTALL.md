@@ -653,8 +653,8 @@ a second in … s on the CPU`.
 
 **Search by meaning.** Tell the human to run `:Pair find on` in Neovim, their yes to the downloads: Pair installs LiteRT-LM in a
 venv of its own and downloads EmbeddingGemma 2 (165 MB), once ([meaning.md](docs/meaning.md)). Without a fitting
-Python, `:Pair find on` says `Search by meaning stays off: LiteRT-LM needs Python 3.10 or later …` and downloads
-nothing (install one, as 3.6 says). Expected afterwards in `pair doctor`: `✓ meaning  EmbeddingGemma 2 … on LiteRT-LM … answers (… ms with loading)`.
+Python, `:Pair find on` first says what it would fetch, then `Search by meaning stays off: …` with what is missing,
+and downloads nothing (install it, as 3.6 says). Expected afterwards in `pair doctor`: `✓ meaning  EmbeddingGemma 2 … on LiteRT-LM … answers (… ms with loading)`.
 
 ## Upgrade
 

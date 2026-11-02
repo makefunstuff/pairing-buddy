@@ -1,5 +1,5 @@
 ---
-description: "What Pair keeps and where: logins in auth.json, the rest in its data folder, an index in your repository only if you say so, and what leaves the machine."
+description: "What Pair keeps and where: logins and keys by the config, the rest in its data folder, an index in your repository if asked, and what leaves the machine."
 ---
 
 # Data and privacy

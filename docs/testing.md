@@ -344,8 +344,8 @@ for the record.
 
 **Search by meaning.** `test/live/meaning.test.mjs` runs EmbeddingGemma 2 on LiteRT-LM for real when
 `PAIR_LIVE_MEANING=1`: no stack and no keys. It runs in `PAIR_LIVE_MEANING_PYTHON`, which has to have `litert-lm-api`
-already, else as `:Pair find on` does: in the venv in `PAIR_LIVE_MEANING_DATA` (else a temp folder), else `python3`,
-installing LiteRT-LM's wheel from PyPI when that one lacks 0.19.0. It downloads the model into that folder once.
+already, else as `:Pair find on` does: in the venv in `PAIR_LIVE_MEANING_DATA` (else a temp folder), else `python3`;
+when that one lacks LiteRT-LM 0.19.0, it makes that venv and installs the wheel from PyPI there. It downloads the model into that folder once.
 It indexes six small files and asks six questions worded unlike them; each file has to come in the first three, and it prints each rank, how long a chunk and a search took.
 
 **Search by meaning's runtime.** `test/live/runtime.test.mjs` installs LiteRT-LM for real when `PAIR_LIVE_RUNTIME=1`,
