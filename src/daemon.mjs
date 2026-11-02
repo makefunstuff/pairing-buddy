@@ -1047,6 +1047,10 @@ export async function startDaemon(config, {
       await meaning.turnOn();
       return tell(`Search by meaning is on, with ${meaning.modelName}: Pair indexes this project in the background.`);
     }
+    if (meaning.state === 'installing' || meaning.state === 'downloading') { // said once already: this waits for it
+      await meaning.turnOn().catch(() => {});
+      return tell(meaning.state === 'on' ? 'Search by meaning is on: Pair indexes this project in the background.' : 'Search by meaning stays off: the :Pair find on under way did not finish.');
+    }
     const needs = await meaning.needs();
     if (!needs.runtime && !needs.model) {
       await meaning.turnOn();
@@ -1068,7 +1072,7 @@ export async function startDaemon(config, {
         tell(`${what}: ${Math.round(bytes / (1 << 20))} of ${Math.round(total / (1 << 20))} MiB…`);
       }});
     } catch (error) {
-      return tell(`Search by meaning stays off: ${error.message}. The word search works as before.`);
+      return tell(`Search by meaning stays off: ${error.message.replace(/\.$/, '')}. The word search works as before.`);
     }
     if (done.runtime) {
       const {python, version, pythonVersion, made} = done.runtime;
@@ -1086,9 +1090,9 @@ export async function startDaemon(config, {
   async function meaningOff(client) {
     const was = meaning.state;
     const {venv} = await meaning.turnOff();
-    const what = config.embedding ? 'indexes' : `model and indexes${venv ? ', and the venv with LiteRT-LM that Pair made' : ''}`;
+    const what = `${config.embedding ? 'indexes' : 'model and indexes'}${venv ? ', and the venv with LiteRT-LM that Pair made' : ''}`;
     if (was === 'on' || venv) for (const session of live.values()) session.ledger.add('deleted', `search by meaning's ${what} (:Pair find off)`);
-    const text = config.embedding ? 'Search by meaning is off: its indexes are deleted, and the embedding model is not asked until :Pair find on.' : `Search by meaning is off: its ${what} are deleted.`;
+    const text = config.embedding ? `Search by meaning is off: its ${what} are deleted, and the embedding model is not asked until :Pair find on.` : `Search by meaning is off: its ${what} are deleted.`;
     sendMessage(client.socket, {type: 'meaning_state', ...meaning.snapshot(), text});
   }
 

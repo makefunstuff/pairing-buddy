@@ -7,7 +7,7 @@
 // user made, nor the config's meaning.python.
 import {execFile, spawn} from 'node:child_process';
 import {existsSync, readFileSync, writeFileSync} from 'node:fs';
-import {mkdir, mkdtemp, rm} from 'node:fs/promises';
+import {mkdir, mkdtemp, readdir, rm} from 'node:fs/promises';
 import {homedir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -84,9 +84,9 @@ export async function findPython(candidates = pythons()) {
 const pipProblem = (stderr, code) => {
   const lines = stderr.split('\n').map(line => line.trim()).filter(Boolean);
   const said = lines.findLast(line => line.startsWith('ERROR:'))?.replace(/^ERROR:\s*/, '') ?? lines.at(-1) ?? `exit ${code}`;
-  if (/is not a supported wheel on this platform|No matching distribution|from versions: none/.test(said)) return `pip says LiteRT-LM's wheel does not fit this machine (Linux needs glibc 2.27 or later): ${ELSE}`;
+  if (/is not a supported wheel on this platform|No matching distribution|from versions: none/.test(said)) return `pip says LiteRT-LM's wheel does not fit this machine (it needs glibc 2.27 or later, or macOS 12): set "meaning": {"python": …} to a Python with ${RUNTIME}, or an "embedding" model`;
   if (/hash/i.test(said)) return `pip refused ${RUNTIME}: its SHA-256 is not the pinned one (${said})`;
-  return `pip could not install ${RUNTIME}: ${said}`;
+  return `pip could not install ${RUNTIME}: ${said.replace(/\.$/, '')}`;
 };
 
 /**
@@ -164,8 +164,10 @@ export class Runtime {
     });
   }
 
-  /** `:Pair find off`: the venv goes if Pair made it. Resolves true when it did. */
+  /** `:Pair find off`: the venv goes if Pair made it, and any wheel a daemon that died left. Resolves true when the venv went. */
   async remove() {
+    const left = await readdir(meaningDir(this.dataDir)).catch(() => []);
+    for (const name of left.filter(name => name.startsWith('wheel-'))) await rm(join(meaningDir(this.dataDir), name), {recursive: true, force: true});
     if (!madeByPair(this.dataDir)) return false;
     await rm(venvPath(this.dataDir), {recursive: true, force: true});
     await rm(madePath(this.dataDir), {force: true});

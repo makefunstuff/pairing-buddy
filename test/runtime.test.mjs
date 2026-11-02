@@ -61,8 +61,10 @@ test('install: a venv in Pair\'s data folder, the wheel downloaded by its hash w
   assert.equal(madeByPair(dataDir).pythonVersion, '3.12');
   assert.deepEqual(await runtime.check(), {version: '0.19.0'}, 'the helper\'s Python has it now');
   assert.equal(pythonOf({}, dataDir), venvPython(dataDir));
+  mkdirSync(join(dataDir, 'meaning', 'wheel-left'));
   assert.equal(await runtime.remove(), true);
   assert.ok(!existsSync(venvPath(dataDir)), 'Pair\'s venv goes');
+  assert.ok(!existsSync(join(dataDir, 'meaning', 'wheel-left')), 'and a wheel a daemon that died left');
   assert.equal(madeByPair(dataDir), null, 'and its note');
 });
 
@@ -73,7 +75,7 @@ test('install fails in one line and leaves no venv: no wheel, no Python, pip ref
   assert.ok(!existsSync(venvPath(dataDir)));
   await assert.rejects(runtimeIn(dataDir, fakePython({pipError: 'ERROR: THESE PACKAGES DO NOT MATCH THE HASHES FROM THE REQUIREMENTS FILE.'})).install(), /^Error: pip refused litert-lm-api==0\.19\.0: its SHA-256 is not the pinned one/);
   assert.ok(!existsSync(venvPath(dataDir)), 'a venv Pair made is deleted when pip fails');
-  await assert.rejects(runtimeIn(dataDir, fakePython({pipError: 'ERROR: litert_lm_api-0.19.0-py3-none-manylinux_2_27_x86_64.whl is not a supported wheel on this platform.'})).install(), /pip says LiteRT-LM's wheel does not fit this machine \(Linux needs glibc 2\.27 or later\)/);
+  await assert.rejects(runtimeIn(dataDir, fakePython({pipError: 'ERROR: litert_lm_api-0.19.0-py3-none-manylinux_2_27_x86_64.whl is not a supported wheel on this platform.'})).install(), /pip says LiteRT-LM's wheel does not fit this machine \(it needs glibc 2\.27 or later, or macOS 12\): set/);
   await assert.rejects(runtimeIn(dataDir, fakePython(), fakeWheel({fail: 'ENOTFOUND'})).install(), /^Error: files\.pythonhosted\.org could not be reached for litert-lm-api==0\.19\.0 \(ENOTFOUND\): check the network, or its proxy$/, 'offline is said as offline');
   const bad = fakeWheel();
   await assert.rejects(runtimeIn(dataDir, fakePython(), {...bad, wheel: {...bad.wheel, sha256: '0'.repeat(64)}}).install(), /SHA-256 is [0-9a-f]{64}, not the pinned 0{64}: not kept/);
