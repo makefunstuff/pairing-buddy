@@ -65,6 +65,55 @@ function fakeTelescope() {
   return dir;
 }
 
+/**
+ * A snacks.picker that runs a live picker's finder as the real one does, in a coroutine its async suspends and
+ * resumes: `_G.type_search(text)` types a search. `_G.snacked` keeps the title, the items shown, the piece the
+ * cursor is drawn on when the list is drawn again (before `on_done` may move it) and whether it closed;
+ * `_G.snacked.selected` stands for the items you selected, and `_G.snacked.act(name)` runs one of the picker's actions.
+ */
+function fakeSnacks() {
+  const dir = scratch('meaning-snacks-');
+  mkdirSync(join(dir, 'plugin'), {recursive: true});
+  writeFileSync(join(dir, 'plugin', 'snacks.lua'), `_G.Snacks = {picker = setmetatable({}, {__call = function(_, spec)
+    local picker = {title = spec.title, search = spec.search or '', closed = false, shown = {}, cursor = 1}
+    _G.snacked = {title = spec.title, shown = {}, selected = {}}
+    picker.list = {set_target = function(_, index) picker.target = index end, view = function(_, index) picker.cursor = index end}
+    function picker:update_titles() _G.snacked.title = self.title end
+    function picker:current() return self.shown[self.cursor] end
+    function picker:items() return self.shown end
+    function picker:selected() return _G.snacked.selected end
+    function picker:close() self.closed = true; _G.snacked.closed = true; spec.on_close() end
+    function picker:find(opts)
+      local co
+      co = coroutine.create(function()
+        local items = {}
+        local ctx = {filter = {search = self.search}, async = {
+          schedule = function(_, fn) vim.schedule(fn) end,
+          suspend = function() coroutine.yield() end,
+          resume = function() vim.schedule(function() if coroutine.status(co) == 'suspended' then coroutine.resume(co) end end) end,
+        }}
+        spec.finder(nil, ctx)(function(item) items[#items + 1] = item end)
+        self.shown = items
+        self.cursor = self.target or 1 -- as the real list: its target, set before, else the top
+        self.target = nil
+        _G.snacked.shown = vim.tbl_map(function(item) return item.text end, items)
+        local on = self:current()
+        _G.snacked.drawn = on and on.text
+        if opts and opts.on_done then opts.on_done() end
+        on = self:current()
+        _G.snacked.on = on and on.text
+      end)
+      coroutine.resume(co)
+    end
+    _G.type_search = function(text) picker.search = text; picker:find() end
+    _G.snacked.act = function(name) spec.actions[name](picker) end
+    _G.snacked.go = function(index) picker.cursor = index end
+    picker:find()
+    return picker
+  end})}`);
+  return dir;
+}
+
 /** Asks the daemon for its status until the project's index is built: `send` and `messages` are the chat client's. */
 async function built(send, messages) {
   send({type: 'find', query: 'deliver'}); // the first search opens the index, which builds in the background
@@ -275,6 +324,48 @@ test('Telescope <C-q> while the rerank runs: a quickfix list you changed or repl
     assert.equal(old.title, 'Find: tota', 'and the one Pair sent is not reordered behind your back');
   } finally {
     await stop();
+  }
+});
+
+test('snacks.picker: the rerank\'s order drawn in place with the cursor already on your piece, and <C-q> reordering the quickfix list in place', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
+  const server = await fakeRerankServer({favourite: 'What the order comes to', mode: 'slow', delayMs: 1500});
+  const {project, dataDir, watcher, messages, remote, send, stop} = await pairInNvim('deliver', {rtp: [fakeSnacks()], setup: "meaning_picker = 'snacks', meaning_debounce_ms = 100", meaningWith: {embedder: fakeEmbedder(), reranker: fakeReranker(server.baseUrl)}});
+  const snacked = what => JSON.parse(remote(`json_encode(luaeval("_G.snacked.${what}"))`));
+  try {
+    watcher.setResponses(Array.from({length: 10}, () => fauxAssistantMessage([fauxText('0')])));
+    await withCode(project, remote);
+    fakeModel(dataDir);
+    await built(send, messages);
+    remote('execute("Pair find")');
+    await until(() => remote('luaeval("_G.snacked ~= nil")') === 'true', 'the snacks picker');
+    remote('luaeval("_G.type_search(\'tota\')")');
+    await until(() => /reranking/.test(snacked('title')), 'the rerank to start');
+    const before = snacked('shown');
+    const at = before.findIndex(text => text.startsWith('cart.js')) + 1;
+    remote(`luaeval("_G.snacked.go(${at})")`); // you are on the word hit
+    await until(() => /reranked by fake-d1/.test(snacked('title')), 'the rerank', 10_000);
+    assert.equal(snacked('shown')[0], BILL, 'the model\'s pick first');
+    assert.equal(snacked('drawn'), TOTAL, 'drawn with the cursor on your piece: it never shows on another');
+    assert.equal(snacked('on'), TOTAL);
+
+    // <C-q> while the next rerank runs: the items you selected, in the order shown, then reordered in place.
+    remote('luaeval("_G.type_search(\'price\')")');
+    remote('luaeval("_G.type_search(\'tota\')")');
+    await until(() => /reranking/.test(snacked('title')), 'the next rerank');
+    remote('luaeval("(function() _G.snacked.selected = {} end)()")');
+    remote('luaeval("_G.snacked.act(\'qflist\')")');
+    assert.equal(snacked('closed'), true);
+    const sent = quickfix(remote);
+    assert.equal(sent.title, 'Find: tota');
+    assert.equal(sent.files[0], 'cart.js:1', 'all of the list, as it showed');
+    await until(() => /reranked/.test(quickfix(remote).title), 'the rerank to reorder it', 10_000);
+    const after = quickfix(remote);
+    assert.equal(after.id, sent.id);
+    assert.equal(after.stack, sent.stack);
+    assert.equal(after.files[0], 'invoice.js:2');
+  } finally {
+    await stop();
+    await server.close();
   }
 });
 

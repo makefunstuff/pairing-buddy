@@ -157,9 +157,11 @@ end
 function Live:settle(query)
   self:stop_timer()
   if rerank_delay_ms <= 0 then return self:rerank(query) end
+  self.due = query -- <C-q> before the delay is over asks for it at once
   self.timer = vim.uv.new_timer()
   self.timer:start(rerank_delay_ms, 0, vim.schedule_wrap(function()
     self:stop_timer()
+    self.due = nil
     if self.done or self.query ~= query then return end
     self:rerank(query)
   end))
@@ -193,7 +195,7 @@ function Live:set(query)
   if query == self.query then return end
   if self.reranking then deps.send({type = 'find', query = '', phase = 'cancel'}) end -- an empty prompt asks no words
   self.query, self.items, self.words, self.meaning, self.meaning_info = query, {}, nil, nil, nil
-  self.words_id, self.meaning_id, self.meaning_due = nil, nil, false
+  self.words_id, self.meaning_id, self.meaning_due, self.due = nil, nil, false, nil
   self.rerank_id, self.rerank_info, self.reranking = nil, nil, false
   self:stop_timer()
   if query == '' then return end
@@ -256,6 +258,11 @@ end
 function Live:to_quickfix(items, close)
   local query = self.query or ''
   items = items and #items > 0 and items or (self.answered == self.query and self.items or {})
+  if self.due and self.due == self.query and not self.done then -- meaning came, the delay is not over: ask now
+    self:stop_timer()
+    self.due = nil
+    self:rerank(self.query)
+  end
   local pending = self.reranking and #items > 1
   if pending then self.sent = function() end end -- so that closing the picker does not cancel the rerank
   close()
@@ -414,7 +421,7 @@ local function fzflua(query)
   if not ok then return false end
   local line = function(item) return ('%s:%d:1:%s'):format(vim.fn.fnamemodify(item.path, ':~:.'), item.line or item.from, item.head or '') end
   local latest, last_prompt = 0, query
-  local pieces, reranker = {}, false -- each line shown -> its piece, and whether the daemon has a rerank model, for ctrl-q
+  local pieces = {} -- each line shown -> its piece, for ctrl-q
   local function show(fzf_cb, item)
     pieces[line(item)] = item
     fzf_cb(line(item))
@@ -436,7 +443,6 @@ local function fzflua(query)
         vim.defer_fn(function()
           if mine ~= latest then return fzf_cb() end
           ask(prompt, 'meaning', function(answer)
-            reranker = answer.reranker ~= nil
             local shown = {}
             for _, each in ipairs(words) do shown[key(each)] = true end
             for _, item in ipairs(answer.results or {}) do
@@ -450,7 +456,7 @@ local function fzflua(query)
   end, {
     prompt = 'Find> ', query = query, previewer = 'builtin', file_icons = false, git_icons = false,
     winopts = {title = ' Find by meaning and words '},
-    fzf_opts = {['--multi'] = true},
+    fzf_opts = {['--multi'] = true}, -- fzf_live has it off: ctrl-q selects all
     exec_empty_query = false,
     actions = {
       ['default'] = function(selected, opts)
@@ -465,7 +471,7 @@ local function fzflua(query)
         for _, each in ipairs(selected) do items[#items + 1] = pieces[each] end
         if #items ~= #selected then return require('fzf-lua.actions').file_sel_to_qf(selected, opts) end
         local later = to_quickfix(last_prompt, items)
-        if reranker and #items > 1 then ask(last_prompt, 'rerank', later) end
+        if #items > 1 then ask(last_prompt, 'rerank', later) end -- without a rerank model the daemon says so, and the order stays
       end},
     },
   })

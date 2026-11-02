@@ -30,8 +30,8 @@ The picker is Telescope if you have it, else snacks.picker, else fzf-lua, else `
 (`meaning_picker` in [setup](neovim-plugin.md#setup) picks one; `meaning_debounce_ms` is the pause, 150 ms). Each line
 is `file:line` and the piece's first line of code (its doc comment is above it; the preview shows both). The list is
 in Pair's order: the words' hits as they came, best first by BM25, then meaning's, best first. `Enter` opens the piece
-at that line. In Telescope, `<C-q>` sends every hit to the quickfix list, as in any picker; in snacks.picker it is
-`<C-q>` too, and in fzf-lua `ctrl-q` sends the selected ones.
+at that line. In Telescope, `<C-q>` sends every hit to the quickfix list, as in any picker; in snacks.picker `<C-q>`
+sends the ones you selected, else all; in fzf-lua `ctrl-q` sends all of them.
 
 The picker's title says what is missing: `words only: :Pair find on adds meaning` without a model, `index 40% built`
 while the first build runs, and how long meaning took once it came (`Find (31 ms)`). With `vim.ui.select`, which
@@ -84,7 +84,7 @@ It is asked only where a list is settled (meaning came), never on a key:
 - **Quickfix.** `<C-q>` sends the list in the order it shows: reranked, if the rerank came. If it is still running,
   the quickfix list opens at once in the order you see, and when the rerank comes that same list (not a new one on
   the stack) gets its order, the entry you are on staying yours, and its title says so: `Find: retry (reranked by
-  d3-flash)`. If you changed that list meanwhile, or made another one, it is left as it is. fzf-lua's list only grows,
+  d1-2B)`. If you changed that list meanwhile, or made another one, it is left as it is. fzf-lua's list only grows,
   so it is not reranked while it is open; its `ctrl-q` sends all of it, and the rerank, asked then, reorders that
   quickfix list the same way. A new search before it comes drops it, and the list stays in the order it came.
 - **`vim.ui.select`** waits for it too, as `/find`, and its prompt says `(reranked by d1-2B)` when it applied.
