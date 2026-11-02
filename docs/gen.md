@@ -491,7 +491,7 @@ included.
 ### /gen tries and how long they stay
 
 A try folder stays for [`gen.keepTries`](config.md#gen) days (7) after anything in it last changed or it last ran
-(the model's runs and yours count), so a try you keep running stays. Older ones are deleted when the daemon starts and whenever a new try starts, every project's.
+(the model's runs and yours count), so a try you keep running stays. Older ones are deleted when the daemon starts and whenever a new try or scaffold starts, every project's.
 `/gen tries` in the chat lists the project's folders still there, newest first:
 
 ```

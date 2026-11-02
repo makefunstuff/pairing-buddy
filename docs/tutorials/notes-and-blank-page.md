@@ -23,7 +23,7 @@ empty folder `:Pair new` asks three questions and proposes a first slice that ru
 4. **A decision.** Write a line that starts with `Decision:`. At the next pause it gets `◆`; `Alt-d` on it (or
    `:Pair decide`) writes an entry into `decisions.md` next to the note, in a split. Pair does not save it: you do.
 5. **Tasks.** `:Pair tasks` lists the note's work as tasks in a panel. Nothing is added until you press `y`; `e`
-   edits the titles first, `q` closes. With a `taskCommand` in the config, `y` runs it per task; without, it copies
+   edits the titles first, `q` or `Esc` closes. With a `taskCommand` in the config, `y` runs it per task; without, it copies
    them as a checklist.
 
    ![The tasks panel over the note](../images/notes-tasks.png)

@@ -20,9 +20,9 @@
   // your screen go first, the ones you cannot (a failure you missed, a crash) never. false asks about every kind.
   "watcherPace": true,
 
-  // Tests Pair runs in its own herdr pane when you save a source file in a project: the project's folder and the
-  // command, or {"command": ..., "timeoutSeconds": 600, "affected": false} for a longer cap, or the whole command on
-  // every save. Most runners also put each test's result on its line (go test -json, jest --json, cargo test, pytest -v).
+  // Tests Pair runs in its own pane (herdr's, or a :terminal in Neovim) when you save a source file in a project: the
+  // project's folder and the command, or {"command": ..., "timeoutSeconds": 600, "affected": false} for a longer cap,
+  // or the whole command on every save. Most runners also put each test's result on its line (go test -json, jest --json, cargo test, pytest -v).
   // "testOnSave": {"~/src/shop": "go test -json ./..."},
 
   // The work board's command, Shepherdr's: a session takes its goal from the board task of its branch (matched by the
@@ -50,10 +50,11 @@
   // "gen": {"limits": {"files": 40, "lines": 4000, "commands": 8, "minutes": 10}, "brief": "NOTES.md", "keepTries": 7, "network": false, "scaffold": "tree"},
 
   // Search by meaning (Alt-s in Neovim, see docs/meaning.md): its word search works at once; meaning needs
-  // EmbeddingGemma 2, downloaded once by :Pair find on. It runs on LiteRT-LM in this Python (else a venv in Pair's data
-  // folder, else python3) on this many cores, at low priority. "index": "project" keeps the index in .pair/ of the
-  // repository (listed in .git/info/exclude) rather than Pair's data folder; false turns it all off for good.
-  // "meaning": {"python": "~/.local/state/pairing-buddy/meaning/venv/bin/python", "threads": 2, "index": "data"},
+  // EmbeddingGemma 2 and its runtime LiteRT-LM, which :Pair find on downloads and installs once (a venv in Pair's data
+  // folder). It runs on this many cores, at low priority. "python" only for a Python of your own that already has
+  // litert-lm-api: with it set, Pair installs nothing. "index": "project" keeps the index in .pair/ of the repository
+  // (listed in .git/info/exclude) rather than Pair's data folder; false turns it all off for good.
+  // "meaning": {"threads": 2, "index": "data"},
 
   // Or an embedding model of your own behind an OpenAI-compatible /v1/embeddings, instead of EmbeddingGemma 2:
   // "embedding": {"api": "openai", "baseUrl": "http://127.0.0.1:8080/v1", "model": "jina-embeddings-v2-base-code"},

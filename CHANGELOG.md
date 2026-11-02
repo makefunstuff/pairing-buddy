@@ -15,7 +15,7 @@ release is cut.
   and strings too), in a few milliseconds; once you stop typing for 150 ms, the pieces closest to what you mean join
   the list below them, so nothing you see moves. "method that removes user" finds `logout` in Pair's own code. The
   preview shows a piece at its line, `Enter` opens it, `<C-q>` sends the hits to quickfix; `/find <words>` in the chat
-  and Scout's and the Driver's `search` tool (`meaning: true`, and whenever ripgrep finds nothing for plain words) get
+  and Scout's and the Driver's `search` tool (`meaning: true`, and whenever ripgrep finds nothing for two or more plain words) get
   meaning and words fused by reciprocal rank. The pieces are functions, classes and methods with their doc comments,
   found by Neovim's tree-sitter in a headless Neovim where it has a parser, else blocks between blank lines. The
   index is a SQLite file per repository in Pair's data folder (`index/<repository>-<hash>.sqlite`), or with

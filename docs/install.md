@@ -16,6 +16,9 @@ description: "Install Pair: what it needs, the daemon and the Neovim plugin, a c
 - Optional, for the [context card](neovim.md#what-it-knows-the-context-card), the goal and
   [your other agents](agents.md): the work board, [Shepherdr](https://github.com/eliasstravik/shepherdr) (`shepherdr`
   on the daemon's PATH), and GitHub's `gh` for the pull request
+- Optional, for [search by meaning](meaning.md): Python 3.10 or newer with its venv module (`python3-venv` on Debian
+  and Ubuntu), on Linux x86-64 or ARM64 or macOS on Apple silicon; `:Pair find on` fetches the model and its runtime
+  itself. The word search needs nothing
 - A model: any OpenAI-compatible local server (for example llama.cpp or Ollama), an Anthropic-compatible API, or any
   provider [pi-ai](https://www.npmjs.com/package/@earendil-works/pi-ai) supports, with an API key or a subscription
   login ([models.md](models.md)).

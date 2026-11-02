@@ -107,7 +107,7 @@ to standard ones and does not fade.
 
 | Command | What it does |
 | --- | --- |
-| `:Pair start [goal]` | Connect to the daemon (not needed with `auto_connect`), optionally setting the session goal |
+| `:Pair start [goal]` (or `:Pair` alone) | Connect to the daemon (not needed with `auto_connect`), optionally setting the session goal |
 | `:Pair new [idea]` | Start something new: three questions in `NOTES.md`, one at a time, then a first slice of two files ([details](blank-page.md)) |
 | `:Pair goal <text>` | Set the session goal |
 | `:Pair ask <text>` | Ask Pair something (the answer appears in the chat pane, and its start under your line); with a range (`:'<,'>Pair ask ...`), about those lines, and the answer starts under the last of them |
@@ -118,10 +118,10 @@ to standard ones and does not fade.
 | `:Pair drive! [what]` | The same, and Pair keeps the wheel for each request after it until you take it back ([driver.md](driver.md#keeping-the-wheel)) |
 | `:Pair jump` | Go where Pair pointed last (same as `Alt-j`); `Ctrl-O` comes back. While Pair holds a thought, show it now |
 | `:Pair trail` | Show your searches since your last edit, as Pair saw them; `x` forgets them |
-| `:Pair find [words\|on\|off]` | [Search the project by meaning](meaning.md#search) (same as `Alt-s`), with the words typed in the picker. `on` downloads EmbeddingGemma 2 once and embeds the open projects; `off` deletes the model and the indexes |
+| `:Pair find [words\|on\|off]` | [Search the project by meaning](meaning.md#search) (same as `Alt-s`), with the words typed in the picker. `on` installs LiteRT-LM in a venv of Pair's and downloads EmbeddingGemma 2, once, and embeds the open projects; `off` deletes the model, the indexes and the venv Pair made |
 | `:Pair index rebuild` | Make the project's [search index](meaning.md#the-index) again from its files, every vector too |
 | `:Pair runs` | The session's builds and runs, newest last, with the change before each and its numbers; `⏎` its output, `d` its change, `x` removes the hunt's debug lines ([exploration.md](exploration.md)) |
-| `:Pair gen [here\|file\|try\|scaffold\|board] [what]` | Ask Pair for code ([gen.md](gen.md)), or with `board` hand a task to the board, edited in `pair://board/new` (`:w` asks how to add it, `:q` drops it), and `:Pair gen board #n` a request too big for `/gen` ([gen.md](gen.md#gen-board-a-task-for-the-board)): without words, in a dialog (same as `Alt-g`); with words, at once. With a range (`:'<,'>Pair gen`), over those lines, or in a note, the lines are the request. `:Pair gen +` opens the compose window for a longer request, `:Pair gen cancel` stops the request that runs or waits. `:Pair gen scaffold --branch …` builds in a git worktree |
+| `:Pair gen [here\|file\|try\|scaffold\|board] [what]` | Ask Pair for code ([gen.md](gen.md)), or with `board` hand a task to the board, edited in `pair://board/new` (`:w` asks how to add it, `:q` drops it), and `:Pair gen board #n` a request too big for `/gen` ([gen.md](gen.md#gen-board-a-task-for-the-board)): without words, in a dialog (same as `Alt-g`); with words, at once. With a range (`:'<,'>Pair gen`), over those lines, or in a note, the lines are the request. `:Pair gen +` opens the compose window for a longer request, `:Pair gen cancel` stops the request that runs or waits. `:Pair gen scaffold --branch …` builds in a git worktree, `--copy …` in Pair's copy whatever `gen.scaffold` says |
 | `:Pair gen list` | The files of `/gen file` requests (and files kept from a try) to review, as `pair://gen/<n>/<path>` buffers: `⏎` opens one, `w` takes it (writes it to its path, as `:w` in it does), `d` drops it, `W`/`D` all of a request after a yes, `u` undoes the request, `Alt-d` logs a `? guessed` line as a decision ([gen.md](gen.md#the-review-list-pair-gen-list)). And the files of a scaffold's copy: `k` keeps one (a new file as such a buffer, a change as suggestions in yours), `⏎` opens it (a change as a diff), `d` drops it, `r` checks the copy again, `t` opens a terminal there, `x` deletes the copy after a yes ([gen.md](gen.md#keeping-it-a-file-at-a-time)) |
 | `:Pair gen drop` | Delete the newest [/gen scaffold](gen.md#many-files-gen-scaffold)'s copy (or worktree); what you did not keep of it is dropped |
 | `:Pair gen run` | Run the [/gen try](gen.md#samples-gen-try-and-keep) you are in (else the newest) again, in Pair's pane, after writing its changed buffers (same as `\r` in it) |
@@ -165,13 +165,15 @@ vim.o.statusline = "%f %m%=%{%v:lua.require'pair'.statusline()%}  %l:%c "
 | `● pair` | At rest. The role and talk level show only when they are not the usual ones: `● pair · scout`, `● pair · quiet` |
 | `● reading worker.go` | While Pair reads |
 | `⠹ pair · thinking` | While its model thinks |
+| `◉ pair · listening`, `⠹ pair · hearing` | While you hold the listen key, and while what you said is written down ([voice.md](voice.md)) |
+| `● pair · question 2 of a few`, `● pair · a suggestion` | While a [`:Pair new`](blank-page.md) question waits for your answer, and while its first slice is shown |
 | `● pair · held thought · M-j` | While a remark waits for your next break |
 | `● pair · gen #4 · generating · 21s`, `● pair · gen #4 asks · M-g`, `● pair · gen #5 waits for the one before`, `● pair · gen #4 ready · M-y takes · :Pair dismiss` | While a [/gen request](gen.md) runs, waits for your answer or its turn, and while its code waits to be taken |
 | `● pair · gen #4 · 2 to review · :Pair gen list`, `● pair · gen · 3 to review · :Pair gen list` | While new files of [/gen file](gen.md#new-files-gen-file) wait as buffers to review: of one request, or of several |
 | `● pair · ┊ 12 generated` | In a buffer with code you took from `/gen` that is [not yours yet](gen.md#owning-generated-code): how many of its lines |
 | `● pair · 5 notes in the margin`, `◆ logged · docs/decisions.md` | In a note with [marks](notes.md), and for a moment after a decision is logged |
 | `● run 3 · exit 0 · 55 ms · avg probe 23.7 · same numbers as run 2` | For 15 minutes after a build or run: what it showed next to the one before, and once the hunt is over, `· 1 debug line from run 2 left · M-j` ([exploration.md](exploration.md)). A crash or a broken build shows with `✗` |
-| `⠹ go test ./...`, `✗ 1 failing · TestX`, `✓ go test ./... · 4 tests, 3 packages` | [Tests on save](tests-on-save.md); `(unsaved)` after the command for the run on the Driver's edit |
+| `⠹ go test ./...`, `✗ 1 failing · TestX`, `✓ go test ./... · 4 tests, 3 packages` | [Tests on save](tests-on-save.md); `(unsaved)` after the command for the run on the Driver's edit; `◌ go test ./... · needs herdr or Neovim` (or `· could not run`) when they cannot start |
 | `◎ pair has the wheel · any key takes it back` | While it drives (`· thinking` while its model thinks, the hint again while it types) |
 | `◌ pair · catching up` | While the [morning pick-up](neovim.md#the-morning-pick-up-and-the-days-end) reads where you stopped |
 | `✗ 1 failing since yesterday · TestX` | A test that was red when the last session ended, until the next run |

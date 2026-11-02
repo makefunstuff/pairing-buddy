@@ -38,7 +38,7 @@ while the first build runs, and how long meaning took once it came (`Find (31 ms
 cannot change while it is open, you type your words first and get one list, meaning and words fused (as `/find`).
 
 Scout's and the Driver's `search` tool can ask the index too: with `meaning: true` it searches by meaning and words
-instead of ripgrep, for "where do we …" in your words, and when ripgrep finds nothing for plain words, the index's
+instead of ripgrep, for "where do we …" in your words, and when ripgrep finds nothing for two or more plain words, the index's
 best pieces come with its "No matches." ([scout.md](scout.md)).
 
 ## How it ranks
@@ -194,7 +194,7 @@ python3 -m venv ~/.local/state/pairing-buddy/meaning/venv
 `pair doctor` says what is missing and what turning it on fetches, and how big and how old each index is:
 
 ```
-✓ meaning  EmbeddingGemma 2 (text, 270M) (revision 9be6e8b, SHA-256 checked) on LiteRT-LM 0.19.0 in ~/.local/state/pairing-buddy/meaning/venv/bin/python (the venv Pair made); pairing-buddy: 549 files, 6639 pieces, 13.5 MB, updated 4 min ago, 83 ms a piece
+✓ meaning  EmbeddingGemma 2 (text, 270M) (revision 9be6e8b, SHA-256 checked) on LiteRT-LM 0.19.0 in ~/.local/state/pairing-buddy/meaning/venv/bin/python (the venv Pair made) answers (900 ms with loading); pairing-buddy: 549 files, 6639 pieces, 13.5 MB, updated 4 min ago, 83 ms a piece
 ```
 
 ## Turn it off

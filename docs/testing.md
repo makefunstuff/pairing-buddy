@@ -146,7 +146,7 @@ the work board.
   history of verdicts the model is told, or, with `--store PATH`, the moments the daemon recorded: each logged
   decision keeps the state the model was told, and your verdict on its remark is the label. It reports how often the
   gate was right with the model and with the rules alone, how often the prefilter's sure sorts were right, the
-  Watcher calls saved, and latency and cost per call, for each of `--runs N`. It asks a real model with your login or
+  Watcher calls saved, and latency and cost per call, for each of `--runs N`, at `--level quiet|normal|chatty` (`normal` by default). It asks a real model with your login or
   key, so it runs by hand; `--fake` checks the script. The results are in [decision.md](decision.md#measured).
 - **Context windows and thinking settings.** The window from vLLM's, llama.cpp's and LM Studio's metadata or pi-ai's
   catalog, the config's own winning; `pair doctor --thinking` against fake servers that take a chat-template switch
@@ -343,8 +343,8 @@ the cue has to name the real cause in the code's own words. The trail alone, wit
 for the record.
 
 **Search by meaning.** `test/live/meaning.test.mjs` runs EmbeddingGemma 2 on LiteRT-LM for real when
-`PAIR_LIVE_MEANING=1`: no stack and no keys, only the model's download (into `PAIR_LIVE_MEANING_DATA`, else a temp
-folder) and `litert-lm-api` in `PAIR_LIVE_MEANING_PYTHON` (else the venv in that folder, which it installs as `:Pair
+`PAIR_LIVE_MEANING=1`: no stack and no keys, only the downloads `:Pair find on` makes (the model into `PAIR_LIVE_MEANING_DATA`, else a temp
+folder, and LiteRT-LM's wheel from PyPI unless the Python below has it) and `litert-lm-api` in `PAIR_LIVE_MEANING_PYTHON` (else the venv in that folder, which it installs as `:Pair
 find on` does when it is missing). It indexes six small files and asks six questions worded unlike them; each file
 has to come in the first three, and it prints each rank, how long a chunk and a search took.
 

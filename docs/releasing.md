@@ -48,8 +48,8 @@ to its pull request. Use full `https://github.com/...` links, as the entry becom
 link leads nowhere there. Add the link line at the bottom, `[0.12.0]: .../releases/tag/v0.12.0`, and move
 `[Unreleased]` to compare from the new tag. No personal paths, hostnames, addresses or keys.
 
-`npm test` then checks that `package.json`, `package-lock.json` and `pair --version` agree, and that the changelog has
-a dated entry for the version with only full links (`test/version.test.mjs`). Open the pull request.
+`npm test` then checks that `package.json`, `package-lock.json`, `pair --version` and the README's `Version` line agree, and that
+the changelog has a dated entry for the version with only full links (`test/version.test.mjs`). Open the pull request.
 
 ## 4. Tag and release, after the merge
 

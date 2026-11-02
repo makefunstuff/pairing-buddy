@@ -30,7 +30,7 @@ Without systemd or launchd it installs no service, and `pair` starts the daemon 
 
 ## `pair doctor`
 
-Checks the config, the service, the daemon, the plugin, Neovim, herdr, the work board (Shepherdr 2.0 or 2.1), logins and keys, Pair's pane, voice, both
+Checks the config, the service, the daemon, the plugin, Neovim, herdr, the work board (Shepherdr 2.0 or 2.1), logins and keys, Pair's pane, voice, search by meaning, both
 models and the [decision model](decision.md#pair-doctor-and-pair-stats), one line each, with the fix when something is wrong. It exits with 1 when a check fails.
 
 ```sh

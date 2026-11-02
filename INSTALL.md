@@ -77,6 +77,10 @@ Write down four facts for the steps below:
      Recommended.
    - The shell hook, which tells Pair the exit codes of the commands you run (one line in the shell rc file).
    - Push-to-talk (whisper.cpp and a recorder).
+   - Search by meaning (`Alt-s`): the word search needs nothing; for meaning, `:Pair find on` in Neovim fetches
+     EmbeddingGemma 2 and LiteRT-LM itself, with Python 3.10+ and its venv module (`python3-venv` on Debian and
+     Ubuntu), on Linux x86-64 or ARM64 or macOS on Apple silicon; or an embedding model of your own
+     ([meaning.md](docs/meaning.md)).
 3. **May you use `sudo`** to install packages with the package manager? Without it, step 3 installs Node.js and
    Neovim into `~/.local` instead.
 
@@ -684,4 +688,5 @@ Expected: `Removed pairing-buddy.service. …` (systemd), `Removed the launchd a
 Then remove what step 7 added to the Neovim config (the spec file, the lines, or the cloned folder; the `.bak-pair`
 backups show what was there before), and the shell hook line from step 9. With the human's yes, the config, logins
 and data: `~/.config/pairing-buddy/` (holds `auth.json` with their logins and keys) and
-`~/.local/state/pairing-buddy/` (the sessions and their notes).
+`~/.local/state/pairing-buddy/` (the sessions and their notes, and search by meaning's model, venv and indexes); with
+`"meaning": {"index": "project"}`, also `.pair/` in each repository and its line in `.git/info/exclude`.
