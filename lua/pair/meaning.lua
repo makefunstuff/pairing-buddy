@@ -146,6 +146,7 @@ end
 function Live:set(query)
   query = vim.trim(query or '')
   if query == self.query then return end
+  if self.reranking then deps.send({type = 'find', query = '', phase = 'cancel'}) end -- an empty prompt asks no words
   self.query, self.items, self.words, self.meaning, self.meaning_info = query, {}, nil, nil, nil
   self.words_id, self.meaning_id, self.meaning_due = nil, nil, false
   self.rerank_id, self.rerank_info, self.reranking = nil, nil, false

@@ -122,7 +122,8 @@ export async function rerankCheck(config, status, credentials, {build = createDe
   if (login.error) return fail('rerank', `${where}: ${login.error}`);
   // While the daemon runs with this model, it asks: the model gets one question at a time, Pair's searches' and this.
   const daemonHas = status?.meaning?.rerank?.model === reranker.name;
-  const probe = daemonHas ? await requestDaemon(socket, {type: 'rerank_probe'}).catch(error => ({ok: false, error: error.message})) : await reranker.probe();
+  // It may wait for a search's rerank before it asks its own question.
+  const probe = daemonHas ? await requestDaemon(socket, {type: 'rerank_probe'}, {timeoutMs: 2 * entry.timeoutMs + 2000}).catch(error => ({ok: false, error: error.message})) : await reranker.probe();
   if (!probe.ok) {
     return fail('rerank', `${where} fails: ${probe.error}. Searches keep their own order`
       + `${/within/.test(probe.error) ? `; fewer pieces ("top", now ${entry.top}) or a higher "timeoutMs" lets it rerank` : ''}`);

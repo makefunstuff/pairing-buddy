@@ -686,16 +686,17 @@ export class Meaning {
   async rerank(root, query, {who = null} = {}) {
     const answer = {phase: 'rerank', query, state: this.state, results: [], rerank: null};
     const reranker = this.reranker;
-    const index = reranker ? await this.indexOf(root) : null;
-    if (!index) return answer;
-    const turn = (this.reranking.get(who) ?? 0) + 1;
+    if (!reranker) return answer;
+    const turn = (this.reranking.get(who) ?? 0) + 1; // taken at once: a key from now on drops it
     this.reranking.set(who, turn);
+    const index = await this.indexOf(root);
+    if (!index) return answer;
     let before = [];
     const prepare = async () => {
       try {
         before = this.state === 'on' ? await index.search(query, {limit: reranker.top}) : await index.wordSearch(query, {limit: reranker.top});
       } catch {
-        before = await index.wordSearch(query, {limit: reranker.top});
+        before = await index.wordSearch(query, {limit: reranker.top}).catch(() => []);
       }
       return before;
     };
@@ -709,7 +710,12 @@ export class Meaning {
 
   /** The picker of `who` moved on (a key, or it closed): its rerank waiting or under way is not used. */
   dropRerank(who) {
-    if (this.reranking.has(who)) this.reranking.set(who, this.reranking.get(who) + 1);
+    this.reranking.set(who, (this.reranking.get(who) ?? 0) + 1);
+  }
+
+  /** A Neovim went: what it asked is forgotten. */
+  forget(who) {
+    this.reranking.delete(who);
   }
 
   /** A rerank in the ledger: what moved, or why the order stayed, with the order before and after behind ⏎. */
@@ -717,7 +723,7 @@ export class Meaning {
     const at = result => `${result.file}:${result.line}`;
     const text = rerank.applied
       ? `"${query}"${how} with ${rerank.model} in ${rerank.ms} ms: ${rerank.moved ? `${rerank.moved} of ${Math.min(before.length, rerank.top)} moved${at(results[0]) !== at(before[0]) ? `, first now ${at(results[0])} (was ${at(before[0])})` : ''}` : 'the order stayed'}`
-      : `"${query}"${how}: kept the search's order, ${rerank.model} ${rerank.why === 'timeout' ? 'too slow' : rerank.why === 'flat' ? 'saw no piece stand out' : rerank.why === 'down' ? 'not answering lately' : rerank.why === 'busy' ? 'busy with another search' : 'failed'} (${rerank.problem})`;
+      : `"${query}"${how}: kept the search's order, ${rerank.model} ${rerank.why === 'timeout' ? 'too slow' : rerank.why === 'flat' ? 'saw no piece stand out' : rerank.why === 'down' ? 'not answering lately' : rerank.why === 'busy' ? 'busy with another search' : rerank.why === 'short' ? 'had too little to rank' : rerank.why === 'malformed' ? 'answered oddly' : 'failed'} (${rerank.problem})`;
     const lines = list => list.slice(0, rerank.top).map(result => `${at(result)}${result.rerank !== undefined ? `  ${result.rerank}` : ''}  ${result.head}`).join('\n');
     this.book(root, 'reranked', text, {detail: {output: rerank.applied ? `before:\n${lines(before)}\n\nafter (the model's probability):\n${lines(results)}` : lines(before)}});
   }

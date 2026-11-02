@@ -204,6 +204,56 @@ test('the picker\'s settled search: the fused ranking\'s first pieces reranked, 
   }
 });
 
+test('a question that timed out may still run on the server: nothing else is sent for a minute, a check\'s nor a new config\'s', async () => {
+  const server = await fakeRerankServer({mode: 'slow', delayMs: 400});
+  const results = ['a', 'b', 'c'].map(file => ({file, from: 1, line: 1, head: file}));
+  try {
+    const reranker = fakeReranker(server.baseUrl, {timeoutMs: 150});
+    const probe = await reranker.probe();
+    assert.match(probe.error, /no answer within 150 ms/);
+    const after = await reranker.rerank('q', results, {wait: true});
+    assert.equal(after.why, 'down', 'the server may still be on the check\'s question');
+    assert.match((await reranker.probe()).error, /^not asked: it failed \d+ s ago/);
+    await new Promise(resolve => setTimeout(resolve, 400));
+    assert.equal(server.flight.most, 1);
+
+    server.set({mode: 'slow', delayMs: 200});
+    const old = fakeReranker(server.baseUrl);
+    const running = old.rerank('q', results);
+    await new Promise(resolve => setTimeout(resolve, 20));
+    const next = fakeReranker(server.baseUrl);
+    next.follow(old); // the config changed while a question is under way
+    assert.equal((await next.rerank('q', results)).why, 'busy');
+    const waited = await next.rerank('q', results, {wait: true});
+    assert.equal((await running).ok, true);
+    assert.equal(waited.ok, true, 'it waits for the old one\'s question, then asks');
+    assert.equal(server.flight.most, 1);
+    assert.equal(next.running, null);
+  } finally {
+    await server.close();
+  }
+});
+
+test('a key before the picker\'s rerank is even registered still drops it; a Neovim that goes is forgotten', async () => {
+  const server = await fakeRerankServer({favourite: 'waiter'});
+  const root = project();
+  const dataDir = scratch('rerank-data-');
+  const meaning = new Meaning({dataDir, embedder: fakeEmbedder(), reranker: fakeReranker(server.baseUrl)});
+  try {
+    fakeModel(dataDir);
+    await ready(meaning, root);
+    const asked = meaning.rerank(root, 'price', {who: 'nvim'});
+    meaning.dropRerank('nvim'); // in the same tick: before the index is looked up
+    assert.equal((await asked).rerank.why, 'aborted');
+    assert.equal(server.requests.length, 0, 'the model was not asked');
+    meaning.forget('nvim');
+    assert.equal(meaning.reranking.size, 0);
+  } finally {
+    await meaning.close();
+    await server.close();
+  }
+});
+
 test('pair doctor: off says how to add one; on, it reranks a search\'s worth of pieces in its time, or says why not', async () => {
   const server = await fakeRerankServer({favourite: 'a warning'});
   try {

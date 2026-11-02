@@ -344,6 +344,7 @@ export async function startDaemon(config, {
       useDecision(nextDecision);
       decision?.start();
     }
+    if (nextReranker !== meaning.reranker) nextReranker?.follow(meaning.reranker); // the model gets one question at a time still
     meaning.reranker = nextReranker; // the next search asks the new one, or none
     pace.on = config.watcherPace ?? true;
     for (const session of live.values()) {
@@ -1130,6 +1131,7 @@ export async function startDaemon(config, {
     clients.add(client);
     socket.on('close', () => {
       clients.delete(client);
+      meaning.forget(client);
       if (client.session) listeners.get(client.session.root)?.drop(client); // no microphone stays open for a gone editor
       endWhenAlone(client.session);
     });

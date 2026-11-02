@@ -80,8 +80,9 @@ export function reorder(results, values) {
  * results, {texts, wait, prepare, stale})` resolves `{ok: true, results, moved, ms}`, the list reordered, or `{ok: false, why, error,
  * ms, results}` with the list as it was: why is "down" (it failed lately), "busy" (another rerank runs), "timeout",
  * "error", "malformed", "flat" or "aborted" (`stale`).
- * It never rejects and never waits past the entry's `timeoutMs`. A failure keeps it from being asked for a minute,
- * so a model that is off costs one wait, not one a search.
+ * It never rejects. Without `wait` it never waits past the entry's `timeoutMs` for the model; with it, it waits its turn
+ * first. A failure (a timeout too: the server may still be on that question) keeps it from being asked for a minute,
+ * so a model that is off costs one wait, not one a search, and no second question goes to a server still busy.
  */
 export class Reranker {
   constructor({models, model, entry, log = () => {}, now = Date.now}) {
@@ -143,7 +144,13 @@ export class Reranker {
     let release;
     this.running = new Promise(resolve => { release = resolve; }); // taken before anything is awaited: no other rerank slips in
     try {
-      if (prepare) ({results, texts} = await prepare());
+      if (prepare) {
+        try {
+          ({results, texts} = await prepare());
+        } catch (error) {
+          return {ok: false, why: 'short', error: `its pieces could not be read: ${error.message}`, ms: 0, results};
+        }
+      }
       aborted.results = results;
       if (stale()) return aborted;
       const n = Math.min(this.top, results.length, texts?.length ?? results.length);
@@ -174,8 +181,15 @@ export class Reranker {
     }
   }
 
+  /** A new reranker of a changed config waits for the question the one before has under way. */
+  follow(previous) {
+    if (!previous?.running) return;
+    const after = previous.running.then(() => { if (this.running === after) this.running = null; });
+    this.running = after;
+  }
+
   failed(asked, results) {
-    this.kept += 1;
+    if (results.length) this.kept += 1;
     const why = String(asked.error).split('\n')[0].slice(0, 160);
     if (this.down !== why) this.log(`reranker: ${why}; searches keep their order for a minute`);
     this.down = why;
@@ -189,10 +203,14 @@ export class Reranker {
    */
   async probe() {
     const pieces = PROBE_PIECES.slice(0, Math.max(2, Math.min(this.top, PROBE_PIECES.length)));
+    const resting = () => ({ok: false, ms: 0, error: `not asked: it failed ${Math.round((this.now() - this.downAt) / 1000)} s ago (${this.down}), and is asked again a minute after`});
+    if (!this.available) return resting();
     while (this.running) await this.running; // one question at a time, a check's too
+    if (!this.available) return resting(); // the one before timed out: the server may still be on it
     let release;
     this.running = new Promise(resolve => { release = resolve; });
     const asked = await this.ask('Search: add two numbers', rerankQuestion(pieces)).finally(() => { this.running = null; release(); });
+    if (!asked.ok && asked.why !== 'malformed') this.failed(asked, []);
     if (!asked.ok) return {ok: false, ms: asked.ms, error: asked.error};
     const found = probabilitiesOf(asked.answer, pieces.length);
     if (found.why === 'malformed') return {ok: false, ms: asked.ms, error: `its answer has ${found.error}`};
