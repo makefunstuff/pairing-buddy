@@ -48,6 +48,7 @@ require('pair').setup({
   meaning_key = '<M-s>', -- searches the project by meaning; false for none
   meaning_picker = 'auto', -- or 'telescope', 'snacks', 'fzf-lua', 'select': where search by meaning shows its results
   meaning_debounce_ms = 150, -- how long you stop typing before the picker asks for meaning too
+  meaning_rerank_delay_ms = 400, -- with a "rerank" model: how long the list stays as it is before it is reranked
   gen_input = 'ui',    -- 'cmdline': the /gen request and its questions on Neovim's own prompt, not vim.ui's
   gen_preview_lines = 30, -- a /gen block taller than this shows in a preview window
   try_run_key = '<LocalLeader>r', -- in a /gen try's sample: runs it again; in a scaffold's copy: checks it again
@@ -83,6 +84,7 @@ require('pair').setup({
 | `meaning_key` | `'<M-s>'` | [Search by meaning](meaning.md#search): opens the live picker; in Visual mode, with the selected words typed in it. Mapped in Normal and Visual mode from the start |
 | `meaning_picker` | `'auto'` | Where search by meaning shows what it found: `'auto'` is Telescope if it is installed, else snacks.picker, else fzf-lua, else `vim.ui.select` (which asks for your words first, and shows one list); or name one |
 | `meaning_debounce_ms` | `150` | How long you stop typing before the picker asks for meaning too; the words come on every key |
+| `meaning_rerank_delay_ms` | `400` | With a [`rerank` model](meaning.md#rerank), how long the list stays as it is once meaning came before its first pieces are reranked, once |
 | `gen_input` | `'ui'` | Where the `/gen` request, its shape and Pair's questions are asked: `'ui'` through `vim.ui.input` and `vim.ui.select`, which snacks.nvim, dressing.nvim or noice.nvim show as floating dialogs (else Neovim's own prompt); `'cmdline'` always Neovim's own prompt and numbered list |
 | `gen_preview_lines` | `30` | A `/gen` block taller than this (or than its window) shows as one line in place and in a preview window under it, instead of as ghost lines |
 | `try_run_key` | `'<LocalLeader>r'` | In a [/gen try](gen.md#samples-gen-try-and-keep)'s sample (a buffer of its folder): writes the sample's changed buffers and runs it again in Pair's pane, as `:Pair gen run` does. In a file of a [/gen scaffold](gen.md#many-files-gen-scaffold)'s copy: writes it and runs the check again in the copy, as `r` in `:Pair gen list` does. Mapped in Normal mode in those buffers only, and not over a mapping of your own; then a try's winbar names `:Pair gen run` instead, and a scaffold copy's names no key. `<LocalLeader>` is `\` unless you set `maplocalleader`, so it is not Vim's own `r` |

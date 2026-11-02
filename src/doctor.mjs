@@ -18,6 +18,7 @@ import {Embedder, HttpEmbedder, meaningDir, MODEL, modelPath, modelReady, python
 import {FAST_MS, SLOW_MS} from './pace.mjs';
 import {levelGroups, probeModel, probeThinking} from './probe.mjs';
 import {requestDaemon} from './protocol.mjs';
+import {Reranker} from './rerank.mjs';
 import {madeByPair, venvPython, wheelOf} from './runtime.mjs';
 import {sandboxWorks} from './sandbox.mjs';
 import {keyVariables, readServiceEnv} from './service-env.mjs';
@@ -70,6 +71,7 @@ export async function* doctor({
   yield paneCheck(config.scoutPane);
   yield await voiceCheck(config.voice);
   yield await meaningCheck(config, status);
+  yield await rerankCheck(config, status, credentials);
   yield* modelChecks(config, status, credentials);
   yield await decisionCheck(config, status, credentials);
 }
@@ -99,6 +101,37 @@ export async function decisionCheck(config, status, credentials, {build = create
   const used = status?.decision?.calls ? `; since the daemon started it was asked ${count(status.decision.calls, 'time')} and the gate fell back ${count(status.decision.fallbacks, 'time')}` : '';
   const text = `${where} answers in ${seconds(probe.ms)} (it may take ${seconds(entry.timeoutMs)})${login.note ? `; ${login.note}` : ''}${used}${down}`;
   return down ? warn('decision', text) : ok('decision', text);
+}
+
+/**
+ * Search by meaning's reranker (see rerank.mjs): none is fine, the searches keep their own order. One is asked a
+ * search's question of as many small pieces; failing, or slower than its timeoutMs, is a failure: it never reorders.
+ */
+export async function rerankCheck(config, status, credentials, {build = createDecisionModel, socket = config.socket} = {}) {
+  const entry = config.rerank;
+  if (!entry) return ok('rerank', 'off: searches keep the order of meaning and words; a "rerank" decision model reorders their first pieces (docs/meaning.md#rerank)');
+  if (config.meaning === false) return ok('rerank', `${whereIs(entry)} is set, but search by meaning is off in the config ("meaning": false)`);
+  const where = whereIs(entry);
+  let reranker;
+  try {
+    reranker = new Reranker({...build(config, {credentials, field: 'rerank'}), entry});
+  } catch (error) {
+    return fail('rerank', error.message);
+  }
+  const login = await loginCheck(entry, reranker.models, credentials);
+  if (login.error) return fail('rerank', `${where}: ${login.error}`);
+  // While the daemon runs with this model, it asks: the model gets one question at a time, Pair's searches' and this.
+  const daemonHas = status?.meaning?.rerank?.model === reranker.name;
+  // It may wait for a search's rerank before it asks its own question.
+  const probe = daemonHas ? await requestDaemon(socket, {type: 'rerank_probe'}, {timeoutMs: 2 * entry.timeoutMs + 2000}).catch(error => ({ok: false, error: error.message})) : await reranker.probe();
+  if (!probe.ok) {
+    return fail('rerank', `${where} fails: ${probe.error}. Searches keep their own order`
+      + `${/within/.test(probe.error) ? `; fewer pieces ("top", now ${entry.top}) or a higher "timeoutMs" lets it rerank` : ''}`);
+  }
+  const live = status?.meaning?.rerank;
+  const used = live?.calls ? `; since the daemon started it reranked ${live.calls - live.kept} of ${live.calls} search${live.calls === 1 ? '' : 'es'} and kept the order of ${live.kept}${live.down ? ` (last: ${live.down})` : ''}` : '';
+  const text = `${where} reranks ${probe.pieces} pieces in ${seconds(probe.ms)}${entry.top > probe.pieces ? ` (it is set to ${entry.top}: more take longer)` : ''} (a search waits up to ${seconds(entry.timeoutMs)})${probe.right ? '' : ', but did not put the matching piece first in its check'}${login.note ? `; ${login.note}` : ''}${used}`;
+  return probe.right ? ok('rerank', text) : warn('rerank', text);
 }
 
 /** The service's `state` under `manager` (see service.mjs); without one, the supervisor restarts the daemon. */
