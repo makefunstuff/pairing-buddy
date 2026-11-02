@@ -58,6 +58,7 @@ local config = {
   meaning_key = '<M-s>', -- searches the project by meaning; in Visual mode, for the selected words
   meaning_picker = 'auto', -- or 'telescope', 'snacks', 'fzf-lua', 'select': where search by meaning shows what it found
   meaning_debounce_ms = 150, -- how long typing stops before the picker asks for meaning too (the words come on every key)
+  meaning_rerank_delay_ms = 400, -- with a "rerank" model, how long the list stays as it is once meaning came before it is reranked
   gen_input = 'ui', -- or 'cmdline': the request and its questions always on Neovim's own prompt, not vim.ui's
   gen_preview_lines = 30, -- a /gen block taller than this shows in a preview window
   try_run_key = '<LocalLeader>r', -- in a /gen try's sample: runs it again in Pair's pane; in a scaffold's copy: checks it
@@ -1672,7 +1673,7 @@ function M.setup(opts)
   owning.setup({send = send, event = event, redraw_status = redraw_status, connected = function() return state.channel ~= nil end})
   gentry.setup({send = send, run_key = config.try_run_key})
   overlap.setup({send = send, winbar = config.board_winbar})
-  meaning.setup({picker = config.meaning_picker, debounce_ms = config.meaning_debounce_ms}, {send = send})
+  meaning.setup({picker = config.meaning_picker, debounce_ms = config.meaning_debounce_ms, rerank_delay_ms = config.meaning_rerank_delay_ms}, {send = send})
   style.apply()
   local group = vim.api.nvim_create_augroup('pair', {clear = true})
   local function restyle()

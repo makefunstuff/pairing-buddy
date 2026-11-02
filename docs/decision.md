@@ -219,6 +219,12 @@ A moment the [pace](watcher.md#when-the-server-is-slow) held back after an unsur
 saving is the pace's. "The rules' remarks" are the remarks of the same days the model did not decide: those from before you added it,
 and those it fell back on.
 
+## Other uses
+
+The gate is not the only one: search by meaning can ask a decision model of its own (its `rerank` entry, the same keys
+as this one) which of a search's first ten pieces you are looking for, and reorder them by its probabilities
+([meaning.md](meaning.md#rerank)).
+
 ## Next steps
 
 The decision API is one way in: a question in `QUESTIONS` (`src/decision.mjs`), a state to judge, and

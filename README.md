@@ -118,7 +118,8 @@ your keys and logins).
   branch as a review to keep pieces of
 - [Search by meaning](docs/meaning.md): `Alt-s` is a live picker in Telescope, snacks.picker or fzf-lua that finds
   code by your words on every key and by what you mean as you pause, from a local index (EmbeddingGemma 2, or an
-  embedding model of your own) Pair keeps up to date in the background
+  embedding model of your own) Pair keeps up to date in the background, and optionally a small decision model that
+  reranks a settled list's first pieces
 - [Push-to-talk](docs/voice.md): ask aloud, heard by whisper.cpp on your CPU or an OpenRouter model, with answers
   read aloud when you are away
 - [Models and providers](docs/models.md): local servers, API keys, subscription logins, one model for both roles,

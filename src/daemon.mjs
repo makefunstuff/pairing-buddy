@@ -35,6 +35,7 @@ import {Pace} from './pace.mjs';
 import {probeModel} from './probe.mjs';
 import {projectContext} from './project-context.mjs';
 import {readMessages, sendMessage} from './protocol.mjs';
+import {Reranker} from './rerank.mjs';
 import {RUNTIME_VERSION} from './runtime.mjs';
 import {configChanges, RESTART_FIELDS, watchConfig} from './reload.mjs';
 import {rememberScores} from './score-memory.mjs';
@@ -87,13 +88,15 @@ const tilde = path => (path.startsWith(homedir()) ? `~${path.slice(homedir().len
  * `agentsPollMs` for the agent relay's board and herdr, and a short `taskChangesPollMs` for what the board's tasks
  * change. With `configFile`, the daemon takes changes to it as they are
  * saved (see reload.mjs); `modelsFor(config)` builds the models of a config, at start and after a change, and
- * `decisionFor(config)` its decision model (`{models, model}`, or null; see decision.mjs).
+ * `decisionFor(config)` its decision model (`{models, model}`, or null; see decision.mjs), and `rerankerFor(config)`
+ * search by meaning's reranker (a Reranker, or null; see rerank.mjs).
  */
 export async function startDaemon(config, {
   configFile = null, modelsFor = createPairModels, pairModels = modelsFor(config), decisionFor = createDecisionModel, probe, log = defaultLog, keepWarmMs = KEEP_WARM_MS,
   idleEndMs = IDLE_END_MS, aloneEndMs = ALONE_END_MS, agentsPollMs, taskChangesPollMs = TASK_CHANGES_MS,
   appCommand = 'herdr-app', // the Herdr window's command, for herdr-core's focus and agents
   meaningWith = {}, // tests' fetch and embedder for search by meaning (see meaning.mjs)
+  rerankerFor = (entries, logTo) => (entries.rerank ? new Reranker({...createDecisionModel(entries, {field: 'rerank'}), entry: entries.rerank, log: logTo}) : null),
 } = {}) {
   mkdirSync(config.dataDir, {recursive: true, mode: 0o700});
   mkdirSync(join(config.dataDir, 'runs'), {recursive: true}); // the output of the tests run on save, one file per session
@@ -167,6 +170,7 @@ export async function startDaemon(config, {
   // Neovims.
   const meaning = new Meaning({
     dataDir: config.dataDir, config: config.meaning, embedding: config.embedding, log,
+    reranker: rerankerFor(config, log), // the decision model that reorders a settled search, or null (see rerank.mjs)
     book: (root, kind, text, options) => live.get(root)?.ledger.add(kind, text, options),
     progress: (root, how) => {
       const session = live.get(root);
@@ -326,9 +330,11 @@ export async function startDaemon(config, {
     if (!changed.length) return;
     let nextModels = null;
     let nextDecision = null;
+    let nextReranker = meaning.reranker;
     try {
       if (changed.includes('models')) nextModels = modelsFor(next);
       if (changed.includes('decision')) nextDecision = decisionFor(next);
+      if (changed.includes('rerank')) nextReranker = rerankerFor(next, log);
     } catch (error) {
       return refuse(error.message);
     }
@@ -338,6 +344,7 @@ export async function startDaemon(config, {
       useDecision(nextDecision);
       decision?.start();
     }
+    meaning.reranker = nextReranker; // the next search asks the new one, or none
     pace.on = config.watcherPace ?? true;
     for (const session of live.values()) {
       session.typingPauseMs = config.typingPauseMs;
@@ -1013,13 +1020,15 @@ export async function startDaemon(config, {
 
   /**
    * A search of the project: a Neovim's picker asks for the words on every key (`phase` "words") and for the meaning
-   * once typing stops ("meaning"), each answer with its `id`; the chat's /find asks for both, fused. Each result has
+   * once typing stops ("meaning"), and for its list reranked once that settles ("rerank", with the `results` it shows),
+   * each answer with its `id`; the chat's /find asks for both, fused (and reranked). Each result has
    * its absolute path, for the picker to open.
    */
   async function find(client, session, message) {
     const query = message.query.trim();
     const answer = message.phase === 'words' ? await meaning.words(session.root, query)
       : message.phase === 'meaning' ? await meaning.meaningOnly(session.root, query)
+      : message.phase === 'rerank' ? await meaning.rerank(session.root, query, message.results)
         : await meaning.search(session.root, query, {book: message.select !== true}); // a pick from vim.ui.select is booked as one
     sendMessage(client.socket, {
       type: 'found', ...(message.id !== undefined ? {id: message.id} : {}), ...answer, root: session.root,

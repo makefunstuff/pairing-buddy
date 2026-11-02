@@ -12,6 +12,7 @@ import {fauxAssistantMessage, fauxText} from '@earendil-works/pi-ai';
 import {pythonOf} from '../src/embedder.mjs';
 import {Runtime, WHEELS} from '../src/runtime.mjs';
 import {fakeEmbedder, fakeModel} from './fake-embedder.mjs';
+import {fakeReranker, fakeRerankServer} from './fake-reranker.mjs';
 import {fakePython, fakeWheel} from './fake-python.mjs';
 import {hasNvim, pairInNvim, until} from './nvim-harness.mjs';
 import {scratch} from './temp.mjs';
@@ -37,6 +38,7 @@ function fakeTelescope() {
       spec.finder(self.prompt, function(entry) shown[#shown + 1] = entry end, function()
         _G.telescoped.shown = shown
         _G.telescoped.runs = _G.telescoped.runs + 1
+        _G.selected = shown[1] -- as Telescope's refresh, unless the picker selects another
         for _, callback in ipairs(self.callbacks) do callback(self) end
       end)
     end
@@ -115,6 +117,36 @@ test('Telescope, live: the words on every key, meaning below them once typing st
     assert.match(remote('luaeval("_G.telescoped.title")'), /^Find \(\d+ ms\)$/);
   } finally {
     await stop();
+  }
+});
+
+test('Telescope with a "rerank" model: once the list settles its first pieces come back in the model\'s order, and the title says so', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
+  const server = await fakeRerankServer({favourite: 'What the order comes to'});
+  const {project, dataDir, watcher, messages, remote, send, stop} = await pairInNvim('deliver', {rtp: [fakeTelescope()], setup: 'meaning_debounce_ms = 100, meaning_rerank_delay_ms = 100', meaningWith: {embedder: fakeEmbedder(), reranker: fakeReranker(server.baseUrl)}});
+  try {
+    watcher.setResponses(Array.from({length: 10}, () => fauxAssistantMessage([fauxText('0')])));
+    await withCode(project, remote);
+    fakeModel(dataDir);
+    await built(send, messages);
+    server.requests.length = 0;
+    remote('execute("Pair find")');
+    await until(() => remote('luaeval("_G.telescoped ~= nil")') === 'true', 'the Telescope picker');
+    remote('luaeval("_G.type_prompt(\'tota\')")');
+    await until(() => /reranked by fake-d1/.test(remote('luaeval("_G.telescoped.title")')), 'the rerank');
+    assert.match(remote('luaeval("_G.telescoped.title")'), /^Find \(\d+ ms · reranked by fake-d1 \(\d\.\d s\)\)$/);
+    const list = shown(remote);
+    assert.equal(list[0], 'invoice.js:2  export function bill(order) {', 'the model\'s pick first');
+    assert.ok(list.includes('cart.js:1  export function total(cart) {'), 'the word hit stays in the list');
+    assert.equal(remote('luaeval("_G.selected.display")'), list[0], 'the first was selected: the new first is');
+    assert.equal(server.requests.length, 1, 'one rerank, once the list settled');
+    assert.equal(server.requests[0].state, 'Search: tota');
+    await until(() => {
+      send({type: 'today'});
+      return JSON.stringify(messages.findLast(message => message.type === 'ledger') ?? {}).includes('\\"tota\\" in the picker with fake-d1');
+    }, 'the rerank in the ledger');
+  } finally {
+    await stop();
+    await server.close();
   }
 });
 

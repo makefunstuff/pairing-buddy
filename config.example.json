@@ -60,6 +60,11 @@
   // Or an embedding model of your own behind an OpenAI-compatible /v1/embeddings, instead of EmbeddingGemma 2:
   // "embedding": {"api": "openai", "baseUrl": "http://127.0.0.1:8080/v1", "model": "jina-embeddings-v2-base-code"},
 
+  // Optional: a decision model that reorders search by meaning's first ten pieces once a list is settled (/find, the
+  // search tool, a picker after you stop typing), such as LiquidAI's d1-2B on llama.cpp. A search waits "timeoutMs" for
+  // it at most; down or slow, the order stays (see docs/meaning.md#rerank).
+  // "rerank": {"api": "system-one", "baseUrl": "http://127.0.0.1:8080/v1", "model": "d1-2B", "top": 10, "timeoutMs": 3000},
+
   // Pair's own pane, where Scout's commands and the tests on save run (see docs/scout.md#pairs-pane): your rc file
   // for its aliases, functions and PATH (true is ~/.bashrc), and the bubblewrap sandbox: "auto" where bwrap works,
   // true always, false never; inside it only the project and `writable` keep what is written, and no network unless allowed.

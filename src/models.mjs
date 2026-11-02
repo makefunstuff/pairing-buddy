@@ -71,12 +71,12 @@ function decisionProviderOf(entry) {
 }
 
 /** The classifier model `entry` names in `provider`'s catalog. */
-function catalogClassifier(provider, entry) {
+function catalogClassifier(provider, entry, field = 'decision') {
   const classifiers = (provider.getAllModels?.() ?? []).filter(model => getModelType(model) === 'classifier');
   const known = classifiers.find(model => model.id === entry.model);
   if (known) return known;
   const listed = classifiers.length ? `; it has ${classifiers.map(model => model.id).join(', ')}` : '; it has none';
-  throw new Error(`config: decision.model: "${entry.model}" is not a ${provider.id} decision model${listed}`);
+  throw new Error(`config: ${field}.model: "${entry.model}" is not a ${provider.id} decision model${listed}`);
 }
 
 /**
@@ -118,11 +118,12 @@ export function createPairModels(config, {credentials = fileCredentialStore(auth
 }
 
 /**
- * `{models, model}`: the decision model of the config's `decision` entry (see decision.mjs) in a pi-ai collection of
- * its own, so a change to it leaves the roles' models alone; null without one. Logins and keys as createPairModels.
+ * `{models, model}`: the decision model of the config's `decision` entry (see decision.mjs), or of another entry of
+ * its shape (`field`: "rerank", see rerank.mjs), in a pi-ai collection of its own, so a change to it leaves the roles'
+ * models alone; null without one. Logins and keys as createPairModels.
  */
-export function createDecisionModel(config, {credentials = fileCredentialStore(authPath())} = {}) {
-  const entry = config.decision;
+export function createDecisionModel(config, {credentials = fileCredentialStore(authPath()), field = 'decision'} = {}) {
+  const entry = config[field];
   if (!entry) return null;
   const models = createModels({credentials});
   if (!entry.provider) {
@@ -130,8 +131,8 @@ export function createDecisionModel(config, {credentials = fileCredentialStore(a
     return {models, model: models.getModelOfType('classifier', 'pair-decision', entry.model)};
   }
   const provider = knownProviders().get(entry.provider);
-  if (!provider) throw new Error(`config: decision.provider: "${entry.provider}" is not a provider pi-ai knows; \`pair auth list\` lists them`);
-  const model = catalogClassifier(provider, entry);
+  if (!provider) throw new Error(`config: ${field}.provider: "${entry.provider}" is not a provider pi-ai knows; \`pair auth list\` lists them`);
+  const model = catalogClassifier(provider, entry, field);
   models.setProvider({...provider, getModels: () => [], getAllModels: () => [model]});
   return {models, model};
 }

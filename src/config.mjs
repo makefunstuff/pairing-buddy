@@ -9,6 +9,7 @@ import {MIN_CONTEXT, replyRoom} from './context.mjs';
 import {storedKey} from './credentials.mjs';
 import {RUN_TIMEOUT_MS} from './scout-pane.mjs';
 import {scoutPaneConfig} from './scout-shell.mjs';
+import {RERANK_TIMEOUT_MS, RERANK_TOP} from './rerank.mjs';
 import {readServiceEnv} from './service-env.mjs';
 import {voiceConfig} from './voice.mjs';
 
@@ -347,6 +348,20 @@ export function embeddingConfig(entry, name = 'embedding') {
 }
 
 /**
+ * The optional `rerank` entry, next to `embedding`: a decision model that reorders the first pieces of a settled search
+ * (see rerank.mjs). A model entry as `decision`'s (a `provider`, or an `api` of DECISION_APIS at a `baseUrl`), with
+ * `top`, how many pieces it reorders, and `timeoutMs`, how long a search waits for it. null without one: off.
+ */
+export function rerankConfig(entry, name = 'rerank') {
+  if (entry === undefined || entry === null || entry === false) return null;
+  const {top, timeoutMs, ...rest} = entry ?? {};
+  if (top !== undefined && !(Number.isInteger(top) && top >= 2 && top <= 30)) throw new Error(`config: ${name}.top must be a whole number from 2 to 30`);
+  if (timeoutMs !== undefined && !(typeof timeoutMs === 'number' && timeoutMs > 0)) throw new Error(`config: ${name}.timeoutMs must be a number of milliseconds`);
+  const parsed = decisionConfig(typeof entry === 'object' && !Array.isArray(entry) ? rest : entry, name);
+  return {...parsed, top: top ?? RERANK_TOP, timeoutMs: timeoutMs ?? RERANK_TIMEOUT_MS};
+}
+
+/**
  * `sessionRoots` lists the folders that each have their own session, for a monorepo where the git root is too coarse:
  * a folder, or `<folder>/*` for every folder in it.
  */
@@ -394,6 +409,7 @@ export function parseConfig(raw, {windows = {}} = {}) {
     models,
     decision: decisionConfig(raw.decision), // the gate's decision model, or null (see decision.mjs)
     embedding: embeddingConfig(raw.embedding), // search by meaning's model at a /v1/embeddings, or null for EmbeddingGemma 2
+    rerank: rerankConfig(raw.rerank), // the decision model that reorders a settled search's first pieces, or null (see rerank.mjs)
   };
 }
 

@@ -61,6 +61,60 @@ On lfm-pixel's notebook of questions worded unlike the notes, EmbeddingGemma got
 0.03. On a small project of code (`test/live/meaning.test.mjs`) it put the right file first for each of six such
 questions.
 
+## Rerank
+
+Meaning and words get the right piece into the first ten most of the time, but not always first. A decision model
+(a classifier that answers a question with a probability for each answer and writes no text, such as LiquidAI's
+d1-2B on llama.cpp) can read those ten and say which one you are looking for. Pair asks it once, one question whose
+answers are the pieces, each as its `file:line` and the first 160 characters of its text from its doc comment on; the
+pieces then go best first by the probability the model gives each, and the rest of the list stays as it was.
+
+It is asked only where a list is settled, never on a key:
+
+- **`/find` and the `search` tool** wait for it, up to `timeoutMs` (3 s), then answer; `/find`'s first line says
+  `reranked by d1-2B`. The `search` tool within a path is not reranked: the project's first ten may be none of the path's.
+- **`vim.ui.select`** gets the reranked list, as `/find`.
+- **The live pickers** (Telescope and snacks.picker) show the words and then meaning as before, without waiting; once
+  the list has stayed as it is for `meaning_rerank_delay_ms` (400 ms) after meaning came, its first ten are reranked,
+  once. The title says `reranking` meanwhile and `reranked by d1-2B (2.4 s)` once it applied. A key before then drops
+  it. The piece you are on stays the one you are on, unless it was the first: then the new first one is. fzf-lua's list
+  only grows, so it is not reranked there.
+
+A model that is down, slower than `timeoutMs`, or answers oddly (no probability for a piece, or none that stands out)
+leaves the order as it was, and after a failure it is not asked for a minute, so a model that is off costs one wait.
+
+```jsonc
+"rerank": {"api": "system-one", "baseUrl": "http://127.0.0.1:8080/v1", "model": "d1-2B"}
+```
+
+It is a [decision model entry](config.md#rerank): `"api": "system-one"` for a System One server (llama.cpp's decision
+models answer `POST /v1/systemone`; TypeSafe and OpenRouter serve it too), `"llama-cpp"` for a chat model on
+llama.cpp's server asked for the probability of each answer, `"openai"` for OpenAI's Decisions API, or a `provider`
+with one of its classifiers. `top` is how many pieces it reads (10), `timeoutMs` how long a search waits (3000). Its key
+goes as a model's. `pair doctor` asks it a search's worth of pieces and says how long it took:
+
+```
+✓ rerank  d1-2B at http://127.0.0.1:8080/v1 reranks 10 pieces in 1.6 s (a search waits up to 3.0 s)
+```
+
+Without the entry it says `off`, and every search keeps the order of meaning and words.
+
+**Measured** on Pair's own repository with EmbeddingGemma 2 and d1-2B (Q8_0, on a Ryzen 5 9600X's CPU), on 32
+questions worded unlike what they should find, 25 about code and 7 about the docs (a Markdown knowledge base):
+`test/fixtures/rerank-queries.json`, run by `test/live/rerank.test.mjs`. The order before is `/find`'s, meaning and
+words fused.
+
+| | recall@5 | MRR |
+| --- | --- | --- |
+| All 32, before → after | 0.72 → 0.81 | 0.50 → 0.73 |
+| Code (25) | 0.76 → 0.84 | 0.59 → 0.78 |
+| Docs (7) | 0.57 → 0.71 | 0.17 → 0.57 |
+
+The rerank took 2.4 s at the median, 2.7 s at the 95th percentile, all 32 within the 3 s budget. Fewer characters a
+piece were quicker and ranked a little worse (100: 1.9 s, MRR 0.70); six pieces 1.6 s (MRR 0.70, recall@5 0.75); fifteen
+3.3 s for no better MRR. The model can only reorder what the search found: a piece outside the first ten stays where it
+was. The questions were written for this measure, by one person: a small set, so take the numbers as a direction.
+
 ## The index
 
 - **What goes in.** The files git lists, tracked and untracked, without what `.gitignore` leaves out; without git,
@@ -136,7 +190,9 @@ wait for your break are the same as for every trail.
 `:Pair today` lists each build of ten pieces or more (`indexed 6639 pieces by meaning in 551 s: 549 files, 6639
 pieces, 13780 KB`; a save's few pieces get no line of their own), each piece you open from a picker (`searched by
 meaning "method that removes user" in the picker: 1 result, first src/teams.js:42`), each `/find` and `search` tool
-search (`⏎` shows the ranking with each piece's similarity and whether your words matched), each lookup for the
+search (`⏎` shows the ranking with each piece's similarity and whether your words matched), each rerank (`reranked
+"method that removes user" in the picker with d1-2B in 2410 ms: 3 of 10 moved, first now src/auth.mjs:46 (was
+src/teams.js:12)`, or why it kept the order; `⏎` shows the order before and after, with the model's probability for each), each lookup for the
 search trail, `:Pair index rebuild`, LiteRT-LM's install (`⏎` shows the venv's Python), the model's download,
 and `:Pair find off` deleting them. The words you type on
 the way are not booked.

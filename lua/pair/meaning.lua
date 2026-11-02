@@ -4,26 +4,30 @@
 -- src/meaning.mjs). Telescope, else snacks.picker, else fzf-lua, else vim.ui.select. Enter opens a piece at its line;
 -- in Telescope <C-q> sends the hits to the quickfix list. The words work without any model; meaning needs one:
 -- :Pair find on installs LiteRT-LM and downloads EmbeddingGemma 2 once, or an "embedding" model in the config. :Pair
--- find off deletes them.
+-- find off deletes them. With a "rerank" decision model in the config, a list that stays as it is for `rerank_delay_ms`
+-- once meaning came is reordered once, its first pieces best first by the model; the title says so. The piece you are
+-- on stays the one you are on, unless it was the first: then the new first one is.
 local M = {}
 
 local deps = {}
 local picker = 'auto' -- or 'telescope', 'snacks', 'fzf-lua', 'select'
 local debounce_ms = 150
+local rerank_delay_ms = 400 -- after meaning came, how long the list must stay as it is before it is reranked
 local next_id = 0
 local waiting = {} -- request id -> what to do with the daemon's answer
 
 function M.setup(opts, d)
   picker = opts.picker or picker
   debounce_ms = opts.debounce_ms or debounce_ms
+  rerank_delay_ms = opts.rerank_delay_ms or rerank_delay_ms
   deps = d
 end
 
---- Asks the daemon for one phase of a search, 'words' or 'meaning'; `callback` gets its answer.
-local function ask(query, phase, callback)
+--- Asks the daemon for one phase of a search, 'words', 'meaning' or 'rerank' (of `results`); `callback` gets its answer.
+local function ask(query, phase, callback, results)
   next_id = next_id + 1
   waiting[next_id] = callback
-  deps.send({type = 'find', id = next_id, query = query, phase = phase})
+  deps.send({type = 'find', id = next_id, query = query, phase = phase, results = results})
   return next_id
 end
 
@@ -96,8 +100,47 @@ function Live:ask_meaning(query)
     self.meaning, self.meaning_info = message.results or {}, message
     self.items = self:merge(self.words or {}, self.meaning)
     self.changed(self, 'meaning')
+    if message.reranker and #self.items > 1 then self:settle(query) end
   end)
   self.meaning_id = meaning_id
+end
+
+--- Once the list has stayed as it is a while, its first pieces reranked: they come back in the model's order, once.
+function Live:settle(query)
+  self:stop_timer()
+  self.timer = vim.uv.new_timer()
+  self.timer:start(rerank_delay_ms, 0, vim.schedule_wrap(function()
+    self:stop_timer()
+    if self.done or self.query ~= query then return end
+    local shown = {}
+    for index = 1, math.min(#self.items, 30) do
+      local item = self.items[index]
+      shown[index] = {file = item.file, line = item.line, from = item.from, to = item.to, head = item.head, kind = item.kind, name = item.name, meaning = item.meaning, words = item.words}
+    end
+    local rerank_id
+    self.reranking = true
+    self.changed(self, 'reranking')
+    rerank_id = ask(query, 'rerank', function(message)
+      if self.done or self.rerank_id ~= rerank_id then return end
+      self.reranking = false
+      self.rerank_info = message.rerank
+      local results = message.results or {}
+      if message.rerank and message.rerank.applied and #results > 0 then
+        self.first_before = self.items[1] and key(self.items[1])
+        local items, placed = {}, {}
+        for _, item in ipairs(results) do
+          items[#items + 1] = item
+          placed[key(item)] = true
+        end
+        for _, item in ipairs(self.items) do
+          if not placed[key(item)] then items[#items + 1] = item end
+        end
+        self.items = items
+      end
+      self.changed(self, 'rerank')
+    end, shown)
+    self.rerank_id = rerank_id
+  end))
 end
 
 function Live:set(query)
@@ -105,6 +148,7 @@ function Live:set(query)
   if query == self.query then return end
   self.query, self.items, self.words, self.meaning, self.meaning_info = query, {}, nil, nil, nil
   self.words_id, self.meaning_id, self.meaning_due = nil, nil, false
+  self.rerank_id, self.rerank_info, self.reranking, self.first_before = nil, nil, false, nil
   self:stop_timer()
   if query == '' then return end
   local words_id
@@ -142,6 +186,10 @@ function Live:title()
   end
   if info.capped then parts[#parts + 1] = ('over %d pieces: some files left out'):format(info.capped) end
   if self.meaning_info and self.meaning_info.ms then parts[#parts + 1] = ('%d ms'):format(self.meaning_info.ms) end
+  local rerank = self.rerank_info
+  if self.reranking then parts[#parts + 1] = 'reranking'
+  elseif rerank and rerank.applied then parts[#parts + 1] = ('reranked by %s (%.1f s)'):format(rerank.model, (rerank.ms or 0) / 1000)
+  end
   return #parts > 0 and ('Find (%s)'):format(table.concat(parts, ' · ')) or 'Find by meaning and words'
 end
 
@@ -172,11 +220,13 @@ local function telescope(query)
   local current -- the picker
   local restore -- the entry to keep selected once the list grows
   local live
-  live = Live.new(function()
+  live = Live.new(function(_, phase)
     if not current or live.done then return end
     pcall(function() current.prompt_border:change_title(live:title()) end)
+    if phase == 'reranking' then return end -- only the title: the list is as it was
     local selected = action_state.get_selected_entry()
     restore = selected and key(selected.value) or nil -- the list only grows below it, and it stays selected
+    if phase == 'rerank' and restore == live.first_before then restore = nil end -- on the first: the new first
     live.answered = live.query
     current:refresh(nil, {reset_prompt = false})
   end)
@@ -227,13 +277,16 @@ local function snacks(query)
   if not (rawget(_G, 'Snacks') and Snacks.picker) then return false end
   local current
   local live
-  live = Live.new(function()
+  live = Live.new(function(_, phase)
     live.answered = live.query
     if live.resume then return live.resume() end -- the finder waits for its words
     if not current or current.closed then return end
+    pcall(function() current.title = live:title(); current:update_titles() end)
+    if phase == 'reranking' then return end
     -- Meaning's hits, below what the list shows; the item you are on stays the one you are on.
     local on = current:current()
     local want = on and on.value and key(on.value)
+    if phase == 'rerank' and want == live.first_before then want = live.items[1] and key(live.items[1]) end
     current:find({refresh = true, on_done = function()
       if not want or current.closed then return end
       for index, item in ipairs(current:items()) do

@@ -6,7 +6,8 @@
 // LiteRT-LM, or an "embedding" model at a /v1/embeddings; see embedder.mjs). It is a SQLite file per repository, shared
 // by its worktrees (see index-store.mjs). A piece is embedded again only when its text changed: a save reads that file
 // again, and the project is looked over when its session loads and every few minutes, for changes made outside Neovim.
-// The word search works without any embedding model. Builds and searches go to the ledger.
+// The word search works without any embedding model. A decision model may rerank a settled list's first pieces (see
+// rerank.mjs). Builds, searches and reranks go to the ledger.
 import {execFile} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {existsSync} from 'node:fs';
@@ -17,6 +18,7 @@ import {downloadModel, Embedder, HttpEmbedder, meaningDir, MODEL, modelPath, mod
 import {IndexStore, indexPlace, removeIndex} from './index-store.mjs';
 import {Runtime, RUNTIME_VERSION} from './runtime.mjs';
 import {piecesOf, TreeSitter} from './pieces.mjs';
+import {pieceText, SNIPPET_CHARS} from './rerank.mjs';
 
 const MAX_FILE_BYTES = 512 * 1024;
 const MAX_LINE_AVERAGE = 300; // minified or generated: no lines worth reading
@@ -369,6 +371,13 @@ export class ProjectIndex {
     return {line: piece.from + at, head: (body[at] ?? '').trim().slice(0, HEAD_CHARS)};
   }
 
+  /** A search result's text from its doc comment on, as the reranker reads it (see rerank.mjs); its head without its file. */
+  async textOf(result, chars) {
+    const lines = await this.lines.get(result.file);
+    const text = lines?.slice(result.from - 1, result.to).join('\n').slice(0, chars);
+    return text?.trim() ? text : result.head ?? '';
+  }
+
   /** A piece as a search answers it: `{file, line, from, to, head, kind, name, meaning, words}`. */
   async result(piece, {meaning = null, words = false} = {}) {
     const {line, head} = await this.headOf(piece);
@@ -423,10 +432,13 @@ const UNOPENED = 'the search index cannot be opened (the daemon\'s log says why)
  * Indexes the projects that have a session (`open`, and `leave` once it ends), one batch at a time across them, in the
  * background. `book(root, kind, text, options)` puts a line in that project's ledger; `progress(root, how)` tells its
  * editors how far a build is. An `embedder` of the tests' installs nothing, unless they give a `runtime` too.
+ * `reranker` (see rerank.mjs), when the config has one, reorders the first pieces of /find's and the search tool's
+ * fused list, and of a picker's once it settles (`rerank`).
  */
 export class Meaning {
-  constructor({dataDir, config = {}, embedding = null, log = () => {}, book = () => {}, progress = () => {}, fetch = globalThis.fetch, embedder = null, runtime = null, treeSitter = null, now = Date.now}) {
-    Object.assign(this, {dataDir, config, embedding, log, book, fetch, now});
+  constructor({dataDir, config = {}, embedding = null, reranker = null, log = () => {}, book = () => {}, progress = () => {}, fetch = globalThis.fetch, embedder = null, runtime = null, treeSitter = null, now = Date.now}) {
+    Object.assign(this, {dataDir, config, embedding, reranker, log, book, fetch, now});
+    this.reranking = null; // the AbortController of a picker's rerank under way: a newer one stops it
     this.tell = progress;
     this.disabled = config === false;
     this.parsers = []; // the tree-sitter parsers of the user's Neovim, as it says at its hello
@@ -646,7 +658,50 @@ export class Meaning {
       this.failed(error);
       answer.problem = error.message;
     }
-    return Object.assign(answer, {ms: this.now() - started}, this.about(index));
+    return Object.assign(answer, {ms: this.now() - started}, this.about(index), this.reranker ? {reranker: this.reranker.entry.model} : {});
+  }
+
+  /**
+   * `results` (a search's, best first) with the reranker's order for their first pieces: `{results, rerank}`, where
+   * `rerank` says what happened (`{model, ms, applied, moved}`, or with `why` the order was kept), or is null without
+   * a reranker. The model reads each piece's text from the files.
+   */
+  async reranked(index, query, results, {signal} = {}) {
+    if (!this.reranker || results.length < 2) return {results, rerank: null};
+    const texts = await Promise.all(results.slice(0, this.reranker.top).map(async result => pieceText(result, await index.textOf(result, SNIPPET_CHARS))));
+    const done = await this.reranker.rerank(query, results, {texts, signal});
+    const rerank = {model: this.reranker.entry.model, ms: done.ms, applied: done.ok, ...(done.ok ? {moved: done.moved} : {why: done.why, problem: done.error})};
+    return {results: done.results, rerank};
+  }
+
+  /**
+   * A picker's list, settled (typing stopped and meaning came): its first pieces reranked. `{phase: 'rerank', query,
+   * results, rerank}`; a newer picker rerank stops this one (`rerank.why` "aborted"), and it is not booked.
+   */
+  async rerank(root, query, shown) {
+    const answer = {phase: 'rerank', query, state: this.state, results: [], rerank: null};
+    const index = this.reranker && Array.isArray(shown) ? await this.indexOf(root) : null;
+    if (!index) return answer;
+    const results = shown.filter(result => typeof result?.file === 'string' && !isAbsolute(result.file) && !result.file.split('/').includes('..')
+      && Number.isInteger(result.from) && Number.isInteger(result.to) && result.from <= result.to)
+      .slice(0, this.reranker.top)
+      .map(({file, line, from, to, head, kind, name, meaning, words}) => ({file, line: Number.isInteger(line) ? line : from, from, to, head: typeof head === 'string' ? head : '', kind, name, meaning: meaning ?? null, words: !!words}));
+    this.reranking?.abort();
+    const controller = this.reranking = new AbortController();
+    Object.assign(answer, await this.reranked(index, query, results, {signal: controller.signal}));
+    if (this.reranking === controller) this.reranking = null;
+    if (answer.rerank && answer.rerank.why !== 'aborted') this.bookRerank(root, query, results, answer, ' in the picker');
+    return answer;
+  }
+
+  /** A rerank in the ledger: what moved, or why the order stayed, with the order before and after behind ⏎. */
+  bookRerank(root, query, before, {results, rerank}, how = '') {
+    const at = result => `${result.file}:${result.line}`;
+    const text = rerank.applied
+      ? `"${query}"${how} with ${rerank.model} in ${rerank.ms} ms: ${rerank.moved ? `${rerank.moved} of ${Math.min(before.length, this.reranker.top)} moved${at(results[0]) !== at(before[0]) ? `, first now ${at(results[0])} (was ${at(before[0])})` : ''}` : 'the order stayed'}`
+      : `"${query}"${how}: kept the search's order, ${rerank.model} ${rerank.why === 'timeout' ? 'too slow' : rerank.why === 'flat' ? 'saw no piece stand out' : rerank.why === 'down' ? 'not answering lately' : 'failed'} (${rerank.problem})`;
+    const lines = list => list.slice(0, this.reranker.top).map(result => `${at(result)}${result.rerank !== undefined ? `  ${result.rerank}` : ''}  ${result.head}`).join('\n');
+    this.book(root, 'reranked', text, {detail: {output: rerank.applied ? `before:\n${lines(before)}\n\nafter (the model's probability):\n${lines(results)}` : lines(before)}});
   }
 
   recovered() {
@@ -664,7 +719,7 @@ export class Meaning {
    * What a search in the project at `root` finds, meaning and words fused: `{query, state, results, ...why}`. Without
    * meaning (off, or its model failing), the words alone, and why.
    */
-  async search(root, query, {limit = 30, book = true} = {}) {
+  async search(root, query, {limit = 30, book = true, rerank = true} = {}) {
     const state = this.state;
     const answer = {query, state, results: []};
     const index = await this.indexOf(root);
@@ -681,6 +736,11 @@ export class Meaning {
         answer.problem = error.message;
         answer.results = await index.wordSearch(query, {limit});
       }
+    }
+    if (rerank && this.reranker) {
+      const before = answer.results;
+      Object.assign(answer, await this.reranked(index, query, before));
+      if (answer.rerank && book) this.bookRerank(root, query, before, answer);
     }
     Object.assign(answer, {ms: this.now() - started}, this.about(index));
     if (book) this.booked(root, query, answer.results);
@@ -808,7 +868,7 @@ export class Meaning {
   snapshot() {
     return {
       state: this.state, model: this.modelName, embedding: this.embedding ? {model: this.embedding.model, baseUrl: this.embedding.baseUrl} : null,
-      revision: MODEL.revision, problem: this.problem, downloading: this.downloading?.phase === 'model' ? this.downloading.bytes : null,
+      revision: MODEL.revision, problem: this.problem, rerank: this.reranker?.snapshot() ?? null, downloading: this.downloading?.phase === 'model' ? this.downloading.bytes : null,
       installing: this.downloading?.phase === 'runtime' ? this.downloading.bytes : null,
       python: typeof this.embedder.python === 'function' ? this.embedder.python() : this.embedder.python, runtime: this.embedder.runtime?.runtime ?? null, msPerChunk: this.embedder.msPerText,
       treeSitter: this.treeSitter.missing ? 'no nvim' : 'nvim',

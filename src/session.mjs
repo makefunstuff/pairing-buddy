@@ -2103,10 +2103,12 @@ export class PairSession {
     if (!gen && !['scout', 'driver'].includes(this.role)) throw new Error('Searching needs the Scout role; the user can switch with /scout.');
     const within = path === '.' ? '' : path.replace(/^\.\//, '').replace(/\/$/, '');
     // Within a path, more of the ranking is looked through: what ranks lower in the project may be first there.
-    const answer = await this.findCode(query, {limit: within ? 300 : 30}).catch(error => ({results: [], problem: error.message}));
+    // The reranker reorders the project's first pieces: within a path, those may be none of the path's.
+    const answer = await this.findCode(query, {limit: within ? 300 : 30, rerank: !within}).catch(error => ({results: [], problem: error.message}));
     const results = answer.results.filter(result => !within || result.file === within || result.file.startsWith(`${within}/`)).slice(0, 12);
-    const how = answer.state === 'on' && !answer.problem ? 'by meaning and words'
-      : `by words only (${answer.problem ?? (answer.state === 'disabled' ? 'search by meaning is off in the config' : 'no embedding model: :Pair find on adds one')})`;
+    const how = (answer.state === 'on' && !answer.problem ? 'by meaning and words'
+      : `by words only (${answer.problem ?? (answer.state === 'disabled' ? 'search by meaning is off in the config' : 'no embedding model: :Pair find on adds one')})`)
+      + (answer.rerank?.applied ? `, reranked by ${answer.rerank.model}` : '');
     if (!results.length) return `Pair's index has nothing ${how} for "${query}".`;
     const lines = results.map(result => `${result.file}:${result.line}: ${result.head}${result.name ? `  (${result.name})` : ''}`);
     return `Pair's index, ${how}, best first:\n${lines.join('\n')}\n\nRead the best ones before you answer; name the places (file:line).`;

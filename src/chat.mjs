@@ -138,9 +138,11 @@ export function foundLines(message) {
   const how = message.state === 'on' && !message.problem ? 'by meaning and words'
     : `by words only (${message.problem ?? (message.state === 'disabled' ? 'search by meaning is off in the config' : ':Pair find on in Neovim adds meaning')})`;
   const building = message.chunks && message.embedded < message.chunks && message.state === 'on' ? `, index ${Math.floor(100 * message.embedded / message.chunks)}% built` : '';
+  const reranked = !message.rerank ? '' : message.rerank.applied ? `, reranked by ${message.rerank.model}`
+    : `, ${message.rerank.model}'s rerank kept the order (${message.rerank.problem})`;
   if (!message.results?.length) return [`find "${message.query}": nothing ${how}${building}`];
   return [
-    `find "${message.query}", ${how}${building}${message.ms !== undefined ? `, ${message.ms} ms` : ''}:`,
+    `find "${message.query}", ${how}${building}${reranked}${message.ms !== undefined ? `, ${message.ms} ms` : ''}:`,
     ...message.results.slice(0, 10).map(result => `  ${result.file}:${result.line}  ${result.head}`),
   ];
 }
