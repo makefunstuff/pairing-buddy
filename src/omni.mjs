@@ -1,13 +1,16 @@
 // Voice's local model: LFM3-Omni-2B on LiteRT, the model and runtime lfm-pixel uses for dictation, read-aloud and Talk
 // (LFMP-8). It hears push-to-talk and reads answers aloud, offline, on the CPU. Its files (4.0 GB) come once, when the
-// user says so (`:Pair voice on`), at a pinned revision, each kept only if its SHA-256 matches; nothing else reaches the
-// network. A Python helper (src/omni-helper.py) runs it, in the same Python as search by meaning's (embedder.mjs),
-// started on first use and stopped once idle, which gives its memory back.
+// user says so (`:Pair voice on`), at a pinned revision, each kept only if its SHA-256 matches, and so do its Python
+// packages, by their hashes, into search by meaning's venv (runtime.mjs); nothing else reaches the network. A Python
+// helper (src/omni-helper.py) runs it in that venv, started on first use and stopped once idle, which gives its memory
+// back.
 import {execFile, spawn} from 'node:child_process';
-import {rm, statfs} from 'node:fs/promises';
+import {readFileSync} from 'node:fs';
+import {mkdir, mkdtemp, rm, statfs} from 'node:fs/promises';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {downloadModel, fileReady, RUNTIME} from './embedder.mjs';
+import {downloadFile, downloadModel, fileReady, meaningDir, pythonOf, RUNTIME} from './embedder.mjs';
+import {venvPython} from './runtime.mjs';
 import {readMessages} from './protocol.mjs';
 
 const REPO = 'litert-community/LFM3-Omni-2B-LiteRT';
@@ -36,8 +39,11 @@ export const OMNI = {
   files: FILES,
   bytes: FILES.reduce((sum, file) => sum + file.bytes, 0),
 };
-// What the helper imports, next to search by meaning's litert-lm-api: LiteRT for the speech graphs, and the runner's.
-export const OMNI_PACKAGES = [RUNTIME, 'ai-edge-litert==2.3.0', 'numpy==2.5.4', 'tokenizers==0.23.3'];
+// What the helper imports, next to search by meaning's litert-lm-api: LiteRT for the speech graphs (with ml-dtypes,
+// the one dependency it imports), and the runner's numpy and tokenizers. voice-runtime.txt pins each wheel's SHA-256.
+export const OMNI_PACKAGES = [RUNTIME, 'ai-edge-litert==2.3.0', 'numpy==2.5.4', 'ml-dtypes==0.6.0', 'tokenizers==0.23.3'];
+export const VOICE_LOCK = fileURLToPath(new URL('./voice-runtime.txt', import.meta.url));
+const VOICE_WHEELS = JSON.parse(readFileSync(new URL('./voice-wheels.json', import.meta.url), 'utf8')); // {"linux x64 314": [{url, bytes, sha256}]}
 export const CACHE_BYTES = 4_200_000_000; // XNNPACK's packed weights, written on the first use of hearing and speech
 export const gb = bytes => `${(bytes / 1e9).toFixed(1)} GB`;
 
@@ -294,14 +300,69 @@ export class OmniVoice {
   }
 }
 
-/** Which LiteRT-LM `python` has with the packages the helper needs, or why not: {version} or {problem}. */
+/**
+ * Whether `python` has the helper's packages at their pinned versions: {version} (LiteRT-LM's) or {problem}, "… has
+ * no ai-edge-litert" or "… has numpy 2.1.0, not 2.5.4".
+ */
 export function omniRuntimeOf(python) {
-  const names = OMNI_PACKAGES.map(spec => spec.split('==')[0]);
-  const probe = `import importlib.metadata as m\nfor p in ${JSON.stringify(names)}:\n    try: m.version(p)\n    except m.PackageNotFoundError: print("missing", p); raise SystemExit(3)\nprint(m.version("litert-lm-api"))`;
+  const pins = Object.fromEntries(OMNI_PACKAGES.map(spec => spec.split('==')));
+  const probe = `import importlib.metadata as m\nfor p, v in ${JSON.stringify(Object.entries(pins))}:\n    try: have = m.version(p)\n    except m.PackageNotFoundError: print("missing", p); raise SystemExit(3)\n    if have != v: print("version", p, have, v); raise SystemExit(3)\nprint(m.version("litert-lm-api"))`;
   return new Promise(resolve => execFile(python, ['-I', '-c', probe], {timeout: 20_000}, (error, stdout, stderr) => {
     if (!error) return resolve({version: stdout.trim()});
     if (error.code === 'ENOENT') return resolve({problem: `${python} is not there`});
     const missing = stdout.match(/missing (\S+)/);
-    resolve({problem: missing ? `${python} has no ${missing[1]}` : (stderr.trim().split('\n').at(-1) || error.message)});
+    const other = stdout.match(/version (\S+) (\S+) (\S+)/);
+    resolve({problem: missing ? `${python} has no ${missing[1]}` : other ? `${python} has ${other[1]} ${other[2]}, not ${other[3]}` : (stderr.trim().split('\n').at(-1) || error.message)});
   }));
+}
+
+/** The wheels voice's packages need for `pythonVersion` ("3.14") on this machine, or null when PyPI has none. */
+export const voiceWheelsOf = (pythonVersion, platform = process.platform, arch = process.arch) => VOICE_WHEELS[`${platform} ${arch} ${pythonVersion.replace('.', '')}`] ?? null;
+
+const run = (file, args, options = {}) => new Promise(resolve => execFile(file, args, {timeout: 20_000, ...options}, (error, stdout, stderr) => resolve({error, stdout, stderr})));
+
+/** What to run when Pair may not install voice's packages itself: into the config's meaning.python, by their hashes. */
+export const omniInstall = python => `${python} -m pip install --require-hashes --no-deps --only-binary=:all: -r ${VOICE_LOCK} (or leave meaning.python out, and :Pair voice on installs them)`;
+
+/**
+ * `:Pair voice on`'s packages, in search by meaning's venv (runtime.mjs, PAIR-8), the one Python both helpers run:
+ * LiteRT-LM first if the venv lacks it (`runtime.install()`, which makes the venv), then voice's four wheels for that
+ * Python and machine, each downloaded from PyPI by the SHA-256 in voice-runtime.txt, and pip with no index, every hash
+ * required, no other package. With the config's meaning.python, Pair installs nothing there: it says what to run.
+ * `progress(bytes, total)` hears the downloads; `signal` stops it. Resolves {python, version, bytes, wheels} or null
+ * when everything was there. `check` and `wheelsOf` are for tests.
+ */
+export async function installVoiceRuntime({dataDir, meaning = null, runtime, fetch = globalThis.fetch, progress = () => {}, signal = null, platform = process.platform, arch = process.arch, check = omniRuntimeOf, wheelsOf = voiceWheelsOf}) {
+  const python = pythonOf(meaning, dataDir);
+  if ((await check(python)).version) return null;
+  if (meaning?.python) throw new Error(`${python} lacks voice's packages, and Pair installs nothing into meaning.python: ${omniInstall(python)}`);
+  if (!(await runtime.check()).version) await runtime.install({signal, progress: (bytes, total) => progress(bytes, total)});
+  const venv = venvPython(dataDir);
+  const {stdout, error} = await run(venv, ['-I', '-c', 'import sys; print("%d.%d" % sys.version_info[:2])']);
+  if (error) throw new Error(`${venv} does not run: ${error.message}`);
+  const version = stdout.trim();
+  const wheels = wheelsOf(version, platform, arch);
+  if (!wheels) throw new Error(`voice's packages have wheels for Python 3.12 to 3.14 on Linux (x86-64, ARM64) and macOS on Apple silicon; the venv runs Python ${version} on ${platform} ${arch}: make it with a newer Python, or set "meaning": {"python": …}`);
+  const total = wheels.reduce((sum, wheel) => sum + wheel.bytes, 0);
+  await mkdir(meaningDir(dataDir), {recursive: true, mode: 0o700});
+  const dir = await mkdtemp(join(meaningDir(dataDir), 'wheel-voice-'));
+  try {
+    let done = 0;
+    for (const wheel of wheels) {
+      await downloadFile(wheel.url, join(dir, wheel.url.split('/').at(-1)), {sha256: wheel.sha256, what: wheel.url.split('/').at(-1), fetch, signal, progress: bytes => progress(done + bytes, total)});
+      done += wheel.bytes;
+    }
+    const args = ['-I', '-m', 'pip', 'install', '--no-index', '--find-links', dir, '--require-hashes', '--no-deps', '--only-binary=:all:', '--no-input', '--disable-pip-version-check', '-r', VOICE_LOCK];
+    const pip = await run(venv, args, {timeout: 5 * 60_000, env: {...process.env, PIP_NO_INPUT: '1'}, ...(signal ? {signal} : {})});
+    if (signal?.aborted) throw signal.reason;
+    if (pip.error) {
+      const said = pip.stderr.split('\n').map(line => line.trim()).filter(Boolean);
+      throw new Error(`pip could not install voice's packages: ${(said.findLast(line => line.startsWith('ERROR:')) ?? said.at(-1) ?? pip.error.message).replace(/^ERROR:\s*/, '')}`);
+    }
+  } finally {
+    await rm(dir, {recursive: true, force: true});
+  }
+  const found = await check(venv);
+  if (!found.version) throw new Error(`pip installed voice's packages, but ${found.problem}`);
+  return {python: venv, version, bytes: total, wheels: wheels.map(wheel => wheel.url.split('/').at(-1))};
 }

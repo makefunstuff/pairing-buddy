@@ -642,9 +642,9 @@ prints `hook-ok`.
 network off`. If bubblewrap cannot run here, it says so; then `"scoutPane": {"sandbox": false}` in the config
 silences the warning (commands then run unsandboxed, after the command policy).
 
-**Push-to-talk.** Follow [voice.md](docs/voice.md#setup): LFM3-Omni's Python packages, a recorder (`pw-record`,
-`parec` or `arecord`), `"voice": {}` in the config, and `:Pair voice on` in Neovim, which downloads LFM3-Omni once
-(4.0 GB, said before it starts); or whisper.cpp built for the CPU instead. Expected: `✓ voice  pw-record records,
+**Push-to-talk.** Follow [voice.md](docs/voice.md#setup): a recorder (`pw-record`, `parec` or `arecord`),
+`"voice": {}` in the config, and `:Pair voice on` in Neovim, which installs LFM3-Omni's Python packages and downloads
+the model once (42 MB and 4.0 GB, said before it starts); or whisper.cpp built for the CPU instead. Expected: `✓ voice  pw-record records,
 LFM3-Omni-2B (int8) … hears a second in … s on the CPU, and it reads answers aloud …`.
 
 ## Upgrade

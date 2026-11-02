@@ -12,7 +12,7 @@ import {startDaemon} from '../src/daemon.mjs';
 import {voiceCheck} from '../src/doctor.mjs';
 import {initialState} from '../src/fold.mjs';
 import {Listener} from '../src/listen.mjs';
-import {downloadOmni, gb, languageName, OMNI, omniDir, OmniVoice, omniMissing, omniReady, removeOmni} from '../src/omni.mjs';
+import {downloadOmni, gb, installVoiceRuntime, languageName, OMNI, omniDir, OmniVoice, omniMissing, omniReady, removeOmni, VOICE_LOCK, voiceWheelsOf} from '../src/omni.mjs';
 import {readMessages, sendMessage} from '../src/protocol.mjs';
 import {omniMissingWhy, RATE, saidFiles, sentencesOf, speakOmni, transcribe, voiceConfig, wavPlayerOf} from '../src/voice.mjs';
 import {scratch} from './temp.mjs';
@@ -277,7 +277,9 @@ test('pair doctor with LFM3-Omni: not downloaded, no packages, and one that hear
   const voice = voiceConfig({});
   const notYet = await voiceCheck(voice, found, {dataDir, python: '/venv/bin/python', runtime: lacks, hearSilence: heard});
   assert.equal(notYet.level, 'warn');
-  assert.match(notYet.text, /:Pair voice on downloads LFM3-Omni-2B \(int8\) \(4\.0 GB from Hugging Face, once\); it also needs ai-edge-litert: \/venv\/bin\/python -m pip install litert-lm-api==0\.19\.0 ai-edge-litert==2\.3\.0/);
+  assert.match(notYet.text, /:Pair voice on downloads LFM3-Omni-2B \(int8\) \(4\.0 GB from Hugging Face, once\); it also needs ai-edge-litert: :Pair voice on installs them \(42 MB from PyPI, SHA-256 pinned, into search by meaning's venv\)/);
+  const own = await voiceCheck(voice, found, {dataDir, python: '/mine/python', meaning: {python: '/mine/python'}, runtime: lacks, hearSilence: heard});
+  assert.match(own.text, /\/mine\/python -m pip install --require-hashes --no-deps --only-binary=:all: -r .*voice-runtime\.txt \(or leave meaning\.python out/, 'meaning.python is yours: the hashed line to run');
   fakeOmniFiles(dataDir);
   const noPackages = await voiceCheck(voice, found, {dataDir, python: '/venv/bin/python', runtime: lacks, hearSilence: heard});
   assert.equal(noPackages.level, 'fail');
@@ -319,7 +321,7 @@ test('the daemon: :Pair voice on says what and how big first, downloads, and boo
     sendMessage(editor, {type: 'voice_on'});
     await until(() => got.filter(message => message.type === 'voice_state').length >= 2, 'the download');
     const told = got.filter(message => message.type === 'voice_state').map(message => message.text);
-    assert.match(told[0], /^Downloading LFM3-Omni-2B for voice: 4\.0 GB from Hugging Face \(litert-community\/LFM3-Omni-2B-LiteRT, pinned, SHA-256 checked\), once/);
+    assert.match(told[0], /^Voice: installing LFM3-Omni-2B, 4\.0 GB from Hugging Face \(litert-community\/LFM3-Omni-2B-LiteRT, pinned, SHA-256 checked\), once/);
     assert.match(told.at(-1), /^LFM3-Omni is here/);
     assert.equal(readFileSync(join(omniDir(dir), 'LFM3-Omni-2B_int8.litertlm'), 'utf8'), 'weights');
     sendMessage(editor, {type: 'today'});
@@ -334,4 +336,77 @@ test('the daemon: :Pair voice on says what and how big first, downloads, and boo
   } finally {
     await daemon.close();
   }
+});
+
+test(':Pair voice on installs voice\'s packages first, in search by meaning\'s venv, says how big, and books it', async () => {
+  const dir = scratch('omni-packages-');
+  const config = parseConfig({
+    dataDir: dir, socket: join(dir, 'pair.sock'), agents: false, plan: false,
+    models: {watcher: {api: 'openai', baseUrl: 'http://unused', model: 'w'}, partner: {api: 'openai', baseUrl: 'http://unused', model: 'p'}},
+    voice: {},
+  });
+  fakeOmniFiles(dir);
+  const watcher = fauxProvider({provider: 'faux-w'});
+  const partner = fauxProvider({provider: 'faux-p'});
+  const models = createModels();
+  models.setProvider(watcher.provider);
+  models.setProvider(partner.provider);
+  let has = false;
+  const asked = [];
+  const daemon = await startDaemon(config, {
+    pairModels: {models, watcher: watcher.getModel(), partner: partner.getModel()}, probe: async () => ({ok: true}), log: () => {},
+    omniWith: {
+      voice: {fail: () => {}, close: () => {}, dataDir: dir},
+      runtime: async () => (has ? {version: '0.19.0'} : {problem: 'python3 has no ai-edge-litert'}),
+      wheels: () => [{bytes: 30e6}, {bytes: 12e6}],
+      install: async options => { asked.push(options); has = true; return {python: '/venv/bin/python', version: '3.14', bytes: 42e6, wheels: ['ai_edge_litert.whl', 'numpy.whl']}; },
+    },
+  });
+  try {
+    const editor = connect(config.socket);
+    await new Promise(resolve => editor.on('connect', resolve));
+    const got = [];
+    readMessages(editor, message => got.push(message));
+    sendMessage(editor, {type: 'hello', role: 'editor', cwd: dir});
+    await until(() => got.length > 0, 'the session');
+    sendMessage(editor, {type: 'voice_on'});
+    await until(() => got.filter(message => message.type === 'voice_state').length >= 2, 'the install');
+    const told = got.filter(message => message.type === 'voice_state').map(message => message.text);
+    assert.equal(told[0], 'Voice: installing its Python packages (42 MB from PyPI, SHA-256 pinned, into search by meaning\'s venv), once; :Pair voice off stops it and deletes the model.');
+    assert.match(told.at(-1), /^LFM3-Omni is here: hold the listen key/);
+    assert.ok(asked[0].runtime, 'through search by meaning\'s runtime (PAIR-8), which makes the venv');
+    sendMessage(editor, {type: 'today'});
+    await until(() => got.some(message => message.type === 'ledger'), 'the ledger');
+    assert.match(JSON.stringify(got.find(message => message.type === 'ledger')), /voice's Python packages \(42 MB, SHA-256 pinned\) in search by meaning's venv, Python 3\.14/);
+    editor.destroy();
+  } finally {
+    await daemon.close();
+  }
+});
+
+test('voice\'s packages: LiteRT-LM first through the venv\'s installer, then the wheels by their hashes, pip with no index; never into meaning.python', async () => {
+  const dataDir = scratch('omni-venv-');
+  const venv = join(dataDir, 'meaning', 'venv', 'bin');
+  mkdirSync(venv, {recursive: true});
+  const pipLog = join(dataDir, 'pip');
+  writeFileSync(join(venv, 'python'), `#!/bin/sh\ncase "$*" in *version_info*) echo 3.14;; *pip*) echo "$@" > ${pipLog};; esac\n`, {mode: 0o755});
+  const wheel = text => ({url: `https://files.pythonhosted.org/packages/x/${text}.whl`, bytes: text.length, sha256: createHash('sha256').update(text).digest('hex')});
+  let installed = false;
+  let checks = 0;
+  const runtime = {check: async () => ({version: installed ? '0.19.0' : null}), install: async () => { installed = true; }};
+  const result = await installVoiceRuntime({
+    dataDir, runtime, platform: 'linux', arch: 'x64', wheelsOf: version => (version === '3.14' ? ['litert', 'numpy'].map(wheel) : null),
+    check: async () => (++checks > 1 ? {version: '0.19.0'} : {problem: 'no ai-edge-litert'}),
+    fetch: async url => new Response(url.split('/').at(-1).replace('.whl', '')),
+  }).catch(error => error);
+  assert.ok(!(result instanceof Error), result?.message);
+  assert.ok(installed, 'LiteRT-LM and the venv first');
+  assert.equal(result.version, '3.14');
+  assert.deepEqual(result.wheels, ['litert.whl', 'numpy.whl'], 'each by its SHA-256');
+  const pip = readFileSync(pipLog, 'utf8');
+  for (const flag of ['--no-index', '--require-hashes', '--no-deps', '--only-binary=:all:', VOICE_LOCK]) assert.ok(pip.includes(flag), flag);
+
+  await assert.rejects(installVoiceRuntime({dataDir, meaning: {python: '/mine/python'}, runtime, check: async () => ({problem: 'x'})}), /Pair installs nothing into meaning\.python: \/mine\/python -m pip install --require-hashes/);
+  assert.equal(voiceWheelsOf('3.10', 'linux', 'x64'), null);
+  assert.equal(voiceWheelsOf('3.14', 'darwin', 'arm64').length, 4);
 });

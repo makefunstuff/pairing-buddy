@@ -113,32 +113,31 @@ Away is told by the terminal's focus reports, which Neovim turns on by itself; h
 
 Skip this step when [whisper.cpp](#whispercpp) or [OpenRouter](#openrouter) hears and something else reads aloud.
 
-**Its Python.** LFM3-Omni runs in a small Python helper Pair starts, the same Python as
-[search by meaning](meaning.md#turn-embeddinggemma-on)'s: Pair looks for a virtual environment in its data folder
-first (the one `:Pair find on` makes, if you use search by meaning). Voice needs three more packages there, which you
-install once (Python 3.10 or later; Linux on x86-64 or ARM64, or macOS on Apple silicon); with that venv already made,
-the `pip install` line alone:
-
-```sh
-python3 -m venv ~/.local/state/pairing-buddy/meaning/venv
-~/.local/state/pairing-buddy/meaning/venv/bin/pip install litert-lm-api==0.19.0 ai-edge-litert==2.3.0 numpy==2.5.4 tokenizers==0.23.3
-```
-
-LiteRT-LM (`litert-lm-api`) hears; LiteRT (`ai-edge-litert`) runs the speech graphs; numpy and tokenizers serve the
-model's own speech loop. `"meaning": {"python": "/path/to/python"}` names another Python that has them. `:Pair find off`
-deletes the venv if Pair made it, and voice's packages with it: `pair doctor` then gives the line again.
-
-**The model, once.** In Neovim:
+In Neovim:
 
 ```
 :Pair voice on
 ```
 
-Neovim says first what comes and how big: `Downloading LFM3-Omni-2B for voice: 4.0 GB from Hugging Face
-(litert-community/LFM3-Omni-2B-LiteRT, pinned, SHA-256 checked), once; :Pair voice off stops it and deletes it.`,
-then how far it is every GB. It refuses to start when your disk has less room than the files and the packed
-weights need (8.2 GB). The download goes to `voice/lfm3-omni/` in Pair's data folder, never to your project, and
-`:Pair today` lists it. `:Pair voice off` stops a download under way and deletes the model.
+That is all: Pair installs what LFM3-Omni needs, once, and says first what comes and how big:
+`Voice: installing its Python packages (42 MB from PyPI, SHA-256 pinned, into search by meaning's venv), then
+LFM3-Omni-2B, 4.0 GB from Hugging Face (litert-community/LFM3-Omni-2B-LiteRT, pinned, SHA-256 checked), once; :Pair
+voice off stops it and deletes the model.` Then it tells how far it is, every GB.
+
+- **Its Python.** LFM3-Omni runs in a small Python helper Pair starts, in the same venv as
+  [search by meaning](meaning.md#turn-embeddinggemma-on)'s (`meaning/venv` in Pair's data folder), installed the same
+  way: if the venv is not there yet, Pair makes it with LiteRT-LM as `:Pair find on` does (your Python 3.10 or later).
+  Then it downloads voice's four wheels for that Python and machine from PyPI, each kept only if its SHA-256 is the
+  one in Pair's lock file (`src/voice-runtime.txt`), and pip installs them from those files: no index,
+  `--require-hashes`, no other package, nothing built. LiteRT (`ai-edge-litert`, with `ml-dtypes`) runs the speech
+  graphs, numpy and tokenizers the model's own speech loop. PyPI has these wheels for Python 3.12 to 3.14 on Linux
+  (x86-64, ARM64) and macOS on Apple silicon; with an older Python, the venv needs making with a newer one.
+  `:Pair find off` leaves the venv while LFM3-Omni is here. With `"meaning": {"python": …}`, that Python is yours:
+  Pair installs nothing into it, and `:Pair voice on` and `pair doctor` say the `pip install --require-hashes` line to
+  run.
+- **The model.** It refuses to start when your disk has less room than the files and the packed weights need
+  (8.2 GB). The download goes to `voice/lfm3-omni/` in Pair's data folder, never to your project. `:Pair today` lists
+  the install and the download. `:Pair voice off` stops a download under way and deletes the model.
 
 Nothing else comes, ever, and nothing is downloaded until you say so: voice without the model says
 `Pair could not listen: LFM3-Omni is not downloaded: :Pair voice on downloads it (4.0 GB from Hugging Face, once)`
@@ -190,8 +189,7 @@ nothing.
 ✓ voice     pw-record records, whisper.cpp hears a second in 0.4 s on the CPU
 ```
 
-Without the model yet, the line says what `:Pair voice on` downloads, and the `pip install` line if a package is
-missing; `:Pair voice on` says that line too, once the download is done. With LFM3-Omni downloaded but not used (voice
+Without the model or its packages yet, the line says what `:Pair voice on` downloads and installs. With LFM3-Omni downloaded but not used (voice
 off, or whisper.cpp hearing and nothing else reading), the line says so, and that `:Pair voice off` deletes it.
 
 All fields:

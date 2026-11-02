@@ -23,7 +23,7 @@ import {sandboxWorks} from './sandbox.mjs';
 import {keyVariables, readServiceEnv} from './service-env.mjs';
 import {serviceManager} from './service.mjs';
 import {VERSION} from './version.mjs';
-import {gb, OMNI, OMNI_PACKAGES, OmniVoice, omniMissing, omniReady, omniRuntimeOf} from './omni.mjs';
+import {gb, OMNI, OmniVoice, omniInstall, omniMissing, omniReady, omniRuntimeOf} from './omni.mjs';
 import {openrouterRequest, playerOf, RATE, recorderOf, transcribe, wavPlayerOf} from './voice.mjs';
 
 const WATCHER_MS = SLOW_MS; // the Watcher scores every candidate remark: about a second is the aim, and over this Pair asks about less
@@ -69,7 +69,7 @@ export async function* doctor({
   if (existsSync(auth)) yield loginsCheck(auth);
   if (keyVariables(config).length) yield keysCheck(keyVariables(config), env, serviceEnv);
   yield paneCheck(config.scoutPane);
-  yield await voiceCheck(config.voice, undefined, {dataDir: config.dataDir, python: pythonOf(config.meaning, config.dataDir)});
+  yield await voiceCheck(config.voice, undefined, {dataDir: config.dataDir, python: pythonOf(config.meaning, config.dataDir), meaning: config.meaning});
   yield await meaningCheck(config, status);
   yield* modelChecks(config, status, credentials);
   yield await decisionCheck(config, status, credentials);
@@ -231,7 +231,7 @@ export function keysCheck(names, env, path) {
  * who reads answers aloud (LFM3-Omni, a speech command or OpenRouter's voice) with a player. Nothing is recorded, and
  * no audio goes to OpenRouter: it is asked about the key and its models only. Nothing is downloaded either.
  */
-export async function voiceCheck(voice, found = name => onPath(name, process.env), {dataDir, python, runtime = omniRuntimeOf, hearSilence = omniHearsSilence} = {}) {
+export async function voiceCheck(voice, found = name => onPath(name, process.env), {dataDir, python, meaning = null, runtime = omniRuntimeOf, hearSilence = omniHearsSilence} = {}) {
   const kept = dataDir ? OMNI.bytes - omniMissing(dataDir) : 0;
   const unused = kept > OMNI.bytes / 2 ? `; LFM3-Omni (${gb(kept)}) is downloaded but not used: :Pair voice off deletes it` : '';
   if (!voice) return ok('voice', `off: to speak to Pair, set "voice": {} in the config (see docs/voice.md)${unused}`);
@@ -247,12 +247,12 @@ export async function voiceCheck(voice, found = name => onPath(name, process.env
   if (voice.hear === 'omni' || voice.omniSpeaks) {
     const uses = voice.hear === 'omni' ? (voice.omniSpeaks ? 'hear and read answers aloud' : 'hear') : 'read answers aloud';
     const packages = await runtime(python);
-    const needs = packages.version ? '' : `; it also needs ${packages.problem.replace(/^.* has no /, '')}: ${omniInstall(dataDir, python)}`;
+    const needs = packages.version ? '' : `; it also needs ${packages.problem.replace(/^.* has (no )?/, '')}: ${packagesHow(meaning, python)}`;
     if (!omniReady(dataDir)) {
       const missing = omniMissing(dataDir);
       return warn('voice', `${records} records; to ${uses}, :Pair voice on downloads ${OMNI.name} (${gb(missing)} from Hugging Face, once)${needs}`);
     }
-    if (!packages.version) return fail('voice', `${OMNI.name} is downloaded, but ${packages.problem}: ${omniInstall(dataDir, python)}`);
+    if (!packages.version) return fail('voice', `${OMNI.name} is downloaded, but ${packages.problem}: ${packagesHow(meaning, python)}`);
     omni = `${OMNI.name} (revision ${OMNI.revision.slice(0, 7)}, SHA-256 checked) on LiteRT-LM ${packages.version} in ${tilde(python)}`;
   }
   let hears;
@@ -296,15 +296,8 @@ export async function voiceCheck(voice, found = name => onPath(name, process.env
   return ok('voice', `${records} records, ${hears}${reads}${omni ? '' : unused}`);
 }
 
-/**
- * What to run for voice's LFM3-Omni: the packages in search by meaning's venv, where Pair looks for its Python; in
- * the Python that `meaning.python` names, when that is the one Pair runs.
- */
-export const omniInstall = (dataDir, python = null) => {
-  const venv = join(meaningDir(dataDir), 'venv');
-  if (python && python !== 'python3' && python !== join(venv, 'bin', 'python')) return `${tilde(python)} -m pip install ${OMNI_PACKAGES.join(' ')}`;
-  return `python3 -m venv ${tilde(venv)} && ${tilde(venv)}/bin/pip install ${OMNI_PACKAGES.join(' ')} (or set meaning.python)`;
-};
+/** How voice's packages get there: `:Pair voice on` installs them; the config's own meaning.python is the user's to fill. */
+const packagesHow = (meaning, python) => (meaning?.python ? omniInstall(tilde(python)) : ':Pair voice on installs them (42 MB from PyPI, SHA-256 pinned, into search by meaning\'s venv)');
 
 /** LFM3-Omni hears a second of silence, in a helper of its own that stops after: {ms} or {problem}. */
 async function omniHearsSilence({python, dataDir, threads}) {

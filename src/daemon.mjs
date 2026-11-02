@@ -1,6 +1,7 @@
 // The long-lived daemon: one Unix socket for Neovim, the chat pane and the shell hook; one session per project,
 // shared by every Neovim and chat pane open in it.
-import {chmodSync, mkdirSync, unlinkSync} from 'node:fs';
+import {execFile} from 'node:child_process';
+import {chmodSync, existsSync, mkdirSync, unlinkSync} from 'node:fs';
 import {realpath} from 'node:fs/promises';
 import {createServer} from 'node:net';
 import {homedir} from 'node:os';
@@ -24,8 +25,7 @@ import {followLoaded, shareServer} from './loaded-model.mjs';
 import {DETAIL_KEPT_MS} from './ledger.mjs';
 import {editOrigin} from './fold.mjs';
 import {Listener} from './listen.mjs';
-import {downloadOmni, gb, OMNI, OmniVoice, omniMissing, omniReady, omniRuntimeOf, removeOmni} from './omni.mjs';
-import {omniInstall} from './doctor.mjs';
+import {downloadOmni, gb, installVoiceRuntime, OMNI, OmniVoice, omniMissing, omniReady, omniRuntimeOf, removeOmni, voiceWheelsOf} from './omni.mjs';
 import {pythonOf} from './embedder.mjs';
 import {usesOmni} from './voice.mjs';
 import {Meaning} from './meaning.mjs';
@@ -40,7 +40,7 @@ import {Pace} from './pace.mjs';
 import {probeModel} from './probe.mjs';
 import {projectContext} from './project-context.mjs';
 import {readMessages, sendMessage} from './protocol.mjs';
-import {RUNTIME_VERSION} from './runtime.mjs';
+import {Runtime, RUNTIME_VERSION, venvPython} from './runtime.mjs';
 import {configChanges, RESTART_FIELDS, watchConfig} from './reload.mjs';
 import {rememberScores} from './score-memory.mjs';
 import {ScoutPane} from './scout-pane.mjs';
@@ -99,7 +99,7 @@ export async function startDaemon(config, {
   idleEndMs = IDLE_END_MS, aloneEndMs = ALONE_END_MS, agentsPollMs, taskChangesPollMs = TASK_CHANGES_MS,
   appCommand = 'herdr-app', // the Herdr window's command, for herdr-core's focus and agents
   meaningWith = {}, // tests' fetch and embedder for search by meaning (see meaning.mjs)
-  omniWith = {}, // tests' LFM3-Omni for voice (see omni.mjs): {voice, fetch, free, files, runtime}
+  omniWith = {}, // tests' LFM3-Omni for voice (see omni.mjs): {voice, fetch, free, files, runtime, wheels, install}
 } = {}) {
   mkdirSync(config.dataDir, {recursive: true, mode: 0o700});
   mkdirSync(join(config.dataDir, 'runs'), {recursive: true}); // the output of the tests run on save, one file per session
@@ -182,6 +182,7 @@ export async function startDaemon(config, {
   });
 
   // Voice's LFM3-Omni (omni.mjs): one helper for every session, started on first use; its download is `:Pair voice on`.
+  meaning.keepVenv = () => omniReady(config.dataDir); // :Pair find off leaves the venv to voice while LFM3-Omni is here
   const omni = omniWith.voice ?? new OmniVoice({python: () => pythonOf(config.meaning, config.dataDir), dataDir: config.dataDir, threads: config.voice?.threads, log});
   let omniDownload = null; // {abort, done} while its files come
 
@@ -1110,38 +1111,60 @@ export async function startDaemon(config, {
     sendMessage(client.socket, {type: 'meaning_state', ...meaning.snapshot(), text});
   }
 
-  /** `:Pair voice on`: LFM3-Omni's one download (4.0 GB), said up front and told as it goes, then booked. */
+  /**
+   * `:Pair voice on`: what comes said up front, then voice's Python packages (in search by meaning's venv, PAIR-8's
+   * install path: LiteRT-LM first if it lacks it) and LFM3-Omni's one download (4.0 GB), each told as it goes and
+   * booked.
+   */
   async function voiceOn(client) {
     const tell = text => sendMessage(client.socket, {type: 'voice_state', text});
-    const python = pythonOf(config.meaning, config.dataDir);
-    const here = async () => {
-      const packages = await (omniWith.runtime ?? omniRuntimeOf)(python);
-      if (!packages.version) return tell(`LFM3-Omni is here, but ${packages.problem}: ${omniInstall(config.dataDir, python)}`);
-      tell(`LFM3-Omni is here: ${usesOmni(config.voice) ? 'hold the listen key and speak' : 'set "voice": {} in the config to hear and speak with it'}.`);
-    };
-    if (omniReady(config.dataDir)) return here();
     if (omniDownload) return tell('LFM3-Omni is downloading already.');
     const missing = omniMissing(config.dataDir);
-    tell(`Downloading LFM3-Omni-2B for voice: ${gb(missing)} from Hugging Face (${OMNI.repo}, pinned, SHA-256 checked), once; :Pair voice off stops it and deletes it.`);
+    const python = pythonOf(config.meaning, config.dataDir);
+    const check = omniWith.runtime ?? omniRuntimeOf;
+    const needsPackages = !(await check(python)).version;
+    const wheels = needsPackages ? (omniWith.wheels ?? voiceWheelsOf)(await venvVersion()) : null;
+    const ready = `LFM3-Omni is here: ${usesOmni(config.voice) ? 'hold the listen key and speak' : 'set "voice": {} in the config to hear and speak with it'}.`;
+    if (!missing && !needsPackages) return tell(ready);
+    const fetches = [
+      ...(needsPackages ? [`its Python packages${wheels ? ` (${Math.round(wheels.reduce((sum, wheel) => sum + wheel.bytes, 0) / 1e6)} MB from PyPI, SHA-256 pinned, into search by meaning's venv)` : ''}`] : []),
+      ...(missing ? [`LFM3-Omni-2B, ${gb(missing)} from Hugging Face (${OMNI.repo}, pinned, SHA-256 checked)`] : []),
+    ];
+    tell(`Voice: installing ${fetches.join(', then ')}, once; :Pair voice off stops it and deletes the model.`);
     const abort = new AbortController();
-    let told = 0;
     omniDownload = {abort};
+    let told = 0;
+    const progress = what => (bytes, total) => {
+      if (bytes - told < (what === 'LFM3-Omni' ? 1e9 : 16e6)) return;
+      told = bytes;
+      tell(`Downloading ${what}: ${what === 'LFM3-Omni' ? `${gb(bytes)} of ${gb(total)}` : `${Math.round(bytes / 1e6)} of ${Math.round(total / 1e6)} MB`}…`);
+    };
     try {
-      await downloadOmni(config.dataDir, {
-        fetch: omniWith.fetch, free: omniWith.free, files: omniWith.files, signal: abort.signal,
-        progress: (bytes, total) => {
-          if (bytes - told < 1e9) return;
-          told = bytes;
-          tell(`Downloading LFM3-Omni: ${gb(bytes)} of ${gb(total)}…`);
-        },
+      const installed = await (omniWith.install ?? installVoiceRuntime)({
+        dataDir: config.dataDir, meaning: config.meaning, runtime: meaning.runtime ?? new Runtime({dataDir: config.dataDir, python: () => pythonOf(config.meaning, config.dataDir), log}),
+        fetch: omniWith.fetch, signal: abort.signal, progress: progress('voice\'s packages'), check,
       });
+      if (installed) {
+        const detail = {output: `${installed.wheels.join('\n')}\nfrom PyPI by the SHA-256 in src/voice-runtime.txt, into ${tilde(installed.python)}`};
+        for (const session of live.values()) session.ledger.add('installed', `voice's Python packages (${Math.round(installed.bytes / 1e6)} MB, SHA-256 pinned) in search by meaning's venv, Python ${installed.version}`, {detail});
+      }
+      told = 0;
+      if (missing) {
+        await downloadOmni(config.dataDir, {fetch: omniWith.fetch, free: omniWith.free, files: omniWith.files, signal: abort.signal, progress: progress('LFM3-Omni')});
+        for (const session of live.values()) session.ledger.add('downloaded', `LFM3-Omni-2B for voice (${gb(missing)}, revision ${OMNI.revision.slice(0, 7)}, SHA-256 checked)`);
+      }
     } catch (error) {
-      return tell(`LFM3-Omni is not downloaded: ${error.message}`);
+      return tell(`Voice is not ready: ${error.message.replace(/\.$/, '')}.`);
     } finally {
       omniDownload = null;
     }
-    for (const session of live.values()) session.ledger.add('downloaded', `LFM3-Omni-2B for voice (${gb(missing)}, revision ${OMNI.revision.slice(0, 7)}, SHA-256 checked)`);
-    await here();
+    tell(ready);
+  }
+
+  /** The Python version of search by meaning's venv, or of the python3 that would make it ("3.14"), or "". */
+  async function venvVersion() {
+    const python = existsSync(venvPython(config.dataDir)) ? venvPython(config.dataDir) : 'python3';
+    return new Promise(resolve => execFile(python, ['-I', '-c', 'import sys; print("%d.%d" % sys.version_info[:2])'], {timeout: 20_000}, (error, stdout) => resolve(error ? '' : stdout.trim())));
   }
 
   /** `:Pair voice off`: the helper stops, a download stops, and LFM3-Omni's files leave Pair's data folder. */

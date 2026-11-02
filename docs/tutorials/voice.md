@@ -8,14 +8,7 @@ instead. Voice is off until you set it up; this takes about five minutes and one
 
 - **LFM3-Omni, on your machine.** Nothing leaves it. It hears well (2% of words wrong on human speech) and reads
   answers aloud in a natural voice. It needs a 4.0 GB download that Pair makes only when you say so, 8.2 GB of disk in
-  all, and up to 6 GB of memory while it speaks. Install its Python once:
-
-  ```sh
-  python3 -m venv ~/.local/state/pairing-buddy/meaning/venv
-  ~/.local/state/pairing-buddy/meaning/venv/bin/pip install litert-lm-api==0.19.0 ai-edge-litert==2.3.0 numpy==2.5.4 tokenizers==0.23.3
-  ```
-
-  This is the same Python as search by meaning's; if you made it already, run only the `pip install` line.
+  all, and up to 6 GB of memory while it speaks. It needs Python 3.12 to 3.14; Pair installs the rest itself.
 
 - **whisper.cpp, on your machine.** Smaller (142 MB) and lighter, and it reads nothing aloud by itself. Build it once:
 
@@ -40,14 +33,15 @@ For LFM3-Omni:
 "voice": {}
 ```
 
-Then, in Neovim, download it once:
+Then, in Neovim, install it once:
 
 ```
 :Pair voice on
 ```
 
-Neovim says what comes and how big before it starts (`Downloading LFM3-Omni-2B for voice: 4.0 GB from Hugging
-Face …`), then how far it is. It takes a minute or two on a fast line. `:Pair voice off` stops it, or deletes the model
+Neovim says what comes and how big before it starts (`Voice: installing its Python packages (42 MB from PyPI, …),
+then LFM3-Omni-2B, 4.0 GB from Hugging Face …`), then how far it is. It takes a minute or two on a fast line. The
+packages go into the same venv as search by meaning's, by their pinned SHA-256. `:Pair voice off` stops it, or deletes the model
 later.
 
 For whisper.cpp:
