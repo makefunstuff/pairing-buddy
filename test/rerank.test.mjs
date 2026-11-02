@@ -139,7 +139,8 @@ test('a model that is slow, down or answers oddly keeps the search\'s order; aft
     server.set({mode: 'ok'});
     const asked = server.requests.length;
     const skipped = await meaning.search(root, 'price cents');
-    assert.equal(skipped.rerank.why, 'down', 'not asked again for a minute');
+    assert.equal(skipped.rerank, undefined, 'not asked again for a minute, nor booked each time');
+    assert.equal(booked.filter(entry => entry.kind === 'reranked').length, 1);
     assert.equal(server.requests.length, asked);
     now += 61_000;
     assert.equal((await meaning.search(root, 'price cents')).rerank.applied, true, 'a minute later it is asked, and reranks');
@@ -229,6 +230,12 @@ test('a question that timed out may still run on the server: nothing else is sen
     assert.equal(waited.ok, true, 'it waits for the old one\'s question, then asks');
     assert.equal(server.flight.most, 1);
     assert.equal(next.running, null);
+    const tired = fakeReranker(server.baseUrl, {timeoutMs: 150});
+    server.set({mode: 'slow', delayMs: 400});
+    await tired.rerank('q', results);
+    const changed = fakeReranker(server.baseUrl);
+    changed.follow(tired); // a config saved right after a timeout
+    assert.equal((await changed.rerank('q', results)).why, 'down', 'it keeps the minute of rest');
   } finally {
     await server.close();
   }

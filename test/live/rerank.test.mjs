@@ -26,7 +26,7 @@ const mrr = ranks => ranks.reduce((sum, rank) => sum + (rank ? 1 / rank : 0), 0)
 const percentile = (values, p) => [...values].sort((a, b) => a - b)[Math.min(values.length - 1, Math.floor(values.length * p))];
 
 test('the reranker on Pair\'s own repository: recall@5 and MRR before and after, and its time', {skip, timeout: 1_800_000}, async () => {
-  const entry = rerankConfig({timeoutMs: 20_000, ...JSON.parse(process.env.PAIR_LIVE_RERANK)});
+  const entry = rerankConfig(JSON.parse(process.env.PAIR_LIVE_RERANK)); // the shipped budget, unless the entry sets one
   const reranker = new Reranker({...createDecisionModel({rerank: entry}, {field: 'rerank'}), entry, log: line => console.log(line)});
   const dataDir = process.env.PAIR_LIVE_MEANING_DATA ?? scratch('rerank-live-data-');
   const meaning = new Meaning({dataDir, config: process.env.PAIR_LIVE_MEANING_PYTHON ? {python: process.env.PAIR_LIVE_MEANING_PYTHON} : {}, reranker, log: () => {}});
@@ -41,8 +41,7 @@ test('the reranker on Pair\'s own repository: recall@5 and MRR before and after,
     for (const query of queries) {
       const plain = await meaning.search(ROOT, query.query, {rerank: false, book: false});
       const reranked = await meaning.search(ROOT, query.query, {book: false});
-      assert.ok(reranked.rerank, 'a rerank was asked');
-      rows.push({query, before: rankOf(query, plain.results), after: rankOf(query, reranked.results), ms: reranked.rerank.ms, why: reranked.rerank.why});
+      rows.push({query, before: rankOf(query, plain.results), after: rankOf(query, reranked.results), ms: reranked.rerank?.ms ?? 0, why: reranked.rerank ? reranked.rerank.why : 'resting'});
       const last = rows.at(-1);
       console.log(`${String(last.before).padStart(2)} → ${String(last.after).padStart(2)}  ${String(last.ms).padStart(5)} ms${last.why ? ` (kept: ${last.why})` : ''}  ${query.query}`);
     }
@@ -55,7 +54,7 @@ test('the reranker on Pair\'s own repository: recall@5 and MRR before and after,
     report('code', rows.filter(row => !row.query.file.endsWith('.md')));
     report('docs', rows.filter(row => row.query.file.endsWith('.md')));
     const ms = rows.map(row => row.ms);
-    console.log(`rerank of ${entry.top} pieces with ${reranker.name}: p50 ${percentile(ms, 0.5)} ms, p95 ${percentile(ms, 0.95)} ms, max ${Math.max(...ms)} ms; within the default ${3000} ms: ${ms.filter(each => each <= 3000).length} of ${ms.length}`);
+    console.log(`rerank of ${entry.top} pieces with ${reranker.name}: p50 ${percentile(ms, 0.5)} ms, p95 ${percentile(ms, 0.95)} ms, max ${Math.max(...ms)} ms; applied within its ${entry.timeoutMs} ms: ${rows.filter(row => !row.why).length} of ${rows.length}`);
   } finally {
     await meaning.close();
   }

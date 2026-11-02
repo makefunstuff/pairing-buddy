@@ -761,7 +761,7 @@ export class Meaning {
         answer.results = await index.wordSearch(query, {limit});
       }
     }
-    if (rerank && this.reranker) {
+    if (rerank && this.reranker?.available) { // resting after a failure: the failure was booked once
       const before = answer.results;
       Object.assign(answer, await this.reranked(index, query, before));
       if (answer.rerank) this.bookRerank(root, query, before, answer); // vim.ui.select's too, whose search is booked at the pick

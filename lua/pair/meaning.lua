@@ -137,7 +137,7 @@ function Live:settle(query)
     -- An answer that never comes (the daemon restarted) leaves the title as it was, not "reranking".
     vim.defer_fn(function()
       if self.done or self.rerank_id ~= rerank_id or not self.reranking then return end
-      self.reranking = false
+      self.reranking, self.rerank_id = false, nil -- an answer that comes later is not used
       self.changed(self, 'reranking')
     end, 10000)
   end))

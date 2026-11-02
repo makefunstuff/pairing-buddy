@@ -112,11 +112,11 @@ words fused.
 
 | | recall@5 | MRR |
 | --- | --- | --- |
-| All 32, before → after | 0.72 → 0.81 | 0.50 → 0.74 |
-| Code (25) | 0.76 → 0.84 | 0.59 → 0.77 |
-| Docs (7) | 0.57 → 0.71 | 0.17 → 0.64 |
+| All 32, before → after | 0.72 → 0.81 | 0.47 → 0.71 |
+| Code (25) | 0.76 → 0.84 | 0.56 → 0.75 |
+| Docs (7) | 0.57 → 0.71 | 0.17 → 0.57 |
 
-The rerank took 2.4 s at the median, 2.7 s at the 95th percentile, all 32 within the 3 s budget. Fewer characters a
+With the 3 s budget Pair ships, the rerank took 2.4 s at the median and 2.8 s at the 95th percentile, and applied to all 32: a thin margin, and a timeout rests the model for a minute, so a busier CPU reranks less. Fewer characters a
 piece were quicker and ranked a little worse (100: 1.9 s, MRR 0.70); six pieces 1.6 s (MRR 0.70, recall@5 0.75); fifteen
 3.3 s for no better MRR. The model can only reorder what the search found: a piece outside the first ten stays where it
 was. The questions were written for this measure, by one person: a small set, so take the numbers as a direction.

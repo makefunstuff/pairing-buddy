@@ -181,8 +181,12 @@ export class Reranker {
     }
   }
 
-  /** A new reranker of a changed config waits for the question the one before has under way. */
+  /**
+   * A new reranker of a changed config waits for the question the one before has under way, and keeps its minute of
+   * rest after a failure (the server may still be on a question that timed out).
+   */
   follow(previous) {
+    if (previous?.down) Object.assign(this, {down: previous.down, downAt: previous.downAt});
     if (!previous?.running) return;
     const after = previous.running.then(() => { if (this.running === after) this.running = null; });
     this.running = after;
