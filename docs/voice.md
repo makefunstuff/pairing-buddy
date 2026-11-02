@@ -115,7 +115,9 @@ Skip this step when [whisper.cpp](#whispercpp) or [OpenRouter](#openrouter) hear
 
 **Its Python.** LFM3-Omni runs in a small Python helper Pair starts, the same Python as
 [search by meaning](meaning.md#turn-embeddinggemma-on)'s: Pair looks for a virtual environment in its data folder
-first. Install once (Python 3.10 or later; Linux on x86-64 or ARM64, or macOS on Apple silicon):
+first (the one `:Pair find on` makes, if you use search by meaning). Voice needs three more packages there, which you
+install once (Python 3.10 or later; Linux on x86-64 or ARM64, or macOS on Apple silicon); with that venv already made,
+the `pip install` line alone:
 
 ```sh
 python3 -m venv ~/.local/state/pairing-buddy/meaning/venv
@@ -123,7 +125,8 @@ python3 -m venv ~/.local/state/pairing-buddy/meaning/venv
 ```
 
 LiteRT-LM (`litert-lm-api`) hears; LiteRT (`ai-edge-litert`) runs the speech graphs; numpy and tokenizers serve the
-model's own speech loop. `"meaning": {"python": "/path/to/python"}` names another Python that has them.
+model's own speech loop. `"meaning": {"python": "/path/to/python"}` names another Python that has them. `:Pair find off`
+deletes the venv if Pair made it, and voice's packages with it: `pair doctor` then gives the line again.
 
 **The model, once.** In Neovim:
 
