@@ -241,7 +241,7 @@ Anything you type that is not a command is a question for Pair; it is always ans
   ([gen.md](gen.md#new-files-gen-file)). `/gen try <what>` asks for a sample to read and run, in a folder outside the
   project, which opens in Neovim in a split; `/gen run` runs the newest again, `/gen tries` lists the folders still
   kept, and `/keep [path]` moves the newest try's file into the project as a buffer to review
-  ([gen.md](gen.md#samples-gen-try-and-keep)). `/gen scaffold <what>` builds many files and their wiring in a copy of
+  ([gen.md](gen.md#samples-gen-try-and-keep)). `/gen scaffold [--branch|--copy] <what>` builds many files and their wiring in a copy of
   the project; the chat gets its debrief, `/keep <path>` keeps a file of it and `/gen drop` deletes the copy
   ([gen.md](gen.md#many-files-gen-scaffold)). Ask about a try or a scaffold right here: Pair reads their files. When the request's shape is a guess, or Pair asks something about it, the question waits in the
   chat with what its answers do: `y` takes the guess or the answer given, `n` cancels or leaves it to Pair, and

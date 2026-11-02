@@ -286,7 +286,7 @@ When you know what the code does but not what it calls it, `Alt-s` (or `:Pair fi
 Telescope, snacks.picker or fzf-lua, used like `live_grep`: the pieces of code with your words show on every key
 (identifiers split, comments and strings too), and once you pause, those closest to what you mean join below them.
 `Enter` opens one at its line, `<C-q>` sends them to quickfix. The words need no model; meaning runs on your machine
-once you say yes to EmbeddingGemma 2's one download (`:Pair find on`), or on an embedding model of your own. How it
+once you say yes to fetching EmbeddingGemma 2 and its runtime, once (`:Pair find on`), or on an embedding model of your own. How it
 ranks, what the index holds and what it costs are in [Search by meaning](meaning.md).
 
 ## The held thought

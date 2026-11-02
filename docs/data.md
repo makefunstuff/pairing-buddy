@@ -1,5 +1,5 @@
 ---
-description: "What Pair keeps and where: logins in auth.json, the rest in its data directory. Nothing goes into your repository or leaves your machine but model calls."
+description: "What Pair keeps and where: logins and keys by the config, the rest in its data folder, an index in your repository if asked, and what leaves the machine."
 ---
 
 # Data and privacy
@@ -21,7 +21,7 @@ description: "What Pair keeps and where: logins in auth.json, the rest in its da
 | `panes/` | Pair's own pane: its shell's output log and each command's exit code, one folder per pane, removed when the pane closes ([herdr.md](herdr.md#pairs-own-pane-exact)) |
 | `voice/` | A [push-to-talk](voice.md) recording, only while whisper.cpp reads it (OpenRouter's is kept in memory only) |
 | `index/` | [Search by meaning](meaning.md#the-index)'s index, a SQLite file per repository (`<repository>-<hash>.sqlite`), shared by its worktrees: each piece of code's file, lines, hash, kind and name, the FTS5 index of its words (lower case and stemmed, with their places, but not the text itself), and a vector per piece (256 numbers, about 1 KB, for EmbeddingGemma); no copy of the code. `:Pair find off` deletes them, `:Pair index rebuild` makes one again |
-| `meaning/` | [Search by meaning](meaning.md)'s EmbeddingGemma 2, once you turn it on: its model (`embeddinggemma-2-text-270m.litertlm`, 165 MB, with its checksum note), and `venv/`, the venv with its runtime LiteRT-LM that `:Pair find on` makes (with a `venv-made-by-pair.json` note next to it) unless you made it there yourself. `:Pair find off` deletes the model and the venv Pair made |
+| `meaning/` | [Search by meaning](meaning.md)'s EmbeddingGemma 2, once you turn it on: its model (`embeddinggemma-2-text-270m.litertlm`, 165 MB, with its checksum note), and `venv/`, the venv with its runtime LiteRT-LM that `:Pair find on` makes (with a `venv-made-by-pair.json` note next to it) unless you made it there yourself. After `:Pair find off` with an `embedding` model, an `off` note keeps it off until `:Pair find on`. `:Pair find off` deletes the model and the venv Pair made |
 | `daemon.log` | The daemon's log, when `pair` started it (under systemd it goes to the journal, under launchd to `~/Library/Logs/pairing-buddy.log`) |
 | `daemon.lock` | Makes sure one daemon owns the files above |
 
@@ -36,11 +36,12 @@ chose says (add only, add and delegate, delegate with a plan first, or delegate 
 archives the task, each on the pick that names it, and [`/brief sync`](gen.md#keeping-the-task-in-step-brief-sync)
 tells the branch's task what changed in the brief, on its pick too. What the board's working tasks change is read with
 git, never changed. Nothing leaves your machine
-except the requests to the model endpoints you configured (OpenRouter's voice too, when you set it), search by meaning's one
-model download from Hugging Face when you say yes to it ([meaning.md](meaning.md#why-this-model-and-runtime)), `gh pr view` for the
+except the requests to the model endpoints you configured (OpenRouter's voice too, when you set it), search by meaning's one-time
+downloads when you say yes to them (EmbeddingGemma 2 from Hugging Face, LiteRT-LM's wheel from PyPI) ([meaning.md](meaning.md#why-this-model-and-runtime)), `gh pr view` for the
 [context card](neovim.md#what-it-knows-the-context-card) when `gh` is installed and, for a login, to the provider's
 sign-in service. Those requests carry your code: the Watcher gets each moment's text (your edits, a command's
-output, a test's failure), and the Partner the files and lines it reads, the diffs it suggests and your questions. With
+output, a test's failure), and the Partner the files and lines it reads, the diffs it suggests and your questions; an
+[embedding model](meaning.md) of your own gets the text of each piece of code it indexes, and your searches. With
 a cloud provider, that code goes to the provider: check that your employer allows it before you use Pair on work code;
 a local server keeps it on your machine. A [decision model](decision.md#what-it-is-told), when you set one, gets each moment's kind and
 text, your goal, the paths you edited, your last commands and test counts, and your verdicts on earlier remarks; never

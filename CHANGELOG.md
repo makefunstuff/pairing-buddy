@@ -15,7 +15,7 @@ release is cut.
   and strings too), in a few milliseconds; once you stop typing for 150 ms, the pieces closest to what you mean join
   the list below them, so nothing you see moves. "method that removes user" finds `logout` in Pair's own code. The
   preview shows a piece at its line, `Enter` opens it, `<C-q>` sends the hits to quickfix; `/find <words>` in the chat
-  and Scout's and the Driver's `search` tool (`meaning: true`, and whenever ripgrep finds nothing for plain words) get
+  and Scout's and the Driver's `search` tool (`meaning: true`, and whenever ripgrep finds nothing for two or more plain words) get
   meaning and words fused by reciprocal rank. The pieces are functions, classes and methods with their doc comments,
   found by Neovim's tree-sitter in a headless Neovim where it has a parser, else blocks between blank lines. The
   index is a SQLite file per repository in Pair's data folder (`index/<repository>-<hash>.sqlite`), or with
@@ -24,7 +24,7 @@ release is cut.
   vector by the hash of its text, so a worktree on another branch embeds only what that branch changed; a save embeds only the pieces that changed,
   and a first build runs in the background, its progress shown as Neovim's progress message. The words need no model;
   meaning runs on EmbeddingGemma 2 (text, 270M, Apache-2.0, 256 numbers a piece) on LiteRT-LM in a small Python helper
-  after its one download (`:Pair find on`, 165 MB, pinned revision, SHA-256 checked), or on an embedding model of your own behind an OpenAI-compatible `/v1/embeddings`, the new
+  after its one download (`:Pair find on`, 165 MB, pinned revision, SHA-256 checked, and LiteRT-LM installed in a venv of Pair's), or on an embedding model of your own behind an OpenAI-compatible `/v1/embeddings`, the new
   `embedding` entry next to the models (nomic-embed-code, jina-embeddings-v2-base-code, with their prompts). The search
   embeds your words once and compares them with every vector: 1.5 ms for Pair's 6,639 pieces, 16 ms for 100,000. On
   Pair's own repository the first build took 9 minutes on the default two cores (13.5 MB) and a search by

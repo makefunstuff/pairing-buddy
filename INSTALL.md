@@ -77,6 +77,10 @@ Write down four facts for the steps below:
      Recommended.
    - The shell hook, which tells Pair the exit codes of the commands you run (one line in the shell rc file).
    - Push-to-talk (whisper.cpp and a recorder).
+   - Search by meaning (`Alt-s`): the word search needs nothing; for meaning, `:Pair find on` in Neovim fetches
+     EmbeddingGemma 2 and LiteRT-LM itself, with Python 3.10+ and its venv module (`python3-venv` on Debian and
+     Ubuntu), on Linux x86-64 or ARM64 or macOS on Apple silicon; or an embedding model of your own
+     ([meaning.md](docs/meaning.md)).
 3. **May you use `sudo`** to install packages with the package manager? Without it, step 3 installs Node.js and
    Neovim into `~/.local` instead.
 
@@ -199,6 +203,7 @@ Install only what the human chose in step 2, with their yes to sudo.
 | tmux (without herdr) | `tmux -V` | `tmux 3.…` | package `tmux` |
 | herdr | `herdr --version`, or `command -v hc herdr-core` for herdr-core | `herdr 0.9.5` or newer, or a path | see [herdr.dev](https://herdr.dev); ask the human if it offers more than one way |
 | Push-to-talk | (step 9) | | see [voice.md](docs/voice.md#setup) |
+| Search by meaning | `for p in python3 python3.14 python3.13 python3.12 python3.11 python3.10; do $p -c 'import sys, ensurepip, venv; print(sys.version_info >= (3, 10))' 2>/dev/null; done` | a `True` line, or a Python 3.10+ in Homebrew's, python.org's or pyenv's folder or `~/.local/bin` | a Python 3.10 or newer with its venv module (`python3` or `python3.10` to `python3.14`, on PATH or Homebrew's, python.org's, pyenv's or in `~/.local/bin`): package `python3-venv` on Debian and Ubuntu, `brew install python` on macOS; Pair fetches the rest in step 9 |
 
 `bash` is needed too and is there on every supported system (`bash --version`). bubblewrap may be installed and still
 not work (some containers forbid user namespaces); `pair doctor` tells, and Pair then runs without the sandbox.
@@ -646,6 +651,11 @@ silences the warning (commands then run unsandboxed, after the command policy).
 `parec` or `arecord`), and a `"voice"` entry in the config. Expected: `✓ voice  pw-record records, whisper.cpp hears
 a second in … s on the CPU`.
 
+**Search by meaning.** Tell the human to run `:Pair find on` in Neovim, their yes to the downloads: Pair installs LiteRT-LM in a
+venv of its own and downloads EmbeddingGemma 2 (165 MB), once ([meaning.md](docs/meaning.md)). Without a fitting
+Python, `:Pair find on` first says what it would fetch, then `Search by meaning stays off: …` with what is missing,
+and downloads nothing (install it, as 3.6 says). Expected afterwards in `pair doctor`: `✓ meaning  EmbeddingGemma 2 … on LiteRT-LM … answers (… ms with loading)`.
+
 ## Upgrade
 
 ```sh
@@ -684,4 +694,5 @@ Expected: `Removed pairing-buddy.service. …` (systemd), `Removed the launchd a
 Then remove what step 7 added to the Neovim config (the spec file, the lines, or the cloned folder; the `.bak-pair`
 backups show what was there before), and the shell hook line from step 9. With the human's yes, the config, logins
 and data: `~/.config/pairing-buddy/` (holds `auth.json` with their logins and keys) and
-`~/.local/state/pairing-buddy/` (the sessions and their notes).
+`~/.local/state/pairing-buddy/` (the sessions and their notes, and search by meaning's model, venv and indexes); with
+`"meaning": {"index": "project"}`, also `.pair/` in each repository and its lines in `.git/info/exclude`.

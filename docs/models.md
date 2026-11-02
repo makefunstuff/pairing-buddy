@@ -129,7 +129,8 @@ pair auth logout anthropic  # also `pair logout anthropic`
   otherwise once two of its calls after Partner turns took reload-long, and `pair doctor` measures the reload
   ([watcher.md](watcher.md#two-roles-one-loaded-model)).
 - If the server's default temperature is high, give the Partner `"samplingParams": {"temperature": 0.3}`: its
-  yes-or-no calls (speak or stay silent) get much steadier. The Watcher always runs at temperature 0.
+  yes-or-no calls (speak or stay silent) get much steadier. The Watcher asks for temperature 0; a Watcher entry of
+  its own sends its `samplingParams` too, which win, so leave them off there.
 - The prompts and tools are deliberately simple (six tools as Navigator, eight as Scout, ten as Driver, flat
   arguments, one instruction per message), so mid-sized local models handle them. The command policy, the limit of
   four searches and commands per question and the five edits per hand-over are in code, so a model that loops or asks for too much

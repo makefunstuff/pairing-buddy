@@ -46,7 +46,7 @@ request that runs past `/gen`'s limits offers this itself: `/gen board #9` hands
 
 ## 3. Hear when it is ready
 
-You keep working. When the task needs you, is ready to merge or is done, Pair says so in one line in the statusline
+You keep working. When the task needs you, is ready to merge, failed or is done, Pair says so in one line in the statusline
 at your next pause, never while you type. `:Pair agents` (or `/agents` in the chat) lists every task, those that
 need you first: `Enter` goes to its agent, `o` opens its report or pull request, `d` its diff, `t` a terminal in its
 worktree, `r` its review.
