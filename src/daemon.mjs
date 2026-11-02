@@ -531,7 +531,7 @@ export async function startDaemon(config, {
     session.receive(event);
     if (event.kind === 'save' && typeof event.file === 'string') meaning.saved(session.root, event.file).catch(error => log(`meaning: ${error.message}`));
     if (event.kind === 'command_end') refreshContext(session);
-    if (event.kind === 'typing' || (event.kind === 'edit' && editOrigin(event.origin) === 'user')) listeners.get(session.root)?.typed(); // speech stops as you type, not as Pair does
+    if (event.kind === 'typing' || (event.kind === 'edit' && editOrigin(event.origin) === 'user')) listeners.get(session.root)?.typed({keys: event.kind === 'typing'}); // speech stops as you type, not as Pair does
     if (event.kind === 'focus' && event.target === 'editor') herdrFocus(clientsOf(session, 'editor'), event.pane);
   }
 
@@ -1113,7 +1113,13 @@ export async function startDaemon(config, {
   /** `:Pair voice on`: LFM3-Omni's one download (4.0 GB), said up front and told as it goes, then booked. */
   async function voiceOn(client) {
     const tell = text => sendMessage(client.socket, {type: 'voice_state', text});
-    if (omniReady(config.dataDir)) return tell(`LFM3-Omni is here: ${usesOmni(config.voice) ? 'voice uses it' : 'set "voice": {} in the config to hear and speak with it'}.`);
+    const python = pythonOf(config.meaning, config.dataDir);
+    const here = async () => {
+      const packages = await (omniWith.runtime ?? omniRuntimeOf)(python);
+      if (!packages.version) return tell(`LFM3-Omni is here, but ${packages.problem}: ${omniInstall(config.dataDir, python)}`);
+      tell(`LFM3-Omni is here: ${usesOmni(config.voice) ? 'hold the listen key and speak' : 'set "voice": {} in the config to hear and speak with it'}.`);
+    };
+    if (omniReady(config.dataDir)) return here();
     if (omniDownload) return tell('LFM3-Omni is downloading already.');
     const missing = omniMissing(config.dataDir);
     tell(`Downloading LFM3-Omni-2B for voice: ${gb(missing)} from Hugging Face (${OMNI.repo}, pinned, SHA-256 checked), once; :Pair voice off stops it and deletes it.`);
@@ -1135,10 +1141,7 @@ export async function startDaemon(config, {
       omniDownload = null;
     }
     for (const session of live.values()) session.ledger.add('downloaded', `LFM3-Omni-2B for voice (${gb(missing)}, revision ${OMNI.revision.slice(0, 7)}, SHA-256 checked)`);
-    const python = pythonOf(config.meaning, config.dataDir);
-    const packages = await (omniWith.runtime ?? omniRuntimeOf)(python);
-    if (!packages.version) return tell(`LFM3-Omni is here, but ${packages.problem}: ${omniInstall(config.dataDir, python)}`);
-    tell(`LFM3-Omni is here: ${usesOmni(config.voice) ? 'hold the listen key and speak' : 'set "voice": {} in the config to hear and speak with it'}.`);
+    await here();
   }
 
   /** `:Pair voice off`: the helper stops, a download stops, and LFM3-Omni's files leave Pair's data folder. */

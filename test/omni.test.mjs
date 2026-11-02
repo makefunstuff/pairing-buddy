@@ -77,7 +77,7 @@ test('LFM3-Omni\'s pinned files: one revision, 4.0 GB, the runner with them; lan
   assert.ok(OMNI.files.some(file => file.file === 'runner/speech.py'), 'the runner is pinned like the weights');
   assert.equal(languageName('en'), 'English');
   assert.equal(languageName('Swahili'), 'Swahili');
-  assert.equal(languageName('auto'), null, 'any language');
+  assert.equal(languageName('auto'), 'English', 'it needs the language named');
 });
 
 test('the helper hears, speaks a part at a time, stops speech when told, and goes once idle', async () => {
@@ -248,11 +248,18 @@ test('talk: every answer to a spoken question is read aloud at the editor too; t
   assert.equal(talk.spoken.at(-1), '(stopped)', 'you type: it stops');
 
   const busy = listener({model: 'm.bin', speak: 'omni', talk: true});
-  busy.listening.ask = async () => { busy.listening.session.state.lastKeyAt = Date.now() + 1; return 'An answer.'; };
+  busy.listening.ask = async () => { busy.listening.typed({keys: true}); return 'An answer.'; };
   busy.listening.start(() => {});
   await sleep(400);
   await busy.listening.stop();
   assert.deepEqual(busy.spoken, [], 'you typed before the answer came: it is not read aloud');
+  const late = listener({model: 'm.bin', speak: 'omni', talk: true});
+  late.listening.ask = async () => { late.listening.typed(); return 'An answer.'; }; // an edit from before you asked, arriving late
+  late.listening.start(() => {});
+  await sleep(400);
+  await late.listening.stop();
+  assert.deepEqual(late.spoken, ['An answer.'], 'an edit sent late is no typing since');
+
 
   const plain = listener({model: 'm.bin', speak: 'omni'});
   plain.listening.start(() => {});

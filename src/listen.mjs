@@ -29,8 +29,12 @@ export class Listener {
     if (on) this.hush();
   }
 
-  /** The user typed or edited: what is being read aloud stops, as you take the word back. */
-  typed() {
+  /**
+   * The user typed (`keys`, sent by Neovim as you type) or edited (sent up to 2 s later): what is being read aloud
+   * stops, as you take the word back. Only keys say when: an edit's time is when it arrived.
+   */
+  typed({keys = false} = {}) {
+    if (keys) this.typedAt = Date.now();
     this.hush();
   }
 
@@ -93,7 +97,7 @@ export class Listener {
     });
     send({type: 'answer', text: words, pointed: Boolean(this.session.target)}); // then the jump key goes there
     // Read aloud when you are away, or in talk; never while you record again, or once you typed since you asked.
-    const typedSince = this.session.state.lastKeyAt > askedAt;
+    const typedSince = (this.typedAt ?? 0) > askedAt;
     if (words && (this.away || this.voice.talk) && speaks(this.voice) && !this.recording && !typedSince) {
       this.silence = this.speakWith(this.voice, speakable(words), {
         log: this.log,

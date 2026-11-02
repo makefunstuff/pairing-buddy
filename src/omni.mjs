@@ -97,7 +97,8 @@ const LANGUAGES = {
   en: 'English', de: 'German', fr: 'French', es: 'Spanish', it: 'Italian', pt: 'Portuguese', nl: 'Dutch', pl: 'Polish',
   ru: 'Russian', uk: 'Ukrainian', ar: 'Arabic', zh: 'Chinese', ja: 'Japanese', ko: 'Korean', hi: 'Hindi', tr: 'Turkish',
 };
-export const languageName = code => (code === 'auto' ? null : LANGUAGES[code] ?? code); // null: any language
+// LFM3-Omni needs the language named: told only "Perform ASR.", it heard German as English words. `auto` is English.
+export const languageName = code => (code === 'auto' ? 'English' : LANGUAGES[code] ?? code);
 
 /**
  * The helper, started when voice first needs it. One request at a time, in order. `hear(pcm, {language, signal})`

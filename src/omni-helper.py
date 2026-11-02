@@ -11,7 +11,7 @@ packed weights, so a second start maps them instead of unpacking 17 GB into memo
 One JSON line in per request, one or more out:
     {"id": 1, "op": "hear", "pcm": "<base64 16 kHz mono s16le>", "language": "English"}
         -> {"id": 1, "text": "...", "ms": 1200}
-    {"id": 2, "op": "speak", "texts": ["First sentence.", "Second."], "voice": "female"}
+    {"id": 2, "op": "speak", "texts": ["First sentence.", "Second."], "voice": "female", "language": "German"}
         -> {"id": 2, "part": 0, "wav": "<base64 WAV, 24 kHz>", "seconds": 2.1, "ms": 2600} for each text, as it is
            ready, then {"id": 2, "done": true}
     {"id": 2, "op": "cancel"} -> the speech of request 2 stops at its next frame: {"id": 2, "done": true, "cancelled": true}
@@ -74,7 +74,7 @@ class Omni:
                        max_num_tokens=1024, cache_dir=self.cache) as engine:
             sampler = lm.SamplerConfig(top_k=1, top_p=1.0, temperature=0.0)
             conv = engine.create_conversation(sampler_config=sampler, max_output_tokens=400,
-                                              messages=[{"role": "system", "content": ASR_SYSTEM.format(language=language) if language else "Perform ASR."}])
+                                              messages=[{"role": "system", "content": ASR_SYSTEM.format(language=language or "English")}])
             try:
                 reply = conv.send_message(lm.Message.user(lm.Contents.of(lm.Content.AudioBytes(wav_bytes(pcm, 16000)))))
             finally:

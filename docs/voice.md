@@ -198,7 +198,7 @@ All fields:
 | `model` | none: LFM3-Omni hears | a whisper.cpp model file: whisper.cpp hears instead |
 | `whisper` | `whisper-cli` | the whisper.cpp program |
 | `threads` | `4` | CPU threads LFM3-Omni or whisper uses |
-| `language` | `en` | what you speak, and the language LFM3-Omni reads answers in (`de`, `fr`, `es`, `ja` and others; `auto` for any language it hears, or with a multilingual whisper model) |
+| `language` | `en` | what you speak, and the language LFM3-Omni reads answers in (`de`, `fr`, `es`, `ja` and others; LFM3-Omni needs it named, so `auto`, for a multilingual whisper model, is English to it) |
 | `record` | the first recorder found | a shell command that writes raw 16-bit little-endian mono at 16 kHz to stdout |
 | `speak` | `"omni"` when LFM3-Omni hears, else none | `"omni"`: LFM3-Omni reads answers aloud; `false`: nothing is; or a shell command that reads the answer from stdin and says it |
 | `talk` | `false` | `true`: every answer to a spoken question is read aloud, at the editor too ([Talk](#talk-you-ask-aloud-pair-answers-aloud)) |
@@ -298,7 +298,8 @@ holds holds; `listen_release_ms` must be longer than the time between two of its
   with their SHA-256 checked, are run, from their source, never a cached copy; they import json, pathlib, time, collections, numpy, tokenizers and LiteRT, and
   nothing that reaches the network. Read them there before you turn voice on, if you like.
 - **Hearing** is the `.litertlm` on LiteRT-LM, a fresh engine for each recording (LFM3 carries state from one
-  conversation to the next, LiteRT-LM issue #3165), told `Perform ASR in English.` (your `language`).
+  conversation to the next, LiteRT-LM issue #3165), told `Perform ASR in English.` (your `language`). Told
+  only `Perform ASR.`, it heard a German question as English words, so it is always told the language.
 - **Speech** is the same file's decoder with the speech graphs on LiteRT, in the model card's loop: a part at a time,
   stopped at its next 80 ms frame when you take the word back.
 - **Packed weights.** XNNPACK packs the weights for the CPU on the first use of hearing and of speech (about 10 s

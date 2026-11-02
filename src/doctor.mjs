@@ -232,7 +232,8 @@ export function keysCheck(names, env, path) {
  * no audio goes to OpenRouter: it is asked about the key and its models only. Nothing is downloaded either.
  */
 export async function voiceCheck(voice, found = name => onPath(name, process.env), {dataDir, python, runtime = omniRuntimeOf, hearSilence = omniHearsSilence} = {}) {
-  const unused = dataDir && omniMissing(dataDir) < OMNI.bytes ? `; LFM3-Omni (${gb(OMNI.bytes - omniMissing(dataDir))}) is downloaded but not used: :Pair voice off deletes it` : '';
+  const kept = dataDir ? OMNI.bytes - omniMissing(dataDir) : 0;
+  const unused = kept > OMNI.bytes / 2 ? `; LFM3-Omni (${gb(kept)}) is downloaded but not used: :Pair voice off deletes it` : '';
   if (!voice) return ok('voice', `off: to speak to Pair, set "voice": {} in the config (see docs/voice.md)${unused}`);
   const recorder = recorderOf(voice, found);
   if (!recorder) return fail('voice', 'no recorder found: install pw-record (pipewire), parec (pulseaudio-utils) or arecord (alsa-utils), or set voice.record');
