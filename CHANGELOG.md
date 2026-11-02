@@ -9,12 +9,19 @@ release is cut.
 
 ### Added
 
+- **The picker's rerank runs in the background, and quickfix gets its order.** In Telescope and snacks.picker the
+  rerank is asked as soon as meaning came (`meaning_rerank_delay_ms`, 0 by default), never holds up typing, and
+  redraws the list in place when it comes, the piece you are on staying selected; a key drops a stale one. `<C-q>`
+  sends the list in the reranked order; sent while the rerank still runs, the quickfix list opens at once and that
+  same list is reordered in place when it comes (`Find: retry (reranked by d1-2B)`), unless you changed it or made
+  another meanwhile. fzf-lua's `ctrl-q` now sends the whole list, and its quickfix list is reranked the same way.
+
 - **Search by meaning can rerank with a small decision model.** With a `rerank` entry next to `embedding` (a
   classifier such as LiquidAI's d1-2B behind llama.cpp's System One API, `"api": "system-one"`), the first ten pieces
   of a settled list go best first by the probability the model gives each as the one you are looking for: `/find`, the
   `search` tool and `vim.ui.select` wait for it up to 3 s (`timeoutMs`), and in the Telescope and snacks pickers the
-  fused ranking's first ten go first in the model's order once the list has stayed as it is for 400 ms after meaning
-  came (`meaning_rerank_delay_ms`), never on a key, the piece you are on staying selected and the title saying
+  fused ranking's first ten go first in the model's order once meaning came (`meaning_rerank_delay_ms`), in the
+  background and never on a key, the piece you are on staying selected and the title saying
   `reranked by d1-2B`. A model that is down, slow or answers oddly keeps the order, and is not asked again for a
   minute after a failure; it gets one question at a time. On 32 labelled questions about Pair's own code and docs
   (`test/fixtures/rerank-queries.json`, `test/live/rerank.test.mjs`), d1-2B on a CPU raised recall@5 from 0.72 to

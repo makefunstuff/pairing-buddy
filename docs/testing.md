@@ -192,7 +192,11 @@ the work board.
   ranking reranked and booked with the order before and after; a model that is too slow, down, or answers without
   probabilities or with none standing out keeps the order, and is not asked for a minute after a failure; one rerank
   at a time; a picker's rerank of the fused ranking, a Neovim's newer one stopping its older one; `pair doctor`; and
-  in Telescope's stand-in the reranked list, the title and the selection staying put. A list of models: the next asked
+  in Telescope's stand-in the reranked list, the title and the selection staying put; the rerank asked as soon as
+  meaning came, the words answering while the model works and a key dropping it unbooked; `<C-q>` sending the
+  reranked order, or, while the rerank runs, a quickfix list reordered in place (same id, no new list, titled
+  `reranked by`) and left alone once you changed or replaced it; the same in snacks.picker's stand-in, its cursor
+  placed on your piece before the list is drawn again; fzf-lua's `ctrl-q` (the real one) reordering its quickfix list. A list of models: the next asked
   when one is down, fails or is slow, one that failed skipped for a minute, an odd answer not passed on, one question
   at a time across them, a new config keeping each one's rest, and the title, `/find`, the ledger and `pair doctor`
   naming the one that answered. Fake System One servers stand in for the models (`test/rerank.test.mjs`, `test/fake-reranker.mjs`, `test/meaning-nvim.test.mjs`).

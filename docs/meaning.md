@@ -30,8 +30,8 @@ The picker is Telescope if you have it, else snacks.picker, else fzf-lua, else `
 (`meaning_picker` in [setup](neovim-plugin.md#setup) picks one; `meaning_debounce_ms` is the pause, 150 ms). Each line
 is `file:line` and the piece's first line of code (its doc comment is above it; the preview shows both). The list is
 in Pair's order: the words' hits as they came, best first by BM25, then meaning's, best first. `Enter` opens the piece
-at that line. In Telescope, `<C-q>` sends every hit to the quickfix list, as in any picker; in snacks.picker it is
-`<C-q>` too, and in fzf-lua `ctrl-q` sends the selected ones.
+at that line. In Telescope, `<C-q>` sends every hit to the quickfix list, as in any picker; in snacks.picker `<C-q>`
+sends the ones you selected, else all; in fzf-lua `ctrl-q` sends all of them.
 
 The picker's title says what is missing: `words only: :Pair find on adds meaning` without a model, `index 40% built`
 while the first build runs, and how long meaning took once it came (`Find (31 ms)`). With `vim.ui.select`, which
@@ -69,17 +69,24 @@ d1-2B on llama.cpp) can read those ten and say which one you are looking for. Pa
 answers are the pieces, each as its `file:line` and the first 160 characters of its text from its doc comment on; the
 pieces then go best first by the probability the model gives each, and the rest of the list stays as it was.
 
-It is asked only where a list is settled, never on a key:
+It is asked only where a list is settled (meaning came), never on a key:
 
 - **`/find` and the `search` tool** wait for it, up to `timeoutMs` (3 s), then answer; `/find`'s first line says
   `reranked by d1-2B` (and `(gpu-model not answering)` when a model before it in the list did not answer). The `search` tool within a path is not reranked: the project's first ten may be none of the path's.
-- **The live pickers** (Telescope and snacks.picker) show the words and then meaning as before, without waiting; once
-  the list has stayed as it is for `meaning_rerank_delay_ms` (400 ms) after meaning came, the fused ranking's first ten
-  (`/find`'s) go first, in the model's order, once; the rest of the list follows as it was. The title says `reranking`
-  meanwhile and `reranked by d1-2B (2.4 s)` once it applied, `reranked by d1-2B (2.4 s; gpu-model not answering)`
-  when the list's first model did not. A key before then drops it. The piece you are on stays
-  the one you are on, wherever it moves. fzf-lua's list only grows, so it is not reranked there; nor is a picker's
-  list while search by meaning has no model (words only), though `/find` reranks the words then.
+- **The live pickers** (Telescope and snacks.picker) show the words and then meaning as before, without waiting, and
+  ask for the rerank in the background as soon as meaning came (`meaning_rerank_delay_ms`, 0 by default: meaning
+  already waits for you to stop typing); you go on typing and moving meanwhile. When it comes, the fused ranking's
+  first ten (`/find`'s) go first, in the model's order, once, and the rest of the list follows as it was: the list is
+  drawn again where it is, and the piece you are on stays the one you are on, wherever it moves. The title says
+  `reranking` meanwhile and `reranked by d1-2B (2.4 s)` once it applied, `reranked by d1-2B (2.4 s; gpu-model not
+  answering)` when the list's first model did not. A key before then drops it, and the new words get their own. Nor
+  is a picker's list reranked while search by meaning has no model (words only), though `/find` reranks the words then.
+- **Quickfix.** `<C-q>` sends the list in the order it shows: reranked, if the rerank came. If it is still running,
+  the quickfix list opens at once in the order you see, and when the rerank comes that same list (not a new one on
+  the stack) gets its order, the entry you are on staying yours, and its title says so: `Find: retry (reranked by
+  d1-2B)`. If you changed that list meanwhile, or made another one, it is left as it is. fzf-lua's list only grows,
+  so it is not reranked while it is open; its `ctrl-q` sends all of it, and the rerank, asked then, reorders that
+  quickfix list the same way. A new search before it comes drops it, and the list stays in the order it came.
 - **`vim.ui.select`** waits for it too, as `/find`, and its prompt says `(reranked by d1-2B)` when it applied.
 
 A model that is down, slower than `timeoutMs`, or answers oddly (no probability for a piece, or none that stands out)
