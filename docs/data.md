@@ -1,5 +1,5 @@
 ---
-description: "What Pair keeps and where: logins in auth.json, the rest in its data directory. Nothing goes into your repository or leaves your machine but model calls."
+description: "What Pair keeps and where: logins in auth.json, the rest in its data folder. Nothing goes into your repository; what leaves your machine is named."
 ---
 
 # Data and privacy
