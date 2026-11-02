@@ -15,6 +15,7 @@ import {isAbsolute, join, relative} from 'node:path';
 import {apiKeyOf} from './config.mjs';
 import {downloadModel, Embedder, HttpEmbedder, meaningDir, MODEL, modelPath, modelReady, pythonOf, removeModel} from './embedder.mjs';
 import {IndexStore, indexPlace, removeIndex} from './index-store.mjs';
+import {Runtime} from './runtime.mjs';
 import {piecesOf, TreeSitter} from './pieces.mjs';
 
 const MAX_FILE_BYTES = 512 * 1024;
@@ -417,13 +418,14 @@ const UNOPENED = 'the search index cannot be opened (the daemon\'s log says why)
 
 /**
  * Search by meaning for the daemon. The word search works once a project has a session; meaning needs a model: the
- * config's "embedding" one, else EmbeddingGemma 2 once downloaded (`turnOn`). "meaning": false turns it all off.
+ * config's "embedding" one, else EmbeddingGemma 2 once downloaded, with LiteRT-LM installed in a venv of Pair's
+ * (`turnOn`; see runtime.mjs). "meaning": false turns it all off.
  * Indexes the projects that have a session (`open`, and `leave` once it ends), one batch at a time across them, in the
  * background. `book(root, kind, text, options)` puts a line in that project's ledger; `progress(root, how)` tells its
- * editors how far a build is.
+ * editors how far a build is. An `embedder` of the tests' installs nothing, unless they give a `runtime` too.
  */
 export class Meaning {
-  constructor({dataDir, config = {}, embedding = null, log = () => {}, book = () => {}, progress = () => {}, fetch = globalThis.fetch, embedder = null, treeSitter = null, now = Date.now}) {
+  constructor({dataDir, config = {}, embedding = null, log = () => {}, book = () => {}, progress = () => {}, fetch = globalThis.fetch, embedder = null, runtime = null, treeSitter = null, now = Date.now}) {
     Object.assign(this, {dataDir, config, embedding, log, book, fetch, now});
     this.tell = progress;
     this.disabled = config === false;
@@ -432,11 +434,13 @@ export class Meaning {
     this.embedder = embedder ?? (embedding
       ? new HttpEmbedder({entry: embedding, apiKey: () => apiKeyOf(embedding), fetch, log})
       : new Embedder({python: () => pythonOf(config, dataDir), model: modelPath(dataDir), threads: config?.threads, log}));
+    // LiteRT-LM, for EmbeddingGemma: installed by turnOn, but never for the config's own meaning.python.
+    this.runtime = runtime ?? (embedding || embedder ? null : new Runtime({dataDir, python: () => pythonOf(config, dataDir), log}));
     this.treeSitter = treeSitter ?? new TreeSitter({parsers: () => this.parsers, log});
     this.indexes = new Map(); // root -> ProjectIndex
     this.failures = new Map(); // root -> {at, index}: an index file that could not be opened lately
     this.wanted = new Set(); // the roots with a session
-    this.downloading = null; // {bytes} while the model comes
+    this.downloading = null; // {phase: 'runtime' or 'model', bytes, total} while LiteRT-LM installs or the model comes
     this.problem = null; // why the embedder cannot run, until the next try
     this.problemAt = 0;
     this.working = false;
@@ -445,11 +449,11 @@ export class Meaning {
     rm(join(meaningDir(dataDir), 'index'), {recursive: true, force: true}).catch(() => {}); // PAIR-5's, before SQLite
   }
 
-  /** 'disabled', 'off' (words only: no model yet), 'downloading' or 'on'. */
+  /** 'disabled', 'off' (words only: no model yet), 'installing' (LiteRT-LM), 'downloading' (the model) or 'on'. */
   get state() {
     if (this.disabled) return 'disabled';
     if (this.embedding) return existsSync(offPath(this.dataDir)) ? 'off' : 'on';
-    if (this.downloading) return 'downloading';
+    if (this.downloading?.phase) return this.downloading.phase === 'runtime' ? 'installing' : 'downloading';
     return modelReady(this.dataDir) ? 'on' : 'off';
   }
 
@@ -706,30 +710,59 @@ export class Meaning {
   }
 
   /**
-   * Downloads the model, once, then indexes the projects that have a session now. Resolves true when it
-   * downloaded, false when the model was already there (or another embedding model is set).
+   * What `turnOn` would fetch: `{runtime}` when LiteRT-LM is to be installed (with its wheel's size, or null without
+   * one for this machine) and `model` when EmbeddingGemma is to be downloaded. Nothing for an "embedding" model.
+   */
+  async needs() {
+    if (this.disabled || this.embedding) return {runtime: null, model: false};
+    const model = !modelReady(this.dataDir);
+    if (!this.runtime || this.config?.python) return {runtime: null, model}; // the config's Python is the user's to fill
+    const found = await this.runtime.check();
+    return {runtime: found.version ? null : {bytes: this.runtime.bytes}, model};
+  }
+
+  /**
+   * Installs LiteRT-LM and downloads the model, each once and only if missing, then indexes the projects that have a
+   * session now. `progress({phase, bytes, total})` hears how far. Resolves `{runtime, model}`: what pip installed
+   * (`{python, version, pythonVersion, made}`) or null, and whether the model was downloaded. Either failing, what it
+   * half did is deleted (a venv it made, a .part file) and the word search goes on as before.
    */
   async turnOn({progress = () => {}} = {}) {
     if (this.disabled) throw new Error('search by meaning is turned off in the config ("meaning": false)');
-    if (this.downloading) return this.downloading.done.then(() => false);
+    if (this.downloading) return this.downloading.done.then(() => ({runtime: null, model: false}));
     this.problem = null;
-    await rm(offPath(this.dataDir), {force: true});
-    if (this.embedding || modelReady(this.dataDir)) {
-      for (const root of [...this.wanted]) this.open(root);
-      this.work(); // a build a problem stopped goes on
-      return false;
-    }
     const abort = new AbortController();
-    this.downloading = {bytes: 0, abort};
-    this.downloading.done = downloadModel(this.dataDir, {fetch: this.fetch, signal: abort.signal, progress: bytes => { this.downloading.bytes = bytes; progress(bytes); }})
-      .finally(() => { this.downloading = null; });
-    await this.downloading.done;
+    const turning = this.downloading = {phase: null, bytes: 0, total: null, abort}; // a second :Pair find on waits for this one
+    const told = (phase, bytes, total) => {
+      Object.assign(turning, {phase, bytes, total});
+      progress({phase, bytes, total});
+    };
+    turning.done = (async () => {
+      await rm(offPath(this.dataDir), {force: true});
+      const needs = await this.needs();
+      if (abort.signal.aborted) throw abort.signal.reason;
+      let runtime = null;
+      if (needs.runtime) {
+        told('runtime', 0, needs.runtime.bytes);
+        runtime = await this.runtime.install({signal: abort.signal, progress: (bytes, total) => told('runtime', bytes, total)});
+        this.log(`meaning: installed ${runtime.version} of LiteRT-LM in ${runtime.python}`);
+      }
+      if (needs.model) {
+        told('model', 0, MODEL.bytes);
+        await downloadModel(this.dataDir, {fetch: this.fetch, signal: abort.signal, progress: bytes => told('model', bytes, MODEL.bytes)});
+      }
+      return {runtime, model: needs.model};
+    })().finally(() => { this.downloading = null; });
+    const result = await turning.done;
     for (const root of [...this.wanted]) this.open(root); // the sessions open now, started meanwhile too
-    this.work();
-    return true;
+    this.work(); // a build a problem stopped goes on
+    return result;
   }
 
-  /** Off again: the helper stops, and the model and every index leave Pair's data folder (and the open projects). */
+  /**
+   * Off again: the helper stops, and the model, every index and the venv Pair made leave Pair's data folder (and the
+   * open projects). Resolves `{venv}`: whether Pair's venv went.
+   */
   async turnOff() {
     if (this.downloading) { // a download under way stops, and leaves nothing
       this.downloading.abort.abort(new Error('search by meaning was turned off'));
@@ -749,12 +782,14 @@ export class Meaning {
     }
     for (const path of paths) removeIndex(path);
     if (!this.embedding) await removeModel(this.dataDir); // the config's model is not Pair's to delete, nor is it asked any more
+    const venv = !this.embedding && !!await this.runtime?.remove(); // only a venv Pair made: never meaning.python
     await rm(join(this.dataDir, 'index'), {recursive: true, force: true});
     if (this.embedding) {
       await mkdir(meaningDir(this.dataDir), {recursive: true, mode: 0o700});
       await writeFile(offPath(this.dataDir), 'search by meaning was turned off (:Pair find off); :Pair find on turns it on\n');
     }
     await rm(join(meaningDir(this.dataDir), 'index'), {recursive: true, force: true}); // PAIR-5's, before SQLite
+    return {venv};
   }
 
   /** The index's ranking of `query` in `root` for the search trail: the top pieces, or null when it has none. */
@@ -772,7 +807,8 @@ export class Meaning {
   snapshot() {
     return {
       state: this.state, model: this.modelName, embedding: this.embedding ? {model: this.embedding.model, baseUrl: this.embedding.baseUrl} : null,
-      revision: MODEL.revision, problem: this.problem, downloading: this.downloading?.bytes ?? null,
+      revision: MODEL.revision, problem: this.problem, downloading: this.downloading?.phase === 'model' ? this.downloading.bytes : null,
+      installing: this.downloading?.phase === 'runtime' ? this.downloading.bytes : null,
       python: typeof this.embedder.python === 'function' ? this.embedder.python() : this.embedder.python, runtime: this.embedder.runtime?.runtime ?? null, msPerChunk: this.embedder.msPerText,
       treeSitter: this.treeSitter.missing ? 'no nvim' : 'nvim',
       indexes: [...this.indexes.values()].filter(index => index.store).map(index => index.progress()),

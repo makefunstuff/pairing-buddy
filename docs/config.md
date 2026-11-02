@@ -184,11 +184,11 @@ At least one of `hear` and `speak` is needed.
 ## `meaning`
 
 [Search by meaning](meaning.md)'s word search works once a project has a session; meaning needs EmbeddingGemma 2,
-downloaded once by `:Pair find on`, or an [`embedding`](#embedding) model. These fields say how it runs.
+which `:Pair find on` downloads once with the LiteRT-LM runtime it runs on, or an [`embedding`](#embedding) model. These fields say how it runs.
 
 | Field | Default | Meaning |
 | --- | --- | --- |
-| `python` | `<dataDir>/meaning/venv/bin/python` if it is there, else `python3` | The Python whose `litert-lm-api` runs EmbeddingGemma 2 ([meaning.md](meaning.md#turn-embeddinggemma-on)) |
+| `python` | `<dataDir>/meaning/venv/bin/python` if it is there (`:Pair find on` makes it), else `python3` | The Python whose `litert-lm-api` runs EmbeddingGemma 2. Set, it wins: Pair installs nothing into it and never deletes it ([meaning.md](meaning.md#turn-embeddinggemma-on)) |
 | `threads` | `2` | The cores EmbeddingGemma may use while it indexes and searches, at low priority |
 | `index` | `"data"` | Where the index lives: `"data"`, Pair's data folder (`index/<repository>-<hash>.sqlite`); or `"project"`, `.pair/index.sqlite` in the repository, with `.pair/` added to `.git/info/exclude` ([meaning.md](meaning.md#the-index)) |
 
