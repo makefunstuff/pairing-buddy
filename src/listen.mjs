@@ -85,13 +85,16 @@ export class Listener {
     }
     send({type: 'heard', text});
     if (!text) return;
+    const askedAt = Date.now();
     // The answer replaces the heard words under the user's line; '' when Pair only pointed, or nothing came.
     const words = await this.ask(text, selection).catch(error => {
       this.log(`asking what was heard failed: ${error.message}`);
       return '';
     });
     send({type: 'answer', text: words, pointed: Boolean(this.session.target)}); // then the jump key goes there
-    if (words && (this.away || this.voice.talk) && speaks(this.voice) && !this.recording) {
+    // Read aloud when you are away, or in talk; never while you record again, or once you typed since you asked.
+    const typedSince = this.session.state.lastKeyAt > askedAt;
+    if (words && (this.away || this.voice.talk) && speaks(this.voice) && !this.recording && !typedSince) {
       this.silence = this.speakWith(this.voice, speakable(words), {
         log: this.log,
         omni: this.omni,

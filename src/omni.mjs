@@ -128,11 +128,14 @@ export class OmniVoice {
         answer: message => {
           this.heard.ms += message.ms;
           this.heard.audioMs += pcm.length / 2 / 16;
-          resolve(message.text);
+          job.resolve(message.text);
           return true;
         },
       };
-      signal?.addEventListener('abort', () => this.drop(job, signal.reason), {once: true});
+      const abort = () => this.drop(job, signal.reason);
+      signal?.addEventListener('abort', abort, {once: true});
+      const settle = done => value => { signal?.removeEventListener('abort', abort); done(value); };
+      Object.assign(job, {resolve: settle(resolve), reject: settle(reject)});
       this.add(job);
     });
   }
@@ -171,6 +174,7 @@ export class OmniVoice {
     job.stopped = true;
     if (this.queue.includes(job)) {
       this.queue = this.queue.filter(each => each !== job);
+      this.idle(); // nothing else waiting: the helper goes in time, started or not
       return reason ? job.reject(reason) : job.resolve({cancelled: true});
     }
     if (this.running === job && this.child) this.child.stdin.write(`${JSON.stringify({id: job.id, op: 'cancel'})}\n`);
@@ -224,7 +228,8 @@ export class OmniVoice {
         clearTimeout(startTimer);
         this.runtime = {runtime: message.runtime, litert: message.litert};
         this.log(`voice helper ready: LiteRT-LM ${message.runtime}, LiteRT ${message.litert}`);
-        return this.next();
+        this.next();
+        return this.idle(); // what it was started for may have been dropped meanwhile
       }
       const job = this.running;
       if (!job || message.id !== job.id) return;

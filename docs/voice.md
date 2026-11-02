@@ -89,8 +89,11 @@ in the same short form. Ask a follow-up the same way; the chat keeps the thread,
 You stay in charge, and Pair still speaks rarely:
 
 - **Only what you asked.** Pair never says its unasked remarks aloud, in talk or not. They go through the speak gate,
-  the talk budget and the wait for your break as always, and show as text. Answers to your own questions never count
-  against the budget, spoken or not.
+  the talk budget and the wait for your break as always, and show as text. An answer to your own question is not a
+  remark: you asked for it, so the gate does not hold it back and it does not count against the budget, spoken or not
+  (as for a typed question).
+- **Held to your break.** You asked, so you are listening; but if you start typing before the answer comes, it is
+  not read aloud at all: it stays under your line and in the chat.
 - **You take the word back.** Typing, the listen key, or switching away and back stops it at once.
 - **Short.** The first sentence or two, as above; nothing is read twice.
 
@@ -175,7 +178,9 @@ the first of `mpv`, `ffplay`, `pw-play` and `aplay`.
 ```
 
 Save the config (the daemon takes it as you save it), then `pair doctor` checks it: it finds the recorder, and has
-LFM3-Omni (or whisper) hear a second of silence to say how long it takes. It downloads nothing and records nothing.
+LFM3-Omni (or whisper) hear a second of silence to say how long it takes, in a helper of its own that stops after
+(the first time after the download, that includes packing the weights: about 15 s). It downloads nothing and records
+nothing.
 
 ```
 ✓ voice     pw-record records, LFM3-Omni-2B (int8) (revision a287b6e, SHA-256 checked) on LiteRT-LM 0.19.0 in ~/.local/state/pairing-buddy/meaning/venv/bin/python hears a second in 1.4 s on the CPU, and it reads answers aloud (female voice) through mpv when you are away
@@ -286,6 +291,11 @@ holds holds; `listen_release_ms` must be longer than the time between two of its
   only if it matches the pinned one; its checksum is noted beside it, so a start does not read 4 GB again, and a file
   changed since is not trusted. The runner is pinned like the weights, so the helper only runs code of that revision.
   None of it is committed or shipped with Pair. LFM Open License v1.0 for the weights.
+- **Code from the download runs.** The speech loop is the model card's own Python (`runner/speech.py`,
+  `runner/lm_graph.py`, `runner/prompt.py`, Apache-2.0, 33 KB), which the helper loads from `voice/lfm3-omni/runner/`
+  and runs as you, so speech works exactly as the model's authors tested it. Only those files at the pinned revision,
+  with their SHA-256 checked, are run; they import json, pathlib, time, collections, numpy, tokenizers and LiteRT, and
+  nothing that reaches the network. Read them there before you turn voice on, if you like.
 - **Hearing** is the `.litertlm` on LiteRT-LM, a fresh engine for each recording (LFM3 carries state from one
   conversation to the next, LiteRT-LM issue #3165), told `Perform ASR in English.` (your `language`).
 - **Speech** is the same file's decoder with the speech graphs on LiteRT, in the model card's loop: a part at a time,

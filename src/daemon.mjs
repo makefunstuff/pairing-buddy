@@ -22,6 +22,7 @@ import {HerdrPanes} from './herdr.mjs';
 import {CorePaneHost, CorePanes, HerdrApp} from './herdr-core.mjs';
 import {followLoaded, shareServer} from './loaded-model.mjs';
 import {DETAIL_KEPT_MS} from './ledger.mjs';
+import {editOrigin} from './fold.mjs';
 import {Listener} from './listen.mjs';
 import {downloadOmni, gb, OMNI, OmniVoice, omniMissing, omniReady, removeOmni} from './omni.mjs';
 import {pythonOf} from './embedder.mjs';
@@ -529,7 +530,7 @@ export async function startDaemon(config, {
     session.receive(event);
     if (event.kind === 'save' && typeof event.file === 'string') meaning.saved(session.root, event.file).catch(error => log(`meaning: ${error.message}`));
     if (event.kind === 'command_end') refreshContext(session);
-    if (event.kind === 'typing' || event.kind === 'edit') listeners.get(session.root)?.typed(); // speech stops as you type
+    if (event.kind === 'typing' || (event.kind === 'edit' && editOrigin(event.origin) === 'user')) listeners.get(session.root)?.typed(); // speech stops as you type, not as Pair does
     if (event.kind === 'focus' && event.target === 'editor') herdrFocus(clientsOf(session, 'editor'), event.pane);
   }
 

@@ -202,6 +202,19 @@ test('read aloud by LFM3-Omni: sentences in parts, each played as it comes, in o
   await sleep(150);
   assert.equal(readFileSync(slow, 'utf8'), 'First part, long enough to be a part alone.\n');
 
+  const broken = [];
+  let stoppedSpeech = false;
+  const three = {...omni, speak: (texts, options) => { const made = omni.speak(texts, options); return {...made, stop: () => { stoppedSpeech = true; made.stop(); }}; }};
+  speakOmni(voice, 'A first part that is long enough. A second part that is long enough. A third one, long enough too.', {omni: three, player: ['sh', '-c', 'echo no audio server >&2; exit 1'], failed: why => broken.push(why)});
+  await sleep(400);
+  assert.deepEqual(broken, ['no audio server'], 'a failing player is said once');
+  assert.ok(stoppedSpeech, 'and the rest is not made');
+  const absent = [];
+  speakOmni(voice, 'A first part that is long enough. A second part that is long enough.', {omni, player: [join(dataDir, 'no-player')], failed: why => absent.push(why)});
+  await sleep(300);
+  assert.equal(absent.length, 1);
+  assert.match(absent[0], /not found/);
+
   const failed = [];
   speakOmni(voice, 'x', {omni: {dataDir: scratch('omni-none-')}, failed: why => failed.push(why)});
   speakOmni(voice, 'x', {omni, player: null, failed: why => failed.push(why)});
@@ -233,6 +246,13 @@ test('talk: every answer to a spoken question is read aloud at the editor too; t
   talk.listening.typed();
   assert.equal(talk.spoken.at(-1), '(stopped)', 'you type: it stops');
 
+  const busy = listener({model: 'm.bin', speak: 'omni', talk: true});
+  busy.listening.ask = async () => { busy.listening.session.state.lastKeyAt = Date.now() + 1; return 'An answer.'; };
+  busy.listening.start(() => {});
+  await sleep(400);
+  await busy.listening.stop();
+  assert.deepEqual(busy.spoken, [], 'you typed before the answer came: it is not read aloud');
+
   const plain = listener({model: 'm.bin', speak: 'omni'});
   plain.listening.start(() => {});
   await sleep(400);
@@ -249,7 +269,7 @@ test('pair doctor with LFM3-Omni: not downloaded, no packages, and one that hear
   const voice = voiceConfig({});
   const notYet = await voiceCheck(voice, found, {dataDir, python: '/venv/bin/python', runtime: lacks, hearSilence: heard});
   assert.equal(notYet.level, 'warn');
-  assert.match(notYet.text, /:Pair voice on downloads LFM3-Omni-2B \(int8\) \(4\.0 GB from Hugging Face, once\); it also needs ai-edge-litert: python3 -m venv .*\/pip install litert-lm-api==0\.19\.0 ai-edge-litert==2\.3\.0/);
+  assert.match(notYet.text, /:Pair voice on downloads LFM3-Omni-2B \(int8\) \(4\.0 GB from Hugging Face, once\); it also needs ai-edge-litert: \/venv\/bin\/python -m pip install litert-lm-api==0\.19\.0 ai-edge-litert==2\.3\.0/);
   fakeOmniFiles(dataDir);
   const noPackages = await voiceCheck(voice, found, {dataDir, python: '/venv/bin/python', runtime: lacks, hearSilence: heard});
   assert.equal(noPackages.level, 'fail');

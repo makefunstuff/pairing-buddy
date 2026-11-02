@@ -16,7 +16,8 @@ One JSON line in per request, one or more out:
            ready, then {"id": 2, "done": true}
     {"id": 2, "op": "cancel"} -> the speech of request 2 stops at its next frame: {"id": 2, "done": true, "cancelled": true}
 Any request can answer {"id": ..., "error": "..."}. The first line out is {"ready": true, ...} or {"fatal": "..."}.
-Reads nothing else, writes only CACHE_DIR, never touches the network.
+Reads nothing but MODEL_DIR, writes only CACHE_DIR, and has no network code: neither has the runner it loads (it
+imports json, pathlib, time, collections, numpy, tokenizers and ai_edge_litert only, at the pinned revision).
 """
 import base64
 import importlib.util
@@ -162,7 +163,11 @@ def main():
         for line in sys.stdin:
             if not line.strip():
                 continue
-            request = json.loads(line)
+            try:
+                request = json.loads(line)
+            except ValueError as error:  # never from the daemon; said, and the next line is read
+                say({"error": f"not JSON: {error}"})
+                continue
             if request.get("op") == "cancel":
                 cancelled.add(request["id"])
             else:

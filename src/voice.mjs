@@ -397,16 +397,20 @@ export function speak(voice, text, {log = () => {}, failed = () => {}, omni = nu
 
 /**
  * Runs `command` with `input` on its stdin, in its own process group (a pipeline stops as a whole); returns a function
- * that stops it. `report(why)` hears when it fails, `ended()` when it is done (or failed).
+ * that stops it. `report(why)` hears when it fails (once), `ended(ok)` when it is done, or failed (`ok` false).
  */
 function play([command, ...args], input, report, ended = () => {}) {
   const child = spawn(command, args, {stdio: ['pipe', 'ignore', 'pipe'], detached: true});
   let stderr = '';
+  let failed = false;
   child.stderr.on('data', data => { stderr = (stderr + data).slice(-300); });
-  child.on('error', error => report(error.code === 'ENOENT' ? `${command} not found` : error.message));
+  child.on('error', error => {
+    failed = true;
+    report(error.code === 'ENOENT' ? `${command} not found` : error.message);
+  });
   child.on('close', (code, signal) => {
-    if (code) report(stderr.trim().split('\n').at(-1) || `${command} exited with ${code}`);
-    if (!signal) ended();
+    if (code && !failed) report(stderr.trim().split('\n').at(-1) || `${command} exited with ${code}`);
+    if (!signal) ended(!failed && !code); // not when it was stopped
   });
   child.stdin.on('error', () => {});
   child.stdin.end(input);
@@ -466,7 +470,12 @@ export const saidFiles = text => text.replace(EXTENSION, '$1 dot $2');
  * stops it, whether speech is still being made or playing.
  */
 export function speakOmni(voice, text, {log = () => {}, failed = () => {}, omni = null, player = wavPlayerOf(voice)} = {}) {
-  const report = why => { log(`speaking failed: ${why}`); failed(why); };
+  let stopped = false;
+  const report = why => {
+    if (stopped) return;
+    log(`speaking failed: ${why}`);
+    failed(why);
+  };
   const missing = omniMissingWhy(omni);
   if (missing) {
     report(missing);
@@ -478,16 +487,21 @@ export function speakOmni(voice, text, {log = () => {}, failed = () => {}, omni 
   }
   const waiting = [];
   let playing = null;
-  let stopped = false;
-  const next = () => {
-    if (stopped || playing || !waiting.length) return;
-    playing = play(player, waiting.shift(), report, () => { playing = null; next(); });
-  };
-  const speech = omni.speak(sentencesOf(saidFiles(text)), {voice: voice.omniVoice, onPart: part => { waiting.push(part); next(); }});
-  speech.done.catch(error => { if (!stopped) report(error.message); });
-  return () => {
+  let speech = null;
+  const stop = () => {
     stopped = true;
-    speech.stop();
+    speech?.stop();
     playing?.();
   };
+  const next = () => {
+    if (stopped || playing || !waiting.length) return;
+    playing = play(player, waiting.shift(), report, played => {
+      playing = null;
+      if (!played) return stop(); // once the player fails, the rest is neither made nor played
+      next();
+    });
+  };
+  speech = omni.speak(sentencesOf(saidFiles(text)), {voice: voice.omniVoice, onPart: part => { waiting.push(part); next(); }});
+  speech.done.catch(error => report(error.message));
+  return stop;
 }

@@ -245,12 +245,12 @@ export async function voiceCheck(voice, found = name => onPath(name, process.env
   if (voice.hear === 'omni' || voice.omniSpeaks) {
     const uses = voice.hear === 'omni' ? (voice.omniSpeaks ? 'hear and read answers aloud' : 'hear') : 'read answers aloud';
     const packages = await runtime(python);
-    const needs = packages.version ? '' : `; it also needs ${packages.problem.replace(/^.* has no /, '')}: ${omniInstall(dataDir)} (or set meaning.python)`;
+    const needs = packages.version ? '' : `; it also needs ${packages.problem.replace(/^.* has no /, '')}: ${omniInstall(dataDir, python)}`;
     if (!omniReady(dataDir)) {
       const missing = omniMissing(dataDir);
       return warn('voice', `${records} records; to ${uses}, :Pair voice on downloads ${OMNI.name} (${gb(missing)} from Hugging Face, once)${needs}`);
     }
-    if (!packages.version) return fail('voice', `${OMNI.name} is downloaded, but ${packages.problem}: ${omniInstall(dataDir)} (or set meaning.python)`);
+    if (!packages.version) return fail('voice', `${OMNI.name} is downloaded, but ${packages.problem}: ${omniInstall(dataDir, python)}`);
     omni = `${OMNI.name} (revision ${OMNI.revision.slice(0, 7)}, SHA-256 checked) on LiteRT-LM ${packages.version} in ${tilde(python)}`;
   }
   let hears;
@@ -294,10 +294,14 @@ export async function voiceCheck(voice, found = name => onPath(name, process.env
   return ok('voice', `${records} records, ${hears}${reads}`);
 }
 
-/** What to run for voice's LFM3-Omni: the packages in search by meaning's venv, where Pair looks for its Python. */
-export const omniInstall = dataDir => {
+/**
+ * What to run for voice's LFM3-Omni: the packages in search by meaning's venv, where Pair looks for its Python; in
+ * the Python that `meaning.python` names, when that is the one Pair runs.
+ */
+export const omniInstall = (dataDir, python = null) => {
   const venv = join(meaningDir(dataDir), 'venv');
-  return `python3 -m venv ${tilde(venv)} && ${tilde(venv)}/bin/pip install ${OMNI_PACKAGES.join(' ')}`;
+  if (python && python !== 'python3' && python !== join(venv, 'bin', 'python')) return `${tilde(python)} -m pip install ${OMNI_PACKAGES.join(' ')}`;
+  return `python3 -m venv ${tilde(venv)} && ${tilde(venv)}/bin/pip install ${OMNI_PACKAGES.join(' ')} (or set meaning.python)`;
 };
 
 /** LFM3-Omni hears a second of silence, in a helper of its own that stops after: {ms} or {problem}. */
