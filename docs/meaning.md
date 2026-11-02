@@ -72,11 +72,12 @@ pieces then go best first by the probability the model gives each, and the rest 
 It is asked only where a list is settled, never on a key:
 
 - **`/find` and the `search` tool** wait for it, up to `timeoutMs` (3 s), then answer; `/find`'s first line says
-  `reranked by d1-2B`. The `search` tool within a path is not reranked: the project's first ten may be none of the path's.
+  `reranked by d1-2B` (and `(gpu-model not answering)` when a model before it in the list did not answer). The `search` tool within a path is not reranked: the project's first ten may be none of the path's.
 - **The live pickers** (Telescope and snacks.picker) show the words and then meaning as before, without waiting; once
   the list has stayed as it is for `meaning_rerank_delay_ms` (400 ms) after meaning came, the fused ranking's first ten
   (`/find`'s) go first, in the model's order, once; the rest of the list follows as it was. The title says `reranking`
-  meanwhile and `reranked by d1-2B (2.4 s)` once it applied. A key before then drops it. The piece you are on stays
+  meanwhile and `reranked by d1-2B (2.4 s)` once it applied, `reranked by d1-2B (2.4 s; gpu-model not answering)`
+  when the list's first model did not. A key before then drops it. The piece you are on stays
   the one you are on, wherever it moves. fzf-lua's list only grows, so it is not reranked there; nor is a picker's
   list while search by meaning has no model (words only), though `/find` reranks the words then.
 - **`vim.ui.select`** waits for it too, as `/find`, and its prompt says `(reranked by d1-2B)` when it applied.
@@ -93,6 +94,21 @@ other work too is better given an instance of its own if you search often.
 "rerank": {"api": "system-one", "baseUrl": "http://127.0.0.1:8080/v1", "model": "d1-2B"}
 ```
 
+**Several models, best first.** `rerank` may be a list: a fast model on a GPU that is up only some of the time, then a
+small one on the CPU that always is. A rerank asks the first, waits its `timeoutMs` (1 s by default for a model
+another follows), and asks the next when it is down, fails or is slower; a model that failed rests for a minute, so
+the searches after it go straight to the next and a model that is off costs one wait, not one a search. An answer of
+the wrong shape, or one with no piece standing out, is an answer: the order stays, and the next is not asked. Still one
+question at a time across them all. The picker's title, `/find`'s line and the ledger name the model that answered,
+and the ones before it that did not:
+
+```jsonc
+"rerank": [
+  {"api": "system-one", "baseUrl": "http://127.0.0.1:8081/v1", "model": "gpu-model", "top": 15, "timeoutMs": 1000},
+  {"api": "system-one", "baseUrl": "http://127.0.0.1:8080/v1", "model": "d1-2B"}
+]
+```
+
 It is a [decision model entry](config.md#rerank): `"api": "system-one"` for a System One server (llama.cpp's decision
 models answer `POST /v1/systemone`; TypeSafe and OpenRouter serve it too), `"llama-cpp"` for a chat model on
 llama.cpp's server asked for the probability of each answer, `"openai"` for OpenAI's Decisions API, or a `provider`
@@ -101,6 +117,14 @@ goes as a model's. `pair doctor` asks it a search's worth of pieces and says how
 
 ```
 ✓ rerank  d1-2B at http://127.0.0.1:8080/v1 reranks 10 pieces in 1.6 s (a search waits up to 3.0 s)
+```
+
+With a list it asks them in turn as a search does, and names the one that answered, why the ones before it did not,
+and what follows:
+
+```
+✓ rerank  gpu-model at http://127.0.0.1:8081/v1 reranks 10 pieces in 0.2 s (it is set to 15: more take longer) (a search waits up to 1.0 s); d1-2B if it fails
+✓ rerank  d1-2B at http://127.0.0.1:8080/v1 reranks 10 pieces in 2.4 s (a search waits up to 3.0 s); first gpu-model at http://127.0.0.1:8081/v1 failed (fetch failed)
 ```
 
 Without the entry it says `off`, and every search keeps the order of meaning and words.
@@ -120,6 +144,22 @@ With the 3 s budget Pair ships, the rerank took 2.4 s at the median and 2.8 s at
 piece were quicker and ranked a little worse (100: 1.9 s, MRR 0.70); six pieces 1.6 s (MRR 0.70, recall@5 0.75); fifteen
 3.3 s for no better MRR. The model can only reorder what the search found: a piece outside the first ten stays where it
 was. The questions were written for this measure, by one person: a small set, so take the numbers as a direction.
+
+**On a GPU.** The same questions and index with a larger decision model, d3-flash (Q8_0)
+behind a System One server on one GPU, against d1-2B on the CPU and no rerank:
+
+| | recall@5 | MRR | rerank p50 / p95 |
+| --- | --- | --- | --- |
+| No rerank | 0.72 | 0.47 | |
+| d1-2B on the CPU, 10 pieces | 0.81 | 0.71 | 2.44 s / 2.74 s |
+| d3-flash on the GPU, 10 pieces | 0.81 | 0.72 | 0.19 s / 0.21 s |
+| d3-flash on the GPU, 15 pieces | 0.84 | 0.75 | 0.25 s / 0.28 s |
+
+It ranks as d1-2B does on ten pieces, thirteen times faster, so within half a second it can read more: fifteen pieces
+gained the most (twenty: MRR 0.74 in 0.31 s; thirty: recall@5 0.88 but MRR 0.75 in 0.45 s, at the budget's edge;
+longer text a piece did not help: 300 characters, MRR 0.70; 600, MRR 0.76 but 0.38 s at the median and 0.51 s at the
+95th percentile). With the GPU's model down, the list's d1-2B reranked all 32 at 2.4 s, the refused connection
+costing a few milliseconds once a minute.
 
 ## The index
 

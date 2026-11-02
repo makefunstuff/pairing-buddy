@@ -192,8 +192,10 @@ the work board.
   ranking reranked and booked with the order before and after; a model that is too slow, down, or answers without
   probabilities or with none standing out keeps the order, and is not asked for a minute after a failure; one rerank
   at a time; a picker's rerank of the fused ranking, a Neovim's newer one stopping its older one; `pair doctor`; and
-  in Telescope's stand-in the reranked list, the title and the selection staying put. A fake System One server stands
-  in for the model (`test/rerank.test.mjs`, `test/fake-reranker.mjs`, `test/meaning-nvim.test.mjs`).
+  in Telescope's stand-in the reranked list, the title and the selection staying put. A list of models: the next asked
+  when one is down, fails or is slow, one that failed skipped for a minute, an odd answer not passed on, one question
+  at a time across them, a new config keeping each one's rest, and the title, `/find`, the ledger and `pair doctor`
+  naming the one that answered. Fake System One servers stand in for the models (`test/rerank.test.mjs`, `test/fake-reranker.mjs`, `test/meaning-nvim.test.mjs`).
 - **The context card and no ceremony.** The board task matched by repo and number (never another repo's task of the
   same number, nor a version branch), the board's agent launches left out of your commands, each source's rows and
   budget, a hidden source left out of what the Partner gets and raising no remark (no failed command with a hidden
@@ -359,11 +361,11 @@ when that one lacks LiteRT-LM 0.19.0, it makes that venv and installs the wheel 
 It indexes six small files and asks six questions worded unlike them; each file has to come in the first three, and it prints each rank, how long a chunk and a search took.
 
 **Search by meaning's reranker.** `test/live/rerank.test.mjs` measures a real decision model when `PAIR_LIVE_RERANK`
-is its `rerank` entry as JSON (for example `{"api": "system-one", "baseUrl": "http://127.0.0.1:8080/v1", "model":
-"d1-2B"}`) and `PAIR_LIVE_MEANING=1`, with EmbeddingGemma 2 as above (keep `PAIR_LIVE_MEANING_DATA` between runs: the
+is its `rerank` entry as JSON, one model or a list (for example `{"api": "system-one", "baseUrl":
+"http://127.0.0.1:8080/v1", "model": "d1-2B"}`) and `PAIR_LIVE_MEANING=1`, with EmbeddingGemma 2 as above (keep `PAIR_LIVE_MEANING_DATA` between runs: the
 first builds an index of Pair's repository, about five minutes). It asks the 32 labelled questions of
 `test/fixtures/rerank-queries.json` and prints recall@5 and MRR before and after the rerank, for code and docs, and the
-rerank's median and 95th percentile time.
+rerank's median and 95th percentile time, and with a list which model answered each.
 
 **Search by meaning's runtime.** `test/live/runtime.test.mjs` installs LiteRT-LM for real when `PAIR_LIVE_RUNTIME=1`,
 as `:Pair find on` does: your `python3` (3.10 or later) makes a venv in a temp folder, the wheel of

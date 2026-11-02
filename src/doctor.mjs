@@ -13,7 +13,7 @@ import {herdrRequest} from './herdr.mjs';
 import {coreRequest, coreStatus, herdrOf, HerdrApp, SPACE} from './herdr-core.mjs';
 import {listModels, shareServer, SWAP_FACTOR, SWAP_MS} from './loaded-model.mjs';
 import {createDecider, probeDecision} from './decision.mjs';
-import {createDecisionModel, createPairModels, knownProviders} from './models.mjs';
+import {createDecisionModel, createPairModels, createRerankEndpoints, knownProviders} from './models.mjs';
 import {Embedder, HttpEmbedder, meaningDir, MODEL, modelPath, modelReady, pythonOf, queryText, RUNTIME, runtimeOf} from './embedder.mjs';
 import {FAST_MS, SLOW_MS} from './pace.mjs';
 import {levelGroups, probeModel, probeThinking} from './probe.mjs';
@@ -105,33 +105,48 @@ export async function decisionCheck(config, status, credentials, {build = create
 }
 
 /**
- * Search by meaning's reranker (see rerank.mjs): none is fine, the searches keep their own order. One is asked a
- * search's question of as many small pieces; failing, or slower than its timeoutMs, is a failure: it never reorders.
+ * Search by meaning's reranker (see rerank.mjs): none is fine, the searches keep their own order. Its models are asked
+ * a search's question of as many small pieces in turn, as a search asks them; the line names the one that answered,
+ * and why the ones before it did not. None answering, or slower than its timeoutMs, is a failure: it never reorders.
  */
-export async function rerankCheck(config, status, credentials, {build = createDecisionModel, socket = config.socket} = {}) {
-  const entry = config.rerank;
-  if (!entry) return ok('rerank', 'off: searches keep the order of meaning and words; a "rerank" decision model reorders their first pieces (docs/meaning.md#rerank)');
-  if (config.meaning === false) return ok('rerank', `${whereIs(entry)} is set, but search by meaning is off in the config ("meaning": false)`);
-  const where = whereIs(entry);
+export async function rerankCheck(config, status, credentials, {build = createRerankEndpoints, socket = config.socket} = {}) {
+  const entries = config.rerank;
+  if (!entries) return ok('rerank', 'off: searches keep the order of meaning and words; a "rerank" decision model reorders their first pieces (docs/meaning.md#rerank)');
+  const where = entries.map(whereIs).join(', then ');
+  if (config.meaning === false) return ok('rerank', `${where} is set, but search by meaning is off in the config ("meaning": false)`);
   let reranker;
   try {
-    reranker = new Reranker({...build(config, {credentials, field: 'rerank'}), entry});
+    reranker = new Reranker({endpoints: build(config, {credentials})});
   } catch (error) {
     return fail('rerank', error.message);
   }
-  const login = await loginCheck(entry, reranker.models, credentials);
-  if (login.error) return fail('rerank', `${where}: ${login.error}`);
-  // While the daemon runs with this model, it asks: the model gets one question at a time, Pair's searches' and this.
+  const notes = [];
+  for (const endpoint of reranker.endpoints) {
+    const login = await loginCheck(endpoint.entry, endpoint.models, credentials);
+    if (login.error) return fail('rerank', `${endpoint.name}: ${login.error}`);
+    if (login.note) notes.push(entries.length > 1 ? `${endpoint.entry.model}: ${login.note}` : login.note);
+  }
+  // While the daemon runs with these models, it asks: a model gets one question at a time, Pair's searches' and this.
   const daemonHas = status?.meaning?.rerank?.model === reranker.name;
   // It may wait for a search's rerank before it asks its own question.
-  const probe = daemonHas ? await requestDaemon(socket, {type: 'rerank_probe'}, {timeoutMs: 2 * entry.timeoutMs + 2000}).catch(error => ({ok: false, error: error.message})) : await reranker.probe();
+  const probe = daemonHas ? await requestDaemon(socket, {type: 'rerank_probe'}, {timeoutMs: 2 * reranker.timeoutMs + 2000}).catch(error => ({ok: false, error: error.message})) : await reranker.probe();
+  const endpointOf = name => reranker.endpoints.find(endpoint => endpoint.name === name) ?? reranker.endpoints.at(-1);
+  const before = (probe.skipped ?? []).map(skip => `${skip.name} ${skip.why === 'down' ? 'rests after a failure' : 'failed'} (${skip.error})`);
   if (!probe.ok) {
-    return fail('rerank', `${where} fails: ${probe.error}. Searches keep their own order`
-      + `${/within/.test(probe.error) ? `; fewer pieces ("top", now ${entry.top}) or a higher "timeoutMs" lets it rerank` : ''}`);
+    const last = endpointOf(probe.name);
+    // No model's name: the daemon did not answer, or every model rests.
+    if (!probe.name) return fail('rerank', `${where} fails: ${probe.error}. Searches keep their own order`);
+    return fail('rerank', `${entries.length > 1 ? `${before.length ? `${before.join('; ')}; ` : ''}${last.name}` : where} fails: ${probe.error}. Searches keep their own order`
+      + `${/within/.test(probe.error ?? '') ? `; fewer pieces ("top", now ${last.top}) or a higher "timeoutMs" lets it rerank` : ''}`);
   }
+  const answered = endpointOf(probe.name);
   const live = status?.meaning?.rerank;
-  const used = live?.calls ? `; since the daemon started it reranked ${live.calls - live.kept} of ${live.calls} search${live.calls === 1 ? '' : 'es'} and kept the order of ${live.kept}${live.down ? ` (last: ${live.down})` : ''}` : '';
-  const text = `${where} reranks ${probe.pieces} pieces in ${seconds(probe.ms)}${entry.top > probe.pieces ? ` (it is set to ${entry.top}: more take longer)` : ''} (a search waits up to ${seconds(entry.timeoutMs)})${probe.right ? '' : ', but did not put the matching piece first in its check'}${login.note ? `; ${login.note}` : ''}${used}`;
+  const by = entries.length > 1 && live?.endpoints ? ` (${live.endpoints.map(endpoint => `${endpoint.model} ${endpoint.answered}`).join(', ')})` : '';
+  const used = live?.calls ? `; since the daemon started it reranked ${live.calls - live.kept} of ${live.calls} search${live.calls === 1 ? '' : 'es'}${by} and kept the order of ${live.kept}${live.down ? ` (last: ${live.down})` : ''}` : '';
+  const after = reranker.endpoints.slice(reranker.endpoints.indexOf(answered) + 1).map(endpoint => endpoint.entry.model);
+  const text = `${answered.name} reranks ${probe.pieces} pieces in ${seconds(probe.ms)}${answered.top > probe.pieces ? ` (it is set to ${answered.top}: more take longer)` : ''} (a search waits up to ${seconds(answered.timeoutMs)})`
+    + `${probe.right ? '' : ', but did not put the matching piece first in its check'}${before.length ? `; first ${before.join('; ')}` : ''}${after.length ? `; ${after.join(', then ')} if it fails` : ''}`
+    + `${notes.length ? `; ${notes.join('; ')}` : ''}${used}`;
   return probe.right ? ok('rerank', text) : warn('rerank', text);
 }
 

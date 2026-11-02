@@ -12,7 +12,7 @@ import {fauxAssistantMessage, fauxText} from '@earendil-works/pi-ai';
 import {pythonOf} from '../src/embedder.mjs';
 import {Runtime, WHEELS} from '../src/runtime.mjs';
 import {fakeEmbedder, fakeModel} from './fake-embedder.mjs';
-import {fakeReranker, fakeRerankServer} from './fake-reranker.mjs';
+import {fakeRerankChain, fakeRerankServer} from './fake-reranker.mjs';
 import {fakePython, fakeWheel} from './fake-python.mjs';
 import {hasNvim, pairInNvim, until} from './nvim-harness.mjs';
 import {scratch} from './temp.mjs';
@@ -120,9 +120,11 @@ test('Telescope, live: the words on every key, meaning below them once typing st
   }
 });
 
-test('Telescope with a "rerank" model: once the list settles the fused ranking\'s first pieces go first in the model\'s order, and the title says so', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
+test('Telescope with "rerank" models: once the list settles the fused ranking\'s first pieces go first in the order of the one that answered, and the title says so', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
   const server = await fakeRerankServer({favourite: 'What the order comes to'});
-  const {project, dataDir, watcher, messages, remote, send, stop} = await pairInNvim('deliver', {rtp: [fakeTelescope()], setup: 'meaning_debounce_ms = 100, meaning_rerank_delay_ms = 100', meaningWith: {embedder: fakeEmbedder(), reranker: fakeReranker(server.baseUrl)}});
+  const down = await fakeRerankServer({mode: 'down'}); // the first of the list, a GPU's that is not up
+  const reranker = fakeRerankChain([{baseUrl: down.baseUrl, model: 'fake-d3'}, {baseUrl: server.baseUrl}]);
+  const {project, dataDir, watcher, messages, remote, send, stop} = await pairInNvim('deliver', {rtp: [fakeTelescope()], setup: 'meaning_debounce_ms = 100, meaning_rerank_delay_ms = 100', meaningWith: {embedder: fakeEmbedder(), reranker}});
   try {
     watcher.setResponses(Array.from({length: 10}, () => fauxAssistantMessage([fauxText('0')])));
     await withCode(project, remote);
@@ -133,7 +135,7 @@ test('Telescope with a "rerank" model: once the list settles the fused ranking\'
     await until(() => remote('luaeval("_G.telescoped ~= nil")') === 'true', 'the Telescope picker');
     remote('luaeval("_G.type_prompt(\'tota\')")');
     await until(() => /reranked by fake-d1/.test(remote('luaeval("_G.telescoped.title")')), 'the rerank');
-    assert.match(remote('luaeval("_G.telescoped.title")'), /^Find \(\d+ ms · reranked by fake-d1 \(\d\.\d s\)\)$/);
+    assert.match(remote('luaeval("_G.telescoped.title")'), /^Find \(\d+ ms · reranked by fake-d1 \(\d\.\d s; fake-d3 not answering\)\)$/);
     const list = shown(remote);
     assert.equal(list[0], 'invoice.js:2  export function bill(order) {', 'the model\'s pick first');
     assert.ok(list.includes('cart.js:1  export function total(cart) {'), 'the word hit stays in the list');
@@ -142,11 +144,12 @@ test('Telescope with a "rerank" model: once the list settles the fused ranking\'
     assert.equal(server.requests[0].state, 'Search: tota');
     await until(() => {
       send({type: 'today'});
-      return JSON.stringify(messages.findLast(message => message.type === 'ledger') ?? {}).includes('\\"tota\\" in the picker with fake-d1');
-    }, 'the rerank in the ledger');
+      return JSON.stringify(messages.findLast(message => message.type === 'ledger') ?? {}).includes('\\"tota\\" in the picker with fake-d1 (after fake-d3 failed');
+    }, 'the rerank in the ledger, with the model that failed first');
   } finally {
     await stop();
     await server.close();
+    await down.close();
   }
 });
 
