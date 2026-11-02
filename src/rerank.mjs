@@ -249,12 +249,16 @@ export class Reranker {
    * too keeps its minute of rest after a failure (the server may still be on a question that timed out).
    */
   follow(previous) {
-    for (const endpoint of this.endpoints) {
-      const before = previous?.endpoints.find(other => other.name === endpoint.name);
-      if (before?.down) Object.assign(endpoint, {down: before.down, downAt: before.downAt});
-    }
+    const rest = () => {
+      for (const endpoint of this.endpoints) {
+        const before = previous?.endpoints.find(other => other.name === endpoint.name);
+        if (before?.down && before.downAt > endpoint.downAt) Object.assign(endpoint, {down: before.down, downAt: before.downAt});
+      }
+    };
+    rest();
     if (!previous?.running) return;
-    const after = previous.running.then(() => { if (this.running === after) this.running = null; });
+    // A question under way may fail after the change: its model rests here too before anything else is asked.
+    const after = previous.running.then(() => { rest(); if (this.running === after) this.running = null; });
     this.running = after;
   }
 

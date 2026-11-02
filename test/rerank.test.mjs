@@ -458,6 +458,20 @@ test('a list of models: one question at a time across them, a new config keeps e
     assert.equal(gpu.flight.most, 1);
     assert.equal(cpu.flight.most, 1);
 
+    // A config saved while the first model's question is under way: it times out after, and rests in the new one too.
+    gpu.set({mode: 'slow', delayMs: 400});
+    const before = gpu.requests.length;
+    const running = chain();
+    const asking = running.rerank('q', results);
+    await new Promise(resolve => setTimeout(resolve, 20));
+    const reloaded = chain();
+    reloaded.follow(running);
+    const after = await reloaded.rerank('q', results, {wait: true});
+    await asking;
+    assert.equal(gpu.requests.length, before + 1, 'the first model got no second question');
+    assert.deepEqual(after.skipped.map(skip => [skip.model, skip.why]), [['fake-d3', 'down']]);
+    await new Promise(resolve => setTimeout(resolve, 400));
+
     const check = await chain().probe();
     assert.equal(check.ok, true);
     assert.equal(check.model, 'fake-d1');

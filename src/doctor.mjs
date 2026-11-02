@@ -134,6 +134,8 @@ export async function rerankCheck(config, status, credentials, {build = createRe
   const before = (probe.skipped ?? []).map(skip => `${skip.name} ${skip.why === 'down' ? 'rests after a failure' : 'failed'} (${skip.error})`);
   if (!probe.ok) {
     const last = endpointOf(probe.name);
+    // No model's name: the daemon did not answer, or every model rests.
+    if (!probe.name) return fail('rerank', `${where} fails: ${probe.error}. Searches keep their own order`);
     return fail('rerank', `${entries.length > 1 ? `${before.length ? `${before.join('; ')}; ` : ''}${last.name}` : where} fails: ${probe.error}. Searches keep their own order`
       + `${/within/.test(probe.error ?? '') ? `; fewer pieces ("top", now ${last.top}) or a higher "timeoutMs" lets it rerank` : ''}`);
   }
