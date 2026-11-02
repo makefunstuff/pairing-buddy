@@ -359,6 +359,7 @@ test(':Pair voice on installs voice\'s packages first, in search by meaning\'s v
       voice: {fail: () => {}, close: () => {}, dataDir: dir},
       runtime: async () => (has ? {version: '0.19.0'} : {problem: 'python3 has no ai-edge-litert'}),
       wheels: () => [{bytes: 30e6}, {bytes: 12e6}],
+      pythons: [probedPython(dir, '3.14')],
       litert: async () => false, // no venv yet: LiteRT-LM comes first
       install: async options => { asked.push(options); options.installedLiteRT({python: '/venv/bin/python', version: '0.19.0', pythonVersion: '3.14', made: true}); has = true; return {python: '/venv/bin/python', version: '3.14', bytes: 42e6, wheels: ['ai_edge_litert.whl', 'numpy.whl']}; },
     },
@@ -387,13 +388,23 @@ test(':Pair voice on installs voice\'s packages first, in search by meaning\'s v
   }
 });
 
-test(':Pair voice on with a Python voice has no wheels for refuses before it downloads anything', async () => {
-  const dir = scratch('omni-nowheels-');
+/** A python that answers runtime.mjs's probe as Python `version`, with or without its venv module. */
+function probedPython(dir, version, venv = true) {
+  const python = join(dir, `python${version}${venv ? '' : '-novenv'}`);
+  writeFileSync(python, `#!/bin/sh\nprintf '${version}\\n${venv ? 'venv' : 'no venv'}\\n'\n`);
+  chmodSync(python, 0o755);
+  return python;
+}
+
+/** `:Pair voice on` with no venv yet and `pythons` for the venv: what it told, and what it fetched or installed. */
+async function voiceOnWith(prefix, pythons) {
+  const dir = scratch(prefix);
   const config = parseConfig({
     dataDir: dir, socket: join(dir, 'pair.sock'), agents: false, plan: false,
     models: {watcher: {api: 'openai', baseUrl: 'http://unused', model: 'w'}, partner: {api: 'openai', baseUrl: 'http://unused', model: 'p'}},
     voice: {},
   });
+  fakeOmniFiles(dir);
   const watcher = fauxProvider({provider: 'faux-w'});
   const partner = fauxProvider({provider: 'faux-p'});
   const models = createModels();
@@ -405,10 +416,9 @@ test(':Pair voice on with a Python voice has no wheels for refuses before it dow
     omniWith: {
       voice: {fail: () => {}, close: () => {}, dataDir: dir},
       runtime: async () => ({problem: 'python3 has no ai-edge-litert'}),
-      wheels: () => null, // say, Python 3.11
+      pythons: pythons(dir),
       litert: async () => false,
-      install: async options => { asked.push(options); return null; },
-      fetch: async () => { asked.push('fetch'); throw new Error('no download'); },
+      install: async () => { asked.push('install'); throw new Error('runtime.install() says what is missing'); },
     },
   });
   try {
@@ -419,15 +429,25 @@ test(':Pair voice on with a Python voice has no wheels for refuses before it dow
     sendMessage(editor, {type: 'hello', role: 'editor', cwd: dir});
     await until(() => got.length > 0, 'the session');
     sendMessage(editor, {type: 'voice_on'});
-    await until(() => got.some(message => message.type === 'voice_state'), 'the answer');
-    const told = got.filter(message => message.type === 'voice_state').map(message => message.text);
-    assert.equal(told.length, 1, 'no "installing" line first');
-    assert.match(told[0], /^Voice is not ready: voice's packages have wheels for Python 3\.12 to 3\.14 .*Nothing was downloaded\.$/);
-    assert.deepEqual(asked, [], 'neither LiteRT-LM, the venv, the wheels nor the model');
+    await until(() => got.some(message => message.type === 'voice_state' && /not ready/.test(message.text)), 'the answer');
     editor.destroy();
+    return {told: got.filter(message => message.type === 'voice_state').map(message => message.text), asked};
   } finally {
     await daemon.close();
   }
+}
+
+test(':Pair voice on with a Python voice has no wheels for refuses before it downloads anything, naming that Python', async () => {
+  const {told, asked} = await voiceOnWith('omni-nowheels-', dir => [probedPython(dir, '3.11')]);
+  assert.equal(told.length, 1, 'no "installing" line first');
+  assert.match(told[0], /^Voice is not ready: voice's packages have wheels for Python 3\.12 to 3\.14 here; the Python Pair would make its venv with is Python 3\.11\. Install Python 3\.12 or newer as python3, then :Pair voice on again\. Nothing was downloaded\.$/);
+  assert.deepEqual(asked, [], 'neither LiteRT-LM, the venv, the wheels nor the model');
+});
+
+test(':Pair voice on with no Python that makes a venv leaves it to runtime.install(), which says what is missing', async () => {
+  const {told, asked} = await voiceOnWith('omni-novenv-', dir => [probedPython(dir, '3.12', false)]);
+  assert.deepEqual(asked, ['install'], 'not refused as a Python without wheels');
+  assert.match(told.at(-1), /^Voice is not ready: runtime\.install\(\) says what is missing/);
 });
 
 test('voice\'s packages: LiteRT-LM first through the venv\'s installer, then the wheels by their hashes, pip with no index; never into meaning.python', async () => {

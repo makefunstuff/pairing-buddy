@@ -25,7 +25,7 @@ import {followLoaded, shareServer} from './loaded-model.mjs';
 import {DETAIL_KEPT_MS} from './ledger.mjs';
 import {editOrigin} from './fold.mjs';
 import {Listener} from './listen.mjs';
-import {downloadOmni, gb, installVoiceRuntime, OMNI, OmniVoice, omniInstall, omniMissing, omniReady, omniRuntimeOf, removeOmni, venvHasLiteRT, voiceWheelsOf} from './omni.mjs';
+import {downloadOmni, gb, installVoiceRuntime, OMNI, OmniVoice, omniInstall, omniMissing, omniReady, omniRuntimeOf, removeOmni, venvHasLiteRT, voicePythonsOn, voiceWheelsOf} from './omni.mjs';
 import {pythonOf} from './embedder.mjs';
 import {usesOmni} from './voice.mjs';
 import {Meaning} from './meaning.mjs';
@@ -41,7 +41,7 @@ import {probeModel} from './probe.mjs';
 import {projectContext} from './project-context.mjs';
 import {readMessages, sendMessage} from './protocol.mjs';
 import {Reranker} from './rerank.mjs';
-import {findPython, Runtime, RUNTIME_VERSION, venvPython} from './runtime.mjs';
+import {findPython, madeByPair, Runtime, RUNTIME_VERSION, venvPython} from './runtime.mjs';
 import {configChanges, RESTART_FIELDS, watchConfig} from './reload.mjs';
 import {rememberScores} from './score-memory.mjs';
 import {ScoutPane} from './scout-pane.mjs';
@@ -102,7 +102,7 @@ export async function startDaemon(config, {
   appCommand = 'herdr-app', // the Herdr window's command, for herdr-core's focus and agents
   meaningWith = {}, // tests' fetch and embedder for search by meaning (see meaning.mjs)
   rerankerFor = (entries, logTo) => (entries.rerank ? new Reranker({...createDecisionModel(entries, {field: 'rerank'}), entry: entries.rerank, log: logTo}) : null),
-  omniWith = {}, // tests' LFM3-Omni for voice (see omni.mjs): {voice, fetch, free, files, runtime, litert, wheels, install}
+  omniWith = {}, // tests' LFM3-Omni for voice (see omni.mjs): {voice, fetch, free, files, runtime, litert, wheels, pythons, install}
 } = {}) {
   mkdirSync(config.dataDir, {recursive: true, mode: 0o700});
   mkdirSync(join(config.dataDir, 'runs'), {recursive: true}); // the output of the tests run on save, one file per session
@@ -1144,10 +1144,16 @@ export async function startDaemon(config, {
     if (needsPackages && config.meaning?.python) return tell(`Voice is not ready: ${python} lacks voice's packages, and Pair installs nothing into meaning.python: ${omniInstall(python)}.`);
     const runtime = meaning.runtime ?? new Runtime({dataDir: config.dataDir, python: () => pythonOf(config.meaning, config.dataDir), log});
     const litert = needsPackages && !(await (omniWith.litert ?? venvHasLiteRT)(config.dataDir));
-    const pythonVersion = needsPackages ? await venvVersion(runtime) : '';
-    const wheels = needsPackages ? (omniWith.wheels ?? voiceWheelsOf)(pythonVersion) : null;
-    // No wheels for this Python: said before anything is downloaded, not after LiteRT-LM and its venv.
-    if (needsPackages && !wheels) return tell(`Voice is not ready: voice's packages have wheels for Python 3.12 to 3.14 on Linux (x86-64, ARM64) and macOS on Apple silicon; ${existsSync(venvPython(config.dataDir)) ? 'search by meaning\'s venv runs' : 'the Python Pair would make its venv with is'} ${pythonVersion ? `Python ${pythonVersion}` : 'missing'} on ${process.platform} ${process.arch}. Install Python 3.12 or newer as python3 (then :Pair find off, if Pair made that venv), then :Pair voice on again. Nothing was downloaded.`);
+    // No wheels for this machine or this Python: said before anything is downloaded, not after LiteRT-LM and its venv.
+    // Without a fitting Python at all, runtime.install() says what is missing, also before it downloads anything.
+    const fits = voicePythonsOn();
+    if (needsPackages && !fits.length) return tell(`Voice is not ready: voice's packages have no wheels for ${process.platform} ${process.arch}, only Linux (x86-64, ARM64) and macOS on Apple silicon. Nothing was downloaded.`);
+    const venv = needsPackages ? await venvVersion(runtime, litert) : null;
+    const wheels = venv?.version ? (omniWith.wheels ?? voiceWheelsOf)(venv.version) : null;
+    if (venv?.version && !wheels) {
+      const again = !venv.kept ? '' : !madeByPair(config.dataDir) ? ' (and remove search by meaning\'s venv, which Pair did not make)' : omniReady(config.dataDir) ? ', then :Pair voice off and :Pair find off, so Pair makes its venv again with it' : ', then :Pair find off, so Pair makes its venv again with it';
+      return tell(`Voice is not ready: voice's packages have wheels for Python ${fits[0]} to ${fits.at(-1)} here; ${venv.kept ? 'search by meaning\'s venv runs' : 'the Python Pair would make its venv with is'} Python ${venv.version}. Install Python ${fits[0]} or newer as python3${again}, then :Pair voice on again. Nothing was downloaded.`);
+    }
     const mb = bytes => Math.round(bytes / 1e6);
     const fetches = [
       ...(litert ? [`LiteRT-LM ${RUNTIME_VERSION}${runtime.bytes ? ` (${mb(runtime.bytes)} MB from PyPI, SHA-256 pinned)` : ''} in a venv in Pair's data folder, as :Pair find on does`] : []),
@@ -1190,11 +1196,15 @@ export async function startDaemon(config, {
     tell(ready);
   }
 
-  /** The Python version of search by meaning's venv, or of the Python `runtime.install()` would make it with ("3.14"), or "". */
-  async function venvVersion(runtime) {
-    if (!existsSync(venvPython(config.dataDir))) return (await findPython(runtime.candidates)).version ?? '';
+  /**
+   * The Python version voice's packages would go to ({version: "3.14", kept}): search by meaning's venv when
+   * runtime.install() keeps it (it has LiteRT-LM, or Pair did not make it), else the Python runtime.install() would
+   * make it with; version is undefined when there is none, which runtime.install() then explains.
+   */
+  async function venvVersion(runtime, litert) {
     const python = venvPython(config.dataDir);
-    return new Promise(resolve => execFile(python, ['-I', '-c', 'import sys; print("%d.%d" % sys.version_info[:2])'], {timeout: 20_000}, (error, stdout) => resolve(error ? '' : stdout.trim())));
+    if (!existsSync(python) || (litert && madeByPair(config.dataDir))) return {version: (await findPython(omniWith.pythons ?? runtime.candidates)).version, kept: false};
+    return new Promise(resolve => execFile(python, ['-I', '-c', 'import sys; print("%d.%d" % sys.version_info[:2])'], {timeout: 20_000}, (error, stdout) => resolve({version: error ? undefined : stdout.trim(), kept: true})));
   }
 
   /** `:Pair voice off`: the helper stops, a download stops, and LFM3-Omni's files leave Pair's data folder. */

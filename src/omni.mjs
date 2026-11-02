@@ -322,6 +322,10 @@ export const venvHasLiteRT = async dataDir => existsSync(venvPython(dataDir)) &&
 /** The wheels voice's packages need for `pythonVersion` ("3.14") on this machine, or null when PyPI has none. */
 export const voiceWheelsOf = (pythonVersion, platform = process.platform, arch = process.arch) => VOICE_WHEELS[`${platform} ${arch} ${pythonVersion.replace('.', '')}`] ?? null;
 
+/** The Pythons voice's packages have wheels for on this machine (["3.12", "3.13", "3.14"]), oldest first; [] for none. */
+export const voicePythonsOn = (platform = process.platform, arch = process.arch) => Object.keys(VOICE_WHEELS)
+  .filter(key => key.startsWith(`${platform} ${arch} `)).map(key => key.split(' ')[2].replace(/^3/, '3.')).sort((a, b) => Number(a.split('.')[1]) - Number(b.split('.')[1]));
+
 const run = (file, args, options = {}) => new Promise(resolve => execFile(file, args, {timeout: 20_000, ...options}, (error, stdout, stderr) => resolve({error, stdout, stderr})));
 
 /** What to run when Pair may not install voice's packages itself: into the config's meaning.python, by their hashes. */
