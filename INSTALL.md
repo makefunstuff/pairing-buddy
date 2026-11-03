@@ -479,7 +479,7 @@ or, in an `init.vim`: `lua require('pair').setup({auto_connect = true})`.
 pair doctor 2>&1 | grep -E '^[^ ]+ plugin '
 ```
 
-Expected: `✓ plugin   your Neovim config loads it`. If it says `does not load the plugin`, run
+Expected: `✓ plugin   your Neovim config loads it` (or `loaded in the connected Neovims` while a Neovim is connected). If it says `does not load the plugin`, run
 `nvim --headless -c 'lua print(pcall(require, "pair"))' -c 'qa!'` to see the error; usually the plugin is not
 installed yet (run the manager's install command again) or the edit went into a file the config does not load. Also
 start `nvim --headless +qa` once and make sure it prints no error that was not there before your edit; if it does,

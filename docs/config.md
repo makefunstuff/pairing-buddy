@@ -13,8 +13,8 @@ The daemon takes a change as you save the file (also through a symlink), without
 and Neovim what it reloaded. It checks the new config as at start: one with an error is not taken, and the chat says
 why while the daemon keeps the config it runs. Run `pair doctor` after a change to check the models.
 
-- **At once**: the typing pause, `autoTune`, `plan`, `keepWarm`, `watcherPace`, the `decision` model, `testOnSave`, `voice`,
-  `taskCommand`, `gen` and `board`, in open sessions too (a `/gen` request already running keeps the limits it
+- **At once**: the typing pause, `autoTune`, `plan`, `keepWarm`, `watcherPace`, the `decision` model, `rerank`, `testOnSave`,
+  `voice`, `taskCommand`, `gen` and `board`, in open sessions too (a `/gen` request already running keeps the limits it
   started with).
 - **Between turns**: new `model` or `models` entries (and their thinking levels). An answer under way finishes on
   the old model; the next one is the new model's, in the same conversation.
@@ -221,8 +221,9 @@ under the service, use `auth`, `apiKeyFile` or `apiKey`). Without it, EmbeddingG
 A decision model that [reranks](meaning.md#rerank) search by meaning's first pieces once a
 list is settled: `/find`, the `search` tool, `vim.ui.select`, and a live picker after you stop typing. A
 [decision entry](decision.md#configure) (a `provider` and one of its classifiers, or an `api` at a `baseUrl`), with
-two fields of its own; or a list of them, best first. Without it, searches keep the order of meaning and words. A
-change is taken without a restart.
+two fields of its own; or a list of them, best first. Without it (or with `false`), searches keep the order of
+meaning and words. A change is taken without a restart. Its key goes as a decision entry's, but `pair setup` does not
+store a `rerank` entry's `apiKeyEnv` in `service.env`: under the service, use `auth`, `apiKeyFile` or `apiKey`.
 
 | Field | Default | Meaning |
 | --- | --- | --- |

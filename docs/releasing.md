@@ -68,7 +68,7 @@ gh release create v0.12.0 --title "pairing-buddy 0.12.0" --notes-file /tmp/notes
 
 ```sh
 npm install -g github:makefunstuff/pairing-buddy
-systemctl --user restart pairing-buddy   # macOS, or no service: pair setup </dev/null
+systemctl --user restart pairing-buddy   # macOS: pair setup </dev/null; no service: pkill -f 'pair[.]mjs supervise' && pair setup </dev/null
 pair --version
 journalctl --user -u pairing-buddy -n 5  # pair daemon 0.12.0 listening on …
 ```

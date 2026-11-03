@@ -67,7 +67,9 @@ With `auto_connect`, every Neovim connects to the daemon at startup. Without a p
 The plugin's options are in [neovim-plugin.md](neovim-plugin.md#setup).
 
 **Upgrading.** Run `npm install -g github:makefunstuff/pairing-buddy` and `pair setup` again, also after upgrading
-Node.js: the service names the Node.js binary it runs, and setup rewrites it and restarts the daemon.
+Node.js: the service names the Node.js binary it runs, and setup rewrites it and restarts the daemon. Without a
+service, stop the running daemon first (`pkill -f 'pair[.]mjs supervise'`); `pair setup` or `pair` then starts the new
+one.
 
 **Uninstalling.** `pair uninstall` stops and removes the service, and keeps the config and data.
 

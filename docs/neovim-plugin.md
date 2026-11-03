@@ -171,7 +171,7 @@ vim.o.statusline = "%f %m%=%{%v:lua.require'pair'.statusline()%}  %l:%c "
 | `◉ pair · listening`, `⠹ pair · hearing` | While you hold the listen key, and while what you said is written down ([voice.md](voice.md)) |
 | `● pair · what are we making`, `● pair · question 2 of a few`, `● pair · a suggestion` | While a [`:Pair new`](blank-page.md) question waits for your answer, and while its first slice is shown |
 | `● pair · held thought · M-j` | While a remark waits for your next break |
-| `● pair · gen #4 · generating · 21s`, `● pair · gen #4 asks · M-g`, `● pair · gen #5 waits for the one before`, `● pair · gen #4 ready · M-y takes · :Pair dismiss` | While a [/gen request](gen.md) runs, waits for your answer or its turn, and while its code waits to be taken |
+| `● pair · gen #4 · asking`, `● pair · gen #4 · generating · 21s`, `● pair · gen #4 asks · M-g`, `● pair · gen #5 waits for the one before`, `● pair · gen #4 ready · M-y takes · :Pair dismiss`, `● pair · gen #4 · scaffold · :Pair gen list keeps it` | While a [/gen request](gen.md) is sent, runs, waits for your answer or its turn, and while its code (or a finished scaffold) waits to be taken |
 | `● pair · gen #4 · 2 to review · :Pair gen list`, `● pair · gen · 3 to review · :Pair gen list` | While new files of [/gen file](gen.md#new-files-gen-file) wait as buffers to review: of one request, or of several |
 | `● pair · ┊ 12 generated` | In a buffer with code you took from `/gen` that is [not yours yet](gen.md#owning-generated-code): how many of its lines |
 | `● pair · 5 notes in the margin`, `◆ logged · docs/decisions.md` | In a note with [marks](notes.md), and for a moment after a decision is logged |

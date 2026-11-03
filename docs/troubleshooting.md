@@ -10,7 +10,7 @@ Start with `pair doctor`. It checks every part, one line each, and names the fix
 ✓ config   ~/.config/pairing-buddy/config.json
 ✓ service  starts at login, running
 ✓ daemon   version 0.11.0, up 42 min, 2 sessions
-✓ plugin   your Neovim config loads it
+✓ plugin   loaded in the connected Neovims
 ✓ neovim   2 connected, in shop, blog
 ✓ herdr    herdr-core 0.1.16 (terminals, session default) answers in 2 ms, 3 live terminals; the Herdr window shows terminal t1q, and `herdr-app status` answers for its focus. ...
 ✓ board    Shepherdr 2.0 (shepherdr): 4 tasks not archived
@@ -23,16 +23,16 @@ Start with `pair doctor`. It checks every part, one line each, and names the fix
 | config | The file parses, and its models (and the decision model) are not still the example's |
 | service | The systemd unit or launchd agent is installed, starts at login, runs, and its Node.js still exists |
 | daemon | It answers on its socket, with the same version as `pair` |
-| plugin | Neovim, started headless with your config, loads the plugin |
+| plugin | A connected Neovim has it loaded; with none connected, Neovim started headless with your config loads the plugin |
 | neovim | How many Neovims are connected, in which projects |
 | herdr | Which herdr this terminal is in, by its environment: herdr (panes) or herdr-core (terminals), and that it answers on its socket; for herdr-core, whether the Herdr window shows this terminal and gives its focus (only checked when run inside one of them) |
 | board | Which Shepherdr the board's command is (2.0 or 2.1, by what `task list` answers), how many tasks it has that are not archived, or that 2.1 refuses outside its own sessions |
 | logins | `auth.json` is readable by you only (shown when there is one) |
-| keys | The environment variables your model entries (and `voice.openrouter`) name in `apiKeyEnv` are set, and stored in `service.env` for the service (shown when there are any) |
+| keys | The environment variables your model entries (and the `decision` model and `voice.openrouter`; not `embedding` or `rerank`) name in `apiKeyEnv` are set, and stored in `service.env` for the service (shown when there are any) |
 | pane | Pair's pane: the `scoutPane.rc` file is there, and whether its commands run in the bubblewrap sandbox |
+| voice | Off, or the recorder, LFM3-Omni's files and Python (or the whisper.cpp model and program, or OpenRouter's key and transcription model), and who reads aloud: LFM3-Omni, the `speak` command or OpenRouter's speech model, and a player ([voice.md](voice.md)) |
 | meaning | [Search by meaning](meaning.md): words only (and what meaning needs), or its model checked and LiteRT-LM in the helper's Python, or the `embedding` model answering one word; with each index (files, pieces, how much is embedded, its size and how long since it changed) and the time a piece takes |
 | rerank | [Search by meaning's reranker](meaning.md#rerank): off without a `rerank` entry; else its login or key, a search's worth of small pieces asked once and how long that took against its `timeoutMs`, whether it put the matching piece first, and, while the daemon runs, how many searches it reranked. With a list of models, they are asked in turn as a search does: the line names the one that answered and why the ones before it did not. It fails when the model does not answer in time; searches then keep their own order |
-| voice | Off, or the recorder, LFM3-Omni's files and Python (or the whisper.cpp model and program, or OpenRouter's key and transcription model), and who reads aloud: LFM3-Omni, the `speak` command or OpenRouter's speech model, and a player ([voice.md](voice.md)) |
 | watcher, partner | The login or key the model needs is there and, for a subscription, still renews (with the token's expiry); the server answers and lists the model; one short completion works, and how long it took (about 1 s is the aim for the Watcher). One line, `models`, when both use the same model. A warning when the Watcher runs on a subscription |
 | thinking | The Partner thinks when asked to, and its levels reach the server |
 | decision | The [decision model](decision.md): none set, or its login or key, one small question and how long the answer took against its `timeoutMs`, and, while the daemon runs, how often it was asked and the gate fell back to its rules. It fails when the model does not answer in time; the gate then goes by its own rules |
