@@ -1,10 +1,10 @@
-// A fake decision model for search by meaning's reranker: a System One server (`POST <baseUrl>/systemone`) that
+// A fake decision model for search by meaning's reranker (semantic-grep's, over Pair's endpoints): a System One server (`POST <baseUrl>/systemone`) that
 // answers a choice question with a probability for each answer, as LiquidAI's d1-2B on llama.cpp does, and writes no
 // text. It favours the answers whose text has `favourite`; `mode` makes it slow, fail, or answer oddly.
 import {createServer} from 'node:http';
 import {rerankConfig} from '../src/config.mjs';
 import {createRerankEndpoints} from '../src/models.mjs';
-import {Reranker} from '../src/rerank.mjs';
+import {pairReranker} from '../src/search.mjs';
 
 /**
  * Starts the server: `{baseUrl, requests, flight, set({favourite, mode, delayMs}), close()}`. `mode` is "ok", "down" (500),
@@ -63,5 +63,5 @@ export function fakeReranker(baseUrl, extra = {}, options = {}) {
 /** A Reranker on a list of fakes, best first: each `{baseUrl, model, ...}` a "rerank" entry of the list. */
 export function fakeRerankChain(entries, options = {}) {
   const rerank = rerankConfig(entries.length > 1 ? entries.map(entry => ({api: 'system-one', model: 'fake-d1', ...entry})) : {api: 'system-one', model: 'fake-d1', ...entries[0]});
-  return new Reranker({endpoints: createRerankEndpoints({rerank}, {credentials: {read: async () => null}}), ...options});
+  return pairReranker(createRerankEndpoints({rerank}, {credentials: {read: async () => null}}), options);
 }

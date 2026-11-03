@@ -403,12 +403,16 @@ FILE.bak-pair`. Edit only what the section says.
 
 ### 7.2 Add Pair
 
+Each manager below installs [semantic-grep.nvim](https://github.com/makefunstuff/semantic-grep.nvim) with Pair: it is
+the picker of search by meaning (`Alt-s`), and without it only that is missing.
+
 **lazy.nvim.** If the config imports a folder of specs (`{import = "plugins"}`, or LazyVim), make a new file
 `$cfg/lua/plugins/pair.lua` (that folder, by its name in the import):
 
 ```lua
 return {
   'makefunstuff/pairing-buddy',
+  dependencies = {'makefunstuff/semantic-grep.nvim'}, -- its picker for search by meaning (Alt-s)
   main = 'pair',
   lazy = false,
   opts = {auto_connect = true},
@@ -421,26 +425,27 @@ Then install it: `nvim --headless '+Lazy! sync' +qa`.
 **packer.nvim.** Inside the function given to `require('packer').startup(…)`, add:
 
 ```lua
-use {'makefunstuff/pairing-buddy', config = function() require('pair').setup({auto_connect = true}) end}
+use {'makefunstuff/pairing-buddy', requires = 'makefunstuff/semantic-grep.nvim', config = function() require('pair').setup({auto_connect = true}) end}
 ```
 
 Then install it: `nvim --headless -c 'autocmd User PackerComplete quitall' -c 'PackerSync'`.
 
 **vim-plug.** Between `call plug#begin(…)` and `call plug#end()` (in Lua: `vim.call('plug#begin')` …
-`vim.call('plug#end')`), add one line:
+`vim.call('plug#end')`), add two lines:
 
 ```vim
+Plug 'makefunstuff/semantic-grep.nvim'
 Plug 'makefunstuff/pairing-buddy'
 ```
 
-(in Lua: `vim.fn['plug#']('makefunstuff/pairing-buddy')`), and after `plug#end` the setup, in `init.vim`
+(in Lua: `vim.fn['plug#']('makefunstuff/semantic-grep.nvim')` and `vim.fn['plug#']('makefunstuff/pairing-buddy')`), and after `plug#end` the setup, in `init.vim`
 `lua require('pair').setup({auto_connect = true})`, in `init.lua` `require('pair').setup({auto_connect = true})`.
 Then install it: `nvim --headless +PlugInstall +qa`.
 
 **mini.deps.** After the config's `MiniDeps` setup, add:
 
 ```lua
-MiniDeps.add({source = 'makefunstuff/pairing-buddy'})
+MiniDeps.add({source = 'makefunstuff/pairing-buddy', depends = {'makefunstuff/semantic-grep.nvim'}})
 require('pair').setup({auto_connect = true})
 ```
 
@@ -449,18 +454,20 @@ mini.deps clones it the next time Neovim starts: `nvim --headless +qa`.
 **vim.pack** (Neovim 0.12's own manager). Next to the config's other `vim.pack.add`, add:
 
 ```lua
-vim.pack.add({'https://github.com/makefunstuff/pairing-buddy'})
+vim.pack.add({'https://github.com/makefunstuff/semantic-grep.nvim', 'https://github.com/makefunstuff/pairing-buddy'})
 require('pair').setup({auto_connect = true})
 ```
 
 It clones it the next time Neovim starts: `nvim --headless +qa`.
 
-**Native packages** (no plugin manager, or no config yet). Clone it into Neovim's package folder, or update it if it
-is there:
+**Native packages** (no plugin manager, or no config yet). Clone it and semantic-grep.nvim into Neovim's package
+folder, or update them if they are there:
 
 ```sh
 dir=$(nvim --headless --clean -c 'lua io.stdout:write(vim.fn.stdpath("data"))' -c 'qa!' 2>/dev/null)/site/pack/pair/start/pairing-buddy
 if [ -d "$dir/.git" ]; then git -C "$dir" pull --ff-only; else git clone --depth 1 https://github.com/makefunstuff/pairing-buddy "$dir"; fi
+sg="$(dirname "$dir")/semantic-grep.nvim"
+if [ -d "$sg/.git" ]; then git -C "$sg" pull --ff-only; else git clone --depth 1 https://github.com/makefunstuff/semantic-grep.nvim "$sg"; fi
 ```
 
 Then add one line at the end of `$cfg/init.lua` (create the folder and file if there is none):
@@ -693,8 +700,8 @@ npm uninstall -g pairing-buddy
 Expected: `Removed pairing-buddy.service. …` (systemd), `Removed the launchd agent io.github.makefunstuff.pairing-buddy.
 …` (launchd) or `No service is installed.` (none); then `removed … packages`, and `command -v pair` prints nothing.
 
-Then remove what step 7 added to the Neovim config (the spec file, the lines, or the cloned folder; the `.bak-pair`
-backups show what was there before), and the shell hook line from step 9. With the human's yes, the config, logins
+Then remove what step 7 added to the Neovim config (the spec file, the lines, or the cloned folders, semantic-grep.nvim's
+too unless the human uses it on its own; the `.bak-pair` backups show what was there before), and the shell hook line from step 9. With the human's yes, the config, logins
 and data: `~/.config/pairing-buddy/` (holds `auth.json` with their logins and keys) and
 `~/.local/state/pairing-buddy/` (the sessions and their notes, and search by meaning's model, venv and indexes); with
 `"meaning": {"index": "project"}`, also `.pair/` in each repository and its lines in `.git/info/exclude`.

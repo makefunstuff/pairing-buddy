@@ -10,9 +10,8 @@ import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {test} from 'node:test';
 import {rerankConfig} from '../../src/config.mjs';
-import {Meaning} from '../../src/meaning.mjs';
 import {createRerankEndpoints} from '../../src/models.mjs';
-import {Reranker} from '../../src/rerank.mjs';
+import {pairReranker, pairSearch} from '../../src/search.mjs';
 import {scratch} from '../temp.mjs';
 
 const skip = process.env.PAIR_LIVE_RERANK && process.env.PAIR_LIVE_MEANING ? false : 'set PAIR_LIVE_RERANK (a "rerank" entry as JSON) and PAIR_LIVE_MEANING=1 to measure the reranker';
@@ -27,9 +26,9 @@ const percentile = (values, p) => [...values].sort((a, b) => a - b)[Math.min(val
 
 test('the reranker on Pair\'s own repository: recall@5 and MRR before and after, and its time', {skip, timeout: 1_800_000}, async () => {
   const rerank = rerankConfig(JSON.parse(process.env.PAIR_LIVE_RERANK)); // the shipped budget, unless the entry sets one
-  const reranker = new Reranker({endpoints: createRerankEndpoints({rerank}), log: line => console.log(line)});
+  const reranker = pairReranker(createRerankEndpoints({rerank}), {log: line => console.log(line)});
   const dataDir = process.env.PAIR_LIVE_MEANING_DATA ?? scratch('rerank-live-data-');
-  const meaning = new Meaning({dataDir, config: process.env.PAIR_LIVE_MEANING_PYTHON ? {python: process.env.PAIR_LIVE_MEANING_PYTHON} : {}, reranker, log: () => {}});
+  const {meaning} = pairSearch({config: {dataDir, meaning: process.env.PAIR_LIVE_MEANING_PYTHON ? {python: process.env.PAIR_LIVE_MEANING_PYTHON} : {}}, reranker});
   try {
     meaning.open(ROOT);
     await meaning.turnOn();

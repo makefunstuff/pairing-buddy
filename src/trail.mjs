@@ -72,7 +72,7 @@ const rg = (root, args) => new Promise(resolve => {
  * What the project has for each query of `trail`: file names and lines that contain its words, as ripgrep finds
  * them without regard to case. The Partner of a Navigator cannot search, and the words the code does not have
  * are half the story. With search by meaning on, `meaning(query)` adds the chunks closest to what the words mean
- * (see meaning.mjs): where the thing is when the code calls it something else.
+ * (semantic-grep, see search.mjs): where the thing is when the code calls it something else.
  */
 export async function trailMatches(root, trail, {meaning = null} = {}) {
   const queries = [...new Set(trail.map(search => search.query.trim()).filter(Boolean))];

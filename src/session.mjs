@@ -2075,7 +2075,7 @@ export class PairSession {
 
   /**
    * rg in Pair's pane, in the project; a /gen scaffold (`cwd`) searches its copy of it. With `meaning`, Pair's index of
-   * the project instead (see meaning.mjs): the pieces of code closest to what the words mean, and those with the words.
+   * the project instead (semantic-grep, see search.mjs): the pieces of code closest to what the words mean, and those with the words.
    * When rg finds nothing for plain words, the index is asked too.
    */
   async search({pattern, path = '.', meaning = false}, {gen = false, cwd = null} = {}) {

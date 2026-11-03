@@ -168,38 +168,29 @@ the work board.
   `Esc` in fzf-lua's default setup, which hides the picker, a resumed picker with fewer words, grep words with
   punctuation as you gave them, grep_cWORD and grep_cword, what you opened, and fzf-lua set to end fzf, in fzf's own
   bottom-up layout with a `>` pointer, where a result line starts like the prompt.
-- **Search by meaning.** Pieces cut at 60 lines and 1,500 characters at a blank line, blocks between blank lines,
-  tree-sitter's definitions with the comments above them in a headless Neovim (Lua and C, whose parsers every Neovim
-  has) and blank lines without a parser or without Neovim; identifiers split into words, a question's small words
-  left out, reciprocal rank fusion; the files git lists without what `.gitignore` leaves out, pictures or lockfiles;
-  the SQLite index in the data folder with no copy of the code, the word search without a model, a question worded
-  unlike the code found by meaning and a word only the code has by its words, nothing embedded again after a restart,
-  a save embedding only the changed piece; two worktrees sharing one index and the second embedding only what it
-  changed, each finding its own pieces, and `:Pair index rebuild` making both again; `"index": "project"` in `.pair/`,
-  listed once in `.git/info/exclude` and not `.gitignore`; the brute-force search over 20,000 vectors under 250 ms; the
-  build and the search in the ledger, the words still ranking (and the answer saying why) when the embedder fails; an
-  `embedding` model at a fake `/v1/embeddings` (its prompt, its key, vectors made unit length, a failing server said);
-  the model kept only when its SHA-256 matches the pinned one; the helper loaded once, a search going before the
-  batches waiting, a missing runtime named; the trail's "by meaning" lines; the config and `pair doctor` (each index's
-  size and age, the `embedding` model answering or not). In a headless Neovim with a stand-in Telescope that runs the
-  picker's finder as the real one does: the words' hit on the first keys, meaning's hits joining below it with the
-  hit still selected, the entries the previewer and `<C-q>` need, a question found by meaning alone; without a model
-  the words and the title that says how to add meaning; `vim.ui.select` with the fused list, the chosen piece opened
-  at its line and booked; `/find` from the chat. A fake embedder stands in for the model (`test/meaning.test.mjs`,
-  `test/meaning-nvim.test.mjs`).
-- **Search by meaning's reranker.** The question (each piece an answer, with its place and text), the reorder of the
-  first pieces by the probabilities, the config's `rerank` entry and its reload; `/find`'s and the search tool's
-  ranking reranked and booked with the order before and after; a model that is too slow, down, or answers without
-  probabilities or with none standing out keeps the order, and is not asked for a minute after a failure; one rerank
-  at a time; a picker's rerank of the fused ranking, a Neovim's newer one stopping its older one; `pair doctor`; and
-  in Telescope's stand-in the reranked list, the title and the selection staying put; the rerank asked as soon as
-  meaning came, the words answering while the model works and a key dropping it unbooked; `<C-q>` sending the
-  reranked order, or, while the rerank runs, a quickfix list reordered in place (same id, no new list, titled
-  `reranked by`) and left alone once you changed or replaced it; the same in snacks.picker's stand-in, its cursor
-  placed on your piece before the list is drawn again; fzf-lua's `ctrl-q` (the real one) reordering its quickfix list. A list of models: the next asked
-  when one is down, fails or is slow, one that failed skipped for a minute, an odd answer not passed on, one question
-  at a time across them, a new config keeping each one's rest, and the title, `/find`, the ledger and `pair doctor`
-  naming the one that answered. Fake System One servers stand in for the models (`test/rerank.test.mjs`, `test/fake-reranker.mjs`, `test/meaning-nvim.test.mjs`).
+- **Search by meaning.** The pieces, the words, the index and the search are
+  [semantic-grep](https://github.com/makefunstuff/semantic-grep.nvim)'s, and its own tests cover them; Pair's cover
+  what Pair adds. `"index": "project"` in `.pair/`, listed once in `.git/info/exclude` and not `.gitignore`;
+  `:Pair find off` with an `embedding` model kept off by its note in Pair's data folder until `:Pair find on`; an
+  `embedding` model at a fake `/v1/embeddings` (on at once, its prompt, its key read as a model's, vectors made unit
+  length, a failing server said); EmbeddingGemma 2 kept only when its SHA-256 matches the pinned one; the helper loaded
+  once, a search going before the batches waiting, a missing runtime named; the trail's "by meaning" lines; the config
+  and `pair doctor` (each index's size and age, the `embedding` model answering or not). In a headless Neovim with
+  semantic-grep.nvim from `node_modules` and a stand-in Telescope that runs the picker's finder as the real one does:
+  Pair's daemon registered as semantic-grep's source once Pair connects, `meaning_debounce_ms` passed on, the words'
+  hit on the first keys, meaning's hits joining below it, the choice booked, `:SemanticGrep` asking the daemon too;
+  `:checkhealth semantic-grep` naming Pair's daemon and asking it for its models and the index; without a model the
+  words alone and nothing downloaded; `vim.ui.select` with the fused list, the chosen piece opened at its line and
+  booked; without semantic-grep.nvim, `Alt-s` and `:Pair find` saying what to install; `/find` from the chat;
+  `:Pair find on` saying what it fetches up front, how far it is, and booking it, and `:Pair find off` deleting the
+  venv Pair made. A fake embedder stands in for the model (`test/meaning.test.mjs`, `test/meaning-nvim.test.mjs`).
+- **Search by meaning's reranker.** The reranker is semantic-grep's, and its own tests cover the question, a model
+  that is slow, down or answers oddly, a list of models and the picker's rerank in place. Pair's cover the config's
+  `rerank` entry and its reload; `/find`'s and the search tool's ranking reranked and booked with the order before and
+  after; `pair doctor`, with one model and with a list (naming the one that answered and why the ones before it did
+  not); and in Telescope's stand-in, a list of Pair's `rerank` models putting the picker's first pieces in the order of
+  the one that answered, the title naming it and the one that was down, and the ledger booking it. Fake System One
+  servers stand in for the models (`test/rerank.test.mjs`, `test/fake-reranker.mjs`, `test/meaning-nvim.test.mjs`).
 - **The context card and no ceremony.** The board task matched by repo and number (never another repo's task of the
   same number, nor a version branch), the board's agent launches left out of your commands, each source's rows and
   budget, a hidden source left out of what the Partner gets and raising no remark (no failed command with a hidden
@@ -367,7 +358,7 @@ It indexes six small files and asks six questions worded unlike them; each file 
 **Search by meaning's reranker.** `test/live/rerank.test.mjs` measures a real decision model when `PAIR_LIVE_RERANK`
 is its `rerank` entry as JSON, one model or a list (for example `{"api": "system-one", "baseUrl":
 "http://127.0.0.1:8080/v1", "model": "d1-2B"}`) and `PAIR_LIVE_MEANING=1`, with EmbeddingGemma 2 as above (keep `PAIR_LIVE_MEANING_DATA` between runs: the
-first builds an index of Pair's repository, about five minutes). It asks the 32 labelled questions of
+first builds an index of Pair's repository, about five minutes). It asks the 31 labelled questions of
 `test/fixtures/rerank-queries.json` and prints recall@5 and MRR before and after the rerank, for code and docs, and the
 rerank's median and 95th percentile time, and with a list which model answered each.
 

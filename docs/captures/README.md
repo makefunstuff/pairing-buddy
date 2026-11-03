@@ -142,7 +142,7 @@ docs/captures/encode.sh site            # out/site/ -> site/public/media/m1..m3 
 
 The callouts on the front page are timed on those clips (`moments` in `site/.vitepress/theme/Landing.vue`).
 
-The push-to-talk scene is not among the default scenes: it also needs [whisper.cpp](../voice.md#1-build-whispercpp-cpu-only),
+The push-to-talk scene is not among the default scenes: it also needs [whisper.cpp](../voice.md),
 espeak-ng and FFmpeg. espeak-ng says the scene's question into the recorder, and whisper.cpp hears it for real:
 
 ```sh

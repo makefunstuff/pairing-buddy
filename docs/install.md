@@ -56,6 +56,7 @@ Then add the plugin to your lazy.nvim specs:
 ```lua
 {
   'makefunstuff/pairing-buddy',
+  dependencies = {'makefunstuff/semantic-grep.nvim'}, -- its picker for search by meaning (Alt-s)
   main = 'pair',
   lazy = false,
   opts = {auto_connect = true},
@@ -65,6 +66,11 @@ Then add the plugin to your lazy.nvim specs:
 With `auto_connect`, every Neovim connects to the daemon at startup. Without a plugin manager:
 `vim.opt.rtp:append('/path/to/pairing-buddy')` and `require('pair').setup({auto_connect = true})` in your config.
 The plugin's options are in [neovim-plugin.md](neovim-plugin.md#setup).
+
+The plugin needs [semantic-grep.nvim](https://github.com/makefunstuff/semantic-grep.nvim) for search by meaning: its
+picker is the one `Alt-s` opens, with Pair's daemon as its source ([meaning.md](meaning.md)). The spec above installs
+it as a dependency; without a plugin manager, append its clone to the runtimepath too. Without it, `Alt-s` and
+`:Pair find` say so, and the rest of Pair works.
 
 **Upgrading.** Run `npm install -g github:makefunstuff/pairing-buddy` and `pair setup` again, also after upgrading
 Node.js: the service names the Node.js binary it runs, and setup rewrites it and restarts the daemon. Without a

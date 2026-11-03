@@ -14,6 +14,8 @@ import {bashWithoutCores} from './no-core.mjs';
 import {scratch, socketDir} from './temp.mjs';
 
 export const REPO = fileURLToPath(new URL('..', import.meta.url));
+// semantic-grep.nvim as npm installed it: the picker Pair's Neovim plugin opens (lua/pair/meaning.lua).
+export const SEMANTIC_GREP = realpathSync(join(REPO, 'node_modules', 'semantic-grep'));
 export const hasNvim = (() => { try { execFileSync('nvim', ['--version']); return true; } catch { return false; } })();
 export const answers = async () => ({ok: true}); // the scripted models are not probed
 export const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -40,10 +42,11 @@ export const runIn = cwd => command => new Promise(resolve => {
  * Partner's model can think. `voice` is the config's. `knownKeys`
  * (labels such as M-j) are the keys the plugin remembers you have used, which show without their first-use hints.
  * `setup` is more of the plugin's options, as Lua table fields. `board` is a fake board's command (none by default).
- * `meaningWith` is search by meaning's fetch and embedder (see meaning.mjs).
+ * `meaningWith` is search by meaning's fetch and embedder (see search.mjs). semantic-grep.nvim, Pair's picker, is on the
+ * runtimepath (from node_modules) unless `semanticGrep` is false.
  * `stop()` ends them all.
  */
-export async function pairInNvim(goal, {testOnSave, runs = false, thinks = false, voice, rtp = [], knownKeys = [], setup = '', board = null, meaningWith = {}} = {}) {
+export async function pairInNvim(goal, {testOnSave, runs = false, thinks = false, voice, rtp = [], knownKeys = [], setup = '', board = null, meaningWith = {}, semanticGrep = true} = {}) {
   const project = realpathSync(scratch('pair-nvim-'));
   writeFileSync(join(project, 'a.js'), 'const x = 1\nconst y = 2\nconst z = 3\n');
   const dataDir = scratch('pair-data-');
@@ -75,7 +78,7 @@ export async function pairInNvim(goal, {testOnSave, runs = false, thinks = false
   }
   const nvim = spawn('nvim', [
     '--headless', '--clean', '--listen', server,
-    '--cmd', `set rtp+=${[REPO, ...rtp].join(',')}`,
+    '--cmd', `set rtp+=${[REPO, ...(semanticGrep ? [SEMANTIC_GREP] : []), ...rtp].join(',')}`,
     '-c', `lua require('pair').setup({socket = '${config.socket}', debounce_ms = 100${setup ? `, ${setup}` : ''}})`,
     '-c', `cd ${project}`,
     '-c', 'edit a.js',

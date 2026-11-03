@@ -11,8 +11,9 @@ You know what the code does, not its name: somewhere it waits longer after each 
 
 In Neovim, in your project, press `Alt-s` and type. The picker works like `live_grep`, with loose words: on every key
 it shows the pieces of code (functions, classes, methods with their doc comments) that have all your words, with
-identifiers split, so `delivery fail` finds `onDeliveryFailed`. Its title says `words only: :Pair find on adds
-meaning`: no model yet.
+identifiers split, so `delivery fail` finds `onDeliveryFailed`. Its title says `words only: an embedding model in
+setup() adds meaning`: no model yet. That is semantic-grep's own advice; in Pair, `:Pair find on` adds one, and the
+models are Pair's config's, not semantic-grep's `setup()`.
 
 ## 2. Add meaning
 
@@ -49,7 +50,8 @@ list to quickfix. In Visual mode, `Alt-s` starts with the selected words; `:Pair
 With a [`rerank` model](../meaning.md#rerank) in the config, the title says `reranking` once meaning came, and a moment
 later the model's pick moves to the top while you stay on the piece you were on: you can go on typing or moving
 meanwhile. Press `<C-q>` before it comes and the quickfix list opens at once, then takes the model's order in place,
-its title saying `(reranked by d1-2B)`; change that list first and Pair leaves it as it is.
+its title saying `(reranked by d1-2B)`; change that list first and it is left as it is. The picker is
+[semantic-grep.nvim](https://github.com/makefunstuff/semantic-grep.nvim)'s, asking Pair's daemon.
 
 ## 4. What it did
 

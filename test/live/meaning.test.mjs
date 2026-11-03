@@ -7,7 +7,7 @@ import {execFileSync} from 'node:child_process';
 import {mkdirSync, realpathSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {test} from 'node:test';
-import {Meaning} from '../../src/meaning.mjs';
+import {pairSearch} from '../../src/search.mjs';
 import {scratch} from '../temp.mjs';
 
 const skip = process.env.PAIR_LIVE_MEANING ? false : 'set PAIR_LIVE_MEANING=1 to run search by meaning with the real model';
@@ -35,7 +35,7 @@ test('EmbeddingGemma 2 finds code from questions worded unlike it', {skip, timeo
   for (const [file, text] of Object.entries(FILES)) writeFileSync(join(root, file), text);
   execFileSync('git', ['init', '-q'], {cwd: root});
   const dataDir = process.env.PAIR_LIVE_MEANING_DATA ?? scratch('meaning-live-data-');
-    const meaning = new Meaning({dataDir, config: process.env.PAIR_LIVE_MEANING_PYTHON ? {python: process.env.PAIR_LIVE_MEANING_PYTHON} : {}, log: line => console.log(line)});
+    const {meaning} = pairSearch({config: {dataDir, meaning: process.env.PAIR_LIVE_MEANING_PYTHON ? {python: process.env.PAIR_LIVE_MEANING_PYTHON} : {}}, log: line => console.log(line)});
   try {
     meaning.open(root); // the project has a session
     await meaning.turnOn();

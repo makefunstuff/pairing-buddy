@@ -12,7 +12,7 @@ import {oneAtATime} from './config.mjs';
 import {goalFromContext, SOURCES} from './context-card.mjs';
 import {loadSizedConfig} from './context-window.mjs';
 import {byUse, herdrFocus, noteEditor} from './editors.mjs';
-import {MODEL, RUNTIME} from './embedder.mjs';
+import {MODEL, pythonOf, RUNTIME} from './embedder.mjs';
 import {expireTries} from './gen-tree.mjs';
 import {gitRoot, repoNames} from './git.mjs';
 import {createDecider, DecisionModel} from './decision.mjs';
@@ -26,9 +26,7 @@ import {DETAIL_KEPT_MS} from './ledger.mjs';
 import {editOrigin} from './fold.mjs';
 import {Listener} from './listen.mjs';
 import {downloadOmni, gb, installVoiceRuntime, OMNI, OmniVoice, omniInstall, omniMissing, omniReady, omniRuntimeOf, removeOmni, venvHasLiteRT, voicePythonsOn, voiceWheelsOf} from './omni.mjs';
-import {pythonOf} from './embedder.mjs';
 import {usesOmni} from './voice.mjs';
-import {Meaning} from './meaning.mjs';
 import {createDecisionModel, createPairModels, createRerankEndpoints} from './models.mjs';
 import {acquireOwner} from './owner.mjs';
 import {EditorPaneHost, HerdrPaneHost} from './pane-hosts.mjs';
@@ -40,8 +38,8 @@ import {Pace} from './pace.mjs';
 import {probeModel} from './probe.mjs';
 import {projectContext} from './project-context.mjs';
 import {readMessages, sendMessage} from './protocol.mjs';
-import {Reranker} from './rerank.mjs';
 import {findPython, madeByPair, Runtime, RUNTIME_VERSION, venvPython} from './runtime.mjs';
+import {pairReranker, pairSearch} from './search.mjs';
 import {configChanges, RESTART_FIELDS, watchConfig} from './reload.mjs';
 import {rememberScores} from './score-memory.mjs';
 import {ScoutPane} from './scout-pane.mjs';
@@ -94,14 +92,14 @@ const tilde = path => (path.startsWith(homedir()) ? `~${path.slice(homedir().len
  * change. With `configFile`, the daemon takes changes to it as they are
  * saved (see reload.mjs); `modelsFor(config)` builds the models of a config, at start and after a change, and
  * `decisionFor(config)` its decision model (`{models, model}`, or null; see decision.mjs), and `rerankerFor(config)`
- * search by meaning's reranker (a Reranker over its models, or null; see rerank.mjs).
+ * search by meaning's reranker (a Reranker over its models, or null; see search.mjs).
  */
 export async function startDaemon(config, {
   configFile = null, modelsFor = createPairModels, pairModels = modelsFor(config), decisionFor = createDecisionModel, probe, log = defaultLog, keepWarmMs = KEEP_WARM_MS,
   idleEndMs = IDLE_END_MS, aloneEndMs = ALONE_END_MS, agentsPollMs, taskChangesPollMs = TASK_CHANGES_MS,
   appCommand = 'herdr-app', // the Herdr window's command, for herdr-core's focus and agents
-  meaningWith = {}, // tests' fetch and embedder for search by meaning (see meaning.mjs)
-  rerankerFor = (entries, logTo) => (entries.rerank ? new Reranker({endpoints: createRerankEndpoints(entries), log: logTo}) : null),
+  meaningWith = {}, // tests' fetch and embedder for search by meaning (see search.mjs)
+  rerankerFor = (entries, logTo) => (entries.rerank ? pairReranker(createRerankEndpoints(entries), {log: logTo}) : null),
   omniWith = {}, // tests' LFM3-Omni for voice (see omni.mjs): {voice, fetch, free, files, runtime, litert, wheels, pythons, pythonsOn, install}
 } = {}) {
   mkdirSync(config.dataDir, {recursive: true, mode: 0o700});
@@ -171,22 +169,22 @@ export async function startDaemon(config, {
     ? new AgentBoard({board: config.board, pollMs: agentsPollMs, appCommand, log, wanted: () => [...clients].some(client => client.session), onChange: change => { for (const relay of relays.values()) relay.hear(change); }})
     : null;
 
-  // Search by meaning (meaning.mjs): the index of each project with a session, its words at once and its vectors in the
-  // background once it has a model; its builds and searches go to that project's ledger, and how far a build is to its
-  // Neovims.
-  const meaning = new Meaning({
-    dataDir: config.dataDir, config: config.meaning, embedding: config.embedding, log,
-    reranker: rerankerFor(config, log), // the decision model that reorders a settled search, or null (see rerank.mjs)
+  // Search by meaning (semantic-grep's Meaning, see search.mjs): the index of each project with a session, its words at
+  // once and its vectors in the background once it has a model; its builds and searches go to that project's ledger,
+  // and how far a build is to its Neovims.
+  const {meaning, runtime: meaningRuntime, turnOff: meaningTurnOff} = pairSearch({
+    config, log,
+    keepVenv: () => omniReady(config.dataDir), // :Pair find off leaves the venv to voice while LFM3-Omni is here
+    reranker: rerankerFor(config, log), // the decision model that reorders a settled search, or null (see search.mjs)
     book: (root, kind, text, options) => live.get(root)?.ledger.add(kind, text, options),
     progress: (root, how) => {
       const session = live.get(root);
       if (session) for (const client of clientsOf(session, 'editor')) sendMessage(client.socket, {type: 'index_progress', ...how});
     },
-    ...meaningWith,
+    with: meaningWith,
   });
 
   // Voice's LFM3-Omni (omni.mjs): one helper for every session, started on first use; its download is `:Pair voice on`.
-  meaning.keepVenv = () => omniReady(config.dataDir); // :Pair find off leaves the venv to voice while LFM3-Omni is here
   const omni = omniWith.voice ?? new OmniVoice({python: () => pythonOf(config.meaning, config.dataDir), dataDir: config.dataDir, threads: config.voice?.threads, log});
   let omniDownload = null; // {abort, done} while its files come
 
@@ -1007,6 +1005,7 @@ export async function startDaemon(config, {
     if (message.type === 'find' && typeof message.query === 'string') return find(client, session, message);
     if (message.type === 'find_chosen' && typeof message.query === 'string') return meaning.booked(session.root, message.query, message.results ?? [], ' in the picker');
     if (message.type === 'index_rebuild') return indexRebuild(client, session);
+    if (message.type === 'search_rpc' && typeof message.method === 'string') return searchRequest(client, session, message);
     if (message.type === 'meaning_on') return meaningOn(client);
     if (message.type === 'meaning_off') return meaningOff(client);
     if (message.type === 'voice_on') return voiceOn(client);
@@ -1055,6 +1054,46 @@ export async function startDaemon(config, {
       type: 'found', ...(message.id !== undefined ? {id: message.id} : {}), ...answer, root: session.root,
       results: answer.results.map(result => ({...result, path: join(session.root, result.file)})),
     });
+  }
+
+  /**
+   * semantic-grep.nvim's requests other than a search, from the Neovim that registered Pair's daemon as its source
+   * (lua/pair/meaning.lua): "status" (Meaning's snapshot), "check" (the embedding model asked once, the reranker's
+   * probe), "open" (the session's project indexed) and "rebuild" (as :Pair index rebuild). Answered with its `id`.
+   */
+  async function searchRequest(client, session, message) {
+    const answer = fields => sendMessage(client.socket, {type: 'search_rpc', id: message.id, ...fields});
+    try {
+      if (message.method === 'status') return answer({result: meaning.snapshot()});
+      if (message.method === 'open') {
+        meaning.open(session.root);
+        return answer({result: {state: meaning.state}});
+      }
+      if (message.method === 'rebuild') {
+        if (meaning.state === 'disabled') throw new Error('search by meaning is off in the config ("meaning": false)');
+        const path = await meaning.rebuild(session.root);
+        session.ledger.add('indexed', `rebuilding the search index (:SemanticGrep rebuild): ${path}`);
+        return answer({result: {path}});
+      }
+      if (message.method === 'check') {
+        const embedder = meaning.state === 'on' ? meaning.embedder : null;
+        let embedding = null;
+        if (embedder) {
+          const started = Date.now();
+          try {
+            const [vector] = await embedder.embed([embedder.query('add two numbers')], {urgent: true});
+            embedding = {ok: true, ms: Date.now() - started, dimensions: vector.length, model: meaning.modelName};
+          } catch (error) {
+            embedding = {ok: false, ms: Date.now() - started, error: error.message, model: meaning.modelName};
+          }
+        }
+        const rerank = meaning.reranker ? {...await meaning.reranker.probe(), timeoutMs: meaning.reranker.timeoutMs, models: meaning.reranker.name} : null;
+        return answer({result: {embedding, rerank}});
+      }
+      throw new Error(`Pair's daemon has no ${message.method}`);
+    } catch (error) {
+      answer({error: error.message});
+    }
   }
 
   /** `:Pair index rebuild`: the project's index made again from its files, in the background. */
@@ -1119,7 +1158,7 @@ export async function startDaemon(config, {
   /** `:Pair find off`: the embedder stops, and its model, indexes and the venv Pair made leave Pair's data folder. */
   async function meaningOff(client) {
     const was = meaning.state;
-    const {venv} = await meaning.turnOff();
+    const {venv} = await meaningTurnOff(); // with an "embedding" model too, the venv Pair made for EmbeddingGemma
     const what = `${config.embedding ? 'indexes' : 'model and indexes'}${venv ? ', and the venv with LiteRT-LM that Pair made' : ''}`;
     if (was === 'on' || venv) for (const session of live.values()) session.ledger.add('deleted', `search by meaning's ${what} (:Pair find off)`);
     const text = config.embedding ? `Search by meaning is off: its ${what} are deleted, and the embedding model is not asked until :Pair find on.` : `Search by meaning is off: its ${what} are deleted.`;
@@ -1142,7 +1181,7 @@ export async function startDaemon(config, {
     if (!missing && !needsPackages) return tell(ready);
     // meaning.python is the user's: Pair installs nothing there, and says what to run before it downloads anything.
     if (needsPackages && config.meaning?.python) return tell(`Voice is not ready: ${python} lacks voice's packages, and Pair installs nothing into meaning.python: ${omniInstall(python)}.`);
-    const runtime = meaning.runtime ?? new Runtime({dataDir: config.dataDir, python: () => pythonOf(config.meaning, config.dataDir), log});
+    const runtime = meaningRuntime ?? new Runtime({dataDir: config.dataDir, python: () => pythonOf(config.meaning, config.dataDir), log});
     const litert = needsPackages && !(await (omniWith.litert ?? venvHasLiteRT)(config.dataDir));
     // No wheels for this machine or this Python: said before anything is downloaded, not after LiteRT-LM and its venv.
     // Without a fitting Python at all, runtime.install() says what is missing, also before it downloads anything.

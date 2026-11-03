@@ -9,7 +9,7 @@ import {MIN_CONTEXT, replyRoom} from './context.mjs';
 import {storedKey} from './credentials.mjs';
 import {RUN_TIMEOUT_MS} from './scout-pane.mjs';
 import {scoutPaneConfig} from './scout-shell.mjs';
-import {FALLBACK_TIMEOUT_MS, RERANK_TIMEOUT_MS, RERANK_TOP} from './rerank.mjs';
+import {FALLBACK_TIMEOUT_MS, RERANK_TIMEOUT_MS, RERANK_TOP} from 'semantic-grep';
 import {readServiceEnv} from './service-env.mjs';
 import {voiceConfig} from './voice.mjs';
 
@@ -309,7 +309,7 @@ function boardCommand(raw = 'shepherdr') {
 }
 
 /**
- * Search by meaning (see meaning.mjs): false turns it off for good; else `{python, threads, index}`, the Python whose
+ * Search by meaning (see search.mjs, and semantic-grep): false turns it off for good; else `{python, threads, index}`, the Python whose
  * litert-lm-api runs EmbeddingGemma 2 (else a venv in Pair's data folder, else python3), the cores it may use, and
  * where the index lives: "data" (Pair's data folder, the default) or "project" (.pair/ in the repository).
  * It is on once its model is downloaded (`:Pair find on`), or at once with an "embedding" model.
@@ -349,7 +349,7 @@ export function embeddingConfig(entry, name = 'embedding') {
 
 /**
  * The optional `rerank` entry, next to `embedding`: a decision model that reorders the first pieces of a settled search
- * (see rerank.mjs), or a list of them, best first, each asked when the ones before it fail. A model entry as
+ * (semantic-grep's Reranker), or a list of them, best first, each asked when the ones before it fail. A model entry as
  * `decision`'s (a `provider`, or an `api` of DECISION_APIS at a `baseUrl`), with `top`, how many pieces it reorders,
  * and `timeoutMs`, how long a search waits for it: by default 3 s, and 1 s for a model that another follows. A list of
  * entries, or null without one: off.
@@ -404,7 +404,7 @@ export function parseConfig(raw, {windows = {}} = {}) {
     socket: raw.socket ?? defaultSocketPath(),
     dataDir: raw.dataDir ?? join(xdg('XDG_STATE_HOME', '.local/state'), 'pairing-buddy'),
     testOnSave: testCommands(raw.testOnSave),
-    meaning: meaningConfig(raw.meaning), // search by meaning's Python and cores, or false (see meaning.mjs)
+    meaning: meaningConfig(raw.meaning), // search by meaning's Python and cores, or false (see search.mjs)
     sessionRoots: sessionRoots(raw.sessionRoots),
     scoutPane: scoutPaneConfig(raw.scoutPane), // Pair's pane: your rc file and the sandbox (see scout-shell.mjs)
     voice: voiceConfig(raw.voice), // push-to-talk; null when off (see voice.mjs)
@@ -416,7 +416,7 @@ export function parseConfig(raw, {windows = {}} = {}) {
     models,
     decision: decisionConfig(raw.decision), // the gate's decision model, or null (see decision.mjs)
     embedding: embeddingConfig(raw.embedding), // search by meaning's model at a /v1/embeddings, or null for EmbeddingGemma 2
-    rerank: rerankConfig(raw.rerank), // the decision models that reorder a settled search's first pieces, best first, or null (see rerank.mjs)
+    rerank: rerankConfig(raw.rerank), // the decision models that reorder a settled search's first pieces, best first, or null (see search.mjs)
   };
 }
 

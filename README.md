@@ -81,6 +81,7 @@ Add the plugin with lazy.nvim:
 ```lua
 {
   'makefunstuff/pairing-buddy',
+  dependencies = {'makefunstuff/semantic-grep.nvim'}, -- its picker for search by meaning (Alt-s)
   main = 'pair',
   lazy = false,
   opts = {auto_connect = true},
@@ -116,7 +117,7 @@ your keys and logins).
   file, undo the request as one; Pair's own edits carry their origin, and taken code is marked `┊` until you own it;
   `/gen board` hands a request to the board as a task, its brief built from yours, and `:Pair review` opens a task's
   branch as a review to keep pieces of
-- [Search by meaning](docs/meaning.md): `Alt-s` is a live picker in Telescope, snacks.picker or fzf-lua that finds
+- [Search by meaning](docs/meaning.md): `Alt-s` is [semantic-grep](https://github.com/makefunstuff/semantic-grep.nvim)'s live picker in Telescope, snacks.picker or fzf-lua that finds
   code by your words on every key and by what you mean as you pause, from a local index (EmbeddingGemma 2, or an
   embedding model of your own) Pair keeps up to date in the background, and optionally a small decision model that
   reranks a settled list's first pieces

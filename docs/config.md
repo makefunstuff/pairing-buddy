@@ -213,7 +213,7 @@ under the service, use `auth`, `apiKeyFile` or `apiKey`). Without it, EmbeddingG
 | `baseUrl` | | Where its `/v1` is, for example `http://127.0.0.1:8080/v1` |
 | `model` | | Its name there, for example `jina-embeddings-v2-base-code` or `nomic-embed-code` |
 | `auth`, `apiKey`, `apiKeyFile`, `apiKeyEnv` | none | Its key, if it needs one: one of them |
-| `queryPrefix`, `documentPrefix` | the model's own, where Pair knows them | The prompts it was trained with, for a search and for a piece of code |
+| `queryPrefix`, `documentPrefix` | the model's own, where semantic-grep knows them | The prompts it was trained with, for a search and for a piece of code |
 | `dimensions` | the model's | Asks a model that can for shorter vectors |
 
 ## `rerank`

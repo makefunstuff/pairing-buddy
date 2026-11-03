@@ -56,9 +56,11 @@ local config = {
   agents_review_key = '<M-r>', -- on the relayed line of a board task ready to merge: its branch as a review
   gen_key = '<M-g>', -- asks Pair for code, in Normal and Visual mode
   meaning_key = '<M-s>', -- searches the project by meaning; in Visual mode, for the selected words
-  meaning_picker = 'auto', -- or 'telescope', 'snacks', 'fzf-lua', 'select': where search by meaning shows what it found
-  meaning_debounce_ms = 150, -- how long typing stops before the picker asks for meaning too (the words come on every key)
-  meaning_rerank_delay_ms = 0, -- with a "rerank" model, how long the list stays as it is once meaning came before it is reranked
+  -- The picker is semantic-grep.nvim's: these, when set, go to its picker, debounce_ms and rerank_delay_ms; unset, its
+  -- own setup() decides (default 'auto', 150 and 0).
+  meaning_picker = nil, -- 'auto', 'telescope', 'snacks', 'fzf-lua' or 'select': where search by meaning shows what it found
+  meaning_debounce_ms = nil, -- how long typing stops before the picker asks for meaning too (the words come on every key)
+  meaning_rerank_delay_ms = nil, -- with a "rerank" model, how long the list stays as it is once meaning came before it is reranked
   gen_input = 'ui', -- or 'cmdline': the request and its questions always on Neovim's own prompt, not vim.ui's
   gen_preview_lines = 30, -- a /gen block taller than this shows in a preview window
   try_run_key = '<LocalLeader>r', -- in a /gen try's sample: runs it again in Pair's pane; in a scaffold's copy: checks it
@@ -1249,7 +1251,8 @@ local handlers = {
   end,
   context = card.update,
   trail = function(message) trail.show(message, function() send({type = 'forget_trail'}) end) end,
-  found = function(message) if message.id then meaning.on_found(message) else meaning.on_select(message) end end,
+  found = meaning.on_found, -- semantic-grep's picker asked Pair's daemon (meaning.lua)
+  search_rpc = meaning.on_rpc,
   index_progress = meaning.on_progress,
   meaning_state = meaning.on_state,
   voice_state = function(message) if message.text then vim.notify('Pair: ' .. message.text) end end,
@@ -1345,6 +1348,7 @@ local function try_connect()
   state.channel = channel
   state.partial = ''
   hello()
+  meaning.register() -- semantic-grep.nvim's picker asks Pair's daemon while it is connected
   for _, buf in ipairs(vim.api.nvim_list_bufs()) do
     if vim.api.nvim_buf_is_loaded(buf) then attach(buf) end
   end
@@ -1366,6 +1370,7 @@ end
 
 disconnected = function()
   state.channel = nil
+  meaning.disconnected() -- semantic-grep goes back to its own server
   if state.run and state.run.state == 'run' then on_tests({state = 'idle'}) end -- that run's end will not come
   if state.typing then state.typing() end -- no daemon waits for the edit any more
   state.thinking = false -- nor does any turn of its Partner
@@ -1399,6 +1404,7 @@ function M.disconnect()
   if state.retry then state.retry:stop() end
   if state.channel then vim.fn.chanclose(state.channel) end
   state.channel = nil
+  meaning.disconnected()
   set_role(nil)
   forget_held()
   clear_points()
@@ -1681,7 +1687,7 @@ function M.setup(opts)
   owning.setup({send = send, event = event, redraw_status = redraw_status, connected = function() return state.channel ~= nil end})
   gentry.setup({send = send, run_key = config.try_run_key})
   overlap.setup({send = send, winbar = config.board_winbar})
-  meaning.setup({picker = config.meaning_picker, debounce_ms = config.meaning_debounce_ms, rerank_delay_ms = config.meaning_rerank_delay_ms}, {send = send})
+  meaning.setup({picker = config.meaning_picker, debounce_ms = config.meaning_debounce_ms, rerank_delay_ms = config.meaning_rerank_delay_ms}, {send = send, connected = function() return state.channel ~= nil end})
   style.apply()
   local group = vim.api.nvim_create_augroup('pair', {clear = true})
   local function restyle()

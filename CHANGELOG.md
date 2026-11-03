@@ -13,7 +13,7 @@ release is cut.
   rerank is asked as soon as meaning came (`meaning_rerank_delay_ms`, 0 by default), never holds up typing, and
   redraws the list in place when it comes, the piece you are on staying selected; a key drops a stale one. `<C-q>`
   sends the list in the reranked order; sent while the rerank still runs, the quickfix list opens at once and that
-  same list is reordered in place when it comes (`Find: retry (reranked by d1-2B)`), unless you changed it or made
+  same list is reordered in place when it comes (`SemanticGrep: retry (reranked by d1-2B)`), unless you changed it or made
   another meanwhile. fzf-lua's `ctrl-q` now sends the whole list, and its quickfix list is reranked the same way.
 
 - **Search by meaning can rerank with a small decision model.** With a `rerank` entry next to `embedding` (a
@@ -56,7 +56,10 @@ release is cut.
   meaning 28 to 46 ms. `:Pair index rebuild` makes the index again, `:Pair find off` deletes the model and the indexes,
   `"meaning": false` turns it all off, `pair doctor` says whether the model answers and how big and how old each
   index is, and the ledger books each build and each piece you open from a search. With it on, the search trail's
-  remark also gets the code closest to what each of your searches means; when Pair speaks is unchanged. See
+  remark also gets the code closest to what each of your searches means; when Pair speaks is unchanged. The picker,
+  the index and the search are [semantic-grep](https://github.com/makefunstuff/semantic-grep.nvim)'s, with Pair's
+  daemon as the picker's source: install semantic-grep.nvim next to Pair (the lazy.nvim spec in
+  [install.md](docs/install.md) has it as a dependency); without it, `Alt-s` says so. See
   [meaning.md](docs/meaning.md).
 
 - **`:Pair find on` installs search by meaning's runtime itself.** No more `python3 -m venv` and `pip install` by
