@@ -3,7 +3,7 @@
 // data folder, which modelReady takes for the checked one.
 import {statSync, writeFileSync, mkdirSync} from 'node:fs';
 import {DIMENSIONS, documentText, MODEL, meaningDir, modelPath, queryText} from '../src/embedder.mjs';
-import {words} from '../src/meaning.mjs';
+import {words} from 'semantic-grep';
 
 // Each group is one meaning: any of its words counts as the first.
 const MEANINGS = [

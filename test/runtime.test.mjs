@@ -2,14 +2,14 @@
 // the venv in Pair's data folder, the wheel downloaded by its SHA-256 with its progress, pip with no index and the lock
 // file's hashes, the note that Pair made the venv,
 // and what goes wrong said in one line with what to do, leaving nothing half made. `:Pair find off` deletes only the
-// venv Pair made. Meaning's turnOn and turnOff around it, and the lock file itself. A fake Python stands in for the
+// venv Pair made. Meaning's turnOn and turnOff around it (Pair's provider, search.mjs), and the lock file itself. A fake Python stands in for the
 // user's (fake-python.mjs): no real Python, pip or network.
 import assert from 'node:assert/strict';
 import {existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {pythonOf, RUNTIME} from '../src/embedder.mjs';
-import {Meaning} from '../src/meaning.mjs';
+import {pairSearch} from '../src/search.mjs';
 import {findPython, LOCK, madeByPair, pythons, Runtime, venvPath, venvPython, WHEELS} from '../src/runtime.mjs';
 import {fakeEmbedder, fakeModel} from './fake-embedder.mjs';
 import {fakePython, fakeWheel} from './fake-python.mjs';
@@ -117,7 +117,7 @@ test('turnOn installs LiteRT-LM before the model, says so in its state, and turn
   const dataDir = scratch('meaning-data-');
   fakeModel(dataDir); // the model is here already: only the runtime is missing
   const runtime = runtimeIn(dataDir, fakePython(), fakeWheel({bytes: 2 << 20}));
-  const meaning = new Meaning({dataDir, embedder: fakeEmbedder(), runtime});
+  const {meaning} = pairSearch({config: {dataDir, meaning: {}}, with: {embedder: fakeEmbedder(), runtime}});
   try {
     assert.deepEqual(await meaning.needs(), {runtime: {bytes: 2 << 20}, model: false});
     const states = [];
@@ -135,11 +135,11 @@ test('turnOn installs LiteRT-LM before the model, says so in its state, and turn
     await meaning.close();
   }
 
-  const failing = new Meaning({dataDir, embedder: fakeEmbedder(), runtime: runtimeIn(dataDir, missing()), fetch: async () => { throw new Error('no network in the tests'); }});
+  const {meaning: failing, gemma} = pairSearch({config: {dataDir, meaning: {}}, with: {embedder: fakeEmbedder(), runtime: runtimeIn(dataDir, missing()), fetch: async () => { throw new Error('no network in the tests'); }}});
   try {
     await assert.rejects(failing.turnOn(), /needs Python 3\.10 or later/);
     assert.equal(failing.state, 'off', 'it stays off, with the words');
-    assert.equal(failing.downloading, null);
+    assert.equal(gemma.downloading, null);
   } finally {
     await failing.close();
   }
@@ -149,7 +149,7 @@ test('turnOn installs LiteRT-LM before the model, says so in its state, and turn
   mkdirSync(join(own, 'bin'));
   writeFileSync(python, '');
   const config = {python};
-  const withOwn = new Meaning({dataDir, config, embedder: fakeEmbedder(), runtime: new Runtime({dataDir, python: () => pythonOf(config, dataDir), candidates: [missing()]})});
+  const {meaning: withOwn} = pairSearch({config: {dataDir, meaning: config}, with: {embedder: fakeEmbedder(), runtime: new Runtime({dataDir, python: () => pythonOf(config, dataDir), candidates: [missing()]})}});
   try {
     fakeModel(dataDir);
     assert.deepEqual(await withOwn.needs(), {runtime: null, model: false}, 'the config\'s Python wins: nothing to install');
@@ -166,14 +166,14 @@ test('an older LiteRT-LM is installed again; off deletes Pair\'s venv with an "e
   fakeModel(dataDir);
   const runtime = runtimeIn(dataDir, fakePython());
   const older = {...runtime, bytes: runtime.bytes, check: async () => ({version: '0.18.1'})};
-  const meaning = new Meaning({dataDir, embedder: fakeEmbedder(), runtime: older});
+  const {meaning} = pairSearch({config: {dataDir, meaning: {}}, with: {embedder: fakeEmbedder(), runtime: older}});
   assert.deepEqual(await meaning.needs(), {runtime: {bytes: runtime.bytes}, model: false}, 'not the pinned version: installed again');
   await meaning.close();
 
   await runtime.install();
-  const withModel = new Meaning({dataDir, embedding: {api: 'openai', baseUrl: 'http://127.0.0.1:9/v1', model: 'm'}, embedder: fakeEmbedder(), runtime});
+  const {meaning: withModel, turnOff} = pairSearch({config: {dataDir, meaning: {}, embedding: {api: 'openai', baseUrl: 'http://127.0.0.1:9/v1', model: 'm'}}, with: {embedder: fakeEmbedder(), runtime}});
   assert.deepEqual(await withModel.needs(), {runtime: null, model: false}, 'nothing to install for an "embedding" model');
-  assert.deepEqual(await withModel.turnOff(), {venv: true}, 'but the venv Pair made before goes');
+  assert.deepEqual(await turnOff(), {venv: true}, 'but the venv Pair made before goes');
   assert.ok(!existsSync(venvPath(dataDir)));
   await withModel.close();
 

@@ -25,7 +25,6 @@
     {"query": "delete old generated attempts after some days", "file": "src/gen-tree.mjs", "name": "expireTries"},
     {"query": "one line summary of failed tests for the model", "file": "src/test-output.mjs", "name": "testSummary"},
     {"query": "method that removes user", "file": "src/auth.mjs", "name": "logout"},
-    {"query": "merge two rankings into one list", "file": "src/meaning.mjs", "name": "function fuse"},
     {"query": "what happens when the classifier stops answering", "file": "docs/decision.md", "name": "When it is down or slow"},
     {"query": "speech recognition on the processor without a graphics card", "file": "docs/voice.md", "name": "Build whisper.cpp"},
     {"query": "how long do generated samples stay around", "file": "docs/gen.md", "name": "how long they stay"},

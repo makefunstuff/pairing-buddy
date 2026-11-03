@@ -18,7 +18,7 @@ The keys exist only while there is something for them to do, and only where you 
 | `Alt-a` | Go to the agent whose news Pair relayed ([your other agents](agents.md)) |
 | `Alt-o` | On a relayed board task's line: open its report or pull request ([your other agents](agents.md#what-a-task-left-behind)) |
 | `Alt-r` | On the relayed line of a board task ready to merge: open its branch as a [review](gen.md#reviewing-a-board-task-pair-review) |
-| `Alt-s` | [Search the project by meaning](meaning.md): a live picker in Telescope, snacks.picker or fzf-lua, the words' hits on every key and meaning's below them once you pause; in Visual mode, with the selected words typed in it. `Enter` opens a piece at its line, `<C-q>` sends the hits to quickfix |
+| `Alt-s` | [Search the project by meaning](meaning.md): semantic-grep.nvim's live picker in Telescope, snacks.picker or fzf-lua, the words' hits on every key and meaning's below them once you pause; in Visual mode, with the selected words typed in it. `Enter` opens a piece at its line, `<C-q>` sends the hits to quickfix |
 | `Alt-g` | Ask Pair for code ([/gen](gen.md)) here: at the cursor, or in Visual mode over the selection, without asking the shape (at the cursor, a shape word first asks for another; outside the project the shape is asked); while Pair's question waits, show it again |
 | `\r` (`<LocalLeader>r`) | In a [/gen try](gen.md#samples-gen-try-and-keep)'s sample: write it and run it again in Pair's pane. In a file of a [/gen scaffold](gen.md#many-files-gen-scaffold)'s copy: write it and check the copy again |
 | any key | Take the wheel back while Pair drives |
@@ -30,7 +30,8 @@ message goes to its line, with a mark for `Ctrl-O`.
 ## Setup
 
 The lazy.nvim spec is in [install.md](install.md#install). Without a plugin manager:
-`vim.opt.rtp:append('/path/to/pairing-buddy')` and `require('pair').setup({auto_connect = true})`.
+`vim.opt.rtp:append('/path/to/pairing-buddy')` and `require('pair').setup({auto_connect = true})`, with
+[semantic-grep.nvim](https://github.com/makefunstuff/semantic-grep.nvim), the picker of search by meaning, appended too.
 
 ```lua
 require('pair').setup({
@@ -46,9 +47,9 @@ require('pair').setup({
   land = true,         -- false: the morning pick-up does not open an empty Neovim where you stopped
   gen_key = '<M-g>',   -- asks Pair for code (/gen); false for none
   meaning_key = '<M-s>', -- searches the project by meaning; false for none
-  meaning_picker = 'auto', -- or 'telescope', 'snacks', 'fzf-lua', 'select': where search by meaning shows its results
-  meaning_debounce_ms = 150, -- how long you stop typing before the picker asks for meaning too
-  meaning_rerank_delay_ms = 0, -- with a "rerank" model: how long the list stays as it is before it is reranked
+  meaning_picker = nil, -- semantic-grep's picker option, when set: 'auto', 'telescope', 'snacks', 'fzf-lua', 'select'
+  meaning_debounce_ms = nil, -- semantic-grep's debounce_ms, when set: how long you stop typing before meaning is asked
+  meaning_rerank_delay_ms = nil, -- semantic-grep's rerank_delay_ms, when set: how long the list stays before it is reranked
   gen_input = 'ui',    -- 'cmdline': the /gen request and its questions on Neovim's own prompt, not vim.ui's
   gen_preview_lines = 30, -- a /gen block taller than this shows in a preview window
   try_run_key = '<LocalLeader>r', -- in a /gen try's sample: runs it again; in a scaffold's copy: checks it again
@@ -82,9 +83,9 @@ require('pair').setup({
 | `answers` | `true` | The first two lines of Pair's answer to a question you typed (`:Pair ask`, the chat) show under the line it was about, too ([what each thing looks like](neovim.md#what-each-thing-looks-like)) |
 | `gen_key` | `'<M-g>'` | Asks Pair for code ([gen.md](gen.md#asking)): a dialog for the request, in Normal mode at the cursor, in Visual mode over the selected lines. While a question of Pair's waits, shows it again. Mapped in Normal and Visual mode from the start |
 | `meaning_key` | `'<M-s>'` | [Search by meaning](meaning.md#search): opens the live picker; in Visual mode, with the selected words typed in it. Mapped in Normal and Visual mode from the start |
-| `meaning_picker` | `'auto'` | Where search by meaning shows what it found: `'auto'` is Telescope if it is installed, else snacks.picker, else fzf-lua, else `vim.ui.select` (which asks for your words first, and shows one list); or name one |
-| `meaning_debounce_ms` | `150` | How long you stop typing before the picker asks for meaning too; the words come on every key |
-| `meaning_rerank_delay_ms` | `0` | With a [`rerank` model](meaning.md#rerank), how long the list stays as it is once meaning came before its first pieces are reranked, once, in the background (0: at once) |
+| `meaning_picker` | none | Set, it is semantic-grep.nvim's `picker`: `'auto'` (its default) is Telescope if it is installed, else snacks.picker, else fzf-lua, else `vim.ui.select` (which asks for your words first, and shows one list); or name one |
+| `meaning_debounce_ms` | none | Set, it is semantic-grep.nvim's `debounce_ms` (150 by default): how long you stop typing before the picker asks for meaning too; the words come on every key |
+| `meaning_rerank_delay_ms` | none | Set, it is semantic-grep.nvim's `rerank_delay_ms` (0 by default): with a [`rerank` model](meaning.md#rerank), how long the list stays as it is once meaning came before its first pieces are reranked |
 | `gen_input` | `'ui'` | Where the `/gen` request, its shape and Pair's questions are asked: `'ui'` through `vim.ui.input` and `vim.ui.select`, which snacks.nvim, dressing.nvim or noice.nvim show as floating dialogs (else Neovim's own prompt); `'cmdline'` always Neovim's own prompt and numbered list |
 | `gen_preview_lines` | `30` | A `/gen` block taller than this (or than its window) shows as one line in place and in a preview window under it, instead of as ghost lines |
 | `try_run_key` | `'<LocalLeader>r'` | In a [/gen try](gen.md#samples-gen-try-and-keep)'s sample (a buffer of its folder): writes the sample's changed buffers and runs it again in Pair's pane, as `:Pair gen run` does. In a file of a [/gen scaffold](gen.md#many-files-gen-scaffold)'s copy: writes it and runs the check again in the copy, as `r` in `:Pair gen list` does. Mapped in Normal mode in those buffers only, and not over a mapping of your own; then a try's winbar names `:Pair gen run` instead, and a scaffold copy's names no key. `<LocalLeader>` is `\` unless you set `maplocalleader`, so it is not Vim's own `r` |

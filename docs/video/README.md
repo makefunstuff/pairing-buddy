@@ -61,7 +61,7 @@ Quiet square-wave blips (`sfx.sh`) mark each card and key press, over a chiptune
 ## Make it again
 
 Node.js 22+, FFmpeg, Go, a C compiler, clangd, bubblewrap, Neovim 0.11+, VHS 0.11 with ttyd, the JetBrainsMono Nerd
-Font, espeak-ng, whisper.cpp built for the CPU with its `base.en` model ([voice.md](../voice.md#1-build-whispercpp-cpu-only)),
+Font, espeak-ng, whisper.cpp built for the CPU with its `base.en` model ([voice.md](../voice.md)),
 a DeepSeek key in `~/.pi/agent/auth.json` (`{"deepseek": {"type": "api_key", "key": "…"}}`, where the key may also be
 `!command` that prints it), and an OpenRouter key in `/tmp/openrouter.key` (or `$OPENROUTER_KEY_FILE`). Both keys are
 read at run time and never printed: the DeepSeek key goes only into each sandbox's own `auth.json`, never into an

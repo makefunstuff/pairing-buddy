@@ -33,6 +33,7 @@ With lazy.nvim:
 ```lua
 {
   'makefunstuff/pairing-buddy',
+  dependencies = {'makefunstuff/semantic-grep.nvim'}, -- its picker for search by meaning (Alt-s)
   main = 'pair',
   lazy = false,
   opts = {auto_connect = true},

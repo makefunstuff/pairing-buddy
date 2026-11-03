@@ -14,13 +14,14 @@ import {coreRequest, coreStatus, herdrOf, HerdrApp, SPACE} from './herdr-core.mj
 import {listModels, shareServer, SWAP_FACTOR, SWAP_MS} from './loaded-model.mjs';
 import {createDecider, probeDecision} from './decision.mjs';
 import {createDecisionModel, createPairModels, createRerankEndpoints, knownProviders} from './models.mjs';
-import {Embedder, HttpEmbedder, meaningDir, MODEL, modelPath, modelReady, pythonOf, queryText, RUNTIME, runtimeOf} from './embedder.mjs';
+import {HttpEmbedder} from 'semantic-grep';
+import {Embedder, MODEL, modelPath, modelReady, pythonOf, queryText, RUNTIME, runtimeOf} from './embedder.mjs';
 import {FAST_MS, SLOW_MS} from './pace.mjs';
 import {levelGroups, probeModel, probeThinking} from './probe.mjs';
 import {requestDaemon} from './protocol.mjs';
-import {Reranker} from './rerank.mjs';
 import {madeByPair, venvPython, wheelOf} from './runtime.mjs';
 import {sandboxWorks} from './sandbox.mjs';
+import {offNote, pairReranker} from './search.mjs';
 import {keyVariables, readServiceEnv} from './service-env.mjs';
 import {serviceManager} from './service.mjs';
 import {VERSION} from './version.mjs';
@@ -105,7 +106,7 @@ export async function decisionCheck(config, status, credentials, {build = create
 }
 
 /**
- * Search by meaning's reranker (see rerank.mjs): none is fine, the searches keep their own order. Its models are asked
+ * Search by meaning's reranker (semantic-grep's, see search.mjs): none is fine, the searches keep their own order. Its models are asked
  * a search's question of as many small pieces in turn, as a search asks them; the line names the one that answered,
  * and why the ones before it did not. None answering, or slower than its timeoutMs, is a failure: it never reorders.
  */
@@ -116,7 +117,7 @@ export async function rerankCheck(config, status, credentials, {build = createRe
   if (config.meaning === false) return ok('rerank', `${where} is set, but search by meaning is off in the config ("meaning": false)`);
   let reranker;
   try {
-    reranker = new Reranker({endpoints: build(config, {credentials})});
+    reranker = pairReranker(build(config, {credentials}));
   } catch (error) {
     return fail('rerank', error.message);
   }
@@ -421,14 +422,14 @@ export async function gemmaAnswers(config) {
 }
 
 /**
- * Search by meaning (see meaning.mjs). With an "embedding" model, it must answer: one text is embedded. Else off is
+ * Search by meaning (semantic-grep's Meaning, see search.mjs). With an "embedding" model, it must answer: one text is embedded. Else off is
  * fine, and says what turning it on takes; on, EmbeddingGemma 2 must be the checked download and its Python must have
  * LiteRT-LM. Then each index: with the daemon running, the open projects'; else the files in Pair's data folder.
  */
 export async function meaningCheck(config, status, {runtime = runtimeOf, fetch = globalThis.fetch, answers = gemmaAnswers} = {}) {
   if (config.meaning === false) return ok('meaning', 'search by meaning is off in the config ("meaning": false)');
   const live = status?.meaning;
-  if (config.embedding && (live?.state === 'off' || existsSync(join(meaningDir(config.dataDir), 'off')))) {
+  if (config.embedding && (live?.state === 'off' || existsSync(offNote(config.dataDir)))) {
     return ok('meaning', `words only: :Pair find off turned the ${config.embedding.model} embedding model off, :Pair find on asks it again${indexesText(config, live)}`);
   }
   if (config.embedding) {

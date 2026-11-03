@@ -118,7 +118,7 @@ export function createPairModels(config, {credentials = fileCredentialStore(auth
 }
 
 /**
- * The models of the config's `rerank` list, best first (see rerank.mjs): `{models, model, entry}` each, built as
+ * The models of the config's `rerank` list, best first (semantic-grep's Reranker, see search.mjs): `{models, model, entry}` each, built as
  * createDecisionModel builds one; [] without any.
  */
 export function createRerankEndpoints(config, {credentials = fileCredentialStore(authPath())} = {}) {
@@ -131,7 +131,7 @@ export function createRerankEndpoints(config, {credentials = fileCredentialStore
 
 /**
  * `{models, model}`: the decision model of the config's `decision` entry (see decision.mjs), or of another entry of
- * its shape (`field`: "rerank", see rerank.mjs), in a pi-ai collection of its own, so a change to it leaves the roles'
+ * its shape (`field`: "rerank", see search.mjs), in a pi-ai collection of its own, so a change to it leaves the roles'
  * models alone; null without one. Logins and keys as createPairModels.
  */
 export function createDecisionModel(config, {credentials = fileCredentialStore(authPath()), field = 'decision'} = {}) {

@@ -112,7 +112,7 @@ whatever the role:
 | `read` | Read a file as the editor has it, or list a directory; Neovim shows where it reads | yes | yes | yes | yes |
 | `recall` | Search the project's earlier sessions: their goals, notes and chats ([memory.md](memory.md#earlier-sessions)) | yes | yes | yes | yes |
 | `suggest` | Show a change in place that you accept with one key or ignore | yes | yes | yes | no |
-| `search` | ripgrep, typed in Pair's own pane | no | yes | yes | within `gen.limits` |
+| `search` | ripgrep, typed in Pair's own pane; with `meaning: true`, the [search index](meaning.md) | no | yes | yes | within `gen.limits` |
 | `run` | One command line in Pair's own pane, under the [command policy](scout.md#the-command-policy) | no | yes | yes | only in a `/gen try` or `/gen scaffold`, in its own folder, in a sandbox where only that folder is writable |
 | `edit` | One change in your buffer, typed while you watch, one undo step | no | no | up to five per hand-over | no |
 | `type` | One line into your terminal, after your yes, without Enter | no | no | after a yes | no |
