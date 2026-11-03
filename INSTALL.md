@@ -676,7 +676,8 @@ Then update the plugin with its manager:
 | vim.pack | `nvim --headless -c 'lua vim.pack.update(nil, {force = true})' +qa` |
 | native packages | the clone-or-pull command from 7.2 |
 
-Then `pair doctor`. Run `pair setup </dev/null` again after every Node.js upgrade too: the service names the Node.js
+Then `pair doctor`. Run `pair setup </dev/null` again after every Node.js upgrade too (service `none`: after the `pkill`
+line above): the service names the Node.js
 binary it runs, and the shell hook names it too (new shells pick that up by themselves).
 
 ## Uninstall
