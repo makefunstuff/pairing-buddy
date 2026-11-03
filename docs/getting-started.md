@@ -66,7 +66,7 @@ pair doctor
 ```
 
 One line per part (config, service, daemon, plugin, Neovim, herdr, the board, logins and keys, Pair's pane, voice,
-search by meaning, the models and the decision model), each with the fix when something is
+search by meaning and its reranker, the models and the decision model), each with the fix when something is
 wrong. See [Troubleshooting](troubleshooting.md) for what each line means.
 
 Optional: add the shell hook to your shell's rc file, so Pair gets every command you run in your terminals with its

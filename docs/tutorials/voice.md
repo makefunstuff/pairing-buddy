@@ -66,7 +66,8 @@ For OpenRouter (the key in a file, or `apiKeyEnv`, or `auth` after `pair auth lo
 ```
 
 Short answers are read aloud only when you are away from the editor: LFM3-Omni does it by default, OpenRouter with
-`speak`, whisper.cpp not at all.
+`speak`; with whisper.cpp, only when you set `speak` too (`"speak": "omni"` lets LFM3-Omni read, or a speech
+command).
 
 ## 3. Check it
 

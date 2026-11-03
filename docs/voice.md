@@ -209,7 +209,7 @@ All fields:
 | `speak` | `"omni"` when LFM3-Omni hears, else none | `"omni"`: LFM3-Omni reads answers aloud; `false`: nothing is; or a shell command that reads the answer from stdin and says it |
 | `talk` | `false` | `true`: every answer to a spoken question is read aloud, at the editor too ([Talk](#talk-you-ask-aloud-pair-answers-aloud)) |
 | `omni.voice` | `"female"` | LFM3-Omni's voice, `"female"` or `"male"` |
-| `play` | `mpv`, else `ffplay`, else `pw-play`, else `aplay` | a shell command that plays LFM3-Omni's (WAV) or OpenRouter's audio (MP3 or WAV) from stdin |
+| `play` | `mpv`, else `ffplay`, else `pw-play`, else `aplay` (for OpenRouter's audio, `mpv` or `ffplay` only) | a shell command that plays LFM3-Omni's (WAV) or OpenRouter's audio (MP3 or WAV) from stdin |
 | `maxSeconds` | `60` | the longest recording |
 | `openrouter` | none | hearing, reading aloud or both through OpenRouter ([below](#openrouter)) |
 

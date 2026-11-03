@@ -16,7 +16,8 @@ a pipe or `TERM=dumb`.
 
 ## `pair setup`
 
-Run once after installing, and again after an upgrade or a Node.js upgrade:
+Run once after installing, and again after an upgrade or a Node.js upgrade (without a service, after stopping the old
+daemon: `pkill -f 'pair[.]mjs supervise'`):
 
 1. writes a commented config to `~/.config/pairing-buddy/config.json` if there is none;
 2. in a terminal, offers a login to a model provider (Enter skips it);
@@ -30,7 +31,7 @@ Without systemd or launchd it installs no service, and `pair` starts the daemon 
 
 ## `pair doctor`
 
-Checks the config, the service, the daemon, the plugin, Neovim, herdr, the work board (Shepherdr 2.0 or 2.1), logins and keys, Pair's pane, voice, search by meaning, both
+Checks the config, the service, the daemon, the plugin, Neovim, herdr, the work board (Shepherdr 2.0 or 2.1), logins and keys, Pair's pane, voice, search by meaning and its reranker, both
 models and the [decision model](decision.md#pair-doctor-and-pair-stats), one line each, with the fix when something is wrong. It exits with 1 when a check fails.
 
 ```sh

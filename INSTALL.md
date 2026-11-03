@@ -479,7 +479,7 @@ or, in an `init.vim`: `lua require('pair').setup({auto_connect = true})`.
 pair doctor 2>&1 | grep -E '^[^ ]+ plugin '
 ```
 
-Expected: `✓ plugin   your Neovim config loads it`. If it says `does not load the plugin`, run
+Expected: `✓ plugin   your Neovim config loads it` (or `loaded in the connected Neovims` while a Neovim is connected). If it says `does not load the plugin`, run
 `nvim --headless -c 'lua print(pcall(require, "pair"))' -c 'qa!'` to see the error; usually the plugin is not
 installed yet (run the manager's install command again) or the edit went into a file the config does not load. Also
 start `nvim --headless +qa` once and make sure it prints no error that was not there before your edit; if it does,
@@ -676,7 +676,8 @@ Then update the plugin with its manager:
 | vim.pack | `nvim --headless -c 'lua vim.pack.update(nil, {force = true})' +qa` |
 | native packages | the clone-or-pull command from 7.2 |
 
-Then `pair doctor`. Run `pair setup </dev/null` again after every Node.js upgrade too: the service names the Node.js
+Then `pair doctor`. Run `pair setup </dev/null` again after every Node.js upgrade too (service `none`: after the `pkill`
+line above): the service names the Node.js
 binary it runs, and the shell hook names it too (new shells pick that up by themselves).
 
 ## Uninstall
