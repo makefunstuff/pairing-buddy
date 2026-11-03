@@ -41,7 +41,7 @@ export const COMMANDS = [
   ['/gen here', '<what>', 'ask Pair for code at your cursor in Neovim (@here: over the selection)'],
   ['/gen file', '<what>', 'new files, as unsaved buffers to review in Neovim (:w in one takes it)'],
   ['/gen try', '<what>', 'a sample to read and run, in a folder outside the project, opened in a split in Neovim'],
-  ['/gen scaffold', '[--branch|--copy] <what>', 'many files and their wiring, built in a copy of the project (--branch: a git worktree, --copy: Pair's copy, whatever gen.scaffold says); you keep a file at a time'],
+  ['/gen scaffold', '[--branch|--copy] <what>', 'many files and their wiring, built in a copy of the project (--branch: a git worktree, --copy: Pair\'s copy, whatever gen.scaffold says); you keep a file at a time'],
   ['/gen board', '<what>|#n', 'a task for the board (Shepherdr), its brief from yours: y add only, d delegate, p plan first, r research, c copy'],
   ['/gen run', '', 'run the newest /gen try again, in Pair\'s pane, in the sandbox'],
   ['/gen tries', '', 'the /gen try folders still kept, and when each goes (gen.keepTries)'],
