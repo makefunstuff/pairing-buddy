@@ -139,7 +139,8 @@ const state = JSON.parse(readFileSync(dir + '/state.json', 'utf8'));
 if (!state.window) { process.stderr.write('Herdr is not running\n'); process.exit(1); }
 const panes = Object.entries(state.panes);
 if (args[0] === 'status') console.log(JSON.stringify({space: state.space, tab: 'tb1', focused_pane: state.focused, layout: 'main', floats: {}, overlays: [], errors: []}));
-else if (args[0] === 'ls') console.log(JSON.stringify({spaces: [{id: 'sp1', name: 'shop', tabs: [{id: 'tb1', terminals: panes.map(([pane, terminal]) => ({terminal, pane, status: null}))}]}], recent: []}));
+else if (args[0] === 'ls') console.log(JSON.stringify({spaces: [{id: 'sp1', name: 'shop', tabs: state.tabs ?? [{id: 'tb1', terminals: panes.map(([pane, terminal]) => ({terminal, pane, status: null}))}]}], recent: []}));
+else if (args[0] === 'do' && (args[1] === 'tab.select' || args[1] === 'tab.close')) console.log(JSON.stringify({ok: true}));
 else if (args[0] === 'do' && args[1] === 'agent.focus') console.log(JSON.stringify({}));
 else if (args[0] === 'do' && args[1] === 'pane.split' && state.refuseSplit) { console.log(JSON.stringify({error: 'no such mod'})); process.exit(1); }
 else if (args[0] === 'do' && args[1] === 'pane.split') console.log(JSON.stringify({pane: 'p9'}));
@@ -148,7 +149,8 @@ else { console.log(JSON.stringify({error: 'unknown command'})); process.exit(1);
 
 /**
  * Writes a fake `herdr-app` into `dir`: {command, set(state), calls()}. Its state: `window` (false: no window runs),
- * `space` (the space it shows), `focused` (the focused pane), `panes` (pane id -> the terminal it shows), `refuseSplit`
+ * `space` (the space it shows), `focused` (the focused pane), `panes` (pane id -> the terminal it shows), `tabs` (in
+ * place of one tab tb1 of those panes: `ls`'s tabs as given), `refuseSplit`
  * (`do pane.split` fails, as for a mod the window does not have).
  */
 export function fakeApp(dir, state = {}) {

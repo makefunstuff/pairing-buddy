@@ -6,17 +6,19 @@
 // the loopback port and token this panel connects with (link.js). It tells the daemon where the window's focus is as
 // it moves (on each redraw, and from a light timer, since a copy whose tab is hidden is not redrawn), so the daemon does not
 // poll `herdr-app status`; and while it is not seen, a new remark or a question of
-// Pair's raises a toast that brings it up.
+// Pair's raises a toast that brings it up. Opened bare (its key, Pair in the + menu), it fills those props from the
+// focused terminal and gives its place to a panel that has them (bare.js).
 
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, TextareaState, Textarea, TextView } from "gpui-base";
-import { props, theme, focused, panes, window, notify, readTextFile, settings } from "herdr";
+import { props, theme, focused, panes, window, notify, readTextFile, settings, run, exec, appHome, home } from "herdr";
 import net from "net";
 import { Buffer } from "buffer";
 import { ChatModel, confirmChoices, ROLE_NAMES, cardKeys, relayActions } from "./model.js";
 import { toolDone } from "./keys.js";
 import { COMMANDS, LEVELS } from "./commands.js";
 import { openLink } from "./link.js";
+import { isBare, bareTarget, ownPane, fullProps, parseFilled } from "./bare.js";
 
 const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const SHOWN = 120; // the newest entries drawn; /clear empties it all
@@ -74,6 +76,17 @@ export default class Pair extends View {
       type: "hello", role: "chat", cwd: this.p.cwd, resume, panel: true,
       herdr: { kind: "core", socket: this.p.core ?? null, pane: null, beside: this.p.terminal ?? null, space: this.p.space ?? null, tab: this.p.tab ?? null, session: this.p.session ?? null, appHome: null },
     });
+    if (isBare(this.p)) {
+      this.opening = bareTarget({ focused: focused(), panes: panes(), mod: this.mod });
+      this.state = "opening";
+      cx.spawn(async (cx) => this.openBare(cx));
+    } else this.connect(cx, hello);
+    // A copy whose tab is not shown is not drawn again as the focus moves, so the focus is also looked at here: an
+    // in-memory read, sent only when it changed, and no redraw.
+    cx.timer.every(FOCUS_MS, () => this.pushFocus());
+  }
+
+  connect(cx, hello) {
     cx.spawn(async (cx) => {
       const file = this.p.panel ?? null;
       if (!file || !this.p.cwd) { this.state = "unset"; cx.notify(); return; }
@@ -105,9 +118,51 @@ export default class Pair extends View {
       });
       await this.link.done;
     });
-    // A copy whose tab is not shown is not drawn again as the focus moves, so the focus is also looked at here: an
-    // in-memory read, sent only when it changed, and no redraw.
-    cx.timer.every(FOCUS_MS, () => this.pushFocus());
+  }
+
+  /**
+   * Opened bare: a panel of this mod already in the tab gets the focus, else Pair fills in the props for the focused
+   * terminal and a panel with them opens beside it; either way this one closes.
+   */
+  async openBare(cx) {
+    const at = this.opening;
+    const self = async () => {
+      for (let i = 0; i < 40; i++) {
+        const pane = ownPane({ panes: panes(), at, mod: this.mod });
+        if (pane) return pane;
+        await cx.sleep(50);
+      }
+      return null;
+    };
+    const fail = (why) => { this.state = "failed"; this.why = why; cx.notify(); };
+    if (at.existing) {
+      const me = await self();
+      if (!me) return fail("This panel lost its props: close it, and open Pair again from a terminal."); // restored bare
+      run("pane.focus", { pane: at.existing });
+      run("pane.close", { pane: me });
+      return;
+    }
+    if (!at.target) return fail("No terminal in this tab to open Pair beside: focus one, then open Pair again.");
+    let argv = ["pair"];
+    try {
+      const saved = JSON.parse((await readTextFile(`${appHome()}/mods/${this.mod}/.pair-command.json`)) ?? "null");
+      if (Array.isArray(saved?.argv) && saved.argv.length) argv = saved.argv;
+    } catch {}
+    const cwd = at.target.cwd ?? home();
+    let filled;
+    try {
+      filled = parseFilled(await exec(argv[0], [...argv.slice(1), "panel", "--props", "--cwd", cwd, "--terminal", at.target.terminal], { cwd }));
+    } catch (error) {
+      return fail(`Pair could not start: ${error?.message ?? error}. Run \`pair\` in a terminal to see why.`);
+    }
+    const full = fullProps({ ...at, target: { ...at.target, cwd } }, filled, this.mod);
+    const me = await self(); // before the split: after it, the new panel is not in at.before either
+    try {
+      run("pane.split", { direction: "right", pane: at.target.pane, mod: this.mod, props: full });
+    } catch (error) {
+      return fail(`The window did not open the panel: ${error?.message ?? error}`);
+    }
+    if (me) run("pane.close", { pane: me });
   }
 
   async close() {
@@ -262,11 +317,13 @@ export default class Pair extends View {
 
   banner(t) {
     const text = this.state === "unset" ? "This panel was opened without its project: run `pair` in a terminal of the Herdr window."
+      : this.state === "opening" ? `Opening Pair beside ${this.opening?.target?.terminal ?? "the terminal"}…`
+      : this.state === "failed" ? this.why
       : this.state === "down" ? "Pair's daemon is not running. Run `pair` (or `pair setup`) in a terminal; this panel connects once it is up."
         : this.state === "away" ? "Pair's daemon went away; reconnecting… What you type is kept."
           : this.state === "connecting" ? "Connecting to Pair's daemon…" : null;
     if (!text) return null;
-    const bad = this.state === "down" || this.state === "unset";
+    const bad = this.state === "down" || this.state === "unset" || this.state === "failed";
     return h_flex().flex_none().px(12).py(7).gap(8).items_center().bg((bad ? t.blocked : t.working) + "22").border_b_1().border_color(t.border)
       .child(div().size(7).rounded(4).flex_none().bg(bad ? t.blocked : t.working))
       .child(div().flex_1().text_size(12.5).child(text));

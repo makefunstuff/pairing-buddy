@@ -16,7 +16,7 @@ import {doctor, nvimHasPlugin, tilde} from '../src/doctor.mjs';
 import {gitRoot} from '../src/git.mjs';
 import {herdrRequest} from '../src/herdr.mjs';
 import {herdrOf, openCoreChat} from '../src/herdr-core.mjs';
-import {herdrAppInstalled, installedModVersion, installMod, modDir, openPanel, panelWanted, removeMod} from '../src/herdr-panel.mjs';
+import {bareProps, herdrAppInstalled, installedModVersion, installMod, MOD, modDir, openPanel, pairArgv, panelFromMenu, panelWanted, removePanel, setUpPanel} from '../src/herdr-panel.mjs';
 import {terminalInteraction} from '../src/prompt.mjs';
 import {requestDaemon, sendMessage} from '../src/protocol.mjs';
 import {keyVariables, storeServiceEnv} from '../src/service-env.mjs';
@@ -36,7 +36,9 @@ const SERVICE = serviceManager();
 const USAGE = `usage:
   pair              open the chat next to this terminal, starting the daemon if needed: Pair's panel in the Herdr window, a pane in herdr, else here
   pair chat [--plain]   run the chat pane here (--plain: line by line, not full-screen)
-  pair setup        create the config if there is none, install and start the daemon as a service (systemd, launchd), and Pair's panel in the Herdr window
+  pair setup        create the config if there is none, install and start the daemon as a service (systemd, launchd), and Pair's panel in the Herdr window with its key (Alt-p) and + menu entry
+  pair panel        (Pair in the Herdr window's + menu) open the panel in the tab you were in, closing the menu's tab
+  pair panel --props --cwd DIR --terminal T   (used by the panel opened by its key) start the daemon, print the panel's props
   pair doctor       check the daemon, Neovim, herdr and the models, and say what is wrong
   pair doctor --thinking   find the thinking settings the Partner's OpenAI-compatible server takes (asks it a dozen times)
   pair auth login PROVIDER    log in with a subscription or store an API key (also \`pair login PROVIDER\`)
@@ -45,7 +47,7 @@ const USAGE = `usage:
   pair auth models PROVIDER   the models a provider offers, for a model entry's "model"
   pair stats [--days N]   remarks per hour, useful vs dismissed, per trigger, the tuning, how the decision model did, and what /gen made and you own (default: 7 days)
   pair stats --project [DIR]   the same for one project: the one DIR (default: this folder) belongs to
-  pair uninstall    stop and remove the service and Pair's panel in the Herdr window (the config and data stay)
+  pair uninstall    stop and remove the service and Pair's panel in the Herdr window, its key and + menu entry (the config and data stay)
   pair --version    the version of this install (also \`pair version\`, \`pair -v\`)
   pair daemon       run the daemon in the foreground
   pair supervise    run the daemon in the foreground, restarted when it fails (what \`pair\` starts without a service)
@@ -191,13 +193,14 @@ async function withoutService(config) {
 /** Installs or updates Pair's panel in the Herdr window, when the window is installed here; says what it did. */
 function installPanel(config) {
   if (!herdrAppInstalled() || !panelWanted(config)) return '';
-  let done;
+  let done, lines;
   try {
-    done = {installed: 'Installed', updated: 'Updated', same: 'Up to date:'}[installMod({version: VERSION})];
+    ({done, lines} = setUpPanel({version: VERSION, argv: pairArgv({script: SCRIPT})}));
   } catch (error) {
     return `\nPair's panel in the Herdr window is not installed: ${error.message}`;
   }
-  return `\n${done} Pair's panel in the Herdr window, ${tilde(modDir())}: \`pair\` in a terminal there opens it beside that terminal.`;
+  const launchers = lines.map(line => `\n  ${line}`).join('');
+  return `\n${{installed: 'Installed', updated: 'Updated', same: 'Up to date:'}[done]} Pair's panel in the Herdr window, ${tilde(modDir())}: \`pair\` in a terminal there opens it beside that terminal.${launchers}`;
 }
 
 async function setup() {
@@ -223,7 +226,7 @@ function modelsNote({watcher, partner}) {
 }
 
 async function uninstall() {
-  if (removeMod()) console.log(`Removed Pair's panel from the Herdr window (${tilde(modDir())}).`);
+  for (const line of removePanel()) console.log(line);
   if (!SERVICE?.installed()) return console.log('No service is installed.');
   await SERVICE.remove();
   console.log(`Removed ${SERVICE.name}. The config (${tilde(configPath())}) and the data directory are kept.`);
@@ -323,6 +326,33 @@ async function openChatPane(config) {
   await herdrRequest(process.env.HERDR_SOCKET_PATH, 'pane.send_text', {pane_id: pane.pane_id, text: `${SCRIPT} chat\r`});
 }
 
+/**
+ * `pair panel`: Pair's panel without typing `pair`. With --props (what the panel opened bare runs): starts the daemon
+ * if needed and prints, as JSON, the props the panel needs beside terminal --terminal in folder --cwd. Without (Pair
+ * in the Herdr window's + menu, in the new tab it starts): the panel opens in the tab you were in, and this tab closes.
+ */
+async function panel(args) {
+  const {values} = parseArgs({args, options: {props: {type: 'boolean'}, cwd: {type: 'string'}, terminal: {type: 'string'}, mod: {type: 'string', default: MOD}}});
+  if (values.props) {
+    try {
+      if (!values.cwd || !values.terminal) throw new Error('--props takes --cwd DIR and --terminal T');
+      const config = loadConfig();
+      await ensureDaemon(config);
+      console.log(JSON.stringify(await bareProps({cwd: values.cwd, terminal: values.terminal, config})));
+    } catch (error) {
+      console.log(JSON.stringify({error: error.message}));
+      process.exitCode = 1;
+    }
+    return;
+  }
+  firstRunConfig();
+  const config = loadConfig();
+  await ensureDaemon(config);
+  // No terminal running `pair` is left behind: when it cannot, it says why and the tab is yours to close.
+  const done = await panelFromMenu(herdrOf(process.env), {mod: values.mod}).catch(error => { console.error(`pair: ${error.message}`); return false; });
+  if (!done) console.error('pair: Pair\'s panel opens from a tab of the Herdr window with another tab before it; in this one, run `pair`');
+}
+
 // Runs before and after every shell command, so it stays silent: no config or no daemon means nothing to report.
 function report(args) {
   const {values} = parseArgs({args, options: {
@@ -367,6 +397,8 @@ try {
     await auth([command, ...args]);
   } else if (command === 'doctor') {
     await runDoctor(args);
+  } else if (command === 'panel') {
+    await panel(args);
   } else if (command === 'supervise') {
     await runSupervised();
   } else if (command === 'stats') {
