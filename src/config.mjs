@@ -392,6 +392,7 @@ export function parseConfig(raw, {windows = {}} = {}) {
   if (raw.agents !== undefined && typeof raw.agents !== 'boolean') throw new Error('config: agents must be true or false');
   if (raw.watcherPace !== undefined && typeof raw.watcherPace !== 'boolean') throw new Error('config: watcherPace must be true or false');
   if (raw.plan !== undefined && typeof raw.plan !== 'boolean') throw new Error('config: plan must be true or false');
+  if (raw.herdrPanel !== undefined && ![true, false, 'auto'].includes(raw.herdrPanel)) throw new Error('config: herdrPanel must be true, false or "auto"');
   return {
     level,
     typingPauseMs: raw.typingPauseMs ?? 2000,
@@ -414,6 +415,7 @@ export function parseConfig(raw, {windows = {}} = {}) {
     board: boardCommand(raw.board),
     windows, // as found (see context-window.mjs), so a reload can keep one a server cannot tell then
     agents: raw.agents ?? true, // relays your other agents' news (see agents.mjs)
+    herdrPanel: raw.herdrPanel ?? 'auto', // the Herdr panel's loopback port: "auto" opens it when the Herdr window is installed (see herdr-panel.mjs)
     models,
     decision: decisionConfig(raw.decision), // the gate's decision model, or null (see decision.mjs)
     embedding: embeddingConfig(raw.embedding), // search by meaning's model at a /v1/embeddings, or null for EmbeddingGemma 2

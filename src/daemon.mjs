@@ -21,6 +21,7 @@ import {NoteMargin} from './margin.mjs';
 import {oneAnswer} from './note-reading.mjs';
 import {HerdrPanes} from './herdr.mjs';
 import {CorePaneHost, CorePanes, HerdrApp} from './herdr-core.mjs';
+import {authenticate, panelMessage, panelWanted, startPanelListener} from './herdr-panel.mjs';
 import {followLoaded, shareServer} from './loaded-model.mjs';
 import {DETAIL_KEPT_MS} from './ledger.mjs';
 import {editOrigin} from './fold.mjs';
@@ -98,6 +99,7 @@ export async function startDaemon(config, {
   configFile = null, modelsFor = createPairModels, pairModels = modelsFor(config), decisionFor = createDecisionModel, probe, log = defaultLog, keepWarmMs = KEEP_WARM_MS,
   idleEndMs = IDLE_END_MS, aloneEndMs = ALONE_END_MS, agentsPollMs, taskChangesPollMs = TASK_CHANGES_MS,
   appCommand = 'herdr-app', // the Herdr window's command, for herdr-core's focus and agents
+  herdrPanel = panelWanted(config), // the Herdr panel's loopback port (see herdr-panel.mjs)
   meaningWith = {}, // tests' fetch and embedder for search by meaning (see search.mjs)
   rerankerFor = (entries, logTo) => (entries.rerank ? pairReranker(createRerankEndpoints(entries), {log: logTo}) : null),
   omniWith = {}, // tests' LFM3-Omni for voice (see omni.mjs): {voice, fetch, free, files, runtime, litert, wheels, pythons, pythonsOn, install}
@@ -114,9 +116,12 @@ export async function startDaemon(config, {
   const margins = new Map(); // root -> its NoteMargin
   const watches = new Map(); // root -> PaneWatch
   const paneSources = new Map(); // root -> what its PaneWatch watches: {herdr, tmux, chatPane}
+  const coreSources = new Map(); // root -> its herdr-core terminals (CorePanes), whose focus the Herdr panel may push
+  const pushedFocus = new Map(); // root -> the window's focus as a Herdr panel last pushed it, while one does
   const listeners = new Map(); // root -> Listener, once someone holds the listen key there
   const relays = new Map(); // root -> AgentRelay
   const clients = new Set();
+  const indexProgress = new Map(); // root -> how far its index's last build went, for a Herdr panel that comes later
   const replies = new Map();
   let nextRequest = 0;
   const startedAt = Date.now();
@@ -178,8 +183,10 @@ export async function startDaemon(config, {
     reranker: rerankerFor(config, log), // the decision model that reorders a settled search, or null (see search.mjs)
     book: (root, kind, text, options) => live.get(root)?.ledger.add(kind, text, options),
     progress: (root, how) => {
+      indexProgress.set(root, how);
       const session = live.get(root);
-      if (session) for (const client of clientsOf(session, 'editor')) sendMessage(client.socket, {type: 'index_progress', ...how});
+      // To its Neovims, and to the Herdr panel, whose header shows how far the index is.
+      if (session) for (const client of [...clientsOf(session, 'editor'), ...clientsOf(session, 'chat').filter(client => client.panel)]) sendMessage(client.socket, {type: 'index_progress', ...how});
     },
     with: meaningWith,
   });
@@ -563,18 +570,36 @@ export async function startDaemon(config, {
   function watchHerdr(session, herdr) {
     if (!herdr?.socket || paneSources.get(session.root)?.herdr) return;
     session.scout?.close().catch(() => {}); // a pane it had in Neovim before the herdr chat pane came
+    // The Herdr panel is no terminal: Pair's pane opens beside the terminal it was opened from.
     const host = herdr.kind === 'core'
-      ? new CorePaneHost({socketPath: herdr.socket, besidePane: herdr.pane, root: session.root})
+      ? new CorePaneHost({socketPath: herdr.socket, besidePane: herdr.pane ?? herdr.beside, root: session.root})
       : new HerdrPaneHost({socketPath: herdr.socket, workspaceId: herdr.workspace, besidePane: herdr.pane});
     session.scout = scoutPane(session, host);
     watchPanes(session, {herdr, chatPane: herdr.pane});
-    log(`[${basename(session.root)}] watching ${herdr.kind === 'core' ? `herdr-core terminal ${herdr.pane}'s space` : `herdr workspace ${herdr.workspace}`}`);
+    const core = herdr.pane ? `herdr-core terminal ${herdr.pane}'s space` : `Herdr space ${herdr.space}, from the Herdr panel`;
+    log(`[${basename(session.root)}] watching ${herdr.kind === 'core' ? core : `herdr workspace ${herdr.workspace}`}`);
   }
 
-  /** The source of the user's panes in herdr or herdr-core. */
-  function herdrSource(herdr) {
+  /**
+   * The source of the user's panes in herdr or herdr-core, for `root`'s session. On herdr-core, the chat's space is
+   * the chat terminal's, or the one the Herdr panel names; while a panel pushes the window's focus, it is not polled.
+   */
+  function herdrSource(herdr, root) {
     if (herdr.kind !== 'core') return new HerdrPanes({socketPath: herdr.socket, workspaceId: herdr.workspace});
-    return new CorePanes({socketPath: herdr.socket, chatPane: herdr.pane, app: new HerdrApp({command: appCommand, env: {HC_SESSION: herdr.session, HERDR_APP_HOME: herdr.appHome}})});
+    const source = new CorePanes({
+      socketPath: herdr.socket, chatPane: herdr.pane ?? null, space: herdr.pane ? undefined : herdr.space,
+      app: new HerdrApp({command: appCommand, env: {HC_SESSION: herdr.session, HERDR_APP_HOME: herdr.appHome}}),
+    });
+    coreSources.set(root, source);
+    if (pushedFocus.has(root)) source.pushed(pushedFocus.get(root));
+    return source;
+  }
+
+  /** A Herdr panel of `session` pushes the window's focus (`focus`), or stops (null): its terminals follow it. */
+  function pushFocus(session, focus) {
+    if (focus) pushedFocus.set(session.root, focus);
+    else pushedFocus.delete(session.root);
+    coreSources.get(session.root)?.pushed(focus);
   }
 
   /**
@@ -589,7 +614,8 @@ export async function startDaemon(config, {
     paneSources.set(session.root, wanted);
     watches.get(session.root)?.stop();
     const sources = [];
-    if (wanted.herdr) sources.push(herdrSource(wanted.herdr));
+    coreSources.delete(session.root);
+    if (wanted.herdr) sources.push(herdrSource(wanted.herdr, session.root));
     if (wanted.tmux) sources.push(new TmuxPanes({socketPath: wanted.tmux.socket, pane: wanted.tmux.pane}));
     sources.push(new NvimPanes({editors: () => editorsOf(session), ask: askEditor}));
     const sessionLog = line => log(`[${basename(session.root)}] ${line}`);
@@ -639,6 +665,8 @@ export async function startDaemon(config, {
     watches.get(session.root)?.stop();
     watches.delete(session.root);
     paneSources.delete(session.root);
+    coreSources.delete(session.root);
+    pushedFocus.delete(session.root);
     sessions.delete(session.root);
     live.delete(session.root);
     meaning.leave(session.root).catch(() => {});
@@ -663,7 +691,7 @@ export async function startDaemon(config, {
     const {session} = client;
     sendMessage(client.socket, {
       type: 'welcome', root: session.root, goal: session.state.goal, plan: session.planSteps(), level: session.budget.level, role: session.role, keep: session.keepWheel, models: health.snapshot(),
-      accent: session.accent, model: sessionPartner.modelName(), muted: [...session.muted], board: boardCounts(session.state.board),
+      accent: session.accent, model: sessionPartner.modelName(), watcher: models.pairModels.watcher.name ?? models.pairModels.watcher.id, muted: [...session.muted], board: boardCounts(session.state.board),
     });
     // The chat pane's status row starts from what Pair does now, and how much it looked at so far.
     if (client.role === 'chat') {
@@ -671,6 +699,7 @@ export async function startDaemon(config, {
       sendMessage(client.socket, session.presence);
       // And today's /gen cards: the keys under each, and the request at work, for the status.
       for (const card of session.gen.cards()) sendMessage(client.socket, card);
+      if (client.panel && indexProgress.has(session.root)) sendMessage(client.socket, {type: 'index_progress', ...indexProgress.get(session.root)});
     }
     // A Neovim that connects (or reconnects) after a test run shows its result too, and a late answer it missed.
     if (client.role === 'editor' && session.testsShown) sendMessage(client.socket, session.testsShown);
@@ -818,12 +847,15 @@ export async function startDaemon(config, {
       pace: pace.snapshot(), // what the Watcher's calls cost, and what Pair is not asking about
       decision: decision?.snapshot() ?? null, // whether the decision model is down, and how often the gate fell back
       meaning: meaning.snapshot(), // search by meaning: its model, the embedder and each open project's index
+      panel: panel ? {port: panel.port, file: panel.file, clients: [...clients].filter(client => client.panel && client.role).length} : null, // the Herdr panel's port
       sessions: [...live.values()].map(session => ({
         root: session.root,
         role: session.role,
         goal: session.state.goal,
         editors: editorsOf(session).length,
         chats: clientsOf(session, 'chat').length,
+        panels: clientsOf(session, 'chat').filter(client => client.panel).length,
+        focusPushed: pushedFocus.has(session.root),
         herdr: !!paneSources.get(session.root)?.herdr,
         tmux: !!paneSources.get(session.root)?.tmux,
       })),
@@ -1025,6 +1057,11 @@ export async function startDaemon(config, {
       return listenerOf(session)?.focus(message.on === true);
     }
     if (message.type === 'panes') return watches.get(session.root)?.refresh();
+    // The Herdr panel: where the window's focus is, each time it moves.
+    if (message.type === 'herdr_focus' && client.panel) {
+      client.pushesFocus = true;
+      return pushFocus(session, {space: typeof message.space === 'string' ? message.space : null, terminal: typeof message.terminal === 'string' ? message.terminal : null});
+    }
     if (message.type === 'agents') return sendMessage(client.socket, agentList(session));
     if (message.type === 'agent_go') return goToAgent(client, session, message.key);
     if (message.type === 'agent_link') return agentLink(client, session, message);
@@ -1271,21 +1308,31 @@ export async function startDaemon(config, {
     }, aloneEndMs).unref();
   }
 
-  const server = createServer(socket => {
-    const client = {socket, role: null, session: null, activeAt: 0, focused: null, ready: Promise.resolve()};
+  /**
+   * A connection: on the socket, or on the Herdr panel's port (`token`), whose first message must carry the token and
+   * which gets the notes' text too (see herdr-panel.mjs).
+   */
+  function serve(socket, token = null) {
+    const client = {socket, role: null, session: null, activeAt: 0, focused: null, ready: Promise.resolve(), panel: token !== null};
+    const open = token === null ? () => true : authenticate(socket, token);
+    if (client.panel) socket.decorate = panelMessage;
     clients.add(client);
     socket.on('close', () => {
       clients.delete(client);
       meaning.forget(client);
       if (client.session) listeners.get(client.session.root)?.drop(client); // no microphone stays open for a gone editor
+      // The last panel that pushed the window's focus went: the window is asked for it again.
+      if (client.pushesFocus && client.session && !clientsOf(client.session, 'chat').some(other => other.pushesFocus)) pushFocus(client.session, null);
       endWhenAlone(client.session);
     });
     socket.on('error', () => {});
-    readMessages(socket, message => handle(client, message).catch(error => {
+    readMessages(socket, message => open(message) && handle(client, message).catch(error => {
       log(`${message.type} failed: ${error.stack ?? error}`);
       sendMessage(socket, {type: 'message', sender: 'system', text: `Error: ${error.message}`, at: Date.now()});
     }));
-  });
+  }
+  const server = createServer(socket => serve(socket));
+  let panel = null; // the Herdr panel's port, once open
 
   // The user's questions the daemon was answering when it stopped: their sessions are loaded before the Partner
   // goes on, so its tool calls find them; a question whose session ended is dropped.
@@ -1303,6 +1350,11 @@ export async function startDaemon(config, {
   try { unlinkSync(config.socket); } catch {}
   await new Promise((resolve, reject) => server.once('error', reject).listen(config.socket, resolve));
   chmodSync(config.socket, 0o600);
+  if (herdrPanel) {
+    panel = await startPanelListener({socketPath: config.socket, accept: (socket, token) => serve(socket, token)})
+      .catch(error => { log(`the Herdr panel's port did not open: ${error.message}`); return null; });
+    if (panel) log(`the Herdr panel's port: 127.0.0.1:${panel.port} (${panel.file})`);
+  }
 
   /**
    * Keeps the Watcher's model loaded while someone works, unless it is down (then the health probe checks it) or
@@ -1362,7 +1414,7 @@ export async function startDaemon(config, {
       omniDownload?.abort.abort(new Error('the daemon stops'));
       omni.close();
       for (const client of clients) client.socket.destroy();
-      await new Promise(resolve => server.close(resolve));
+      await Promise.all([new Promise(resolve => server.close(resolve)), panel?.close()]);
       await rebuilt;
       for (const session of live.values()) session.gen.close(); // a request waiting for an answer would hold the Partner open
       await meaning.close();

@@ -16,6 +16,7 @@ import {doctor, nvimHasPlugin, tilde} from '../src/doctor.mjs';
 import {gitRoot} from '../src/git.mjs';
 import {herdrRequest} from '../src/herdr.mjs';
 import {herdrOf, openCoreChat} from '../src/herdr-core.mjs';
+import {herdrAppInstalled, installMod, modDir, openPanel, removeMod} from '../src/herdr-panel.mjs';
 import {terminalInteraction} from '../src/prompt.mjs';
 import {requestDaemon, sendMessage} from '../src/protocol.mjs';
 import {keyVariables, storeServiceEnv} from '../src/service-env.mjs';
@@ -33,9 +34,9 @@ const SCRIPT = realpathSync(fileURLToPath(import.meta.url));
 const SERVICE = serviceManager();
 
 const USAGE = `usage:
-  pair              open the chat pane next to this one (in herdr), starting the daemon if needed
+  pair              open the chat next to this terminal, starting the daemon if needed: Pair's panel in the Herdr window, a pane in herdr, else here
   pair chat [--plain]   run the chat pane here (--plain: line by line, not full-screen)
-  pair setup        create the config if there is none, install and start the daemon as a service (systemd, launchd)
+  pair setup        create the config if there is none, install and start the daemon as a service (systemd, launchd), and Pair's panel in the Herdr window
   pair doctor       check the daemon, Neovim, herdr and the models, and say what is wrong
   pair doctor --thinking   find the thinking settings the Partner's OpenAI-compatible server takes (asks it a dozen times)
   pair auth login PROVIDER    log in with a subscription or store an API key (also \`pair login PROVIDER\`)
@@ -44,7 +45,7 @@ const USAGE = `usage:
   pair auth models PROVIDER   the models a provider offers, for a model entry's "model"
   pair stats [--days N]   remarks per hour, useful vs dismissed, per trigger, the tuning, how the decision model did, and what /gen made and you own (default: 7 days)
   pair stats --project [DIR]   the same for one project: the one DIR (default: this folder) belongs to
-  pair uninstall    stop and remove the service (the config and data stay)
+  pair uninstall    stop and remove the service and Pair's panel in the Herdr window (the config and data stay)
   pair --version    the version of this install (also \`pair version\`, \`pair -v\`)
   pair daemon       run the daemon in the foreground
   pair supervise    run the daemon in the foreground, restarted when it fails (what \`pair\` starts without a service)
@@ -187,12 +188,19 @@ async function withoutService(config) {
   return 'No systemd or launchd here: `pair` starts the daemon under a supervisor that restarts it when it fails, but not at login (see docs/install.md).';
 }
 
+/** Installs or updates Pair's panel in the Herdr window, when the window is installed here; says what it did. */
+function installPanel() {
+  if (!herdrAppInstalled()) return '';
+  const done = {installed: 'Installed', updated: 'Updated', same: 'Up to date:'}[installMod({version: VERSION})];
+  return `\n${done} Pair's panel in the Herdr window, ${tilde(modDir())}: \`pair\` in a terminal there opens it beside that terminal.`;
+}
+
 async function setup() {
   firstRunConfig();
   await offerLogin();
   const config = loadConfig();
   storeKeyVariables(config);
-  console.log(`${SERVICE ? await installService(config) : await withoutService(config)}
+  console.log(`${SERVICE ? await installService(config) : await withoutService(config)}${installPanel()}
 Config: ${tilde(configPath())} (the daemon takes a change as you save it)
 Models: ${rolesText(config.models)}.${modelsNote(config.models)}
 
@@ -210,6 +218,7 @@ function modelsNote({watcher, partner}) {
 }
 
 async function uninstall() {
+  if (removeMod()) console.log(`Removed Pair's panel from the Herdr window (${tilde(modDir())}).`);
   if (!SERVICE?.installed()) return console.log('No service is installed.');
   await SERVICE.remove();
   console.log(`Removed ${SERVICE.name}. The config (${tilde(configPath())}) and the data directory are kept.`);
@@ -273,14 +282,15 @@ async function runSupervised() {
 }
 
 /**
- * `pair`: the chat in a pane of its own beside this one, in herdr (a split) or in the Herdr window of herdr-core (a
- * terminal the core starts in this terminal's space and tab); anywhere else, in this terminal.
+ * `pair`: the chat beside this terminal: in the Herdr window, Pair's panel (herdr-panel.mjs), else a terminal the core
+ * starts in this terminal's space and tab; in herdr, a pane of its own (a split); anywhere else, in this terminal.
  */
 async function openChatPane(config) {
   await ensureDaemon(config);
   const herdr = herdrOf(process.env);
   const env = Object.fromEntries(['PAIR_CONFIG', 'PAIR_SOCKET', 'PAIR_AUTH'].filter(name => process.env[name]).map(name => [name, process.env[name]]));
   if (herdr?.kind === 'core') {
+    if (await openPanel(herdr, {cwd: process.cwd(), socketPath: config.socket})) return;
     if (await openCoreChat(herdr, {argv: [process.execPath, SCRIPT, 'chat'], cwd: process.cwd(), env})) return;
     return runChat(config.socket, {dataDir: config.dataDir}); // no Herdr window shows this terminal
   }

@@ -142,13 +142,15 @@ export class HerdrApp {
 export class CorePanes {
   name = 'herdr-core';
 
-  constructor({socketPath, chatPane, app = new HerdrApp(), focusMs = FOCUS_MS}) {
+  constructor({socketPath, chatPane, space = undefined, app = new HerdrApp(), focusMs = FOCUS_MS}) {
     Object.assign(this, {socketPath, chatPane, app, focusMs});
-    this.space = undefined; // the chat's space, once asked
+    this.space = space ?? undefined; // the chat's space: the Herdr panel says it, a chat terminal is asked for it
     this.focus = null; // the terminal the window's focus is on, among the space's
     this.pids = new Map(); // a terminal's own program (its shell) -> the terminal, for the shell hook's reports
     this.stream = null;
-    this.timer = null;
+    this.timer = null; // a start tried again
+    this.focusTimer = null; // the window's focus asked again
+    this.pushing = false; // the Herdr panel pushes the focus: the window is not asked
   }
 
   request(method, params) {
@@ -156,6 +158,7 @@ export class CorePanes {
   }
 
   async spaceOf() {
+    if (this.space === undefined && !this.chatPane) return null;
     if (this.space === undefined) this.space = (await this.request('terminal.get', {terminal: this.chatPane})).labels?.[SPACE] ?? null;
     return this.space;
   }
@@ -190,23 +193,48 @@ export class CorePanes {
     this.followFocus(this.look);
   }
 
-  /** The window says nothing when its focus moves: it is asked every focusMs, and a move makes PaneWatch look. */
+  /**
+   * The window says nothing when its focus moves: it is asked every focusMs, and a move makes PaneWatch look. While
+   * the Herdr panel pushes the focus (pushed), it is not asked.
+   */
   followFocus(look) {
-    if (this.stopped) return;
+    if (this.stopped || this.pushing) return;
     // Without a window (or herdr-app), it is asked less and less often, up to every FOCUS_IDLE_MS.
     this.app.focused(this.space).then(focus => ({focus}), () => ({focus: null, failed: true})).then(({focus, failed}) => {
+      if (this.pushing) return; // the panel's push came meanwhile, and it knows better
       this.waitMs = failed ? Math.min(FOCUS_IDLE_MS, (this.waitMs ?? this.focusMs) * 2) : this.focusMs;
       if (focus !== this.focus) {
         this.focus = focus;
         look();
       }
-      if (!this.stopped) this.timer = setTimeout(() => this.followFocus(look), this.waitMs);
+      if (!this.stopped) this.focusTimer = setTimeout(() => this.followFocus(look), this.waitMs);
     });
+  }
+
+  /**
+   * The window's focus as the Herdr panel pushes it, each time it moves (`{space, terminal}`, as the window's
+   * `focused()` has it): no more asking the window. Null when no panel pushes any more: the window is asked again.
+   */
+  pushed(focus) {
+    if (!focus) {
+      if (!this.pushing) return;
+      this.pushing = false;
+      if (this.stream && this.look) this.followFocus(this.look);
+      return;
+    }
+    this.pushing = true;
+    clearTimeout(this.focusTimer);
+    // Another machine's terminal (vps/t7) or another space's is none of the space's.
+    const terminal = this.space && focus.space === this.space && typeof focus.terminal === 'string' && !focus.terminal.includes('/') ? focus.terminal : null;
+    if (terminal === this.focus) return;
+    this.focus = terminal;
+    this.look?.();
   }
 
   stop() {
     this.stopped = true;
     clearTimeout(this.timer);
+    clearTimeout(this.focusTimer);
     this.stream?.close();
   }
 

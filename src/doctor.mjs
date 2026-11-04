@@ -11,6 +11,7 @@ import {fileCredentialStore, readableByOthers} from './credentials.mjs';
 import {Board, outsideSession} from './board.mjs';
 import {herdrRequest} from './herdr.mjs';
 import {coreRequest, coreStatus, herdrOf, HerdrApp, SPACE} from './herdr-core.mjs';
+import {herdrAppInstalled, installedModVersion, modDir, panelWanted} from './herdr-panel.mjs';
 import {listModels, shareServer, SWAP_FACTOR, SWAP_MS} from './loaded-model.mjs';
 import {createDecider, probeDecision} from './decision.mjs';
 import {createDecisionModel, createPairModels, createRerankEndpoints, knownProviders} from './models.mjs';
@@ -67,6 +68,7 @@ export async function* doctor({
   yield connected ? ok('plugin', 'loaded in the connected Neovims') : pluginCheck(await nvimPlugin(env));
   if (status) yield editorsCheck(status);
   yield await herdrCheck(env);
+  yield* panelChecks(config, status, env);
   yield await boardCheck(config.board, env);
   if (existsSync(auth)) yield loginsCheck(auth);
   if (keyVariables(config).length) yield keysCheck(keyVariables(config), env, serviceEnv);
@@ -232,6 +234,22 @@ export async function herdrCheck(env, {app = new HerdrApp({env: {HC_SESSION: env
   if (!space) return warn('herdr', `${found}; no Herdr window shows terminal ${herdr.pane}: \`pair\` opens the chat right here, and Pair sees none of your other terminals`);
   const focus = await app.focused(space).then(() => '`herdr-app status` answers for its focus', () => 'its focus cannot be read (`herdr-app status` does not answer), so Pair takes none of your terminals for the one you are in');
   return ok('herdr', `${found}; the Herdr window shows terminal ${herdr.pane}, and ${focus}. The Driver cannot type into herdr-core terminals`);
+}
+
+/**
+ * Pair's panel in the Herdr window (herdr-panel.mjs), where the window is installed or the config asks for it: the
+ * daemon's loopback port for it (`panel`), and the mod `pair setup` installs into the window's mods (`mod`).
+ */
+export function* panelChecks(config, status, env = process.env) {
+  if (!herdrAppInstalled(env) && config.herdrPanel !== true) return;
+  if (config.herdrPanel === false) yield warn('panel', 'off in the config ("herdrPanel": false): `pair` opens the chat in a terminal beside yours');
+  else if (status?.panel) yield ok('panel', `the daemon listens for Pair's panel on 127.0.0.1:${status.panel.port}, its token in ${tilde(status.panel.file)} (yours only)${status.panel.clients ? `; ${count(status.panel.clients, 'panel')} connected` : ''}`);
+  else if (status) yield warn('panel', 'the daemon has no port for Pair\'s panel: it started before the Herdr window was installed, or runs an older Pair; restart it (`pair setup`)');
+  const installed = installedModVersion(env);
+  const where = tilde(modDir(env));
+  if (!installed) yield warn('mod', `Pair's panel is not installed in the Herdr window: \`pair setup\` installs it into ${where}`);
+  else if (installed !== VERSION) yield warn('mod', `Pair's panel in ${where} is from Pair ${installed}, this is ${VERSION}: \`pair setup\` updates it`);
+  else if (panelWanted(config, env)) yield ok('mod', `Pair's panel is installed in ${where}: \`pair\` in a terminal of the Herdr window opens it beside that terminal`);
 }
 
 /**
