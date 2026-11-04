@@ -1351,7 +1351,7 @@ export async function startDaemon(config, {
   await new Promise((resolve, reject) => server.once('error', reject).listen(config.socket, resolve));
   chmodSync(config.socket, 0o600);
   if (herdrPanel) {
-    panel = await startPanelListener({socketPath: config.socket, accept: (socket, token) => serve(socket, token)})
+    panel = await startPanelListener({config, accept: (socket, token) => serve(socket, token)})
       .catch(error => { log(`the Herdr panel's port did not open: ${error.message}`); return null; });
     if (panel) log(`the Herdr panel's port: 127.0.0.1:${panel.port} (${panel.file})`);
   }

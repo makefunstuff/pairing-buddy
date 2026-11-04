@@ -8,7 +8,7 @@ import {randomBytes, timingSafeEqual} from 'node:crypto';
 import {chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync} from 'node:fs';
 import {createServer} from 'node:net';
 import {homedir} from 'node:os';
-import {delimiter, join} from 'node:path';
+import {delimiter, dirname, join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {agentListLines} from './agent-relay.mjs';
 import {ledgerText} from './ledger.mjs';
@@ -18,6 +18,7 @@ export const MOD = 'pair'; // the mod's folder name in the Herdr window's mods
 export const MOD_SOURCE = fileURLToPath(new URL('../herdr/pair/', import.meta.url));
 const VERSION_FILE = '.pair-version'; // hidden: Herdr does not reload the mod for it
 const AUTH_MS = 5000; // a connection that has not given the token by then is closed
+const AUTH_BYTES = 64 * 1024; // nor one that sends more than this before it
 const APP_MS = 5000;
 // Files Herdr writes into every mod folder, which an update leaves alone.
 const HERDR_OWN = name => name === 'jsconfig.json' || name.endsWith('.d.ts') || name.startsWith('.');
@@ -38,13 +39,27 @@ export const herdrAppInstalled = (env = process.env) => Boolean(appCommandOf(env
 /** Whether the daemon opens the panel's port: "herdrPanel" in the config, by default when the Herdr window is installed. */
 export const panelWanted = (config, env = process.env) => (config.herdrPanel === 'auto' || config.herdrPanel === undefined ? herdrAppInstalled(env) : config.herdrPanel === true);
 
-/** The file beside the daemon's socket that says the panel's port and token. */
-export const panelFile = socketPath => `${socketPath}.panel`;
+/** Whether only you can add, rename or remove files in folder `dir`: yours, and writable by nobody else. */
+export function ownFolder(dir) {
+  try {
+    const stat = statSync(dir);
+    return stat.isDirectory() && stat.uid === process.getuid?.() && (stat.mode & 0o022) === 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The file that says the panel's port and token: beside the daemon's socket (`config.socket`) when only you can write
+ * in its folder (the runtime folder, /run/user/<uid>), else in the data folder (`config.dataDir`), as with a socket in
+ * /tmp, where another user could put a file of theirs in its place first.
+ */
+export const panelFile = ({socket, dataDir}) => (ownFolder(dirname(socket)) || !dataDir ? `${socket}.panel` : join(dataDir, 'herdr-panel.json'));
 
 /** The panel's `{port, token, pid}` as the running daemon wrote it, or null. */
-export function readPanelFile(socketPath) {
+export function readPanelFile(config) {
   try {
-    const found = JSON.parse(readFileSync(panelFile(socketPath), 'utf8'));
+    const found = JSON.parse(readFileSync(panelFile(config), 'utf8'));
     return Number.isInteger(found.port) && typeof found.token === 'string' ? found : null;
   } catch {
     return null;
@@ -60,25 +75,32 @@ export function tokenMatches(given, token) {
 }
 
 /**
- * The panel's port on 127.0.0.1 (a free one), and its file beside `socketPath`, readable by you only. Each
- * connection goes to `accept(socket, token)`, which checks the token of its first message (see authenticate).
- * Returns `{port, token, file, close()}`.
+ * The panel's port on 127.0.0.1 (a free one), and its file (see panelFile; `config` has the socket and data folder),
+ * readable by you only, in a folder only you can write in: else it does not open. Each connection goes to
+ * `accept(socket, token)`, which checks the token of its first message (see authenticate). Returns
+ * `{port, token, file, close()}`; a port whose file could not be written is closed again.
  */
-export async function startPanelListener({socketPath, accept, host = '127.0.0.1'}) {
+export async function startPanelListener({config, accept, host = '127.0.0.1'}) {
+  const file = panelFile(config);
+  if (!ownFolder(dirname(file))) throw new Error(`others can write in ${dirname(file)}, so the panel's token would not be yours only`);
   const token = randomBytes(24).toString('hex');
   const server = createServer(socket => accept(socket, token));
   await new Promise((resolve, reject) => server.once('error', reject).listen(0, host, resolve));
   const {port} = server.address();
-  const file = panelFile(socketPath);
-  const temp = `${file}.${process.pid}`;
-  writeFileSync(temp, `${JSON.stringify({port, token, pid: process.pid})}\n`, {mode: 0o600});
-  chmodSync(temp, 0o600);
-  renameSync(temp, file);
+  try {
+    const temp = `${file}.${randomBytes(6).toString('hex')}`; // a new file of its own: 'wx' refuses one already there
+    writeFileSync(temp, `${JSON.stringify({port, token, pid: process.pid})}\n`, {mode: 0o600, flag: 'wx'});
+    chmodSync(temp, 0o600);
+    renameSync(temp, file);
+  } catch (error) {
+    await new Promise(resolve => server.close(() => resolve()));
+    throw error;
+  }
   return {
     port, token, file,
     close() {
       // Only its own file: a daemon started since may have written its own there.
-      if (readPanelFile(socketPath)?.token === token) try { unlinkSync(file); } catch {}
+      if (readPanelFile(config)?.token === token) try { unlinkSync(file); } catch {}
       return new Promise(resolve => server.close(() => resolve()));
     },
   };
@@ -86,13 +108,17 @@ export async function startPanelListener({socketPath, accept, host = '127.0.0.1'
 
 /**
  * The gate of a panel connection: `check(message)` is given each message it reads, and says whether it goes on to
- * the daemon. The first must carry `token` (removed before it goes on); a wrong one, or none within AUTH_MS, closes it.
+ * the daemon. The first must carry `token` (removed before it goes on); a wrong one, none within AUTH_MS, or more than
+ * AUTH_BYTES before it, closes it.
  */
-export function authenticate(socket, token, {authMs = AUTH_MS} = {}) {
+export function authenticate(socket, token, {authMs = AUTH_MS, authBytes = AUTH_BYTES} = {}) {
   let open = false;
+  let read = 0;
   const timer = setTimeout(() => socket.destroy(), authMs);
   timer.unref?.();
   socket.on('close', () => clearTimeout(timer));
+  // Nothing much is kept for a connection that has not given the token: a long first line is closed.
+  socket.on('data', data => { if (!open && (read += data.length) > authBytes) socket.destroy(); });
   return message => {
     if (open) return true;
     if (!tokenMatches(message?.token, token)) {
@@ -133,10 +159,13 @@ function modFiles(source = MOD_SOURCE) {
 /**
  * Installs the mod, or updates it to this install's files: only a file that changed is written (each write reloads
  * the mod in a running window), and one this install no longer has goes. Returns 'installed', 'updated' or 'same'.
+ * Throws for a folder of that name that holds a mod Pair did not install.
  */
 export function installMod({env = process.env, version, source = MOD_SOURCE} = {}) {
   const dir = modDir(env);
   const had = existsSync(join(dir, 'main.js'));
+  // A mod of that name Pair did not install is someone's own: it is left as it is.
+  if (had && !installedModVersion(env)) throw new Error(`${dir} holds a mod Pair did not install; move it away, then run \`pair setup\` again`);
   mkdirSync(dir, {recursive: true});
   const files = modFiles(source);
   let changed = false;
@@ -199,11 +228,14 @@ export async function shownAt(command, terminal, env = process.env) {
  * (no window, no mod, the window does not show this terminal, the daemon has no panel port): `pair` then opens the
  * chat in a terminal, as before.
  */
-export async function openPanel(herdr, {cwd, socketPath, history = null, env = process.env, command = appCommandOf(env)}) {
-  if (herdr?.kind !== 'core' || !command || !existsSync(join(modDir(env), 'main.js')) || !readPanelFile(socketPath)) return false;
+export async function openPanel(herdr, {cwd, config, history = null, env = process.env, command = appCommandOf(env), waitMs = 3000}) {
+  if (herdr?.kind !== 'core' || !command || !installedModVersion(env) || !panelWanted(config, env)) return false;
+  // A daemon `pair` just started writes the file a moment after its socket answers.
+  for (const end = Date.now() + waitMs; !readPanelFile(config) && Date.now() < end;) await new Promise(resolve => setTimeout(resolve, 100));
+  if (!readPanelFile(config)) return false;
   const here = await shownAt(command, herdr.pane, env).catch(() => null);
   if (!here) return false;
-  const props = {cwd, terminal: herdr.pane, space: here.space, tab: here.tab, core: herdr.socket, session: herdr.session ?? null, panel: panelFile(socketPath), ...(history ? {history} : {})};
+  const props = {cwd, terminal: herdr.pane, space: here.space, tab: here.tab, core: herdr.socket, session: herdr.session ?? null, panel: panelFile(config), ...(history ? {history} : {})};
   return appRun(command, ['do', 'pane.split', '--direction', 'right', '--pane', here.pane, '--mod', MOD, '--props', JSON.stringify(props)], env)
     .then(() => true, () => false);
 }

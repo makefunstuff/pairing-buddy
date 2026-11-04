@@ -13,7 +13,8 @@ import { v_flex, h_flex, TextareaState, Textarea, TextView } from "gpui-base";
 import { props, theme, focused, panes, window, notify, readTextFile, settings } from "herdr";
 import net from "net";
 import { Buffer } from "buffer";
-import { ChatModel, confirmChoices, ROLE_NAMES, cardKeys, relayActions, entryText } from "./model.js";
+import { ChatModel, confirmChoices, ROLE_NAMES, cardKeys, relayActions } from "./model.js";
+import { toolDone } from "./keys.js";
 import { COMMANDS, LEVELS } from "./commands.js";
 import { openLink } from "./link.js";
 
@@ -73,7 +74,8 @@ export default class Pair extends View {
         onMessage: (message) => {
           const news = this.model.receive(message, { reconnected: Boolean(message.reconnected) });
           if (message.type === "welcome") { this.loadHistory(message.root, cx); this.pushFocus(); }
-          if (news) this.toast(news);
+          if (news?.ended) { this.pushed = null; this.link?.hello(); } // the next session, as the terminal's chat starts it
+          else if (news) this.toast(news);
           cx.notify();
         },
         onError: (error, message) => {
@@ -187,7 +189,8 @@ export default class Pair extends View {
       cx.notify();
       return;
     }
-    if (done.local === "quit") return;
+    if (done.local === "quit") { this.model.say("Close this pane to close the panel; the session goes on"); this.box.set_value(""); cx.notify(); return; }
+    if (done.local === "search") { this.model.say("Search in the conversation is in the terminal's chat (pair chat), not in the panel yet"); cx.notify(); return; }
     if (done.local === "copy" && done.text) { cx.write_to_clipboard(done.text); this.model.say("Copied"); }
     if (this.model.root && !done.local) this.remember(line.trim());
     this.box.set_value("");
@@ -276,7 +279,7 @@ export default class Pair extends View {
       case "confirm":
         return this.confirm(t, m, entry, mono);
       case "tool":
-        return v_flex().pl(10).children(entry.tools.map(({ tool, what }, i) => div().id(`${id}-t${i}`).text_size(11.5).text_color(t.dim).truncate().child(`└ ${tool} ${what}`)));
+        return v_flex().pl(10).children(entry.tools.map(({ tool, what }, i) => div().id(`${id}-t${i}`).text_size(11.5).text_color(t.dim).truncate().child(`└ ${toolDone(tool, what)}`)));
       case "error":
         return div().text_size(12.5).text_color(t.blocked).child(markdown(entry.text));
       case "note":
@@ -346,7 +349,8 @@ export default class Pair extends View {
   genCard(t, m, entry, markdown) {
     const id = `e${entry.id}`;
     const keys = cardKeys(entry.card);
-    const words = { k: "Keep", enter: "Open", d: "Drop rest", u: "Undo" };
+    const armed = m.armed?.gen === entry.card?.gen && m.armed.until > Date.now();
+    const words = { k: "Keep", enter: "Open", d: armed ? "Click again to drop" : "Drop rest", u: "Undo" };
     return v_flex().gap(6).px(10).py(8).rounded(8).border_1().border_color((t.ansi5 ?? t.accent) + "88").bg((t.ansi5 ?? t.accent) + "10")
       .child(div().text_size(11).font_semibold().text_color(t.ansi5 ?? t.accent).child(entry.card ? `gen #${entry.card.gen} · ${entry.card.shape} · ${entry.card.state}` : "gen"))
       .child(markdown([entry.text, entry.meta?.hint].filter(Boolean).join("\n\n")))
@@ -411,7 +415,8 @@ export default class Pair extends View {
               if (this.recallStep(k === "up" ? 1 : -1)) { cx.stop_propagation(); cx.notify(); }
               return;
             }
-            if (k === "escape") { cx.stop_propagation(); if (m.about) m.about = null; else m.stop(); cx.notify(); return; }
+            // Escape: no to Pair's question, else the answer at work stops, else a follow-up is let go.
+            if (k === "escape") { cx.stop_propagation(); if (!m.stop() && m.about) m.about = null; cx.notify(); return; }
             if (k === "enter" && !mods.shift && !mods.alt) { cx.stop_propagation(); this.enter(cx); }
           })
           .child(Textarea.new(this.box)))

@@ -3,7 +3,7 @@
 // `pair setup`'s install of the mod and `pair uninstall`'s removal, and `pair` opening the panel beside its terminal.
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
-import {existsSync, mkdirSync, readFileSync, statSync, writeFileSync} from 'node:fs';
+import {chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync} from 'node:fs';
 import {readFile} from 'node:fs/promises';
 import {connect} from 'node:net';
 import {join} from 'node:path';
@@ -14,7 +14,7 @@ import {parseConfig} from '../src/config.mjs';
 import {startDaemon} from '../src/daemon.mjs';
 import {CorePanes, HerdrApp} from '../src/herdr-core.mjs';
 import {panelChecks} from '../src/doctor.mjs';
-import {installedModVersion, installMod, modDir, panelFile, panelWanted, removeMod} from '../src/herdr-panel.mjs';
+import {installedModVersion, installMod, modDir, panelFile, panelWanted, removeMod, startPanelListener} from '../src/herdr-panel.mjs';
 import {VERSION} from '../src/version.mjs';
 import {PaneWatch} from '../src/pane-watch.mjs';
 import {requestDaemon} from '../src/protocol.mjs';
@@ -116,7 +116,7 @@ test('the panel\'s port: no token or a wrong one closes it; the token opens the 
   const daemon = await startDaemon(config, {...models(), probe: answers, log: () => {}, herdrPanel: true});
   let closed = false;
   try {
-    const file = panelFile(config.socket);
+    const file = panelFile(config);
     assert.equal(statSync(file).mode & 0o777, 0o600, 'the token is readable by you only');
     const {port, token} = JSON.parse(readFileSync(file, 'utf8'));
     assert.ok(Number.isInteger(port) && token.length >= 32);
@@ -168,7 +168,7 @@ test('the panel\'s line: hello with the token, and hello again with resume once 
   let closed = false;
   const link = openLink({
     connect: herdrSocket, readText: path => readFile(path, 'utf8'), sleep: pause, decode: bytes => Buffer.from(bytes).toString('utf8'),
-    file: panelFile(config.socket), retryMs: 100, downMs: 100,
+    file: panelFile(config), retryMs: 100, downMs: 100,
     hello: resume => ({type: 'hello', role: 'chat', cwd: project, resume, panel: true}),
     onState: state => states.push(state), onMessage: message => {
       // A message the panel fails on leaves the line open (it once closed it, and the panel's focus pushes stopped).
@@ -196,6 +196,14 @@ test('the panel\'s line: hello with the token, and hello again with resume once 
     assert.equal(welcomes[1].reconnected, true, 'a resumed hello');
     assert.equal(welcomes[1].goal, 'make the cart total right');
     assert.deepEqual(states.filter((state, i) => state !== states[i - 1]), ['connecting', 'down', 'up', 'away', 'up'], 'away only when the daemon went');
+    // The session ends (/end, or by itself): the panel says hello again, as the terminal's chat does, and goes on.
+    link.send({type: 'end'});
+    await until(() => heard.some(message => message.type === 'ended'), 'the end');
+    assert.equal(link.hello(), true);
+    await until(() => welcomes.length === 3, 'the next session\'s welcome');
+    assert.equal(welcomes[2].reconnected, false, 'a new session, not a reconnect');
+    assert.equal(link.send({type: 'goal', text: 'next'}), true);
+    await until(() => heard.some(message => message.type === 'goal' && message.goal === 'next'), 'the next session takes messages');
   } finally {
     closed = true;
     link.close();
@@ -239,6 +247,27 @@ test('the panel\'s focus push replaces asking `herdr-app status`; once it stops,
   source.pushed(null);
   await until(() => statusCalls() > asked + 2, 'asked again');
   await until(() => focus()?.pane === 't1', 'the polled focus again');
+  // A panel that comes and goes while the window is being asked (a reload): still one loop asking, never two.
+  const rate = async () => { const from = statusCalls(); await pause(1000); return statusCalls() - from; };
+  const one = await rate();
+  for (let i = 0; i < 5; i++) {
+    source.pushed({space: SPACE_ID, terminal: 't1'});
+    source.pushed(null);
+    await pause(30);
+  }
+  const after = await rate();
+  assert.ok(after <= one * 1.4 + 1, `one loop: ${one} calls a second before, ${after} after`);
+});
+
+test('a focus pushed before the chat terminal\'s space is known counts once it is', async t => {
+  const {socketPath, app} = await herdrSetUp(t);
+  const events = [];
+  const source = new CorePanes({socketPath, chatPane: 't2', app: new HerdrApp({command: app.command}), focusMs: 50});
+  source.pushed({space: SPACE_ID, terminal: 't1'}); // before start: the space is not asked yet
+  const watch = new PaneWatch({source, chatPane: 't2', emit: event => events.push(event)});
+  watch.start();
+  t.after(() => watch.stop());
+  await until(() => events.some(event => event.kind === 'focus' && event.pane === 't1'), 'the pushed focus');
 });
 
 test('a panel in the Herdr window: the daemon watches its space, takes its focus pushes, and polls again once it is gone', {timeout: 20_000}, async t => {
@@ -247,7 +276,7 @@ test('a panel in the Herdr window: the daemon watches its space, takes its focus
   const project = scratch('pair-project-');
   const daemon = await startDaemon(config, {...models(), probe: answers, log: () => {}, herdrPanel: true, appCommand: app.command});
   t.after(() => daemon.close());
-  const {port, token} = JSON.parse(readFileSync(panelFile(config.socket), 'utf8'));
+  const {port, token} = JSON.parse(readFileSync(panelFile(config), 'utf8'));
   const editor = client(config.socket, {type: 'hello', role: 'editor', cwd: project}); // keeps the session
   t.after(() => editor.close());
   const panel = panelClient(port, token, {
@@ -295,6 +324,8 @@ test('pair setup installs the mod into the Herdr window, an upgrade updates only
   mkdirSync(dir, {recursive: true});
   writeFileSync(join(dir, 'main.js'), '// someone else\'s pair mod\n');
   assert.equal(removeMod(env), false, 'a folder Pair did not install is left');
+  assert.throws(() => installMod({env, version: '1.1.0'}), /holds a mod Pair did not install/, 'nor overwritten');
+  assert.equal(readFileSync(join(dir, 'main.js'), 'utf8'), '// someone else\'s pair mod\n');
   assert.equal(existsSync(join(dir, 'main.js')), true);
 });
 
@@ -337,7 +368,7 @@ test('`pair` in a terminal of the Herdr window opens the panel beside it; withou
   assert.equal(core.started.length, 1, 'no chat terminal');
   const [split] = splits();
   assert.deepEqual(split.slice(0, 9), ['do', 'pane.split', '--direction', 'right', '--pane', 'p1', '--mod', 'pair', '--props']);
-  assert.deepEqual(JSON.parse(split[9]), {cwd: project, terminal: 't1', space: 'sp1', tab: 'tb1', core: socketPath, session: null, panel: panelFile(config.socket), history: join(dataDir, 'chat-history.json')});
+  assert.deepEqual(JSON.parse(split[9]), {cwd: project, terminal: 't1', space: 'sp1', tab: 'tb1', core: socketPath, session: null, panel: panelFile(config), history: join(dataDir, 'chat-history.json')});
 
   app.set({refuseSplit: true});
   assert.equal((await run()).code, 0);
@@ -361,4 +392,24 @@ test('pair doctor: a line for the panel\'s port and one for the mod, where the H
   said = lines({herdrPanel: 'auto'}, {panel: null}, env);
   assert.match(said[0], /^warn panel: the daemon has no port for Pair's panel/);
   assert.match(lines({herdrPanel: false}, {panel: null}, env)[0], /^warn panel: off in the config/);
+});
+
+test('the token never goes to a folder others can write in: beside a socket in one, it goes to the data folder, or nowhere', async () => {
+  const shared = scratch('pair-shared-');
+  chmodSync(shared, 0o1777); // as /tmp, where the socket goes without XDG_RUNTIME_DIR
+  const dataDir = scratch('pair-data-');
+  chmodSync(dataDir, 0o700);
+  const config = {socket: join(shared, 'pair.sock'), dataDir};
+  assert.equal(panelFile(config), join(dataDir, 'herdr-panel.json'));
+  const panel = await startPanelListener({config, accept: socket => socket.destroy()});
+  assert.equal(panel.file, join(dataDir, 'herdr-panel.json'));
+  assert.equal(statSync(panel.file).mode & 0o777, 0o600);
+  await panel.close();
+  assert.equal(existsSync(panel.file), false);
+  const own = scratch('pair-run-');
+  chmodSync(own, 0o700);
+  assert.equal(panelFile({socket: join(own, 'pair.sock'), dataDir}), join(own, 'pair.sock.panel'), 'beside the socket in a folder of your own');
+  chmodSync(dataDir, 0o777);
+  await assert.rejects(startPanelListener({config, accept: socket => socket.destroy()}), /others can write in/, 'no folder of your own: no port');
+  chmodSync(dataDir, 0o700);
 });

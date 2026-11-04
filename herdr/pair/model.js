@@ -7,6 +7,7 @@ import {cardKeys, GEN_AT_WORK, genStatus, relayActions, relayKeys, remarkKeys, s
 
 const KIND_OF = {user: 'you', pair: 'pair', system: 'system'};
 const BUSY = ['thinking', 'tool'];
+const ARM_MS = 4000; // a second click on Drop rest within this drops
 export const ROLE_NAMES = {navigator: 'Navigator', scout: 'Scout', driver: 'Driver'};
 
 /**
@@ -469,7 +470,16 @@ export class ChatModel {
       if (this.out({type: 'gen_open', action: card.action})) this.say(card.shape === 'file' || card.shape === 'scaffold' ? `${n}: :Pair gen list opens in Neovim` : `Neovim goes to ${n}'s code; Ctrl-O comes back`);
       return true;
     }
-    if (key === 'd') return this.out({type: 'gen_drop_all', action: card.action});
+    // d drops what is left of it (a scaffold's copy with it): a second click within a few seconds, as d twice in the terminal.
+    if (key === 'd' && (this.armed?.gen !== card.gen || this.armed.until < this.now())) {
+      this.armed = {gen: card.gen, until: this.now() + ARM_MS};
+      this.say(`Click again to drop ${card.shape === 'scaffold' ? `${n}'s copy, and what you did not keep of it` : `what is left of ${n}`}`);
+      return true;
+    }
+    if (key === 'd') {
+      this.armed = null;
+      return this.out({type: 'gen_drop_all', action: card.action});
+    }
     if (card.shape === 'here') return this.out({type: 'accept', action: card.action});
     if (card.shape === 'file') {
       if (this.out({type: 'gen_open', action: card.action, what: 'next'})) this.say(`${n}: the next file to review opens in Neovim; :w there takes it`);

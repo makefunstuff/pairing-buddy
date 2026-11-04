@@ -116,11 +116,11 @@ terminal's chat.
 
 | Piece | How |
 | --- | --- |
-| Talking to the daemon | Herdr's mods have TCP but no Unix sockets, so the daemon also listens on a free port of `127.0.0.1`, speaking the socket's NDJSON. The port and a random token are in `<socket>.panel` (readable by you only, gone when the daemon stops); the first message of a connection must carry the token, else it is closed. The port opens where the Herdr window is installed, or as `"herdrPanel"` in the config says ([config.md](config.md)). The panel reads the file, connects, and when the daemon restarts, connects again and resumes; until a daemon answers it says that Pair's daemon is not running |
+| Talking to the daemon | Herdr's mods have TCP but no Unix sockets, so the daemon also listens on a free port of `127.0.0.1`, speaking the socket's NDJSON. The port and a random token are in `<socket>.panel` (readable by you only, removed when the daemon stops cleanly, and written anew when it starts); where others can write in the socket's folder (a socket in `/tmp`), the file goes in the data folder instead (`herdr-panel.json`), and with no folder of your own the port does not open. The first message of a connection must carry the token, else it is closed (so is one that sends much before it). The port opens where the Herdr window is installed, or as `"herdrPanel"` in the config says ([config.md](config.md)). The panel reads the file, connects, and when the daemon restarts, connects again and resumes; until a daemon answers it says that Pair's daemon is not running |
 | What it shows | What the terminal's chat shows: Pair's answers as Markdown, the notes (the ledger, `/remarks`, `/agents`, `/find`, `/help`), what the tools did, the status (what Pair does, the `/gen` requests). The header has the project and goal, the role (Navigator, Scout, Driver: click one to switch), the remark level (click for the next), the Watcher's and the Partner's models with a dot that turns red while one does not answer, how far search by meaning's index is, what is muted and the board's counts. The daemon sends the panel the words of the notes the terminal's chat writes itself, so both say the same |
 | Remarks | A card per remark: Useful, Noise, Dismiss (seen: neither), Accept where it has a suggestion and Jump where it points at a line, and Why?, Follow up and Mute kind (the terminal's `e`, `f` and `m`) |
 | Pair's questions | The Driver's and Scout's "May I …?", `/gen`'s questions, `/gen board`'s and `/brief sync`'s choices: a card with a button per answer the question offers (its command shown whole, which Copy puts on the clipboard); typed words answer too, and Stop says no |
-| `/gen` cards and relayed news | Buttons for the card's keys (keep, open, drop what is left, undo) and for a relayed task's (open, diff, terminal) |
+| `/gen` cards and relayed news | Buttons for the card's keys (keep, open, drop what is left: a second click within a few seconds, as `d` twice in the terminal; undo) and for a relayed task's (open, diff, terminal) |
 | The box | Enter sends, Shift-Enter is a new line, Up and Down bring back what you sent (the terminal chat's history too, when `pair` names it), `/` lists the commands, Escape stops the answer Pair is working on |
 | Toasts | While the panel is not seen (another tab or space, a pane zoomed over it, the window in the background), a new remark or a question of Pair's posts a Herdr toast; clicking it brings the panel up (`pane.focus`) |
 | The focus | The panel tells the daemon where the window's focus is as it moves (`herdr_focus`), from Herdr's live data, so the daemon stops asking `herdr-app status` twice a second while a panel is connected; when the last panel goes, it asks again |
@@ -130,5 +130,9 @@ pane opens beside it), that terminal's space and tab, herdr-core's socket and th
 a line for the port (`panel`) and one for the mod (`mod`: installed, and of this version).
 
 Not in the panel (the terminal's chat has them): selecting a message with Alt-↑ and its letter keys (the buttons do
-it), Ctrl-F search in the conversation, `@` file completion, `/keep`'s file menu after a scaffold's keep, and the margin
-with an answer's time and tokens in a wide pane (the panel puts them under the answer).
+it), Ctrl-F and `/search` in the conversation (the panel says so), Alt-y's take of the newest suggestion (Accept on its
+card does it), `@` file completion, `/keep`'s file menu after a scaffold's keep, and the margin with an answer's time and
+tokens in a wide pane (the panel puts them under the answer). `/quit` only says to close the pane. With two Pair panels
+open for one project, each raises its own toast. After the session ends (`/end`, or by itself) the panel starts the
+next one, as the terminal's chat does. A daemon of a newer Pair updates the panel it finds installed to its own version
+when it starts; `pair doctor` says when they differ.

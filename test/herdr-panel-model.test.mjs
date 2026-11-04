@@ -140,6 +140,12 @@ test('a gen card\'s buttons send what its keys send, and a relayed line\'s open 
   model.cardAct(card, 'enter');
   model.cardAct(card, 'u');
   assert.deepEqual(sent.slice(-3), [{type: 'accept', action: 9}, {type: 'gen_open', action: 9}, {type: 'undo', action: 9}]);
+  const count = sent.length;
+  model.cardAct(card, 'd');
+  assert.equal(sent.length, count, 'one click on Drop rest drops nothing');
+  assert.match(model.flash.text, /Click again to drop what is left of gen #2/);
+  model.cardAct(card, 'd');
+  assert.deepEqual(sent.at(-1), {type: 'gen_drop_all', action: 9}, 'the second does');
   model.receive({type: 'gen_card', gen: 3, action: 12, shape: 'scaffold', state: 'ready', keys: {k: 'keep one'}});
   model.receive({type: 'message', sender: 'pair', text: 'gen #3 · scaffold', at: 1, meta: {gen: 3}});
   assert.deepEqual(model.cardAct(model.entries.at(-1), 'k'), {keep: '/keep '});

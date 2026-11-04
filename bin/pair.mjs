@@ -16,7 +16,7 @@ import {doctor, nvimHasPlugin, tilde} from '../src/doctor.mjs';
 import {gitRoot} from '../src/git.mjs';
 import {herdrRequest} from '../src/herdr.mjs';
 import {herdrOf, openCoreChat} from '../src/herdr-core.mjs';
-import {herdrAppInstalled, installMod, modDir, openPanel, removeMod} from '../src/herdr-panel.mjs';
+import {herdrAppInstalled, installedModVersion, installMod, modDir, openPanel, panelWanted, removeMod} from '../src/herdr-panel.mjs';
 import {terminalInteraction} from '../src/prompt.mjs';
 import {requestDaemon, sendMessage} from '../src/protocol.mjs';
 import {keyVariables, storeServiceEnv} from '../src/service-env.mjs';
@@ -191,7 +191,12 @@ async function withoutService(config) {
 /** Installs or updates Pair's panel in the Herdr window, when the window is installed here; says what it did. */
 function installPanel() {
   if (!herdrAppInstalled()) return '';
-  const done = {installed: 'Installed', updated: 'Updated', same: 'Up to date:'}[installMod({version: VERSION})];
+  let done;
+  try {
+    done = {installed: 'Installed', updated: 'Updated', same: 'Up to date:'}[installMod({version: VERSION})];
+  } catch (error) {
+    return `\nPair's panel in the Herdr window is not installed: ${error.message}`;
+  }
   return `\n${done} Pair's panel in the Herdr window, ${tilde(modDir())}: \`pair\` in a terminal there opens it beside that terminal.`;
 }
 
@@ -267,6 +272,16 @@ async function projectRoot(dir, config) {
 }
 
 async function daemon(config) {
+  // An upgrade's daemon brings Pair's panel in the Herdr window to its own version, when `pair setup` installed one.
+  const installed = panelWanted(config) && installedModVersion();
+  if (installed && installed !== VERSION) {
+    try {
+      installMod({version: VERSION});
+      console.error(`pair: updated Pair's panel in the Herdr window from ${installed} to ${VERSION}`);
+    } catch (error) {
+      console.error(`pair: Pair's panel in the Herdr window stays at ${installed}: ${error.message}`);
+    }
+  }
   const running = await startDaemon(config, {configFile: configPath()});
   const stop = async () => { await running.close(); process.exit(0); };
   process.on('SIGINT', stop);
@@ -290,7 +305,7 @@ async function openChatPane(config) {
   const herdr = herdrOf(process.env);
   const env = Object.fromEntries(['PAIR_CONFIG', 'PAIR_SOCKET', 'PAIR_AUTH'].filter(name => process.env[name]).map(name => [name, process.env[name]]));
   if (herdr?.kind === 'core') {
-    if (await openPanel(herdr, {cwd: process.cwd(), socketPath: config.socket, history: join(config.dataDir, 'chat-history.json')})) return;
+    if (await openPanel(herdr, {cwd: process.cwd(), config, history: join(config.dataDir, 'chat-history.json')})) return;
     if (await openCoreChat(herdr, {argv: [process.execPath, SCRIPT, 'chat'], cwd: process.cwd(), env})) return;
     return runChat(config.socket, {dataDir: config.dataDir}); // no Herdr window shows this terminal
   }

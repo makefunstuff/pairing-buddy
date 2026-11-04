@@ -46,6 +46,7 @@ export function openLink({connect, readText, sleep, decode, file, hello, onMessa
   let socket = null;
   let welcomed = false; // once: the next hello resumes
   let up = false;
+  let fresh = false; // a hello for the next session, not a resume
   const line = message => `${JSON.stringify(message)}\n`;
   const link = {
     send(message) {
@@ -55,6 +56,13 @@ export function openLink({connect, readText, sleep, decode, file, hello, onMessa
     },
     close() {
       socket?.close();
+    },
+    /** Says hello again on the open line: after the session ended, it starts the next one. */
+    hello() {
+      if (!socket || !up) return false;
+      fresh = true;
+      socket.write(line(hello(false))).catch(() => {});
+      return true;
     },
   };
   link.done = (async () => {
@@ -79,7 +87,8 @@ export function openLink({connect, readText, sleep, decode, file, hello, onMessa
             try { message = JSON.parse(text); } catch { continue; }
             if (message.type === 'welcome') {
               up = true;
-              message.reconnected = welcomed;
+              message.reconnected = welcomed && !fresh;
+              fresh = false;
               welcomed = true;
               onState('up');
             }

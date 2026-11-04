@@ -189,6 +189,7 @@ export class CorePanes {
     });
     if (this.stream || this.stopped) return;
     if (!space) return looking ? undefined : this.look();
+    this.applyPush(); // a push that came before the space was known
     this.stream = coreEvents(this.socketPath, {labels: {[SPACE]: space}}, {onEvent: () => this.look(), onStart: () => this.look(), onError: this.failure});
     this.followFocus(this.look);
   }
@@ -199,15 +200,19 @@ export class CorePanes {
    */
   followFocus(look) {
     if (this.stopped || this.pushing) return;
+    const loop = this.loop = (this.loop ?? 0) + 1; // one loop at a time: an older one's answer is dropped
     // Without a window (or herdr-app), it is asked less and less often, up to every FOCUS_IDLE_MS.
     this.app.focused(this.space).then(focus => ({focus}), () => ({focus: null, failed: true})).then(({focus, failed}) => {
-      if (this.pushing) return; // the panel's push came meanwhile, and it knows better
+      if (this.pushing || loop !== this.loop) return; // the panel's push came meanwhile, and it knows better
       this.waitMs = failed ? Math.min(FOCUS_IDLE_MS, (this.waitMs ?? this.focusMs) * 2) : this.focusMs;
       if (focus !== this.focus) {
         this.focus = focus;
         look();
       }
-      if (!this.stopped) this.focusTimer = setTimeout(() => this.followFocus(look), this.waitMs);
+      if (!this.stopped) {
+        clearTimeout(this.focusTimer);
+        this.focusTimer = setTimeout(() => this.followFocus(look), this.waitMs);
+      }
     });
   }
 
@@ -223,7 +228,16 @@ export class CorePanes {
       return;
     }
     this.pushing = true;
+    this.lastPush = focus;
     clearTimeout(this.focusTimer);
+    this.loop = (this.loop ?? 0) + 1; // a poll under way is dropped
+    this.applyPush();
+  }
+
+  /** The last push as the space's focus: once the space is known (a chat terminal's is asked for), it counts. */
+  applyPush() {
+    const focus = this.lastPush;
+    if (!this.pushing || !focus || this.space === undefined) return;
     // Another machine's terminal (vps/t7) or another space's is none of the space's.
     const terminal = this.space && focus.space === this.space && typeof focus.terminal === 'string' && !focus.terminal.includes('/') ? focus.terminal : null;
     if (terminal === this.focus) return;
