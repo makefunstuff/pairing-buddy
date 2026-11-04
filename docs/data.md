@@ -42,8 +42,8 @@ downloads when you say yes to them (EmbeddingGemma 2 from Hugging Face, LiteRT-L
 [context card](neovim.md#what-it-knows-the-context-card) when `gh` is installed and, for a login, to the provider's
 sign-in service. Those requests carry your code: the Watcher gets each moment's text (your edits, a command's
 output, a test's failure), and the Partner the files and lines it reads, the diffs it suggests and your questions; an
-[embedding model](meaning.md) of your own gets the text of each piece of code it indexes, and your searches; a [`rerank` model](config.md#rerank) gets a search's words and the text of its first pieces. With
-a cloud provider, that code goes to the provider: check that your employer allows it before you use Pair on work code;
+[embedding model](meaning.md) of your own gets the text of each piece of code it indexes, and your searches; a [`rerank` model](config.md#rerank) gets a search's words and the text of its first
+pieces. With a cloud provider, that code goes to the provider: check that your employer allows it before you use Pair on work code;
 a local server keeps it on your machine. A [decision model](decision.md#what-it-is-told), when you set one, gets each moment's kind and
 text, your goal, the paths you edited, your last commands and test counts, and your verdicts on earlier remarks; never
 the contents of a file. With [voice through OpenRouter](voice.md#openrouter), your spoken question's recording goes to

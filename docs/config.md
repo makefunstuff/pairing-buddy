@@ -215,7 +215,7 @@ under the service, use `auth`, `apiKeyFile` or `apiKey`). Without it, EmbeddingG
 | `auth`, `apiKey`, `apiKeyFile`, `apiKeyEnv` | none | Its key, if it needs one: one of them |
 | `queryPrefix`, `documentPrefix` | the model's own, where semantic-grep knows them | The prompts it was trained with, for a search and for a piece of code |
 | `dimensions` | the model's | Asks a model that can for shorter vectors |
-| `timeoutMs` | 60000 | How long one request may take |
+| `timeoutMs` | `60000` | How long one request to it may take, in ms (`pair doctor`'s own check waits 15 s) |
 
 ## `rerank`
 
