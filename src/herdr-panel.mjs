@@ -255,3 +255,204 @@ export async function openPanel(herdr, {cwd, config, history = null, env = proce
   return appRun(command, ['do', 'pane.split', '--direction', 'right', '--pane', here.pane, '--mod', MOD, '--props', JSON.stringify(props)], env)
     .then(() => true, () => false);
 }
+
+// Opening the panel without typing `pair`: a key in the window's keys.json, Pair in its + menu (programs.json), and
+// the panel opened bare (no props), which fills them itself from the focused terminal (herdr/pair/main.js).
+
+/** What the key runs: Pair's panel, opened bare, to the right of the focused pane (the mod fills in the rest). */
+export const OPEN_ACTION = Object.freeze({command: 'pane.split', args: Object.freeze({direction: 'right', mod: MOD})});
+/** The keys `pair setup` binds, the first one free in every section of keys.json. */
+export const KEY_CHOICES = ['alt-p', 'alt-shift-p', 'ctrl-alt-p'];
+const COMMAND_FILE = '.pair-command.json'; // in the mod's folder: how the panel runs this Pair (`pair panel --props`)
+const ADDED_FILE = '.pair-added.json'; // in the mod's folder: what setup put in keys.json and programs.json
+const ENV_NAMES = ['PAIR_CONFIG', 'PAIR_SOCKET', 'PAIR_AUTH']; // the setup's own config, socket and logins, when it names them
+
+/** How the Herdr window runs this Pair: node and its script, with the config `env` names (`env NAME=value …` first). */
+export function pairArgv({execPath = process.execPath, script, env = process.env} = {}) {
+  const named = ENV_NAMES.filter(name => env[name]).map(name => `${name}=${env[name]}`);
+  return [...(named.length ? ['env', ...named] : []), execPath, '--disable-warning=ExperimentalWarning', script];
+}
+
+/** Writes the argv the bare panel runs `pair panel --props` with, beside the mod (a hidden file: no reload). */
+export function writePairCommand(argv, env = process.env) {
+  writeFileSync(join(modDir(env), COMMAND_FILE), `${JSON.stringify({argv})}\n`);
+}
+
+/** The + menu's entry for Pair in programs.json: `pair panel` in the new tab puts the panel back in the tab you were in. */
+export const programEntry = argv => ({name: 'Pair', icon: `mods/${MOD}/pair.svg`, tint: true, tile: '#3b5bdb', color: '#ffffff', run: [...argv, 'panel']});
+
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+/** A JSON file of the window's: its value, null when there is none; throws for one that does not parse. */
+function readJson(path) {
+  if (!existsSync(path)) return null;
+  return JSON.parse(readFileSync(path, 'utf8'));
+}
+
+/** Writes `value` to `path` at once (a temp file renamed: the window never reads half of it), after a copy of the old one. */
+function writeJson(path, value) {
+  if (existsSync(path)) {
+    const stamp = new Date().toISOString().replace(/\D/g, '').slice(0, 14);
+    writeFileSync(`${path}.pair-bak-${stamp}`, readFileSync(path));
+  }
+  const temp = `${path}.pair-${randomBytes(4).toString('hex')}`;
+  writeFileSync(temp, `${JSON.stringify(value, null, 2)}\n`);
+  renameSync(temp, path);
+}
+
+function readAdded(env) {
+  try { return JSON.parse(readFileSync(join(modDir(env), ADDED_FILE), 'utf8')); } catch { return {}; }
+}
+
+/**
+ * `pair setup`: the key that opens the panel (keys.json's `global`, the first of KEY_CHOICES no section binds) and
+ * Pair in the + menu (programs.json), merged into the window's files, each kept first as `<file>.pair-bak-<time>`.
+ * What it adds is recorded beside the mod, so `pair uninstall` removes only that. A binding or entry already there
+ * that is not Pair's is left alone. Returns the lines it has to say.
+ */
+export function addLaunchers({env = process.env, argv}) {
+  const home = appHome(env);
+  const added = readAdded(env);
+  const lines = [];
+  // The key.
+  try {
+    const path = join(home, 'keys.json');
+    const keys = readJson(path);
+    if (!keys) {
+      lines.push(`No key for the panel: the Herdr window has no ${tilde(path, env)} yet (it writes one on its first start); run \`pair setup\` again then`);
+    } else {
+      const bound = Object.entries(keys).flatMap(([section, bindings]) => Object.entries(bindings ?? {}).map(([key, action]) => ({section, key, action})));
+      const ours = bound.find(({action}) => same(action, OPEN_ACTION));
+      if (ours) {
+        lines.push(`Key: ${ours.key} opens the panel`);
+        if (!added.keys) added.keys = {section: ours.section, key: ours.key, action: OPEN_ACTION};
+      } else {
+        const key = KEY_CHOICES.find(choice => !bound.some(each => each.key === choice));
+        if (!key) lines.push(`No key for the panel: ${KEY_CHOICES.join(', ')} are all taken in ${tilde(path, env)}`);
+        else {
+          writeJson(path, {...keys, global: {...(keys.global ?? {}), [key]: OPEN_ACTION}});
+          added.keys = {section: 'global', key, action: OPEN_ACTION};
+          lines.push(`Key: ${key} opens the panel beside the focused terminal (added to ${tilde(path, env)})`);
+        }
+      }
+    }
+  } catch (error) {
+    lines.push(`No key for the panel: ${error.message}`);
+  }
+  // The + menu.
+  try {
+    const path = join(home, 'programs.json');
+    const file = readJson(path) ?? {};
+    const entry = programEntry(argv);
+    const now = file.programs?.[MOD];
+    if (same(now, entry)) {
+      lines.push('+ menu: Pair is in it');
+    } else if (now !== undefined && !(added.programs && same(now, added.programs.entry))) {
+      lines.push(`+ menu: ${tilde(path, env)} has a "${MOD}" entry of its own, left as it is`);
+    } else {
+      writeJson(path, {...file, programs: {...(file.programs ?? {}), [MOD]: entry}});
+      added.programs = {name: MOD, entry};
+      lines.push(`+ menu: Pair opens the panel in the tab you are in (added to ${tilde(path, env)})`);
+    }
+  } catch (error) {
+    lines.push(`Pair is not in the + menu: ${error.message}`);
+  }
+  writeFileSync(join(modDir(env), ADDED_FILE), `${JSON.stringify(added)}\n`);
+  return lines;
+}
+
+/** `pair uninstall`: takes out of keys.json and programs.json what setup added, unless it was changed since. */
+export function removeLaunchers(env = process.env) {
+  const home = appHome(env);
+  const added = readAdded(env);
+  const lines = [];
+  try {
+    const path = join(home, 'keys.json');
+    const keys = added.keys ? readJson(path) : null;
+    const {section, key, action} = added.keys ?? {};
+    if (keys?.[section] && key in keys[section]) {
+      if (same(keys[section][key], action)) {
+        const {[key]: _gone, ...rest} = keys[section];
+        writeJson(path, {...keys, [section]: rest});
+        lines.push(`Removed the key ${key} from ${tilde(path, env)}`);
+      } else lines.push(`Left ${key} in ${tilde(path, env)}: it does something else now`);
+    }
+  } catch (error) {
+    lines.push(`The key stays: ${error.message}`);
+  }
+  try {
+    const path = join(home, 'programs.json');
+    const file = added.programs ? readJson(path) : null;
+    const now = file?.programs?.[added.programs.name];
+    if (now !== undefined) {
+      if (same(now, added.programs.entry)) {
+        const {[added.programs.name]: _gone, ...rest} = file.programs;
+        writeJson(path, {...file, programs: rest});
+        lines.push(`Removed Pair from the + menu (${tilde(path, env)})`);
+      } else lines.push(`Left the "${added.programs.name}" entry in ${tilde(path, env)}: it was changed`);
+    }
+  } catch (error) {
+    lines.push(`Pair stays in the + menu: ${error.message}`);
+  }
+  return lines;
+}
+
+const tilde = (path, env) => {
+  const home = env.HOME || homedir();
+  return path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
+};
+
+/** herdr-core's socket and session as the Herdr window's terminals have them: the environment's, else the default. */
+export function coreOf(env = process.env) {
+  const socket = env.HC_SOCKET || env.HC_TERMINAL_SOCKET || join(env.XDG_RUNTIME_DIR || `/run/user/${process.getuid?.() ?? 0}`, 'herdr-core', 'default.sock');
+  return {core: socket, session: env.HC_SESSION || null};
+}
+
+/**
+ * What the panel opened bare (by its key or the + menu) needs that only Pair knows, for the terminal it opens beside:
+ * `{cwd, terminal, core, session, panel, history}`. The daemon must be up (its panel file written), as `pair` has it.
+ */
+export async function bareProps({cwd, terminal, config, env = process.env, waitMs = 3000}) {
+  for (const end = Date.now() + waitMs; !readPanelFile(config) && Date.now() < end;) await new Promise(resolve => setTimeout(resolve, 100));
+  if (!readPanelFile(config)) throw new Error(panelWanted(config, env) ? 'the daemon has no panel port yet' : 'the panel is off in the config ("herdrPanel": false)');
+  return {cwd, terminal, ...coreOf(env), panel: panelFile(config), history: join(config.dataDir, 'chat-history.json')};
+}
+
+/**
+ * `pair panel` in the terminal the + menu started (a new tab, just after the one you were in): the panel opens bare
+ * in that tab beside its focused terminal, the tab is selected again, and this tab closes. False when it cannot (no
+ * window, not shown there, no tab before it).
+ */
+export async function panelFromMenu(herdr, {env = process.env, command = appCommandOf(env), mod = MOD} = {}) {
+  if (herdr?.kind !== 'core' || !command) return false;
+  const {spaces = []} = await appRun(command, ['ls'], env);
+  for (const space of spaces) {
+    const tabs = space.tabs ?? [];
+    const at = tabs.findIndex(tab => (tab.terminals ?? []).some(each => each.terminal === herdr.pane));
+    if (at < 0) continue;
+    const back = tabs[at - 1] ?? tabs[at + 1];
+    if (!back) return false;
+    await appRun(command, ['do', 'tab.select', '--id', back.id], env);
+    await appRun(command, ['do', 'pane.split', '--direction', 'right', '--mod', mod, ...(mod === MOD ? [] : ['--props', JSON.stringify({mod})])], env);
+    await appRun(command, ['do', 'tab.close', '--id', tabs[at].id, '--confirmed', 'true'], env).catch(() => {}); // closes this terminal too
+    return true;
+  }
+  return false;
+}
+
+/**
+ * `pair setup`'s part in the Herdr window: the mod (installMod), how it runs this Pair, its key and + menu entry
+ * (addLaunchers). Returns what was done to the mod ('installed', 'updated', 'same') and the launchers' lines.
+ */
+export function setUpPanel({env = process.env, version, argv}) {
+  const done = installMod({env, version});
+  writePairCommand(argv, env);
+  return {done, lines: addLaunchers({env, argv})};
+}
+
+/** `pair uninstall`'s part: the key and the + menu entry setup added, then the mod. Returns the lines to say. */
+export function removePanel(env = process.env) {
+  const lines = removeLaunchers(env);
+  if (removeMod(env)) lines.push(`Removed Pair's panel from the Herdr window (${tilde(modDir(env), env)}).`);
+  return lines;
+}
