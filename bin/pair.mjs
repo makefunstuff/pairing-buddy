@@ -348,8 +348,9 @@ async function panel(args) {
   firstRunConfig();
   const config = loadConfig();
   await ensureDaemon(config);
-  if (await panelFromMenu(herdrOf(process.env), {mod: values.mod}).catch(() => false)) return;
-  await openChatPane(config); // no tab to go back to: beside this terminal, as `pair`
+  // No terminal running `pair` is left behind: when it cannot, it says why and the tab is yours to close.
+  const done = await panelFromMenu(herdrOf(process.env), {mod: values.mod}).catch(error => { console.error(`pair: ${error.message}`); return false; });
+  if (!done) console.error('pair: Pair\'s panel opens from a tab of the Herdr window with another tab before it; in this one, run `pair`');
 }
 
 // Runs before and after every shell command, so it stays silent: no config or no daemon means nothing to report.

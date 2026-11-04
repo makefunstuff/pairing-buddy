@@ -156,12 +156,12 @@ export default class Pair extends View {
       return fail(`Pair could not start: ${error?.message ?? error}. Run \`pair\` in a terminal to see why.`);
     }
     const full = fullProps({ ...at, target: { ...at.target, cwd } }, filled, this.mod);
+    const me = await self(); // before the split: after it, the new panel is not in at.before either
     try {
       run("pane.split", { direction: "right", pane: at.target.pane, mod: this.mod, props: full });
     } catch (error) {
       return fail(`The window did not open the panel: ${error?.message ?? error}`);
     }
-    const me = await self();
     if (me) run("pane.close", { pane: me });
   }
 

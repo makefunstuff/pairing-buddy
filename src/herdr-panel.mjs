@@ -324,8 +324,7 @@ export function addLaunchers({env = process.env, argv}) {
       const bound = Object.entries(keys).flatMap(([section, bindings]) => Object.entries(bindings ?? {}).map(([key, action]) => ({section, key, action})));
       const ours = bound.find(({action}) => same(action, OPEN_ACTION));
       if (ours) {
-        lines.push(`Key: ${ours.key} opens the panel`);
-        if (!added.keys) added.keys = {section: ours.section, key: ours.key, action: OPEN_ACTION};
+        lines.push(`Key: ${ours.key} opens the panel`); // yours, unless setup wrote it before: uninstall leaves it
       } else {
         const key = KEY_CHOICES.find(choice => !bound.some(each => each.key === choice));
         if (!key) lines.push(`No key for the panel: ${KEY_CHOICES.join(', ')} are all taken in ${tilde(path, env)}`);

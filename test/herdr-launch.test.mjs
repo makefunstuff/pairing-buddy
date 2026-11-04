@@ -165,6 +165,15 @@ test('a binding or + menu entry the person changed, or had before, is left alone
   removeLaunchers(env2);
   assert.deepEqual(read(join(other, 'programs.json')), {programs: {pair: {name: 'Pear'}}});
 
+  // The person's own binding of the same action, before setup: kept by setup, and by uninstall.
+  const own = scratch('pair-launch-');
+  const env4 = {HERDR_APP_HOME: own, HOME: own};
+  installMod({env: env4, version: '1.0.0'});
+  writeFileSync(join(own, 'keys.json'), JSON.stringify({global: {'f9': OPEN_ACTION}}));
+  assert.match(addLaunchers({env: env4, argv: ARGV}).join('\n'), /Key: f9 opens the panel/);
+  removeLaunchers(env4);
+  assert.deepEqual(read(join(own, 'keys.json')), {global: {'f9': OPEN_ACTION}});
+
   // Every key taken: no binding, and the file as it was.
   const full = scratch('pair-launch-');
   const env3 = {HERDR_APP_HOME: full, HOME: full};
