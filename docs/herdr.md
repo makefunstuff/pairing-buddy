@@ -121,9 +121,9 @@ terminal's chat.
 | Remarks | A card per remark: Useful, Noise, Dismiss (seen: neither), Accept where it has a suggestion and Jump where it points at a line, and Why?, Follow up and Mute kind (the terminal's `e`, `f` and `m`) |
 | Pair's questions | The Driver's and Scout's "May I …?", `/gen`'s questions, `/gen board`'s and `/brief sync`'s choices: a card with a button per answer the question offers (its command shown whole, which Copy puts on the clipboard); typed words answer too, and Stop says no |
 | `/gen` cards and relayed news | Buttons for the card's keys (keep, open, drop what is left: a second click within a few seconds, as `d` twice in the terminal; undo) and for a relayed task's (open, diff, terminal) |
-| The box | Enter sends, Shift-Enter is a new line, Up and Down bring back what you sent (the terminal chat's history too, when `pair` names it), `/` lists the commands, Escape stops the answer Pair is working on |
+| The box | Enter sends, Shift-Enter is a new line, Up and Down bring back what you sent (the terminal chat's history, and what you sent in this pane), `/` lists the commands, Escape says no to Pair's question or stops the answer it is working on. Lines sent in the panel stay with that pane: `pair chat` and a panel opened later do not bring them back |
 | Toasts | While the panel is not seen (another tab or space, a pane zoomed over it, the window in the background), a new remark or a question of Pair's posts a Herdr toast; clicking it brings the panel up (`pane.focus`) |
-| The focus | The panel tells the daemon where the window's focus is as it moves (`herdr_focus`), from Herdr's live data, so the daemon stops asking `herdr-app status` twice a second while a panel is connected; when the last panel goes, it asks again |
+| The focus | The panel tells the daemon where the window's focus is as it moves (`herdr_focus`), from Herdr's live data (and a light in-memory check while its tab is hidden, since a hidden copy is not redrawn), so the daemon stops asking `herdr-app status` twice a second while a panel is connected, for every project's session; when the last panel goes, it asks again |
 
 What the panel is given when `pair` opens it (its props): the project folder, the terminal it was opened from (Pair's own
 pane opens beside it), that terminal's space and tab, herdr-core's socket and the daemon's panel file. `pair doctor` has
@@ -135,4 +135,4 @@ card does it), `@` file completion, `/keep`'s file menu after a scaffold's keep,
 tokens in a wide pane (the panel puts them under the answer). `/quit` only says to close the pane. With two Pair panels
 open for one project, each raises its own toast. After the session ends (`/end`, or by itself) the panel starts the
 next one, as the terminal's chat does. A daemon of a newer Pair updates the panel it finds installed to its own version
-when it starts; `pair doctor` says when they differ.
+when it starts (never to an older one); `pair doctor` says when they differ.

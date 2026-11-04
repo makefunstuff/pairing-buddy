@@ -23,6 +23,8 @@ const SHOWN = 120; // the newest entries drawn; /clear empties it all
 const TYPING_MS = 500;
 const FOCUS_MS = 400; // how often a hidden copy looks where the window's focus is
 const ROLES = ["navigator", "scout", "driver"];
+const ARMED_MS = 4100; // a Drop rest armed by one click goes back after this
+let bound = false; // the box's key bindings, installed once for every copy
 const DOING = { thinking: "Thinking", tool: "Working", remark: "Writing a remark", waiting: "Waiting for your answer" };
 
 export default class Pair extends View {
@@ -46,6 +48,23 @@ export default class Pair extends View {
     });
     this.box.on("focus", (_e, cx) => { this.boxFocused = true; cx.notify(); });
     this.box.on("blur", (_e, cx) => { this.boxFocused = false; cx.notify(); });
+    // Up/Down/Tab/Escape reach the textarea first, which keeps them: these bindings turn them into the panel's own
+    // actions while the / menu shows (pair_menu), the box is empty or shows a recalled line (pair_recall), or there is
+    // something Escape stops (pair_stop), as Herdr's chat mod does (on_action in composer()).
+    if (!bound) {
+      bound = true;
+      const keys = [];
+      for (const ctx of ["Input", "TextArea", "Textarea"]) {
+        keys.push({ keystroke: "up", action: "pair_menu_up", context: `pair_menu > ${ctx}` },
+          { keystroke: "down", action: "pair_menu_down", context: `pair_menu > ${ctx}` },
+          { keystroke: "tab", action: "pair_menu_take", context: `pair_menu > ${ctx}` },
+          { keystroke: "escape", action: "pair_menu_close", context: `pair_menu > ${ctx}` },
+          { keystroke: "escape", action: "pair_stop", context: `pair_stop > ${ctx}` },
+          { keystroke: "up", action: "pair_recall_up", context: `pair_recall > ${ctx}` },
+          { keystroke: "down", action: "pair_recall_down", context: `pair_recall > ${ctx}` });
+      }
+      try { cx.bind_keys(keys); } catch {}
+    }
     this.history = [];
     this.recall = -1;
     this.menuAt = 0;
@@ -183,6 +202,7 @@ export default class Pair extends View {
   enter(cx) {
     const line = this.box.value();
     if (!line.trim()) return;
+    const answering = this.model.confirming !== null; // an answer to Pair's question is no line to bring back
     const done = this.model.submit(line);
     if (done.keep !== undefined) {
       this.box.set_value(done.keep);
@@ -192,7 +212,7 @@ export default class Pair extends View {
     if (done.local === "quit") { this.model.say("Close this pane to close the panel; the session goes on"); this.box.set_value(""); cx.notify(); return; }
     if (done.local === "search") { this.model.say("Search in the conversation is in the terminal's chat (pair chat), not in the panel yet"); cx.notify(); return; }
     if (done.local === "copy" && done.text) { cx.write_to_clipboard(done.text); this.model.say("Copied"); }
-    if (this.model.root && !done.local) this.remember(line.trim());
+    if (this.model.root && !done.local && !answering) this.remember(line.trim());
     this.box.set_value("");
     this.recall = -1;
     cx.notify();
@@ -358,6 +378,7 @@ export default class Pair extends View {
         this.button(`${id}-${key}`, `${words[key] ?? key}${what ? ` · ${what}` : ""}`, t, (cx) => {
           const done = m.cardAct(entry, key);
           if (done?.keep !== undefined) { this.box.set_value(done.keep); this.box.focus(); }
+          if (key === "d" && m.armed) cx.timer.after(ARMED_MS, (cx) => cx.notify()); // the label goes back with it
         })))));
   }
 
@@ -394,8 +415,22 @@ export default class Pair extends View {
     const items = this.boxFocused ? this.menu() : [];
     const at = Math.min(this.menuAt, Math.max(0, items.length - 1));
     const stoppable = m.busy || m.activity.state === "remark" || m.genAtWork || m.confirming !== null;
-    this.box.set_placeholder?.(m.placeholder());
+    // The box's own placeholder is fixed when it is made: what it would say now goes over it, while it is empty.
+    const hint = m.placeholder();
+    const recallable = !items.length && (!this.box.value() || this.recall >= 0);
+    const escapable = stoppable || Boolean(m.about);
+    const act = (fn) => (_e, cx) => { fn(cx); cx.stop_propagation(); cx.notify(); };
     return v_flex().flex_none().px(10).pt(6).pb(10).gap(6)
+      .key_context([items.length ? "pair_menu" : recallable ? "pair_recall" : null, escapable && !items.length ? "pair_stop" : null].filter(Boolean).join(" ") || "pair_box")
+      .on_action("pair_menu_up", act(() => { this.menuAt = (at + items.length - 1) % Math.max(1, items.length); }))
+      .on_action("pair_menu_down", act(() => { this.menuAt = (at + 1) % Math.max(1, items.length); }))
+      .on_action("pair_menu_take", act((cx) => items[at] && this.take(items[at], cx)))
+      .on_action("pair_menu_close", act(() => { this.menuClosed = this.box.value(); }))
+      .on_action("pair_recall_up", act(() => this.recallStep(1)))
+      .on_action("pair_recall_down", act(() => this.recallStep(-1)))
+      // Escape: no to Pair's question, else the answer at work stops, else a follow-up is let go.
+      .on_action("pair_stop", act(() => { if (!m.stop() && m.about) m.about = null; }))
+      .when(!this.box.value() && hint !== "Ask Pair anything · / for commands", (el) => el.child(div().px(4).text_size(11.5).text_color(t.dim).child(hint)))
       .when(items.length > 0, (el) => el.child(v_flex().rounded(8).border_1().border_color(t.border).bg(t.popover).py(4)
         .children(items.map((item, i) => h_flex().id(`menu-${i}`).px(10).py(3).gap(10).cursor_pointer().bg(i === at ? t.selected : t.popover)
           .hover((s) => s.bg(t.hover)).on_click((_e, cx) => this.take(item, cx))
@@ -403,21 +438,14 @@ export default class Pair extends View {
           .child(div().flex_1().truncate().text_color(t.muted).child(item[2]))))))
       .child(h_flex().gap(8).items_end()
         .child(div().id("pair-box").flex_1().rounded(8).border_1().border_color(this.boxFocused ? t.accent : t.input).bg(t.surface).px(8).py(4)
+          // Enter is not kept by the textarea: it sends (or takes the / menu's command); Shift-Enter is a new line.
           .on_key_down((e, cx) => {
-            const k = e.key;
             const mods = e.modifiers ?? {};
-            if (items.length) {
-              if (k === "up" || k === "down") { this.menuAt = (at + (k === "down" ? 1 : items.length - 1)) % items.length; cx.stop_propagation(); cx.notify(); return; }
-              if (k === "tab" || (k === "enter" && !mods.shift)) { cx.stop_propagation(); this.take(items[at], cx); cx.notify(); return; }
-              if (k === "escape") { this.menuClosed = this.box.value(); cx.stop_propagation(); cx.notify(); return; }
-            }
-            if ((k === "up" && (!this.box.value() || this.recall >= 0)) || (k === "down" && this.recall >= 0)) {
-              if (this.recallStep(k === "up" ? 1 : -1)) { cx.stop_propagation(); cx.notify(); }
-              return;
-            }
-            // Escape: no to Pair's question, else the answer at work stops, else a follow-up is let go.
-            if (k === "escape") { cx.stop_propagation(); if (!m.stop() && m.about) m.about = null; cx.notify(); return; }
-            if (k === "enter" && !mods.shift && !mods.alt) { cx.stop_propagation(); this.enter(cx); }
+            if (e.key !== "enter" || mods.shift || mods.alt) return;
+            cx.stop_propagation();
+            if (items.length) this.take(items[at], cx);
+            else this.enter(cx);
+            cx.notify();
           })
           .child(Textarea.new(this.box)))
         .child(stoppable

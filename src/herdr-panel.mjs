@@ -60,7 +60,9 @@ export const panelFile = ({socket, dataDir}) => (ownFolder(dirname(socket)) || !
 export function readPanelFile(config) {
   try {
     const found = JSON.parse(readFileSync(panelFile(config), 'utf8'));
-    return Number.isInteger(found.port) && typeof found.token === 'string' ? found : null;
+    if (!Number.isInteger(found.port) || typeof found.token !== 'string') return null;
+    if (Number.isInteger(found.pid)) process.kill(found.pid, 0); // a daemon that died left it: throws, so null
+    return found;
   } catch {
     return null;
   }

@@ -290,6 +290,13 @@ test('a panel in the Herdr window: the daemon watches its space, takes its focus
   panel.send({type: 'herdr_focus', space: SPACE_ID, tab: TAB_ID, pane: 'p1', terminal: 't1'});
   await until(async () => (await session()).focusPushed, 'the push taken');
   assert.equal((await session()).panels, 1);
+  // Another project's session, with a chat terminal of its own in the window: the push is the window's, so it stops
+  // asking too.
+  const other = scratch('pair-project-');
+  const chat = client(config.socket, {type: 'hello', role: 'chat', cwd: other, herdr: {kind: 'core', socket: socketPath, pane: 't2', session: null, appHome: null}});
+  t.after(() => chat.close());
+  const otherSession = async () => (await requestDaemon(config.socket, {type: 'status'})).sessions.find(each => each.root.endsWith(other.split('/').at(-1)));
+  await until(async () => (await otherSession())?.focusPushed, 'the other session follows the push');
   await pause(150);
   const asked = statusCalls();
   await pause(1200);

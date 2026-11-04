@@ -274,7 +274,7 @@ async function projectRoot(dir, config) {
 async function daemon(config) {
   // An upgrade's daemon brings Pair's panel in the Herdr window to its own version, when `pair setup` installed one.
   const installed = panelWanted(config) && installedModVersion();
-  if (installed && installed !== VERSION) {
+  if (installed && newer(VERSION, installed)) { // never back to an older one: a newer install's daemon put it there
     try {
       installMod({version: VERSION});
       console.error(`pair: updated Pair's panel in the Herdr window from ${installed} to ${VERSION}`);
@@ -282,10 +282,17 @@ async function daemon(config) {
       console.error(`pair: Pair's panel in the Herdr window stays at ${installed}: ${error.message}`);
     }
   }
-  const running = await startDaemon(config, {configFile: configPath()});
+  const running = await startDaemon(config, {configFile: configPath(), herdrPanel: panelWanted(config)});
   const stop = async () => { await running.close(); process.exit(0); };
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);
+}
+
+/** Whether version `a` (1.2.3) comes after `b`. */
+function newer(a, b) {
+  const [x, y] = [a, b].map(version => version.split(/[.-]/).map(part => Number(part) || 0));
+  for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) > (y[i] ?? 0);
+  return false;
 }
 
 /** `pair supervise`: the daemon in a child process, restarted when it fails, until it stops cleanly or is stopped. */

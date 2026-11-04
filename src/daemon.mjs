@@ -21,7 +21,7 @@ import {NoteMargin} from './margin.mjs';
 import {oneAnswer} from './note-reading.mjs';
 import {HerdrPanes} from './herdr.mjs';
 import {CorePaneHost, CorePanes, HerdrApp} from './herdr-core.mjs';
-import {authenticate, panelMessage, panelWanted, startPanelListener} from './herdr-panel.mjs';
+import {authenticate, panelMessage, startPanelListener} from './herdr-panel.mjs';
 import {followLoaded, shareServer} from './loaded-model.mjs';
 import {DETAIL_KEPT_MS} from './ledger.mjs';
 import {editOrigin} from './fold.mjs';
@@ -99,7 +99,7 @@ export async function startDaemon(config, {
   configFile = null, modelsFor = createPairModels, pairModels = modelsFor(config), decisionFor = createDecisionModel, probe, log = defaultLog, keepWarmMs = KEEP_WARM_MS,
   idleEndMs = IDLE_END_MS, aloneEndMs = ALONE_END_MS, agentsPollMs, taskChangesPollMs = TASK_CHANGES_MS,
   appCommand = 'herdr-app', // the Herdr window's command, for herdr-core's focus and agents
-  herdrPanel = panelWanted(config), // the Herdr panel's loopback port (see herdr-panel.mjs)
+  herdrPanel = false, // the Herdr panel's loopback port (see herdr-panel.mjs): `pair daemon` opens it as the config says
   meaningWith = {}, // tests' fetch and embedder for search by meaning (see search.mjs)
   rerankerFor = (entries, logTo) => (entries.rerank ? pairReranker(createRerankEndpoints(entries), {log: logTo}) : null),
   omniWith = {}, // tests' LFM3-Omni for voice (see omni.mjs): {voice, fetch, free, files, runtime, litert, wheels, pythons, pythonsOn, install}
@@ -117,7 +117,7 @@ export async function startDaemon(config, {
   const watches = new Map(); // root -> PaneWatch
   const paneSources = new Map(); // root -> what its PaneWatch watches: {herdr, tmux, chatPane}
   const coreSources = new Map(); // root -> its herdr-core terminals (CorePanes), whose focus the Herdr panel may push
-  const pushedFocus = new Map(); // root -> the window's focus as a Herdr panel last pushed it, while one does
+  let pushedFocus = null; // the window's focus as a Herdr panel last pushed it, while one is connected: every session's
   const listeners = new Map(); // root -> Listener, once someone holds the listen key there
   const relays = new Map(); // root -> AgentRelay
   const clients = new Set();
@@ -591,15 +591,18 @@ export async function startDaemon(config, {
       app: new HerdrApp({command: appCommand, env: {HC_SESSION: herdr.session, HERDR_APP_HOME: herdr.appHome}}),
     });
     coreSources.set(root, source);
-    if (pushedFocus.has(root)) source.pushed(pushedFocus.get(root));
+    if (pushedFocus) source.pushed(pushedFocus);
     return source;
   }
 
-  /** A Herdr panel of `session` pushes the window's focus (`focus`), or stops (null): its terminals follow it. */
-  function pushFocus(session, focus) {
-    if (focus) pushedFocus.set(session.root, focus);
-    else pushedFocus.delete(session.root);
-    coreSources.get(session.root)?.pushed(focus);
+  /**
+   * A Herdr panel pushes the window's focus (`focus`), or the last one went (null). The window is one for every
+   * session, so each session's herdr-core terminals follow it (each takes it only in its own space), and none asks
+   * `herdr-app status` while a panel pushes.
+   */
+  function pushFocus(focus) {
+    pushedFocus = focus;
+    for (const source of coreSources.values()) source.pushed(focus);
   }
 
   /**
@@ -666,7 +669,6 @@ export async function startDaemon(config, {
     watches.delete(session.root);
     paneSources.delete(session.root);
     coreSources.delete(session.root);
-    pushedFocus.delete(session.root);
     sessions.delete(session.root);
     live.delete(session.root);
     meaning.leave(session.root).catch(() => {});
@@ -855,7 +857,7 @@ export async function startDaemon(config, {
         editors: editorsOf(session).length,
         chats: clientsOf(session, 'chat').length,
         panels: clientsOf(session, 'chat').filter(client => client.panel).length,
-        focusPushed: pushedFocus.has(session.root),
+        focusPushed: Boolean(pushedFocus && coreSources.has(session.root)),
         herdr: !!paneSources.get(session.root)?.herdr,
         tmux: !!paneSources.get(session.root)?.tmux,
       })),
@@ -1060,7 +1062,7 @@ export async function startDaemon(config, {
     // The Herdr panel: where the window's focus is, each time it moves.
     if (message.type === 'herdr_focus' && client.panel) {
       client.pushesFocus = true;
-      return pushFocus(session, {space: typeof message.space === 'string' ? message.space : null, terminal: typeof message.terminal === 'string' ? message.terminal : null});
+      return pushFocus({space: typeof message.space === 'string' ? message.space : null, terminal: typeof message.terminal === 'string' ? message.terminal : null});
     }
     if (message.type === 'agents') return sendMessage(client.socket, agentList(session));
     if (message.type === 'agent_go') return goToAgent(client, session, message.key);
@@ -1322,7 +1324,7 @@ export async function startDaemon(config, {
       meaning.forget(client);
       if (client.session) listeners.get(client.session.root)?.drop(client); // no microphone stays open for a gone editor
       // The last panel that pushed the window's focus went: the window is asked for it again.
-      if (client.pushesFocus && client.session && !clientsOf(client.session, 'chat').some(other => other.pushesFocus)) pushFocus(client.session, null);
+      if (client.pushesFocus && ![...clients].some(other => other.pushesFocus)) pushFocus(null);
       endWhenAlone(client.session);
     });
     socket.on('error', () => {});
