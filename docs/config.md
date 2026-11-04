@@ -229,15 +229,23 @@ store a `rerank` entry's `apiKeyEnv` in `service.env`: under the service, use `a
 
 | Field | Default | Meaning |
 | --- | --- | --- |
-| `api` | | `"system-one"` (`POST <baseUrl>/systemone`: llama.cpp's decision models, TypeSafe, OpenRouter), `"llama-cpp"` (a chat model on llama.cpp's server, asked for each answer's probability) or `"openai"` (OpenAI's Decisions API); or a `provider` instead |
+| `api` | | `"system-one"` (`POST <baseUrl>/systemone`: llama.cpp's decision models, TypeSafe, OpenRouter), `"llama-cpp"` (a chat model on llama.cpp's server, asked for each answer's probability), `"openai"` (OpenAI's Decisions API) or `"rerank"` (a cross-encoder's `POST <baseUrl>/rerank`: llama.cpp's `--rerank`, Cohere, Jina, Voyage; it scores each piece and reorders them all, where a decision model only moves its first choice when it stands out); or a `provider` instead |
 | `baseUrl` | | Where its `/v1` is, for example `http://127.0.0.1:8080/v1` |
 | `model` | | Its name there, for example `d1-2B` |
 | `auth`, `apiKey`, `apiKeyFile`, `apiKeyEnv` | none | Its key, if it needs one: one of them |
 | `top` | `10` | How many of the first pieces it reads and reorders, 2 to 30. Each costs the model time |
 | `timeoutMs` | `3000`; `1000` for one another follows | How long a search waits for it; slower, the next in the list is asked, or the order stays |
+| `chars` | `1200` for `"rerank"`, `160` otherwise | How much of each piece it reads, 40 to 4000 |
 
 ```jsonc
 "rerank": {"api": "system-one", "baseUrl": "http://127.0.0.1:8080/v1", "model": "d1-2B"}
+```
+
+A cross-encoder, such as Qwen3-Reranker-0.6B (`llama-server -m qwen3-reranker-0.6b-q8_0.gguf --rerank --port 18121`;
+semantic-grep's docs/profiles.md has its numbers), takes about 1 s for 15 pieces on a laptop's small GPU:
+
+```jsonc
+"rerank": {"api": "rerank", "baseUrl": "http://127.0.0.1:18121/v1", "model": "qwen3-reranker-0.6b", "top": 15}
 ```
 
 A list asks its first model that has not failed within the last minute, and the next when that one fails or is slower
