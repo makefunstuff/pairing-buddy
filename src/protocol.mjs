@@ -1,4 +1,5 @@
-// Newline-delimited JSON over a Unix socket, the daemon's only protocol (Neovim, chat pane, shell hook).
+// Newline-delimited JSON over a Unix socket, the daemon's only protocol (Neovim, chat pane, shell hook), and over the
+// loopback port of the Herdr panel (see herdr-panel.mjs).
 import {connect} from 'node:net';
 import {createInterface} from 'node:readline';
 
@@ -15,8 +16,9 @@ export function readMessages(stream, onMessage) {
   });
 }
 
+/** Writes `message` as a line; a stream with `decorate` (the Herdr panel's, see herdr-panel.mjs) gets it as that makes it. */
 export function sendMessage(stream, message) {
-  if (!stream.destroyed && stream.writable) stream.write(`${JSON.stringify(message)}\n`);
+  if (!stream.destroyed && stream.writable) stream.write(`${JSON.stringify(stream.decorate ? stream.decorate(message) : message)}\n`);
 }
 
 /** Sends `message` to the daemon at `socketPath` and resolves with its first answer. */

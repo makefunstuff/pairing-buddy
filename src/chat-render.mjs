@@ -11,6 +11,9 @@
 // you; magenta is /gen (its label, its request in the status); dim is chrome only (rules, times, key descriptions, tool traces), never words addressed to you.
 // Everything here is pure: lines of segments in, lines of segments out (see chat-style.mjs), so it is tested as text.
 import {clipLine, fitText, lineWidth, paintLine, textWidth} from './chat-style.mjs';
+import {cardKeys, genStatus, relayActions, relayKeys, remarkKeys, shownTool, toolDone} from '../herdr/pair/keys.js';
+
+export {cardKeys, genStatus, relayActions, relayKeys, remarkKeys, shownTool, toolDone};
 
 const seg = (text, style = 'text') => ({text, style});
 const blank = () => [];
@@ -28,15 +31,10 @@ const FOLD_TO = 12; // …this long
 const SPINNER = ['▖', '▘', '▝', '▗'];
 
 /** What a tool did, in the past (the └ line) and as it runs (the status row). Point and suggest show as messages. */
-const DONE = {read: 'read', search: 'searched', run: 'ran', recall: 'recalled', open: 'opened', edit: 'edited', type: 'typed'};
 const DOING = {
   read: 'reading', search: 'searching', run: 'running', recall: 'recalling', open: 'opening', edit: 'editing', type: 'typing',
   point: 'pointing at', suggest: 'writing a suggestion for',
 };
-export const shownTool = tool => tool in DONE;
-/** A tool's line under the question: read queue.go 1-40. */
-export const toolDone = (tool, what) => `${DONE[tool] ?? tool} ${what}`;
-
 const pad = n => String(n).padStart(2, '0');
 /** HH:MM of `at`. */
 export const clock = at => {
@@ -445,16 +443,6 @@ function highlight(line, query, count, current = -1) {
 /** Whether `entry`'s text has `query` in it, its line breaks and runs of spaces as one space (a match over a wrap). */
 const spans = (entry, query) => searchText(entry).toLowerCase().replace(/\s+/g, ' ').includes(query.toLowerCase().replace(/\s+/g, ' ').trim());
 
-/** The keys that work on a remark once it is picked, as its last line shows them: rate it, take its suggestion, go to its line. */
-export function remarkKeys(entries, index) {
-  const id = entries[index]?.meta?.remark;
-  const group = entries.filter(entry => id && entry.meta?.remark === id);
-  return {
-    apply: group.find(entry => entry.meta.suggestion && !entry.applied && !entry.gone) ?? null,
-    jump: group.findLast(entry => entry.meta.place) ?? null,
-  };
-}
-
 /**
  * The action line under a remark, `width` wide: Alt-y take  + useful  - noise  j jump  · Alt-↑ first, spaced like
  * buttons. Alt-y takes its suggestion from anywhere in the pane; the letters work once the remark is picked (a letter
@@ -477,27 +465,6 @@ function actionLine(entries, index, width, picked) {
  * takes it once the card is picked), as a remark's line has Alt-y in place of a.
  */
 const cardLineKeys = card => cardKeys(card).map(key => (card.shape === 'here' && key[0] === 'k' ? ['alt-y', 'Alt-y', 'take'] : key));
-
-/** The keys of a gen card, in the order its action line shows them: [key, what, its words on the card]. */
-export function cardKeys(card) {
-  const keys = card?.keys ?? {};
-  return [['k', 'k'], ['enter', 'Enter'], ['d', 'd'], ['u', 'u']].filter(([key]) => keys[key]).map(([key, shown]) => [key, shown, keys[key]]);
-}
-
-/** What a relayed line's keys reach of its `item`: its report or pull request, its branch's diff, its worktree. */
-export function relayKeys(item) {
-  return {key: item.key, title: item.kind === 'task' ? item.id : item.title, live: true, open: item.kind === 'task', diff: Boolean(item.branch), term: Boolean(item.where)};
-}
-
-/**
- * The keys of a relayed line (see relayKeys), in the order its action line shows them: [key, shown, what]; none once
- * the line is answered or newer news took its place.
- */
-export function relayActions(entry) {
-  const agent = entry?.meta?.agent;
-  if (!agent?.live) return [];
-  return [['o', agent.open, 'open'], ['d', agent.diff, 'diff'], ['t', agent.term, 'terminal']].filter(([, on]) => on).map(([key, , what]) => [key, key, what]);
-}
 
 /**
  * The action line under a gen card, `width` wide: k keep one   Enter open the list   d drop all   u undo   · Alt-↑
@@ -706,23 +673,6 @@ export function heldText(held) {
   const count = (n, word) => (n ? [`${n} ${word}${n === 1 ? '' : 's'}`] : []);
   const parts = [...count(remarks, 'remark'), ...count(notes, 'note')];
   return parts.length ? `${parts.join(' and ')} below` : '';
-}
-
-const GEN_AT_WORK = ['asking', 'asks', 'queued', 'generating'];
-
-/**
- * What the status says of the /gen requests (`cards`, the chat's gen cards, see Gen.card in gen.mjs): the one at
- * work, those that wait for it, and the newest one ready, with what is left of it to take.
- */
-export function genStatus(cards = []) {
-  const working = cards.filter(card => GEN_AT_WORK.includes(card.state));
-  const running = working.find(card => card.state === 'generating') ?? working.find(card => card.state !== 'queued') ?? null;
-  const ready = [...cards].reverse().find(card => card.state === 'ready') ?? null;
-  const left = !ready ? null
-    : ready.shape === 'here' ? 'ready in Neovim'
-      : ready.shape === 'scaffold' ? `${ready.taken} of ${ready.of} kept`
-        : ready.shape === 'file' ? (ready.left ? `${ready.left} to review` : 'ready in Neovim') : null;
-  return {running, queued: working.filter(card => card.state === 'queued').map(card => card.gen), ready: left ? {gen: ready.gen, text: left} : null};
 }
 
 /**

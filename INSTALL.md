@@ -235,8 +235,9 @@ is not on `PATH`: `echo "$(npm prefix -g)/bin"` is the folder to add (step 3.1).
 ## Step 5: `pair setup` and the service
 
 `pair setup` writes the config if there is none (`~/.config/pairing-buddy/config.json`, from the commented
-example), stores the key variables the config names, installs the service and starts the daemon. It is safe to run
-again; it keeps an existing config.
+example), stores the key variables the config names, installs the service and starts the daemon, and, where the Herdr
+window is installed, installs Pair's panel into its mods (`~/.config/herdr-app/mods/pair`; an upgrade updates it). It is
+safe to run again; it keeps an existing config.
 
 **Run it every time** (it also points the service at this install's Node.js and Pair):
 
@@ -258,6 +259,8 @@ No systemd or launchd here: `pair` starts the daemon under a supervisor that res
 # then, for all three:
 Config: ~/.config/pairing-buddy/config.json (the daemon takes a change as you save it)
 Models: one model for both roles: your-model at http://localhost:8080/v1. …
+# with the Herdr window installed, also:
+Installed Pair's panel in the Herdr window, ~/.config/herdr-app/mods/pair: `pair` in a terminal there opens it beside that terminal.
 ```
 
 The `Models:` line names the example's model until step 6.
@@ -540,6 +543,8 @@ expected and fine on a fresh setup:
 - `! neovim   none connected …` (no Neovim is open; 8.2 connects one)
 - `! herdr    not installed …` or `not checked here …` (without herdr, or not run inside it)
 - `! herdr    herdr-core …; no Herdr window shows terminal …` (a herdr-core terminal the Herdr window does not show)
+- `! panel    the daemon has no port for Pair's panel …` (a daemon started before the Herdr window was installed:
+  `pair setup </dev/null` restarts it)
 - `! board    Shepherdr 2.1 (shepherdr) answers only inside the agent sessions it starts …` (Shepherdr 2.1, run
   outside its sessions)
 - `! pane     no sandbox …` (no bubblewrap, or it cannot run here)
@@ -634,7 +639,8 @@ Only those the human chose in step 2.
 **herdr.** Installed in 3.6. Run `pair doctor` inside a herdr pane; expected `✓ herdr    herdr (panes, …) answers in …
 ms, … panes in this workspace`, or in a herdr-core terminal `✓ herdr    herdr-core … (terminals, …) answers in … ms, …;
 the Herdr window shows terminal …`. Nothing to configure: `pair` in a herdr pane opens the chat beside it, and in
-herdr-core it does so in a terminal the Herdr window shows. The work board, Shepherdr (`shepherdr`), and its task for the branch
+herdr-core it opens Pair's panel beside it in the Herdr window (`✓ panel` and `✓ mod` in `pair doctor`; a `! mod … not
+installed` line means `pair setup </dev/null` again), else a chat terminal the window shows. The work board, Shepherdr (`shepherdr`), and its task for the branch
 (the goal) are read when `shepherdr` is on the daemon's `PATH`; Shepherdr 2.1 answers only inside the agent sessions
 it starts, and `pair doctor`'s board line says which ([agents.md](docs/agents.md)).
 
@@ -692,7 +698,7 @@ binary it runs, and the shell hook names it too (new shells pick that up by them
 Ask the human before each part that deletes something of theirs.
 
 ```sh
-pair uninstall                    # stops and removes the service; keeps the config and data
+pair uninstall                    # stops and removes the service and Pair's panel in the Herdr window; keeps the config and data
 pkill -f 'pair[.]mjs supervise'   # service none only: stops the daemon
 npm uninstall -g pairing-buddy
 ```

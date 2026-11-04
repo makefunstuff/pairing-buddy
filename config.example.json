@@ -40,6 +40,10 @@
   // one. false turns the relay off.
   // "agents": false,
 
+  // Pair's panel in the Herdr window (docs/herdr.md): the daemon opens a port on 127.0.0.1 for it, with a token only you
+  // can read, where the Herdr window is installed ("auto"). false keeps the chat in a terminal there; true opens it anyway.
+  // "herdrPanel": "auto",
+
   // What :Pair tasks runs for each task you say yes to, in the project, as a list of words: {title} and {description}
   // are put in as whole words, never through a shell. Without it, the tasks are copied as a Markdown checklist.
   // "taskCommand": ["gh", "issue", "create", "--title", "{title}", "--body", "{description}"],

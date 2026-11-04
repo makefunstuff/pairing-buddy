@@ -5,12 +5,15 @@
 ## `pair`
 
 Opens the chat pane next to the current herdr pane, starting the daemon if it is not running. In a herdr-core terminal
-that the Herdr window shows, the core starts the chat in a terminal of the same space and tab, beside it
+that the Herdr window shows, it opens [Pair's panel](herdr.md#pairs-panel-in-the-herdr-window), a native pane of the
+window, beside that terminal; without the panel (not installed, `"herdrPanel": false`, or the window refuses it) the core
+starts the chat in a terminal of the same space and tab, beside it, as before
 ([herdr.md](herdr.md#herdr-core-and-the-herdr-window)). Anywhere else it runs the chat right there, like `pair chat`.
 
 ## `pair chat`
 
-Runs the [chat pane](chat.md) in this terminal, starting the daemon if needed. This is what `:Pair chat` runs in
+Runs the [chat pane](chat.md) in this terminal, starting the daemon if needed, in the Herdr window too (it never opens
+the panel). This is what `:Pair chat` runs in
 Neovim. `--plain` runs the [plain pane](chat.md#the-plain-pane), line by line, instead of the full-screen one; so does
 a pipe or `TERM=dumb`.
 
@@ -24,14 +27,17 @@ daemon: `pkill -f 'pair[.]mjs supervise'`):
 3. stores the environment variables your model entries name in `apiKeyEnv` in `service.env`, for the service;
 4. installs and starts the daemon as a service that starts at login: a systemd user service,
    `pairing-buddy.service`, on Linux, a launchd agent, `io.github.makefunstuff.pairing-buddy`, on macOS;
-5. prints the next steps.
+5. where the Herdr window is installed, installs [Pair's panel](herdr.md#pairs-panel-in-the-herdr-window) into its mods
+   (`~/.config/herdr-app/mods/pair`), or updates it to this version (only the files that changed);
+6. prints the next steps.
 
 Without systemd or launchd it installs no service, and `pair` starts the daemon under a supervisor instead
 ([install.md](install.md#install)).
 
 ## `pair doctor`
 
-Checks the config, the service, the daemon, the plugin, Neovim, herdr, the work board (Shepherdr 2.0 or 2.1), logins and keys, Pair's pane, voice, search by meaning and its reranker, both
+Checks the config, the service, the daemon, the plugin, Neovim, herdr, Pair's panel in the Herdr window (the daemon's
+port for it, and whether the mod is installed and of this version), the work board (Shepherdr 2.0 or 2.1), logins and keys, Pair's pane, voice, search by meaning and its reranker, both
 models and the [decision model](decision.md#pair-doctor-and-pair-stats), one line each, with the fix when something is wrong. It exits with 1 when a check fails.
 
 ```sh
@@ -70,7 +76,8 @@ pair stats --project DIR # only the project DIR belongs to
 
 ## `pair uninstall`
 
-Stops and removes the service. The config and the data stay.
+Stops and removes the service, and Pair's panel from the Herdr window's mods (only the one `pair setup` installed). The
+config and the data stay.
 
 ## `pair --version`
 

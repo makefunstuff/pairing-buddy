@@ -9,6 +9,7 @@
   },
   "files": [
     "bin/",
+    "herdr/",
     "src/",
     "lua/",
     "plugin/",
