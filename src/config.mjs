@@ -11,11 +11,12 @@ import {RUN_TIMEOUT_MS} from './scout-pane.mjs';
 import {scoutPaneConfig} from './scout-shell.mjs';
 import {FALLBACK_TIMEOUT_MS, RERANK_TIMEOUT_MS, RERANK_TOP} from 'semantic-grep';
 import {readServiceEnv} from './service-env.mjs';
+import {LEVELS} from '../herdr/pair/commands.js';
 import {voiceConfig} from './voice.mjs';
 
 const EXAMPLE = fileURLToPath(new URL('../config.example.json', import.meta.url));
 
-export const LEVELS = ['quiet', 'normal', 'chatty'];
+export {LEVELS};
 
 export function xdg(name, fallback) {
   return process.env[name] || join(homedir(), fallback);
