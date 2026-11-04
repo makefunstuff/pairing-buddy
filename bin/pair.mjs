@@ -189,8 +189,8 @@ async function withoutService(config) {
 }
 
 /** Installs or updates Pair's panel in the Herdr window, when the window is installed here; says what it did. */
-function installPanel() {
-  if (!herdrAppInstalled()) return '';
+function installPanel(config) {
+  if (!herdrAppInstalled() || !panelWanted(config)) return '';
   let done;
   try {
     done = {installed: 'Installed', updated: 'Updated', same: 'Up to date:'}[installMod({version: VERSION})];
@@ -205,7 +205,7 @@ async function setup() {
   await offerLogin();
   const config = loadConfig();
   storeKeyVariables(config);
-  console.log(`${SERVICE ? await installService(config) : await withoutService(config)}${installPanel()}
+  console.log(`${SERVICE ? await installService(config) : await withoutService(config)}${installPanel(config)}
 Config: ${tilde(configPath())} (the daemon takes a change as you save it)
 Models: ${rolesText(config.models)}.${modelsNote(config.models)}
 

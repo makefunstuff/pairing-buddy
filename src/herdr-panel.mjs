@@ -167,7 +167,8 @@ export function installMod({env = process.env, version, source = MOD_SOURCE} = {
   const dir = modDir(env);
   const had = existsSync(join(dir, 'main.js'));
   // A mod of that name Pair did not install is someone's own: it is left as it is.
-  if (had && !installedModVersion(env)) throw new Error(`${dir} holds a mod Pair did not install; move it away, then run \`pair setup\` again`);
+  const someones = existsSync(dir) && readdirSync(dir).some(name => !HERDR_OWN(name));
+  if (someones && !installedModVersion(env)) throw new Error(`${dir} holds a mod Pair did not install; move it away, then run \`pair setup\` again`);
   mkdirSync(dir, {recursive: true});
   const files = modFiles(source);
   let changed = false;

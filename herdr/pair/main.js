@@ -34,10 +34,11 @@ export default class Pair extends View {
     this.closed = false;
     this.state = "connecting";
     this.model = new ChatModel({ send: (message) => this.link?.send(message) ?? false });
-    this.box = TextareaState.new({ placeholder: "Ask Pair anything · / for commands" });
+    this.box = TextareaState.new({ placeholder: "" }); // what the box takes now is the hint line over it (composer())
     this.box.set_auto_grow(1, 8);
     this.box.on("change", (_e, cx) => {
-      this.recall = -1;
+      // Editing a recalled line makes it a new one; the change a recall makes itself does not (it may come later).
+      if (this.recall >= 0 && this.box.value() !== this.recalled) this.recall = -1;
       this.menuAt = 0;
       const now = Date.now();
       if (this.model.connection === "up" && now - (this.typedAt ?? 0) > TYPING_MS) {
@@ -177,8 +178,8 @@ export default class Pair extends View {
     const next = this.recall + by;
     if (next < -1 || next >= this.history.length) return false;
     this.recall = next;
-    this.box.set_value(next === -1 ? "" : this.history[this.history.length - 1 - next]);
-    this.recall = next; // set_value's change put it back to -1
+    this.recalled = next === -1 ? "" : this.history[this.history.length - 1 - next];
+    this.box.set_value(this.recalled);
     return true;
   }
 
@@ -430,7 +431,7 @@ export default class Pair extends View {
       .on_action("pair_recall_down", act(() => this.recallStep(-1)))
       // Escape: no to Pair's question, else the answer at work stops, else a follow-up is let go.
       .on_action("pair_stop", act(() => { if (!m.stop() && m.about) m.about = null; }))
-      .when(!this.box.value() && hint !== "Ask Pair anything · / for commands", (el) => el.child(div().px(4).text_size(11.5).text_color(t.dim).child(hint)))
+      .when(!this.box.value(), (el) => el.child(div().px(4).text_size(11.5).text_color(t.dim).child(hint)))
       .when(items.length > 0, (el) => el.child(v_flex().rounded(8).border_1().border_color(t.border).bg(t.popover).py(4)
         .children(items.map((item, i) => h_flex().id(`menu-${i}`).px(10).py(3).gap(10).cursor_pointer().bg(i === at ? t.selected : t.popover)
           .hover((s) => s.bg(t.hover)).on_click((_e, cx) => this.take(item, cx))

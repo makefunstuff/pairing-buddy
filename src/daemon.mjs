@@ -591,7 +591,7 @@ export async function startDaemon(config, {
       app: new HerdrApp({command: appCommand, env: {HC_SESSION: herdr.session, HERDR_APP_HOME: herdr.appHome}}),
     });
     coreSources.set(root, source);
-    if (pushedFocus) source.pushed(pushedFocus);
+    if (pushedFocus?.core === source.socketPath) source.pushed(pushedFocus);
     return source;
   }
 
@@ -602,7 +602,8 @@ export async function startDaemon(config, {
    */
   function pushFocus(focus) {
     pushedFocus = focus;
-    for (const source of coreSources.values()) source.pushed(focus);
+    // Only the terminals of the panel's own herdr-core: another core session is another window's.
+    for (const source of coreSources.values()) if (!focus || source.socketPath === focus.core) source.pushed(focus);
   }
 
   /**
@@ -686,7 +687,8 @@ export async function startDaemon(config, {
     client.activeAt = Date.now();
     // The herdr or tmux pane a Neovim runs in.
     client.pane = message.pane ?? (message.tmux?.pane ? tmuxPane(message.tmux.pane) : null);
-    client.pid = message.pid ?? null; // a Neovim's, which names its terminals (terminals.mjs)
+    client.pid = message.pid ?? null;
+    client.core = client.panel ? message.herdr?.socket ?? null : null; // the herdr-core whose window a panel shows // a Neovim's, which names its terminals (terminals.mjs)
     client.buffers = message.buffers === true; // a plugin that lists its unsaved buffers; an older one never answers
     meaning.useParsers(message.parsers); // a Neovim's tree-sitter parsers cut its project's files into functions
     client.session = await loadSession(await rootOf(message.cwd));
@@ -857,7 +859,7 @@ export async function startDaemon(config, {
         editors: editorsOf(session).length,
         chats: clientsOf(session, 'chat').length,
         panels: clientsOf(session, 'chat').filter(client => client.panel).length,
-        focusPushed: Boolean(pushedFocus && coreSources.has(session.root)),
+        focusPushed: Boolean(coreSources.get(session.root)?.pushing),
         herdr: !!paneSources.get(session.root)?.herdr,
         tmux: !!paneSources.get(session.root)?.tmux,
       })),
@@ -1062,7 +1064,7 @@ export async function startDaemon(config, {
     // The Herdr panel: where the window's focus is, each time it moves.
     if (message.type === 'herdr_focus' && client.panel) {
       client.pushesFocus = true;
-      return pushFocus({space: typeof message.space === 'string' ? message.space : null, terminal: typeof message.terminal === 'string' ? message.terminal : null});
+      return pushFocus({core: client.core ?? null, space: typeof message.space === 'string' ? message.space : null, terminal: typeof message.terminal === 'string' ? message.terminal : null});
     }
     if (message.type === 'agents') return sendMessage(client.socket, agentList(session));
     if (message.type === 'agent_go') return goToAgent(client, session, message.key);
