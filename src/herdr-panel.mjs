@@ -195,15 +195,15 @@ export async function shownAt(command, terminal, env = process.env) {
 
 /**
  * `pair` in herdr-core terminal `herdr.pane`: the panel opens beside it in the Herdr window, with what it needs as
- * its props (the project, this terminal, its space and tab, the core, the daemon's panel file). False when it cannot
+ * its props (the project, this terminal, its space and tab, the core, the daemon's panel file, the terminal chat's history). False when it cannot
  * (no window, no mod, the window does not show this terminal, the daemon has no panel port): `pair` then opens the
  * chat in a terminal, as before.
  */
-export async function openPanel(herdr, {cwd, socketPath, env = process.env, command = appCommandOf(env)}) {
+export async function openPanel(herdr, {cwd, socketPath, history = null, env = process.env, command = appCommandOf(env)}) {
   if (herdr?.kind !== 'core' || !command || !existsSync(join(modDir(env), 'main.js')) || !readPanelFile(socketPath)) return false;
   const here = await shownAt(command, herdr.pane, env).catch(() => null);
   if (!here) return false;
-  const props = {cwd, terminal: herdr.pane, space: here.space, tab: here.tab, core: herdr.socket, session: herdr.session ?? null, panel: panelFile(socketPath)};
+  const props = {cwd, terminal: herdr.pane, space: here.space, tab: here.tab, core: herdr.socket, session: herdr.session ?? null, panel: panelFile(socketPath), ...(history ? {history} : {})};
   return appRun(command, ['do', 'pane.split', '--direction', 'right', '--pane', here.pane, '--mod', MOD, '--props', JSON.stringify(props)], env)
     .then(() => true, () => false);
 }

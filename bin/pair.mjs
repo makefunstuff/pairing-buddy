@@ -290,7 +290,7 @@ async function openChatPane(config) {
   const herdr = herdrOf(process.env);
   const env = Object.fromEntries(['PAIR_CONFIG', 'PAIR_SOCKET', 'PAIR_AUTH'].filter(name => process.env[name]).map(name => [name, process.env[name]]));
   if (herdr?.kind === 'core') {
-    if (await openPanel(herdr, {cwd: process.cwd(), socketPath: config.socket})) return;
+    if (await openPanel(herdr, {cwd: process.cwd(), socketPath: config.socket, history: join(config.dataDir, 'chat-history.json')})) return;
     if (await openCoreChat(herdr, {argv: [process.execPath, SCRIPT, 'chat'], cwd: process.cwd(), env})) return;
     return runChat(config.socket, {dataDir: config.dataDir}); // no Herdr window shows this terminal
   }

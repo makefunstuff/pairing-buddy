@@ -9,6 +9,15 @@ release is cut.
 
 ### Added
 
+- **Pair's chat as a native panel of the Herdr window.** In a terminal the Herdr window shows, `pair` opens Pair's chat
+  as a pane of the window beside it: answers as Markdown, each remark as a card with Useful, Noise, Dismiss, Accept and
+  Jump, Pair's questions (the Driver's and Scout's "May I …?", `/gen board`'s choices) as buttons, and a header with
+  the role, the level, both models and the index. A new remark or question raises a Herdr toast while the panel is not
+  seen. The panel pushes the window's focus, so the daemon stops polling `herdr-app status` while one is connected.
+  `pair setup` installs it (`~/.config/herdr-app/mods/pair`), `pair uninstall` removes it, `pair doctor` checks it;
+  the daemon opens a loopback port with a token for it (`"herdrPanel"`). `pair chat` still runs the terminal's chat
+  ([herdr.md](docs/herdr.md#pairs-panel-in-the-herdr-window)).
+
 - **The picker's rerank runs in the background, and quickfix gets its order.** In Telescope and snacks.picker the
   rerank is asked as soon as meaning came (`meaning_rerank_delay_ms`, 0 by default), never holds up typing, and
   redraws the list in place when it comes, the piece you are on staying selected; a key drops a stale one. `<C-q>`

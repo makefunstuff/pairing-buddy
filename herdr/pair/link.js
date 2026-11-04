@@ -38,10 +38,11 @@ export function lineReader(decode) {
  * Runs the line until `closed()`: `connect(host, port)` gives a socket with `write(text)`, `read()` (bytes, null at
  * the end) and `close()`; `readText(path)` reads the panel file; `sleep(ms)` waits; `decode(bytes)` makes text.
  * `hello(resume)` is the hello to say; `onMessage(message)` hears each message; `onState(state)` hears 'connecting',
- * 'up' (welcomed), 'away' (the daemon went; trying again) or 'down' (no daemon answers yet). Returns `{send}`,
+ * 'up' (welcomed), 'away' (the daemon went; trying again) or 'down' (no daemon answers yet); `onError(error, message)`
+ * hears a message `onMessage` failed on, which leaves the line open. Returns `{send}`,
  * which writes a message while the line is up (false when it is not).
  */
-export function openLink({connect, readText, sleep, decode, file, hello, onMessage, onState = () => {}, closed = () => false, retryMs = 1000, downMs = 3000}) {
+export function openLink({connect, readText, sleep, decode, file, hello, onMessage, onState = () => {}, onError = () => {}, closed = () => false, retryMs = 1000, downMs = 3000}) {
   let socket = null;
   let welcomed = false; // once: the next hello resumes
   let up = false;
@@ -82,7 +83,8 @@ export function openLink({connect, readText, sleep, decode, file, hello, onMessa
               welcomed = true;
               onState('up');
             }
-            onMessage(message);
+            // A message the panel fails on is its own trouble: the line stays.
+            try { onMessage(message); } catch (error) { onError(error, message); }
           }
         }
       } catch {}

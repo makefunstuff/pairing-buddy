@@ -4,7 +4,8 @@
 // { cwd, terminal, space, tab, core, session, panel, history?, mod? }: the project, the terminal it was opened from
 // (Pair's own pane opens beside it), its space and tab, herdr-core's socket, and the daemon's panel file, which holds
 // the loopback port and token this panel connects with (link.js). It tells the daemon where the window's focus is as
-// it moves, so the daemon does not poll `herdr-app status`; and while it is not seen, a new remark or a question of
+// it moves (on each redraw, and from a light timer, since a copy whose tab is hidden is not redrawn), so the daemon does not
+// poll `herdr-app status`; and while it is not seen, a new remark or a question of
 // Pair's raises a toast that brings it up.
 
 import { View, div } from "gpui-kit";
@@ -19,6 +20,7 @@ import { openLink } from "./link.js";
 const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const SHOWN = 120; // the newest entries drawn; /clear empties it all
 const TYPING_MS = 500;
+const FOCUS_MS = 400; // how often a hidden copy looks where the window's focus is
 const ROLES = ["navigator", "scout", "driver"];
 const DOING = { thinking: "Thinking", tool: "Working", remark: "Writing a remark", waiting: "Waiting for your answer" };
 
@@ -70,13 +72,20 @@ export default class Pair extends View {
         },
         onMessage: (message) => {
           const news = this.model.receive(message, { reconnected: Boolean(message.reconnected) });
-          if (message.type === "welcome") this.loadHistory(message.root, cx);
+          if (message.type === "welcome") { this.loadHistory(message.root, cx); this.pushFocus(); }
           if (news) this.toast(news);
+          cx.notify();
+        },
+        onError: (error, message) => {
+          this.model.say(`The panel could not show a ${message?.type ?? "message"}: ${error?.message ?? error}`);
           cx.notify();
         },
       });
       await this.link.done;
     });
+    // A copy whose tab is not shown is not drawn again as the focus moves, so the focus is also looked at here: an
+    // in-memory read, sent only when it changed, and no redraw.
+    cx.timer.every(FOCUS_MS, () => this.pushFocus());
   }
 
   async close() {
@@ -100,6 +109,10 @@ export default class Pair extends View {
 
   /** A new remark, or a question of Pair's, while the panel is not seen: a toast that brings it up. */
   toast(news) {
+    try { this.raise(news); } catch (error) { this.model.say(`No toast: ${error?.message ?? error}`); }
+  }
+
+  raise(news) {
     if (this.seen()) return;
     const pane = this.myPane()?.pane;
     const action = pane ? { name: "pane.focus", args: { pane } } : undefined;

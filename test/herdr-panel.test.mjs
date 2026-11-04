@@ -164,12 +164,18 @@ test('the panel\'s line: hello with the token, and hello again with resume once 
   const states = [];
   const welcomes = [];
   const heard = [];
+  const errors = [];
   let closed = false;
   const link = openLink({
     connect: herdrSocket, readText: path => readFile(path, 'utf8'), sleep: pause, decode: bytes => Buffer.from(bytes).toString('utf8'),
     file: panelFile(config.socket), retryMs: 100, downMs: 100,
     hello: resume => ({type: 'hello', role: 'chat', cwd: project, resume, panel: true}),
-    onState: state => states.push(state), onMessage: message => (message.type === 'welcome' ? welcomes : heard).push(message), closed: () => closed,
+    onState: state => states.push(state), onMessage: message => {
+      // A message the panel fails on leaves the line open (it once closed it, and the panel's focus pushes stopped).
+      if (message.type === 'presence') throw new Error('cannot draw it');
+      (message.type === 'welcome' ? welcomes : heard).push(message);
+    },
+    onError: (error, message) => errors.push([error.message, message.type]), closed: () => closed,
   });
   let daemon = null;
   try {
@@ -177,7 +183,9 @@ test('the panel\'s line: hello with the token, and hello again with resume once 
     daemon = await start();
     await until(() => welcomes.length === 1, 'the welcome');
     assert.equal(welcomes[0].reconnected, false);
-    assert.equal(link.send({type: 'goal', text: 'make the cart total right'}), true);
+    await until(() => errors.length, 'a message the panel fails on');
+    assert.deepEqual(errors[0], ['cannot draw it', 'presence']);
+    assert.equal(link.send({type: 'goal', text: 'make the cart total right'}), true, 'the line is still up');
     await until(() => heard.some(message => message.type === 'goal'), 'the goal taken');
     await daemon.close();
     daemon = null;
@@ -187,7 +195,7 @@ test('the panel\'s line: hello with the token, and hello again with resume once 
     await until(() => welcomes.length === 2, 'the welcome again');
     assert.equal(welcomes[1].reconnected, true, 'a resumed hello');
     assert.equal(welcomes[1].goal, 'make the cart total right');
-    assert.deepEqual(states.filter((state, i) => state !== states[i - 1]).slice(-3), ['up', 'away', 'up']);
+    assert.deepEqual(states.filter((state, i) => state !== states[i - 1]), ['connecting', 'down', 'up', 'away', 'up'], 'away only when the daemon went');
   } finally {
     closed = true;
     link.close();
@@ -329,7 +337,7 @@ test('`pair` in a terminal of the Herdr window opens the panel beside it; withou
   assert.equal(core.started.length, 1, 'no chat terminal');
   const [split] = splits();
   assert.deepEqual(split.slice(0, 9), ['do', 'pane.split', '--direction', 'right', '--pane', 'p1', '--mod', 'pair', '--props']);
-  assert.deepEqual(JSON.parse(split[9]), {cwd: project, terminal: 't1', space: 'sp1', tab: 'tb1', core: socketPath, session: null, panel: panelFile(config.socket)});
+  assert.deepEqual(JSON.parse(split[9]), {cwd: project, terminal: 't1', space: 'sp1', tab: 'tb1', core: socketPath, session: null, panel: panelFile(config.socket), history: join(dataDir, 'chat-history.json')});
 
   app.set({refuseSplit: true});
   assert.equal((await run()).code, 0);

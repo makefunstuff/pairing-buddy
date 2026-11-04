@@ -19,7 +19,7 @@ why while the daemon keeps the config it runs. Run `pair doctor` after a change 
 - **Between turns**: new `model` or `models` entries (and their thinking levels). An answer under way finishes on
   the old model; the next one is the new model's, in the same conversation.
 - **For new sessions**: `level` and `sessionRoots`. An open session keeps its own level; `/level` changes it.
-- **After a restart only**: `socket`, `dataDir`, `meaning`, `embedding`, and turning `agents` on or off.
+- **After a restart only**: `socket`, `dataDir`, `meaning`, `embedding`, `herdrPanel`, and turning `agents` on or off.
 - **Unsaid**: `scoutPane` is not named in the chat; a change of it alone waits for a restart, but saved with another
   change it is taken at once, for Pair's panes opened from then on and `/gen`'s sandbox in open sessions.
 
@@ -39,6 +39,7 @@ why while the daemon keeps the config it runs. Run `pair doctor` after a change 
 | `testOnSave` | none | A test command per project folder, run when you save ([below](#testonsave), [tests-on-save.md](tests-on-save.md)) |
 | `sessionRoots` | `[]` | Folders that are projects of their own, for a monorepo ([session roots](#session-roots)) |
 | `agents` | `true` | The relay of your other agents' news, from herdr and the `board`: `false` turns it off ([agents.md](agents.md#configure)) |
+| `herdrPanel` | `"auto"` | The daemon's loopback port for [Pair's panel in the Herdr window](herdr.md#pairs-panel-in-the-herdr-window): `"auto"` opens it where the Herdr window is installed, `true` always, `false` never (`pair` then opens the chat in a terminal there, as before) |
 | `voice` | off | Push-to-talk and spoken answers with LFM3-Omni, whisper.cpp or OpenRouter ([below](#voice), [voice.md](voice.md)) |
 | `meaning` | `{}` | [Search by meaning](meaning.md): the Python that runs EmbeddingGemma 2, the cores it may use and where the index lives, or `false` to turn it off for good ([below](#meaning)). Its word search works at once; meaning once its model and runtime are fetched (`:Pair find on`) or with an `embedding` model |
 | `embedding` | none | An embedding model behind an OpenAI-compatible `/v1/embeddings` for [search by meaning](meaning.md#another-embedding-model), instead of EmbeddingGemma 2 ([below](#embedding)) |

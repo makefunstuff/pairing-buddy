@@ -84,12 +84,12 @@ as herdr's, so Pair talks to both the same way ([src/herdr-core.mjs](../src/herd
 | Need | herdr | herdr-core | How Pair does it on herdr-core |
 | --- | --- | --- | --- |
 | The user's terminals | the panes of the chat's workspace (`pane.list`) | `terminal.list` with the chat's `herdr.space` label | The terminals of the chat's space in the window. A chat no window shows (a core used without the window) has none |
-| Which one has focus | pushed (`pane.focused` events) | none; the window knows it | `herdr-app status` (its `space` and `focused_pane`, mapped to a terminal by `herdr-app ls`), twice a second while the session runs (less and less often, up to every 10 s, while no window answers); a window that shows another space gives no focus. Without a window, no terminal has focus |
+| Which one has focus | pushed (`pane.focused` events) | none; the window knows it | pushed by [Pair's panel](#pairs-panel-in-the-herdr-window) while one is connected; else `herdr-app status` (its `space` and `focused_pane`, mapped to a terminal by `herdr-app ls`), twice a second while the session runs (less and less often, up to every 10 s, while no window answers); a window that shows another space gives no focus. Without a window, no terminal has focus |
 | Scrolled up | pushed (`pane.scroll_changed`) | none | never: a terminal counts as not scrolled |
 | Terminals coming, going, changing | pushed | pushed (`events.subscribe` with the space's label) | each event makes Pair look again |
 | The command running | `pane.process_info` | `foreground` in `terminal.get` (its pid is not the terminal's own program) | the same polling and shell hook as on herdr |
 | A command's output | `pane.read`, at most 1000 lines | `terminal.read`: the screen plus history | the same: cut from the line the command was typed on |
-| The chat pane | `pane.split` and `pane.send_text` | `terminal.run` with the window's labels | `pair` starts `pair chat` in a terminal of the same space and tab, which the window shows beside it; without a window, the chat runs in place |
+| The chat pane | `pane.split` and `pane.send_text` | `terminal.run` with the window's labels | `pair` opens [Pair's panel](#pairs-panel-in-the-herdr-window) beside it; without the panel, it starts `pair chat` in a terminal of the same space and tab, which the window shows beside it; without a window, the chat runs in place |
 | Pair's own pane (Scout, tests on save) | `pane.split`, labelled `pair scout` | `terminal.run` with a line, labelled `pair.scout=<project>` | the terminal's program is Scout's shell; commands go in with `terminal.send` (pasted, then Enter), Ctrl-U and Ctrl-C with `terminal.keys`; closed with `terminal.kill` |
 | The Driver's `type` | `pane.send_text` without Enter | `terminal.send` always presses Enter | **not available**: a herdr-core terminal is never offered as the Driver's target, so nothing typed there runs |
 | Your other agents | `agent.list` | terminals whose program reports its status (OSC 7501: idle, working, done, blocked, error) | listed from `terminal.list` across the core, and Shepherdr 2.1's core beside it (below); `error` shows as failed |
@@ -104,3 +104,31 @@ which no window of the default session shows. When that socket is beside the cha
 (`shepherdr:t5j`, titled by their `where` label, such as `pairing-buddy / PAIR-3`), read only; `Alt-a` cannot bring
 one to the front. A Shepherdr started with another `--core-session` is not found. Pair's sandbox hides the core's socket
 from Scout's commands, as it hides herdr's.
+
+## Pair's panel in the Herdr window
+
+In a terminal the Herdr window shows, `pair` opens Pair's chat as a native pane of the window, beside that terminal,
+instead of the `pair chat` terminal. It is a Herdr mod ([herdr/pair/](../herdr/pair/)) that `pair setup` installs into
+the window's mods (`~/.config/herdr-app/mods/pair`, or `$HERDR_APP_HOME/mods/pair`), updates on an upgrade's
+`pair setup` (only the files that changed: each write reloads it in a running window) and `pair uninstall` removes.
+Without the window (plain herdr, herdr-core alone, a bare terminal) nothing changes, and `pair chat` always runs the
+terminal's chat.
+
+| Piece | How |
+| --- | --- |
+| Talking to the daemon | Herdr's mods have TCP but no Unix sockets, so the daemon also listens on a free port of `127.0.0.1`, speaking the socket's NDJSON. The port and a random token are in `<socket>.panel` (readable by you only, gone when the daemon stops); the first message of a connection must carry the token, else it is closed. The port opens where the Herdr window is installed, or as `"herdrPanel"` in the config says ([config.md](config.md)). The panel reads the file, connects, and when the daemon restarts, connects again and resumes; until a daemon answers it says that Pair's daemon is not running |
+| What it shows | What the terminal's chat shows: Pair's answers as Markdown, the notes (the ledger, `/remarks`, `/agents`, `/find`, `/help`), what the tools did, the status (what Pair does, the `/gen` requests). The header has the project and goal, the role (Navigator, Scout, Driver: click one to switch), the remark level (click for the next), the Watcher's and the Partner's models with a dot that turns red while one does not answer, how far search by meaning's index is, what is muted and the board's counts. The daemon sends the panel the words of the notes the terminal's chat writes itself, so both say the same |
+| Remarks | A card per remark: Useful, Noise, Dismiss (seen: neither), Accept where it has a suggestion and Jump where it points at a line, and Why?, Follow up and Mute kind (the terminal's `e`, `f` and `m`) |
+| Pair's questions | The Driver's and Scout's "May I …?", `/gen`'s questions, `/gen board`'s and `/brief sync`'s choices: a card with a button per answer the question offers (its command shown whole, which Copy puts on the clipboard); typed words answer too, and Stop says no |
+| `/gen` cards and relayed news | Buttons for the card's keys (keep, open, drop what is left, undo) and for a relayed task's (open, diff, terminal) |
+| The box | Enter sends, Shift-Enter is a new line, Up and Down bring back what you sent (the terminal chat's history too, when `pair` names it), `/` lists the commands, Escape stops the answer Pair is working on |
+| Toasts | While the panel is not seen (another tab or space, a pane zoomed over it, the window in the background), a new remark or a question of Pair's posts a Herdr toast; clicking it brings the panel up (`pane.focus`) |
+| The focus | The panel tells the daemon where the window's focus is as it moves (`herdr_focus`), from Herdr's live data, so the daemon stops asking `herdr-app status` twice a second while a panel is connected; when the last panel goes, it asks again |
+
+What the panel is given when `pair` opens it (its props): the project folder, the terminal it was opened from (Pair's own
+pane opens beside it), that terminal's space and tab, herdr-core's socket and the daemon's panel file. `pair doctor` has
+a line for the port (`panel`) and one for the mod (`mod`: installed, and of this version).
+
+Not in the panel (the terminal's chat has them): selecting a message with Alt-↑ and its letter keys (the buttons do
+it), Ctrl-F search in the conversation, `@` file completion, `/keep`'s file menu after a scaffold's keep, and the margin
+with an answer's time and tokens in a wide pane (the panel puts them under the answer).
