@@ -9,7 +9,7 @@ import {MIN_CONTEXT, replyRoom} from './context.mjs';
 import {storedKey} from './credentials.mjs';
 import {RUN_TIMEOUT_MS} from './scout-pane.mjs';
 import {scoutPaneConfig} from './scout-shell.mjs';
-import {FALLBACK_TIMEOUT_MS, RERANK_TIMEOUT_MS, RERANK_TOP} from 'semantic-grep';
+import {FALLBACK_TIMEOUT_MS, RERANK_TIMEOUT_MS, RERANK_TOP, rerankConfig as searchRerankConfig} from 'semantic-grep';
 import {readServiceEnv} from './service-env.mjs';
 import {LEVELS} from '../herdr/pair/commands.js';
 import {voiceConfig} from './voice.mjs';
@@ -352,8 +352,10 @@ export function embeddingConfig(entry, name = 'embedding') {
  * The optional `rerank` entry, next to `embedding`: a decision model that reorders the first pieces of a settled search
  * (semantic-grep's Reranker), or a list of them, best first, each asked when the ones before it fail. A model entry as
  * `decision`'s (a `provider`, or an `api` of DECISION_APIS at a `baseUrl`), with `top`, how many pieces it reorders,
- * and `timeoutMs`, how long a search waits for it: by default 3 s, and 1 s for a model that another follows. A list of
- * entries, or null without one: off.
+ * and `timeoutMs`, how long a search waits for it: by default 3 s, and 1 s for a model that another follows. Or a
+ * cross-encoder, `"api": "rerank"` at a `baseUrl` (llama.cpp's --rerank, Cohere, Jina, Voyage: POST <baseUrl>/rerank),
+ * which semantic-grep asks itself and which reorders every piece it reads; its `chars` (how much of each piece it
+ * reads) is 1200 by default. A list of entries, or null without one: off.
  */
 export function rerankConfig(value, name = 'rerank') {
   if (value === undefined || value === null || value === false) return null;
@@ -364,6 +366,12 @@ export function rerankConfig(value, name = 'rerank') {
     const {top, timeoutMs, ...rest} = entry ?? {};
     if (top !== undefined && !(Number.isInteger(top) && top >= 2 && top <= 30)) throw new Error(`config: ${label}.top must be a whole number from 2 to 30`);
     if (timeoutMs !== undefined && !(typeof timeoutMs === 'number' && timeoutMs > 0)) throw new Error(`config: ${label}.timeoutMs must be a number of milliseconds`);
+    if (entry?.api === 'rerank') {
+      if (entry.provider !== undefined) throw new Error(`config: ${label} is a cross-encoder at a baseUrl ("api": "rerank"), not a provider's`);
+      let parsed;
+      try { [parsed] = searchRerankConfig(entry, label); } catch (error) { throw new Error(`config: ${error.message}`); }
+      return {...parsed, timeoutMs: timeoutMs ?? (i < all.length - 1 ? FALLBACK_TIMEOUT_MS : RERANK_TIMEOUT_MS)};
+    }
     const parsed = decisionConfig(typeof entry === 'object' && !Array.isArray(entry) ? rest : entry, label);
     return {...parsed, top: top ?? RERANK_TOP, timeoutMs: timeoutMs ?? (i < all.length - 1 ? FALLBACK_TIMEOUT_MS : RERANK_TIMEOUT_MS)};
   });

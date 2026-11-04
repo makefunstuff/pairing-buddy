@@ -125,6 +125,7 @@ export function createRerankEndpoints(config, {credentials = fileCredentialStore
   const entries = config.rerank ?? [];
   return entries.map((entry, i) => {
     const field = entries.length > 1 ? `rerank[${i}]` : 'rerank';
+    if (entry.api === 'rerank') return {entry}; // a cross-encoder: semantic-grep's Reranker asks its /rerank itself
     return {...createDecisionModel({[field]: entry}, {credentials, field}), entry};
   });
 }

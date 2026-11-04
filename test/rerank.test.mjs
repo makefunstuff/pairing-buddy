@@ -6,6 +6,7 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {mkdirSync, realpathSync, writeFileSync} from 'node:fs';
+import {createServer as createHttpServer} from 'node:http';
 import {createServer} from 'node:net';
 import {join} from 'node:path';
 import {test} from 'node:test';
@@ -14,7 +15,8 @@ import {parseConfig} from '../src/config.mjs';
 import {rerankCheck} from '../src/doctor.mjs';
 import {configChanges} from '../src/reload.mjs';
 import {FALLBACK_TIMEOUT_MS, RERANK_TIMEOUT_MS, RERANK_TOP} from 'semantic-grep';
-import {pairSearch} from '../src/search.mjs';
+import {createRerankEndpoints} from '../src/models.mjs';
+import {pairReranker, pairSearch} from '../src/search.mjs';
 import {fakeEmbedder, fakeModel} from './fake-embedder.mjs';
 import {fakeReranker, fakeRerankServer} from './fake-reranker.mjs';
 import {scratch} from './temp.mjs';
@@ -67,6 +69,47 @@ test('config: "rerank" is a decision model entry next to "embedding", with top a
   assert.throws(() => parseConfig({...MODELS, rerank: [{api: 'system-one', baseUrl: 'http://h/v1', model: 'a', top: 50}]}), /config: rerank\[0\]\.top must be/);
 });
 
+test('config: a cross-encoder, "api": "rerank" at a baseUrl, reads 1200 characters of each piece and reorders them all', async () => {
+  const config = parseConfig({...MODELS, rerank: {api: 'rerank', baseUrl: 'http://127.0.0.1:18121/v1', model: 'qwen3-reranker-0.6b', top: 15}});
+  assert.deepEqual(config.rerank, [{api: 'rerank', baseUrl: 'http://127.0.0.1:18121/v1', model: 'qwen3-reranker-0.6b', top: 15, chars: 1200, timeoutMs: RERANK_TIMEOUT_MS}]);
+  assert.throws(() => parseConfig({...MODELS, rerank: {api: 'rerank', model: 'm'}}), /config: rerank\.baseUrl is missing/);
+  assert.throws(() => parseConfig({...MODELS, rerank: {api: 'rerank', provider: 'p', baseUrl: 'http://h/v1', model: 'm'}}), /config: rerank is a cross-encoder at a baseUrl/);
+  const listed = parseConfig({...MODELS, rerank: [{api: 'rerank', baseUrl: 'http://h/v1', model: 'a'}, {api: 'system-one', baseUrl: 'http://h/v1', model: 'b'}]}).rerank;
+  assert.deepEqual(listed.map(entry => [entry.api, entry.timeoutMs]), [['rerank', FALLBACK_TIMEOUT_MS], ['system-one', RERANK_TIMEOUT_MS]]);
+
+  // A /rerank that scores each piece by whether it mentions the waiter: the daemon's search asks it, and it reorders.
+  const asked = [];
+  const server = createHttpServer((request, response) => {
+    let body = '';
+    request.on('data', chunk => { body += chunk; });
+    request.on('end', () => {
+      const parsed = JSON.parse(body);
+      asked.push({url: request.url, ...parsed});
+      response.writeHead(200, {'content-type': 'application/json'});
+      response.end(JSON.stringify({results: parsed.documents.map((text, index) => ({index, relevance_score: text.includes('waiter') ? 0.9 : 0.1 / (index + 1)}))}));
+    });
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const root = project();
+  const dataDir = scratch('rerank-data-');
+  const entries = parseConfig({...MODELS, rerank: {api: 'rerank', baseUrl: `http://127.0.0.1:${server.address().port}/v1`, model: 'qwen3-reranker-0.6b'}});
+  const reranker = pairReranker(createRerankEndpoints(entries, {credentials: {read: async () => null}}));
+  const {meaning} = pairSearch({config: {dataDir, meaning: {}}, reranker, with: {embedder: fakeEmbedder()}});
+  try {
+    fakeModel(dataDir);
+    await ready(meaning, root);
+    const answer = await meaning.search(root, 'price cents', {book: false});
+    assert.equal(answer.rerank.applied, true);
+    assert.equal(answer.results[0].file, 'src/tip.js', 'the piece the cross-encoder scores best goes first');
+    assert.equal(asked[0].url, '/v1/rerank');
+    assert.equal(asked[0].model, 'qwen3-reranker-0.6b');
+    assert.equal(asked[0].query, 'price cents');
+  } finally {
+    await meaning.close();
+    await new Promise(resolve => { server.closeAllConnections(); server.close(resolve); });
+  }
+});
+
 test('/find and the search tool: the first pieces reranked by the model, the ledger books it with the order before and after', async () => {
   const server = await fakeRerankServer({favourite: 'waiter'});
   const root = project();
@@ -93,7 +136,7 @@ test('/find and the search tool: the first pieces reranked by the model, the led
     assert.equal(request.state, 'Search: price cents');
     const texts = Object.values(request.questions.best.criteria);
     assert.equal(texts.length, plain.results.length, 'each piece, as many as the list has up to top');
-    assert.ok(texts.some(text => text.startsWith('src/tip.js:2  // A tip on the price, for the waiter. export function tip(cents)')), 'where it is, and its text from its doc comment');
+    assert.ok(texts.some(text => text.startsWith('src/tip.js:2 (tip)  // A tip on the price, for the waiter. export function tip(cents)')), 'where it is, its name, and its text from its doc comment');
     const line = booked.find(entry => entry.kind === 'reranked');
     assert.match(line.text, /^"price cents" with fake-d1 in \d+ ms: \d of 4 moved, first now src\/tip\.js:2 \(was src\/\w+\.js:2\)$/);
     assert.match(line.options.detail.output, /^before:\n[\s\S]*\n\nafter \(the model's probability\):\nsrc\/tip\.js:2  0\.\d+  export function tip/);
