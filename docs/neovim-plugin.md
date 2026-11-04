@@ -180,6 +180,8 @@ vim.o.statusline = "%f %m%=%{%v:lua.require'pair'.statusline()%}  %l:%c "
 | `⠹ go test ./...`, `✗ 1 failing · TestX`, `✓ go test ./... · 4 tests, 3 packages` | [Tests on save](tests-on-save.md); `(unsaved)` after the command for the run on the Driver's edit; `◌ go test ./... · needs herdr or Neovim` (or `· could not run`) when they cannot start |
 | `◎ pair has the wheel · any key takes it back` | While it drives (`· thinking` while its model thinks, the hint again while it types) |
 | `◌ pair · catching up` | While the [morning pick-up](neovim.md#the-morning-pick-up-and-the-days-end) reads where you stopped |
+| `✗ 1 failing · TestX · red 23 min` | A failing run once it has been red for ten minutes or more |
+| `◇ #21 needs you: Should a segfault… +2  M-a` | After Pair's own segment: news of [your other agents](agents.md), at your next breakpoint |
 | `✗ 1 failing since yesterday · TestX` | A test that was red when the last session ended, until the next run |
 | `◌ pair · partner down` (or `models down`) | While a model is down |
 | `◌ pair · reconnecting` | While the daemon is away |

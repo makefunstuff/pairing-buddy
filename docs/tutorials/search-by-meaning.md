@@ -9,7 +9,7 @@ You know what the code does, not its name: somewhere it waits longer after each 
 
 ## 1. Search by words, at once
 
-In Neovim, in your project, press `Alt-s` and type. The picker works like `live_grep`, with loose words: on every key
+In Neovim, in your project, press `Alt-s` and type (Pair's plugin needs [semantic-grep.nvim](../install.md) for its picker; without it, `Alt-s` says so). The picker works like `live_grep`, with loose words: on every key
 it shows the pieces of code (functions, classes, methods with their doc comments) that have all your words, with
 identifiers split, so `delivery fail` finds `onDeliveryFailed`. Its title says `words only: an embedding model in
 setup() adds meaning`: no model yet. That is semantic-grep's own advice; in Pair, `:Pair find on` adds one, and the

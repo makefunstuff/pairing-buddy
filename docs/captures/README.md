@@ -46,8 +46,7 @@ recording comes out the same each time; the tutorial video's scenes use a real m
   The other scenes read no board.
 - **Neovim** is clean: [init.lua](init.lua), the ayu colorscheme (tokyonight for the site's loops; each fetched at a pinned commit), and scratch XDG
   directories. The search-trail scene also fetches Telescope and plenary at pinned commits; Telescope's history goes
-  to the scratch directories too.
-  directories. The held thought uses mini.base16 (also fetched at a pinned commit) on a grey palette with one
+  to the scratch directories too. The held thought uses mini.base16 (also fetched at a pinned commit) on a grey palette with one
   warm red, and shows the real chat pane (`pair chat`) in a `:terminal` on the right.
 
 | Tape | Shows |

@@ -134,7 +134,7 @@ Every remark Pair makes unasked can get your verdict: useful, or noise. Answers 
 | Neovim | `Alt-u` (`<M-u>`, or `:Pair useful`) | `Alt-n` (`<M-n>`, or `:Pair noise`) |
 | A suggestion in the remark | accepting it (`Alt-y`, `:Pair accept`) | `:Pair dismiss` |
 
-- In the chat, a remark ends with a dim `+ useful  - noise` line. The verdict goes to the last remark, also after the daemon restarted.
+- In the chat, a remark ends with its action line, `+ useful  - noise` among its keys, which work once the remark is picked ([chat.md](chat.md)); `+` or `-` typed and sent rates it too. The verdict goes to the last remark, also after the daemon restarted.
 - **An older remark** is rated from a list. In the chat, `/remarks` lists the last nine remarks in the project, newest first, with the first line of each and what became of it; `+2` (or `/useful 2`) rates the second last useful, `-3` (or `/noise 3`) the third last noise, and so on:
 
   ```

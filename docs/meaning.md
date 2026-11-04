@@ -151,7 +151,7 @@ deletes it. To install by hand, make the same venv and `:Pair find on` uses it a
 
 ```sh
 python3 -m venv ~/.local/state/pairing-buddy/meaning/venv
-~/.local/state/pairing-buddy/meaning/venv/bin/pip install --require-hashes -r <Pair's folder>/src/meaning-runtime.txt
+~/.local/state/pairing-buddy/meaning/venv/bin/pip install --require-hashes --no-deps --only-binary=:all: -r <Pair's folder>/src/meaning-runtime.txt
 ```
 
 `pair doctor` says what is missing and what turning it on fetches, and how big and how old each index is:

@@ -1,6 +1,6 @@
 # The video: a tutorial of Pair
 
-A tutorial that teaches how Pair works, one idea per scene, in twelve chapters: setup and `pair doctor`; the roles
+A tutorial that teaches how Pair works, one idea per scene, in fourteen chapters: setup and `pair doctor`; the roles
 (Watcher, Partner, Navigator, Scout, Driver); the chat pane (its header, a remark and its action line, `Alt-↑` to
 pick a message and act on it, `@` for files, the `/` menu and `?` for the keys); exploring code (the wrong turn);
 tests on save; notes and the blank page; the hand-over (and taking the wheel back); asking for code with `/gen`

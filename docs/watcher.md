@@ -84,7 +84,7 @@ Every other moment is a symptom: something failed, came back, or went quiet. `fr
 itself, what a pair beside you would read as you write it. It is raised when you finish a **hunk**: your own edits of
 a source file that touch or nearly touch each other (a function written over a few minutes is one hunk), the last of
 them in the last two minutes, with at least three lines that are not blank written in the last five minutes. A
-one-line fix next to older code is no hunk, and neither is an edit of 20 lines or more at once (a paste, a formatter).
+one-line fix next to older code is no hunk, and neither is an edit of more than 20 lines at once (a paste, a formatter).
 You finish it when you save the file, when the cursor rests more than two lines away from it (or in another file) for
 15 s, or when you edit somewhere else; a quick jump to a callee and back is not finishing. Neovim sends the edits you
 made just before a save first, so `:w` right after typing finishes the hunk too. Edits of a Markdown note have the
@@ -205,7 +205,7 @@ whichever is merged second meets a conflict, and points at your lines; it does n
 `search_trail` is raised from your picker searches in Neovim ([docs/neovim.md](neovim.md#the-search-trail)): three
 or more since your last edit, within four minutes, one of them closed with nothing opened or the same words again that opened another file,
 once you have paused three seconds after the last. Each new search in the trail raises it again; an edit ends the
-trail. It is judged after the others.
+trail. It is judged after the others, but before fresh code and a note's stall or drift.
 
 The Watcher gets a question of its own, with the trail a line per search and what fails now: how much being told
 where it is in the code would save you, 0 if the last search plainly found it, 10 if your words are not the code's
