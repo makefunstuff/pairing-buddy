@@ -188,6 +188,7 @@ export default class Pair extends View {
   /** The command menu over the box, while a / command is typed. */
   menu() {
     const text = this.box.value();
+    if (this.recall >= 0) return []; // a line brought back with Up: Up and Down go on through the history
     if (!/^\/\S*( [a-z]*)?$/.test(text) || text === this.menuClosed) return [];
     const items = COMMANDS.filter(([name]) => name.startsWith(text.trimEnd()) || (text.endsWith(" ") && name.startsWith(text.trim())));
     return items.length === 1 && items[0][0] === text.trim() && !items[0][1] ? [] : items.slice(0, 8);

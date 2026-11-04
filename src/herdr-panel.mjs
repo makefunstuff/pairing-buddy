@@ -167,9 +167,12 @@ export function installMod({env = process.env, version, source = MOD_SOURCE} = {
   const dir = modDir(env);
   const had = existsSync(join(dir, 'main.js'));
   // A mod of that name Pair did not install is someone's own: it is left as it is.
-  const someones = existsSync(dir) && readdirSync(dir).some(name => !HERDR_OWN(name));
+  // Anything but what Herdr writes into every mod folder (hidden files count: a .git is someone's).
+  const someones = existsSync(dir) && readdirSync(dir).some(name => name !== 'jsconfig.json' && !name.endsWith('.d.ts'));
   if (someones && !installedModVersion(env)) throw new Error(`${dir} holds a mod Pair did not install; move it away, then run \`pair setup\` again`);
   mkdirSync(dir, {recursive: true});
+  // First, so a first install cut short is still Pair's, and the next `pair setup` finishes it.
+  writeFileSync(join(dir, VERSION_FILE), `${version}\n`);
   const files = modFiles(source);
   let changed = false;
   for (const name of readdirSync(dir)) {

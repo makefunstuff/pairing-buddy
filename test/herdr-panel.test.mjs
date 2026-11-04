@@ -3,7 +3,7 @@
 // `pair setup`'s install of the mod and `pair uninstall`'s removal, and `pair` opening the panel beside its terminal.
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
-import {chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync} from 'node:fs';
+import {chmodSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync} from 'node:fs';
 import {readFile} from 'node:fs/promises';
 import {connect} from 'node:net';
 import {join} from 'node:path';
@@ -333,6 +333,15 @@ test('pair setup installs the mod into the Herdr window, an upgrade updates only
   assert.equal(removeMod(env), false, 'a folder Pair did not install is left');
   assert.throws(() => installMod({env, version: '1.1.0'}), /holds a mod Pair did not install/, 'nor overwritten');
   assert.equal(readFileSync(join(dir, 'main.js'), 'utf8'), '// someone else\'s pair mod\n');
+  writeFileSync(join(dir, 'main.js'), ''); // gone: a folder with only someone's hidden files is theirs too
+  rmSync(join(dir, 'main.js'));
+  mkdirSync(join(dir, '.git'));
+  assert.throws(() => installMod({env, version: '1.1.0'}), /holds a mod Pair did not install/);
+  rmSync(dir, {recursive: true});
+  mkdirSync(dir);
+  writeFileSync(join(dir, '.pair-version'), '1.1.0\n'); // a first install cut short after its version file
+  writeFileSync(join(dir, 'main.js'), '// half\n');
+  assert.equal(installMod({env, version: '1.1.0'}), 'updated', 'the next setup finishes it');
   assert.equal(existsSync(join(dir, 'main.js')), true);
 });
 
@@ -419,4 +428,28 @@ test('the token never goes to a folder others can write in: beside a socket in o
   chmodSync(dataDir, 0o777);
   await assert.rejects(startPanelListener({config, accept: socket => socket.destroy()}), /others can write in/, 'no folder of your own: no port');
   chmodSync(dataDir, 0o700);
+});
+
+test('two Herdr windows (two herdr-core sessions): each one\'s panel holds its own sessions\' polling, and its close frees only them', {timeout: 20_000}, async t => {
+  const one = await herdrSetUp(t);
+  const two = await herdrSetUp(t);
+  const config = parseConfig(rawConfig(scratch('pair-data-')));
+  const daemon = await startDaemon(config, {...models(), probe: answers, log: () => {}, herdrPanel: true, appCommand: one.app.command});
+  t.after(() => daemon.close());
+  const {port, token} = JSON.parse(readFileSync(panelFile(config), 'utf8'));
+  const [x, y] = [scratch('pair-project-'), scratch('pair-project-')];
+  const hello = (cwd, core) => ({type: 'hello', role: 'chat', cwd, panel: true, herdr: {kind: 'core', socket: core, pane: null, beside: 't1', space: SPACE_ID, tab: TAB_ID, session: null, appHome: null}});
+  const a = panelClient(port, token, hello(x, one.socketPath));
+  const b = panelClient(port, token, hello(y, two.socketPath));
+  t.after(() => { a.close(); b.close(); });
+  await a.next(m => m.type === 'welcome');
+  await b.next(m => m.type === 'welcome');
+  const pushed = async root => (await requestDaemon(config.socket, {type: 'status'})).sessions.find(each => each.root.endsWith(root.split('/').at(-1)))?.focusPushed;
+  await until(async () => (await requestDaemon(config.socket, {type: 'status'})).sessions.filter(each => each.herdr).length === 2, 'both watched');
+  a.send({type: 'herdr_focus', space: SPACE_ID, tab: TAB_ID, pane: 'p1', terminal: 't1'});
+  b.send({type: 'herdr_focus', space: SPACE_ID, tab: TAB_ID, pane: 'p1', terminal: 't1'});
+  await until(async () => (await pushed(x)) && (await pushed(y)), 'each window\'s push taken');
+  a.close();
+  await until(async () => !(await pushed(x)), 'the first window\'s sessions ask again');
+  assert.equal(await pushed(y), true, 'the other window\'s panel still pushes for its own');
 });

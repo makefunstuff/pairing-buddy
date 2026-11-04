@@ -117,7 +117,7 @@ export async function startDaemon(config, {
   const watches = new Map(); // root -> PaneWatch
   const paneSources = new Map(); // root -> what its PaneWatch watches: {herdr, tmux, chatPane}
   const coreSources = new Map(); // root -> its herdr-core terminals (CorePanes), whose focus the Herdr panel may push
-  let pushedFocus = null; // the window's focus as a Herdr panel last pushed it, while one is connected: every session's
+  const pushedFocus = new Map(); // herdr-core socket -> its window's focus as a Herdr panel last pushed it, while one is connected
   const listeners = new Map(); // root -> Listener, once someone holds the listen key there
   const relays = new Map(); // root -> AgentRelay
   const clients = new Set();
@@ -591,19 +591,19 @@ export async function startDaemon(config, {
       app: new HerdrApp({command: appCommand, env: {HC_SESSION: herdr.session, HERDR_APP_HOME: herdr.appHome}}),
     });
     coreSources.set(root, source);
-    if (pushedFocus?.core === source.socketPath) source.pushed(pushedFocus);
+    if (pushedFocus.has(source.socketPath)) source.pushed(pushedFocus.get(source.socketPath));
     return source;
   }
 
   /**
-   * A Herdr panel pushes the window's focus (`focus`), or the last one went (null). The window is one for every
-   * session, so each session's herdr-core terminals follow it (each takes it only in its own space), and none asks
-   * `herdr-app status` while a panel pushes.
+   * A Herdr panel of herdr-core `core` pushes its window's focus (`focus`), or the last panel of that core went (null).
+   * The window is one for every session of that core, so each of their terminals follows it (each takes it only in its
+   * own space), and none asks `herdr-app status` while a panel pushes. Another core session is another window's.
    */
-  function pushFocus(focus) {
-    pushedFocus = focus;
-    // Only the terminals of the panel's own herdr-core: another core session is another window's.
-    for (const source of coreSources.values()) if (!focus || source.socketPath === focus.core) source.pushed(focus);
+  function pushFocus(core, focus) {
+    if (focus) pushedFocus.set(core, focus);
+    else pushedFocus.delete(core);
+    for (const source of coreSources.values()) if (source.socketPath === core) source.pushed(focus);
   }
 
   /**
@@ -687,8 +687,8 @@ export async function startDaemon(config, {
     client.activeAt = Date.now();
     // The herdr or tmux pane a Neovim runs in.
     client.pane = message.pane ?? (message.tmux?.pane ? tmuxPane(message.tmux.pane) : null);
-    client.pid = message.pid ?? null;
-    client.core = client.panel ? message.herdr?.socket ?? null : null; // the herdr-core whose window a panel shows // a Neovim's, which names its terminals (terminals.mjs)
+    client.pid = message.pid ?? null; // a Neovim's, which names its terminals (terminals.mjs)
+    client.core = client.panel ? message.herdr?.socket ?? null : null; // the herdr-core whose window a panel shows
     client.buffers = message.buffers === true; // a plugin that lists its unsaved buffers; an older one never answers
     meaning.useParsers(message.parsers); // a Neovim's tree-sitter parsers cut its project's files into functions
     client.session = await loadSession(await rootOf(message.cwd));
@@ -1064,7 +1064,7 @@ export async function startDaemon(config, {
     // The Herdr panel: where the window's focus is, each time it moves.
     if (message.type === 'herdr_focus' && client.panel) {
       client.pushesFocus = true;
-      return pushFocus({core: client.core ?? null, space: typeof message.space === 'string' ? message.space : null, terminal: typeof message.terminal === 'string' ? message.terminal : null});
+      return pushFocus(client.core ?? null, {space: typeof message.space === 'string' ? message.space : null, terminal: typeof message.terminal === 'string' ? message.terminal : null});
     }
     if (message.type === 'agents') return sendMessage(client.socket, agentList(session));
     if (message.type === 'agent_go') return goToAgent(client, session, message.key);
@@ -1326,7 +1326,7 @@ export async function startDaemon(config, {
       meaning.forget(client);
       if (client.session) listeners.get(client.session.root)?.drop(client); // no microphone stays open for a gone editor
       // The last panel that pushed the window's focus went: the window is asked for it again.
-      if (client.pushesFocus && ![...clients].some(other => other.pushesFocus)) pushFocus(null);
+      if (client.pushesFocus && ![...clients].some(other => other.pushesFocus && other.core === client.core)) pushFocus(client.core ?? null, null);
       endWhenAlone(client.session);
     });
     socket.on('error', () => {});
