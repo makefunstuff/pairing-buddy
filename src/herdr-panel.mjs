@@ -17,6 +17,7 @@ import {foundLines, remarkLines} from '../herdr/pair/commands.js';
 export const MOD = 'pair'; // the mod's folder name in the Herdr window's mods
 export const MOD_SOURCE = fileURLToPath(new URL('../herdr/pair/', import.meta.url));
 const VERSION_FILE = '.pair-version'; // hidden: Herdr does not reload the mod for it
+const INSTALLING = 'installing'; // in it while a first install is under way
 const AUTH_MS = 5000; // a connection that has not given the token by then is closed
 const AUTH_BYTES = 64 * 1024; // nor one that sends more than this before it
 const APP_MS = 5000;
@@ -169,10 +170,11 @@ export function installMod({env = process.env, version, source = MOD_SOURCE} = {
   // A mod of that name Pair did not install is someone's own: it is left as it is.
   // Anything but what Herdr writes into every mod folder (hidden files count: a .git is someone's).
   const someones = existsSync(dir) && readdirSync(dir).some(name => name !== 'jsconfig.json' && !name.endsWith('.d.ts'));
-  if (someones && !installedModVersion(env)) throw new Error(`${dir} holds a mod Pair did not install; move it away, then run \`pair setup\` again`);
+  if (someones && !pairsMod(env)) throw new Error(`${dir} holds a mod Pair did not install; move it away, then run \`pair setup\` again`);
   mkdirSync(dir, {recursive: true});
-  // First, so a first install cut short is still Pair's, and the next `pair setup` finishes it.
-  writeFileSync(join(dir, VERSION_FILE), `${version}\n`);
+  // A first install marks the folder Pair's before anything else, so one cut short is finished by the next `pair
+  // setup`; the version itself is written last, so an install or update that fails says the version it had.
+  if (!pairsMod(env)) writeFileSync(join(dir, VERSION_FILE), `${INSTALLING}\n`);
   const files = modFiles(source);
   let changed = false;
   for (const name of readdirSync(dir)) {
@@ -190,14 +192,22 @@ export function installMod({env = process.env, version, source = MOD_SOURCE} = {
   return !had ? 'installed' : changed ? 'updated' : 'same';
 }
 
-/** The version of Pair that installed the mod, or null when it is not installed (or not Pair's). */
+/** The version of Pair that installed the mod, or null when it is not installed, not wholly yet, or not Pair's. */
 export function installedModVersion(env = process.env) {
-  try { return readFileSync(join(modDir(env), VERSION_FILE), 'utf8').trim() || null; } catch { return null; }
+  try {
+    const version = readFileSync(join(modDir(env), VERSION_FILE), 'utf8').trim();
+    return version && version !== INSTALLING && existsSync(join(modDir(env), 'main.js')) ? version : null;
+  } catch {
+    return null;
+  }
 }
+
+/** Whether the mods folder's `pair` is Pair's: it has the version file, even of an install cut short. */
+const pairsMod = env => existsSync(join(modDir(env), VERSION_FILE));
 
 /** Removes the mod that `pair setup` installed; true when there was one. A folder Pair did not write is left. */
 export function removeMod(env = process.env) {
-  if (!installedModVersion(env)) return false;
+  if (!pairsMod(env)) return false;
   rmSync(modDir(env), {recursive: true, force: true});
   return true;
 }

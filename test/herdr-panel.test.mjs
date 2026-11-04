@@ -14,7 +14,7 @@ import {parseConfig} from '../src/config.mjs';
 import {startDaemon} from '../src/daemon.mjs';
 import {CorePanes, HerdrApp} from '../src/herdr-core.mjs';
 import {panelChecks} from '../src/doctor.mjs';
-import {installedModVersion, installMod, modDir, panelFile, panelWanted, removeMod, startPanelListener} from '../src/herdr-panel.mjs';
+import {installedModVersion, installMod, MOD_SOURCE as modSource, modDir, panelFile, panelWanted, removeMod, startPanelListener} from '../src/herdr-panel.mjs';
 import {VERSION} from '../src/version.mjs';
 import {PaneWatch} from '../src/pane-watch.mjs';
 import {requestDaemon} from '../src/protocol.mjs';
@@ -339,11 +339,29 @@ test('pair setup installs the mod into the Herdr window, an upgrade updates only
   assert.throws(() => installMod({env, version: '1.1.0'}), /holds a mod Pair did not install/);
   rmSync(dir, {recursive: true});
   mkdirSync(dir);
-  writeFileSync(join(dir, '.pair-version'), '1.1.0\n'); // a first install cut short after its version file
-  writeFileSync(join(dir, 'main.js'), '// half\n');
-  assert.equal(installMod({env, version: '1.1.0'}), 'updated', 'the next setup finishes it');
+  writeFileSync(join(dir, '.pair-version'), 'installing\n'); // a first install cut short before its files
+  assert.equal(installedModVersion(env), null, 'not installed yet: doctor says so, and `pair` opens no panel');
+  assert.equal(installMod({env, version: '1.1.0'}), 'installed', 'the next setup finishes it');
+  assert.equal(installedModVersion(env), '1.1.0');
+  // An update that fails halfway keeps saying the version it had: the next daemon or setup tries again.
+  chmodSync(join(dir, 'main.js'), 0o400);
+  chmodSync(dir, 0o500);
+  assert.throws(() => installMod({env, source: changedSource(), version: '1.2.0'}), /EACCES/);
+  chmodSync(dir, 0o700);
+  assert.equal(installedModVersion(env), '1.1.0');
+  chmodSync(join(dir, 'main.js'), 0o600);
+  assert.equal(installMod({env, source: changedSource(), version: '1.2.0'}), 'updated');
+  assert.equal(installedModVersion(env), '1.2.0');
   assert.equal(existsSync(join(dir, 'main.js')), true);
 });
+
+/** A copy of the mod with main.js changed, as a newer Pair's would be. */
+function changedSource() {
+  const dir = scratch('pair-mod-');
+  for (const name of ['main.js', 'model.js', 'link.js', 'commands.js', 'keys.js', 'mod.json']) writeFileSync(join(dir, name), readFileSync(join(modSource, name)));
+  writeFileSync(join(dir, 'main.js'), `${readFileSync(join(modSource, 'main.js'), 'utf8')}\n// newer\n`);
+  return dir;
+}
 
 /** Runs `pair` in herdr-core terminal t1 of the fake window: its exit code. */
 function runPair({configPath, socketPath, appDir, appHome, cwd}) {
