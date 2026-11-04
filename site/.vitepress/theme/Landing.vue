@@ -81,7 +81,7 @@ const providers = [
 
 const install = [
   {icon: 'daemon', title: 'Install the daemon', code: 'npm install -g github:makefunstuff/pairing-buddy\npair setup', text: '<code>pair setup</code> writes the config, offers a login and starts the daemon as a user service.'},
-  {icon: 'plugin', title: 'Add the Neovim plugin', code: "{\n  'makefunstuff/pairing-buddy',\n  main = 'pair',\n  lazy = false,\n  opts = {auto_connect = true},\n}", text: 'With lazy.nvim. Your model goes in <code>~/.config/pairing-buddy/config.json</code>.'},
+  {icon: 'plugin', title: 'Add the Neovim plugin', code: "{\n  'makefunstuff/pairing-buddy',\n  dependencies = {'makefunstuff/semantic-grep.nvim'},\n  main = 'pair',\n  lazy = false,\n  opts = {auto_connect = true},\n}", text: 'With lazy.nvim. Your model goes in <code>~/.config/pairing-buddy/config.json</code>.'},
   {icon: 'doctor', title: 'Check it, and pair', code: 'pair doctor', text: 'One line per part, with the fix when something is wrong. Then run <code>pair</code> next to Neovim in herdr, or <code>:Pair chat</code> in Neovim.'},
 ];
 

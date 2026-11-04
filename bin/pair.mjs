@@ -57,6 +57,7 @@ const ONE_PROVIDER = '; the provider answers both at once.';
 const TWO_MODELS = 'On a server that holds one model at a time, give both roles one model instead: "model" in the config (see docs/models.md, "One model").';
 const LAZY_SPEC = `  {
     'makefunstuff/pairing-buddy',
+    dependencies = {'makefunstuff/semantic-grep.nvim'},
     main = 'pair',
     lazy = false,
     opts = {auto_connect = true},
