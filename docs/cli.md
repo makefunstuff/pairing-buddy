@@ -28,7 +28,10 @@ daemon: `pkill -f 'pair[.]mjs supervise'`):
 4. installs and starts the daemon as a service that starts at login: a systemd user service,
    `pairing-buddy.service`, on Linux, a launchd agent, `io.github.makefunstuff.pairing-buddy`, on macOS;
 5. where the Herdr window is installed, installs [Pair's panel](herdr.md#pairs-panel-in-the-herdr-window) into its mods
-   (`~/.config/herdr-app/mods/pair`), or updates it to this version (only the files that changed);
+   (`~/.config/herdr-app/mods/pair`), or updates it to this version (only the files that changed), and adds a key
+   (Alt-p, else the first of Alt-Shift-p and Ctrl-Alt-p no section of `keys.json` binds) and Pair in the + menu
+   (`programs.json`) that open it ([herdr.md](herdr.md#opening-it-without-typing-pair)); each file is merged, never
+   overwritten, and kept first as `<file>.pair-bak-<time>`;
 6. prints the next steps.
 
 Without systemd or launchd it installs no service, and `pair` starts the daemon under a supervisor instead
@@ -76,8 +79,14 @@ pair stats --project DIR # only the project DIR belongs to
 
 ## `pair uninstall`
 
-Stops and removes the service, and Pair's panel from the Herdr window's mods (only the one `pair setup` installed). The
-config and the data stay.
+Stops and removes the service, and Pair's panel from the Herdr window's mods (only the one `pair setup` installed), with
+the key and the + menu entry setup added (a binding or entry you changed since is left). The config and the data stay.
+
+## `pair panel`
+
+What Pair in the Herdr window's + menu runs, in the new tab the menu starts: the panel opens in the tab you were in,
+beside its focused terminal, that tab comes back, and the menu's tab closes. `pair panel --props --cwd DIR --terminal T`
+is what the panel opened by its key runs: it starts the daemon if needed and prints the props the panel needs as JSON.
 
 ## `pair --version`
 

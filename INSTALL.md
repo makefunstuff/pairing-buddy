@@ -236,7 +236,8 @@ is not on `PATH`: `echo "$(npm prefix -g)/bin"` is the folder to add (step 3.1).
 
 `pair setup` writes the config if there is none (`~/.config/pairing-buddy/config.json`, from the commented
 example), stores the key variables the config names, installs the service and starts the daemon, and, where the Herdr
-window is installed, installs Pair's panel into its mods (`~/.config/herdr-app/mods/pair`; an upgrade updates it). It is
+window is installed, installs Pair's panel into its mods (`~/.config/herdr-app/mods/pair`; an upgrade updates it) and
+merges a key (Alt-p) into its `keys.json` and Pair into its + menu (`programs.json`), backing each file up first. It is
 safe to run again; it keeps an existing config.
 
 **Run it every time** (it also points the service at this install's Node.js and Pair):
@@ -261,6 +262,8 @@ Config: ~/.config/pairing-buddy/config.json (the daemon takes a change as you sa
 Models: one model for both roles: your-model at http://localhost:8080/v1. …
 # with the Herdr window installed, also:
 Installed Pair's panel in the Herdr window, ~/.config/herdr-app/mods/pair: `pair` in a terminal there opens it beside that terminal.
+  Key: alt-p opens the panel beside the focused terminal (added to ~/.config/herdr-app/keys.json)
+  + menu: Pair opens the panel in the tab you are in (added to ~/.config/herdr-app/programs.json)
 ```
 
 The `Models:` line names the example's model until step 6.
@@ -698,7 +701,7 @@ binary it runs, and the shell hook names it too (new shells pick that up by them
 Ask the human before each part that deletes something of theirs.
 
 ```sh
-pair uninstall                    # stops and removes the service and Pair's panel in the Herdr window; keeps the config and data
+pair uninstall                    # stops and removes the service and Pair's panel in the Herdr window, its key and + menu entry; keeps the config and data
 pkill -f 'pair[.]mjs supervise'   # service none only: stops the daemon
 npm uninstall -g pairing-buddy
 ```

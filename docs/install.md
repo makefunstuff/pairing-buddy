@@ -50,7 +50,9 @@ pair setup
    `pairing-buddy.service`, on Linux, and a launchd agent, `io.github.makefunstuff.pairing-buddy`, on macOS. Without
    either, see below.
 5. Where the Herdr window is installed, installs [Pair's panel](herdr.md#pairs-panel-in-the-herdr-window) into its mods
-   (`~/.config/herdr-app/mods/pair`); an upgrade's `pair setup` updates it.
+   (`~/.config/herdr-app/mods/pair`); an upgrade's `pair setup` updates it. It also adds Alt-p to the window's
+   `keys.json` and Pair to its + menu (`programs.json`), both opening the panel beside the focused terminal; each file
+   is merged and backed up first (`<file>.pair-bak-<time>`).
 6. Starts the daemon, and prints the next steps.
 
 Then add the plugin to your lazy.nvim specs:
@@ -79,7 +81,8 @@ Node.js: the service names the Node.js binary it runs, and setup rewrites it and
 service, stop the running daemon first (`pkill -f 'pair[.]mjs supervise'`); `pair setup` or `pair` then starts the new
 one.
 
-**Uninstalling.** `pair uninstall` stops and removes the service and Pair's panel in the Herdr window, and keeps the
+**Uninstalling.** `pair uninstall` stops and removes the service and Pair's panel in the Herdr window (with the key
+and the + menu entry setup added, unless you changed them), and keeps the
 config and data.
 
 **From a clone.** `npm ci && npm link` in it, then `pair setup` (the service then runs the clone's code), and

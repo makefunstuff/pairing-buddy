@@ -125,6 +125,30 @@ terminal's chat.
 | Toasts | While the panel is not seen (another tab or space, a pane zoomed over it, the window in the background), a new remark or a question of Pair's posts a Herdr toast; clicking it brings the panel up (`pane.focus`) |
 | The focus | The panel tells the daemon where the window's focus is as it moves (`herdr_focus`), from Herdr's live data (and a light in-memory check while its tab is hidden, since a hidden copy is not redrawn), so the daemon stops asking `herdr-app status` twice a second while a panel is connected, for every project's session shown by the same herdr-core; when the last panel goes, it asks again |
 
+### Opening it without typing `pair`
+
+`pair setup` gives the panel a key and a button:
+
+- **Alt-p** (else the first of Alt-Shift-p and Ctrl-Alt-p that no section of the window's `keys.json` binds; Alt-p is
+  then no longer typed into the terminal programs) opens the panel to the right of the focused terminal:
+  `"alt-p": {"command": "pane.split", "args": {"direction": "right", "mod": "pair"}}` in `global`. Pressed again with a
+  panel in that tab, it brings that one up instead of a second.
+- **Pair in the + menu** (an entry with `run` in the window's `programs.json`: the menu lists those). The menu always
+  starts its program in a new tab, just after the one you were in, so the entry runs `pair panel` there: it goes back
+  to that tab, opens the panel beside its focused terminal, and closes the menu's tab, leaving no terminal behind. The
+  + menu is the button because it is the one place Herdr lets a program add itself without editing your layout or
+  another mod.
+
+Both open the panel *bare*, without props. A bare panel takes the focused terminal (else the tab's first), its folder,
+space and tab from the window as it opens, runs `pair panel --props` (the Pair that installed it, from
+`.pair-command.json` beside the mod: it starts the daemon as `pair` would, and names herdr-core's socket and session,
+`$HC_SOCKET` else `/run/user/<uid>/herdr-core/default.sock`, and the panel file), then a panel with those props takes
+its place, exactly as `pair` would have opened it. The daemon finds the project from the folder as for `pair`. Setup
+merges into `keys.json` and `programs.json`, never overwriting them, keeps the old file as `<file>.pair-bak-<time>`, and
+records what it added in `.pair-added.json` beside the mod; `pair uninstall` removes only that, and not a binding or
+entry changed since. Herdr keeps an edited `keys.json` as yours: new default keys of a later Herdr are then not added
+to it by themselves. With no `keys.json` yet (the window writes one on its first start) setup binds no key.
+
 What the panel is given when `pair` opens it (its props): the project folder, the terminal it was opened from (Pair's own
 pane opens beside it), that terminal's space and tab, herdr-core's socket and the daemon's panel file. `pair doctor` has
 a line for the port (`panel`) and one for the mod (`mod`: installed, and of this version).
