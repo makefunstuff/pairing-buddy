@@ -5,7 +5,9 @@ description: "The chat pane beside Neovim: who speaks, what Pair is doing now, h
 # The chat pane
 
 The chat pane is where you talk to Pair and read what it says at more length than the one line under your cursor. In
-herdr, `pair` opens it on the right of the pane you run it in; without herdr, `:Pair chat` opens it in a terminal
+herdr, `pair` opens it on the right of the pane you run it in; in the Herdr window, `pair` (or its key, or Pair in
+the + menu) opens [Pair's panel](herdr.md#pairs-panel-in-the-herdr-window) instead, the same conversation as a native
+pane of the window, while `pair chat` still runs this pane there. Without herdr, `:Pair chat` opens it in a terminal
 buffer on the right of Neovim, and `pair chat` runs it in any terminal. It is optional: a Neovim alone is a whole
 session.
 

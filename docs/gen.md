@@ -29,6 +29,7 @@ no code: it [hands the request to the board](#gen-board-a-task-for-the-board) as
 
 **In Neovim**, `Alt-g` (the `gen_key`) or `:Pair gen` asks what Pair should write, in a dialog. In a file of the
 project the key (and `:Pair gen +`) means here, at the cursor: the dialog says so (`gen here · what should Pair write at line 12?`), and no shape is asked.
+In a Markdown note, or outside the project, there is no here: the shape is guessed and asked.
 A shape word first (`file a migration for …`) still asks for another.
 
 - The dialog is Neovim's own `vim.ui.input`, and the shape and Pair's questions are `vim.ui.select` and

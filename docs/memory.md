@@ -1,6 +1,6 @@
 # Memory and feedback
 
-Pair remembers where the last session in a project stopped, can look up what earlier ones said, and learns from you when a remark is worth making. Both live in the daemon's data directory (`sessions.sqlite`), never in your repository, and never leave your machine.
+Pair remembers where the last session in a project stopped, can look up what earlier ones said, and learns from you when a remark is worth making. Both live in the daemon's data directory (`sessions.sqlite`), never in your repository. They are stored only on your machine, but the Partner's model gets the last note and what `recall` finds, and a [decision model](decision.md) your verdicts ([data.md](data.md)).
 
 ## No ceremony: a session starts and ends by itself
 
@@ -97,9 +97,9 @@ The next session in the same project (the same git root, or [session root](confi
 
   ```
   pair  Last time:
-        Goal: reconnect drops after the phone sleeps.
-        Changed: RECONNECT_TIMEOUT_MS in src/ws.ts is now 30000.
-        Loose end: try it on a real phone.
+        ✓ RECONNECT_TIMEOUT_MS in src/ws.ts is now 30000.
+        ○ open: try it on a real phone.
+        Tomorrow, first: test the reconnect on a phone, in src/ws.ts:42.
 
   pair  What are we doing this session? Type the goal here, or "later".
   ```

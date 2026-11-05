@@ -29,6 +29,15 @@ the work board.
   terminal (its commands pasted with Enter, found again after a restart), `pair` starting the chat beside you or in
   place, `pair doctor`'s herdr line, a core retried until it answers, and Shepherdr 2.1's agents from its own core,
   read only.
+- **Pair's panel in the Herdr window** ([test/herdr-panel.test.mjs](../test/herdr-panel.test.mjs),
+  [test/herdr-panel-model.test.mjs](../test/herdr-panel-model.test.mjs), [test/herdr-launch.test.mjs](../test/herdr-launch.test.mjs)),
+  against the fake herdr-core: `"herdrPanel"` opening the port, the token (a wrong one closes the line, its file never
+  in a folder others can write in), the panel's focus pushes replacing `herdr-app status` until it goes (with two
+  windows, each its own), hello and resume after a daemon restart, `pair setup` installing the mod and updating only
+  what changed, the key and the + menu entry merged and taken out again by `pair uninstall` (leaving one you changed),
+  `pair` opening the panel or else the chat terminal, `pair panel` from the + menu and `--props`, `pair doctor`'s
+  `panel` and `mod` lines; and the panel's model: the header, remarks and Pair's questions as cards, the box, a
+  streaming answer and the `/gen` cards' buttons.
 - **Without herdr**, in a headless Neovim: Scout's pane and the tests on save as a `:terminal` there, the Driver's
   `type` into the `:terminal` you used last or another one named in the answer, `:Pair chat`, and a command you run
   in your own `:terminal`, seen running and with its output, and with the bash hook its exit code. In a real tmux

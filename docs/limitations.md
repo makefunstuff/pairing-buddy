@@ -31,10 +31,16 @@ The newer herdr ([herdr.md](herdr.md#herdr-core-and-the-herdr-window)) lacks wha
 
 - **The Driver cannot type into a herdr-core terminal.** The core types only with Enter (`terminal.send`), so Pair
   never offers one as the Driver's target rather than run what it would type. In Neovim's `:terminal` buffers and tmux panes it still types.
-- **The focus comes from the Herdr window**, asked twice a second; without the window (a core used on its own, as
+- **The focus comes from the Herdr window**: [Pair's panel](herdr.md#pairs-panel-in-the-herdr-window) pushes it while
+  one is connected, else Pair asks `herdr-app status` twice a second (less often, up to every 10 s, while no window
+  answers); without the window (a core used on its own, as
   Shepherdr 2.1's session is), no terminal has focus, so Pair takes no typing pause or short commands from the
   screen there, and `pair` opens the chat in the terminal it runs in. The shell hook still reports commands.
 - **Scrolling is not known**: a terminal always counts as at its bottom.
+- **Pair's panel in the Herdr window** has no Alt-↑ picking of a message (its buttons do it), Ctrl-F or `/search`,
+  Alt-y, `@` file completion, `/keep`'s file menu or the answer's margin, and `/quit` only says to close the pane;
+  `pair chat` there has them. Two panels for one project each raise their own toast
+  ([herdr.md](herdr.md#pairs-panel-in-the-herdr-window)).
 
 ## Without herdr
 
