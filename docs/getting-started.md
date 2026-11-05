@@ -66,7 +66,7 @@ The daemon takes the change as you save; no restart. Two models, logins and keys
 pair doctor
 ```
 
-One line per part (config, service, daemon, plugin, Neovim, herdr, the board, logins and keys, Pair's pane, voice,
+One line per part (config, service, daemon, plugin, Neovim, herdr, Pair's panel in the Herdr window, the board, logins and keys, Pair's pane, voice,
 search by meaning and its reranker, the models and the decision model), each with the fix when something is
 wrong. See [Troubleshooting](troubleshooting.md) for what each line means.
 

@@ -55,7 +55,7 @@ A remark can come from one of these moments (its **trigger**):
 | `note_stall` | In a Markdown note, you wrote a question and then nothing for 90 s: one question back, never the answer ([notes.md](notes.md#what-the-triggers-mean-in-prose)) |
 | `note_drift` | In a Markdown note, a new section shares no word with the note's title or the goal: one question, "is this still the … note?" |
 | `fresh_code` | You finished a function or hunk of three lines or more (you saved, or the cursor left it): the Watcher reads just those lines for a likely bug, and only a bug gets a word, at your next break ([watcher.md](watcher.md#fresh-code)) |
-| `search_trail` | Three or more Telescope, snacks.picker or fzf-lua searches since your last edit, one of them closed with nothing opened, or repeated. The remark gets what fails now, so it can say where the thing is in the code's own word ([neovim.md](neovim.md#the-search-trail)) |
+| `search_trail` | Three or more Telescope, snacks.picker or fzf-lua searches since your last edit, one of them closed with nothing opened, or the same words again landing in another file. The remark gets what fails now, so it can say where the thing is in the code's own word ([neovim.md](neovim.md#the-search-trail)) |
 
 Besides these moments, once the session has a goal Pair proposes it as two to four steps and, when one lands, says
 `done: X; next: Y` at your next break, within the same budget ([memory.md](memory.md#the-thread-done-and-next)).

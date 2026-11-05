@@ -10,6 +10,9 @@ description: "What Pair keeps and where: logins and keys by the config, the rest
   sits next to `auth.json` and moves with it).
 - **Everything else** lives in the data directory: `~/.local/state/pairing-buddy` by default, or under
   `$XDG_STATE_HOME`, or `dataDir` in the config.
+- **Pair's panel in the Herdr window**, where that window is installed: `pair setup` puts the mod in its mods
+  (`~/.config/herdr-app/mods/pair`) and adds a key and a + menu entry to its `keys.json` and `programs.json`, keeping
+  each file first as `<file>.pair-bak-<time>` ([herdr.md](herdr.md#opening-it-without-typing-pair)).
 
 | File | What it holds |
 | --- | --- |
@@ -24,6 +27,7 @@ description: "What Pair keeps and where: logins and keys by the config, the rest
 | `index/` | [Search by meaning](meaning.md#the-index)'s index, [semantic-grep](https://github.com/makefunstuff/semantic-grep.nvim)'s, a SQLite file per repository (`<repository>-<hash>.sqlite`), shared by its worktrees: each piece of code's file, lines, hash, kind and name, the FTS5 index of its words (lower case and stemmed, with their places, but not the text itself), and a vector per piece (256 numbers, about 1 KB, for EmbeddingGemma); no copy of the code. `:Pair find off` deletes them, `:Pair index rebuild` makes one again |
 | `meaning/` | [Search by meaning](meaning.md)'s EmbeddingGemma 2, once you turn it on: its model (`embeddinggemma-2-text-270m.litertlm`, 165 MB, with its checksum note), and `venv/`, the venv with its runtime LiteRT-LM that `:Pair find on` makes (with a `venv-made-by-pair.json` note next to it) unless you made it there yourself. `:Pair find off` deletes the model and the venv Pair made |
 | `daemon.log` | The daemon's log, when `pair` started it (under systemd it goes to the journal, under launchd to `~/Library/Logs/pairing-buddy.log`) |
+| `herdr-panel.json` | While the daemon runs, the port and token of its loopback port for [Pair's panel in the Herdr window](herdr.md#pairs-panel-in-the-herdr-window), readable by you only; only when the socket's folder is not yours alone, else it is `<socket>.panel` beside the socket |
 | `daemon.lock` | Makes sure one daemon owns the files above |
 
 The [run log](exploration.md) (each build's and run's output and the lines you typed before it) is kept in the
