@@ -89,7 +89,8 @@ Add the plugin with lazy.nvim:
 ```
 
 Set your model in `~/.config/pairing-buddy/config.json` ([models](docs/models.md)), run `pair doctor` to check every
-part, then `pair` in the herdr pane next to Neovim (or `:Pair chat` in Neovim), and work. In the
+part, then `pair` in the herdr pane next to Neovim (in the Herdr window it opens
+[Pair's panel](docs/herdr.md#pairs-panel-in-the-herdr-window); or `:Pair chat` in Neovim), and work. In the
 [chat pane](docs/chat.md), `?` lists its keys and `/` its commands.
 [Getting started](docs/getting-started.md) walks through it, and the
 [first ten minutes](docs/tutorials/first-ten-minutes.md) tutorial does it step by step, with what `pair doctor`

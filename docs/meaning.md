@@ -52,7 +52,8 @@ A decision model can reorder the first pieces of a settled search: the fused lis
 `rerank` entry, a [decision model entry](config.md#rerank) as `decision`'s: an `api` at a `baseUrl` (`"system-one"`,
 `"llama-cpp"` or `"openai"`), or a `provider` with one of its classifiers, its key as a model's; or a cross-encoder
 (`"api": "rerank"`, a `/rerank` such as llama.cpp's `--rerank`), which reorders every piece it reads; or a list of
-them, best first. `top` is how many pieces it reads (10), `timeoutMs` how long a search waits (3000; 1000 for one another follows).
+them, best first. `top` is how many pieces it reads (10), `timeoutMs` how long a search waits (3000; 1000 for one another follows),
+`chars` how much of each piece it reads (1200 for a cross-encoder, 160 otherwise).
 
 ```jsonc
 "rerank": [
