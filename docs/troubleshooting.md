@@ -63,7 +63,7 @@ the config ([watcher.md](watcher.md#thinking-the-partner-not-the-watcher)).
 | `✗ keys  … is not set` | The service does not see your shell's variables: set the variable, then run `pair setup` again, or store the key with `pair auth login NAME` and use `"auth"` |
 | `! watcher … takes 2.4 s` | The Watcher should answer in about a second. Use a smaller model, or [one model](models.md#one-model) for both roles on a server that holds one model at a time |
 | `! thinking …` | The Partner does not think, or its levels do not reach the server: run `pair doctor --thinking` and paste the `compat` it prints |
-| `! panel  the daemon has no port for Pair's panel …` | The daemon started before the Herdr window was installed, or runs an older Pair: run `pair setup` again, which restarts it |
+| `! panel  the daemon has no port for Pair's panel …` | The daemon started before the Herdr window was installed, or runs an older Pair: restart it: `pair setup` again under systemd or launchd; without a service, `pkill -f 'pair[.]mjs supervise'`, then `pair` |
 | `! mod  Pair's panel is not installed …` or `… is from Pair …` | Run `pair setup` again: it installs Pair's panel in the Herdr window, or updates it to this version |
 | `! pane  no sandbox` | Install bubblewrap (`bwrap`) for the sandbox. When it is installed but cannot make its sandbox here (some containers forbid a new `/proc`), Pair's commands run without one; set `"scoutPane": {"sandbox": false}` to silence it |
 | The statusline says `◌ pair · partner down` | The model stopped answering. Pair checks every 30 seconds and says when it is back. A subscription login may have ended: `pair auth login PROVIDER` again ([when a model is down](models.md#when-a-model-is-down)) |
