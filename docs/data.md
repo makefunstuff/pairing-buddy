@@ -10,9 +10,10 @@ description: "What Pair keeps and where: logins and keys by the config, the rest
   sits next to `auth.json` and moves with it).
 - **Everything else** lives in the data directory: `~/.local/state/pairing-buddy` by default, or under
   `$XDG_STATE_HOME`, or `dataDir` in the config.
-- **Pair's panel in the Herdr window**, where that window is installed: `pair setup` puts the mod in its mods
-  (`~/.config/herdr-app/mods/pair`) and adds a key and a + menu entry to its `keys.json` and `programs.json`, keeping
-  each file first as `<file>.pair-bak-<time>` ([herdr.md](herdr.md#opening-it-without-typing-pair)).
+- **Pair's panel in the Herdr window**, where that window is installed and `"herdrPanel"` is not `false`: `pair setup`
+  puts the mod in its mods (`~/.config/herdr-app/mods/pair`) and adds a key and a + menu entry to its `keys.json` and
+  `programs.json`, keeping each file first as `<file>.pair-bak-<time>`
+  ([herdr.md](herdr.md#opening-it-without-typing-pair)).
 
 | File | What it holds |
 | --- | --- |

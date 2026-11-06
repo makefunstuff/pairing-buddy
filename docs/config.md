@@ -234,7 +234,7 @@ store a `rerank` entry's `apiKeyEnv` in `service.env`: under the service, use `a
 | `baseUrl` | | Where its `/v1` is, for example `http://127.0.0.1:8080/v1` |
 | `model` | | Its name there, for example `d1-2B` |
 | `auth`, `apiKey`, `apiKeyFile`, `apiKeyEnv` | none | Its key, if it needs one: one of them |
-| `top` | `10` | How many of the first pieces it reads and reorders, 2 to 30. Each costs the model time |
+| `top` | `10` | How many of the first pieces it reads, 2 to 30. Each costs the model time |
 | `timeoutMs` | `3000`; `1000` for one another follows | How long a search waits for it; slower, the next in the list is asked, or the order stays |
 | `chars` | `1200` for `"rerank"`, `160` otherwise | How much of each piece it reads, 40 to 4000 |
 
