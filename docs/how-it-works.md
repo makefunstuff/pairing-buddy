@@ -4,8 +4,8 @@
 Neovim plugin ──┐                         ┌── Watcher model: is this worth a remark? (0-10)
 chat pane ──────┼── pair daemon (socket) ─┤
 shell hook ─────┤   events → session state└── Partner model: the words, and its role's tools
-herdr panes ────┘   → triggers → speak gate + budget        │
-                                                             ├── Pair's own pane, herdr's or Neovim's (Scout: search, run)
+herdr/Rex/tmux ─┘   → triggers → speak gate + budget        │
+                                                             ├── Pair's own pane, herdr's, Rex's or Neovim's (Scout: search, run)
                                                              └── your buffer and terminal (Driver: edit, type)
 ```
 
@@ -18,9 +18,9 @@ its role's tools.
 
 - **Neovim.** The plugin sends edits (about 2 s after you stop typing), the current file, cursor, selection, LSP
   diagnostics, your Telescope, snacks.picker and fzf-lua searches, and that you scroll (at most every 10 s: only that you read).
-- **Your terminals.** The daemon watches your herdr panes, the panes of the tmux session you work in and your
-  `:terminal` buffers in Neovim for focus, commands and their output ([herdr.md](herdr.md) says how, and what herdr
-  lacks; [neovim.md](neovim.md#without-herdr) for Neovim and tmux).
+- **Your terminals.** The daemon watches terminals in herdr or Rex, panes of the tmux session you work in, and your
+  `:terminal` buffers in Neovim for focus, commands and their output ([herdr.md](herdr.md), [Rex](rex.md) and
+  [neovim.md](neovim.md#without-herdr) describe what each backend offers).
 - **Where you have been.** Your buffers and jumplist, the work board's (Shepherdr's) task for your branch, and git (branch,
   last commit, changed files, pull request). The [context card](neovim.md#what-it-knows-the-context-card) shows all of
   it, and what you hide there is not sent.

@@ -165,4 +165,4 @@ the command and its output. Then:
 - Switching back to Navigator keeps the pane open while the project has a command; ending the session closes it.
   The session's first run (also after a daemon restart) is the baseline: what fails in it failed already, so it
   raises no regression. A run of your own is no baseline: it may have run other tests.
-  Without herdr the pane is a `:terminal` in Neovim.
+  Without herdr or Rex, the pane is a `:terminal` in Neovim.

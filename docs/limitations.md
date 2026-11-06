@@ -44,7 +44,7 @@ The newer herdr ([herdr.md](herdr.md#herdr-core-and-the-herdr-window)) lacks wha
 
 ## Without herdr
 
-Without herdr all of Pair works in Neovim and tmux ([workflows](workflows.md#with-or-without-herdr)). Two things
+Without herdr or Rex all of Pair works in Neovim and tmux ([workflows](workflows.md#with-or-without-herdr)). Two things
 stay herdr's:
 
 - **A terminal that is neither a Neovim `:terminal` nor a tmux pane** (a plain window of your terminal emulator):

@@ -73,7 +73,8 @@ from the editor when it comes, or always with `"talk": true`. Off until you set 
 [herdr](https://herdr.dev) is the best home for Pair: the chat pane sits beside Neovim, Pair sees your terminals and
 their output, and Scout's pane opens below the chat.
 
-Without herdr, all of Pair works inside Neovim and tmux:
+[Rex](rex.md) also provides a chat split and watched terminals. Without herdr or Rex, all of Pair works inside Neovim
+and tmux:
 
 - `:Pair chat` opens the chat in a terminal buffer on the right (or run `pair chat` in any terminal);
 - Scout's pane and the tests on save run in a `:terminal` along the bottom of Neovim;
