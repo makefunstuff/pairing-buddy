@@ -19,6 +19,7 @@ import {herdrOf, openCoreChat} from '../src/herdr-core.mjs';
 import {bareProps, herdrAppInstalled, installedModVersion, installMod, MOD, modDir, openPanel, pairArgv, panelFromMenu, panelWanted, removePanel, setUpPanel} from '../src/herdr-panel.mjs';
 import {terminalInteraction} from '../src/prompt.mjs';
 import {requestDaemon, sendMessage} from '../src/protocol.mjs';
+import {openRexChat, rexOf} from '../src/rex.mjs';
 import {keyVariables, storeServiceEnv} from '../src/service-env.mjs';
 import {serviceManager} from '../src/service.mjs';
 import {sessionRootOf} from '../src/session-root.mjs';
@@ -34,12 +35,12 @@ const SCRIPT = realpathSync(fileURLToPath(import.meta.url));
 const SERVICE = serviceManager();
 
 const USAGE = `usage:
-  pair              open the chat next to this terminal, starting the daemon if needed: Pair's panel in the Herdr window, a pane in herdr, else here
+  pair              open the chat next to this terminal, starting the daemon if needed: Pair's panel in the Herdr window, a pane in herdr or Rex, else here
   pair chat [--plain]   run the chat pane here (--plain: line by line, not full-screen)
   pair setup        create the config if there is none, install and start the daemon as a service (systemd, launchd), and Pair's panel in the Herdr window with its key (Alt-p) and + menu entry
   pair panel        (Pair in the Herdr window's + menu) open the panel in the tab you were in, closing the menu's tab
   pair panel --props --cwd DIR --terminal T   (used by the panel opened by its key) start the daemon, print the panel's props
-  pair doctor       check the daemon, Neovim, herdr and the models, and say what is wrong
+  pair doctor       check the daemon, Neovim, herdr, Rex and the models, and say what is wrong
   pair doctor --thinking   find the thinking settings the Partner's OpenAI-compatible server takes (asks it a dozen times)
   pair auth login PROVIDER    log in with a subscription or store an API key (also \`pair login PROVIDER\`)
   pair auth logout PROVIDER   remove that login or key (also \`pair logout PROVIDER\`)
@@ -216,7 +217,7 @@ Next:
   1. ${await nvimHasPlugin(process.env) === 'yes' ? 'The Neovim plugin: your Neovim config loads it already.' : `Add the Neovim plugin with lazy.nvim (other plugin managers: INSTALL.md):
 ${LAZY_SPEC}`}
   2. Optional, for exact commands and exit codes in your panes: eval "$(pair shell-hook bash)" in your shell's rc file (or zsh; fish: pair shell-hook fish | source)
-  3. Run \`pair doctor\` to check everything, then open Neovim in a project: in herdr, run \`pair\` in a pane next to it for the chat; without herdr, \`:Pair chat\` in Neovim (or \`pair chat\` in any terminal).`);
+  3. Run \`pair doctor\` to check everything, then open Neovim in a project: in herdr or Rex, run \`pair\` in a pane next to it for the chat; without either, \`:Pair chat\` in Neovim (or \`pair chat\` in any terminal).`);
 }
 
 /** What \`pair setup\` says about how the roles share their models. */
@@ -310,20 +311,26 @@ async function runSupervised() {
  * `pair`: the chat beside this terminal: in the Herdr window, Pair's panel (herdr-panel.mjs), else a terminal the core
  * starts in this terminal's space and tab; in herdr, a pane of its own (a split); anywhere else, in this terminal.
  */
-async function openChatPane(config) {
-  await ensureDaemon(config);
-  const herdr = herdrOf(process.env);
-  const env = Object.fromEntries(['PAIR_CONFIG', 'PAIR_SOCKET', 'PAIR_AUTH'].filter(name => process.env[name]).map(name => [name, process.env[name]]));
+export async function openChatPane(config, {ensure = ensureDaemon, env: shellEnv = process.env, cwd = process.cwd(), launchRex = openRexChat, run = runChat} = {}) {
+  await ensure(config);
+  const herdr = herdrOf(shellEnv);
+  const rex = rexOf(shellEnv);
+  // The PAIR_* overrides are for the child a split starts; a chat run in place has this shell's whole environment.
+  const env = Object.fromEntries(['PAIR_CONFIG', 'PAIR_SOCKET', 'PAIR_AUTH'].filter(name => shellEnv[name]).map(name => [name, shellEnv[name]]));
   if (herdr?.kind === 'core') {
-    if (await openPanel(herdr, {cwd: process.cwd(), config, history: join(config.dataDir, 'chat-history.json')})) return;
-    if (await openCoreChat(herdr, {argv: [process.execPath, SCRIPT, 'chat'], cwd: process.cwd(), env})) return;
-    return runChat(config.socket, {dataDir: config.dataDir}); // no Herdr window shows this terminal
+    if (await openPanel(herdr, {cwd, config, history: join(config.dataDir, 'chat-history.json')})) return;
+    if (await openCoreChat(herdr, {argv: [process.execPath, SCRIPT, 'chat'], cwd, env})) return;
+    return run(config.socket, {dataDir: config.dataDir, cwd, env: shellEnv}); // no Herdr window shows this terminal
   }
-  if (!process.env.HERDR_ENV) return runChat(config.socket, {dataDir: config.dataDir});
-  const {pane} = await herdrRequest(process.env.HERDR_SOCKET_PATH, 'pane.split', {
-    target_pane_id: process.env.HERDR_PANE_ID, direction: 'right', ratio: 0.7, cwd: process.cwd(), env, focus: false,
-  });
-  await herdrRequest(process.env.HERDR_SOCKET_PATH, 'pane.send_text', {pane_id: pane.pane_id, text: `${SCRIPT} chat\r`});
+  if (shellEnv.HERDR_ENV) {
+    const {pane} = await herdrRequest(shellEnv.HERDR_SOCKET_PATH, 'pane.split', {
+      target_pane_id: shellEnv.HERDR_PANE_ID, direction: 'right', ratio: 0.7, cwd, env, focus: false,
+    });
+    await herdrRequest(shellEnv.HERDR_SOCKET_PATH, 'pane.send_text', {pane_id: pane.pane_id, text: `${SCRIPT} chat\r`});
+    return;
+  }
+  if (!herdr && rex && await launchRex(rex, {argv: [process.execPath, SCRIPT, 'chat'], cwd, env})) return;
+  return run(config.socket, {dataDir: config.dataDir, cwd, env: shellEnv});
 }
 
 /**
@@ -353,6 +360,10 @@ async function panel(args) {
   if (!done) console.error('pair: Pair\'s panel opens from a tab of the Herdr window with another tab before it; in this one, run `pair`');
 }
 
+export function reportPane(env = process.env) {
+  return env.HERDR_PANE_ID || env.HC_TERMINAL_ID || (env.REX_BLOCK && `rex:${env.REX_BLOCK}`) || null;
+}
+
 // Runs before and after every shell command, so it stays silent: no config or no daemon means nothing to report.
 function report(args) {
   const {values} = parseArgs({args, options: {
@@ -361,7 +372,7 @@ function report(args) {
   }});
   // The shell's pid names the terminal outside herdr: a Neovim :terminal's or a tmux pane's (src/pane-watch.mjs).
   const hook = {
-    cwd: process.cwd(), pane: process.env.HERDR_PANE_ID || process.env.HC_TERMINAL_ID || null, tmux: process.env.TMUX_PANE ?? null,
+    cwd: process.cwd(), pane: reportPane(process.env), tmux: process.env.TMUX_PANE ?? null,
     shell: Number(values.shell) || null, keys: values.keys === true,
   };
   const message = values.ready ? {type: 'shell', ...hook}
@@ -379,41 +390,45 @@ function socketPathOf() {
   try { return loadConfig().socket; } catch { return defaultSocketPath(); }
 }
 
-const [command, ...args] = process.argv.slice(2);
-try {
-  if (['--version', '-v', 'version'].includes(command)) {
-    console.log(`pair ${VERSION}`);
-  } else if (command === 'shell-hook') {
-    process.stdout.write(shellHook(args[0], process.argv[1], {socket: socketPathOf()}));
-  } else if (command === 'report') {
-    report(args);
-  } else if (command === 'setup') {
-    await setup();
-  } else if (command === 'uninstall') {
-    await uninstall();
-  } else if (command === 'auth') {
-    await auth(args);
-  } else if (command === 'login' || command === 'logout') {
-    await auth([command, ...args]);
-  } else if (command === 'doctor') {
-    await runDoctor(args);
-  } else if (command === 'panel') {
-    await panel(args);
-  } else if (command === 'supervise') {
-    await runSupervised();
-  } else if (command === 'stats') {
-    await stats(args);
-  } else if ([undefined, 'chat', 'daemon'].includes(command)) {
-    firstRunConfig();
-    const config = loadConfig();
-    if (command === undefined) await openChatPane(config);
-    else if (command === 'chat') { await ensureDaemon(config); runChat(config.socket, {dataDir: config.dataDir, plain: args.includes('--plain')}); }
-    else await daemon(await loadSizedConfig()); // each model's window, from its server or catalog (see context-window.mjs)
-  } else {
-    console.log(USAGE);
-    process.exitCode = command === 'help' || command === '--help' ? 0 : 2;
+async function main() {
+  const [command, ...args] = process.argv.slice(2);
+  try {
+    if (['--version', '-v', 'version'].includes(command)) {
+      console.log(`pair ${VERSION}`);
+    } else if (command === 'shell-hook') {
+      process.stdout.write(shellHook(args[0], process.argv[1], {socket: socketPathOf()}));
+    } else if (command === 'report') {
+      report(args);
+    } else if (command === 'setup') {
+      await setup();
+    } else if (command === 'uninstall') {
+      await uninstall();
+    } else if (command === 'auth') {
+      await auth(args);
+    } else if (command === 'login' || command === 'logout') {
+      await auth([command, ...args]);
+    } else if (command === 'doctor') {
+      await runDoctor(args);
+    } else if (command === 'panel') {
+      await panel(args);
+    } else if (command === 'supervise') {
+      await runSupervised();
+    } else if (command === 'stats') {
+      await stats(args);
+    } else if ([undefined, 'chat', 'daemon'].includes(command)) {
+      firstRunConfig();
+      const config = loadConfig();
+      if (command === undefined) await openChatPane(config);
+      else if (command === 'chat') { await ensureDaemon(config); runChat(config.socket, {dataDir: config.dataDir, plain: args.includes('--plain')}); }
+      else await daemon(await loadSizedConfig()); // each model's window, from its server or catalog (see context-window.mjs)
+    } else {
+      console.log(USAGE);
+      process.exitCode = command === 'help' || command === '--help' ? 0 : 2;
+    }
+  } catch (error) {
+    console.error(`pair: ${error.message}`);
+    process.exitCode = 1;
   }
-} catch (error) {
-  console.error(`pair: ${error.message}`);
-  process.exitCode = 1;
 }
+
+if (process.argv[1] && realpathSync(process.argv[1]) === SCRIPT) await main();

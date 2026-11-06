@@ -49,7 +49,7 @@ async function readResult({command, root, outputFile, started, exit, texts}) {
 
 export class TestRuns {
   /**
-   * `pane()` is Pair's pane (a ScoutPane), or null without herdr or Neovim. `report(run)` hears of each run twice:
+   * `pane()` is Pair's pane (a ScoutPane), or null without herdr, Rex or Neovim. `report(run)` hears of each run twice:
    * `{state: 'run', label, saved}` as it starts, then `{state: 'done', label, saved, exit, timedOut, timeoutMs, output, tests, placed, reading, narrowed}`
    * (`tests` as parseTestOutput gives them, `placed` as placeTests does, `reading` as readRun does: a build's
    * errors, a crash; `narrowed` when it ran only the tests the saved files affect), or
@@ -91,7 +91,7 @@ export class TestRuns {
     const saved = this.lastSaved;
     this.pending.clear();
     const pane = this.pane();
-    if (!pane) return this.report({state: 'error', label: this.label, saved, error: 'tests on save need Pair\'s own pane: run `pair` inside herdr or a Herdr window (herdr-core), or :Pair start in Neovim', short: 'needs herdr or Neovim'});
+    if (!pane) return this.report({state: 'error', label: this.label, saved, error: 'tests on save need Pair\'s own pane: run `pair` inside herdr, a Herdr window (herdr-core) or Rex, or :Pair start in Neovim', short: 'needs herdr, Rex or Neovim'});
     const controller = new AbortController();
     this.running = {stop: () => controller.abort()};
     const whole = this.wholeNext;
@@ -130,7 +130,7 @@ export class TestRuns {
     const file = edited.at(-1);
     const report = run => { this.report({...run, label: this.label, saved: file, unsaved: true}); return {...run, label: this.label}; };
     const pane = this.pane();
-    if (!pane) return report({state: 'error', error: 'the tests need Pair\'s own pane, in herdr or Neovim', short: 'needs herdr or Neovim'});
+    if (!pane) return report({state: 'error', error: 'the tests need Pair\'s own pane, in herdr, Rex or Neovim', short: 'needs herdr, Rex or Neovim'});
     report({state: 'run'});
     const dir = `${this.outputFile}.unsaved`;
     try {
