@@ -47,8 +47,8 @@ index's best pieces come with its "No matches." ([scout.md](scout.md)).
 
 ## Rerank
 
-A decision model can move its pick of the first pieces of a settled search to the top, when it stands out: the fused
-list of `/find`, the `search` tool and `vim.ui.select`, and the picker's list once meaning came (semantic-grep's README
+A decision model can move its pick of the first pieces of a settled search (the fused list of `/find`, the `search` tool
+and `vim.ui.select`, and the picker's list once meaning came) to the top when it stands out (semantic-grep's README
 says how). In Pair it is the config's `rerank` entry, a [decision model entry](config.md#rerank) as `decision`'s: an
 `api` at a `baseUrl` (`"system-one"`, `"llama-cpp"` or `"openai"`), or a `provider` with one of its classifiers, its key
 as a model's; or a cross-encoder (`"api": "rerank"`, a `/rerank` such as llama.cpp's `--rerank`), which reorders every

@@ -43,7 +43,7 @@ why while the daemon keeps the config it runs. Run `pair doctor` after a change 
 | `voice` | off | Push-to-talk and spoken answers with LFM3-Omni, whisper.cpp or OpenRouter ([below](#voice), [voice.md](voice.md)) |
 | `meaning` | `{}` | [Search by meaning](meaning.md): the Python that runs EmbeddingGemma 2, the cores it may use and where the index lives, or `false` to turn it off for good ([below](#meaning)). Its word search works at once; meaning once its model and runtime are fetched (`:Pair find on`) or with an `embedding` model |
 | `embedding` | none | An embedding model behind an OpenAI-compatible `/v1/embeddings` for [search by meaning](meaning.md#another-embedding-model), instead of EmbeddingGemma 2 ([below](#embedding)) |
-| `rerank` | none | A decision model, or a cross-encoder (`"api": "rerank"`), that reorders the first pieces of a settled search by meaning ([below](#rerank)); off without it |
+| `rerank` | none | A decision model, or a cross-encoder (`"api": "rerank"`), that reranks the first pieces of a settled search by meaning ([below](#rerank)); off without it |
 | `scoutPane` | see [below](#scoutpane) | Pair's own pane: your rc file and the sandbox ([scout.md](scout.md#pairs-pane)) |
 | `taskCommand` | none | What `:Pair tasks` runs for each task you say yes to, as a list of words with `{title}` and `{description}`, never through a shell, for example `["gh", "issue", "create", "--title", "{title}", "--body", "{description}"]`. Without it, the tasks are copied as a checklist ([notes.md](notes.md#tasks-only-when-you-ask)) |
 | `gen` | see [below](#gen) | What one `/gen` request may do at most, its brief's note, and how long a try's folder stays and whether its runs reach the network ([gen.md](gen.md)) |
