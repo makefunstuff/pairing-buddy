@@ -118,10 +118,10 @@ wait for your break are the same as for every trail.
 13780 KB`; a save's few pieces get no line of their own), each piece you open from the picker (`searched by meaning
 "method that removes user" in the picker: 1 result, first src/teams.js:42`), each `/find` and `search` tool search (`⏎`
 shows the ranking), each rerank (`⏎` shows the order before and after, with the model's probability or the
-cross-encoder's score for each, when its answer was used, even if nothing moved; when it was not, too slow, flat or
-failed, the search's order it kept), each lookup for the search trail, `:Pair index rebuild` and
-`:SemanticGrep rebuild`, LiteRT-LM's install, the model's download, and `:Pair find off` deleting them. The words you
-type on the way are not booked.
+cross-encoder's score for each, when its answer was used, even if nothing moved; when it was not (too slow, flat, failed,
+busy with another rerank or resting after a failure), the search's order it kept), each lookup for the search trail,
+`:Pair index rebuild` and `:SemanticGrep rebuild`, LiteRT-LM's install, the model's download, and `:Pair find off`
+deleting them. The words you type on the way are not booked.
 
 ## Why this model and runtime
 
