@@ -236,7 +236,7 @@ is not on `PATH`: `echo "$(npm prefix -g)/bin"` is the folder to add (step 3.1).
 
 `pair setup` writes the config if there is none (`~/.config/pairing-buddy/config.json`, from the commented
 example), stores the key variables the config names, installs the service and starts the daemon, and, where the Herdr
-window is installed, installs Pair's panel into its mods (`~/.config/herdr-app/mods/pair`; an upgrade updates it) and
+window is installed (unless `"herdrPanel": false`), installs Pair's panel into its mods (`~/.config/herdr-app/mods/pair`; an upgrade updates it) and
 merges a key (Alt-p, else the first of Alt-Shift-p and Ctrl-Alt-p that no section binds) into its `keys.json` and
 Pair into its + menu (`programs.json`), backing each file up first. It is safe to run again; it keeps an existing
 config.

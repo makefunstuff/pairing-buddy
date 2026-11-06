@@ -27,7 +27,7 @@ daemon: `pkill -f 'pair[.]mjs supervise'`):
 3. stores the environment variables your model entries name in `apiKeyEnv` in `service.env`, for the service;
 4. installs and starts the daemon as a service that starts at login: a systemd user service,
    `pairing-buddy.service`, on Linux, a launchd agent, `io.github.makefunstuff.pairing-buddy`, on macOS;
-5. where the Herdr window is installed, installs [Pair's panel](herdr.md#pairs-panel-in-the-herdr-window) into its mods
+5. where the Herdr window is installed (unless `"herdrPanel": false`), installs [Pair's panel](herdr.md#pairs-panel-in-the-herdr-window) into its mods
    (`~/.config/herdr-app/mods/pair`), or updates it to this version (only the files that changed), and adds a key
    (Alt-p, else the first of Alt-Shift-p and Ctrl-Alt-p no section of `keys.json` binds) and Pair in the + menu
    (`programs.json`) that open it ([herdr.md](herdr.md#opening-it-without-typing-pair)); each file is merged, never

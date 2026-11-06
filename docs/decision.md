@@ -223,8 +223,8 @@ and those it fell back on.
 
 The gate is not the only one: search by meaning can ask a decision model of its own (its `rerank` entry, the same keys
 as this one, with `top`, `timeoutMs` and `chars`) which of a search's first pieces (ten by default) you are looking for, and
-reorder them by its probabilities; or, in its place, a cross-encoder (`"api": "rerank"`), which scores every piece it
-reads ([meaning.md](meaning.md#rerank)).
+move its pick to the top when it stands out (the rest keep the search's order); or, in its place, a cross-encoder
+(`"api": "rerank"`), which scores every piece it reads and orders them by that ([meaning.md](meaning.md#rerank)).
 
 ## Next steps
 

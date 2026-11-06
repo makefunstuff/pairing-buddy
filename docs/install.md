@@ -49,7 +49,7 @@ pair setup
 4. Installs the daemon as a service that starts at login and restarts when it fails: a systemd user service,
    `pairing-buddy.service`, on Linux, and a launchd agent, `io.github.makefunstuff.pairing-buddy`, on macOS. Without
    either, see below.
-5. Where the Herdr window is installed, installs [Pair's panel](herdr.md#pairs-panel-in-the-herdr-window) into its mods
+5. Where the Herdr window is installed (unless `"herdrPanel": false`), installs [Pair's panel](herdr.md#pairs-panel-in-the-herdr-window) into its mods
    (`~/.config/herdr-app/mods/pair`); an upgrade's `pair setup` updates it. It also adds a key to the window's
    `keys.json` (Alt-p, else the first of Alt-Shift-p and Ctrl-Alt-p that no section binds) and Pair to its + menu
    (`programs.json`), both opening the panel beside the focused terminal; each file is merged and backed up first

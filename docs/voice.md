@@ -256,7 +256,7 @@ stored by `pair auth login openrouter`; its sign-in does not serve voice) or `ap
 | `speak.model`, `speak.voice` | none | a speech model's id and one of its voices: it reads answers aloud instead of a `speak` command |
 | `speak.format` | `"mp3"` | `"mp3"` or `"wav"`, what the player gets (some models make MP3 only) |
 | `speak.speed` | the model's | how fast it speaks, like `1.2`, on models that take it |
-| `timeoutMs` | `30000` | how long Pair waits for OpenRouter; then the pane says `OpenRouter did not answer in 30 s` |
+| `timeoutMs` | `30000` | how long Pair waits for OpenRouter; then the pane says `OpenRouter did not answer in 30 s (voice.openrouter.timeoutMs)` |
 | `baseUrl` | `https://openrouter.ai/api/v1` | where the API is |
 
 `pair doctor` asks OpenRouter whether it takes the key, and whether `hear` and `speak.model` are among its
