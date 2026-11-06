@@ -47,13 +47,14 @@ index's best pieces come with its "No matches." ([scout.md](scout.md)).
 
 ## Rerank
 
-A decision model can reorder the first pieces of a settled search: the fused list of `/find`, the `search` tool and
-`vim.ui.select`, and the picker's list once meaning came (semantic-grep's README says how). In Pair it is the config's
-`rerank` entry, a [decision model entry](config.md#rerank) as `decision`'s: an `api` at a `baseUrl` (`"system-one"`,
-`"llama-cpp"` or `"openai"`), or a `provider` with one of its classifiers, its key as a model's; or a cross-encoder
-(`"api": "rerank"`, a `/rerank` such as llama.cpp's `--rerank`), which reorders every piece it reads; or a list of
-them, best first. `top` is how many pieces it reads (10), `timeoutMs` how long a search waits (3000; 1000 for one another follows),
-`chars` how much of each piece it reads (1200 for a cross-encoder, 160 otherwise).
+A decision model can move its pick of the first pieces of a settled search (the fused list of `/find`, the `search` tool
+and `vim.ui.select`, and the picker's list once meaning came) to the top when it stands out (semantic-grep's README
+says how). In Pair it is the config's `rerank` entry, a [decision model entry](config.md#rerank) as `decision`'s: an
+`api` at a `baseUrl` (`"system-one"`, `"llama-cpp"` or `"openai"`), or a `provider` with one of its classifiers, its key
+as a model's; or a cross-encoder (`"api": "rerank"`, a `/rerank` such as llama.cpp's `--rerank`), which reorders every
+piece it reads; or a list of them, best first. `top` is how many pieces it reads (10), `timeoutMs` how long a search
+waits (3000; 1000 for one another follows), `chars` how much of each piece it reads (1200 for a cross-encoder, 160
+otherwise).
 
 ```jsonc
 "rerank": [
@@ -113,12 +114,14 @@ wait for your break are the same as for every trail.
 
 ## In the ledger
 
-`:Pair today` lists each build of ten pieces or more (`indexed 6639 pieces by meaning in 551 s: 549 files, 6639
-pieces, 13780 KB`; a save's few pieces get no line of their own), each piece you open from the picker (`searched by
-meaning "method that removes user" in the picker: 1 result, first src/teams.js:42`), each `/find` and `search` tool
-search (`⏎` shows the ranking), each rerank (`⏎` shows the order before and after, with the model's probability for
-each), each lookup for the search trail, `:Pair index rebuild` and `:SemanticGrep rebuild`, LiteRT-LM's install, the
-model's download, and `:Pair find off` deleting them. The words you type on the way are not booked.
+`:Pair today` lists each build of ten pieces or more (`indexed 6639 pieces by meaning in 551 s: 549 files, 6639 pieces,
+13780 KB`; a save's few pieces get no line of their own), each piece you open from the picker (`searched by meaning
+"method that removes user" in the picker: 1 result, first src/teams.js:42`), each `/find` and `search` tool search (`⏎`
+shows the ranking), each rerank (`⏎` shows the order before and after, with the model's probability or the
+cross-encoder's score for each, when its answer was used, even if nothing moved; when it was not (too slow, flat, failed,
+busy with another rerank or resting after a failure), the search's order it kept), each lookup for the search trail,
+`:Pair index rebuild` and `:SemanticGrep rebuild`, LiteRT-LM's install, the model's download, and `:Pair find off`
+deleting them. The words you type on the way are not booked.
 
 ## Why this model and runtime
 

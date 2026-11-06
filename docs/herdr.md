@@ -108,11 +108,11 @@ from Scout's commands, as it hides herdr's.
 ## Pair's panel in the Herdr window
 
 In a terminal the Herdr window shows, `pair` opens Pair's chat as a native pane of the window, beside that terminal,
-instead of the `pair chat` terminal. It is a Herdr mod ([herdr/pair/](../herdr/pair/)) that `pair setup` installs into
-the window's mods (`~/.config/herdr-app/mods/pair`, or `$HERDR_APP_HOME/mods/pair`), updates on an upgrade's
-`pair setup` (only the files that changed: each write reloads it in a running window) and `pair uninstall` removes.
-Without the window (plain herdr, herdr-core alone, a bare terminal) nothing changes, and `pair chat` always runs the
-terminal's chat.
+instead of the `pair chat` terminal. It is a Herdr mod ([herdr/pair/](../herdr/pair/)) that `pair setup` installs
+(unless `"herdrPanel": false`) into the window's mods (`~/.config/herdr-app/mods/pair`, or `$HERDR_APP_HOME/mods/pair`),
+updates on an upgrade's `pair setup` (only the files that changed: each write reloads it in a running window) and
+`pair uninstall` removes. Without the window (plain herdr, herdr-core alone, a bare terminal) nothing changes, and
+`pair chat` always runs the terminal's chat.
 
 | Piece | How |
 | --- | --- |
@@ -127,7 +127,7 @@ terminal's chat.
 
 ### Opening it without typing `pair`
 
-`pair setup` gives the panel a key and a button:
+`pair setup` gives the panel a key and a button (not with `"herdrPanel": false`):
 
 - **Alt-p** (else the first of Alt-Shift-p and Ctrl-Alt-p that no section of the window's `keys.json` binds; Alt-p is
   then no longer typed into the terminal programs) opens the panel to the right of the focused terminal:
