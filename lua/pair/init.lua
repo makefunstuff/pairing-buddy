@@ -41,7 +41,7 @@ local ns = draw.ns
 -- speak to Pair (push-to-talk, see listen.lua). Alt-a goes to the agent whose news Pair relayed. Alt-? asks for the
 -- idea behind Pair's words under your line, and then opens its link to the docs. In a note's margin, Alt-d logs a
 -- decision and Alt-l opens the code a mark links to. Alt-g asks Pair for code (/gen, see gen.lua). Alt-s searches
--- the project by meaning (see meaning.lua).
+-- the project by meaning (see meaning.lua); meaning_files_key, unset by default, finds the files a sentence is about.
 local config = {
   socket = nil, debounce_ms = 2000, max_points = 5, motion = true, glyphs = {},
   accept_key = '<M-y>', jump_key = '<M-j>', useful_key = '<M-u>', noise_key = '<M-n>', listen_key = '<M-t>',
@@ -56,6 +56,7 @@ local config = {
   agents_review_key = '<M-r>', -- on the relayed line of a board task ready to merge: its branch as a review
   gen_key = '<M-g>', -- asks Pair for code, in Normal and Visual mode
   meaning_key = '<M-s>', -- searches the project by meaning; in Visual mode, for the selected words
+  meaning_files_key = nil, -- e.g. '<leader>sm': the files a sentence is about, best first (:Pair files); none by default
   -- The picker is semantic-grep.nvim's: these, when set, go to its picker, debounce_ms and rerank_delay_ms; unset, its
   -- own setup() decides (default 'auto', 150 and 0).
   meaning_picker = nil, -- 'auto', 'telescope', 'snacks', 'fzf-lua' or 'select': where search by meaning shows what it found
@@ -1539,6 +1540,11 @@ local commands = {
     if arg == 'off' then return meaning.off() end
     meaning.find(arg)
   end,
+  -- `:Pair files [sentence]`: semantic-grep's files view, the files the sentence is about, best first.
+  files = function(arg)
+    if not M.connect() then return vim.notify('Pair: not connected; :Pair files again once it is', vim.log.levels.WARN) end
+    meaning.files(arg)
+  end,
   index = function(arg)
     if arg ~= 'rebuild' then return vim.notify('Pair: :Pair index rebuild makes the search index again from the files', vim.log.levels.WARN) end
     if not M.connect() then return vim.notify('Pair: not connected; :Pair index rebuild again once it is', vim.log.levels.WARN) end
@@ -1759,6 +1765,14 @@ function M.setup(opts)
         if mode == 'x' then vim.cmd('normal! \27') end
         meaning.find(words)
       end, {desc = 'Search the project by meaning (Pair)'})
+    end
+    if config.meaning_files_key and config.meaning_files_key ~= '' and vim.fn.maparg(config.meaning_files_key, mode) == '' then
+      vim.keymap.set(mode, config.meaning_files_key, function()
+        if not state.channel then return vim.notify('Pair: not connected, so no search by meaning; :Pair start connects') end
+        local words = mode == 'x' and meaning.selected() or ''
+        if mode == 'x' then vim.cmd('normal! \27') end
+        meaning.files(words)
+      end, {desc = 'The files a sentence is about, by meaning (Pair)'})
     end
   end
   -- Push-to-talk, in Normal mode and, about the selected lines, in Visual mode; only where the key is free.

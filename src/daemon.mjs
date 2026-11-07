@@ -1079,7 +1079,8 @@ export async function startDaemon(config, {
   /**
    * A search of the project: a Neovim's picker asks for the words on every key (`phase` "words") and for the meaning
    * once typing stops ("meaning"), and for the fused ranking's first pieces reranked once that settles ("rerank"),
-   * each answer with its `id`; the chat's /find asks for both, fused (and reranked). Each result has
+   * or its files view for the files a sentence is about ("files"), each answer with its `id`; the chat's /find asks
+   * for both, fused (and reranked). Each result has
    * its absolute path, for the picker to open.
    */
   async function find(client, session, message) {
@@ -1090,7 +1091,8 @@ export async function startDaemon(config, {
     const answer = message.phase === 'words' ? await meaning.words(session.root, query)
       : message.phase === 'meaning' ? await meaning.meaningOnly(session.root, query)
       : message.phase === 'rerank' ? await meaning.rerank(session.root, query, {who: client})
-        : await meaning.search(session.root, query, {book: message.select !== true}); // a pick from vim.ui.select is booked as one
+        : message.phase === 'files' ? await meaning.files(session.root, query) // the files view: a result per file, best first
+          : await meaning.search(session.root, query, {book: message.select !== true}); // a pick from vim.ui.select is booked as one
     sendMessage(client.socket, {
       type: 'found', ...(message.id !== undefined ? {id: message.id} : {}), ...answer, root: session.root,
       results: answer.results.map(result => ({...result, path: join(session.root, result.file)})),
@@ -1099,8 +1101,9 @@ export async function startDaemon(config, {
 
   /**
    * semantic-grep.nvim's requests other than a search, from the Neovim that registered Pair's daemon as its source
-   * (lua/pair/meaning.lua): "status" (Meaning's snapshot), "check" (the embedding model asked once, the reranker's
-   * probe), "open" (the session's project indexed) and "rebuild" (as :Pair index rebuild). Answered with its `id`.
+   * (lua/pair/meaning.lua): "status" (Meaning's snapshot), "check" (the profile, the embedding model asked once, the
+   * reranker's probe, the notes writer asked for one note), "open" (the session's project indexed) and "rebuild" (as
+   * :Pair index rebuild). Answered with its `id`.
    */
   async function searchRequest(client, session, message) {
     const answer = fields => sendMessage(client.socket, {type: 'search_rpc', id: message.id, ...fields});
@@ -1129,12 +1132,27 @@ export async function startDaemon(config, {
           }
         }
         const rerank = meaning.reranker ? {...await meaning.reranker.probe(), timeoutMs: meaning.reranker.timeoutMs, models: meaning.reranker.name} : null;
-        return answer({result: {embedding, rerank}});
+        return answer({result: {profile: config.meaning?.profile ?? null, embedding, rerank, notes: await notesCheck()}});
       }
       throw new Error(`Pair's daemon has no ${message.method}`);
     } catch (error) {
       answer({error: error.message});
     }
+  }
+
+  /**
+   * The notes writer asked for one note on a small piece of its own, not the project's code, for :checkhealth
+   * semantic-grep (as semantic-grep's own server asks it); null without one.
+   */
+  async function notesCheck() {
+    const writer = meaning.writer;
+    if (!writer) return null;
+    const started = Date.now();
+    const counts = {written: writer.written, tokens: {...writer.tokens}, cost: writer.cost, ms: writer.ms};
+    const {notes: [written], errors} = await writer.write([{hash: 'check', file: 'math.js', from: 1, name: 'add', text: '/** The sum of a and b. */\nexport function add(a, b) { return a + b }'}]);
+    Object.assign(writer, counts); // the check's note is not the project's
+    const about = {model: writer.about, sendCode: writer.entry.sendCode, idleMs: writer.entry.idleMs, written: writer.written};
+    return written ? {ok: true, ms: Date.now() - started, note: written.note, ...about} : {ok: false, ms: Date.now() - started, error: errors[0] ?? 'no answer', ...about};
   }
 
   /** `:Pair index rebuild`: the project's index made again from its files, in the background. */

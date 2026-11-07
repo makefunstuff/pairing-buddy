@@ -1,14 +1,15 @@
 // Search by meaning, as Pair runs it: semantic-grep's Meaning (its index, word search, meaning search and rerank; see
 // docs/meaning.md) with what is Pair's own. EmbeddingGemma 2 on LiteRT-LM (embedder.mjs) is the model when the config
 // has no "embedding" one: Pair installs LiteRT-LM in a venv of its own (runtime.mjs, shared with voice's LFM3-Omni) and
-// downloads the model once, as `:Pair find on`, through Meaning's `provider` hook. The index lives in Pair's data
-// folder, or in .pair/ of the repository with "meaning": {"index": "project"}; builds, searches and reranks go to the
-// ledger (the daemon's `book`).
+// downloads the model once, as `:Pair find on`, through Meaning's `provider` hook. A "meaning": {"profile": ...} names
+// the "embedding" and "rerank" models instead (config.mjs), and "meaning": {"notes": ...} a model that writes notes on
+// the pieces while nothing is searched. The index lives in Pair's data folder, or in .pair/ of the repository with
+// "meaning": {"index": "project"}; builds, searches, reranks and notes go to the ledger (the daemon's `book`).
 import {existsSync, renameSync} from 'node:fs';
 import {rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {HttpEmbedder, Meaning, Reranker} from 'semantic-grep';
-import {apiKeyOf} from './config.mjs';
+import {apiKeyOf, withPairKey} from './config.mjs';
 import {downloadModel, Embedder, meaningDir, MODEL, modelPath, modelReady, pythonOf, removeModel} from './embedder.mjs';
 import {voicePythonsOn} from './omni.mjs';
 import {Runtime, RUNTIME_VERSION} from './runtime.mjs';
@@ -131,7 +132,8 @@ export const offNote = dataDir => join(dataDir, 'off');
 export function pairSearch({config, log = () => {}, book = () => {}, progress = () => {}, reranker = null, keepVenv = () => false, with: given = {}}) {
   const {embedder: fake = null, runtime: fakeRuntime = null, fetch = globalThis.fetch, ...rest} = given;
   const {dataDir} = config;
-  const meaningConfig = config.meaning === false ? false : {...config.meaning, projectDir: PROJECT_DIR};
+  const {profile, notes = null, ...own} = config.meaning || {}; // the profile is in config.embedding and config.rerank already
+  const meaningConfig = config.meaning === false ? false : {...own, projectDir: PROJECT_DIR};
   const python = () => pythonOf(config.meaning, dataDir);
   const runtime = fakeRuntime ?? (fake ? null : new Runtime({dataDir, python, fetch, log}));
   migrate(dataDir);
@@ -146,7 +148,7 @@ export function pairSearch({config, log = () => {}, book = () => {}, progress = 
     gemma.keepVenv = keepVenv;
   }
   const meaning = new Meaning({
-    dataDir, config: meaningConfig, embedding: config.embedding ?? null, reranker, log, book, progress, fetch, embedder, provider: gemma, ...rest,
+    dataDir, config: meaningConfig, embedding: config.embedding ?? null, reranker, notes: withPairKey(notes), log, book, progress, fetch, embedder, provider: gemma, ...rest,
   });
   const turnOff = async () => {
     const {venv} = await meaning.turnOff();

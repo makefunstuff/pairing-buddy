@@ -3,8 +3,8 @@
 -- decision model the first pieces reranked in place. Pair registers its daemon with
 -- require('semantic-grep').register_source() while it is connected, so the daemon's index (one per repository, kept
 -- up to date as you save) is the only one a project gets while Pair runs, and what you search and open goes in the
--- ledger; :SemanticGrep and :checkhealth semantic-grep ask it too. Once Pair disconnects, semantic-grep goes back to
--- its own server. :Pair find on installs LiteRT-LM and downloads EmbeddingGemma 2 once (or the config has an
+-- ledger; :SemanticGrep (its files view too, which :Pair files opens) and :checkhealth semantic-grep ask it too. Once
+-- Pair disconnects, semantic-grep goes back to its own server. :Pair find on installs LiteRT-LM and downloads EmbeddingGemma 2 once (or the config has an
 -- "embedding" model); :Pair find off deletes them; :Pair index rebuild makes the index again. See docs/meaning.md.
 local M = {}
 
@@ -42,7 +42,7 @@ local source = {name = "Pair's daemon: its index, models and ledger (:Pair find 
 
 function source.request(method, params, callback)
   params = params or {}
-  if method == 'words' or method == 'meaning' or method == 'rerank' then
+  if method == 'words' or method == 'meaning' or method == 'rerank' or method == 'files' then
     return ask({type = 'find', query = params.query or '', phase = method}, callback)
   elseif method == 'search' then -- vim.ui.select's one list: booked once a piece is chosen
     return ask({type = 'find', query = params.query or '', select = true}, callback)
@@ -120,6 +120,12 @@ end
 function M.find(query)
   if not M.register() then return vim.notify(MISSING, vim.log.levels.WARN) end
   sg().find(vim.trim(query or ''))
+end
+
+--- Opens semantic-grep's files view over Pair's daemon: the files `query` is about, best first.
+function M.files(query)
+  if not M.register() then return vim.notify(MISSING, vim.log.levels.WARN) end
+  sg().files(vim.trim(query or ''))
 end
 
 function M.on() deps.send({type = 'meaning_on'}) end
