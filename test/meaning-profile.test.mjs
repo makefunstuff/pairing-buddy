@@ -10,7 +10,7 @@ import {mkdirSync, readFileSync, realpathSync, writeFileSync} from 'node:fs';
 import {createServer} from 'node:http';
 import {join} from 'node:path';
 import {test} from 'node:test';
-import {PROFILES} from 'semantic-grep';
+import {PROFILES, apiKeyOf as searchKeyOf} from 'semantic-grep';
 import {apiKeyOf, parseConfig, primeKeyCommands, withPairKey} from '../src/config.mjs';
 import {createRerankEndpoints} from '../src/models.mjs';
 import {pairReranker, pairSearch} from '../src/search.mjs';
@@ -120,6 +120,16 @@ test('a key a command prints is read in the background, never waited for, and ke
   assert.equal(apiKeyOf(entry), 'sk-from-command');
   assert.equal(apiKeyOf(entry), 'sk-from-command');
   assert.equal(readFileSync(runs, 'utf8'), 'run\n', 'run once, then kept');
+});
+
+test('semantic-grep, asking a writer or a cross-encoder for its key, never runs the command itself', () => {
+  const failing = withPairKey({api: 'rerank', baseUrl: 'https://rerank.example/v1', model: 'r', apiKeyCommand: 'sleep 1; exit 1'});
+  for (let i = 0; i < 3; i++) {
+    const started = Date.now();
+    assert.equal(searchKeyOf(failing), undefined, 'no key yet, or the command failed');
+    assert.ok(Date.now() - started < 200, `semantic-grep's apiKeyOf does not wait for the command (${Date.now() - started} ms)`);
+  }
+  assert.doesNotMatch(JSON.stringify(failing), /apiKeyCommand/);
 });
 
 test('a key semantic-grep reads for a cross-encoder or a writer is Pair\'s: never in a snapshot or a log', () => {

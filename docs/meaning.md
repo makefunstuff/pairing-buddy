@@ -115,9 +115,10 @@ has what they gain, per model). Two ways to have them:
   writes a few pieces at a time once nothing was searched for a while and stops at the next search. A writer that is
   not on this machine gets no code unless its entry says `"sendCode": true` (the `cloud` and `openrouter` profiles'
   do). Off by default. The `openrouter` profile's writer reads its key from a command, `pi auth print-api-key
-  --provider opencode-go` ([its docs/profiles.md](https://github.com/makefunstuff/semantic-grep.nvim/blob/main/docs/profiles.md#openrouter-openrouter)), at most
-  every five minutes and never while a request waits; without pi, `"notes": {"apiKeyEnv": "…"}` (or `auth`, or an
-  `apiKeyCommand` of your own) replaces it.
+  --provider opencode-go`
+  ([its docs/profiles.md](https://github.com/makefunstuff/semantic-grep.nvim/blob/main/docs/profiles.md#openrouter-openrouter)),
+  in the background, at most every five minutes (20 s after it failed), never holding up a search or a request;
+  without pi, `"notes": {"apiKeyEnv": "…"}` (or `auth`, or an `apiKeyCommand` of your own) replaces it.
 - **From a coding agent.** semantic-grep's `semantic-grep-server notes pending` and `notes put` (or its Claude Code
   skill, which runs them for you) on Pair's index: give them `--data-dir ~/.local/state/pairing-buddy` (Pair's
   `dataDir`), and with `"index": "project"` also `--index project --project-dir .pair`. Its README's

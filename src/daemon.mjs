@@ -1153,7 +1153,8 @@ export async function startDaemon(config, {
     Object.assign(writer, counts); // the check's note is not the project's
     const about = {model: writer.about, sendCode: writer.entry.sendCode, idleMs: writer.entry.idleMs, written: writer.written};
     if (written) return {ok: true, ms: Date.now() - started, note: written.note, ...about};
-    // As semantic-grep's server says it: nothing answers there, so :checkhealth says to start it.
+    // As semantic-grep's server says it (src/server.mjs's UNREACHABLE at 1e8a4b1, which it does not export; keep the
+    // two alike): nothing answers there, so :checkhealth says to start it.
     const unreachable = /ECONNREFUSED|ENOTFOUND|EHOSTUNREACH|ENETUNREACH|EAI_AGAIN|ECONNRESET|UND_ERR_CONNECT|did not answer|fetch failed/i.test(errors[0] ?? '');
     return {ok: false, ms: Date.now() - started, error: errors[0] ?? 'no answer', unreachable, ...about};
   }

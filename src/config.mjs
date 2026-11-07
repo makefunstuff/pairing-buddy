@@ -245,27 +245,29 @@ export function apiKeyOf(entry) {
 }
 
 const KEY_COMMAND_MS = 5 * 60_000; // how long a key a command printed is used before the command runs again
+const KEY_COMMAND_RETRY_MS = 20_000; // how soon a command that failed or printed nothing runs again
 const KEY_COMMAND_TIMEOUT_MS = 30_000;
 const commandKeys = new Map(); // command -> {key, at, pending}
 
 /**
  * The key `command` printed (an `apiKeyCommand`), never waited for: the daemon is one process, and every request
  * asks for its key. The command runs in the background, at the first ask and again once its key is
- * KEY_COMMAND_MS old; until its first answer there is no key (that request fails as with a missing key, and the
- * next has it). Its output is never logged.
+ * KEY_COMMAND_MS old (a key rotated meanwhile is used that long), or KEY_COMMAND_RETRY_MS after it failed; until its
+ * first answer there is no key (that request fails as with a missing key, and the next has it). Its output is never
+ * logged.
  */
 export function commandKey(command) {
   const known = commandKeys.get(command) ?? {key: undefined, at: 0, pending: null};
   commandKeys.set(command, known);
-  if (!known.pending && Date.now() - known.at >= KEY_COMMAND_MS) runKeyCommand(command, known);
+  if (!known.pending && Date.now() - known.at >= (known.key ? KEY_COMMAND_MS : KEY_COMMAND_RETRY_MS)) runKeyCommand(command, known);
   return known.key;
 }
 
 function runKeyCommand(command, known) {
   known.pending = new Promise(resolve => {
     execFile('/bin/sh', ['-c', command], {encoding: 'utf8', timeout: KEY_COMMAND_TIMEOUT_MS}, (error, out) => {
-      if (!error) known.key = out.trim() || undefined;
-      known.at = Date.now(); // a failing command is not run again on every request either
+      known.key = error ? undefined : out.trim() || undefined; // a key the command no longer prints is not kept
+      known.at = Date.now(); // a failing command is not run again on every request either, but soon
       known.pending = null;
       resolve(known.key);
     });
@@ -284,12 +286,14 @@ export function primeKeyCommands(entries) {
 /**
  * `entry` for semantic-grep to ask with Pair's key: a cross-encoder or a notes writer is asked by semantic-grep itself,
  * which reads `apiKey` first; here that is apiKeyOf(entry), so `auth` and the variables `pair setup` stored for the
- * service work there too. Not enumerable: the key is never in a snapshot or a log.
+ * service work there too. Not enumerable: the key is never in a snapshot or a log. Without its `apiKeyCommand`:
+ * semantic-grep would run it, waiting for it, whenever Pair's has no key yet (commandKey).
  */
 export function withPairKey(entry) {
   if (!entry) return entry;
   const own = {...entry};
   delete own.apiKey;
+  delete own.apiKeyCommand;
   return Object.defineProperty(own, 'apiKey', {get: () => apiKeyOf(entry), enumerable: false});
 }
 
