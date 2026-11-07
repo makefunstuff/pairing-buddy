@@ -9,7 +9,7 @@ import {existsSync, renameSync} from 'node:fs';
 import {rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {HttpEmbedder, Meaning, Reranker} from 'semantic-grep';
-import {apiKeyOf, withPairKey} from './config.mjs';
+import {apiKeyOf, primeKeyCommands, withPairKey} from './config.mjs';
 import {downloadModel, Embedder, meaningDir, MODEL, modelPath, modelReady, pythonOf, removeModel} from './embedder.mjs';
 import {voicePythonsOn} from './omni.mjs';
 import {Runtime, RUNTIME_VERSION} from './runtime.mjs';
@@ -147,6 +147,8 @@ export function pairSearch({config, log = () => {}, book = () => {}, progress = 
     gemma = new GemmaProvider({dataDir, meaning: config.meaning, embedder, runtime, fetch, log});
     gemma.keepVenv = keepVenv;
   }
+  // A key a command prints is read in the background (config.mjs, commandKey): asked now, the first requests have it.
+  primeKeyCommands([config.embedding, ...(config.rerank ?? []), notes]).catch(() => {});
   const meaning = new Meaning({
     dataDir, config: meaningConfig, embedding: config.embedding ?? null, reranker, notes: withPairKey(notes), log, book, progress, fetch, embedder, provider: gemma, ...rest,
   });

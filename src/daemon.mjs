@@ -1152,7 +1152,10 @@ export async function startDaemon(config, {
     const {notes: [written], errors} = await writer.write([{hash: 'check', file: 'math.js', from: 1, name: 'add', text: '/** The sum of a and b. */\nexport function add(a, b) { return a + b }'}]);
     Object.assign(writer, counts); // the check's note is not the project's
     const about = {model: writer.about, sendCode: writer.entry.sendCode, idleMs: writer.entry.idleMs, written: writer.written};
-    return written ? {ok: true, ms: Date.now() - started, note: written.note, ...about} : {ok: false, ms: Date.now() - started, error: errors[0] ?? 'no answer', ...about};
+    if (written) return {ok: true, ms: Date.now() - started, note: written.note, ...about};
+    // As semantic-grep's server says it: nothing answers there, so :checkhealth says to start it.
+    const unreachable = /ECONNREFUSED|ENOTFOUND|EHOSTUNREACH|ENETUNREACH|EAI_AGAIN|ECONNRESET|UND_ERR_CONNECT|did not answer|fetch failed/i.test(errors[0] ?? '');
+    return {ok: false, ms: Date.now() - started, error: errors[0] ?? 'no answer', unreachable, ...about};
   }
 
   /** `:Pair index rebuild`: the project's index made again from its files, in the background. */

@@ -92,7 +92,10 @@ server). One field in Pair's [config](config.md#meaning) takes one:
 "meaning": {"profile": "beefy"}
 ```
 
-It sets the `embedding` and `rerank` models to the profile's; EmbeddingGemma on LiteRT-LM is then not used. What the
+It sets the `embedding` and `rerank` models to the profile's; EmbeddingGemma on LiteRT-LM is then not used. Without
+a profile Pair already runs EmbeddingGemma 2 on a laptop's CPU itself, so `laptop` is for the same model behind a
+`llama-server` you run at its port (its vectors count as another model's, so the project is embedded again), or for
+its notes writer. What the
 config sets itself goes over the profile's, as semantic-grep's `setup()` takes it: `"embedding": {"baseUrl":
 "http://127.0.0.1:9000/v1"}` moves the profile's model, another `model` is an entry of its own, `"rerank": false`
 turns the profile's reranker off, and a decision model or a list in `rerank` is yours. Which models each profile
@@ -111,7 +114,10 @@ has what they gain, per model). Two ways to have them:
   profile's notes writer (the laptop's without a profile), or an entry over it, such as `{"model": "qwen3.5-9b"}`. It
   writes a few pieces at a time once nothing was searched for a while and stops at the next search. A writer that is
   not on this machine gets no code unless its entry says `"sendCode": true` (the `cloud` and `openrouter` profiles'
-  do). Off by default.
+  do). Off by default. The `openrouter` profile's writer reads its key from a command, `pi auth print-api-key
+  --provider opencode-go` ([its docs/profiles.md](https://github.com/makefunstuff/semantic-grep.nvim/blob/main/docs/profiles.md#openrouter-openrouter)), at most
+  every five minutes and never while a request waits; without pi, `"notes": {"apiKeyEnv": "…"}` (or `auth`, or an
+  `apiKeyCommand` of your own) replaces it.
 - **From a coding agent.** semantic-grep's `semantic-grep-server notes pending` and `notes put` (or its Claude Code
   skill, which runs them for you) on Pair's index: give them `--data-dir ~/.local/state/pairing-buddy` (Pair's
   `dataDir`), and with `"index": "project"` also `--index project --project-dir .pair`. Its README's

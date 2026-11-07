@@ -6,12 +6,12 @@
 // /chat/completions, and a fake embedder for EmbeddingGemma 2.
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {mkdirSync, realpathSync, writeFileSync} from 'node:fs';
+import {mkdirSync, readFileSync, realpathSync, writeFileSync} from 'node:fs';
 import {createServer} from 'node:http';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {PROFILES} from 'semantic-grep';
-import {parseConfig, withPairKey} from '../src/config.mjs';
+import {apiKeyOf, parseConfig, primeKeyCommands, withPairKey} from '../src/config.mjs';
 import {createRerankEndpoints} from '../src/models.mjs';
 import {pairReranker, pairSearch} from '../src/search.mjs';
 import {keyVariables} from '../src/service-env.mjs';
@@ -95,8 +95,31 @@ test('config: notes are off by default; true is the profile\'s writer (the lapto
   const cloud = parseConfig({...MODELS, meaning: {profile: 'cloud', notes: true}}).meaning.notes;
   assert.deepEqual([cloud.api, cloud.sendCode], ['anthropic', true]);
   assert.equal(parseConfig({...MODELS, meaning: {notes: {model: 'qwen3.5-9b'}}}).meaning.notes.model, 'qwen3.5-9b', 'an entry over the writer');
-  assert.throws(() => parseConfig({...MODELS, meaning: {notes: {api: 'openai', baseUrl: 'https://writer.example/v1', model: 'w'}}}), /config: meaning\.notes: https:\/\/writer\.example\/v1 is not this machine.*sendCode = true/);
+  assert.throws(() => parseConfig({...MODELS, meaning: {notes: {api: 'openai', baseUrl: 'https://writer.example/v1', model: 'w'}}}), /config: meaning\.notes: https:\/\/writer\.example\/v1 is not this machine.*"sendCode": true/, 'said as JSON');
   assert.throws(() => parseConfig({...MODELS, meaning: {notes: {concurrency: 'many'}}}), /config: meaning\.notes\.concurrency/);
+  assert.throws(() => parseConfig({...MODELS, meaning: {notes: 'yes'}}), /config: meaning\.notes must be true, false or a notes writer entry/);
+  const stored = parseConfig({...MODELS, meaning: {profile: 'cloud', notes: {auth: 'anthropic'}}});
+  assert.deepEqual([stored.meaning.notes.auth, stored.meaning.notes.apiKeyEnv], ['anthropic', undefined], 'Pair\'s stored key replaces the profile\'s');
+  assert.deepEqual(keyVariables(stored), ['VOYAGE_API_KEY'], 'nothing for `pair setup` to store for the writer');
+});
+
+test('config: apiKeyCommand is for search by meaning\'s models only, and must be a command', () => {
+  assert.throws(() => parseConfig({model: {...MODELS.model, apiKeyCommand: 'pass show llm'}}), /apiKeyCommand is for search by meaning/);
+  assert.throws(() => parseConfig({...MODELS, decision: {api: 'system-one', baseUrl: 'http://h/v1', model: 'd1-2B', apiKeyEnv: 'K', apiKeyCommand: 'x'}}), /apiKeyCommand is for search by meaning/);
+  assert.throws(() => parseConfig({...MODELS, embedding: {api: 'openai', baseUrl: 'http://h/v1', model: 'e', apiKeyCommand: ' '}}), /embedding\.apiKeyCommand must be a command/);
+  assert.equal(parseConfig({...MODELS, embedding: {api: 'openai', baseUrl: 'http://h/v1', model: 'e', apiKeyCommand: 'pass show e'}}).embedding.apiKeyCommand, 'pass show e');
+});
+
+test('a key a command prints is read in the background, never waited for, and kept a while', async () => {
+  const runs = join(scratch('key-command-'), 'runs');
+  const entry = {apiKeyCommand: `echo run >> '${runs}'; sleep 0.2; echo sk-from-command`};
+  const started = Date.now();
+  assert.equal(apiKeyOf(entry), undefined, 'not there yet: the request goes without, rather than the daemon waiting');
+  assert.ok(Date.now() - started < 100, 'the command does not block');
+  await primeKeyCommands([entry]);
+  assert.equal(apiKeyOf(entry), 'sk-from-command');
+  assert.equal(apiKeyOf(entry), 'sk-from-command');
+  assert.equal(readFileSync(runs, 'utf8'), 'run\n', 'run once, then kept');
 });
 
 test('a key semantic-grep reads for a cross-encoder or a writer is Pair\'s: never in a snapshot or a log', () => {

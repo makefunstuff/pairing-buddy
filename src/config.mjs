@@ -1,5 +1,6 @@
 // One config file for the daemon: the models (one for both roles, or one each), the talk level and where things live.
 // It is JSON with // and /* */ comments; the first run writes the commented example there.
+import {execFile} from 'node:child_process';
 import {copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync} from 'node:fs';
 import {homedir} from 'node:os';
 import {dirname, isAbsolute, join, resolve} from 'node:path';
@@ -9,7 +10,7 @@ import {MIN_CONTEXT, replyRoom} from './context.mjs';
 import {storedKey} from './credentials.mjs';
 import {RUN_TIMEOUT_MS} from './scout-pane.mjs';
 import {scoutPaneConfig} from './scout-shell.mjs';
-import {FALLBACK_TIMEOUT_MS, PROFILES, RERANK_TIMEOUT_MS, RERANK_TOP, apiKeyOf as searchKeyOf, profileConfig, rerankConfig as searchRerankConfig} from 'semantic-grep';
+import {FALLBACK_TIMEOUT_MS, PROFILES, RERANK_TIMEOUT_MS, RERANK_TOP, profileConfig, rerankConfig as searchRerankConfig} from 'semantic-grep';
 import {readServiceEnv} from './service-env.mjs';
 import {LEVELS} from '../herdr/pair/commands.js';
 import {voiceConfig} from './voice.mjs';
@@ -50,6 +51,7 @@ export function serviceEnvPath() {
 function checkSource(name, entry) {
   const keys = ['auth', 'apiKey', 'apiKeyFile', 'apiKeyEnv'].filter(field => entry[field] !== undefined);
   if (keys.length > 1) throw new Error(`config: ${name} takes one of ${keys.join(', ')}`);
+  if (entry.apiKeyCommand !== undefined) throw new Error(`config: ${name} takes auth, apiKey, apiKeyFile or apiKeyEnv; apiKeyCommand is for search by meaning's embedding, cross-encoder and notes writer`);
   if (entry.provider === undefined) {
     if (!['openai', 'anthropic'].includes(entry.api)) throw new Error(`config: ${name} needs a "provider", or an "api": "openai" or "anthropic"`);
     if (entry.auth !== undefined && (typeof entry.auth !== 'string' || !entry.auth)) throw new Error(`config: ${name}.auth must name a key stored by \`pair auth login\``);
@@ -205,6 +207,7 @@ export function decisionConfig(entry, name = 'decision') {
   if (typeof entry !== 'object' || Array.isArray(entry)) throw new Error(`config: ${name} must be a model entry`);
   const keys = ['auth', 'apiKey', 'apiKeyFile', 'apiKeyEnv'].filter(field => entry[field] !== undefined);
   if (keys.length > 1) throw new Error(`config: ${name} takes one of ${keys.join(', ')}`);
+  if (entry.apiKeyCommand !== undefined) throw new Error(`config: ${name} takes auth, apiKey, apiKeyFile or apiKeyEnv; apiKeyCommand is for search by meaning's embedding, cross-encoder and notes writer`);
   if (typeof entry.model !== 'string' || !entry.model) throw new Error(`config: ${name}.model is missing`);
   if (entry.provider !== undefined) {
     if (typeof entry.provider !== 'string' || !entry.provider) throw new Error(`config: ${name}.provider must be a provider id (see \`pair auth list\`)`);
@@ -237,8 +240,45 @@ export function apiKeyOf(entry) {
   if (entry.apiKey) return entry.apiKey;
   if (entry.apiKeyFile) return readFileSync(entry.apiKeyFile.replace(/^~(?=\/)/, homedir()), 'utf8').trim();
   if (entry.apiKeyEnv) return process.env[entry.apiKeyEnv] ?? readServiceEnv(serviceEnvPath())[entry.apiKeyEnv];
-  if (entry.apiKeyCommand) return searchKeyOf(entry);
+  if (entry.apiKeyCommand) return commandKey(entry.apiKeyCommand);
   return undefined;
+}
+
+const KEY_COMMAND_MS = 5 * 60_000; // how long a key a command printed is used before the command runs again
+const KEY_COMMAND_TIMEOUT_MS = 30_000;
+const commandKeys = new Map(); // command -> {key, at, pending}
+
+/**
+ * The key `command` printed (an `apiKeyCommand`), never waited for: the daemon is one process, and every request
+ * asks for its key. The command runs in the background, at the first ask and again once its key is
+ * KEY_COMMAND_MS old; until its first answer there is no key (that request fails as with a missing key, and the
+ * next has it). Its output is never logged.
+ */
+export function commandKey(command) {
+  const known = commandKeys.get(command) ?? {key: undefined, at: 0, pending: null};
+  commandKeys.set(command, known);
+  if (!known.pending && Date.now() - known.at >= KEY_COMMAND_MS) runKeyCommand(command, known);
+  return known.key;
+}
+
+function runKeyCommand(command, known) {
+  known.pending = new Promise(resolve => {
+    execFile('/bin/sh', ['-c', command], {encoding: 'utf8', timeout: KEY_COMMAND_TIMEOUT_MS}, (error, out) => {
+      if (!error) known.key = out.trim() || undefined;
+      known.at = Date.now(); // a failing command is not run again on every request either
+      known.pending = null;
+      resolve(known.key);
+    });
+  });
+  return known.pending;
+}
+
+/** Runs the `apiKeyCommand` of each of `entries` now, so their first requests have a key. Resolves once they answered. */
+export function primeKeyCommands(entries) {
+  return Promise.all(entries.filter(entry => entry?.apiKeyCommand).map(entry => {
+    commandKey(entry.apiKeyCommand);
+    return commandKeys.get(entry.apiKeyCommand).pending;
+  }));
 }
 
 /**
@@ -344,8 +384,19 @@ function meaningConfig(raw = {}) {
   if (profile !== undefined && profile !== null && !Object.hasOwn(PROFILES, profile)) {
     throw new Error(`config: meaning.profile must be one of ${Object.keys(PROFILES).map(name => `"${name}"`).join(', ')} (semantic-grep's docs/profiles.md)`);
   }
+  if (notes !== undefined && notes !== null && typeof notes !== 'boolean' && (typeof notes !== 'object' || Array.isArray(notes))) {
+    throw new Error('config: meaning.notes must be true, false or a notes writer entry, for example {"model": "qwen3.5-9b"}');
+  }
   let written = null;
-  try { written = profileConfig({profile: profile ?? undefined, notes}).notes; } catch (error) { throw new Error(`config: meaning.${error.message}`); }
+  try {
+    written = profileConfig({profile: profile ?? undefined, notes}).notes;
+  } catch (error) { // semantic-grep's words are for its Lua setup(); Pair's config is JSON
+    throw new Error(`config: meaning.${error.message.replace('sendCode = true', '"sendCode": true')}`);
+  }
+  if (written && typeof notes === 'object' && notes.auth !== undefined) { // Pair's stored key replaces the profile's
+    if (typeof notes.auth !== 'string' || !notes.auth) throw new Error('config: meaning.notes.auth must name a key stored by `pair auth login`');
+    for (const field of KEY_FIELDS) if (field !== 'auth') delete written[field];
+  }
   return {...(python ? {python: python.trim()} : {}), ...(threads ? {threads} : {}), ...(index ? {index} : {}), ...(profile ? {profile} : {}), ...(written ? {notes: written} : {})};
 }
 
@@ -395,6 +446,7 @@ export function embeddingConfig(entry, name = 'embedding') {
   if (typeof entry.model !== 'string' || !entry.model) throw new Error(`config: ${name}.model is missing`);
   const keys = KEY_FIELDS.filter(field => entry[field] !== undefined);
   if (keys.length > 1) throw new Error(`config: ${name} takes one of ${keys.join(', ')}`);
+  if (entry.apiKeyCommand !== undefined && (typeof entry.apiKeyCommand !== 'string' || !entry.apiKeyCommand.trim())) throw new Error(`config: ${name}.apiKeyCommand must be a command`);
   for (const field of ['queryPrefix', 'documentPrefix']) {
     if (entry[field] !== undefined && typeof entry[field] !== 'string') throw new Error(`config: ${name}.${field} must be text`);
   }
