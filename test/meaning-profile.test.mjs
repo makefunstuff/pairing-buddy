@@ -126,10 +126,45 @@ test('semantic-grep, asking a writer or a cross-encoder for its key, never runs 
   const failing = withPairKey({api: 'rerank', baseUrl: 'https://rerank.example/v1', model: 'r', apiKeyCommand: 'sleep 1; exit 1'});
   for (let i = 0; i < 3; i++) {
     const started = Date.now();
-    assert.equal(searchKeyOf(failing), undefined, 'no key yet, or the command failed');
+    assert.throws(() => searchKeyOf(failing), /: no key in its apiKeyCommand/, 'no key yet, or the command failed: said, nothing sent');
     assert.ok(Date.now() - started < 200, `semantic-grep's apiKeyOf does not wait for the command (${Date.now() - started} ms)`);
   }
   assert.doesNotMatch(JSON.stringify(failing), /apiKeyCommand/);
+});
+
+test('a writer whose key command has no key sends nothing and says so; a key refused is asked for again', async () => {
+  const dataDir = scratch('profile-keyless-');
+  const piece = {hash: 'h1', file: 'math.js', from: 1, name: 'add', text: 'export function add(a, b) { return a + b }'};
+  let sent = 0;
+  const fetch = async () => { sent += 1; return new Response('{"error": "no"}', {status: 401}); };
+  const keyless = parseConfig({...MODELS, meaning: {notes: {baseUrl: 'http://127.0.0.1:9/v1', apiKeyCommand: 'exit 1'}}});
+  let {meaning} = pairSearch({config: {...keyless, dataDir}, with: {embedder: fakeEmbedder(), fetch}});
+  try {
+    const started = Date.now();
+    const {notes, errors} = await meaning.writer.write([piece]);
+    assert.ok(Date.now() - started < 200, 'nothing waits for the command');
+    assert.deepEqual(notes, []);
+    assert.match(errors[0], /: no key in its apiKeyCommand/, 'semantic-grep\'s own words: the writer stops');
+    assert.equal(sent, 0, 'no code goes out without its key');
+  } finally {
+    await meaning.close();
+  }
+
+  const runs = join(dataDir, 'runs');
+  const command = `echo run >> '${runs}'; echo sk-old`;
+  const keyed = parseConfig({...MODELS, meaning: {notes: {baseUrl: 'http://127.0.0.1:9/v1', apiKeyCommand: command}}});
+  ({meaning} = pairSearch({config: {...keyed, dataDir}, with: {embedder: fakeEmbedder(), fetch}}));
+  try {
+    await primeKeyCommands([keyed.meaning.notes]);
+    const {errors} = await meaning.writer.write([piece]);
+    assert.match(errors[0], /: 401 /);
+    assert.equal(sent, 1);
+    assert.equal(apiKeyOf(keyed.meaning.notes), undefined, 'the refused key is dropped, and the command runs again');
+    await primeKeyCommands([keyed.meaning.notes]);
+    assert.equal(readFileSync(runs, 'utf8'), 'run\nrun\n');
+  } finally {
+    await meaning.close();
+  }
 });
 
 test('a key semantic-grep reads for a cross-encoder or a writer is Pair\'s: never in a snapshot or a log', () => {

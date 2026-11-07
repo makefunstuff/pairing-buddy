@@ -233,7 +233,7 @@ export function rolesText({watcher, partner}) {
 /**
  * The API key of a model entry: the stored key `auth`, `apiKey`, the file `apiKeyFile` or the env var `apiKeyEnv`,
  * from the environment or else the file `pair setup` stored it in for the service; for search by meaning's models,
- * also the output of `apiKeyCommand` (semantic-grep's, run at each request).
+ * also the output of `apiKeyCommand`, run in the background and kept a while (commandKey).
  */
 export function apiKeyOf(entry) {
   if (entry.auth) return storedKey(authPath(), entry.auth);
@@ -275,6 +275,15 @@ function runKeyCommand(command, known) {
   return known.pending;
 }
 
+/**
+ * A request with the key `command` printed was refused (401 or 403): the key is dropped, and the next ask runs the
+ * command again, as after a login since.
+ */
+export function dropCommandKey(command) {
+  const known = commandKeys.get(command);
+  if (known && !known.pending) Object.assign(known, {key: undefined, at: 0});
+}
+
 /** Runs the `apiKeyCommand` of each of `entries` now, so their first requests have a key. Resolves once they answered. */
 export function primeKeyCommands(entries) {
   return Promise.all(entries.filter(entry => entry?.apiKeyCommand).map(entry => {
@@ -287,14 +296,24 @@ export function primeKeyCommands(entries) {
  * `entry` for semantic-grep to ask with Pair's key: a cross-encoder or a notes writer is asked by semantic-grep itself,
  * which reads `apiKey` first; here that is apiKeyOf(entry), so `auth` and the variables `pair setup` stored for the
  * service work there too. Not enumerable: the key is never in a snapshot or a log. Without its `apiKeyCommand`:
- * semantic-grep would run it, waiting for it, whenever Pair's has no key yet (commandKey).
+ * semantic-grep would run it, waiting for it, whenever Pair's has no key yet (commandKey); `keyCommand` keeps it for
+ * Pair. A key named but not there throws semantic-grep's own "no key in", so nothing is sent to be refused: a
+ * writer stops, a cross-encoder rests.
  */
 export function withPairKey(entry) {
   if (!entry) return entry;
   const own = {...entry};
   delete own.apiKey;
   delete own.apiKeyCommand;
-  return Object.defineProperty(own, 'apiKey', {get: () => apiKeyOf(entry), enumerable: false});
+  const source = entry.apiKey ? null : entry.auth ? `Pair's stored key "${entry.auth}" (pair auth login)` : entry.apiKeyFile ? 'its apiKeyFile'
+    : entry.apiKeyEnv ? `$${entry.apiKeyEnv}` : entry.apiKeyCommand ? 'its apiKeyCommand' : null;
+  const apiKey = () => {
+    const key = apiKeyOf(entry);
+    if (!key && source) throw new Error(`${entry.model} at ${entry.baseUrl}: no key in ${source}`);
+    return key;
+  };
+  Object.defineProperty(own, 'keyCommand', {value: entry.apiKeyCommand, enumerable: false});
+  return Object.defineProperty(own, 'apiKey', {get: apiKey, enumerable: false});
 }
 
 /** `path` with `~` expanded, as the real path the daemon names projects by when it exists. */

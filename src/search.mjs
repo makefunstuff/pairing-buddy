@@ -8,8 +8,8 @@
 import {existsSync, renameSync} from 'node:fs';
 import {rm} from 'node:fs/promises';
 import {join} from 'node:path';
-import {HttpEmbedder, Meaning, Reranker} from 'semantic-grep';
-import {apiKeyOf, primeKeyCommands, withPairKey} from './config.mjs';
+import {classify, HttpEmbedder, Meaning, Reranker} from 'semantic-grep';
+import {apiKeyOf, dropCommandKey, primeKeyCommands, withPairKey} from './config.mjs';
 import {downloadModel, Embedder, meaningDir, MODEL, modelPath, modelReady, pythonOf, removeModel} from './embedder.mjs';
 import {voicePythonsOn} from './omni.mjs';
 import {Runtime, RUNTIME_VERSION} from './runtime.mjs';
@@ -113,9 +113,30 @@ export class GemmaProvider {
  * "rerank" entry), each named as Pair names a model: "d1-2B on liquid" for a provider's, "d1-2B at <baseUrl>" else.
  */
 export function pairReranker(endpoints, options = {}) {
-  const reranker = new Reranker({endpoints, ...options});
+  // A cross-encoder refused with a key a command printed: the next rerank runs the command again (config.mjs).
+  const ask = (entry, context, asked) => classify(entry, context, asked).catch(error => {
+    if (entry.keyCommand && / answered (401|403):/.test(error.message)) dropCommandKey(entry.keyCommand);
+    throw error;
+  });
+  const reranker = new Reranker({endpoints, ask, ...options});
   for (const endpoint of reranker.endpoints) if (endpoint.entry.provider) endpoint.name = `${endpoint.entry.model} on ${endpoint.entry.provider}`;
   return reranker;
+}
+
+/**
+ * `fetch` that drops the key an `apiKeyCommand` of `entries` printed when a request to that entry's server is refused
+ * (401 or 403), so the next one runs the command again (config.mjs, commandKey).
+ */
+function refusedKeys(fetch, entries) {
+  const keyed = entries.filter(entry => entry?.apiKeyCommand);
+  if (!keyed.length) return fetch;
+  return async (url, options) => {
+    const response = await fetch(url, options);
+    if (response.status === 401 || response.status === 403) {
+      for (const entry of keyed) if (String(url).startsWith(entry.baseUrl.replace(/\/+$/, ''))) dropCommandKey(entry.apiKeyCommand);
+    }
+    return response;
+  };
 }
 
 /** Where `:Pair find off` with an "embedding" model leaves its note: semantic-grep's, in Pair's data folder. */
@@ -130,9 +151,10 @@ export const offNote = dataDir => join(dataDir, 'off');
  * with an "embedding" model the venv Pair made for EmbeddingGemma before goes too. It resolves `{venv}`.
  */
 export function pairSearch({config, log = () => {}, book = () => {}, progress = () => {}, reranker = null, keepVenv = () => false, with: given = {}}) {
-  const {embedder: fake = null, runtime: fakeRuntime = null, fetch = globalThis.fetch, ...rest} = given;
+  const {embedder: fake = null, runtime: fakeRuntime = null, fetch: baseFetch = globalThis.fetch, ...rest} = given;
   const {dataDir} = config;
   const {profile, notes = null, ...own} = config.meaning || {}; // the profile is in config.embedding and config.rerank already
+  const fetch = refusedKeys(baseFetch, [config.embedding, notes]);
   const meaningConfig = config.meaning === false ? false : {...own, projectDir: PROJECT_DIR};
   const python = () => pythonOf(config.meaning, dataDir);
   const runtime = fakeRuntime ?? (fake ? null : new Runtime({dataDir, python, fetch, log}));
