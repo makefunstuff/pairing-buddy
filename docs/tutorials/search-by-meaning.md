@@ -30,9 +30,12 @@ do in one line and the word search keeps working. Neovim shows how far each down
 
 Then Pair embeds the project in the background, on two cores at low priority; Neovim shows how far as a progress
 message. A project the size of Pair's own (550 files) takes about nine minutes the first time; after that, a save
-only embeds the pieces you changed. (Already running an embedding model, in llama.cpp or Ollama? Put it in the config
-as `embedding` instead: [another embedding model](../meaning.md#another-embedding-model). Would rather install
-LiteRT-LM by hand, or have a Python with it already? See [turn EmbeddingGemma on](../meaning.md#turn-embeddinggemma-on).)
+only embeds the pieces you changed. (Have a GPU, or would rather use a hosted API? `"meaning": {"profile": "beefy"}`
+in the config, or `"cloud"`, `"openrouter"`, takes the models semantic-grep measured best for it:
+[model profiles](../meaning.md#model-profiles). Already running an embedding model, in llama.cpp or Ollama? Put it in
+the config as `embedding` instead: [another embedding model](../meaning.md#another-embedding-model). Would rather
+install LiteRT-LM by hand, or have a Python with it already? See [turn EmbeddingGemma
+on](../meaning.md#turn-embeddinggemma-on).)
 
 ## 3. Search
 
@@ -46,6 +49,14 @@ Your words find nothing; stop typing, and the closest pieces join the list a mom
 `file:line` and its first line of code, with the piece in the preview. `Enter` opens it at its line, `<C-q>` sends the
 list to quickfix. In Visual mode, `Alt-s` starts with the selected words; `:Pair find <words>` works too, and
 `/find <words>` in the chat.
+
+Looking for a file rather than a piece? Write the sentence to `:Pair files`:
+
+```
+:Pair files where a failed delivery is tried again
+```
+
+It lists the files it is about, best first, each at its best line; `Enter` opens one there.
 
 With a [`rerank` model](../meaning.md#rerank) in the config, the title says `reranking` once meaning came, and a moment
 later the model's pick moves to the top while you stay on the piece you were on: you can go on typing or moving

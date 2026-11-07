@@ -41,9 +41,9 @@ why while the daemon keeps the config it runs. Run `pair doctor` after a change 
 | `agents` | `true` | The relay of your other agents' news, from herdr and the `board`: `false` turns it off ([agents.md](agents.md#configure)) |
 | `herdrPanel` | `"auto"` | The daemon's loopback port for [Pair's panel in the Herdr window](herdr.md#pairs-panel-in-the-herdr-window): `"auto"` opens it where the Herdr window is installed, `true` always, `false` never (`pair` then opens the chat in a terminal there, as before) |
 | `voice` | off | Push-to-talk and spoken answers with LFM3-Omni, whisper.cpp or OpenRouter ([below](#voice), [voice.md](voice.md)) |
-| `meaning` | `{}` | [Search by meaning](meaning.md): the Python that runs EmbeddingGemma 2, the cores it may use and where the index lives, or `false` to turn it off for good ([below](#meaning)). Its word search works at once; meaning once its model and runtime are fetched (`:Pair find on`) or with an `embedding` model |
-| `embedding` | none | An embedding model behind an OpenAI-compatible `/v1/embeddings` for [search by meaning](meaning.md#another-embedding-model), instead of EmbeddingGemma 2 ([below](#embedding)) |
-| `rerank` | none | A decision model, or a cross-encoder (`"api": "rerank"`), that reranks the first pieces of a settled search by meaning ([below](#rerank)); off without it |
+| `meaning` | `{}` | [Search by meaning](meaning.md): the Python that runs EmbeddingGemma 2, the cores it may use, where the index lives, semantic-grep's model `profile` and its `notes` writer, or `false` to turn it off for good ([below](#meaning)). Its word search works at once; meaning once its model and runtime are fetched (`:Pair find on`), or with a profile or an `embedding` model |
+| `embedding` | none, or the profile's | An embedding model behind an OpenAI-compatible `/v1/embeddings` for [search by meaning](meaning.md#another-embedding-model), instead of EmbeddingGemma 2, or over the `meaning.profile`'s ([below](#embedding)) |
+| `rerank` | none, or the profile's | A decision model, or a cross-encoder (`"api": "rerank"`), that reranks the first pieces of a settled search by meaning ([below](#rerank)); off without it |
 | `scoutPane` | see [below](#scoutpane) | Pair's own pane: your rc file and the sandbox ([scout.md](scout.md#pairs-pane)) |
 | `taskCommand` | none | What `:Pair tasks` runs for each task you say yes to, as a list of words with `{title}` and `{description}`, never through a shell, for example `["gh", "issue", "create", "--title", "{title}", "--body", "{description}"]`. Without it, the tasks are copied as a checklist ([notes.md](notes.md#tasks-only-when-you-ask)) |
 | `gen` | see [below](#gen) | What one `/gen` request may do at most, its brief's note, and how long a try's folder stays and whether its runs reach the network ([gen.md](gen.md)) |
@@ -191,13 +191,20 @@ At least one of `hear` and `speak` is needed.
 ## `meaning`
 
 [Search by meaning](meaning.md)'s word search works once a project has a session; meaning needs EmbeddingGemma 2,
-which `:Pair find on` downloads once with the LiteRT-LM runtime it runs on, or an [`embedding`](#embedding) model. These fields say how it runs.
+which `:Pair find on` downloads once with the LiteRT-LM runtime it runs on, a `profile`, or an
+[`embedding`](#embedding) model. These fields say how it runs.
 
 | Field | Default | Meaning |
 | --- | --- | --- |
 | `python` | `<dataDir>/meaning/venv/bin/python` if it is there (`:Pair find on` makes it), else `python3` | The Python whose `litert-lm-api` runs EmbeddingGemma 2. Set, it wins: Pair installs nothing into it and never deletes it ([meaning.md](meaning.md#turn-embeddinggemma-on)) |
 | `threads` | `2` | The cores EmbeddingGemma may use while it indexes and searches, at low priority |
 | `index` | `"data"` | Where the index lives: `"data"`, Pair's data folder (`index/<repository>-<hash>.sqlite`); or `"project"`, `.pair/index.sqlite` in the repository, with `.pair/` added to `.git/info/exclude` ([meaning.md](meaning.md#the-index)) |
+| `profile` | none | One of semantic-grep's model profiles, `"laptop"`, `"beefy"`, `"cloud"` or `"openrouter"`: it sets [`embedding`](#embedding) and [`rerank`](#rerank) to the models it names, and what those set themselves goes over them ([meaning.md](meaning.md#model-profiles)). Which models, their numbers and how to run them: semantic-grep's [docs/profiles.md](https://github.com/makefunstuff/semantic-grep.nvim/blob/main/docs/profiles.md) |
+| `notes` | off | `true` for the profile's notes writer (the laptop's without a profile), or an entry over it, as semantic-grep's `notes` takes it (`model`, `baseUrl`, `api`, a key, `sendCode`, `concurrency`, `idleMs`, …): a model that writes a note on each piece of code while nothing is searched ([meaning.md](meaning.md#notes-on-the-pieces), and semantic-grep's [docs/notes.md](https://github.com/makefunstuff/semantic-grep.nvim/blob/main/docs/notes.md)). A writer elsewhere than this machine needs `"sendCode": true` |
+
+```jsonc
+"meaning": {"profile": "beefy", "notes": true}
+```
 
 `"meaning": false` turns search by meaning off for good: nothing is downloaded or indexed, and `Alt-s` says so.
 
@@ -205,16 +212,19 @@ which `:Pair find on` downloads once with the LiteRT-LM runtime it runs on, or a
 
 An embedding model of your own for [search by meaning](meaning.md#another-embedding-model), next to the models: an
 `"api": "openai"` entry at a `baseUrl` that serves `/v1/embeddings` (llama.cpp's `llama-server --embeddings`, Ollama,
-LM Studio, vLLM, a cloud API), with its key as a [model entry](#model-entries)'s (but `pair setup` does not store its `apiKeyEnv` in `service.env`:
-under the service, use `auth`, `apiKeyFile` or `apiKey`). Without it, EmbeddingGemma 2.
+LM Studio, vLLM, a cloud API), with its key as a [model entry](#model-entries)'s, or the output of an `apiKeyCommand`
+(`pair setup` stores its `apiKeyEnv` in `service.env`, as a model's). Without it, the `meaning.profile`'s model, else
+EmbeddingGemma 2; with a profile, the fields set here go over the profile's: a `baseUrl` moves its model, another
+`model` is an entry of its own.
 
 | Field | Default | Meaning |
 | --- | --- | --- |
 | `api` | | `"openai"` |
 | `baseUrl` | | Where its `/v1` is, for example `http://127.0.0.1:8080/v1` |
 | `model` | | Its name there, for example `jina-embeddings-v2-base-code` or `nomic-embed-code` |
-| `auth`, `apiKey`, `apiKeyFile`, `apiKeyEnv` | none | Its key, if it needs one: one of them |
+| `auth`, `apiKey`, `apiKeyFile`, `apiKeyEnv`, `apiKeyCommand` | none | Its key, if it needs one: one of them |
 | `queryPrefix`, `documentPrefix` | the model's own, where semantic-grep knows them | The prompts it was trained with, for a search and for a piece of code |
+| `queryBody`, `documentBody`, `band`, `pickNear` | the model's, where semantic-grep measured it | Fields added to a search's or a piece's request body, and the model's thresholds: semantic-grep's README, "Configuration" |
 | `dimensions` | the model's | Asks a model that can for shorter vectors |
 | `timeoutMs` | `60000` | How long one request to it may take, in ms (`pair doctor`'s own check waits 15 s) |
 
@@ -225,8 +235,10 @@ list is settled: `/find`, the `search` tool, `vim.ui.select`, and a live picker 
 [decision entry](decision.md#configure) (a `provider` and one of its classifiers, or an `api` at a `baseUrl`), with
 fields of its own (`top`, `timeoutMs` and `chars`), or a cross-encoder (`"api": "rerank"` at a `baseUrl`); or a list
 of them, best first. Without it (or with `false`), searches keep the order of
-meaning and words. A change is taken without a restart. Its key goes as a decision entry's, but `pair setup` does not
-store a `rerank` entry's `apiKeyEnv` in `service.env`: under the service, use `auth`, `apiKeyFile` or `apiKey`.
+meaning and words; with a `meaning.profile`, its reranker unless this says otherwise (`false` turns it off, the fields
+set here go over the profile's cross-encoder, a decision model or a list replaces it). A change is taken without a
+restart. Its key goes as a decision entry's, or a cross-encoder's from an `apiKeyCommand`; `pair setup` stores its
+`apiKeyEnv` in `service.env`.
 
 | Field | Default | Meaning |
 | --- | --- | --- |
@@ -243,7 +255,8 @@ store a `rerank` entry's `apiKeyEnv` in `service.env`: under the service, use `a
 ```
 
 A cross-encoder, such as Qwen3-Reranker-0.6B (`llama-server -m qwen3-reranker-0.6b-q8_0.gguf --rerank --port 18121`;
-semantic-grep's docs/profiles.md has its numbers), takes about 1 s for 15 pieces on a laptop's small GPU:
+semantic-grep's [docs/profiles.md](https://github.com/makefunstuff/semantic-grep.nvim/blob/main/docs/profiles.md#rerankers) has its numbers and how
+to serve it, and the `beefy` profile names it):
 
 ```jsonc
 "rerank": {"api": "rerank", "baseUrl": "http://127.0.0.1:18121/v1", "model": "qwen3-reranker-0.6b", "top": 15}

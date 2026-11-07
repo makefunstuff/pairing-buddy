@@ -60,6 +60,10 @@
   // litert-lm-api: with it set, Pair installs nothing. "index": "project" keeps the index in .pair/ of the repository
   // (listed in .git/info/exclude) rather than Pair's data folder; false turns it all off for good.
   // "meaning": {"threads": 2, "index": "data"},
+  // Or the models semantic-grep measured best for a kind of machine, "laptop", "beefy" (a GPU), "cloud" or
+  // "openrouter" (its docs/profiles.md says which and how to run them; "embedding" and "rerank" below go over them),
+  // and "notes": true for a model that writes a note on each piece while nothing is searched (docs/meaning.md):
+  // "meaning": {"profile": "beefy", "notes": true},
 
   // Or an embedding model of your own behind an OpenAI-compatible /v1/embeddings, instead of EmbeddingGemma 2:
   // "embedding": {"api": "openai", "baseUrl": "http://127.0.0.1:8080/v1", "model": "jina-embeddings-v2-base-code"},

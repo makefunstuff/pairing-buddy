@@ -7,20 +7,25 @@ description: "Find code as quickly as ripgrep with loose words: semantic-grep's 
 You know what the code does, not what it calls it. Press `Alt-s` and type "method that removes user": on every key the
 picker shows the pieces of code that have your words (identifiers split, comments and strings too), and once you stop
 typing the pieces closest to what you mean join the list below them: in Pair's own code, `src/auth.mjs:46 export
-async function logout({id, credentials})` first, though it says neither "remove" nor "user".
+async function logout({id, credentials})` first, though it says neither "remove" nor "user". Or write a whole
+sentence, `:Pair files where search results are reranked`, and get the files it is about, best first, each at its best
+line.
 
 The search itself is [semantic-grep](https://github.com/makefunstuff/semantic-grep.nvim): its Neovim plugin is the
 picker, and its library is the index, the word and meaning search and the rerank in Pair's daemon. How it ranks, what
 the index holds and how it is kept up to date, the pickers and their keys, and the rerank's behaviour are in
-[its README](https://github.com/makefunstuff/semantic-grep.nvim#readme); this page has what Pair adds: its daemon as
-the one index of a project while Pair runs, EmbeddingGemma 2 turned on and off for you, Scout's and the Driver's
-`search`, the search trail and the ledger. Install semantic-grep.nvim next to Pair ([install.md](install.md)); without
+[its README](https://github.com/makefunstuff/semantic-grep.nvim#readme); which models suit which machine, and what each one scores, in its
+[docs/profiles.md](https://github.com/makefunstuff/semantic-grep.nvim/blob/main/docs/profiles.md) and
+[docs/benchmark.md](https://github.com/makefunstuff/semantic-grep.nvim/blob/main/docs/benchmark.md). This page has what Pair adds: its daemon as
+the one index of a project while Pair runs, EmbeddingGemma 2 turned on and off for you, semantic-grep's profiles and
+notes writer in Pair's config, Scout's and the Driver's `search`, the search trail and the ledger. Install semantic-grep.nvim next to Pair ([install.md](install.md)); without
 it `Alt-s` says so, and everything else of Pair works.
 
 The word search works on its own, with no model at all. Meaning needs an embedding model: EmbeddingGemma 2, which Pair
-downloads once when you say so and runs on your machine, or a model of your own behind an OpenAI-compatible
-`/v1/embeddings` ([below](#another-embedding-model)). Nothing leaves the machine but EmbeddingGemma's one download and
-its runtime's, unless you point Pair at a server elsewhere.
+downloads once when you say so and runs on your machine, one of semantic-grep's [profiles](#model-profiles), or a model
+of your own behind an OpenAI-compatible `/v1/embeddings` ([below](#another-embedding-model)). Nothing leaves the
+machine but EmbeddingGemma's one download and its runtime's, unless you point Pair at a server elsewhere (the `cloud`
+and `openrouter` profiles do).
 
 ## Search
 
@@ -28,12 +33,14 @@ its runtime's, unless you point Pair at a server elsewhere.
 | --- | --- |
 | `Alt-s` | Opens semantic-grep's live picker; in Visual mode, with the selected words typed in it |
 | `:Pair find [words]` | The same, with the words typed in it |
+| `:Pair files [sentence]` | semantic-grep's files view: the files the sentence is about, best first, each at its best line; `Enter` opens one there. `meaning_files_key` in Pair's [setup](neovim-plugin.md#setup) maps it to a key (none by default) |
 | `:Pair find on` / `:Pair find off` | Install LiteRT-LM, download EmbeddingGemma 2 and embed the open projects / delete the model, every index and the venv Pair made |
 | `:Pair index rebuild` | Make the project's index again from its files, every vector too |
 | `/find <words>` | In the [chat](chat.md): the ten best pieces, meaning and words fused, as `file:line` lines |
 
 While Pair's Neovim plugin is connected it registers the daemon as semantic-grep's source
-(`require('semantic-grep').register_source`), so `:SemanticGrep` and `:checkhealth semantic-grep` ask the daemon too,
+(`require('semantic-grep').register_source`), so `:SemanticGrep`, `:SemanticGrep files` and `:checkhealth
+semantic-grep` ask the daemon too,
 the project of your session is indexed once (by the daemon, in Pair's data folder), and semantic-grep's own server is
 not started. Once Pair disconnects, semantic-grep goes back to its own server, with its own index (in Neovim's data
 folder) and the models of its own `setup()`. `meaning_picker`, `meaning_debounce_ms` and `meaning_rerank_delay_ms` in
@@ -72,7 +79,45 @@ ones before it did not, and what follows; without the entry it says `off`:
 
 On Pair's own repository (`test/fixtures/rerank-queries.json`, run by `test/live/rerank.test.mjs`), d1-2B on a CPU
 took recall@5 from 0.72 to 0.81 and MRR from 0.47 to 0.71 in 2.4 s at the median; d3-flash on a GPU did as well in
-0.19 s, and with fifteen pieces reached 0.84 and 0.75.
+0.19 s, and with fifteen pieces reached 0.84 and 0.75. The cross-encoders semantic-grep measured, and which a profile
+picks, are in its [docs/profiles.md](https://github.com/makefunstuff/semantic-grep.nvim/blob/main/docs/profiles.md#rerankers).
+
+## Model profiles
+
+semantic-grep names the models its [benchmark](https://github.com/makefunstuff/semantic-grep.nvim/blob/main/docs/benchmark.md) measured best for a kind
+of machine: `laptop` (the CPU only), `beefy` (a GPU), `cloud` (hosted APIs) and `openrouter` (hosted, no GPU and no
+server). One field in Pair's [config](config.md#meaning) takes one:
+
+```jsonc
+"meaning": {"profile": "beefy"}
+```
+
+It sets the `embedding` and `rerank` models to the profile's; EmbeddingGemma on LiteRT-LM is then not used. What the
+config sets itself goes over the profile's, as semantic-grep's `setup()` takes it: `"embedding": {"baseUrl":
+"http://127.0.0.1:9000/v1"}` moves the profile's model, another `model` is an entry of its own, `"rerank": false`
+turns the profile's reranker off, and a decision model or a list in `rerank` is yours. Which models each profile
+names, what they score and cost, and how to start their `llama-server`s are in semantic-grep's
+[docs/profiles.md](https://github.com/makefunstuff/semantic-grep.nvim/blob/main/docs/profiles.md); the local ones expect them on this machine, the hosted
+ones a key in the variable the profile names (`pair setup` stores it for the service). `:checkhealth semantic-grep`
+names the profile and asks each model once. Vectors are kept per model, so switching embeds the project again.
+
+## Notes on the pieces
+
+A sentence on what a piece of code does, in the words you would search with, is searched with its code and read by
+the reranker: searches in plain words find more (semantic-grep's [docs/notes.md](https://github.com/makefunstuff/semantic-grep.nvim/blob/main/docs/notes.md)
+has what they gain, per model). Two ways to have them:
+
+- **Written while nothing is searched.** `"meaning": {"notes": true}` in the [config](config.md#meaning) turns on the
+  profile's notes writer (the laptop's without a profile), or an entry over it, such as `{"model": "qwen3.5-9b"}`. It
+  writes a few pieces at a time once nothing was searched for a while and stops at the next search. A writer that is
+  not on this machine gets no code unless its entry says `"sendCode": true` (the `cloud` and `openrouter` profiles'
+  do). Off by default.
+- **From a coding agent.** semantic-grep's `semantic-grep-server notes pending` and `notes put` (or its Claude Code
+  skill, which runs them for you) on Pair's index: give them `--data-dir ~/.local/state/pairing-buddy` (Pair's
+  `dataDir`), and with `"index": "project"` also `--index project --project-dir .pair`. Its README's
+  ["It learns"](https://github.com/makefunstuff/semantic-grep.nvim#it-learns) says how.
+
+A note holds while its piece's code does not change. The ledger books each batch the writer wrote.
 
 ## The index
 
@@ -98,8 +143,10 @@ cloud API, goes in the config as `embedding`, next to the [models](config.md#mod
 ```
 
 Search by meaning is then on at once, with no download, and EmbeddingGemma is not used. Its key goes as a model's
-(`apiKeyFile`, `apiKeyEnv`, `auth` or `apiKey`). The prompts known models were trained with, `queryPrefix`,
-`documentPrefix` and `dimensions` are semantic-grep's `embedding` entry's. Vectors are kept per model, so switching
+(`apiKeyFile`, `apiKeyEnv`, `auth` or `apiKey`), or the output of an `apiKeyCommand`. The prompts known models were
+trained with, `queryPrefix`, `documentPrefix`, `queryBody`, `documentBody`, `band`, `pickNear` and `dimensions` are
+semantic-grep's `embedding` entry's (its README's "Configuration"). For a model it measured, a
+[profile](#model-profiles) sets them all. Vectors are kept per model, so switching
 embeds the project again. `pair doctor` embeds one word to check it answers; if it fails, the picker and `/find` say
 why and the words still rank.
 
@@ -120,8 +167,8 @@ wait for your break are the same as for every trail.
 shows the ranking), each rerank (`⏎` shows the order before and after, with the model's probability or the
 cross-encoder's score for each, when its answer was used, even if nothing moved; when it was not (too slow, flat, failed,
 busy with another rerank or resting after a failure), the search's order it kept), each lookup for the search trail,
-`:Pair index rebuild` and `:SemanticGrep rebuild`, LiteRT-LM's install, the model's download, and `:Pair find off`
-deleting them. The words you type on the way are not booked.
+`:Pair index rebuild` and `:SemanticGrep rebuild`, the notes the writer wrote, LiteRT-LM's install, the model's
+download, and `:Pair find off` deleting them. The words you type on the way are not booked.
 
 ## Why this model and runtime
 
