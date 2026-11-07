@@ -7,7 +7,7 @@ import {openAICompletionsApi} from '@earendil-works/pi-ai/api/openai-completions
 import {openAIDecisionsApi} from '@earendil-works/pi-ai/api/openai-decisions.lazy';
 import {typesafeSystemOneApi} from '@earendil-works/pi-ai/api/typesafe-system-one.lazy';
 import {builtinProviders} from '@earendil-works/pi-ai/providers/all';
-import {apiKeyOf, authPath, DECISION_APIS} from './config.mjs';
+import {apiKeyOf, authPath, DECISION_APIS, withPairKey} from './config.mjs';
 import {fileCredentialStore} from './credentials.mjs';
 
 // Most local servers (llama.cpp, Ollama, vLLM) know only the plain `system` role and `max_tokens`.
@@ -125,7 +125,7 @@ export function createRerankEndpoints(config, {credentials = fileCredentialStore
   const entries = config.rerank ?? [];
   return entries.map((entry, i) => {
     const field = entries.length > 1 ? `rerank[${i}]` : 'rerank';
-    if (entry.api === 'rerank') return {entry}; // a cross-encoder: semantic-grep's Reranker asks its /rerank itself
+    if (entry.api === 'rerank') return {entry: withPairKey(entry)}; // a cross-encoder: semantic-grep's Reranker asks its /rerank itself, with Pair's key
     return {...createDecisionModel({[field]: entry}, {credentials, field}), entry};
   });
 }

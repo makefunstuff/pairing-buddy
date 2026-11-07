@@ -1,10 +1,10 @@
 // Search by meaning in Neovim: Alt-s and :Pair find open semantic-grep.nvim's live picker (its own tests cover the
 // pickers: Telescope, snacks, fzf-lua, vim.ui.select, <C-q>, the rerank in place) with Pair's daemon as its source
 // (lua/pair/meaning.lua). Here: the words on every key and meaning below them from the daemon's index, the daemon's
-// reranker, the ledger hearing what was chosen, :SemanticGrep and :checkhealth semantic-grep asking the daemon too,
-// the words without a model, a clear message without semantic-grep.nvim, /find in the chat and :Pair find on. In
-// Telescope a stand-in drives the picker's finder as the real one does. The daemon's fake embedder stands in for
-// EmbeddingGemma 2.
+// reranker, the ledger hearing what was chosen, :SemanticGrep, its files view (:Pair files) and :checkhealth
+// semantic-grep asking the daemon too, the words without a model, a clear message without semantic-grep.nvim, /find in
+// the chat and :Pair find on. In Telescope a stand-in drives the picker's finder as the real one does. The daemon's
+// fake embedder stands in for EmbeddingGemma 2.
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {existsSync, mkdirSync, writeFileSync} from 'node:fs';
@@ -135,6 +135,24 @@ test('Alt-s opens semantic-grep\'s picker over Pair\'s daemon: the words on ever
   }
 });
 
+test(':Pair files opens semantic-grep\'s files view over Pair\'s daemon: the files a sentence is about, best first, each at its best line', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
+  const {project, dataDir, watcher, messages, remote, send, stop} = await pairInNvim('deliver', {rtp: [fakeTelescope()], meaningWith: {embedder: fakeEmbedder()}});
+  try {
+    quiet(watcher);
+    await withCode(project, remote);
+    fakeModel(dataDir);
+    await built(send, messages);
+    remote('execute("Pair files try again when sending fails")');
+    await until(() => remote('luaeval("_G.telescoped ~= nil")') === 'true', 'the files view');
+    await until(() => shown(remote).length > 0, 'the files');
+    assert.match(shown(remote)[0], /^deliver\.js/, 'the file the sentence is about, by meaning, from the daemon');
+    const entry = JSON.parse(remote('json_encode(luaeval("_G.telescoped.shown[1]"))'));
+    assert.equal(entry.filename, join(project, 'deliver.js'));
+  } finally {
+    await stop();
+  }
+});
+
 test('with "rerank" models in Pair\'s config, the picker\'s first pieces go in the order of the one that answered, and the ledger books it', {skip: hasNvim ? false : 'nvim not installed', timeout: 40_000}, async () => {
   const server = await fakeRerankServer({favourite: 'What the order comes to'});
   const down = await fakeRerankServer({mode: 'down'}); // the first of the list, a GPU's that is not up
@@ -177,6 +195,7 @@ test(':checkhealth semantic-grep names Pair\'s daemon as the source and asks it 
     assert.match(text, /it answers: search by meaning is on/);
     assert.match(text, /embedding: EmbeddingGemma 2 \(text, 270M\) answers in \d+ ms, 256 numbers a piece/, 'the daemon\'s embedder, asked once');
     assert.match(text, /rerank: off/);
+    assert.match(text, /notes: off/);
     assert.match(text, new RegExp(`${project}: 4 files, 4 pieces, 4 with vectors \\(100%\\)`));
     assert.doesNotMatch(text, /Node v\d+/, 'no server of its own to check');
   } finally {

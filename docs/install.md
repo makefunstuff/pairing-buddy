@@ -18,7 +18,8 @@ description: "Install Pair: what it needs, the daemon and the Neovim plugin, a c
   on the daemon's PATH), and GitHub's `gh` for the pull request
 - Optional, for [search by meaning](meaning.md): Python 3.10 or newer with its venv module (`python3-venv` on Debian
   and Ubuntu), on Linux x86-64 or ARM64 or macOS on Apple silicon; `:Pair find on` fetches the model and its runtime
-  itself. The word search needs nothing
+  itself. Or a [profile](meaning.md#model-profiles)'s models (a GPU's `llama-server`s, or a hosted API's key) instead.
+  The word search needs nothing
 - A model: any OpenAI-compatible local server (for example llama.cpp or Ollama), an Anthropic-compatible API, or any
   provider [pi-ai](https://www.npmjs.com/package/@earendil-works/pi-ai) supports, with an API key or a subscription
   login ([models.md](models.md)).
@@ -61,7 +62,7 @@ Then add the plugin to your lazy.nvim specs:
 ```lua
 {
   'makefunstuff/pairing-buddy',
-  dependencies = {'makefunstuff/semantic-grep.nvim'}, -- its picker for search by meaning (Alt-s)
+  dependencies = {'makefunstuff/semantic-grep.nvim'}, -- its pickers for search by meaning (Alt-s, :Pair files)
   main = 'pair',
   lazy = false,
   opts = {auto_connect = true},
@@ -73,7 +74,7 @@ With `auto_connect`, every Neovim connects to the daemon at startup. Without a p
 The plugin's options are in [neovim-plugin.md](neovim-plugin.md#setup).
 
 The plugin needs [semantic-grep.nvim](https://github.com/makefunstuff/semantic-grep.nvim) for search by meaning: its
-picker is the one `Alt-s` opens, with Pair's daemon as its source ([meaning.md](meaning.md)). The spec above installs
+picker is the one `Alt-s` and `:Pair files` open, with Pair's daemon as its source ([meaning.md](meaning.md)). The spec above installs
 it as a dependency; without a plugin manager, append its clone to the runtimepath too. Without it, `Alt-s` and
 `:Pair find` say so, and the rest of Pair works.
 

@@ -79,8 +79,9 @@ Write down four facts for the steps below:
    - Push-to-talk (LFM3-Omni's 4.0 GB download, or whisper.cpp, and a recorder).
    - Search by meaning (`Alt-s`): the word search needs nothing; for meaning, `:Pair find on` in Neovim fetches
      EmbeddingGemma 2 and LiteRT-LM itself, with Python 3.10+ and its venv module (`python3-venv` on Debian and
-     Ubuntu), on Linux x86-64 or ARM64 or macOS on Apple silicon; or an embedding model of your own
-     ([meaning.md](docs/meaning.md)).
+     Ubuntu), on Linux x86-64 or ARM64 or macOS on Apple silicon; or one of semantic-grep's model profiles (a GPU's
+     `llama-server`s, or a hosted API's key: [its docs/profiles.md](https://github.com/makefunstuff/semantic-grep.nvim/blob/main/docs/profiles.md)), or an
+     embedding model of your own ([meaning.md](docs/meaning.md)).
 3. **May you use `sudo`** to install packages with the package manager? Without it, step 3 installs Node.js and
    Neovim into `~/.local` instead.
 
@@ -411,7 +412,7 @@ FILE.bak-pair`. Edit only what the section says.
 ### 7.2 Add Pair
 
 Each manager below installs [semantic-grep.nvim](https://github.com/makefunstuff/semantic-grep.nvim) with Pair: it is
-the picker of search by meaning (`Alt-s`), and without it only that is missing.
+the picker of search by meaning (`Alt-s`, `:Pair files`), and without it only that is missing.
 
 **lazy.nvim.** If the config imports a folder of specs (`{import = "plugins"}`, or LazyVim), make a new file
 `$cfg/lua/plugins/pair.lua` (that folder, by its name in the import):
@@ -419,7 +420,7 @@ the picker of search by meaning (`Alt-s`), and without it only that is missing.
 ```lua
 return {
   'makefunstuff/pairing-buddy',
-  dependencies = {'makefunstuff/semantic-grep.nvim'}, -- its picker for search by meaning (Alt-s)
+  dependencies = {'makefunstuff/semantic-grep.nvim'}, -- its pickers for search by meaning (Alt-s, :Pair files)
   main = 'pair',
   lazy = false,
   opts = {auto_connect = true},
@@ -673,6 +674,10 @@ LFM3-Omni-2B (int8) … hears a second in … s on the CPU, and it reads answers
 venv of its own and downloads EmbeddingGemma 2 (165 MB), once ([meaning.md](docs/meaning.md)). Without a fitting
 Python, `:Pair find on` first says what it would fetch, then `Search by meaning stays off: …` with what is missing,
 and downloads nothing (install it, as 3.6 says). Expected afterwards in `pair doctor`: `✓ meaning  EmbeddingGemma 2 … on LiteRT-LM … answers (… ms with loading)`.
+If the human chose a profile in step 2 (`"meaning": {"profile": "beefy"}`, `"cloud"` or `"openrouter"` in the config),
+nothing is downloaded: start the profile's `llama-server`s as semantic-grep's
+[docs/profiles.md](https://github.com/makefunstuff/semantic-grep.nvim/blob/main/docs/profiles.md) says, or put the hosted API's key in the variable the profile names
+before `pair setup`, which stores it for the service; `:checkhealth semantic-grep` in Neovim then asks each model once.
 
 ## Upgrade
 

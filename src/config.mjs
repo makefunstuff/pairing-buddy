@@ -1,5 +1,6 @@
 // One config file for the daemon: the models (one for both roles, or one each), the talk level and where things live.
 // It is JSON with // and /* */ comments; the first run writes the commented example there.
+import {execFile} from 'node:child_process';
 import {copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync} from 'node:fs';
 import {homedir} from 'node:os';
 import {dirname, isAbsolute, join, resolve} from 'node:path';
@@ -9,7 +10,7 @@ import {MIN_CONTEXT, replyRoom} from './context.mjs';
 import {storedKey} from './credentials.mjs';
 import {RUN_TIMEOUT_MS} from './scout-pane.mjs';
 import {scoutPaneConfig} from './scout-shell.mjs';
-import {FALLBACK_TIMEOUT_MS, RERANK_TIMEOUT_MS, RERANK_TOP, rerankConfig as searchRerankConfig} from 'semantic-grep';
+import {FALLBACK_TIMEOUT_MS, PROFILES, RERANK_TIMEOUT_MS, RERANK_TOP, profileConfig, rerankConfig as searchRerankConfig} from 'semantic-grep';
 import {readServiceEnv} from './service-env.mjs';
 import {LEVELS} from '../herdr/pair/commands.js';
 import {voiceConfig} from './voice.mjs';
@@ -50,6 +51,7 @@ export function serviceEnvPath() {
 function checkSource(name, entry) {
   const keys = ['auth', 'apiKey', 'apiKeyFile', 'apiKeyEnv'].filter(field => entry[field] !== undefined);
   if (keys.length > 1) throw new Error(`config: ${name} takes one of ${keys.join(', ')}`);
+  if (entry.apiKeyCommand !== undefined) throw new Error(`config: ${name} takes auth, apiKey, apiKeyFile or apiKeyEnv; apiKeyCommand is for search by meaning's embedding, cross-encoder and notes writer`);
   if (entry.provider === undefined) {
     if (!['openai', 'anthropic'].includes(entry.api)) throw new Error(`config: ${name} needs a "provider", or an "api": "openai" or "anthropic"`);
     if (entry.auth !== undefined && (typeof entry.auth !== 'string' || !entry.auth)) throw new Error(`config: ${name}.auth must name a key stored by \`pair auth login\``);
@@ -205,6 +207,7 @@ export function decisionConfig(entry, name = 'decision') {
   if (typeof entry !== 'object' || Array.isArray(entry)) throw new Error(`config: ${name} must be a model entry`);
   const keys = ['auth', 'apiKey', 'apiKeyFile', 'apiKeyEnv'].filter(field => entry[field] !== undefined);
   if (keys.length > 1) throw new Error(`config: ${name} takes one of ${keys.join(', ')}`);
+  if (entry.apiKeyCommand !== undefined) throw new Error(`config: ${name} takes auth, apiKey, apiKeyFile or apiKeyEnv; apiKeyCommand is for search by meaning's embedding, cross-encoder and notes writer`);
   if (typeof entry.model !== 'string' || !entry.model) throw new Error(`config: ${name}.model is missing`);
   if (entry.provider !== undefined) {
     if (typeof entry.provider !== 'string' || !entry.provider) throw new Error(`config: ${name}.provider must be a provider id (see \`pair auth list\`)`);
@@ -229,14 +232,91 @@ export function rolesText({watcher, partner}) {
 
 /**
  * The API key of a model entry: the stored key `auth`, `apiKey`, the file `apiKeyFile` or the env var `apiKeyEnv`,
- * from the environment or else the file `pair setup` stored it in for the service.
+ * from the environment or else the file `pair setup` stored it in for the service; for search by meaning's models,
+ * also the output of `apiKeyCommand`, run in the background and kept a while (commandKey).
  */
 export function apiKeyOf(entry) {
   if (entry.auth) return storedKey(authPath(), entry.auth);
   if (entry.apiKey) return entry.apiKey;
   if (entry.apiKeyFile) return readFileSync(entry.apiKeyFile.replace(/^~(?=\/)/, homedir()), 'utf8').trim();
   if (entry.apiKeyEnv) return process.env[entry.apiKeyEnv] ?? readServiceEnv(serviceEnvPath())[entry.apiKeyEnv];
+  if (entry.apiKeyCommand) return commandKey(entry.apiKeyCommand);
   return undefined;
+}
+
+const KEY_COMMAND_MS = 5 * 60_000; // how long a key a command printed is used before the command runs again
+const KEY_COMMAND_RETRY_MS = 20_000; // how soon a command that failed or printed nothing runs again
+const KEY_COMMAND_TIMEOUT_MS = 30_000;
+const commandKeys = new Map(); // command -> {key, at, pending}
+
+/**
+ * The key `command` printed (an `apiKeyCommand`), never waited for: the daemon is one process, and every request
+ * asks for its key. The command runs in the background, at the first ask and again once its key is
+ * KEY_COMMAND_MS old (a key rotated meanwhile is used that long), or KEY_COMMAND_RETRY_MS after it failed; until its
+ * first answer there is no key (that request fails as with a missing key, and the next has it). Its output is never
+ * logged.
+ */
+export function commandKey(command) {
+  const known = commandKeys.get(command) ?? {key: undefined, at: 0, pending: null};
+  commandKeys.set(command, known);
+  if (!known.pending && Date.now() - known.at >= (known.key ? KEY_COMMAND_MS : KEY_COMMAND_RETRY_MS)) runKeyCommand(command, known);
+  return known.key;
+}
+
+function runKeyCommand(command, known) {
+  known.pending = new Promise(resolve => {
+    execFile('/bin/sh', ['-c', command], {encoding: 'utf8', timeout: KEY_COMMAND_TIMEOUT_MS}, (error, out) => {
+      known.key = error ? undefined : out.trim() || undefined; // a key the command no longer prints is not kept
+      known.at = Date.now(); // a failing command is not run again on every request either, but soon
+      known.pending = null;
+      resolve(known.key);
+    });
+  });
+  return known.pending;
+}
+
+/**
+ * A request with the key `command` printed was refused (401 or 403): the key is dropped, and the next ask runs the
+ * command again at once, as after a login since. The same key refused again is a failed run: the command waits
+ * KEY_COMMAND_RETRY_MS, rather than running for every request while its login is expired.
+ */
+export function dropCommandKey(command) {
+  const known = commandKeys.get(command);
+  if (!known || known.pending || !known.key) return;
+  const again = known.key === known.refused;
+  Object.assign(known, {refused: known.key, key: undefined, at: again ? Date.now() : 0});
+}
+
+/** Runs the `apiKeyCommand` of each of `entries` now, so their first requests have a key. Resolves once they answered. */
+export function primeKeyCommands(entries) {
+  return Promise.all(entries.filter(entry => entry?.apiKeyCommand).map(entry => {
+    commandKey(entry.apiKeyCommand);
+    return commandKeys.get(entry.apiKeyCommand).pending;
+  }));
+}
+
+/**
+ * `entry` for semantic-grep to ask with Pair's key: a cross-encoder or a notes writer is asked by semantic-grep itself,
+ * which reads `apiKey` first; here that is apiKeyOf(entry), so `auth` and the variables `pair setup` stored for the
+ * service work there too. Not enumerable: the key is never in a snapshot or a log. Without its `apiKeyCommand`:
+ * semantic-grep would run it, waiting for it, whenever Pair's has no key yet (commandKey); `keyCommand` keeps it for
+ * Pair. A key named but not there throws semantic-grep's own "no key in", so nothing is sent to be refused: a
+ * writer stops, a cross-encoder rests.
+ */
+export function withPairKey(entry) {
+  if (!entry) return entry;
+  const own = {...entry};
+  delete own.apiKey;
+  delete own.apiKeyCommand;
+  const source = entry.apiKey ? null : entry.auth ? `Pair's stored key "${entry.auth}" (pair auth login)` : entry.apiKeyFile ? 'its apiKeyFile'
+    : entry.apiKeyEnv ? `$${entry.apiKeyEnv}` : entry.apiKeyCommand ? 'its apiKeyCommand' : null;
+  const apiKey = () => {
+    const key = apiKeyOf(entry);
+    if (!key && source) throw new Error(`${entry.model} at ${entry.baseUrl}: no key in ${source}`);
+    return key;
+  };
+  Object.defineProperty(own, 'keyCommand', {value: entry.apiKeyCommand, enumerable: false});
+  return Object.defineProperty(own, 'apiKey', {get: apiKey, enumerable: false});
 }
 
 /** `path` with `~` expanded, as the real path the daemon names projects by when it exists. */
@@ -310,20 +390,71 @@ function boardCommand(raw = 'shepherdr') {
 }
 
 /**
- * Search by meaning (see search.mjs, and semantic-grep): false turns it off for good; else `{python, threads, index}`, the Python whose
- * litert-lm-api runs EmbeddingGemma 2 (else a venv in Pair's data folder, else python3), the cores it may use, and
- * where the index lives: "data" (Pair's data folder, the default) or "project" (.pair/ in the repository).
- * It is on once its model is downloaded (`:Pair find on`), or at once with an "embedding" model.
+ * Search by meaning (see search.mjs, and semantic-grep): false turns it off for good; else `{python, threads, index,
+ * profile, notes}`: the Python whose litert-lm-api runs EmbeddingGemma 2 (else a venv in Pair's data folder, else
+ * python3), the cores it may use, where the index lives ("data", Pair's data folder, the default, or "project", .pair/
+ * in the repository), one of semantic-grep's model profiles (its docs/profiles.md: "laptop", "beefy", "cloud",
+ * "openrouter"), which names the `embedding` and `rerank` models (see profiledConfig), and `notes`: true, or an entry
+ * over the profile's notes writer (the laptop's without a profile), for notes written while nothing is searched
+ * (semantic-grep's docs/notes.md), checked as semantic-grep checks them. It is on once its model is downloaded
+ * (`:Pair find on`), or at once with an "embedding" model or a profile.
  */
 function meaningConfig(raw = {}) {
   if (raw === false) return false;
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('config: meaning must be false or an object, for example {"threads": 2}');
-  const {python, threads, index, ...rest} = raw;
-  if (Object.keys(rest).length) throw new Error(`config: meaning has no ${Object.keys(rest).join(', ')} (only python, threads and index)`);
+  const {python, threads, index, profile, notes, ...rest} = raw;
+  if (Object.keys(rest).length) throw new Error(`config: meaning has no ${Object.keys(rest).join(', ')} (only python, threads, index, profile and notes)`);
   if (python !== undefined && (typeof python !== 'string' || !python.trim())) throw new Error('config: meaning.python must be the path of a Python with litert-lm-api');
   if (threads !== undefined && !(Number.isInteger(threads) && threads > 0)) throw new Error('config: meaning.threads must be a whole number above 0');
   if (index !== undefined && !['data', 'project'].includes(index)) throw new Error('config: meaning.index must be "data" (Pair\'s data folder) or "project" (.pair/ in the repository)');
-  return {...(python ? {python: python.trim()} : {}), ...(threads ? {threads} : {}), ...(index ? {index} : {})};
+  if (profile !== undefined && profile !== null && !Object.hasOwn(PROFILES, profile)) {
+    throw new Error(`config: meaning.profile must be one of ${Object.keys(PROFILES).map(name => `"${name}"`).join(', ')} (semantic-grep's docs/profiles.md)`);
+  }
+  if (notes !== undefined && notes !== null && typeof notes !== 'boolean' && (typeof notes !== 'object' || Array.isArray(notes))) {
+    throw new Error('config: meaning.notes must be true, false or a notes writer entry, for example {"model": "qwen3.5-9b"}');
+  }
+  let written = null;
+  try {
+    written = profileConfig({profile: profile ?? undefined, notes}).notes;
+  } catch (error) { // semantic-grep's words are for its Lua setup(); Pair's config is JSON
+    throw new Error(`config: meaning.${error.message.replace('sendCode = true', '"sendCode": true')}`);
+  }
+  if (written && typeof notes === 'object' && notes.auth !== undefined) { // Pair's stored key replaces the profile's
+    if (typeof notes.auth !== 'string' || !notes.auth) throw new Error('config: meaning.notes.auth must name a key stored by `pair auth login`');
+    for (const field of KEY_FIELDS) if (field !== 'auth') delete written[field];
+  }
+  return {...(python ? {python: python.trim()} : {}), ...(threads ? {threads} : {}), ...(index ? {index} : {}), ...(profile ? {profile} : {}), ...(written ? {notes: written} : {})};
+}
+
+// What an entry says about its own model only: dropped from the profile's when the config names another model or API
+// (as semantic-grep's profiles.mjs), and the key fields, Pair's `auth` among them: the config's own replaces the
+// profile's, and a profile's key never goes to another server.
+const OF_THE_MODEL = ['dimensions', 'queryPrefix', 'documentPrefix', 'queryBody', 'documentBody', 'band', 'pickNear', 'chars', 'top', 'timeoutMs'];
+const KEY_FIELDS = ['auth', 'apiKey', 'apiKeyFile', 'apiKeyEnv', 'apiKeyCommand'];
+
+/** The config's own `embedding` or `rerank` entry `own` over its profile's `base`, as semantic-grep's setup() takes it. */
+function overProfile(base, own) {
+  if (own === undefined || own === null) return base ?? null;
+  if (!base || own === false || Array.isArray(own) || typeof own !== 'object' || own.provider !== undefined) return own;
+  const trimmed = url => String(url).replace(/\/+$/, '');
+  const otherModel = (own.model && own.model !== base.model) || (own.api && own.api !== base.api);
+  const otherKey = KEY_FIELDS.some(key => own[key] !== undefined) || (own.baseUrl && trimmed(own.baseUrl) !== trimmed(base.baseUrl));
+  const kept = Object.entries(base).filter(([key]) => !(otherModel && OF_THE_MODEL.includes(key)) && !(otherKey && KEY_FIELDS.includes(key)));
+  return {...Object.fromEntries(kept), ...own};
+}
+
+/**
+ * The `embedding` and `rerank` of `raw`, with "meaning": {"profile": ...}: the profile's models (semantic-grep's
+ * docs/profiles.md), with what the config sets itself over them: `{"baseUrl": ...}` moves one, another model is an
+ * entry of its own, `"rerank": false` turns the profile's reranker off, a list or a decision model is the config's
+ * own. Without a profile, the config's as they are.
+ */
+function profiledConfig(raw, meaning) {
+  const base = meaning?.profile ? PROFILES[meaning.profile] : {};
+  return {
+    embedding: embeddingConfig(overProfile(base.embedding, raw.embedding)),
+    rerank: rerankConfig(overProfile(base.rerank, raw.rerank)),
+  };
 }
 
 /**
@@ -339,8 +470,9 @@ export function embeddingConfig(entry, name = 'embedding') {
   if (entry.api !== 'openai') throw new Error(`config: ${name}.api must be "openai": an OpenAI-compatible /v1/embeddings`);
   if (typeof entry.baseUrl !== 'string' || !entry.baseUrl) throw new Error(`config: ${name}.baseUrl is missing`);
   if (typeof entry.model !== 'string' || !entry.model) throw new Error(`config: ${name}.model is missing`);
-  const keys = ['auth', 'apiKey', 'apiKeyFile', 'apiKeyEnv'].filter(field => entry[field] !== undefined);
+  const keys = KEY_FIELDS.filter(field => entry[field] !== undefined);
   if (keys.length > 1) throw new Error(`config: ${name} takes one of ${keys.join(', ')}`);
+  if (entry.apiKeyCommand !== undefined && (typeof entry.apiKeyCommand !== 'string' || !entry.apiKeyCommand.trim())) throw new Error(`config: ${name}.apiKeyCommand must be a command`);
   for (const field of ['queryPrefix', 'documentPrefix']) {
     if (entry[field] !== undefined && typeof entry[field] !== 'string') throw new Error(`config: ${name}.${field} must be text`);
   }
@@ -395,6 +527,8 @@ function sessionRoots(raw = []) {
  */
 export function parseConfig(raw, {windows = {}} = {}) {
   const level = raw.level ?? 'normal';
+  const meaning = meaningConfig(raw.meaning);
+  const searchModels = profiledConfig(raw, meaning);
   if (!LEVELS.includes(level)) throw new Error(`config: level must be one of ${LEVELS.join(', ')}`);
   const models = parseModels(raw, windows);
   if (raw.agents !== undefined && typeof raw.agents !== 'boolean') throw new Error('config: agents must be true or false');
@@ -414,7 +548,7 @@ export function parseConfig(raw, {windows = {}} = {}) {
     socket: raw.socket ?? defaultSocketPath(),
     dataDir: raw.dataDir ?? join(xdg('XDG_STATE_HOME', '.local/state'), 'pairing-buddy'),
     testOnSave: testCommands(raw.testOnSave),
-    meaning: meaningConfig(raw.meaning), // search by meaning's Python and cores, or false (see search.mjs)
+    meaning, // search by meaning's Python, cores, profile and notes writer, or false (see search.mjs)
     sessionRoots: sessionRoots(raw.sessionRoots),
     scoutPane: scoutPaneConfig(raw.scoutPane), // Pair's pane: your rc file and the sandbox (see scout-shell.mjs)
     voice: voiceConfig(raw.voice), // push-to-talk; null when off (see voice.mjs)
@@ -426,8 +560,8 @@ export function parseConfig(raw, {windows = {}} = {}) {
     herdrPanel: raw.herdrPanel ?? 'auto', // the Herdr panel's loopback port: "auto" opens it when the Herdr window is installed (see herdr-panel.mjs)
     models,
     decision: decisionConfig(raw.decision), // the gate's decision model, or null (see decision.mjs)
-    embedding: embeddingConfig(raw.embedding), // search by meaning's model at a /v1/embeddings, or null for EmbeddingGemma 2
-    rerank: rerankConfig(raw.rerank), // the decision models that reorder a settled search's first pieces, best first, or null (see search.mjs)
+    embedding: searchModels.embedding, // search by meaning's model at a /v1/embeddings (its profile's, or its own), or null for EmbeddingGemma 2
+    rerank: searchModels.rerank, // the decision models that reorder a settled search's first pieces, best first, or null (see search.mjs)
   };
 }
 

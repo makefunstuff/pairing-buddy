@@ -47,6 +47,7 @@ require('pair').setup({
   land = true,         -- false: the morning pick-up does not open an empty Neovim where you stopped
   gen_key = '<M-g>',   -- asks Pair for code (/gen); false for none
   meaning_key = '<M-s>', -- searches the project by meaning; false for none
+  meaning_files_key = nil, -- e.g. '<leader>sm': the files a sentence is about (:Pair files); none by default
   meaning_picker = nil, -- semantic-grep's picker option, when set: 'auto', 'telescope', 'snacks', 'fzf-lua', 'select'
   meaning_debounce_ms = nil, -- semantic-grep's debounce_ms, when set: how long you stop typing before meaning is asked
   meaning_rerank_delay_ms = nil, -- semantic-grep's rerank_delay_ms, when set: how long the list stays before it is reranked
@@ -83,6 +84,7 @@ require('pair').setup({
 | `answers` | `true` | The first two lines of Pair's answer to a question you typed (`:Pair ask`, the chat) show under the line it was about, too ([what each thing looks like](neovim.md#what-each-thing-looks-like)) |
 | `gen_key` | `'<M-g>'` | Asks Pair for code ([gen.md](gen.md#asking)): a dialog for the request, in Normal mode at the cursor, in Visual mode over the selected lines. While a question of Pair's waits, shows it again. Mapped in Normal and Visual mode from the start |
 | `meaning_key` | `'<M-s>'` | [Search by meaning](meaning.md#search): opens the live picker; in Visual mode, with the selected words typed in it. Mapped in Normal and Visual mode from the start |
+| `meaning_files_key` | none | Set (for example `'<leader>sm'`), it opens semantic-grep's [files view](meaning.md#search): the files a sentence is about, best first; in Visual mode, for the selected words. Mapped in Normal and Visual mode where the key is free |
 | `meaning_picker` | none | Set, it is semantic-grep.nvim's `picker`: `'auto'` (its default) is Telescope if it is installed, else snacks.picker, else fzf-lua, else `vim.ui.select` (which asks for your words first, and shows one list); or name one |
 | `meaning_debounce_ms` | none | Set, it is semantic-grep.nvim's `debounce_ms` (150 by default): how long you stop typing before the picker asks for meaning too; the words come on every key |
 | `meaning_rerank_delay_ms` | none | Set, it is semantic-grep.nvim's `rerank_delay_ms` (0 by default): with a [`rerank` model](meaning.md#rerank), how long the list stays as it is once meaning came before its first pieces are reranked |
@@ -122,6 +124,7 @@ to standard ones and does not fade.
 | `:Pair jump` | Go where Pair pointed last (same as `Alt-j`); `Ctrl-O` comes back. While Pair holds a thought, show it now |
 | `:Pair trail` | Show your searches since your last edit, as Pair saw them; `x` forgets them |
 | `:Pair find [words\|on\|off]` | [Search the project by meaning](meaning.md#search) (same as `Alt-s`), with the words typed in the picker. `on` installs LiteRT-LM in a venv of Pair's and downloads EmbeddingGemma 2, once, and embeds the open projects; `off` deletes the model, the indexes and the venv Pair made |
+| `:Pair files [sentence]` | The files the sentence is about, best first, each at its best line: semantic-grep's [files view](meaning.md#search) over Pair's index (same as `meaning_files_key`) |
 | `:Pair index rebuild` | Make the project's [search index](meaning.md#the-index) again from its files, every vector too |
 | `:Pair runs` | The session's builds and runs, newest last, with the change before each and its numbers; `⏎` its output, `d` its change, `x` removes the hunt's debug lines ([exploration.md](exploration.md)) |
 | `:Pair gen [here\|file\|try\|scaffold\|board] [what]` | Ask Pair for code ([gen.md](gen.md)), or with `board` hand a task to the board, edited in `pair://board/new` (`:w` asks how to add it, `:q` drops it), and `:Pair gen board #n` a request too big for `/gen` ([gen.md](gen.md#gen-board-a-task-for-the-board)): without words, in a dialog (same as `Alt-g`); with words, at once. With a range (`:'<,'>Pair gen`), over those lines, or in a note, the lines are the request. `:Pair gen +` opens the compose window for a longer request, `:Pair gen cancel` stops the request that runs or waits. `:Pair gen scaffold --branch …` builds in a git worktree, `--copy …` in Pair's copy whatever `gen.scaffold` says |
