@@ -42,8 +42,10 @@ chose says (add only, add and delegate, delegate with a plan first, or delegate 
 archives the task, each on the pick that names it, and [`/brief sync`](gen.md#keeping-the-task-in-step-brief-sync)
 tells the branch's task what changed in the brief, on its pick too. What the board's working tasks change is read with
 git, never changed. Nothing leaves your machine
-except the requests to the model endpoints you configured (OpenRouter's voice too, when you set it), search by meaning's one-time
-downloads when you say yes to them (EmbeddingGemma 2 from Hugging Face, LiteRT-LM's wheel from PyPI) ([meaning.md](meaning.md#why-this-model-and-runtime)), `gh pr view` for the
+except the requests to the model endpoints you configured (OpenRouter's voice too, when you set it), the one-time
+downloads you say yes to (search by meaning's EmbeddingGemma 2 from Hugging Face and LiteRT-LM's wheel from PyPI,
+[meaning.md](meaning.md#why-this-model-and-runtime); voice's LFM3-Omni from Hugging Face and its Python packages from
+PyPI on `:Pair voice on`, [voice.md](voice.md#1-lfm3-omni)), `gh pr view` for the
 [context card](neovim.md#what-it-knows-the-context-card) when `gh` is installed and, for a login, to the provider's
 sign-in service. Those requests carry your code: the Watcher gets each moment's text (your edits, a command's
 output, a test's failure), and the Partner the files and lines it reads, the diffs it suggests and your questions; an
