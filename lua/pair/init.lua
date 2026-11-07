@@ -1052,17 +1052,23 @@ local function send_accent()
 end
 
 local function hello()
-  -- herdr's or herdr-core's socket lets the daemon see your other agents, also when no chat pane runs; the herdr pane
-  -- or herdr-core terminal this Neovim runs in, if any, lets Pair show things in the Neovim whose pane has focus.
+  -- herdr's or herdr-core's socket lets the daemon see your other agents, also when no chat pane runs; the outer pane
+  -- this Neovim runs in lets Pair show things in the Neovim whose pane has focus.
   local core = vim.env.HC_SOCKET ~= '' and vim.env.HC_SOCKET or vim.env.HC_TERMINAL_SOCKET
   local herdr = (vim.env.HERDR_SOCKET_PATH or '') ~= '' and {kind = 'herdr', socket = vim.env.HERDR_SOCKET_PATH}
     or ((core or '') ~= '' and (vim.env.HC_TERMINAL_ID or '') ~= '') and {kind = 'core', socket = core, session = vim.env.HC_SESSION, appHome = vim.env.HERDR_APP_HOME}
     or nil
   -- The tmux pane it runs in, if any, lets Pair watch that tmux session's panes (src/tmux.mjs). Its pid names its
   -- own terminals, where the Driver's `type` may go (pane.lua).
+  local rex = (vim.env.REX_SERVER or ''):sub(1, 7) == 'unix://' and (vim.env.REX_SESSION or '') ~= '' and (vim.env.REX_BLOCK or '') ~= ''
+    and {server = vim.env.REX_SERVER, session = vim.env.REX_SESSION, block = vim.env.REX_BLOCK} or nil
   local tmux = vim.env.TMUX and vim.env.TMUX_PANE and {socket = vim.env.TMUX:match('^[^,]*'), pane = vim.env.TMUX_PANE} or nil
+  local pane = herdr and (herdr.kind == 'core' and vim.env.HC_TERMINAL_ID or vim.env.HERDR_PANE_ID) or nil
+  if pane == '' then pane = nil end
+  -- In tmux inside Rex the pane is tmux's, which the daemon takes from `tmux`.
+  if not pane and rex and (vim.env.TMUX_PANE or '') == '' then pane = 'rex:' .. rex.block end
   send({
-    type = 'hello', role = 'editor', cwd = vim.fn.getcwd(), herdr = herdr, pane = herdr and (herdr.kind == 'core' and vim.env.HC_TERMINAL_ID or vim.env.HERDR_PANE_ID) or nil, tmux = tmux, pid = vim.fn.getpid(),
+    type = 'hello', role = 'editor', cwd = vim.fn.getcwd(), herdr = herdr, rex = rex, pane = pane, tmux = tmux, pid = vim.fn.getpid(),
     buffers = true,
     parsers = vim.api.nvim_get_runtime_file('parser/*', true), -- tree-sitter's, to cut the project into functions for search
   })

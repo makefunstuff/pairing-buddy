@@ -129,7 +129,7 @@ function M.chat(socket)
     end
   end
   local env = {PAIR_SOCKET = socket, HERDR_ENV = '', HERDR_SOCKET_PATH = '', HERDR_PANE_ID = '', HERDR_WORKSPACE_ID = '',
-    HC_SOCKET = '', HC_TERMINAL_SOCKET = '', HC_TERMINAL_ID = ''}
+    HC_SOCKET = '', HC_TERMINAL_SOCKET = '', HC_TERMINAL_ID = '', REX_SERVER = '', REX_SESSION = '', REX_BLOCK = ''}
   -- The chat draws its own gutter and status: no numbers, signs or folds beside it.
   local window = {number = false, relativenumber = false, signcolumn = 'no', foldcolumn = '0', spell = false}
   local buf, why = terminal('botright vertical ' .. CHAT_WIDTH .. 'new', {SCRIPT, 'chat'}, {cwd = vim.fn.getcwd(), env = env}, 'pair_chat', true, window)

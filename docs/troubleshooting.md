@@ -26,6 +26,7 @@ Start with `pair doctor`. It checks every part, one line each, and names the fix
 | plugin | A connected Neovim has it loaded; with none connected, Neovim started headless with your config loads the plugin |
 | neovim | How many Neovims are connected, in which projects |
 | herdr | Which herdr this terminal is in, by its environment: herdr (panes) or herdr-core (terminals), and that it answers on its socket; for herdr-core, whether the Herdr window shows this terminal and gives its focus (only checked when run inside one of them) |
+| rex | Whether this terminal is in a Rex session and Rex answers; otherwise a warning only when `rex` is on PATH. It notes that scroll position and keystrokes are unavailable and the shell hook supplies command boundaries |
 | panel | Only where the Herdr window is installed (or `"herdrPanel": true`): whether the daemon listens on its `127.0.0.1` port for [Pair's panel](herdr.md#pairs-panel-in-the-herdr-window), or that `"herdrPanel": false` turns it off |
 | mod | Whether Pair's panel is installed in the Herdr window's mods (`~/.config/herdr-app/mods/pair`), and from this version of Pair |
 | board | Which Shepherdr the board's command is (2.0 or 2.1, by what `task list` answers), how many tasks it has that are not archived, or that 2.1 refuses outside its own sessions |

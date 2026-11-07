@@ -628,22 +628,23 @@ the count starts again. `level quiet` turns them off.
 
 ## Without herdr
 
-All of Pair works inside Neovim too, and in tmux; herdr adds its board of your other agents ([agents.md](agents.md))
-and, for terminals that are neither Neovim's nor tmux's, their output ([herdr.md](herdr.md)).
+All of Pair works inside Neovim too, and in tmux; Rex also gives it a chat split and watched terminals. herdr adds its
+board of your other agents ([agents.md](agents.md)) and, for terminals that are neither Neovim's nor tmux's, their
+output ([herdr.md](herdr.md)).
 
 - **The chat.** `:Pair chat` opens `pair chat` in a terminal buffer on the right, in Insert mode, connected to the
   daemon; again, it goes back to it. `pair chat` in any other terminal works the same.
-- **Pair's pane.** With no herdr chat pane in the project, `:Pair scout` and the tests on save open Pair's pane as
-  a `:terminal` along the bottom of the Neovim you are in, without moving your cursor. It is the same shell as in
-  herdr ([scout.md](scout.md)): every command typed where you see it, the prompt `scout[N] exit X $ `, the sandbox.
-  Closing its window leaves it running; it closes with the switch back to Navigator, unless the project has tests on save. When a herdr chat pane comes,
-  Pair's pane moves there.
+- **Pair's pane.** With no herdr or Rex chat pane in the project, `:Pair scout` and the tests on save open Pair's
+  pane as a `:terminal` along the bottom of the Neovim you are in, without moving your cursor. It is the same shell as
+  in herdr ([scout.md](scout.md)): every command typed where you see it, the prompt `scout[N] exit X $ `, the sandbox.
+  Closing its window leaves it running; it closes with the switch back to Navigator, unless the project has tests on
+  save. When a herdr or Rex chat pane comes, Pair's pane moves there.
 - **The Driver's `type`.** It goes to the `:terminal` buffer of yours you were in last (Pair's pane and the chat
   are not yours). The question in the chat names it, `nvim:<buffer>`, and lists your other terminals: answer `y`,
   or the name of another one to type there instead. With two Neovims in the project, a buffer number both have is
   named with the Neovim's process id too, `nvim:<pid>:<buffer>` ([driver.md](driver.md#typing-into-your-terminal)).
 - **Your terminals.** Pair reads your `:terminal` buffers as it reads herdr's panes: which one you are in (going in,
-  out, or to another buffer says so; in herdr or tmux, their focus on another pane; elsewhere, Neovim losing the
+  out, or to another buffer says so; in herdr, Rex or tmux, their focus on another pane; elsewhere, Neovim losing the
   focus of your terminal emulator, where the emulator reports that), a command seen running (your shell's
   foreground process) and one too short for that (the prompt line), each with its output from the buffer, and
   typing at the prompt, which takes the wheel back from the Driver. With the
@@ -656,6 +657,9 @@ and, for terminals that are neither Neovim's nor tmux's, their output ([herdr.md
   where Neovim never hears that you left. A pane that runs Neovim in place of a shell (`tmux new nvim`) is an
   editor, never a terminal to type into. tmux pushes nothing to Pair, so it lists the panes once a second. The
   Driver's `type` can go to them (`tmux:%<n>`).
+- **Rex.** When Neovim (or the chat) runs in Rex, Pair watches the Rex session's terminal blocks, reads their text and
+  process state, and can type without Enter. Focus is refreshed from the session view. Rex has no scroll position or
+  user-input activity; the [shell hook](install.md) supplies command boundaries ([what Pair gets from Rex](rex.md)).
 
 ## Setup and reference
 

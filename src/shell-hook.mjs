@@ -36,7 +36,7 @@ _pair_keys() {
   _pair_line="$CURSOR:$BUFFER"
   (( \${EPOCHREALTIME:-0} - \${_pair_keys_at:-0} < 0.5 )) && return
   _pair_keys_at=\${EPOCHREALTIME:-0}
-  local id='^[[:alnum:]:_.%-]*$' pane=\${HERDR_PANE_ID:-$HC_TERMINAL_ID} # herdr's pane or herdr-core's terminal; ids go into the JSON as they are
+  local id='^[[:alnum:]:_.%-]*$' pane=\${HERDR_PANE_ID:-\${HC_TERMINAL_ID:-\${REX_BLOCK:+rex:$REX_BLOCK}}} # the outer pane id; namespaced Rex ids pass the same validation
   [[ $pane =~ $id && $TMUX_PANE =~ $id ]] || return
   if zmodload zsh/net/socket 2>/dev/null && zsocket ${quote(socket)} 2>/dev/null; then
     print -u $REPLY -r -- '{"type":"typing","pane":"'$pane'","tmux":"'$TMUX_PANE'","shell":'$$'}'

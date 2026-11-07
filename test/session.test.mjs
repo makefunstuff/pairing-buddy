@@ -339,7 +339,7 @@ test('a sixth edit in one hand-over is refused, and edits at once cannot pass th
   await pair.drive('you take it');
   assert.match(replies[0], /^Not changed: line 99 is past the end/);
   assert.equal(replies.filter(reply => reply.startsWith('Changed')).length, 2);
-  assert.match(replies.at(-1), /^That was your last edit: 5 per hand-over\./);
+  assert.equal(replies.filter(reply => reply.startsWith('That was your last edit: 5 per hand-over.')).length, 1);
   assert.equal(edits.length, 5);
 });
 
@@ -941,9 +941,9 @@ test('without Pair\'s pane, a save says once in the chat why the tests did not r
   pair.receive({kind: 'save', file: join(root, 'a.go')});
   await until(() => sent.length >= 3, 'both saves');
   assert.deepEqual(sent.filter(message => message.to === 'chat').map(message => message.text), [
-    'Pair could not run `go test ./...`: tests on save need Pair\'s own pane: run `pair` inside herdr or a Herdr window (herdr-core), or :Pair start in Neovim.',
+    'Pair could not run `go test ./...`: tests on save need Pair\'s own pane: run `pair` inside herdr, a Herdr window (herdr-core) or Rex, or :Pair start in Neovim.',
   ]);
-  assert.deepEqual(tests().at(-1), {to: 'editors', type: 'tests', state: 'error', label: 'go test ./...', text: 'needs herdr or Neovim'});
+  assert.deepEqual(tests().at(-1), {to: 'editors', type: 'tests', state: 'error', label: 'go test ./...', text: 'needs herdr, Rex or Neovim'});
 });
 
 test('after the Driver\'s edit, the tests run on the unsaved buffer: the Partner hears how, the hand-back line shows it, and no baseline changes', async () => {

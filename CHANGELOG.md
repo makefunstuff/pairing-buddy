@@ -9,6 +9,10 @@ release is cut.
 
 ### Added
 
+- **Rex terminals.** `pair` opens the chat beside its Rex terminal, and Pair watches terminals in that session; the Driver
+  can type without Enter. Rex has no scroll position or keystroke activity, so the shell hook still provides command
+  boundaries ([what Pair gets from Rex](docs/rex.md)).
+
 - **Pair's chat as a native panel of the Herdr window.** In a terminal the Herdr window shows, `pair` opens Pair's chat
   as a pane of the window beside it: answers as Markdown, each remark as a card with Useful, Noise, Dismiss, Accept and
   Jump, Pair's questions (the Driver's and Scout's "May I …?", `/gen board`'s choices) as buttons, and a header with

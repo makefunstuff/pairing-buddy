@@ -1,5 +1,5 @@
 ---
-description: "Install Pair: what it needs, the daemon and the Neovim plugin, a check with pair doctor, and a working session in herdr."
+description: "Install Pair: what it needs, the daemon and the Neovim plugin, a check with pair doctor, and a working session in herdr or Rex."
 ---
 
 # Install and daily use
@@ -10,7 +10,8 @@ description: "Install Pair: what it needs, the daemon and the Neovim plugin, a c
 - Neovim 0.11 or newer
 - [herdr](https://herdr.dev), the best home for Pair: the chat pane beside Neovim, your terminals watched with their
   output, Scout's pane below the chat. The older herdr (panes) and herdr-core with the Herdr window (terminals) both
-  work, told apart by themselves ([herdr.md](herdr.md#which-herdr)). Without either, all of Pair still works inside Neovim
+  work, told apart by themselves ([herdr.md](herdr.md#which-herdr)). [Rex](rex.md) is another terminal backend.
+  Without either, all of Pair still works inside Neovim
   ([neovim.md](neovim.md#without-herdr)).
 - For Scout: `bash` and [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg`); optionally [bubblewrap](https://github.com/containers/bubblewrap) (`bwrap`), to run Pair's commands in [a sandbox](scout.md#the-sandbox)
 - Optional, for the [context card](neovim.md#what-it-knows-the-context-card), the goal and
@@ -137,7 +138,7 @@ straight to the daemon's socket, at most twice a second, and never the keys them
 (prompt, output, end with the exit code) for a terminal that reads them. It names the shell by its process id, which
 tells Pair the `:terminal` buffer or tmux pane the command ran in.
 
-**Without herdr**, run `:Pair chat` in Neovim (or `pair chat` in any terminal). Scout's pane and the tests on save
+**Without herdr or Rex**, run `:Pair chat` in Neovim (or `pair chat` in any terminal). Scout's pane and the tests on save
 run in a `:terminal` along the bottom of Neovim, and the Driver's `type` goes to your own `:terminal` buffers
 ([neovim.md](neovim.md#without-herdr)). Pair reads your own `:terminal` buffers in Neovim, and the panes of the tmux
 session Neovim or the chat runs in: which one you are in, the commands you run there and their output, and with the
@@ -163,6 +164,13 @@ reconnect after it. A remark Pair was making unasked, or a hand-over, is dropped
 **The chat pane's colours.** It uses the terminal's own colours and Pair's accent from Neovim, in true colour, so
 the two read as one ([colours](chat.md#colours)). Until a Neovim with `termguicolors` connects it uses the terminal's
 cyan, and with `NO_COLOR` set it prints no colours.
+
+## A session in Rex
+
+Open Neovim in a project in a Rex terminal, then run `pair` in a Rex terminal beside Neovim. Pair opens the chat beside that terminal. Neovim
+connects with `auto_connect`; otherwise run `:Pair start`. Pair watches the Rex session's terminals. `pair chat` runs
+in place, and `:Pair chat` opens in a Neovim terminal buffer. [What Pair gets from Rex](rex.md) explains the gaps
+and the shell hook.
 
 ## Other commands
 
