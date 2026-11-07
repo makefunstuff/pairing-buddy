@@ -10,8 +10,8 @@ with pictures of what you should see, read [the first ten minutes](tutorials/fir
 - Node.js 22.19 or newer, and Neovim 0.11 or newer.
 - A model: a local OpenAI-compatible server (llama.cpp, Ollama, vLLM, LM Studio), an API key for a provider, or a
   subscription login where the provider allows it ([Models and providers](models.md)).
-- Optional: [herdr](https://herdr.dev) (the older herdr, or herdr-core with the Herdr window), the best home for
-  Pair. Without it, everything runs inside Neovim and tmux
+- Optional: [herdr](https://herdr.dev) (the older herdr, or herdr-core with the Herdr window), or [Rex](rex.md)
+  for a chat split and watched terminals. Without either, everything runs inside Neovim and tmux
   ([Workflows](workflows.md#with-or-without-herdr)).
 - For Scout: `bash` and ripgrep (`rg`); bubblewrap (`bwrap`) if you want its commands in a sandbox.
 
@@ -80,8 +80,8 @@ pair shell-hook fish | source    # fish, in config.fish
 
 ## 5. Pair
 
-Open Neovim in your project. In herdr, run `pair` in the pane next to it: a narrow [chat pane](chat.md) opens on the
-right. Without herdr, run `:Pair chat` in Neovim, or skip the chat: a Neovim alone is a whole session. In the chat,
+Open Neovim in your project. In herdr or a Rex terminal, run `pair` beside it: a narrow [chat pane](chat.md) opens on the
+right. Without either, run `:Pair chat` in Neovim, or skip the chat: a Neovim alone is a whole session. In the chat,
 type a question and Enter; `/` lists the commands, `?` the keys, and the row above the input says what Pair is doing.
 
 ![The chat pane on the right of Neovim, before anything is said: what Pair is and the keys to talk to it](images/chat-empty.png)

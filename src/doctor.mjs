@@ -1,6 +1,6 @@
 // `pair doctor`: checks each part Pair needs, one line each, and says what is wrong in plain words.
 import {execFile} from 'node:child_process';
-import {existsSync, mkdtempSync, readdirSync, rmSync, statSync} from 'node:fs';
+import {accessSync, constants, existsSync, mkdtempSync, readdirSync, rmSync, statSync} from 'node:fs';
 import {homedir, tmpdir} from 'node:os';
 import {basename, delimiter, dirname, join} from 'node:path';
 import {credentialState} from './auth.mjs';
@@ -11,6 +11,7 @@ import {fileCredentialStore, readableByOthers} from './credentials.mjs';
 import {Board, outsideSession} from './board.mjs';
 import {herdrRequest} from './herdr.mjs';
 import {coreRequest, coreStatus, herdrOf, HerdrApp, SPACE} from './herdr-core.mjs';
+import {rexOf, rexStatus} from './rex.mjs';
 import {herdrAppInstalled, installedModVersion, modDir, panelWanted} from './herdr-panel.mjs';
 import {listModels, shareServer, SWAP_FACTOR, SWAP_MS} from './loaded-model.mjs';
 import {createDecider, probeDecision} from './decision.mjs';
@@ -42,12 +43,24 @@ export const tilde = path => (path.startsWith(homedir()) ? `~${path.slice(homedi
 const seconds = ms => `${(ms / 1000).toFixed(1)} s`;
 const count = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`;
 const mib = bytes => Math.round((bytes ?? 0) / (1 << 20));
-const onPath = (name, env) => (env.PATH ?? '').split(delimiter).some(dir => existsSync(join(dir, name)));
+/** Whether `path` is a regular file this process may execute: a directory or a plain file on PATH is not a command. */
+function executable(path) {
+  try {
+    if (!statSync(path).isFile()) return false;
+    accessSync(path, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const onPath = (name, env) => (env.PATH ?? '').split(delimiter).some(dir => executable(join(dir, name)));
 
 /** Every check, in order, as `{level: ok|warn|fail, name, text}`; yields each as soon as it is known. */
 export async function* doctor({
   path = configPath(), env = process.env, manager = serviceManager(), service = async () => manager?.state(), nvimPlugin = nvimHasPlugin, auth = authPath(), credentials = fileCredentialStore(auth),
   serviceEnv = join(dirname(path), 'service.env'), // as serviceEnvPath() has it
+  rexStatus: statusRex = rexStatus,
 } = {}) {
   let config;
   try {
@@ -68,6 +81,8 @@ export async function* doctor({
   yield connected ? ok('plugin', 'loaded in the connected Neovims') : pluginCheck(await nvimPlugin(env));
   if (status) yield editorsCheck(status);
   yield await herdrCheck(env);
+  const rex = await rexCheck(env, {status: statusRex});
+  if (rex) yield rex;
   yield* panelChecks(config, status, env);
   yield await boardCheck(config.board, env);
   if (existsSync(auth)) yield loginsCheck(auth);
@@ -198,6 +213,19 @@ export function editorsCheck(status) {
   if (!connected.length) return warn('neovim', 'none connected: run `:Pair start` in Neovim, or set `auto_connect = true` in its setup');
   const count = connected.reduce((sum, session) => sum + session.editors, 0);
   return ok('neovim', `${count} connected, in ${connected.map(session => basename(session.root)).join(', ')}`);
+}
+
+/** Whether Rex is active, answers on its socket and reports its session and terminals. */
+export async function rexCheck(env, {status = rexStatus} = {}) {
+  const rex = rexOf(env);
+  if (!rex && env.REX_SERVER) return warn('rex', `the Rex server is not a local socket (REX_SERVER=${env.REX_SERVER}): not checked`);
+  if (!rex) return onPath('rex', env) ? warn('rex', 'not checked here: run `pair doctor` in a Rex terminal') : null;
+  try {
+    const result = await status(rex);
+    return ok('rex', `Rex ${result.version} (session ${result.label}) answers in ${result.ms} ms, ${count(result.terminals, 'terminal')} in this session; no scroll position or keystrokes: the shell hook gives command boundaries`);
+  } catch (error) {
+    return fail('rex', error.message);
+  }
 }
 
 /**

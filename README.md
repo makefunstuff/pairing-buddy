@@ -69,7 +69,7 @@ you think, and take the keyboard only when you hand it over. Pair aims for that:
 You need Node.js 22.19+, Neovim 0.11+, and a model: a local OpenAI-compatible server, an API key for any provider
 [pi-ai](https://www.npmjs.com/package/@earendil-works/pi-ai) supports, or a subscription login where the provider
 allows it. [herdr](https://herdr.dev) (the older herdr, or herdr-core with the Herdr window) is the best home for
-Pair; without it, everything runs inside Neovim and tmux.
+Pair; [Rex](docs/rex.md) is another terminal backend. Without herdr or Rex, everything runs inside Neovim and tmux.
 
 ```sh
 npm install -g github:makefunstuff/pairing-buddy   # puts `pair` on your PATH
@@ -89,8 +89,8 @@ Add the plugin with lazy.nvim:
 ```
 
 Set your model in `~/.config/pairing-buddy/config.json` ([models](docs/models.md)), run `pair doctor` to check every
-part, then `pair` in the herdr pane next to Neovim (in the Herdr window it opens
-[Pair's panel](docs/herdr.md#pairs-panel-in-the-herdr-window); or `:Pair chat` in Neovim), and work. In the
+part, then `pair` in a herdr pane or Rex terminal next to Neovim (in the Herdr window it opens
+[Pair's panel](docs/herdr.md#pairs-panel-in-the-herdr-window)), or `:Pair chat` in Neovim, and work. In the
 [chat pane](docs/chat.md), `?` lists its keys and `/` its commands.
 [Getting started](docs/getting-started.md) walks through it, and the
 [first ten minutes](docs/tutorials/first-ten-minutes.md) tutorial does it step by step, with what `pair doctor`

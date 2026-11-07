@@ -146,6 +146,7 @@ export default defineConfig({
         {text: 'Known limitations', link: '/limitations'},
         {text: 'Data and privacy', link: '/data'},
         {text: 'What Pair gets from herdr', link: '/herdr'},
+        {text: 'What Pair gets from Rex', link: '/rex'},
         {text: 'Tests', link: '/testing'},
         {text: 'Contributing', link: '/contributing'},
         {text: 'Releasing', link: '/releasing'},

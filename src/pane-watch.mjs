@@ -107,10 +107,11 @@ export class PaneWatch {
    * when something may have changed (herdr's events, a tmux timer, Neovim saying the user went into a terminal),
    * `scrolled(pane, isScrolled)` when the focused pane's scroll moved, and `failed(error)` when it stops answering.
    * `emit(event)` gets focus, typing and command_end events for the panes of `source`, except Pair's own:
-   * `chatPane` and the pane of `scout` (a ScoutPane), whose commands are Pair's, not the user's.
+   * `chatPane` (and `chatPanes`, the chats of other backends that stay a source) and the pane of `scout` (a ScoutPane),
+   * whose commands are Pair's, not the user's.
    */
-  constructor({source, chatPane = null, scout = null, emit, log = () => {}}) {
-    Object.assign(this, {source, chatPane, scout, emit, log});
+  constructor({source, chatPane = null, chatPanes = [], scout = null, emit, log = () => {}}) {
+    Object.assign(this, {source, chatPane, chatPanes, scout, emit, log});
     this.panes = new Map(); // pane id -> what Pair knows of the user's pane (see paneState)
     this.hooked = new Map(); // pane id -> its shell hook: {shell (pid), keys, started, ended (line numbers)}
     this.typedByPair = new Map(); // pane id -> when the Driver typed there, which is not the user typing
@@ -409,11 +410,11 @@ export class PaneWatch {
   }
 
   isUsers(pane) {
-    return ![this.chatPane, this.scout?.paneId].includes(pane);
+    return ![this.chatPane, ...this.chatPanes, this.scout?.paneId].includes(pane);
   }
 
   targetOf(pane) {
-    if (pane === this.chatPane) return 'chat';
+    if (pane === this.chatPane || this.chatPanes.includes(pane)) return 'chat';
     if (pane === this.scout?.paneId) return 'scout';
     return this.panes.get(pane)?.editor ? 'editor' : 'terminal';
   }

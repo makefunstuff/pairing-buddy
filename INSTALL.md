@@ -72,7 +72,8 @@ Write down four facts for the steps below:
 2. **Optional parts** (each one is optional; Pair works without all of them):
    - [herdr](https://herdr.dev), the terminal workspace that is Pair's best home (chat pane beside Neovim, your
      terminals watched): the older herdr (panes) or herdr-core with the Herdr window (terminals); Pair tells them
-     apart by itself ([herdr.md](docs/herdr.md#which-herdr)). Without it, everything runs inside Neovim and tmux.
+     apart by itself ([herdr.md](docs/herdr.md#which-herdr)). [Rex](docs/rex.md) is another terminal backend.
+     Without either, everything runs inside Neovim and tmux.
    - ripgrep (`rg`) for Scout's code search, and on Linux bubblewrap (`bwrap`) to run Pair's commands in a sandbox.
      Recommended.
    - The shell hook, which tells Pair the exit codes of the commands you run (one line in the shell rc file).
@@ -546,6 +547,7 @@ expected and fine on a fresh setup:
 - `! service  no systemd or launchd here …` (service: none)
 - `! neovim   none connected …` (no Neovim is open; 8.2 connects one)
 - `! herdr    not installed …` or `not checked here …` (without herdr, or not run inside it)
+- `! rex      not checked here …` (Rex is on PATH, but doctor did not run in a Rex terminal)
 - `! herdr    herdr-core …; no Herdr window shows terminal …` (a herdr-core terminal the Herdr window does not show)
 - `! panel    the daemon has no port for Pair's panel …` (a daemon started before the Herdr window was installed:
   `pair setup </dev/null` restarts it)
@@ -631,8 +633,9 @@ Tell the human how to start:
 
 - **With herdr:** open Neovim in a project in one pane, and run `pair` in the pane next to it: the chat opens on the
   right.
-- **Without herdr:** open Neovim in a project (in tmux, if they use it), and run `:Pair chat` there for the chat; or
-  skip the chat, a Neovim alone is a whole session.
+- **With Rex:** open Neovim in a project in a Rex terminal, and run `pair` in a Rex terminal beside Neovim: the chat opens beside it.
+- **Without herdr or Rex:** open Neovim in a project (in tmux, if they use it), and run `:Pair chat` there for the
+  chat; or skip the chat, a Neovim alone is a whole session.
 - The statusline shows `● pair` once it is connected. `:Pair ask what does this function do?` asks something; the
   answer starts under the line. Pair says little unasked, which is on purpose.
 
@@ -647,6 +650,11 @@ herdr-core it opens Pair's panel beside it in the Herdr window (`✓ panel` and 
 installed` line means `pair setup </dev/null` again), else a chat terminal the window shows. The work board, Shepherdr (`shepherdr`), and its task for the branch
 (the goal) are read when `shepherdr` is on the daemon's `PATH`; Shepherdr 2.1 answers only inside the agent sessions
 it starts, and `pair doctor`'s board line says which ([agents.md](docs/agents.md)).
+
+**Rex.** Open Neovim in a Rex terminal and run `pair` in a Rex terminal beside it; Pair opens the chat beside that. `pair doctor` inside Rex
+should say `✓ rex Rex <version> (session <label>) answers in <ms> ms, <n> terminals in this session; no scroll position
+or keystrokes: the shell hook gives command boundaries`. Install the [shell hook](docs/rex.md#what-is-missing) for
+command boundaries and exit codes. On macOS Pair has no sandbox to hide the Rex socket from Scout's shell.
 
 **The shell hook.** It tells Pair each command you run and its exit code. **Check:** `grep -s 'pair shell-hook' "$rc"`
 (`rc` from step 3.1; for fish, `~/.config/fish/config.fish`). **Do**, if it prints nothing, back up the rc file and add one line at its end:

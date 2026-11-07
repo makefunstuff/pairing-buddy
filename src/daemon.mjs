@@ -39,6 +39,7 @@ import {Pace} from './pace.mjs';
 import {probeModel} from './probe.mjs';
 import {projectContext} from './project-context.mjs';
 import {readMessages, sendMessage} from './protocol.mjs';
+import {rexOf, rexPane, RexPanes, RexPaneHost} from './rex.mjs';
 import {findPython, madeByPair, Runtime, RUNTIME_VERSION, venvPython} from './runtime.mjs';
 import {pairReranker, pairSearch} from './search.mjs';
 import {configChanges, RESTART_FIELDS, watchConfig} from './reload.mjs';
@@ -103,6 +104,7 @@ export async function startDaemon(config, {
   meaningWith = {}, // tests' fetch and embedder for search by meaning (see search.mjs)
   rerankerFor = (entries, logTo) => (entries.rerank ? pairReranker(createRerankEndpoints(entries), {log: logTo}) : null),
   omniWith = {}, // tests' LFM3-Omni for voice (see omni.mjs): {voice, fetch, free, files, runtime, litert, wheels, pythons, pythonsOn, install}
+  rexWith = {rexPane, RexPanes, RexPaneHost}, // Rex's pushed pane source and Scout host (rex.mjs)
 } = {}) {
   mkdirSync(config.dataDir, {recursive: true, mode: 0o700});
   mkdirSync(join(config.dataDir, 'runs'), {recursive: true}); // the output of the tests run on save, one file per session
@@ -115,7 +117,8 @@ export async function startDaemon(config, {
   const live = new Map(); // root -> PairSession, once loaded
   const margins = new Map(); // root -> its NoteMargin
   const watches = new Map(); // root -> PaneWatch
-  const paneSources = new Map(); // root -> what its PaneWatch watches: {herdr, tmux, chatPane}
+  const paneSources = new Map(); // root -> what its PaneWatch watches: {herdr, rex, tmux, chatPane, rexChat, herdrInRex}
+  const rexHosts = new Set(); // roots whose ScoutPane has moved from Neovim to Rex
   const coreSources = new Map(); // root -> its herdr-core terminals (CorePanes), whose focus the Herdr panel may push
   const pushedFocus = new Map(); // herdr-core socket -> its window's focus as a Herdr panel last pushed it, while one is connected
   const listeners = new Map(); // root -> Listener, once someone holds the listen key there
@@ -558,26 +561,69 @@ export async function startDaemon(config, {
     });
   }
 
+  /** The session's Scout is `scout` from now on: its PaneWatch, built before, must not count the new pane as the user's. */
+  function useScout(session, scout) {
+    session.scout = scout;
+    const watch = watches.get(session.root);
+    if (watch) watch.scout = scout;
+  }
+
   /** Without herdr, Pair's pane opens in one of the session's Neovims, as a :terminal buffer. */
   function editorPane(session) {
-    session.scout ??= scoutPane(session, new EditorPaneHost({editors: () => editorsOf(session), ask: askEditor}));
+    if (!session.scout) useScout(session, scoutPane(session, new EditorPaneHost({editors: () => editorsOf(session), ask: askEditor}))); // a chat before any Neovim has a watch already
+  }
+
+  /**
+   * A chat in tmux without herdr. If a chat in Rex was Pair's pane before, its exclusion and its Scout host in Rex give
+   * way to the tmux chat's pane and Neovim's host, as for any chat without herdr or Rex.
+   */
+  function watchTmux(session, tmux) {
+    const known = paneSources.get(session.root);
+    if (known?.rexChat) paneSources.set(session.root, {...known, chatPane: known.chatPane?.startsWith('rex:') ? null : known.chatPane, rexChat: null});
+    if (rexHosts.delete(session.root)) {
+      session.scout?.close().catch(() => {});
+      useScout(session, scoutPane(session, new EditorPaneHost({editors: () => editorsOf(session), ask: askEditor})));
+    }
+    watchPanes(session, {tmux, chatPane: tmuxPane(tmux.pane)});
   }
 
   /**
    * A chat pane in herdr, or a chat terminal in herdr-core (`herdr.kind`, see herdrOf): Pair's pane moves there, and
    * its PaneWatch watches herdr's panes, or the terminals of the chat's space in the Herdr window, too.
    */
-  function watchHerdr(session, herdr) {
-    if (!herdr?.socket || paneSources.get(session.root)?.herdr) return;
-    session.scout?.close().catch(() => {}); // a pane it had in Neovim before the herdr chat pane came
-    // The Herdr panel is no terminal: Pair's pane opens beside the terminal it was opened from.
-    const host = herdr.kind === 'core'
-      ? new CorePaneHost({socketPath: herdr.socket, besidePane: herdr.pane ?? herdr.beside, root: session.root})
-      : new HerdrPaneHost({socketPath: herdr.socket, workspaceId: herdr.workspace, besidePane: herdr.pane});
-    session.scout = scoutPane(session, host);
-    watchPanes(session, {herdr, chatPane: herdr.pane});
-    const core = herdr.pane ? `herdr-core terminal ${herdr.pane}'s space` : `Herdr space ${herdr.space}, from the Herdr panel`;
-    log(`[${basename(session.root)}] watching ${herdr.kind === 'core' ? core : `herdr workspace ${herdr.workspace}`}`);
+  function watchHerdr(session, herdr, {rex = null, tmux = null} = {}) {
+    if (!herdr?.socket) return;
+    const known = paneSources.get(session.root);
+    if (!known?.herdr) {
+      if (known) paneSources.set(session.root, {...known, chatPane: null}); // a chat in Rex or tmux was Pair's pane before this one
+      session.scout?.close().catch(() => {}); // a pane it had in Neovim before the herdr chat pane came
+      // The Herdr panel is no terminal: Pair's pane opens beside the terminal it was opened from.
+      const host = herdr.kind === 'core'
+        ? new CorePaneHost({socketPath: herdr.socket, besidePane: herdr.pane ?? herdr.beside, root: session.root})
+        : new HerdrPaneHost({socketPath: herdr.socket, workspaceId: herdr.workspace, besidePane: herdr.pane});
+      rexHosts.delete(session.root);
+      useScout(session, scoutPane(session, host));
+      const core = herdr.pane ? `herdr-core terminal ${herdr.pane}'s space` : `Herdr space ${herdr.space}, from the Herdr panel`;
+      log(`[${basename(session.root)}] watching ${herdr.kind === 'core' ? core : `herdr workspace ${herdr.workspace}`}`);
+    }
+    watchPanes(session, {herdr, rex, tmux, chatPane: herdr.pane});
+  }
+
+  /**
+   * A chat in Rex: replace the editor's Scout host and watch Rex alongside Neovim and any outer multiplexer.
+   */
+  function watchRex(session, rex, tmux = null) {
+    if (!rex?.server) return;
+    const known = paneSources.get(session.root);
+    const besidePane = rexWith.rexPane(rex.block);
+    if (!known?.herdr && !rexHosts.has(session.root)) {
+      session.scout?.close().catch(() => {});
+      useScout(session, scoutPane(session, new rexWith.RexPaneHost({socketPath: rex.server, session: rex.session, besidePane, root: session.root})));
+      rexHosts.add(session.root);
+      log(`[${basename(session.root)}] watching Rex session ${rex.session}`);
+    }
+    // Beside a herdr chat, the Rex chat block is still Pair's own pane, though herdr's is the chat pane.
+    watchPanes(session, {rex, tmux, chatPane: known?.herdr ? null : besidePane, rexChat: besidePane});
   }
 
   /**
@@ -607,25 +653,33 @@ export async function startDaemon(config, {
   }
 
   /**
-   * The session's PaneWatch over the user's terminals: the :terminal buffers of its Neovims always, the panes of
-   * herdr once a chat pane there says hello, and of the tmux session a Neovim or the chat runs in. A source more
-   * than it has makes it anew. `chatPane` is the chat's, which is Pair's and not the user's.
+   * The session's PaneWatch over the user's terminals: the :terminal buffers of its Neovims always, panes in herdr,
+   * Rex and tmux when a connecting editor or chat identifies them. A source more
+   * than it has makes it anew. `chatPane` is the chat's, which is Pair's and not the user's; so is `rexChat`, the
+   * Rex block of a chat in Rex, also when herdr's pane is the chat pane and Rex stays a source.
    */
-  function watchPanes(session, {herdr = null, tmux = null, chatPane = null} = {}) {
-    const known = paneSources.get(session.root) ?? {herdr: null, tmux: null, chatPane: null};
-    const wanted = {herdr: known.herdr ?? herdr, tmux: known.tmux ?? tmux, chatPane: known.chatPane ?? chatPane};
+  function watchPanes(session, {herdr = null, rex = null, tmux = null, chatPane = null, rexChat = null} = {}) {
+    const known = paneSources.get(session.root) ?? {herdr: null, rex: null, tmux: null, chatPane: null, rexChat: null, herdrInRex: false};
+    const outerTmux = known.tmux ?? tmux;
+    const outerHerdr = known.herdr ?? herdr;
+    // tmux or herdr inside Rex: the Rex block runs their client, so it would win the focus from the pane the user is in.
+    // A herdr is inside Rex when one hello says both; a herdr chat beside a Rex editor has Rex's terminals to watch too.
+    const herdrInRex = known.herdrInRex || !!(herdr && rex);
+    const wanted = {herdr: outerHerdr, rex: outerTmux || herdrInRex ? null : known.rex ?? rex, tmux: outerTmux, chatPane: known.chatPane ?? chatPane, rexChat: known.rexChat ?? rexChat, herdrInRex};
     if (watches.has(session.root) && JSON.stringify(wanted) === JSON.stringify(known)) return;
     paneSources.set(session.root, wanted);
     watches.get(session.root)?.stop();
     const sources = [];
     coreSources.delete(session.root);
     if (wanted.herdr) sources.push(herdrSource(wanted.herdr, session.root));
+    if (wanted.rex) sources.push(new rexWith.RexPanes({socketPath: wanted.rex.server, session: wanted.rex.session, chatPane: wanted.rexChat}));
     if (wanted.tmux) sources.push(new TmuxPanes({socketPath: wanted.tmux.socket, pane: wanted.tmux.pane}));
     sources.push(new NvimPanes({editors: () => editorsOf(session), ask: askEditor}));
     const sessionLog = line => log(`[${basename(session.root)}] ${line}`);
     const watch = new PaneWatch({
       source: new Panes(sources, {log: sessionLog}),
       chatPane: wanted.chatPane,
+      chatPanes: [wanted.rexChat],
       scout: session.scout,
       emit: event => receive(session, event),
       log: sessionLog,
@@ -669,6 +723,7 @@ export async function startDaemon(config, {
     watches.get(session.root)?.stop();
     watches.delete(session.root);
     paneSources.delete(session.root);
+    rexHosts.delete(session.root);
     coreSources.delete(session.root);
     sessions.delete(session.root);
     live.delete(session.root);
@@ -682,10 +737,20 @@ export async function startDaemon(config, {
     }
   }
 
+  /**
+   * The Rex a hello names, as `{server: socket path, session, block}`, or null. The chat sends rexOf's decoded path; the
+   * plugin has no decoder and sends REX_SERVER as it is, a `unix://` URL: the sockets only ever see the path.
+   */
+  function rexDescriptor(rex) {
+    if (!rex || typeof rex.server !== 'string') return null;
+    if (rex.server.startsWith('/')) return rex.session && rex.block ? {server: rex.server, session: rex.session, block: rex.block} : null;
+    return rexOf({REX_SERVER: rex.server, REX_SESSION: rex.session, REX_BLOCK: rex.block});
+  }
+
   async function hello(client, message) {
     client.role = message.role;
     client.activeAt = Date.now();
-    // The herdr or tmux pane a Neovim runs in.
+    // The innermost herdr, Rex or tmux pane a Neovim runs in. Rex arrives namespaced from the plugin.
     client.pane = message.pane ?? (message.tmux?.pane ? tmuxPane(message.tmux.pane) : null);
     client.pid = message.pid ?? null; // a Neovim's, which names its terminals (terminals.mjs)
     client.core = client.panel ? message.herdr?.socket ?? null : null; // the herdr-core whose window a panel shows
@@ -727,10 +792,13 @@ export async function startDaemon(config, {
     if (client.role === 'editor') session.pickUp().catch(error => log(`pick-up failed: ${error.stack ?? error}`));
     if (client.role === 'editor') editorPane(session);
     const tmux = message.tmux?.socket && message.tmux.pane ? {socket: message.tmux.socket, pane: message.tmux.pane} : null;
-    if (client.role === 'editor') watchPanes(session, {tmux});
+    const rex = tmux ? null : rexDescriptor(message.rex); // a tmux pane in Rex is tmux's: see watchPanes
+    if (client.role === 'editor') watchPanes(session, {rex, tmux});
     if (client.role !== 'chat') return;
-    watchHerdr(session, message.herdr);
-    if (!message.herdr?.socket) watchPanes(session, {tmux, chatPane: tmux && tmuxPane(tmux.pane)});
+    watchHerdr(session, message.herdr, {rex, tmux});
+    if (!message.herdr?.socket && rex) watchRex(session, rex, tmux);
+    else if (!message.herdr?.socket && tmux) watchTmux(session, tmux);
+    else if (!message.herdr?.socket) watchPanes(session, {});
     // A chat pane that reconnects after a daemon restart already shows the history, up to the restart.
     if (message.resume) {
       for (const missed of store.messagesSince(session.id, startedAt)) sendMessage(client.socket, {type: 'message', history: true, ...missed});
@@ -861,6 +929,7 @@ export async function startDaemon(config, {
         panels: clientsOf(session, 'chat').filter(client => client.panel).length,
         focusPushed: Boolean(coreSources.get(session.root)?.pushing),
         herdr: !!paneSources.get(session.root)?.herdr,
+        rex: !!paneSources.get(session.root)?.rex,
         tmux: !!paneSources.get(session.root)?.tmux,
       })),
     };

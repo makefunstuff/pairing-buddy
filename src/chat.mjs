@@ -16,6 +16,7 @@ import {ledgerText} from './ledger.mjs';
 import {readMessages, sendMessage} from './protocol.mjs';
 import {tmuxOf} from './tmux.mjs';
 import {herdrOf} from './herdr-core.mjs';
+import {rexOf} from './rex.mjs';
 import {allows, COMMANDS, foundLines, genText, HELP, LEVELS, parseInput, remarkLines} from '../herdr/pair/commands.js';
 
 export {allows, COMMANDS, foundLines, genText, parseInput, remarkLines};
@@ -26,7 +27,7 @@ const RECONNECT_MS = 1000;
  * The pane's line to the daemon: hello on connect, and when the daemon restarts, waits for it and says hello again
  * with `resume`. `on.message`, `on.lost` (it went away), `on.failed` (it was never there).
  */
-function linkDaemon(socketPath, on, {cwd = process.cwd(), env = process.env} = {}) {
+export function linkDaemon(socketPath, on, {cwd = process.cwd(), env = process.env} = {}) {
   const link = {socket: null, welcomed: false, away: false, closed: false, attempts: 0}; // attempts: to reconnect, since it went away
   link.hello = resume => sendMessage(link.socket, {
     type: 'hello',
@@ -34,6 +35,7 @@ function linkDaemon(socketPath, on, {cwd = process.cwd(), env = process.env} = {
     cwd,
     resume,
     herdr: herdrOf(env), // herdr's pane or herdr-core's terminal the chat runs in, if any
+    rex: rexOf(env),
     tmux: tmuxOf(env),
   });
   link.send = message => sendMessage(link.socket, message);
