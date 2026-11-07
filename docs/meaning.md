@@ -117,7 +117,8 @@ has what they gain, per model). Two ways to have them:
   do). Off by default. The `openrouter` profile's writer reads its key from a command, `pi auth print-api-key
   --provider opencode-go`
   ([its docs/profiles.md](https://github.com/makefunstuff/semantic-grep.nvim/blob/main/docs/profiles.md#openrouter-openrouter)),
-  in the background, at most every five minutes (20 s after it failed), never holding up a search or a request;
+  in the background, at most every five minutes (20 s after it failed, and at once after the server refused its
+  key), never holding up a search or a request, and nothing is sent while there is no key;
   without pi, `"notes": {"apiKeyEnv": "…"}` (or `auth`, or an `apiKeyCommand` of your own) replaces it.
 - **From a coding agent.** semantic-grep's `semantic-grep-server notes pending` and `notes put` (or its Claude Code
   skill, which runs them for you) on Pair's index: give them `--data-dir ~/.local/state/pairing-buddy` (Pair's

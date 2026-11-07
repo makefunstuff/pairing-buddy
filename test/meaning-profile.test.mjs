@@ -162,6 +162,28 @@ test('a writer whose key command has no key sends nothing and says so; a key ref
     assert.equal(apiKeyOf(keyed.meaning.notes), undefined, 'the refused key is dropped, and the command runs again');
     await primeKeyCommands([keyed.meaning.notes]);
     assert.equal(readFileSync(runs, 'utf8'), 'run\nrun\n');
+    await meaning.writer.write([piece]); // the same key refused again: an expired login, not a new one
+    assert.equal(apiKeyOf(keyed.meaning.notes), undefined);
+    assert.equal(readFileSync(runs, 'utf8'), 'run\nrun\n', 'the command waits, rather than running for every request');
+  } finally {
+    await meaning.close();
+  }
+});
+
+test('an embedding model whose key command has no key sends no code, and the build says why', async () => {
+  const root = project();
+  const dataDir = scratch('profile-embed-');
+  let sent = 0;
+  const fetch = async () => { sent += 1; return new Response('{"error": "no"}', {status: 401}); };
+  const config = parseConfig({...MODELS, embedding: {api: 'openai', baseUrl: 'http://127.0.0.1:9/v1', model: 'e', apiKeyCommand: 'exit 1'}});
+  const {meaning} = pairSearch({config: {...config, dataDir}, with: {fetch}});
+  try {
+    await meaning.indexOf(root);
+    await meaning.indexes.get(root).ready; // the words; the vectors cannot come
+    const answer = await meaning.search(root, 'tip for the waiter', {book: false});
+    assert.match(answer.problem ?? '', /no key in its apiKeyCommand/);
+    assert.equal(sent, 0, 'neither the query nor the pieces went out');
+    assert.ok(answer.results.length > 0, 'the words still rank');
   } finally {
     await meaning.close();
   }

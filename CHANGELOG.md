@@ -151,9 +151,11 @@ release is cut.
 ### Changed
 
 - **semantic-grep 1e8a4b1.** Pair's search by meaning follows semantic-grep's main: the files view, the profiles
-  (`openrouter` among them), the notes writer, and `apiKeyCommand` for a key kept elsewhere. A cross-encoder's and the
-  notes writer's keys are read as Pair reads a model's (`auth` too), and `pair setup` now stores the `apiKeyEnv` of
-  `embedding`, `rerank` and the notes writer in `service.env` for the service.
+  (`openrouter` among them), the notes writer, and `apiKeyCommand` for a key kept elsewhere: run in the background,
+  never holding up the daemon, kept five minutes and run again at once when the server refuses its key; while there
+  is no key, the embedder, a cross-encoder and the writer send nothing. A cross-encoder's and the notes writer's keys
+  are read as Pair reads a model's (`auth` too), and `pair setup` now stores the `apiKeyEnv` of `embedding`, `rerank`
+  and the notes writer in `service.env` for the service.
 - **Pair never works from a stale read.** Each remark, question, `/drive` and explanation carries the lines you changed
   since Pair's last turn, as they are now in your buffer, so a suggestion no longer puts back a bug you just fixed.
 - **A remark you act on counts as useful.** Editing the lines a remark pointed at, within ten minutes, counts it as

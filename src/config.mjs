@@ -277,11 +277,14 @@ function runKeyCommand(command, known) {
 
 /**
  * A request with the key `command` printed was refused (401 or 403): the key is dropped, and the next ask runs the
- * command again, as after a login since.
+ * command again at once, as after a login since. The same key refused again is a failed run: the command waits
+ * KEY_COMMAND_RETRY_MS, rather than running for every request while its login is expired.
  */
 export function dropCommandKey(command) {
   const known = commandKeys.get(command);
-  if (known && !known.pending) Object.assign(known, {key: undefined, at: 0});
+  if (!known || known.pending || !known.key) return;
+  const again = known.key === known.refused;
+  Object.assign(known, {refused: known.key, key: undefined, at: again ? Date.now() : 0});
 }
 
 /** Runs the `apiKeyCommand` of each of `entries` now, so their first requests have a key. Resolves once they answered. */

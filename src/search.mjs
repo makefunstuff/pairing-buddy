@@ -9,7 +9,7 @@ import {existsSync, renameSync} from 'node:fs';
 import {rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {classify, HttpEmbedder, Meaning, Reranker} from 'semantic-grep';
-import {apiKeyOf, dropCommandKey, primeKeyCommands, withPairKey} from './config.mjs';
+import {dropCommandKey, primeKeyCommands, withPairKey} from './config.mjs';
 import {downloadModel, Embedder, meaningDir, MODEL, modelPath, modelReady, pythonOf, removeModel} from './embedder.mjs';
 import {voicePythonsOn} from './omni.mjs';
 import {Runtime, RUNTIME_VERSION} from './runtime.mjs';
@@ -162,7 +162,9 @@ export function pairSearch({config, log = () => {}, book = () => {}, progress = 
   let embedder;
   let gemma = null;
   if (config.embedding) {
-    embedder = fake ?? new HttpEmbedder({entry: config.embedding, apiKey: () => apiKeyOf(config.embedding), fetch, log});
+    // Its key as the writer's: a key named but not there sends nothing, and the build counts it as an outage.
+    const keyed = withPairKey(config.embedding);
+    embedder = fake ?? new HttpEmbedder({entry: config.embedding, apiKey: () => keyed.apiKey, fetch, log});
   } else {
     // EmbeddingGemma's Python is looked for each time its helper starts: a venv made while the daemon runs is found.
     embedder = fake ?? new Embedder({python, model: modelPath(dataDir), threads: config.meaning?.threads, log});

@@ -196,9 +196,10 @@ the work board.
   venv Pair made. A fake embedder stands in for the model (`test/meaning.test.mjs`, `test/meaning-nvim.test.mjs`).
 - **semantic-grep's profiles and notes writer.** A profile setting `embedding` and `rerank`, the config's own entries
   over it, a config without one unchanged; notes off by default, the profile's writer, code sent elsewhere only with
-  `sendCode`; `apiKeyCommand` run in the background and kept, never blocking the daemon; a cross-encoder's key read
-  from the file `pair setup` stores for the service; the writer writing a note
-  on each piece at a fake `/chat/completions`, booked (`test/meaning-profile.test.mjs`).
+  `sendCode`; `apiKeyCommand` run in the background and kept, never blocking the daemon, run again once its key is
+  refused (a key refused twice waits); the writer and the embedder sending nothing without a key; a cross-encoder's
+  key read from the file `pair setup` stores for the service; the writer writing a note on each piece at a fake
+  `/chat/completions`, booked (`test/meaning-profile.test.mjs`).
 - **Search by meaning's reranker.** The reranker is semantic-grep's, and its own tests cover the question, a model
   that is slow, down or answers oddly, a list of models and the picker's rerank in place. Pair's cover the config's
   `rerank` entry and its reload; `/find`'s and the search tool's ranking reranked and booked with the order before and
